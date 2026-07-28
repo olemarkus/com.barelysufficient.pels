@@ -725,7 +725,8 @@ section above):
 
 The Settings → Multiple meters surface manages parts of the home with their
 own electricity meter. Canonical labels (source:
-`packages/shared-domain/src/homesManagementCopy.ts`; the nav-card/panel
+`packages/shared-domain/src/homesManagementCopy.ts`, plus
+`homeAreaConfigRulesCopy.ts` for the save-refusal lines; the nav-card/panel
 chrome lives in the static settings markup):
 
 | Concept | Label |
@@ -734,11 +735,236 @@ chrome lives in the static settings markup):
 | The implicit complement — everything not in a meter area | **Main home** |
 | The Settings section / panel title | **Multiple meters** |
 | The Main home's own meter picker (existing Limits & safety control) | **Whole-home meter** |
+| The shell's global home picker, below the global banners | **Showing** |
+
+### The scope bar's `Showing` label
+
+Once a meter area exists, the shell renders one 48 px row naming which part of
+the home the page is about: `Showing` followed by the selected home's name
+(`Showing Main home`, `Showing Rental unit`). Source: `HOME_SCOPE_BAR_LABEL` in
+`packages/shared-domain/src/homeScopeCopy.ts`; the complement's name is the
+single `MAIN_HOME_NAME` export in the same module, which every surface naming
+the Main home reads.
+
+It sits **below** the global banners, not directly under the tab strip. Those
+banners are whole-home alerts — the simulation banner says "Main home" outright
+once areas exist — so a scope naming a meter area immediately above one would
+group with it and make a global alert read as scoped. Order: global alerts,
+then scope, then page.
+
+The bar is not the only anchor, but the second one is narrow on purpose: a card
+that reuses a label the app also shows UNSCOPED elsewhere carries the home too
+(`Status now · Rental unit`, via `composeHomeScopedTitle`, so its `Power now`
+never reads as the Overview's whole-home `Power now`). Everything else on a
+scoped page leaves the naming to the sticky bar.
+
+Settings that are **not** home-scoped must not sit under the bar's claim. On
+Limits & safety, `Power source` and `Whole-home meter` are app-global, so they
+live in their own card that steps aside in area scope, replaced by
+`HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE` naming where they went. Conversely the
+Main home's own hard-cap hint stops saying "**Your** grid tariff step" once areas
+exist and names the Main home instead: with the house split, the Main branch has
+to be as explicit about its scope as the area branch already is.
+
+`Showing` is deliberately a plain statement of what is on screen rather than a
+settings-field label, so the bar reads the same on a page you are only looking
+at and on one you are editing. It replaced the Limits panel's local `Set limits
+for` switcher, which could only ever name one page's job. A home with no meter
+areas never sees the bar.
+
+The control is a Material **menu button** (a tonal button opening a menu), not
+a form field, and `Showing` renders in the supporting type role beside it. The
+bar is chrome: a filled-field costume made it the brightest, largest object
+above the fold and out-ranked the tab strip, and its full-width stretch both
+wasted ~140 px at 480 px and truncated a real Norwegian area name at 320 px. A
+content-sized button shows `Leilighet i underetasjen` in full at 320 px, and its
+trailing icon is the same Material `arrow_drop_down` glyph the selects on the
+same screen render — one caret language, not two.
+
+The bar is **sticky**, so the home stays named at every scroll position. That
+is why the panel's own title does NOT repeat it: a scoped page states its home
+once, in the chip, untruncated. (Appending `· <area>` to the app bar was tried
+and dropped — the app bar is not sticky either, so the suffix bought ~51 px of
+scroll at 320 px and nothing at all at 480 px, while at rest it put an
+untruncated name directly above a truncated copy of itself.)
+
+The bar renders **only on pages whose content is already resolved against the
+selected home**. A bar naming a home above whole-home figures would be a claim
+the page cannot pay, so a surface earns the bar in the same change that teaches
+it the scope, never before.
+
+### Per-home Usage honest states
+
+When the Usage tab's selected part of the home cannot be served (a held or
+just-removed area, or a runtime still wiring up), the data sections hide
+behind one notice card instead of rendering zeros — a fabricated
+`0.0 kWh today` would read as a measurement. Canonical copy (source:
+`HOME_SCOPE_USAGE_UNAVAILABLE_*` in `homeScopeCopy.ts`): headline
+`Usage couldn’t be read`, body `PELS couldn’t read usage for this part of the
+home right now. Check back in a moment, or pick another part of the home
+above.` A served meter area with nothing recorded yet is a different, healthy
+state: it keeps the normal empty surfaces, but the awaiting-samples line reads
+`No usage recorded for this part of the home yet.`
+(`formatPowerUsageEmptyForMeterArea` in `powerUsageStrings.ts`) — never the
+Main home's `Set up the Report power usage Flow action` remedy, which is not
+an area's setup path. The daily-history budget overlay and its
+within/over-budget readout context render in Main scope only: the daily budget
+is a Main-home constraint (locked decision 3), so painting it on an area's
+history would claim the area is held to it.
+
+### Per-home Overview honest states
+
+The Overview follows the shown home the same way Usage does. When the selected
+part of the home cannot be served (`homeScope: unavailable`), the hero and
+device cards hide behind one notice card instead of rendering fabricated
+numbers — a `0.0 kW` hero would answer "am I OK right now?" with a measurement
+nobody took. Canonical copy (source: `HOME_SCOPE_OVERVIEW_UNAVAILABLE_*` in
+`homeScopeCopy.ts`): headline `Status couldn’t be read`, body `PELS couldn’t
+read the current status for this part of the home right now. Check back in a
+moment, or pick another part of the home above.`
+
+Under a meter area the Main-only elements are OMITTED as not-applicable, never
+zeroed: the smart-task row (smart tasks are a Main-home feature) and every
+daily-budget-derived hero element (the daily budget is a Main-home constraint,
+locked decision 3 — an area's plan meta simply carries no daily allocation, so
+`Budget this hour` there is always the area's own capacity allocation). The
+hero's `Simulation mode` chip and hypothetical voice follow the area's OWN
+control flag (`capacity_dry_run:<id>`), never Main's.
+
+### Home badges on the Devices and Modes lists
+
+Once a meter area is in use, every row in the Devices and Modes lists carries a
+quiet outline chip naming the home it belongs to: the area's own name as the
+owner authored it, or **Main home** for the implicit complement — the same word
+the Limits switcher uses, never a synonym. A single-home install renders no
+badge at all.
+
+The badge is a label, never a filter: both lists keep showing every device.
+Chips stay short, so the "why it matters" sentence lives in the tooltip
+(`This device belongs to “Rental unit” and counts against that meter.`), which
+doubles as the full-name reveal when a long area name is truncated. Source:
+`composeHomeBadgeLabel` / `composeHomeBadgeTooltip` in
+`packages/shared-domain/src/homesManagementCopy.ts`.
 
 Internal terms that stay internal: `sub-home`, `homeId`, `membership`,
-`zone rule`, `pin`, `suspect`/`degraded` (store classifications). Copy says
-what happens ("Its devices move back to the Main home", "your settings
-couldn't be read"), never the resolver or store vocabulary.
+`scope` (as a word in copy), `zone rule`, `pin`, `suspect`/`degraded` (store
+classifications). Copy says what happens ("Its devices move back to the Main
+home", "your settings couldn't be read"), never the resolver or store
+vocabulary.
+
+The same two names reach Flow. The `Hard cap breach imminent — manual action
+needed` trigger carries a `Home` tag naming the part of the home that fired it:
+
+| Concept | Label |
+|---|---|
+| Flow tag naming the part of the home an alert came from | **Home** |
+| Its value for the implicit complement | **Main home** |
+| Its value for a configured area | the area's own name |
+| Its value when a saved area's name is blank | **Meter area** |
+
+The tag is the home's *name*, not its id, so a Flow names a home the way the
+owner does. A saved name is untrusted, so the blank case has ONE answer for
+every surface: `resolveHomeAreaDisplayName` in `homesManagementCopy.ts`, called
+by both the Multiple meters list and the runtime that fills the tag. Constants:
+`HOMES_MAIN_HOME_NAME` and `HOMES_UNNAMED_AREA_NAME`, same module.
+
+The tag title stays the bare `Home`. It reads as a sentence in a notification
+(`Hard cap breach in [Home]`) and matches the settings vocabulary, since its
+values are `Main home` and area names. `Part of home` was considered and
+rejected: it is wordier everywhere to defuse a collision that does not happen,
+because `Home` as a stock operating-mode name appears as a dropdown *value* on
+other cards, never as a tag title.
+### Simulation posture across homes
+
+Main's simulation flag and each active meter area's control flag are
+independent, so the global surfaces render the AGGREGATE posture — all live /
+all simulating / mixed (source: `resolveSimulationPosture` and
+`resolveSimulationBannerContent` in
+`packages/shared-domain/src/simulationPosture.ts`; chip labels in
+`settingsHubChips.ts` beside them):
+
+| State | Global simulation banner | Settings hub Simulation chip |
+|---|---|---|
+| Simulating, no meter areas | `Simulation on — devices stay as-is` | `On` |
+| Main simulating, areas exist | `Main home simulation on — Main home devices stay as-is` (never appends the areas — the button acts on Main) | `On` while the areas simulate too, else `Partly on` |
+| Main live, one area simulating | `PELS is only simulating “<area>”. Turn on control under Limits & safety.` — no button: each area's control lives on its Limits & safety page | `Partly on` |
+| Main live, several areas simulating | `PELS is only simulating N meter areas. Turn on control under Limits & safety.` | `Partly on` |
+| Everything live | hidden | hidden |
+
+Held pre-GA areas never enter the posture: their devices still belong to the
+Main home, so their flags say nothing about what PELS controls.
+
+### Beta notice
+
+The Multiple meters page leads with `HOMES_BETA_NOTICE`
+(`homesManagementCopy.ts`): `Meter areas are new. They work as intended, but
+some PELS features don’t cover them yet. Report anything unexpected and it
+gets fixed fast.` Confident and factual — never reworded into a hedge about
+whether the feature works, and never an em-dashed aside.
+
+### Honest scope lines and not-supported-yet states
+
+Surfaces that do NOT follow the `Showing` picker say so once meter areas are
+**in use** (an active roster with `runtimeActive` — a held pre-GA config or a
+single-home install renders none of these). Canonical copy lives in
+`homeScopeCopy.ts`; every line says what happens and names the Main home with
+the one registered constant:
+
+| Surface | Copy |
+|---|---|
+| Budget tab (scope line under the header) | `Your daily budget covers the Main home. Each meter area runs on its own cap and isn’t counted here.` |
+| Smart tasks list (info notice under the hero) | `Smart tasks run on Main home devices. A device in a meter area can’t have a smart task yet.` |
+| Device-detail diagnostics, area device | `Not measured for meter areas yet. PELS limits and resumes this device normally, but doesn’t record diagnostics for it yet.` |
+| Device-detail activity log, area device | `Not recorded for meter areas yet. PELS limits and resumes this device normally, but doesn’t keep an activity log for it yet.` |
+| Simulation-mode settings page (note under the switch) | `This switch covers the Main home. Each meter area has its own “Control devices in this area” switch, under Limits & safety.` |
+
+Rules pinned by these lines:
+
+- The Budget line says **Main home**, never "whole home" — the daily budget
+  binds Main's tracker and meter (locked decision 3).
+- The device-detail lines lead with the honest gap ("Not measured/recorded …
+  yet") and then say control is unaffected — an empty diagnostics payload that
+  reads as a healthy device is exactly what they exist to prevent (locked
+  decision 5). The fetch is skipped: the Main-home payload cannot answer for
+  an area device.
+- The Simulation-page note composes the toggle name from
+  `HOME_LIMITS_CONTROL_LABEL`, so the pointer cannot drift from the real
+  control it names.
+
+### Save refusals (`homeAreaConfigRulesCopy.ts`)
+
+Saving a meter area can be refused, and each refusal names one next step
+rather than a generic failure. Three of them pin vocabulary:
+
+- **`Main home` is a RESERVED area name.** An area may not be called it, in any
+  case. The name is the home selector's label and the `capacity_shortfall` Flow
+  token's value, so an area wearing the complement's name would stop both from
+  telling the two apart. The rule reads the label from
+  `HOME_LIMITS_MAIN_HOME_OPTION`, so **renaming the Main home renames what is
+  reserved** — deliberate, but check the refusal copy still reads correctly.
+- **Two caps are user-visible:** at most **8 meter areas** and at most **40
+  characters** in an area name. Both refusals state the number and the way out.
+- **The whole-home-meter requirement runs both directions** (saving an area,
+  and choosing Automatic while areas run) and always names the same control:
+  **Whole-home meter**, under **Limits & safety**. Name it as a setting to
+  change, never as an option to pick — the picker's options are device names
+  plus `Automatic`.
+- **The Homey Energy requirement also runs both directions** (saving an area
+  on the Flow source, and switching the source to Flow while areas run), and
+  each side names the OTHER side's control: the area save points at
+  **Power source**, under **Limits & safety**; the source switch says to
+  remove the areas under **Multiple meters**. The switch-side remedy is
+  removal on purpose — deleting an area works on any source, so the
+  instruction can always be followed. Internal terms (`mutual exclusion`,
+  `homey_energy_required`) stay internal.
+- **An id-less whole-home aggregate gets the honest-state refusal, not the
+  remedy.** Some Homey setups read the whole home through an aggregate that
+  carries no device id, so the Whole-home meter picker has nothing to offer
+  and the requirement above can never be satisfied there. The copy
+  (`HOMES_METER_UNNAMEABLE`) names the situation — "Your whole-home meter
+  doesn't report a device id" — and says "Not supported for meter areas yet";
+  it never points at the picker. Internal terms (`cumulative item`,
+  `aggregate`, `arrangement`) stay internal.
 
 ## Mode label
 

@@ -1,7 +1,4 @@
-import type {
-  WeatherAdvisorSettings,
-  WeatherHistoryState,
-} from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { normalizeError } from '../utils/errorUtils';
 import {
   getDateKeyInTimeZone,
@@ -14,20 +11,17 @@ import { metRefreshedLogFields, runMetForecastRefresh } from './metForecastRefre
 import type { WeatherCollectorDeps } from './weatherCollectorDeps';
 import {
   applyActualSample,
-  CONTROLLED_BACKFILL_VERSION,
   emptyWeatherHistoryState,
   getLocalHourKey,
   KWH_PURGE_VERSION,
   mergeRecoveredState,
   normalizeWeatherHistoryState,
   periodsOverlapWindow,
-  reconcileKwhSources,
   rollupDay,
-  upsertBackfillRecords,
+  stripMeterScopeDerivedState,
 } from './weatherHistory';
-import { fetchBackfillDailyRecords, TEMP_BACKFILL_VERSION } from './weatherInsightsBackfill';
-import { resolveMeterDailyKwh, type MeterKwhBackfillOutcome } from './meterKwhBackfill';
-import { applyControlledOutcome, resolveControlledDailyKwh } from './controlledKwhBackfill';
+import { readMeterScopeDailyKwh } from './weatherMeterScope';
+import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -35,6 +29,8 @@ const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
 const MIDNIGHT_ROLLUP_OFFSET_MS = 5 * 60 * 1000;
 const PERSIST_DEBOUNCE_MS = 30 * 1000;
 const PERSIST_RETRY_MS = 60 * 1000;
+/** Retry a transiently unavailable scope read before any new kWh evidence is admitted. */
+const METER_SCOPE_RETRY_MS = 60 * 1000;
 /**
  * Window after an absent/implausible settings read during which persisting is
  * refused. A transient SDK miss must not let an empty in-memory state
@@ -56,6 +52,15 @@ export type { WeatherCollectorDeps } from './weatherCollectorDeps';
  * energy-signature fit consumes its records later.
  */
 export class WeatherCollector {
+  /**
+   * The in-memory history. TWO writers: this class (sampling, rollup, load /
+   * recovery) and `WeatherBackfillChain`, which reaches it through the
+   * `getState`/`setState` seam handed to it in the constructor. Both run on the
+   * same single thread and every transition REPLACES the object rather than
+   * mutating it, so a chain continuation that resolves mid-flight overwrites
+   * with a value derived from the state it just read. Keep it that way: an
+   * in-place mutation on either side would make the two writers race.
+   */
   private state: WeatherHistoryState = emptyWeatherHistoryState();
   private dirty = false;
   private loadedImplausibleAtMs?: number;
@@ -70,10 +75,17 @@ export class WeatherCollector {
   private sampleTimer?: ReturnType<typeof setTimeout>;
   private rollupTimer?: ReturnType<typeof setTimeout>;
   private persistTimer?: ReturnType<typeof setTimeout>;
+  private meterScopeRetryTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * False while the current run has not resolved its live meter-scope
+   * signature. Temperature collection may continue, but every kWh ingress is
+   * held until the read heals and the old stamp has been reconciled.
+   */
+  private meterScopeResolved = false;
+  private meterScopeUnavailableLogged = false;
   private readonly lastWarnAtMsByKey = new Map<string, number>();
-  private backfillRunning = false;
-  private meterBackfillRunning = false;
-  private controlledBackfillRunning = false;
+  /** One-shot temperature → meter kWh → controlled-split chain (`weatherBackfillChain.ts`). */
+  private readonly backfillChain: WeatherBackfillChain;
   /** Single-flights the MET refresh so the periodic timer can't overlap the rollup-path one. */
   private metRefreshInFlight = false;
   private running = false;
@@ -85,7 +97,17 @@ export class WeatherCollector {
    */
   private runGeneration = 0;
 
-  constructor(private readonly deps: WeatherCollectorDeps) {}
+  constructor(private readonly deps: WeatherCollectorDeps) {
+    this.backfillChain = new WeatherBackfillChain({
+      deps,
+      getState: () => this.state,
+      setState: (state) => { this.state = state; },
+      markDirty: () => this.markDirty(),
+      isCollectorRunning: () => this.running,
+      isMeterScopeResolved: () => this.meterScopeResolved,
+      currentRunGeneration: () => this.runGeneration,
+    });
+  }
 
   /**
    * (Re)starts the collection loop from current settings. Disabled or
@@ -99,7 +121,16 @@ export class WeatherCollector {
       return () => this.stop();
     }
     this.loadState();
+    const meterScope = this.reconcileMeterScope();
     this.running = true;
+    // Persist either a newly adopted stamp or a forgetting on the restart edge
+    // itself, not the 30 s debounce. Without the adoption write, a crash can
+    // leave old history unstamped and let the next scope be adopted as if it
+    // had produced that history. A normalized pre-stamp blob has no load
+    // grace; a genuinely absent/implausible store still keeps the existing
+    // grace refusal in `flush()`.
+    if (meterScope.persistImmediately) this.flushScopeTransitionWithRetry();
+    if (!meterScope.resolved) this.scheduleMeterScopeRetry();
     // States written before the purge stamp existed: a latched validated-
     // meter pass already reconciled (and purged) everything reachable, so
     // the stamp is subsumed — without it, a marker-dropping re-run years
@@ -126,9 +157,9 @@ export class WeatherCollector {
       if (!this.running || generation !== this.runGeneration) return;
       this.catchUpRollupsSafely();
     });
-    this.maybeStartBackfill(settings);
-    this.maybeStartMeterKwhBackfill();
-    this.maybeStartControlledKwhBackfill();
+    this.backfillChain.startTemperatureBackfill(settings);
+    this.backfillChain.startMeterKwhBackfill();
+    this.backfillChain.startControlledKwhBackfill();
     void this.sampleOnce().catch((error: unknown) => {
       this.deps.logger.warn({ event: 'weather_sample_failed', err: normalizeError(error) });
     });
@@ -138,14 +169,19 @@ export class WeatherCollector {
   }
 
   stop(): void {
+    this.backfillChain.stop();
     if (this.sampleTimer) clearTimeout(this.sampleTimer);
     if (this.rollupTimer) clearTimeout(this.rollupTimer);
     if (this.persistTimer) clearTimeout(this.persistTimer);
+    if (this.meterScopeRetryTimer) clearTimeout(this.meterScopeRetryTimer);
     this.sampleTimer = undefined;
     this.rollupTimer = undefined;
     this.persistTimer = undefined;
+    this.meterScopeRetryTimer = undefined;
     if (this.running) this.flush();
     this.running = false;
+    this.meterScopeResolved = false;
+    this.meterScopeUnavailableLogged = false;
     this.runGeneration += 1;
     // The covariate must not outlive an active collector: after a
     // disable-reload the power-sample path keeps asking for the temperature,
@@ -183,7 +219,7 @@ export class WeatherCollector {
    * this only flips the no-fit-yet state from `learning` to `backfilling`.)
    */
   isBackfillRunning(): boolean {
-    return this.backfillRunning || this.meterBackfillRunning || this.controlledBackfillRunning;
+    return this.backfillChain.isRunning();
   }
 
   /** Persist immediately, bypassing the debounce (shutdown path). Still honors the load grace. */
@@ -200,7 +236,7 @@ export class WeatherCollector {
 
   private loadState(): void {
     const raw = this.deps.store.read();
-    const normalized = normalizeWeatherHistoryState(raw);
+    const normalized = normalizeWeatherHistoryState(raw, this.getCurrentDateKey());
     if (normalized) {
       this.state = normalized;
       this.loadedImplausibleAtMs = undefined;
@@ -213,6 +249,111 @@ export class WeatherCollector {
     } else {
       this.deps.logger.warn({ event: 'weather_history_state_implausible' });
     }
+  }
+
+  /**
+   * Compares the stamped meter-scope signature against the live whole-home
+   * metering arrangement and, on a mismatch, forgets every meter-derived field
+   * (`stripMeterScopeDerivedState`) — the kWh history behind the energy
+   * signature would otherwise mix data from different meter arrangements.
+   * Collector-owned by necessity: an outside store-only clear is inert,
+   * because the next start() begins with stop() → flush(), which writes the
+   * unforgetting in-memory blob back over the store before reloading. Runs
+   * after every state load and after a grace-window recovery merge (which
+   * deliberately resurrects the recovered markers and stamp), so a settings
+   * event missed while the collector was down self-heals at the next start.
+   * Epistemics: an unavailable signature read keeps the stamp untouched, and
+   * a pre-stamp blob adopts the current signature without forgetting —
+   * neither is evidence the arrangement actually changed.
+   * Returns whether the live scope was resolved, whether anything was
+   * forgotten, and whether the resulting stamp transition must be flushed
+   * immediately.
+   */
+  private reconcileMeterScope(): {
+    resolved: boolean;
+    invalidated: boolean;
+    persistImmediately: boolean;
+  } {
+    const signature = this.deps.readMeterScopeSignature();
+    if (signature === undefined) {
+      this.meterScopeResolved = false;
+      if (!this.meterScopeUnavailableLogged) {
+        this.meterScopeUnavailableLogged = true;
+        this.deps.logger.info({ event: 'weather_meter_scope_reconcile_deferred' });
+      }
+      return { resolved: false, invalidated: false, persistImmediately: false };
+    }
+    this.meterScopeResolved = true;
+    this.meterScopeUnavailableLogged = false;
+    if (this.state.meterScopeSignature === signature) {
+      return { resolved: true, invalidated: false, persistImmediately: false };
+    }
+    const previous = this.state.meterScopeSignature;
+    if (previous === undefined) {
+      this.state = { ...this.state, meterScopeSignature: signature };
+      this.markDirty();
+      return {
+        resolved: true,
+        invalidated: false,
+        // A normalized pre-stamp history must be stamped durably now. When
+        // the history read itself was absent/implausible, keep the existing
+        // recovery grace; `tryRecoverPersistedState` re-reconciles and the
+        // caller writes the recovered state immediately.
+        persistImmediately: this.loadedImplausibleAtMs === undefined,
+      };
+    }
+    const hadMeterBackfill = this.state.meterKwhBackfillDone === true;
+    const hadFit = this.state.latestFit !== undefined;
+    const meterScopeSinceDateKey = getDateKeyInTimeZone(
+      new Date(this.deps.getNowMs()),
+      this.deps.getTimeZone(),
+    );
+    this.state = {
+      ...stripMeterScopeDerivedState(this.state),
+      meterScopeSignature: signature,
+      meterScopeSinceDateKey,
+    };
+    this.markDirty();
+    this.deps.logger.info({
+      event: 'weather_meter_scope_invalidated',
+      reason: 'meter_scope_changed',
+      previousSignature: previous,
+      currentSignature: signature,
+      hadMeterBackfill,
+      hadFit,
+    });
+    return { resolved: true, invalidated: true, persistImmediately: true };
+  }
+
+  /**
+   * Retries indefinitely at a bounded cadence: one unavailable settings read
+   * must not become the run's permanent answer. Until it heals,
+   * `meterScopeResolved` fences tracker reads and both historical-kWh stages.
+   */
+  private scheduleMeterScopeRetry(): void {
+    if (!this.running || this.meterScopeRetryTimer) return;
+    this.meterScopeRetryTimer = setTimeout(() => {
+      this.meterScopeRetryTimer = undefined;
+      if (!this.running) return;
+      const outcome = this.reconcileMeterScope();
+      if (!outcome.resolved) {
+        this.scheduleMeterScopeRetry();
+        return;
+      }
+      if (outcome.persistImmediately) this.flushScopeTransitionWithRetry();
+      // Boot catch-up stays pending while the scope is unknown: rolling an
+      // accumulator without its tracker kWh would permanently consume it as a
+      // missing-kWh record. Recovery is the first safe point to retry.
+      this.catchUpRollupsSafely();
+      // A temperature backfill may have settled while kWh admission was held;
+      // resume both downstream stages now instead of waiting for a restart.
+      this.backfillChain.startMeterKwhBackfill();
+      this.backfillChain.startControlledKwhBackfill();
+      this.deps.logger.info({
+        event: 'weather_meter_scope_reconcile_recovered',
+        invalidated: outcome.invalidated,
+      });
+    }, METER_SCOPE_RETRY_MS);
   }
 
   private isLoadGraceActive(): boolean {
@@ -235,6 +376,12 @@ export class WeatherCollector {
     }, delayMs);
   }
 
+  /** Immediate scope writes retain their normal retry path when persistence fails. */
+  private flushScopeTransitionWithRetry(): void {
+    this.flush();
+    if (this.dirty && !this.persistTimer) this.schedulePersist(PERSIST_RETRY_MS);
+  }
+
   private persistIfDue(): void {
     if (!this.dirty) return;
     // While the boot read was absent/implausible, every persist attempt first
@@ -255,15 +402,31 @@ export class WeatherCollector {
 
   /** Re-reads the store after a failed boot read; merges and clears the grace on success. */
   private tryRecoverPersistedState(): boolean {
-    const normalized = normalizeWeatherHistoryState(this.deps.store.read());
+    const normalized = normalizeWeatherHistoryState(this.deps.store.read(), this.getCurrentDateKey());
     if (!normalized) return false;
     this.state = mergeRecoveredState(normalized, this.state);
     this.loadedImplausibleAtMs = undefined;
+    // The merge adopts the recovered blob's meter markers and scope stamp
+    // wholesale; if the arrangement changed while the store was unreadable,
+    // forget them again before the caller persists the merged state.
+    const meterScope = this.reconcileMeterScope();
+    if (!meterScope.resolved) this.scheduleMeterScopeRetry();
+    if (meterScope.resolved) {
+      this.backfillChain.startMeterKwhBackfill();
+      this.backfillChain.startControlledKwhBackfill();
+    }
     this.deps.logger.info({
       event: 'weather_history_state_recovered',
       recordCount: this.state.records.length,
     });
     return true;
+  }
+
+  private getCurrentDateKey(): string {
+    return getDateKeyInTimeZone(
+      new Date(this.deps.getNowMs()),
+      this.deps.getTimeZone(),
+    );
   }
 
   private writeState(): void {
@@ -420,6 +583,7 @@ export class WeatherCollector {
    * one bad day cannot abort boot or the rollup timer.
    */
   private catchUpRollupsSafely(): void {
+    if (!this.meterScopeResolved) return;
     try {
       this.catchUpRollups();
     } catch (error) {
@@ -449,7 +613,9 @@ export class WeatherCollector {
     const timeZone = this.deps.getTimeZone();
     const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
     const nextDayStartMs = getDateKeyStartMs(shiftDateKey(dateKey, 1), timeZone);
-    const kwh = this.deps.getDailyKwh(dateKey);
+    const kwh = this.meterScopeResolved
+      ? readMeterScopeDailyKwh(this.state, dateKey, this.deps.getDailyKwh)
+      : {};
     this.state = rollupDay(this.state, {
       dateKey,
       dayLengthHours: Math.round((nextDayStartMs - dayStartMs) / HOUR_MS),
@@ -469,285 +635,6 @@ export class WeatherCollector {
       kwhTotal: record?.kwhTotal,
       quality: record?.quality,
       recordCount: this.state.records.length,
-    });
-  }
-
-  /**
-   * Recompute the energy-signature fit/suggestion from records the caller has
-   * established are settled (the kWh layer will not change further), and mark
-   * the state for persistence so the refreshed fit survives a restart. Called
-   * only from the backfill stages that own the settled-kWh guarantee — never the
-   * temperature stage, whose records are still missing historical kWh. A no-op
-   * when no recompute dep is wired (so callers need no extra guard).
-   */
-  private refitFromSettledRecords(): void {
-    if (!this.deps.recomputeDerived) return;
-    this.state = this.deps.recomputeDerived(this.state);
-    this.markDirty();
-  }
-
-  private maybeStartBackfill(settings: WeatherAdvisorSettings): void {
-    const deviceId = settings.outdoorDeviceId;
-    if (!deviceId || this.backfillRunning) return;
-    // Version-gated: widening the stitched resolution set re-runs the
-    // backfill once for already-completed devices (the upsert never
-    // overwrites live records, so a re-run is purely additive).
-    if (this.state.backfilledDeviceId === deviceId && this.state.backfillVersion === TEMP_BACKFILL_VERSION) return;
-    this.backfillRunning = true;
-    void fetchBackfillDailyRecords({
-      deviceId,
-      fetchInsights: this.deps.fetchInsights,
-      getDailyKwh: this.deps.getDailyKwh,
-      timeZone: this.deps.getTimeZone(),
-      nowMs: this.deps.getNowMs(),
-    }).then(({ records, complete }) => {
-      // A late completion after stop() must not mutate state the next start()
-      // will reload over anyway; the unset marker makes that start re-run it.
-      if (!this.running) return;
-      // The configured device may have changed while this run was in flight;
-      // merging the old device's history (or stamping its marker) would
-      // record one location's temperatures as another's.
-      if (this.deps.getSettings().outdoorDeviceId !== deviceId) {
-        this.deps.logger.info({ event: 'weather_backfill_discarded_stale_device', deviceId });
-        return;
-      }
-      // The done-marker requires a complete, non-empty reconstruction. A
-      // partial or empty run keeps the marker unset so the next start()
-      // retries — a few GETs per boot is cheap insurance against silently
-      // forfeiting a year of history to one transient empty response.
-      const markDone = complete && records.length > 0;
-      // A completed temperature pass changes the record set (new device or a
-      // widened stitch), so the kWh layer must re-resolve: drop the meter AND
-      // controlled-split markers and let the idempotent backfills run again.
-      const {
-        meterKwhBackfillDone: _staleDone,
-        meterKwhDeviceId: _staleDevice,
-        controlledBackfillVersion: _staleControlled,
-        ...withoutMeterMarkers
-      } = this.state;
-      const base = markDone ? withoutMeterMarkers : this.state;
-      this.state = {
-        ...upsertBackfillRecords(base, records),
-        ...(markDone ? { backfilledDeviceId: deviceId, backfillVersion: TEMP_BACKFILL_VERSION } : {}),
-      };
-      // The temperature stage deliberately does NOT refit here. The records it
-      // just upserted carry kWh only for the recent days the power tracker still
-      // retains; the older days stay kWh-less until the meter backfill chained
-      // below resolves them. A fit now would be built on that recent-only usable
-      // subset (in summer, a warm-skewed low-R² signature) and then persisted,
-      // logged as `weather_advisor_fit`, and — with auto-apply on — pushed to the
-      // daily budget. The refit happens once the kWh layer settles: at the
-      // meter-resolved stage, or in handleMeterNoSource when no meter exists.
-      if (records.length > 0 || markDone) this.markDirty();
-      this.deps.logger.info({
-        event: 'weather_backfill_completed',
-        deviceId,
-        backfilledDays: records.length,
-        complete,
-        recordCount: this.state.records.length,
-      });
-      // Temperature records now exist; resolve their kWh from the meter.
-      if (markDone) this.maybeStartMeterKwhBackfill();
-    }).catch((error: unknown) => {
-      // Marker stays unset, so the next start() retries the backfill.
-      this.deps.logger.warn({ event: 'weather_backfill_failed', deviceId, err: normalizeError(error) });
-    }).finally(() => {
-      this.backfillRunning = false;
-      // If the device changed mid-run, kick off the new device's backfill now
-      // instead of waiting for the next restart/settings write.
-      const current = this.deps.getSettings();
-      if (this.running && current.enabled && current.outdoorDeviceId && current.outdoorDeviceId !== deviceId) {
-        this.maybeStartBackfill(current);
-      }
-    });
-  }
-
-  /**
-   * One-shot historical-kWh resolution from a cumulative meter device,
-   * admitted only after its daily diffs match the tracker on the days both
-   * cover (`meterKwhBackfill.ts` has the full rationale — the Energy-report
-   * source this replaced silently shipped a device-sum subset). The
-   * completion reconciles EVERY record's kWh layer, which both fills missing
-   * days and purges values from a previously trusted source that no longer
-   * validates. No-source outcomes do not latch the marker: a meter added
-   * later (or a tracker still too young for 14 overlap days) gets adopted at
-   * a subsequent start.
-   */
-  private maybeStartMeterKwhBackfill(): void {
-    const settings = this.deps.getSettings();
-    if (!settings.enabled || !settings.outdoorDeviceId) return;
-    if (this.meterBackfillRunning) return;
-    if (this.state.meterKwhBackfillDone === true) return;
-    // Version included: at an upgrade boot the temperature re-stitch is about
-    // to rebuild the records and re-chain this flow — starting now too would
-    // run the whole REST sweep twice.
-    if (this.state.backfilledDeviceId !== settings.outdoorDeviceId
-      || this.state.backfillVersion !== TEMP_BACKFILL_VERSION) return;
-    this.meterBackfillRunning = true;
-    const generationAtLaunch = this.runGeneration;
-    void resolveMeterDailyKwh({
-      fetchFromHomeyApi: this.deps.fetchInsights,
-      getDailyKwh: this.deps.getDailyKwh,
-      timeZone: this.deps.getTimeZone(),
-      nowMs: this.deps.getNowMs(),
-    }).then((result) => {
-      if (!this.running || generationAtLaunch !== this.runGeneration) return;
-      if (result.outcome !== 'resolved') {
-        this.handleMeterNoSource(result);
-        return;
-      }
-      const { state, filledFromMeter, strippedDays, changedDays } = reconcileKwhSources(this.state, {
-        getDailyKwh: this.deps.getDailyKwh,
-        meterDailyKwh: result.dailyKwh,
-        // The legacy purge is one-shot AND requires a complete fetch: a
-        // partial fetch may fill but never delete (unread windows would read
-        // as "unvouched"), and once the stamp lands, values that age beyond
-        // every source's reach are kept rather than mistaken for legacy.
-        allowStrip: result.complete && this.state.kwhPurgeVersion !== KWH_PURGE_VERSION,
-      });
-      this.state = {
-        ...state,
-        ...(result.complete
-          ? { meterKwhBackfillDone: true, meterKwhDeviceId: result.deviceId, kwhPurgeVersion: KWH_PURGE_VERSION }
-          : {}),
-      };
-      // Settled-kWh refit point — but ONLY on a complete fetch. A complete meter
-      // pass has filled the historical days the temperature stage left kWh-less,
-      // so the usable set now spans the year; the controlled split chained below
-      // only rewrites the controlled/uncontrolled breakdown (never kwhTotal/temp)
-      // so it can't move the fit, making here-before-it correct. An INCOMPLETE
-      // resolution (a deep window or competing probe failed) leaves the kWh layer
-      // unsettled and the marker unlatched for a next-boot retry — refitting on
-      // its partially-filled records is the very transient-fit path this change
-      // removes, so defer. The persist below still keeps the partial fills (they
-      // are real and additive); only the fit waits. On a complete fetch also seed
-      // when nothing changed (a home already wholly tracker-covered, so the meter
-      // filled no new days) — else its first fit would wait for the midnight rollup.
-      if (result.complete && (changedDays > 0 || this.state.latestFit === undefined)) this.refitFromSettledRecords();
-      if (changedDays > 0 || result.complete) this.markDirty();
-      this.deps.logger.info({
-        event: 'weather_meter_backfill_completed',
-        deviceId: result.deviceId,
-        capability: result.capability,
-        overlapDays: result.overlapDays,
-        medianRatio: result.medianRatio,
-        filledFromMeter,
-        strippedDays,
-        changedDays,
-        complete: result.complete,
-      });
-      // Whole-home totals now exist; reconstruct the controlled/uncontrolled
-      // split for those historical days from the managed-device meters.
-      if (result.complete) this.maybeStartControlledKwhBackfill();
-    }).catch((error: unknown) => {
-      // Marker stays unset, so the next start() retries.
-      this.deps.logger.warn({ event: 'weather_meter_backfill_failed', err: normalizeError(error) });
-    }).finally(() => {
-      this.meterBackfillRunning = false;
-      // A reload during the (potentially long) fetch superseded this run and
-      // its start()-time trigger was blocked by meterBackfillRunning — kick
-      // the new run now rather than waiting for the next app restart. Gated
-      // on supersession so a persistently failing fetch cannot hot-loop.
-      if (this.running && generationAtLaunch !== this.runGeneration) {
-        this.maybeStartMeterKwhBackfill();
-      }
-    });
-  }
-
-  /**
-   * Even with no successor source, leftovers of the RETIRED unvalidated
-   * source must not keep feeding the fit — honest-missing beats
-   * silently-wrong. Gated on the election having actually run on evidence:
-   * a failed probe means unread data, and unread data must never justify
-   * deleting anything. The marker stays unset either way so a later-added
-   * meter is adopted.
-   */
-  private handleMeterNoSource(result: Exclude<MeterKwhBackfillOutcome, { outcome: 'resolved' }>): void {
-    const electionConclusive = result.outcome === 'no_candidates' || result.probeFailures === 0;
-    let purgeChangedDays = 0;
-    // One-shot: tracker-joined backfill kWh is indistinguishable from the
-    // legacy class once the tracker's retention passes it, so a recurring
-    // strip on no-meter homes would erase legitimate values day by day.
-    if (electionConclusive && this.state.kwhPurgeVersion !== KWH_PURGE_VERSION) {
-      const { state, strippedDays, changedDays } = reconcileKwhSources(this.state, {
-        getDailyKwh: this.deps.getDailyKwh,
-        meterDailyKwh: {},
-        allowStrip: true,
-      });
-      this.state = { ...state, kwhPurgeVersion: KWH_PURGE_VERSION };
-      purgeChangedDays = changedDays;
-      this.markDirty();
-      if (strippedDays > 0) this.deps.logger.info({ event: 'weather_kwh_legacy_purged', strippedDays });
-    }
-    // Single terminal refit for the no-meter path: when the purge moved the
-    // usable set, OR to seed the very first fit for a genuinely no-meter home
-    // whose only kWh is the tracker-joined recent days the temperature stage
-    // upserted (which no longer refits on its half-filled records) — else that
-    // home would sit on `learning` until the next midnight rollup. ONE call, so
-    // a purge that lands below MIN_USABLE_DAYS (fit still null) can't re-trigger
-    // a second refit + duplicate `weather_advisor_fit` line. Gated on a
-    // CONCLUSIVE election: an inconclusive one (a probe transiently failed)
-    // leaves the marker unset so the next boot retries the meter — the kWh layer
-    // may still fill, so defer rather than seed a thin fit. A steady-state reboot
-    // already carries a fit and skips the O(n²) refit; later days arrive via
-    // rollup.
-    if (electionConclusive && (purgeChangedDays > 0 || this.state.latestFit === undefined)) {
-      this.refitFromSettledRecords();
-    }
-    this.deps.logger.info({
-      event: 'weather_meter_backfill_no_source',
-      outcome: result.outcome,
-      ...(result.outcome === 'no_comparable_source'
-        ? { candidatesChecked: result.candidatesChecked, probeFailures: result.probeFailures }
-        : {}),
-    });
-  }
-
-  /**
-   * One-shot reconstruction of the controlled/uncontrolled split for historical
-   * (meter-backfilled) days, by summing the managed devices' own cumulative
-   * meters. Gated on the whole-home totals existing (`meterKwhBackfillDone`)
-   * since uncontrolled = total − controlled, and on its own version marker.
-   * Validated median-only against the tracker's controlled totals (flow-mode
-   * makes the tracker the noisy reference). A no-devices / not-validated outcome
-   * never latches, so a later meter or config gets adopted at a subsequent start.
-   */
-  private maybeStartControlledKwhBackfill(): void {
-    const settings = this.deps.getSettings();
-    if (!settings.enabled || !settings.outdoorDeviceId) return;
-    if (this.controlledBackfillRunning) return;
-    if (this.state.controlledBackfillVersion === CONTROLLED_BACKFILL_VERSION) return;
-    if (this.state.meterKwhBackfillDone !== true) return;
-    // The temperature backfill must be SETTLED, not about to re-run: a stale
-    // version/device started asynchronously in start() will, on completion,
-    // clear the meter+controlled markers and re-chain the meter backfill. Were
-    // we to start now (on the still-stale `meterKwhBackfillDone`), this run could
-    // race that rebuild and stamp the controlled version against soon-to-be-
-    // replaced records — and the post-rebuild meter completion would then skip
-    // the controlled chain (version already set). Mirror the meter gate so the
-    // controlled split runs only once the chain ahead of it is up to date.
-    if (this.state.backfilledDeviceId !== settings.outdoorDeviceId
-      || this.state.backfillVersion !== TEMP_BACKFILL_VERSION) return;
-    this.controlledBackfillRunning = true;
-    const generationAtLaunch = this.runGeneration;
-    void resolveControlledDailyKwh({
-      fetchFromHomeyApi: this.deps.fetchInsights,
-      isManaged: this.deps.isManagedDevice,
-      getControlledDailyKwh: (dateKey) => this.deps.getDailyKwh(dateKey).controlled,
-      timeZone: this.deps.getTimeZone(),
-      nowMs: this.deps.getNowMs(),
-    }).then((result) => {
-      if (!this.running || generationAtLaunch !== this.runGeneration) return;
-      const { state, dirty } = applyControlledOutcome({ state: this.state, result, logger: this.deps.logger });
-      this.state = state;
-      if (dirty) this.markDirty();
-    }).catch((error: unknown) => {
-      this.deps.logger.warn({ event: 'weather_controlled_backfill_failed', err: normalizeError(error) });
-    }).finally(() => {
-      this.controlledBackfillRunning = false;
-      if (this.running && generationAtLaunch !== this.runGeneration) {
-        this.maybeStartControlledKwhBackfill();
-      }
     });
   }
 }

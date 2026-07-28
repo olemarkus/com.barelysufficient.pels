@@ -23,6 +23,7 @@ import {
 import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
+import { appendHomeBadge } from './homeBadges.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
@@ -243,7 +244,14 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
 
   const name = document.createElement('div');
   name.className = 'device-row__name entity-name';
-  name.textContent = formatDisplayDeviceName(device.name);
+  const nameText = document.createElement('span');
+  nameText.className = 'mode-row__name-text';
+  nameText.textContent = formatDisplayDeviceName(device.name);
+  name.appendChild(nameText);
+  // Meter-area badge only — this list is NEVER filtered by home. `savePriorities`
+  // ranks the rendered rows `index + 1`, so hiding one home's rows would rewrite
+  // that home's stored priorities on the next save.
+  appendHomeBadge(name, device.id);
 
   const desired = getDesiredTarget(device);
   const input = buildModeTargetInput(device, desired);
@@ -311,6 +319,8 @@ export const renameMode = async (oldName: string, newName: string) => {
     await showToast('Mode name already exists.', 'warn');
     return;
   }
+  const oldPriorities = state.capacityPriorities[oldKey];
+  const oldTargets = state.modeTargets[oldKey];
   if (state.capacityPriorities[oldKey]) {
     state.capacityPriorities[newKey] = state.capacityPriorities[oldKey];
     delete state.capacityPriorities[oldKey];
@@ -319,15 +329,43 @@ export const renameMode = async (oldName: string, newName: string) => {
     state.modeTargets[newKey] = state.modeTargets[oldKey];
     delete state.modeTargets[oldKey];
   }
+  // Keep aliases direct for newly written renames. The runtime still follows
+  // retained chains from older versions with cycle protection, but flattening
+  // here prevents another rename from leaving an old Flow argument or per-home
+  // pin pointing at a mode name this operation is about to remove.
+  state.modeAliases = Object.fromEntries(
+    Object.entries(state.modeAliases)
+      .map(([alias, target]) => [alias, target === oldKey ? newKey : target] as const),
+  );
   state.modeAliases[oldKey.toLowerCase()] = newKey;
+
+  // Publish the rename as an additive transition. Runtime settings events are
+  // handled one write at a time and each mode-target write rebuilds plans. If
+  // the old record disappeared before the alias existed, a pinned meter area
+  // would briefly fall back to the global mode and could command a warmer
+  // target (adding load) before the alias rebuild corrected it. Keep both
+  // records addressable until every old name resolves to the new record:
+  //
+  //   add new alongside old → switch active/aliases → remove old
+  //
+  // A failure at any step leaves either the old record or both records, never
+  // an alias/pin with no target record.
+  const transitionPriorities = oldPriorities === undefined
+    ? state.capacityPriorities
+    : { ...state.capacityPriorities, [oldKey]: oldPriorities };
+  const transitionTargets = oldTargets === undefined
+    ? state.modeTargets
+    : { ...state.modeTargets, [oldKey]: oldTargets };
+  await setSetting('capacity_priorities', transitionPriorities);
+  await setSetting('mode_device_targets', transitionTargets);
   if (state.activeMode === oldKey) {
     state.activeMode = newKey;
     await setSetting(OPERATING_MODE_SETTING, state.activeMode);
   }
+  await setSetting('mode_aliases', state.modeAliases);
   if (state.editingMode === oldKey) state.editingMode = newKey;
   await setSetting('capacity_priorities', state.capacityPriorities);
   await setSetting('mode_device_targets', state.modeTargets);
-  await setSetting('mode_aliases', state.modeAliases);
   renderModeOptions();
   renderPriorities(state.latestDevices);
   await showToast(`Renamed mode to ${newKey}`, 'ok');

@@ -16,6 +16,12 @@
  * (`setup/homeRuntime/createHomeCapacityBundle.ts`) binds disabled constants —
  * sub-homes are STRICTLY capacity-only (no daily budget, no price
  * optimization, no smart-task decoration).
+ *
+ * "Capacity-only" is a claim about POLICY INPUTS, not about the write surface:
+ * the operating mode and mode-target members bind live for every home, so a
+ * sub-home does issue `set_temperature` writes to hold a member at its mode
+ * target with no capacity pressure at all — exactly as main does. That is the
+ * restore anchor; see `getModeDeviceTargets` below.
  */
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
@@ -37,6 +43,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
 import {
   CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,
@@ -52,6 +59,14 @@ import {
  */
 export type HomeScope = {
   homeId: HomeId;
+  /**
+   * This home's user-facing name, resolved by the producer. The executor uses
+   * it as the `home` token on the single global `capacity_shortfall` Flow
+   * trigger, so a Flow can tell which part of the home ran out of managed load
+   * instead of every home firing an indistinguishable empty payload. Main binds
+   * the canonical "Main home" label; a sub-home binds its meter-area name.
+   */
+  getHomeDisplayName: () => string;
   // Capacity scalars: for the MAIN home these are live reads of the in-memory
   // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
@@ -76,15 +91,51 @@ export type HomeScope = {
   getInferredSurplusKw: () => number | null;
   // Policy stragglers lifted onto the scope so a sub-home's capacity-only engine
   // no longer inherits MAIN's raw ctx reads. Main binds the identical current
-  // reads (byte-identical); sub-home scopes bind neutral constants.
+  // reads (byte-identical); sub-home scopes bind neutral constants for the
+  // PRICE/BUDGET members — but NOT for the two mode members below.
   /** Per-device price-opt config; feeds the surplus allocator + temperature surplus-absorb. Sub-homes bind `{}`. */
   getPriceOptimizationSettings: PlanEngineDeps['getPriceOptimizationSettings'];
   /** Test/diagnostic soft-limit override; consulted un-gated in the builder. Sub-homes bind `null`. */
   getDynamicSoftLimitOverride: () => number | null;
-  /** Active operating mode driving `mode_device_targets`. Sub-homes bind a neutral default mode. */
+  /**
+   * Active operating mode driving `mode_device_targets`. EVERY home binds the
+   * live read — do NOT neutralize this for a sub-home (see below).
+   */
   getOperatingMode: PlanEngineDeps['getOperatingMode'];
-  /** Mode→device desired-target map. Sub-homes bind `{}` so no member is driven to a mode target. */
+  /**
+   * Mode→device desired-target map. EVERY home binds the live read, because the
+   * mode target is the **restore anchor**, not a price/budget policy input.
+   * Binding `{}` for a sub-home (as this contract used to require) made
+   * `resolveTemperatureSeed` fall back to the device's live setpoint; while shed
+   * that reading IS the shed setpoint, so on release `plannedTarget` equalled
+   * `currentTarget`, the executor dropped the write, and an area temperature
+   * device stayed cold indefinitely. Price optimization and surplus absorb are
+   * gated independently by `getPriceOptimizationSettings` (both require a
+   * per-device config entry), so binding these live does not widen policy.
+   */
   getModeDeviceTargets: PlanEngineDeps['getModeDeviceTargets'];
+  /**
+   * Device priority under THIS home's active mode. Priorities are ranked per
+   * mode, so a home pinned to its own operating mode must rank its members by
+   * that mode. Main binds the app's resolver (global mode, byte-identical to
+   * the pre-existing `ctx.getPriorityForDevice` wiring); a sub-home bundle
+   * binds its operating-mode accessor's resolver
+   * (`setup/homeRuntime/homeOperatingMode.ts`).
+   */
+  getPriorityForDevice: PlanEngineDeps['getPriorityForDevice'];
+  /**
+   * Does this home hold a mode-target RAISE while its own power reading is
+   * unknown? A raise ADDS load and is issued as an ordinary `target_update`, so
+   * unlike every other load-adding decision it consults neither headroom nor the
+   * restore cooldowns (`applyModeSeedModulation`, `lib/plan/planDevices.ts`).
+   *
+   * Sub-homes bind `true`: an area whose meter is offline stays unknown for as
+   * long as the meter is down, and nothing else escalates it. Main binds `false`
+   * — its unknown-power window is normally the seconds before the first Homey
+   * Energy poll, and it owns settle/dwell machinery for the power-goes-unknown
+   * transition that a blanket clamp would pre-empt.
+   */
+  holdsModeTargetRaisesWhilePowerUnknown: () => boolean;
   // ---- UI / side-effect singletons (R7b Cluster B) ----
   // Three surfaces `createPlanService` used to bind straight to `ctx` for every
   // home. Main binds the live read (byte-identical); a sub-home neutralizes so
@@ -161,6 +212,7 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
   });
   return {
     homeId,
+    getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     // Live snapshot reads — NOT re-reads through the settings store. The
     // snapshot is the in-memory truth kept current by the settings handler.
     getCapacitySettings: () => ctx.capacitySettings,
@@ -204,6 +256,11 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
     getOperatingMode: () => ctx.operatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
+    // Main keeps its pre-existing behaviour: mode targets are commanded whether
+    // or not a power sample has landed. See the contract above for why the hold
+    // is a sub-home posture rather than a global rule.
+    holdsModeTargetRaisesWhilePowerUnknown: () => false,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`

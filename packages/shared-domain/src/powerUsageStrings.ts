@@ -17,6 +17,15 @@ export const formatPowerUsageEmptyAwaitingSamples = (): string => (
   'Set up the Report power usage Flow action to start recording.'
 );
 
+// The awaiting-samples state for a meter area (multi-home). The Flow-action
+// remedy above is the MAIN home's setup path and would be a wrong instruction
+// for an area, whose usage arrives through its own meter once its runtime
+// commits — so the area variant states the plain fact instead. "Part of the
+// home" is the scope bar's phrase (notes/ui-terminology.md § Multiple meters).
+export const formatPowerUsageEmptyForMeterArea = (): string => (
+  'No usage recorded for this part of the home yet.'
+);
+
 // Hourly heatmap cell tooltips reuse this helper. Cells aggregate multiple
 // physical hours when a DST fall-back collapses two wall-clock 02:00 readings
 // (or when sample arrival is irregular), so the suffix tells the user the

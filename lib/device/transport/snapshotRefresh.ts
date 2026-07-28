@@ -20,6 +20,7 @@ import type { MainMeterSelection } from '../../../packages/contracts/src/mainMet
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
+import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
 import { getDeviceId } from './managerHelpers';
 import {
   SNAPSHOT_ABANDON_GRACE_MS,
@@ -413,30 +414,39 @@ export async function fetchLivePowerReport(
     return selection.state === 'resolved' ? report : { ...report, homePowerW: null };
 }
 
+
 /**
  * Poll-path home power read (`DeviceTransport.pollHomePowerW` body): one live
  * report serves every home. The additional (sub-home) meter readings resolved
  * from the SAME payload are fanned out to the `onAdditionalMeterReadings`
  * provider BEFORE the main-home null handling — a poll where main's reading is
  * missing must still deliver the sub-home readings that DID resolve. Poll path
- * only: the snapshot-refresh implicit sample does not dispatch, and in flow
- * mode (`power_source=flow`) the poll never runs, so sub-home pipelines simply
- * receive no samples there (freshness machinery reports the gap). The dispatch
- * is contained — a consumer throw can never break the main sample path.
+ * only: the snapshot-refresh read does not fan out sub-meter readings, and in
+ * flow mode (`power_source=flow`) the poll never runs, so sub-home pipelines
+ * simply receive no samples there (freshness machinery reports the gap). The
+ * dispatch is contained — a consumer throw can never break the main sample path.
  *
- * `authorizeFanOut` gates that dispatch on the poll source's own liveness (its
- * generation + power-source checks — `HomeyEnergyPollSource.pollNow`). The fan-out
- * fires from INSIDE this `await`, BEFORE the poll source applies its discard, so
- * without the gate a stale-generation poll (a whole-home-meter / power-source
- * restart superseded it) could deliver an out-of-order sub-meter sample that
- * resolves AFTER its replacement. Sub-meter delivery stays decoupled from a
- * non-null main reading (dispatched before the null return). Omitted = authorized
- * (no other caller drives this path; the snapshot-refresh sample bypasses it).
+ * The resolved main-meter IDENTITY is deliberately NOT dispatched here or
+ * anywhere else on the read path: it rides the returned sample
+ * (`HomePowerSampleWithIdentity`) into whichever caller records it, and is
+ * published to membership by the admitted sample ingest
+ * (`PowerSamplePipeline`). The poll source's own discard checks (generation +
+ * power source, applied BEFORE it records) therefore gate the identity for
+ * free, and a discarded sample discards its identity claim with it.
+ *
+ * `authorizeFanOut` gates the sub-meter dispatch on the poll source's own
+ * liveness (its generation + power-source checks — `HomeyEnergyPollSource.pollNow`).
+ * The fan-out fires from INSIDE this `await`, BEFORE the poll source applies its
+ * discard, so without the gate a stale-generation poll (a whole-home-meter /
+ * power-source restart superseded it) could deliver an out-of-order sub-meter
+ * sample that resolves AFTER its replacement. Sub-meter delivery stays decoupled
+ * from a non-null main reading (dispatched before the null return). Omitted =
+ * authorized (no other caller drives this path).
  */
 export async function pollHomePowerWithMeterFanOut(
     ctx: TransportContext,
     authorizeFanOut?: () => boolean,
-): Promise<{ powerW: number; generationW?: number } | null> {
+): Promise<HomePowerSampleWithIdentity | null> {
     const report = await fetchLivePowerReport(ctx);
     const onAdditionalMeterReadings = ctx.providers.onAdditionalMeterReadings;
     if (
@@ -456,23 +466,6 @@ export async function pollHomePowerWithMeterFanOut(
     return updateHomePowerFromReport(ctx, report);
 }
 
-export function updateHomePowerFromReport(
-    ctx: TransportContext,
-    report: LivePowerReport,
-): { powerW: number; generationW?: number } | null {
-    // PR2a of the observer/transport split: observer owns the home-power
-    // read. Transport produces the scalar from the Homey SDK energy report
-    // and pushes it to observer's holder via the injected dispatcher; it no
-    // longer caches the value locally. The return value still feeds the direct
-    // `pollHomePowerW()` caller (homey_energy poll source), with generation
-    // carried from the same report so later Flow samples cannot inherit it.
-    ctx.observedStateDispatcher?.setHomePowerW(report.homePowerW);
-    ctx.observedStateDispatcher?.setGenerationW(report.generationW);
-    if (report.homePowerW === null) return null;
-    return report.generationW === null
-        ? { powerW: report.homePowerW }
-        : { powerW: report.homePowerW, generationW: report.generationW };
-}
 
 function getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
     return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
@@ -616,13 +609,13 @@ async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
 async function resolveLivePowerForRefresh(
     ctx: TransportContext,
     includeLivePower: boolean,
-    mainMeterSelection?: MainMeterSelection,
+    options: SnapshotRefreshOptions,
 ): Promise<{
     livePowerReport: LivePowerReport;
-    homePowerSample: { powerW: number; generationW?: number } | null;
+    homePowerSample: HomePowerSampleWithIdentity | null;
 }> {
     const livePowerReport = includeLivePower
-        ? await fetchLivePowerReport(ctx, mainMeterSelection)
+        ? await fetchLivePowerReport(ctx, options.mainMeterSelection)
         : buildEmptyLivePowerReport();
     const homePowerSample = includeLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
     return { livePowerReport, homePowerSample };
@@ -631,7 +624,7 @@ async function resolveLivePowerForRefresh(
 export async function refreshSnapshot(
     ctx: TransportContext,
     options: SnapshotRefreshOptions = {},
-): Promise<{ powerW: number; generationW?: number } | null> {
+): Promise<HomePowerSampleWithIdentity | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
     try {
@@ -643,7 +636,7 @@ export async function refreshSnapshot(
         const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
             ctx,
             options.includeLivePower !== false,
-            options.mainMeterSelection,
+            options,
         );
         const effectiveList = observeBatteryStateFromList(
             ctx,

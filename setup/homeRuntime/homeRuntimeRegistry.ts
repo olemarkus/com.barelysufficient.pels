@@ -28,6 +28,7 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomesStore, SubHomeConfig } from '../../lib/home/homeConfig';
+import type { HomeRuntimeReadPort, HomeRuntimeReadResult } from '../../lib/home/homeRuntimeRead';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import {
@@ -35,12 +36,21 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   MAIN_HOME_ID,
+  OPERATING_MODE_SETTING,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import type { PowerSource } from '../../lib/power/powerSource';
-import { normalizeError } from '../../lib/utils/errorUtils';
 import { createHomesStore } from '../homeRegistryAdapter';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
+import { PowerSourceEpochFence } from './powerSourceEpochFence';
+import {
+  logBundleReplacementFailure,
+  logHomeReadFailed,
+  logHomeScopedSettingForUnknownHome,
+  logIncompleteIdentityTransition,
+  logPowerSourceTransitionIncomplete,
+  logSubHomesUnderFlowSource,
+} from './homeRuntimeRegistryLogs';
 import {
   createHomeCapacityBundle,
   type HomeCapacityBundle,
@@ -73,17 +83,14 @@ export type HomeRuntimeRegistryDeps = {
   homesStore?: HomesStore;
 };
 
-export class HomeRuntimeRegistry {
+export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   private readonly bundles = new Map<HomeId, HomeCapacityBundle>();
   private readonly homesStore: HomesStore;
   // Source epochs are observed synchronously at the settings-event boundary,
   // before the serialized async handler runs. Authorization stays closed until
-  // the latest observed generation has durably reset and replaced every bundle.
-  private observedPowerSource: PowerSource;
-  private handledPowerSource: PowerSource;
-  private observedPowerSourceGeneration = 0;
-  private handledPowerSourceGeneration = 0;
-  private sourceTransitionIncomplete = false;
+  // the latest observed generation has durably reset and replaced every bundle
+  // (`powerSourceEpochFence.ts`).
+  private readonly epoch: PowerSourceEpochFence;
   private recoveryRetryAttempt = 0;
   private stopped = false;
   private handledRuntimeActive: boolean;
@@ -98,28 +105,47 @@ export class HomeRuntimeRegistry {
 
   constructor(private readonly deps: HomeRuntimeRegistryDeps) {
     this.homesStore = deps.homesStore ?? createHomesStore(deps.ctx.homey);
-    const initialPowerSource = this.tryReadConfiguredPowerSource();
-    // A failed boot read is UNKNOWN, not authoritative Flow configuration.
-    // Keep Flow only as a fail-closed placeholder and require a successful
-    // reread before the first bundle can be committed or authorized.
-    this.sourceTransitionIncomplete = initialPowerSource === null;
-    this.observedPowerSource = initialPowerSource ?? 'flow';
-    this.handledPowerSource = initialPowerSource ?? 'flow';
+    this.epoch = new PowerSourceEpochFence(() => this.tryReadConfiguredPowerSource());
     this.handledRuntimeActive = deps.isRuntimeActive();
+  }
+
+  private getLiveBundles(): HomeCapacityBundle[] {
+    return [...this.bundles.values()].filter((bundle) => !bundle.isTornDown());
   }
 
   /** Live sub-home ids, for tests and diagnostics. */
   getBundleHomeIds(): HomeId[] {
-    return [...this.bundles.values()]
-      .filter((bundle) => !bundle.isTornDown())
-      .map((bundle) => bundle.homeId);
+    return this.getLiveBundles().map((bundle) => bundle.homeId);
   }
 
   /** Read-only per-bundle diagnostics (test observability + future `ui_homes`). */
   getDiagnostics(): HomeCapacityBundleDiagnostics[] {
-    return [...this.bundles.values()]
-      .filter((bundle) => !bundle.isTornDown())
-      .map((bundle) => bundle.getDiagnostics());
+    return this.getLiveBundles().map((bundle) => bundle.getDiagnostics());
+  }
+
+  /**
+   * Already-committed state for ONE sub-home, backing the `AppContext` read
+   * port (`lib/home/homeRuntimeRead.ts`). A pure read: it never reconciles,
+   * rebuilds, or touches the device snapshot, so a UI poll costs nothing.
+   *
+   * `unavailable` is this producer's COMPLETE classification of every
+   * non-serving case: no such sub-home (including the main home, which has no
+   * bundle), a retained tombstone whose runtime is already fenced, and — via
+   * the catch — anything the assembly throws. Completeness is the point: this
+   * is the whole reason a consumer may treat the result as typed and never
+   * reinterpret absence, so a raw exception must not escape and become an
+   * unclassified failure at the endpoint. Every input is non-throwing by
+   * inspection today; the boundary exists so that stays true as they change.
+   */
+  readHome(homeId: HomeId): HomeRuntimeReadResult {
+    const bundle = this.bundles.get(homeId);
+    if (!bundle || bundle.isTornDown()) return { state: 'unavailable' };
+    try {
+      return { state: 'resolved', reading: bundle.getReadModel() };
+    } catch (error) {
+      logHomeReadFailed(this.deps.ctx, homeId, error);
+      return { state: 'unavailable' };
+    }
   }
 
   /**
@@ -282,7 +308,7 @@ export class HomeRuntimeRegistry {
         this.bundles.set(home.homeId, this.createBundle(home));
         return true;
       } catch (error) {
-        this.logBundleReplacementFailure(home, error);
+        logBundleReplacementFailure(this.deps.ctx, home, error);
         return false;
       }
     }
@@ -293,14 +319,14 @@ export class HomeRuntimeRegistry {
       return true;
     }
     if (!existing.teardown({ resetMeterFreshness: true })) {
-      this.logIncompleteIdentityTransition(home);
+      logIncompleteIdentityTransition(this.deps.ctx, home);
       return false;
     }
     try {
       this.bundles.set(home.homeId, this.createBundle(home));
       return true;
     } catch (error) {
-      this.logBundleReplacementFailure(home, error);
+      logBundleReplacementFailure(this.deps.ctx, home, error);
       return false;
     }
   }
@@ -311,10 +337,7 @@ export class HomeRuntimeRegistry {
    * the generation twice and closes authorization immediately.
    */
   observePowerSourceChange(): void {
-    const configured = this.tryReadConfiguredPowerSource();
-    if (configured !== null) this.observedPowerSource = configured;
-    this.observedPowerSourceGeneration += 1;
-    this.sourceTransitionIncomplete = true;
+    this.epoch.observeChange();
   }
 
   /**
@@ -323,16 +346,10 @@ export class HomeRuntimeRegistry {
    * and one-way tests without weakening the synchronous ABA fence.
    */
   onPowerSourceChanged(): void {
-    if (!this.sourceTransitionIncomplete) {
-      const configured = this.tryReadConfiguredPowerSource();
-      if (configured === null) {
-        this.sourceTransitionIncomplete = true;
-      } else if (configured !== this.observedPowerSource) {
-        this.observePowerSourceChange();
-      } else {
-        return;
-      }
-    }
+    if (
+      !this.epoch.isTransitionPending()
+      && this.epoch.reconcileObservedFromSettings() === 'unchanged'
+    ) return;
     if (!this.completeObservedPowerSourceTransition()) {
       this.scheduleRecoveryRetry();
       return;
@@ -355,12 +372,7 @@ export class HomeRuntimeRegistry {
     const flowMode = configured !== 'homey_energy';
     const misconfigured = subHomeCount > 0 && flowMode;
     if (misconfigured && !this.subHomesUnderFlowWarned) {
-      this.deps.ctx.getStructuredLogger('homes')?.warn({
-        event: 'sub_homes_configured_under_flow_power_source',
-        subHomeCount,
-        detail: 'sub-home meters are only sampled by the Homey Energy poll; under '
-          + 'power_source=flow they receive no samples and never actuate',
-      });
+      logSubHomesUnderFlowSource(this.deps.ctx, subHomeCount);
     }
     this.subHomesUnderFlowWarned = misconfigured;
   }
@@ -380,9 +392,15 @@ export class HomeRuntimeRegistry {
 
   /** Rebuild every live sub-home plan after the producer commits new ownership. */
   onMembershipChanged(): void {
-    for (const bundle of this.bundles.values()) {
-      if (!bundle.isTornDown()) void bundle.rebuildForMembershipChange();
-    }
+    for (const bundle of this.getLiveBundles()) void bundle.rebuildForMembershipChange();
+  }
+
+  /**
+   * Fan a global `operating_mode`/`mode_device_targets`/`mode_aliases`/
+   * `capacity_priorities` write to every live plan.
+   */
+  onModeSettingsChanged(): void {
+    for (const bundle of this.getLiveBundles()) bundle.rebuildForModeSettingsChange();
   }
 
   /** Route one poll's per-meter readings to the owning bundles' pipelines. */
@@ -419,16 +437,18 @@ export class HomeRuntimeRegistry {
     // ignore that echo without recursively reconciling or logging it as unknown.
     if (bundle?.isTornDown()) return;
     if (!bundle) {
-      this.deps.ctx.getStructuredLogger('homes')?.debug({
-        event: 'home_scoped_setting_for_unknown_home',
-        homeId,
-        baseKey,
-        detail: 'transient — reconciled against the registry, no bundle exists',
-      });
+      logHomeScopedSettingForUnknownHome(this.deps.ctx, homeId, baseKey);
       return;
     }
     if (baseKey === POWER_TRACKER_STATE) {
       bundle.reloadPowerTracker();
+      return;
+    }
+    // Per-home active mode: the scope's closures re-resolve on read, so a
+    // rebuild is all that is needed — same funnel as the global mode fan-out
+    // (`onModeSettingsChanged`), where the accessor also logs the transition.
+    if (baseKey === OPERATING_MODE_SETTING) {
+      bundle.rebuildForModeSettingsChange();
       return;
     }
     if (CAPACITY_SCALAR_BASE_KEYS.has(baseKey)) bundle.reloadCapacityScalars();
@@ -445,7 +465,7 @@ export class HomeRuntimeRegistry {
 
   private createBundle(
     home: SubHomeConfig,
-    powerSource: PowerSource = this.handledPowerSource,
+    powerSource: PowerSource = this.epoch.handledPowerSource,
   ): HomeCapacityBundle {
     const meterIdentity: PowerTrackerMeterIdentity = {
       powerSource,
@@ -500,25 +520,18 @@ export class HomeRuntimeRegistry {
   }
 
   private isMeterSourceAuthorized(): boolean {
-    return !this.isMeterSourceEpochDiscarded()
-      && this.tryReadConfiguredPowerSource() === 'homey_energy';
+    return this.epoch.isMeterSourceAuthorized();
   }
 
   private isMeterSourceEpochDiscarded(): boolean {
-    return this.sourceTransitionIncomplete
-      || this.handledPowerSourceGeneration !== this.observedPowerSourceGeneration
-      || this.observedPowerSource !== 'homey_energy'
-      || this.handledPowerSource !== 'homey_energy';
+    return this.epoch.isEpochDiscarded();
   }
 
   private completeObservedPowerSourceTransition(): boolean {
-    const authoritativeSource = this.resolveAuthoritativePowerSource();
+    const authoritativeSource = this.epoch.resolveAuthoritativeSource();
     if (authoritativeSource === null) return false;
-    const generation = this.observedPowerSourceGeneration;
-    if (
-      !this.sourceTransitionIncomplete
-      && this.handledPowerSourceGeneration === generation
-    ) return true;
+    const generation = this.epoch.observedGeneration;
+    if (this.epoch.isHandledCurrent(generation)) return true;
 
     const homes = [...this.bundles.values()].map((bundle) => bundle.getHomeConfig());
     if (!this.resetBundlesForPowerSourceTransition(generation, authoritativeSource)) return false;
@@ -533,9 +546,9 @@ export class HomeRuntimeRegistry {
     // read failure or a source change while the transition was being prepared
     // leaves both generations fenced and hands recovery to the bounded retry;
     // no placeholder Flow assumption can become the handled authority.
-    if (!this.isPowerSourceTransitionCurrent(authoritativeSource, generation)) {
+    if (!this.epoch.isTransitionCurrent(authoritativeSource, generation)) {
       for (const bundle of replacements.values()) bundle.teardown();
-      this.sourceTransitionIncomplete = true;
+      this.epoch.markIncomplete();
       return false;
     }
 
@@ -543,9 +556,7 @@ export class HomeRuntimeRegistry {
     // kept their dry-run and actuator seams closed.
     this.bundles.clear();
     for (const [homeId, bundle] of replacements) this.bundles.set(homeId, bundle);
-    this.handledPowerSource = authoritativeSource;
-    this.handledPowerSourceGeneration = generation;
-    this.sourceTransitionIncomplete = false;
+    this.epoch.commitTransition(authoritativeSource, generation);
     this.warnIfSubHomesUnderFlowSource(homes.length);
     return true;
   }
@@ -559,13 +570,8 @@ export class HomeRuntimeRegistry {
       if (!bundle.teardown({ resetMeterFreshness: true })) resetsSucceeded = false;
     }
     if (resetsSucceeded) return true;
-    this.sourceTransitionIncomplete = true;
-    this.deps.ctx.getStructuredLogger('homes')?.warn({
-      event: 'home_power_source_transition_incomplete',
-      generation,
-      powerSource,
-      detail: 'durable meter freshness reset failed; runtimes remain fenced until retry',
-    });
+    this.epoch.markIncomplete();
+    logPowerSourceTransitionIncomplete(this.deps.ctx, { generation, powerSource, cause: 'freshness_reset' });
     return false;
   }
 
@@ -582,40 +588,15 @@ export class HomeRuntimeRegistry {
       return replacements;
     } catch (error) {
       for (const bundle of replacements.values()) bundle.teardown();
-      this.sourceTransitionIncomplete = true;
-      this.deps.ctx.getStructuredLogger('homes')?.error({
-        event: 'home_power_source_transition_incomplete',
+      this.epoch.markIncomplete();
+      logPowerSourceTransitionIncomplete(this.deps.ctx, {
         generation,
         powerSource,
-        detail: 'bundle replacement failed; runtimes remain fenced until retry',
-        err: normalizeError(error),
+        cause: 'bundle_replacement',
+        error,
       });
       return null;
     }
-  }
-
-  private isPowerSourceTransitionCurrent(
-    powerSource: PowerSource,
-    generation: number,
-  ): boolean {
-    const sourceBeforeCommit = this.resolveAuthoritativePowerSource();
-    return sourceBeforeCommit !== null
-      && sourceBeforeCommit === powerSource
-      && this.observedPowerSourceGeneration === generation;
-  }
-
-  private resolveAuthoritativePowerSource(): PowerSource | null {
-    const configured = this.tryReadConfiguredPowerSource();
-    if (configured === null) {
-      this.sourceTransitionIncomplete = true;
-      return null;
-    }
-    if (configured !== this.observedPowerSource) {
-      this.observedPowerSource = configured;
-      this.observedPowerSourceGeneration += 1;
-      this.sourceTransitionIncomplete = true;
-    }
-    return configured;
   }
 
   private scheduleRecoveryRetry(): void {
@@ -643,22 +624,4 @@ export class HomeRuntimeRegistry {
     this.recoveryRetryAttempt = 0;
   }
 
-  private logIncompleteIdentityTransition(home: SubHomeConfig): void {
-    this.deps.ctx.getStructuredLogger('homes')?.warn({
-      event: 'home_meter_identity_transition_incomplete',
-      homeId: home.homeId,
-      meterDeviceId: home.meterDeviceId,
-      detail: 'durable meter freshness reset failed; old runtime remains fenced until retry',
-    });
-  }
-
-  private logBundleReplacementFailure(home: SubHomeConfig, error: unknown): void {
-    this.deps.ctx.getStructuredLogger('homes')?.error({
-      event: 'home_meter_identity_transition_incomplete',
-      homeId: home.homeId,
-      meterDeviceId: home.meterDeviceId,
-      detail: 'bundle replacement failed; old runtime remains fenced until retry',
-      err: normalizeError(error),
-    });
-  }
 }

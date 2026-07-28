@@ -10,8 +10,18 @@
 //
 // Strings live here so a runtime log can quote the exact chip a user saw.
 import { resolvePriceLevelChip } from './priceLevelChips';
+import type { SimulationPosture } from './simulationPosture';
 
 export const SETTINGS_HUB_SIMULATION_ON_CHIP = 'On';
+/**
+ * Mixed posture (multi-home): the aggregate is honestly neither absolute —
+ * only some homes are simulating (Main on with a live meter area, or Main
+ * live while an area still simulates), or an area's flag never resolved this
+ * session so neither absolute can be vouched for. A bare `On` would overclaim
+ * and silence would underclaim; the non-absolute state gets its own short
+ * word (chip rules: chips stay short, the pages carry the detail).
+ */
+export const SETTINGS_HUB_SIMULATION_PARTLY_ON_CHIP = 'Partly on';
 export const SETTINGS_HUB_BUDGET_OFF_CHIP = 'Off';
 // The Electricity-prices panel's own no-usable-price wording (its "Right now"
 // tier renders `Awaiting prices` in exactly this state) — the chip reuses it
@@ -25,3 +35,16 @@ export const SETTINGS_HUB_PRICES_AWAITING_CHIP = 'Awaiting prices';
 export const isPriceFeedAwaiting = (priceLevel: string | null | undefined): boolean => (
   resolvePriceLevelChip(priceLevel ?? null) === null && priceLevel !== 'normal'
 );
+
+/**
+ * The Simulation-mode nav card's exception chip for an aggregate posture
+ * (`resolveSimulationPosture` in `simulationPosture.ts`): silent while
+ * everything PELS controls is live, `On` while everything simulates, and the
+ * split state names itself instead of borrowing either absolute.
+ */
+export const resolveSimulationChipLabel = (posture: SimulationPosture): string | null => {
+  if (posture === 'all_live') return null;
+  return posture === 'all_simulating'
+    ? SETTINGS_HUB_SIMULATION_ON_CHIP
+    : SETTINGS_HUB_SIMULATION_PARTLY_ON_CHIP;
+};

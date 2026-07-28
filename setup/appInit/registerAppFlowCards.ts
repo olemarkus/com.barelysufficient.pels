@@ -58,7 +58,19 @@ export function registerAppFlowCards(ctx: AppContext): void {
       }
       if (source.value === 'homey_energy') return;
       const nowMs = ctx.getNow().getTime();
-      await ctx.recordPowerSample(powerW, nowMs);
+      const admission = await ctx.recordPowerSample(powerW, nowMs);
+      // The pipeline coalesces concurrent samples behind one loop. Waiting for
+      // that loop is not evidence this request won: a newer Homey-Energy
+      // sample may now be the tracker value. Only the final recorded request
+      // may replace sampled-meter authority and advance Flow freshness.
+      if (admission.state !== 'admitted') return;
+      // Re-read after the awaited ingest. A Flow request can overlap a switch
+      // back to Homey Energy; only a sample that is still authoritative may
+      // settle the old sampled-meter fence. Until then the episode remains
+      // closed and the next Homey poll replaces these watts.
+      const admittedSource = readConfiguredPowerSource(ctx.homey.settings);
+      if (admittedSource.state !== 'resolved' || admittedSource.value !== 'flow') return;
+      ctx.homeMembership?.noteAdmittedFlowHomeSample();
       flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
     getCapacityGuard: () => ctx.capacityGuard,

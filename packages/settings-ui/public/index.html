@@ -37,8 +37,22 @@
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
       <span id="stale-data-text" class="banner__text">No power data yet. PELS needs to know where to read your home&rsquo;s power usage.</span>
-      <md-text-button type="button" class="banner__action" id="stale-data-action" data-settings-target="limits" data-settings-anchor="#settings-power-source">Check power source</md-text-button>
+      <md-text-button type="button" class="banner__action" id="stale-data-action" data-settings-target="limits" data-settings-anchor="#settings-power-source" data-settings-home-scope="main">Check power source</md-text-button>
     </div>
+
+    <!-- Global home scope bar (multi-home): one 48 px row naming which part of
+         the home the page below is about.
+         Placed AFTER both global banners on purpose. Those banners are
+         whole-home alerts — the simulation banner explicitly says "Main home"
+         once meter areas exist — so a scope naming a meter area directly above
+         one would group with it by proximity and make a global alert read as
+         scoped to that area. Order is: global alerts, then scope, then page.
+         Ships `hidden` so a home with no meter areas keeps a layout-identical
+         shell (a display:none grid child adds no `main.screen` row). The
+         homeScope controller renders the Preact bar here and un-hides it only
+         on a page whose content is already resolved against the selected
+         home. -->
+    <div id="home-scope-bar" hidden></div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices" aria-labelledby="devices-title">
       <div class="pels-appbar">
@@ -220,6 +234,20 @@
         </div>
         <span class="visually-hidden">Loading usage…</span>
       </div>
+      <!-- Honest per-home state (multi-home): shown INSTEAD of the data
+           sections when the selected part of the home cannot be served
+           (`homeScope: unavailable`). Copy is populated by power.ts from the
+           shared-domain module (homeScopeCopy.ts) so the words can never
+           drift from the runtime's; CSS keys the section swap off
+           `#usage-panel[data-scope-read="unavailable"]`. -->
+      <section class="pels-surface-card usage-card usage-scope-unavailable" id="usage-scope-unavailable" hidden aria-live="polite">
+        <md-elevation aria-hidden="true"></md-elevation>
+        <!-- Deliberately not an <h3>: the text arrives at render time, and an
+             empty heading fails html-validate / reads as a hole in the
+             document outline. The panel keeps its own hidden h2 landmark. -->
+        <p class="plan-card__title" id="usage-scope-unavailable-headline"></p>
+        <p class="pels-card-supporting" id="usage-scope-unavailable-body"></p>
+      </section>
       <div class="usage-return-link" id="usage-return-link" hidden>
         <!-- Static `href` is defensive hardening: the container is hidden by
              default and `showUsageReturnLink()` overwrites `href` before the
@@ -537,17 +565,20 @@
         </md-icon-button>
         <h2 class="pels-appbar__title" id="limits-title">Limits &amp; safety</h2>
       </div>
-      <!-- Per-home switcher + meter-area editor (multi-home U3). Ships `hidden`
-           so an empty node never occupies a grid track in the panel — with 0
-           meter areas the panel is byte/layout-identical to origin/main. The
-           homeLimits controller un-hides it only when ≥1 meter area exists, and
-           renders the Preact surface here + toggles the static form below. -->
+      <!-- Meter-area editor (multi-home U3). Ships `hidden` so an empty node
+           never occupies a grid track in the panel — with 0 meter areas the
+           panel is byte/layout-identical to origin/main. The homeLimits
+           controller un-hides it only while a meter area is the selected home
+           scope, and renders the Preact surface here + toggles the static
+           Main-home form below. -->
       <div id="home-limits-mount" hidden></div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap</span>
           <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
-          <small class="field__hint">Your grid tariff step (effekttrinn) &mdash; PELS keeps each hour&rsquo;s average power under this.</small>
+          <!-- Text owned by homeLimits once meter areas exist: "your" stops
+               meaning the whole house the moment the home is split. -->
+          <small class="field__hint" id="settings-capacity-limit-hint">Your grid tariff step (effekttrinn) &mdash; PELS keeps each hour&rsquo;s average power under this.</small>
         </label>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
@@ -559,6 +590,13 @@
           <strong class="settings-result__value" id="settings-capacity-reaction">&mdash;</strong>
           <span class="settings-result__note">(hard cap minus safety margin; it adapts as the hour is used)</span>
         </div>
+      </form>
+      <!-- App-GLOBAL settings, deliberately outside the Main-home cap form:
+           neither `power_source` nor the whole-home meter is home-scoped, so
+           they must not sit under the scope bar's claim while a meter area is
+           selected. The homeLimits controller hides this card in area scope and
+           shows the note below in its place. -->
+      <div class="form-grid settings-form-card" id="settings-limits-global">
         <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-power-source-label">Power source</span>
           <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
@@ -574,7 +612,7 @@
           </md-filled-select>
           <small class="field__hint">Automatic uses the meter marked &ldquo;Tracks total home energy consumption&rdquo; in Homey Energy; pick a meter to read it directly.</small>
         </div>
-      </form>
+      </div>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">
@@ -591,6 +629,13 @@
           <small class="field__hint">PELS shows what it would do, but devices are not switched automatically.</small>
         </span>
       </div>
+      <!-- Honest scope note (multi-home): this page carries only the Main
+           home's switch, yet the Settings hub's "Partly on" chip routes here
+           for any split posture. Copy is set from shared-domain
+           (HOME_SCOPE_SIMULATION_MAIN_ONLY_NOTE) and the note un-hides only
+           while at least one active meter area exists — `capacity.ts`
+           syncDryRunBannerVisibility owns both. -->
+      <p class="pels-notice-info simulation-home-scope-note" id="simulation-home-scope-note" hidden></p>
     </section>
 
     <section class="card panel" id="overview-panel" data-panel="overview">

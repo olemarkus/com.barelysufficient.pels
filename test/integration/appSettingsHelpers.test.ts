@@ -78,7 +78,7 @@ const buildContext = (): AppContext => {
     updateOverheadToken: vi.fn(async () => undefined),
     registerFlowCards: vi.fn(),
     refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
-    recordPowerSample: vi.fn(async () => undefined),
+    recordPowerSample: vi.fn(async () => ({ state: 'admitted' as const, revision: 1 })),
     startHeartbeat: vi.fn(),
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),

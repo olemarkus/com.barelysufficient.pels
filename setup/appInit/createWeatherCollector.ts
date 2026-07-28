@@ -10,6 +10,9 @@ import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
 import { createWeatherHistoryStore } from '../weatherHistoryStateAdapter';
+import { readMainMeterSelection } from '../mainMeterSettings';
+import { readConfiguredPowerSource } from '../powerSourceSettings';
+import { readWholeHomeMeterScopeSignature } from '../weatherMeterScopeSignature';
 
 const LONG_GAP_THRESHOLD_MS = 60 * 60 * 1000;
 /** Fallback contact for the MET User-Agent when the manifest has no homepage/support. */
@@ -150,6 +153,18 @@ export function createWeatherCollector(
     getUnreliablePeriods: () => (ctx.powerTracker.unreliablePeriods ?? [])
       .filter((period) => period.end - period.start > LONG_GAP_THRESHOLD_MS),
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
+    // Meter-scope fingerprint for the start()-time invalidation reconcile —
+    // composed here (setup) because lib/weather must not read the homes config.
+    readMeterScopeSignature: () => readWholeHomeMeterScopeSignature(ctx.homey),
+    // The same resolved selection the fingerprint's Main arm is built from,
+    // read fresh at election time: it confines the historical-kWh election to
+    // the explicitly selected meter so a re-armed backfill cannot re-elect the
+    // previous meter against the retained tracker history.
+    readMainMeterSelection: () => readMainMeterSelection(ctx.homey.settings),
+    // The same resolved source the fingerprint's source arm is built from,
+    // read fresh at election time: it gates the meter election off entirely
+    // for the Flow producer (see `weatherCollectorDeps.ts`).
+    readPowerSource: () => readConfiguredPowerSource(ctx.homey.settings),
     getNowMs: () => ctx.getNow().getTime(),
     getTimeZone: () => ctx.getTimeZone(),
     // Direct MET Norway fetch for the forecast (replaces the +24h device).

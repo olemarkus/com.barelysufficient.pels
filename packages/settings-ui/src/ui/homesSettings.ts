@@ -9,6 +9,7 @@ import {
   SETTINGS_UI_HOMES_PATH,
   SETTINGS_UI_HOMES_SAVE_PATH,
   type SettingsUiHomesPayload,
+  type SettingsUiHomesSaveRefusal,
   type SettingsUiHomesSaveRequest,
   type SettingsUiHomesSaveResponse,
 } from '../../../contracts/src/settingsUiHomes.ts';
@@ -30,14 +31,16 @@ import {
   composeSubHomeSupportingLine,
   composeZonePickerOptionLabel,
   formatZoneDeviceCount,
-  HOMES_CONFIG_DEGRADED,
   HOMES_REMOVED_TOAST,
   HOMES_SAVE_FAILED_TOAST,
   HOMES_SAVED_TOAST,
 } from '../../../shared-domain/src/homesManagementCopy.ts';
+import {
+  composeHomeAreaSaveRefusalLine,
+} from '../../../shared-domain/src/homeAreaConfigRulesCopy.ts';
 import { callApi, getSettingFresh } from './homey.ts';
 import { logSettingsError } from './logging.ts';
-import { showToast, showToastError } from './toast.ts';
+import { ERROR_DURATION_MS, showToast, showToastError } from './toast.ts';
 import {
   renderHomesSettingsSection,
   type HomesEditorView,
@@ -81,6 +84,12 @@ let homesActivationGeneration = 0;
 // Every freshness read (activation or post-mutation reconciliation) owns one
 // lock generation. Only the newest owner may release mutations on settlement.
 let homesMutationLockGeneration = 0;
+// Every save/delete write owns one write generation. Only the newest write may
+// reconcile: a refused or failed write releases the editor lock BEFORE its
+// five-second instructional dwell (so the owner can act on the instruction),
+// which lets a retry start AND land while the older handler is still parked on
+// its toast. See `postHomesSaveOp`.
+let homesWriteGeneration = 0;
 // Mutation lock, distinct from `configDegraded`: true from panel (re)activation
 // until that activation's fresh `ui_homes` read resolves. A cached `latestPayload`
 // renders as ready IMMEDIATELY on re-entry (before the refetch lands), so without
@@ -438,34 +447,85 @@ const handleCancel = (): void => {
   renderSection();
 };
 
+/** How one write ended, from the point of view of the handler that issued it. */
+type HomesWriteOutcome = {
+  /** The runtime applied the op. */
+  applied: boolean;
+  /**
+   * A newer write began before this handler left the screen, so the newer
+   * handler owns the reconcile and this one must not touch shared state.
+   */
+  superseded: boolean;
+};
+
 /**
  * POST one intent op to the typed save endpoint. The runtime owns the real
  * protections (fresh classified read, refuse-on-suspect, marker-first
  * write); a typed refusal maps to the degraded copy or the save-failed
- * toast. Returns true when the op was applied.
+ * toast.
  */
-const postHomesSaveOp = async (op: SettingsUiHomesSaveRequest): Promise<boolean> => {
+const postHomesSaveOp = async (op: SettingsUiHomesSaveRequest): Promise<HomesWriteOutcome> => {
+  homesWriteGeneration += 1;
+  const writeGeneration = homesWriteGeneration;
+  // Reconciliation fence, evaluated when this handler finally returns — which
+  // for a refusal is AFTER its toast dwell, long after its own write ended.
+  // A handler the dwell outlived must not reconcile: its `fetchHomes()` would
+  // issue a GET reading the roster from before the retry's write, and the
+  // retry's own reconciliation would coalesce onto that in-flight read
+  // (`homesFetchInFlight`) instead of taking a post-write one — closing the
+  // editor and reporting success over a payload that omits the saved change.
+  const outcome = (applied: boolean): HomesWriteOutcome => ({
+    applied,
+    superseded: writeGeneration !== homesWriteGeneration,
+  });
   writeBusy = true;
   renderSection();
+  // Every branch below releases the lock as soon as ITS write is over, before
+  // awaiting a toast dwell. `released` keeps the finally backstop from
+  // clobbering the busy flag a newer write may have taken during that dwell:
+  // the flag guards whichever write is in flight, not this handler's lifetime
+  // (same released-flag backstop as `handleMeterSelectionChange` in
+  // homeyEnergyMeter.ts).
+  let released = false;
+  const releaseWriteLock = (): void => {
+    if (released) return;
+    released = true;
+    writeBusy = false;
+  };
   try {
     const response = await callApi<SettingsUiHomesSaveResponse>('POST', SETTINGS_UI_HOMES_SAVE_PATH, op);
-    if (response.ok) return true;
+    if (response.ok) return outcome(true);
     // The settings-UI tsconfig runs `strict: false`, which erases the boolean
     // discriminant, so `if (response.ok) return` does NOT narrow `response` to
-    // the failure variant here — extract the reason through the typed variant
-    // the early return has already proven.
-    const { reason } = response as Extract<SettingsUiHomesSaveResponse, { ok: false }>;
+    // the failure variant here — extract the refusal through the typed variant
+    // the early return has already proven. Every refusal names its own next
+    // step; only genuinely shapeless ones fall back to the save-failed line.
+    // Error dwell, not the 1.8 s acknowledgement default: these are two-sentence
+    // instructions, and a typed refusal is not an Error so `showToastError`
+    // (which applies it automatically) does not fit.
+    //
+    // The write is over, so release the editor lock BEFORE the dwell: the
+    // refusal names a next step (remove an area, pick a meter) but Cancel and
+    // Save disable while busy, so holding the lock through the five-second
+    // toast would bar the user from acting on the very instruction on screen.
+    releaseWriteLock();
+    renderSection();
     await showToast(
-      reason === 'degraded' ? HOMES_CONFIG_DEGRADED : HOMES_SAVE_FAILED_TOAST,
+      composeHomeAreaSaveRefusalLine(response as SettingsUiHomesSaveRefusal),
       'warn',
+      { durationMs: ERROR_DURATION_MS },
     );
-    return false;
+    return outcome(false);
   } catch (error) {
+    // Same release-before-dwell as the refusal branch: the failed write is
+    // over, so the save-failed toast must not keep the editor locked either.
+    releaseWriteLock();
+    renderSection();
     await logSettingsError('Failed to save meter areas', error, 'homesSettings');
     await showToastError(error, HOMES_SAVE_FAILED_TOAST);
-    return false;
+    return outcome(false);
   } finally {
-    writeBusy = false;
+    releaseWriteLock();
   }
 };
 
@@ -497,7 +557,7 @@ const handleSave = async (): Promise<void> => {
   // Intent op, not a list: create sends no id (the runtime allocates it);
   // edit names the area's id — an upsert of a since-vanished id honestly
   // re-adds it ("Add again").
-  const saved = await postHomesSaveOp({
+  const { applied, superseded } = await postHomesSaveOp({
     op: 'upsert',
     area: {
       ...(state.homeId === null ? {} : { homeId: state.homeId }),
@@ -506,7 +566,11 @@ const handleSave = async (): Promise<void> => {
       meterDeviceId: state.meterDeviceId,
     },
   });
-  if (!saved) {
+  // A retry started (and may have already landed) during this write's toast
+  // dwell. It owns the editor and the reconcile; reading the roster from here
+  // would publish a pre-retry snapshot the retry then reuses as its own.
+  if (superseded) return;
+  if (!applied) {
     await fetchHomes();
     return;
   }
@@ -529,10 +593,13 @@ const handleDeleteCancel = (): void => {
 const handleDeleteConfirm = async (homeId: string): Promise<void> => {
   // UX guard only — the endpoint re-checks against a fresh classified read.
   if (latestPayload === null || writeBusy || isConfigDegraded() || mutationsLocked) return;
-  const saved = await postHomesSaveOp({ op: 'delete', homeId });
+  const { applied, superseded } = await postHomesSaveOp({ op: 'delete', homeId });
+  // Same fence as `handleSave`: a superseded handler must neither reconcile
+  // nor close a confirmation the owner opened during its dwell.
+  if (superseded) return;
   confirmingDeleteHomeId = null;
   await fetchHomes();
-  if (saved) await showToast(HOMES_REMOVED_TOAST, 'ok');
+  if (applied) await showToast(HOMES_REMOVED_TOAST, 'ok');
 };
 
 /**

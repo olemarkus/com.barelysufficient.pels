@@ -271,6 +271,99 @@ What remains open is below.*
       countdown the native-charger fix removed; hypothesis: the freeze class is configuration-shaped,
       not device-shaped, and the flow-backed arm is untested in prod. Source: pels-runtime-reality
       review of the deadlock fix, 2026-07-27. [P2]
+- [ ] **A fenced Main home stops protecting its physical hard cap, and the UI can only warn that it
+      MIGHT be happening, not that it IS.**
+      *Persona:* multi-meter owner on the DEFAULT Automatic whole-home meter whose area meter happens
+      to sort first among the Homey Energy `cumulative` items. *Hypothesis:* the Main actuation fence
+      refuses ALL commands including sheds (`setup/appInit/createPlanEngine.ts:30-33`), so a proven
+      sampled-meter collision suspends hard-cap protection. The hard cap is the hourly grid tariff
+      step (effekttrinn), and not a tuning knob. It is not breaker protection and cannot be: an
+      hourly average says nothing about the peak inside the hour, so the copy this entry directs
+      must never promise it (`notes/ui-terminology.md`, "Hard cap is an hourly ceiling").
+      That trade-off is deliberate (the reading really is unattributable). `HOMES_MAIN_METER_NOTICE`
+      now names BOTH consequences, including that PELS may have stopped limiting Main entirely, so
+      the notice is no longer wrong — but `HomeMembershipService.getDiagnostics()` still does not
+      expose the fence, so `ui_homes` cannot tell the user WHICH of the two states they are in, and
+      an owner who is currently unprotected reads the same sentence as one who is merely
+      over-limited. Expose the fence state in diagnostics and render state-specific copy. Note PR 4
+      (require an explicit Main meter) removes the reachable configuration, so this may reduce to a
+      transitional state.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 2.
+
+- [ ] **An id-less whole-home aggregate can be an area's meter, and the signal that detects it is discarded.**
+      *Persona:* owner whose ONLY device marked "tracks total home energy consumption" is the annex
+      meter. *Hypothesis:* Homey then emits an aggregate `cumulative` item with no id whose value is
+      that meter alone (`lib/device/managerEnergy.ts` already documents id-less aggregates), so Main
+      plans against the annex's physical sample while the annex bundle plans the same sample over a
+      disjoint device set — the `notes/multi-home-model.md` violation — with `sampledDeviceId === null`
+      and therefore no fence. `cumulativeItemCount` is already computed and logged but never consumed;
+      `cumulativeItemCount >= 1 && sampledDeviceId === null && areas have meters` is a usable detector
+      and should at least warn. Related: the fence's stated harm is "one sample driving two
+      controllers" but its trigger is an id match, so it fences areas that are not actuating while not
+      fencing equally unattributable readings. Pick one framing and make code and docs agree.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 2.
+
+- [ ] **`has_headroom_for_device` answers about a meter-area device with the Main home's guard, and
+      mutates Main's cooldown state doing it.**
+      *Persona:* multi-meter owner whose annex EV charger asks "is there available power for device?"
+      in a Flow before it starts a session. *Hypothesis:* every input the card reads is bound to Main.
+      `getHeadroom`/`getCapacityGuard` resolve `ctx.capacityGuard`
+      (`setup/appInit/registerAppFlowCards.ts:64-65`) and `evaluateHeadroomForDevice` resolves Main's
+      plan service (`:117`), so an area device is measured against Main's available power instead of
+      its own meter's. The run listener is also not a read: `evaluateHeadroomForDevice(...
+      cleanupMissingDevices: true)` writes Main's `PlanEngineState` (headroom-card cooldowns,
+      activation penalties, activation-attempt diagnostics, `lib/plan/planHeadroomDevice.ts:82-120`)
+      over the FULL unfiltered snapshot, and a `stateChanged` result then requests a Main plan
+      rebuild. So asking about an area device perturbs Main's control state. Fix direction: resolve
+      the device's owning home and answer from THAT home's guard, routing any rebuild to that home.
+      Deliberately NOT refused or filtered out of the picker: the card takes a device and a device
+      already names its home, so it stays in scope and must keep working (owner ruling, 2026-07-26).
+      Blocked on the per-home runtime read seam: `HomeRuntimeRegistry` is a private field of
+      `AppServiceWiring` and `HomeCapacityBundle` exposes no guard/available-power handle, so fix
+      this together with that seam. Files: `flowCards/headroomAndEvSocCards.ts:37-77`,
+      `setup/appInit/registerAppFlowCards.ts:64-65,117`,
+      `setup/homeRuntime/createHomeCapacityBundle.ts`.
+      Source: multi-home finishing train PR 8a, 2026-07-26.
+
+- [ ] **A setpoint-shed temperature device with no mode target stays stranded at its shed setpoint.**
+      *Persona:* any owner who never opened the Modes screen and has a managed radiator or panel heater
+      (Main home or a meter area). *Hypothesis:* PELS auto-assigns the `set_temperature` shed behaviour
+      without user action (`enforceTemperatureWithoutOnOffOvershootBehaviors`,
+      `setup/appDeviceSupport.ts`), but the RESTORE ANCHOR is the mode target, which requires user
+      action — `seedMissingModeTargets` bails out entirely on an empty `mode_device_targets` blob
+      (`setup/appDeviceSupport.ts:466-468`). With no anchor, `resolveTemperatureSeed` falls back to the
+      live setpoint, which while shed IS the shed setpoint, so on release `plannedTarget ===
+      currentTarget` and the executor drops the write (`lib/executor/executableTargetProjection.ts:37`).
+      Reproduced on a Main-home-only install with no meter areas: the shed to 16 C lands and the resume
+      never happens in 60 poll cycles. The structural fix is a **pre-shed setpoint memory** captured when
+      the shed write goes out and consumed on release, which closes this for every home and every device
+      regardless of settings; binding mode targets per home (2026-07-26) only closed the anchored case.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 1.
+
+- [ ] **`seedMissingModeTargets` can re-seed a shed setpoint as the permanent anchor.**
+      *Persona:* owner who clears a heater's per-mode target, then restarts PELS (or updates the app)
+      while that heater is shed. *Hypothesis:* the seeder fills a missing entry from the device's
+      *current* setpoint with no shed-state guard, and its "already seeded" fingerprints are in-memory
+      only (`setup/appDeviceSupport.ts:370-376,457-484`), so a restart while shed records the shed
+      setpoint (e.g. 16 C) as the mode target. PELS then holds the device there indefinitely and reverts
+      any manual raise. Before mode targets bound for meter areas this mis-seed was inert for an area
+      device; it is now actively enforced. Fix: skip seeding while the device is shed, or seed from the
+      pre-shed value. Source: pels-runtime-reality review of the multi-home finishing train PR 1.
+
+- [ ] **A mode-target raise bypasses headroom admission even with a fresh power reading — planner-wide.**
+      *Persona:* owner of a small-cap meter area (or a tight Main hard cap) whose heater's expected draw
+      exceeds the headroom left at the moment a mode raise lands (e.g. 5.5 kW of a 6 kW cap, ~2 kW
+      heater, 18→22). *Hypothesis:* a mode-target raise from a NON-shed state is emitted as an ordinary
+      `target_update` (`resolvePlannedTarget`, `lib/plan/planDevices.ts`), so unlike the from-shed
+      release lane — which IS admission-gated on headroom (`applyRestorePlan`,
+      `insufficient_headroom`) — it consults neither `context.headroom` nor the device's expected load,
+      briefly pushing the home over its soft limit until the next poll's shed cascade recovers (with
+      restore backoff damping any oscillation). This is Main's long-standing command-intent →
+      measure → shed model, deliberately preserved when mode targets bound live for meter areas
+      (PR #1886, owner decision "PELS drives area setpoints"); gating it on headroom + expected-load
+      reservation is a planner-wide product change affecting Main identically, so it needs an owner
+      call, not a rider on the area fix. Raised by Codex on PR #1886, 2026-07-27, declined there as
+      pre-existing-by-design.
 
 - [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
       A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
@@ -793,8 +886,8 @@ program) remain deferred.*
       and `DecoratedDeviceSnapshot` now intersect both new probes (the transport produces and the app-layer
       decorator re-resolves + writes these onto the carrier). `suggestedSteppedLoadProfile` STAYS on the base
       (it is a CONFIGURE hint for non-stepped devices, not part of the stepped cluster). Consumers migrated:
-      objectives `resolveCredibleDevicePower`, the flow-card stepped-load + EV-phase paths, `app.ts`
-      `deviceSupportsLimitLowerPriority`, and the settings-UI device-detail carrier + smart-tasks widget payload;
+      objectives `resolveCredibleDevicePower`, the flow-card stepped-load + EV-phase paths,
+      `AppSmartTaskApi.deviceSupportsLimitLowerPriority`, and the settings-UI device-detail carrier + smart-tasks widget payload;
       owner/producer seams (transport parse/calibration-store/native-EV/debug-snapshot) probe-widen instead.
       `targetPowerConfig` reads stay owner-probe reads (a continuous EV preset carries it without a full stepped
       profile), not `isSteppedLoadSnapshot` narrows. Type-level only — zero runtime behavior change.
@@ -1120,6 +1213,104 @@ program) remain deferred.*
       optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
       jumping number is not. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
+- [ ] **The `capacity_shortfall` `home` tag is a display name, not a stable id, so Flows string-compare
+      a renameable label.** The trigger has `args: []`, so a Flow that wants only one home's alerts
+      has to string-compare the tag, and a rename propagates to the token immediately (the bundle is
+      adopted in place, not replaced). *Persona:* owner with a Flow filtering on the annex's alerts
+      who renames the area. *Hypothesis:* the Flow silently stops matching. A second `home_id` token
+      carrying `MAIN_HOME_ID` / the sub-home's `homeId` would let a Flow branch on something durable
+      while `home` stays the human label. Additive, so it can land later; decide it with the
+      per-area Flow work rather than widening the card twice. (The reservation, uniqueness and
+      length halves of the original entry landed in PR #1893.)
+      Source: adversarial review of the multi-home finishing train PR 8a, 2026-07-26.
+- [ ] **A legacy Flow-saved area config re-enters Homey Energy with the Main home on Automatic.**
+      The residual (c) of the flow/area transitions: (a) saving an area on the Flow source and
+      (b) switching to Flow while areas run are now refused symmetrically at the `ui_homes_save`
+      seam (`homey_energy_required`, both power-source writes routed through the seam), but a
+      config whose areas were saved BEFORE the exclusion can still switch **to** Homey Energy
+      while the Main home is on Automatic — deliberately, because that switch is the remedy
+      direction (the Whole-home meter picker only renders on Homey Energy) and refusing it would
+      trap the owner on Flow. The cost is a window where areas run against Automatic, covered only
+      by the `shouldPromptMainHomeMeter` nudge until the next area save re-asserts
+      `main_meter_required`. Persona: pre-exclusion owner moving back to Homey Energy who misses
+      the nudge. *Hypothesis:* rare and self-healing; revisit only if support reports show the
+      nudge being missed. Source: multi-home finishing train, PR 4c. [P3]
+
+- [ ] **The area name rules are implemented twice in one package.**
+      `packages/shared-domain/src/homeAreaConfigRules.ts` (`findHomeAreaNameRejection`, the
+      enforcement) and `homesManagement.ts` (`validateDraftName`, the editor's inline check) each
+      implement trim, non-emptiness and case-insensitive uniqueness, with different result kinds
+      (`name_required` vs `name_missing`). Two answers to one question, and the editor-guidance item
+      below would add a third. `validateDraftName` should delegate to `findHomeAreaNameRejection` and
+      map the rejection into `SubHomeDraftError`. Held out of the enforcing PR: the mapping needs new
+      `SubHomeDraftError` kinds and `composeDraftErrorLine` branches in files a concurrent branch owns.
+      Same edge: `validateDraftMeter` (`homesManagement.ts`) still hand-spells `'Main home'` for its
+      `meter_in_use` payload, while the reserved-name rule now reads it from
+      `HOME_LIMITS_MAIN_HOME_OPTION` — point that one at the constant too, so a rename cannot leave
+      the two disagreeing. Persona: contributor changing a name rule (or the Main home's label) in one
+      place only. Source: multi-home finishing train, area-config invariants PR. [P2]
+
+- [ ] **Area rules refuse on save instead of guiding in the editor.** The name-length cap, the
+      reserved "Main home" name, the eight-area cap, and the whole-home-meter requirement are
+      enforced at the `ui_homes_save` seam and surface as a toast after a round trip; only
+      non-emptiness and uniqueness are pre-checked inline by `validateSubHomeDraft`. The editor
+      should carry a `maxlength` on the name input, an inline error for the reserved name, a
+      disabled "Add meter area" button at the cap, and an inline main-meter refusal from the
+      `shouldPromptMainHomeMeter` predicate `homesSettings.ts` already evaluates for the notice.
+      Held out of the enforcing PR because `SubHomeDraftError` and `HomesSettingsSection.tsx` were
+      owned by a concurrent branch; the server rules were deliberately scoped to the entry being
+      written so `validateDraftName` can absorb them unchanged (see the duplication item above, which
+      this shares a fix with). Persona: owner who types a long or reserved name and only learns on
+      save. Source: multi-home finishing train, area-config invariants PR. [P2]
+
+- [ ] **A one-meter home can cycle between two meter-area refusals with no diagnosis.** An area needs
+      its own meter and the Main home needs its own, so a home whose Homey Energy report lists a
+      single meter cannot use meter areas at all. Today it discovers that by bouncing: saving an area
+      refuses with `main_meter_required`, assigning that one meter to the Main home makes the area
+      editor refuse inline with "'Main home' already uses this meter", and going back to Automatic is
+      allowed again because nothing was persisted. The rules are each correct; what is missing is the
+      one line that says the home has no second meter to split. Detect "no report meter is assignable
+      to the Main home" on the Multiple meters page and say so. Overlaps the empty-meter-list hint
+      item above. Persona: owner with a single HAN meter who tries to add a rental. Source: multi-home
+      finishing train, area-config invariants PR. [P2]
+- [ ] **`isMeterSourceAuthorizedForExecution` is a query that performs a command.** In
+      `setup/homeRuntime/createHomeCapacityBundle.ts`, a predicate named `is…Authorized` calls
+      `scheduleSourceActuationRetry()` — registering a timer that later runs `rebuildPlanFromCache` +
+      `reconcileLatestPlanState`, and mutating the back-off attempt counter. Merely ASKING whether the
+      source is authorized therefore schedules device writes. PR 5a hit this: the per-home read seam
+      resolved `dryRunEffective` through the scope and armed recovery from a UI read. The fix there
+      forked the source predicate (`resolveEffectiveDryRun` takes it as a parameter; control passes the
+      execution one, reads pass the registry's raw one) — but both are structurally identical
+      `() => boolean`, so the split now rests on comments telling future callers which to pass, and the
+      compiler cannot help. Two candidate fixes: (a) brand the two predicate types nominally so passing
+      the wrong one is a type error, or (b) **preferred** — move the recovery arming out of the query and
+      into the actuation fence that actually needs it, which makes every read path safe by construction
+      rather than by convention. *Persona:* contributor adding any new read of a bundle's effective
+      dry-run state. Source: adversarial + layering review of multi-home PR 5a, 2026-07-26.
+
+- [ ] **`setup/homeRuntime/createHomeCapacityBundle.ts` is import-capped: 20/20 with no override.**
+      `import-x/max-dependencies` is severity ERROR at max 20 and this file sits exactly on it, so the
+      next extraction out of it — the usual remedy when it approaches the 500-line ceiling — is a hard
+      CI failure unless the new module is reached through a specifier the file already value-imports
+      (PR 5a put `resolveEffectiveDryRun` in `homeCapacityBundleApi.ts` for exactly this reason) or is
+      type-only. Effective lines are 487/500. Any planned work here should budget both numbers up front.
+      *Persona:* contributor extending the per-home capacity bundle. Source: multi-home PR 5a, 2026-07-26.
+
+- [ ] **Move the capacity scalar block to the shared-utils layer so `lib/home` stops duplicating it.**
+      `HomeRuntimeCapacityScalars` (`lib/home/homeRuntimeRead.ts`) is a hand-kept structural duplicate of
+      `CapacityScalarSettings` (`lib/power/capacitySettingsStore.ts`): `lib/home` is a leaf domain and
+      `no-home-to-peer` (severity ERROR) forbids reaching `lib/power`, so the read port cannot import the
+      real type. The drift is asymmetric and the dangerous direction is the silent one: REMOVING or
+      retyping a field in `CapacityScalarSettings` fails the build, but ADDING one does not — the producer
+      spreads the concrete block (`homeCapacityBundleApi.ts`, `capacityScalars: { ...getScalars() }`) and a
+      spread is exempt from excess-property checking, so the new field ships in the read payload while
+      staying invisible in the port contract. That is a silent payload widening, not a silent omission, so
+      the eventual fix must guard the contract rather than the carrying. The repo already
+      solved this exact pair once: `HomeId` lives in `lib/utils/settingsKeys.ts` precisely so the capacity
+      store and the home domain share ONE identity type without a peer import (see that file's own comment).
+      Do the same for the three-field scalar block and re-export it from `capacitySettingsStore.ts`, then
+      delete the duplicate. Persona: contributor extending capacity settings, who has no signal that a second
+      declaration needs widening. Source: adversarial design review of multi-home PR 5a, 2026-07-26.
 
 - [ ] **Persisted-store load grace only postpones a destructive reset.** `loadPowerCalibrationStore`
       (and the EV car-link store that mirrors it) run exactly once at init. When that read is
@@ -1175,6 +1366,33 @@ program) remain deferred.*
       the guard stops depending on comment wording. Left out of that PR to avoid loosening a
       packaging guard in the same change that needed it to pass. [P2]
 
+- [ ] **`getTargetDevices` (`devices.ts`) must never be handed a `homeId`.** The plan-side half of
+      this entry shipped with the per-home Overview (6b): `readOverviewPlan` in `overviewPlanRead.ts`
+      resolves through `resolveHomeScopedRead`, and the `homey.stub.js` scoped plan handler now serves
+      a per-area `plan_snapshot:<homeId>` fixture. Still standing as a guard for any future scoped
+      devices consumer: `getTargetDevices` collapses the payload to a flat list (an `unavailable`
+      scoped read would masquerade as "healthy home, no devices") AND writes the HOME-level
+      `state.hasManagedSolarDevice` / `state.hasExhibitedExport` gates, which a resolved sub-home payload
+      would silently retract for the whole home (an area without PV would hide the export-price section
+      home-wide). The Devices/Modes lists are deliberately badge-grouped, never scope-filtered, so no
+      current consumer needs a scoped devices read — a future one must resolve through
+      `resolveHomeScopedRead` and never funnel a scoped payload into the two global solar flags. P2.
+      Source: adversarial review (typing + correctness lenses) of multi-home PR 5b, 2026-07-27. Files:
+      `packages/settings-ui/src/ui/devices.ts`, `packages/contracts/src/homeScopedRead.ts`.
+
+- [ ] **`pels_status` blobs (bare and suffixed) are object-guarded, not field-resolved.** Both
+      `getSettingsUiPower` (`setup/settingsUiApi.ts`, main's unsuffixed read) and `readSubHomeStatus`
+      (`setup/settingsUiHomeScope.ts`, the `pels_status:<id>` read PR 5b added with deliberate precedent
+      parity) check object-ness and then assert the full `SettingsUiPowerStatus` shape — closed unions
+      (`powerFreshnessState`) and numbers included. *Persona:* contributor debugging a WebView that
+      renders nothing for a status field after a partial/corrupt settings write. *Hypothesis:* a
+      malformed blob (e.g. `powerFreshnessState: "garbage"`, `headroomKw: "3"`) flows inward typed as
+      the closed union / number, matches no branch, and the surface silently drops the field with no
+      log — the AGENTS.md boundary rule ("finiteness-gate numbers, shape-guard objects") says the
+      producer should classify it instead. Extract one field-level status resolver (the
+      `asRecord` + `toFiniteNumber` pattern `managerEnergy.ts` cites) and use it from both readers. P3.
+      Source: adversarial review (typing lens) of multi-home PR 5b, 2026-07-27.
+
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
       meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
@@ -1184,14 +1402,16 @@ program) remain deferred.*
       an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
       review of the meter-picker PR (2026-07-19). [P2]
 
-- [ ] **Extract sub-home source recovery from `HomeRuntimeRegistry`.** The multi-meter GA work grew
-      `setup/homeRuntime/homeRuntimeRegistry.ts` into a roughly 600-line coordinator that now owns
-      ordinary bundle reconciliation, source-event observation, authorization epochs, freshness
-      resets, bundle replacement, settings routing, and retry scheduling. Extract the
-      source-generation/recovery state machine behind focused observe/authorize/recover operations,
-      leaving bundle-map reconciliation and routing in the registry. Behavior is covered and no
-      current bug is proven; this restores the one-purpose setup-layer boundary before the next
-      source lifecycle change. Source: adversarial simplification review of PR #1872, 2026-07-23.
+- [ ] **Extract the bounded source-recovery retry scheduler from `HomeRuntimeRegistry`.** The
+      observe/authorize half of this landed in PR 3b as `setup/homeRuntime/powerSourceEpochFence.ts`
+      (the generation/latch state machine behind `observeChange` / `reconcileObservedFromSettings` /
+      `isMeterSourceAuthorized` / `isEpochDiscarded` / `commitTransition`), taking
+      `setup/homeRuntime/homeRuntimeRegistry.ts` to 420 effective lines. What is still mixed in with
+      bundle-map reconciliation and settings routing is the recovery side: `scheduleRecoveryRetry` /
+      `clearRecoveryRetry` / `recoveryRetryAttempt` and their four backoff constants. Behavior is
+      covered and no current bug is proven; this finishes the one-purpose setup-layer boundary before
+      the next source lifecycle change. Source: adversarial simplification review of PR #1872,
+      2026-07-23; half delivered 2026-07-26.
 
 - [ ] **Make the strict sub-home tracker validator compile-time exhaustive.**
       `isPlausiblePowerTrackerState` validates every current `PowerTrackerState` field and nested
@@ -1201,11 +1421,11 @@ program) remain deferred.*
       compatibility-read policy). Source: tracker-contract review of PR #1872, 2026-07-23.
 
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
-      *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter
+      *Persona:* multi-home owner who switches the shell's home scope bar between the Main home and a meter
       area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap
       (kW)"), which follows the canonical form-styling + ui-terminology rules and matches the U1 homes editor;
       the legacy Main-home static form (`#settings-limits-form`) still uses `md-filled-text-field` with an
-      in-field `suffix-text="kW"`, so flipping the switcher morphs the identical two inputs (filled↔outlined,
+      in-field `suffix-text="kW"`, so flipping the scope morphs the identical two inputs (filled↔outlined,
       unit relocates). Kept out of U3 to preserve byte-identical Main behavior. Migrate the Main form to the
       native primitive (the design-system-unification direction) so both scopes read as one control. Source:
       pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20.
@@ -1280,8 +1500,8 @@ program) remain deferred.*
       same fabricated `resolved`/Automatic literal. All three claim the STRONGEST authority at seams whose
       entire purpose is to fence control when authority is unknown; every other path in those modules fails
       closed on `unavailable`. No live bug is proven (the power-source dep is always passed by
-      `createHomeMembershipService`, and the snapshot resolver is bound at `appServiceWiring.ts`
-      `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
+      `createHomeMembershipService`, and the snapshot resolver is bound at
+      `setup/appInit/wireDeviceTransport.ts` `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
       omits one silently claims authority instead of fencing, and it is now repeated three times. Note that
       `mainMeterSelection` is optional at EVERY level of the `refreshSnapshot` →
       `resolveLivePowerForRefresh` → `fetchLivePowerReport` chain, so the fabricated literal is reachable by
@@ -1762,11 +1982,68 @@ CI failure, so future field-move slices can't silently grow the debt.*
       stale `deadlineAtMs`/label could be shown or reused on a later confirm — guard it the same way. Source: codex +
       coderabbit on #1736, 2026-06-17.
 
-- [ ] **Extract the settings-UI starvation-rescue handlers out of `setup/settingsUiApi.ts`.** The `get`/`preview`/
-      `create` rescue handlers were added to the already multi-purpose `settingsUiApi.ts`; a dedicated rescue-wiring
-      module would lower coupling and future churn. Pure refactor (no behaviour change). Persona: maintainer;
-      hypothesis: the rescue surface will keep growing and is easier to evolve isolated. P2 maintainability. Source:
-      coderabbit on #1736, 2026-06-17.
+- [ ] **The weather-insight cluster entered the 80% coverage gate at near-zero coverage.** Adding `setup/**` to the
+      `vitest.config.mts` coverage include (multi-home headroom PR) pulled in
+      `setup/appInit/weatherAdvisorReadoutAssembler.ts` (0% statements, 0% branches) and
+      `setup/appInit/createWeatherCollector.ts` (45% st / 41% br) — 68 uncovered branches between them. The suite
+      clears the gate today with ~6.6pp of branch headroom, so nothing is red, but `project_weather_insight` is
+      "merged, needs deploy": the next iteration on it starts from ~zero instrumented coverage and can push the
+      global gate down while the author is looking at an unrelated diff. Same family, smaller: `appDebugCompaction.ts`
+      (47 uncovered branches), `appInit/registerSettingsHandler.ts`, `appInit/priceServices.ts`,
+      `backgroundTasksController.ts`, `appDebugPrimitives.ts`. Fix: add integration cover for the readout assembler
+      and the collector factory before the next weather PR. Persona: contributor landing the next weather change;
+      hypothesis: a coverage failure attributed to an unrelated diff costs a full CI round to diagnose. P2.
+
+- [ ] **Weather meter-scope fingerprint: resolve the Automatic arm to the sampled meter identity.** With Main on
+      Automatic, `readWholeHomeMeterScopeSignature` (`setup/weatherMeterScopeSignature.ts`) composes the constant
+      `main:automatic`, but `extractAutomaticHomePowerReading` samples the FIRST usable cumulative item — a Homey
+      reorder/availability change can silently switch the physically sampled device with no fingerprint change, so
+      records from two physical scopes mix without an invalidation. The resolved identity already exists: membership
+      publishes it through `noteResolvedHomeMeter` into `SampledMeterIdentity` (`setup/homeSampledMeterIdentity.ts`),
+      keyed to the sample's own freshness horizon. It cannot simply be consumed by the composer, because it is
+      unproven at the collector's boot-time `start()` reconcile (the primary invalidation edge): composing
+      `undefined` there would skip the boot reconcile for Automatic homes entirely, and falling back to a constant
+      arm would flip-flop against the resolved arm and strip learned state spuriously. Sharpened by the round-5
+      narrowing: the fingerprint no longer carries the per-area meter roster (area meters are fenced out of Main's
+      samples, so an area re-meter must not strip Main's history), which makes the Automatic arm the ONLY remaining
+      way a roster edit can silently move Main's sampled device — an area claiming the very device Automatic had
+      elected. The sound design is a mid-run reconcile edge: expose the current sampled id through the
+      membership port, fire an identity-proven/changed callback from `MainMeterAuthority.noteResolvedHomeMeter`,
+      and have the wiring compare the freshly composed signature against
+      `weatherCollector.getHistoryStateSnapshot().meterScopeSignature`, driving `reloadWeatherCollector` only on a
+      real mismatch (a full restart, not an in-place strip — a mid-run strip races in-flight backfill-chain
+      continuations, which only the stop()-generation bump discards). Needs flap dampening: an Automatic pick that
+      oscillates between two devices must not strip the learned state on every flip. Do NOT re-resolve the
+      Automatic pick anywhere else — consume the membership fence's identity. Persona: multi-meter Automatic-mode
+      home (e.g. main meter plus a PV/battery cumulative device); hypothesis: a silent sampled-device switch makes
+      the energy signature blend two scopes and the advisor's suggestions drift without any visible cause. Source:
+      codex P2 on PR #1910, 2026-07-27. P2.
+
+- [ ] **The power-driven rebuild due-time floor is implemented twice.** `PlanRebuildIntentPolicy.resolveDueAtMs`
+      (`setup/planRebuildIntentPolicy.ts`) and `createBundleRebuildScheduler` (`setup/homeRuntime/
+      createHomeCapacityBundle.ts:218-226`) compute the tight-unactionable floor and the `hardCap`/`signal` due
+      times byte-for-byte identically; the bundle's comment even says "Mirrors `PlanRebuildIntentPolicy
+      .resolveDueAtMs`". They legitimately differ elsewhere (the bundle uses a wall clock and has no `flow` lane),
+      so only the power-driven half should be shared. Both are in `setup/`, so no boundary blocks it. Fix: export a
+      `resolvePowerDrivenDueAtMs(intent, nowMs, rebuildState)` from `planRebuildIntentPolicy.ts` and call it from
+      both — `test/unit/planRebuildIntentPolicy.test.ts` then covers the sub-home path too. Persona: contributor
+      tuning the floor; hypothesis: a one-sided edit changes main-home pacing while sub-homes silently keep the old
+      behaviour, and nothing fails. P2. Source: adversarial review, multi-home headroom PR.
+
+- [ ] **The starvation-rescue preview return shape is written out inline in four places.**
+      `{ estimate; deadlineAtMs; hasExistingObjective }` appears at `app.ts` (the stub),
+      `setup/appSmartTaskApi.ts`, `setup/settingsUiStarvationRescueApi.ts` and
+      `packages/contracts/src/widgetHostApi.ts`. Three predate the headroom PR; the extraction added the fourth.
+      Fix: name it in `packages/contracts/src/starvationRescue.ts` and alias it at all four sites (type-only, so no
+      bundle churn). Persona: contributor adding a field to the rescue preview; hypothesis: a four-way inline shape
+      means adding a field is four edits and missing one is a silent structural mismatch at whichever site is
+      typed loosest. P3. Source: adversarial review, multi-home headroom PR.
+
+- [ ] **`notes/state-management/snapshot-decomposition.md` cites line numbers that no longer exist.** Line 102 cites
+      `app.ts:1841 latestTargetSnapshot` (app.ts is now ~1060 raw lines) and line 273 says "`app.ts` (×5)"
+      `getSnapshot()` pullers where there are 6. Fix: repoint to symbol names rather than line numbers. Persona:
+      contributor picking up the remaining snapshot-decomposition stages; hypothesis: a wrong line number sends the
+      reader to unrelated code and erodes trust in the whole note. P3.
 
 - [ ] **Gate the device-detail Price-response + Solar-surplus sections on `canManageDevice`, not just `resolveManagedState`.**
       Both sections (and the Price/Surplus Control toggles) gate visibility/enable on `resolveManagedState`
@@ -1872,9 +2149,9 @@ CI failure, so future field-move slices can't silently grow the debt.*
       low-R² investigation, 2026-06-13.
 
 - [ ] **Temperature backfill cascade re-runs the whole kWh chain even when the records are
-      unchanged.** On a completed temperature pass, `maybeStartBackfill` unconditionally strips
-      `meterKwhBackfillDone` + `controlledBackfillVersion` (the `markDone` marker-strip destructure
-      in `weatherCollector.ts`) so the meter and controlled-split backfills re-run — correct when a
+      unchanged.** On a completed temperature pass, `WeatherBackfillChain.startTemperatureBackfill`
+      unconditionally strips `meterKwhBackfillDone` + `controlledBackfillVersion` (the `markDone`
+      marker-strip destructure in `weatherBackfillChain.ts`) so the meter and controlled-split backfills re-run — correct when a
       new device or a widened stitch
       actually changed the record set, but a temperature `TEMP_BACKFILL_VERSION` bump that produces
       byte-identical records still forces a full REST sweep of every managed device's meter Insights.
@@ -2065,17 +2342,24 @@ live-walk screenshots.*
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
 - [ ] **Split the `PelsApp` class so `app.ts` reaches <=500** — the last Bucket-B god-file still
-      carrying a `max-lines` override (lowered 1907→1110 by the eslint-cleanup train, not deleted).
+      carrying a `max-lines` override (lowered 1907→1110→950 by successive trains, not deleted).
       Every other Bucket-B god-file was decomposed under 500 and its override deleted (the
       eslint-cleanup train, PRs #1786–#1796: deviceTransport 2261→491, restore/index 1340→379,
       registerFlowCards 1148→148, deviceDiagnosticsService 1200→320, plus planBuilder / planReasons /
       planService / planExecutor / steppedLoadExecutor / managerObservation / planDevices /
       activePlanRecorder / diagnosticsBridge / deferredPlanHistory(+Receipt) / powerDriven /
       appDebugHelpers). Remaining: `app.ts` is the `Homey.App` composition root (~40 service fields +
-      the `implements AppContext` delegator surface + the smart-task widget API); reaching <500 needs
-      splitting `PelsApp` into sub-controllers — a large entrypoint restructure, out of scope for the
-      behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
-      `setup/appServiceWiring.ts` (30) — the two composition roots — are accountable here too.
+      the `implements AppContext` delegator surface); the smart-task API cluster and the plan-rebuild
+      intent policy came out in the multi-home headroom PR (override lowered 1110→950), so reaching
+      <500 now needs the per-domain delegator surface split into sub-controllers — a large entrypoint
+      restructure, out of scope for the behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
+      `setup/appServiceWiring.ts` — the two composition roots — are accountable here too. Update: the
+      `appServiceWiring.ts` override was DELETED by the PR-3b headroom pass (the `wireDeviceTransport`
+      extraction took its fan-in to 19, under the shared cap of 20), so only `app.ts` (50) remains.
+      **`setup/appServiceWiring.ts` is at 19/20 — ONE value-import slot left.** A PR that needs a 21st
+      must extract, not re-add an override. Note the breach surfaces late: `test.yml` fires only on
+      `pull_request: branches: [main]`, so a stacked train branch first sees it at the merge into
+      `main`, not on the PR that caused it. `import-x/max-dependencies` is severity ERROR.
       Persona: contributor.
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
@@ -2126,9 +2410,131 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 
 ## P3 Future and Exploratory Work
 
+- [ ] **The eight-area cap is not enforced where the memory is consumed.**
+      `HOME_AREA_MAX_COUNT` is checked only at the `ui_homes_save` seam; neither `HomeRuntimeRegistry`
+      nor `normalizeHomesConfig` bounds anything, so a `homes_config` written outside the UI still
+      spawns one capacity bundle per area against the app's ~30 MB RSS headroom. Cap or clamp at the
+      registry so the runtime bound is enforced by the runtime. Persona: owner restoring a
+      hand-edited or migrated settings blob. *Hypothesis:* an over-large area list is admitted at boot
+      and the app trends toward the 160 MB ceiling with no signal, because the only enforcement point
+      was never on that path. Source: multi-home finishing train, area-config invariants PR. [P3]
+
+- [ ] **Extend the growth-only principle from the area cap to root disjointness.** The area cap now
+      bounds GROWTH, so a config already over it can still be renamed or re-metered
+      (`homeMeterOwnership.ts`). The root-overlap rule one line below it still evaluates
+      `findNestedSubHomeRoots` over the WHOLE composed list, so a persisted config containing one
+      overlapping pair refuses every upsert, including a rename of a third, unrelated area. Reachable
+      the same way the over-cap config is: `isPlausibleHomesConfigBlob` validates shapes, unique
+      homeIds and unique meters but NOT zone overlap, so such a blob classifies `'present'` and flows
+      straight into the check. Strictly worse for the user than the cap case was, because it returns
+      bare `invalid`, which renders "Couldn't save changes — try again" and names no remedy. The right
+      axis is not "did the list grow" but "does the UPSERTED entry participate in an overlap", which
+      is why it was left out of the growth-only fix. Persona: owner whose config predates the seam's
+      rules, or was written outside the UI. *Hypothesis:* every save is refused with copy that names
+      nothing, and the only escape (delete an area) is not something the message suggests. Source:
+      multi-home finishing train, area-config invariants PR review. [P3]
+
+- [ ] **A permanently implausible pins blob makes Automatic refuse with a "try again" that never
+      comes true.** `readMultiHomeActivation` resolves activation only from a diagnostics snapshot the
+      membership service can vouch for, sharing `isHomesConfigDegraded` with the read payload and the
+      area write so there is one degraded condition. That predicate is true when EITHER
+      `homes_config` or `device_home_assignments` classified suspect, and activation does not depend
+      on the pins store, so a `device_home_assignments` blob that
+      `isPlausibleDeviceHomeAssignmentsBlob` permanently rejects leaves Whole-home meter → Automatic
+      refused with "your settings couldn't be read. Try again in a few minutes." Keeping the shared
+      predicate is deliberate (an activation-only variant would put a second, subtly different
+      "degraded" in one file), and the blast radius is bounded: single-home owners never reach the
+      branch, and picking an explicit meter stays available. Either repair/reset the pins store on a
+      durable implausible read, or say what is actually wrong. Persona: owner whose pin blob was
+      corrupted or hand-edited. *Hypothesis:* the copy promises recovery that no elapsed time
+      delivers. Source: multi-home finishing train, area-config invariants PR review. [P3]
+
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **`--pels-md-secondary-container` maps to an untinted grey, so every Material component that
+      signals selection through it signals nothing.** *Persona:* anyone reading a Material selection
+      state anywhere in the settings UI. *Hypothesis:* `packages/settings-ui/public/style.css` maps
+      `--pels-md-secondary-container: var(--color-surface-3)`, a plain grey one tier BELOW the
+      surface-4 containers these components sit in, so a selected row renders as a dent rather than a
+      highlight — measured at 1.10:1 against its own menu container, and inverted. The home scope menu
+      works around it locally with `--md-menu-item-selected-container-color`, but every other
+      `secondary-container` consumer (chips, segmented buttons, any future menu) still resolves to the
+      dead grey. *Why it's needed:* selection state is the entire information content of a picker;
+      one token fix repairs all of them at once, and the local override should then be removed.
+      Source: pels-m3-critic review of the multi-home selector-shell PR, 2026-07-27.
+
+- [ ] **"Main home" appears three times in the top 150 px once areas exist.** *Persona:* multi-home
+      owner opening Limits & safety in Main scope with simulation on. *Hypothesis:* the simulation
+      banner ("Main home simulation on — Main home devices stay as-is"), its action ("Turn off Main
+      simulation") and the scope bar ("Showing Main home") stack, so the most repeated words on screen
+      carry the least information. *Why it's needed:* with the scope bar now naming the home
+      structurally, the banner could drop its own scoping prefix and read as the global alert it is.
+      Touching `resolveDryRunBannerContent` is 8b's banner contract, so it belongs there, not here.
+      Source: pels-copy-and-terminology review, 2026-07-26.
+
+- [ ] **The home scope control and the Limits pickers below it are three different Material
+      species on one screen.** *Persona:* multi-home owner on Limits & safety with an area selected.
+      *Hypothesis:* the scope bar is an `md-filled-tonal-button` opening an `md-menu`, `Power source`
+      is an `md-filled-select`, and the per-area editor uses native `.pels-input`. Each is defensible
+      alone (chrome / form field / native-primitive rule), but they stack within one scroll. *Why
+      it's needed:* the app should be able to state which picker species means what, or converge
+      them; the existing entry on migrating the Main form to the native primitive is one half of
+      that answer. Source: pels-m3-critic review, 2026-07-27.
+
+- [ ] **`.pels-select` hardcodes `min-height: 48px` where `--pels-touch-target-min` exists.**
+      *Persona:* maintainer changing the app's touch-target floor. *Hypothesis:* the shared select
+      primitive states the 48 px literal while every sibling primitive (`.tab`, `.pels-icon-toggle`,
+      `.smart-task-edit__time-input`) resolves the token, so a future change to the floor would miss
+      every native select. *Why it's needed:* one edit should move every touch target. Pre-existing,
+      surfaced by the scope bar adopting the primitive. Source: pels-m3-critic review, 2026-07-26.
+
+- [ ] **Main and meter-area limits speak two field languages on one page.** *Persona:* multi-home
+      owner switching the scope bar between Main home and an area. *Hypothesis:* Main renders
+      `md-filled-text-field` with label `Hard cap` and an in-field `suffix-text="kW"`; the area editor
+      renders native `.pels-input` with `Hard cap (kW)`. Flipping the scope morphs the identical two
+      inputs. *Why it's needed:* now that one bar switches between them in place, the mismatch is a
+      visible transition rather than two separate screens. Duplicate of the existing P2 entry on
+      converging the Main form onto the native primitive — do them together.
+      Source: pels-m3-critic review, 2026-07-26.
+
+- [ ] **`Status now` reflects the unsaved cap.** *Persona:* multi-home owner typing a new hard cap for
+      an area. *Hypothesis:* `buildAreaEditorView` resolves the status against the LIVE edited
+      `hardCapKw` so the card tracks the input without a re-read, which means the `Hard cap` figure on
+      a card titled "now" can show a value that is not persisted and may never be. *Why it's needed:*
+      either the card should label the pending value as pending, or the status figure should track the
+      persisted cap while the reaction readout keeps tracking the input.
+      Source: pels-m3-critic review, 2026-07-26.
+
+- [ ] **The smart-task plan-detail deep link bypasses the shell's panel-shown event, so the home
+      scope bar cannot hide behind it.** *Persona:* multi-home owner who taps a smart-task chip on the
+      Overview device cards once Overview honours the home scope. *Hypothesis:* `showDeadlinePlanPanel`
+      (`packages/settings-ui/src/ui/deadlinePlanRouter.ts`) deliberately uses `setActiveTabIndicator`
+      instead of `showTab`, so it hides every `[data-panel]` and shows `#deadline-plan-panel` WITHOUT
+      dispatching `pels:tab-shown`. Neither `state.activePanel` nor `renderScopeBar()` runs, so the scope
+      bar keeps whatever visibility the previous panel gave it. Inert today (`SCOPE_AWARE_PANELS` in
+      `homeScope.ts` holds only `limits`, which has no deadline-plan anchor), but the moment `overview`
+      joins that set, a plan-detail deep link will leave a `Showing …` bar above a surface that does not
+      honour it — the exact honesty rule the module documents. *Why it's needed:* the fix belongs to the PR
+      that adds `overview` to `SCOPE_AWARE_PANELS`, which must either set `state.activePanel` and dispatch
+      `pels:tab-shown` from `showDeadlinePlanPanel`, or expose a scope-bar hide hook the router can call.
+      Source: adversarial review of the multi-home selector-shell PR, 2026-07-26.
+
+- [ ] **The Multiple-meters panel takes the whole `ui_homes` payload on trust, so the write lockout it
+      derives can fail open.** *Persona:* multi-home owner editing meter areas while the runtime cannot
+      vouch for the persisted config. *Hypothesis:* `homesSettings.ts:294` casts the untrusted response
+      straight to `SettingsUiHomesPayload` (`await callApi<SettingsUiHomesPayload>(...)`) with no shape
+      guard, and `isConfigDegraded()` at `:113` then reads it as `latestPayload?.configDegraded === true`.
+      An absent or non-boolean flag therefore resolves to "not degraded" and unlocks the save paths at
+      `:476` and `:531` — the whole-value `homes_config` write that `packages/contracts/src/settingsUiHomes.ts`
+      warns "could erase persisted areas". The server-side seam refuses independently on the same predicate
+      (`setup/settingsUiHomesApi.ts:174`), so this is a UI-honesty and defence-in-depth gap rather than a
+      live data-loss path, and no in-repo producer can currently emit a non-boolean flag. *Why it's needed:*
+      `homeScope.ts` now resolves the same endpoint into a typed `RosterRead` (`resolved | unavailable`) and
+      never touches a raw payload; this consumer should share that resolver instead of keeping a second,
+      weaker reading of the same bytes. Source: adversarial review of the multi-home selector-shell PR,
+      2026-07-27.
 
 - [ ] **Share the bounded exponential-retry delay calculation.** `homeyEnergyPoll.ts`,
       `flowPowerSampleFreshnessClock.ts`, and `homeRuntimeRegistry.ts` each implement the same
@@ -2137,6 +2543,25 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       inconsistent recovery cadence without an intentional product decision. *Why:* one pure helper
       keeps the timing contract aligned while each consumer retains ownership of its timer lifecycle.
       Source: adversarial simplification review of PR #1872, 2026-07-23.
+
+- [ ] **`runtimePackaging.test.ts` is a weaker duplicate of the real contracts guard, and it cries wolf.**
+      `test/integration/runtimePackaging.test.ts:19` runs `import\s+(?!type\b)[\s\S]*?\s+from '…'`
+      globally over each file, so prose anywhere above the import block (a module docblock explaining
+      the contracts boundary) starts a match that runs on to the next `from '…'` specifier and reports
+      a genuinely `import type` line as a value import. The failure mode is one-directional — the lazy
+      `[\s\S]*?` cannot skip a valid ` from '…'`, so prose yields false POSITIVES and never false
+      negatives. It is also silent on the `export { X } from '…contracts…'` re-export form, and its
+      `runtimeRoots` omits `setup/` and `packages/shared-domain/src/`. **The boot-crash invariant is
+      NOT at risk:** all three gaps are covered by the dependency-cruiser rule
+      `no-runtime-value-deps-on-contracts` (severity error, wider path set, evaluated post-compilation),
+      which is green. *Persona:* contributor adding a types-only module under `lib/**` that documents
+      why it types its payload off `packages/contracts`, and loses a cycle to a red lane that is wrong.
+      *Hypothesis:* the test earns its keep only if it stops false-positiving — anchor per line and
+      forbid the match from crossing a statement
+      (`/^import\s+(?!type\b)[^;]*?\s+from ['"]([^'"]+)['"]|^import\s*['"]([^'"]+)['"]/gm`) — otherwise
+      delete it and rely on the cruiser rule, which is strictly stronger. *Why:* a duplicated guard that
+      is both weaker and noisier trains contributors to route around the accurate one. Worked around in
+      `lib/home/homeRuntimeRead.ts` by rewording the comment. Source: multi-home PR 5a, 2026-07-26.
 
 - [ ] **Pinned sub-home device stays uncontrolled if the zones API never commits a tree.**
       *Persona:* multi-home owner who PINNED a device into a sub-home on a Homey whose zones API is degraded.
@@ -2593,3 +3018,158 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       narrow it to `string | null`, or give the "never observed" case a real consumer and say what that
       consumer does differently. Behaviour-neutral either way. Source: multi-home boundary-hygiene audit of
       the GA train, 2026-07-25. File: `setup/homeMembership.ts`.
+- [ ] **Owner decision: gate load-adding mode raises on available headroom, not just a fresh sample?**
+      A meter area holds a load-adding mode-target write until its meter has a fresh sample, but once
+      one lands the raise is emitted as an ordinary `target_update` regardless of remaining headroom:
+      at 5.5 kW measured against a 6 kW cap, raising a heater 18→22 °C (~2 kW) bypasses restore
+      admission, reserves nothing, and can push the area over its cap until later polls and shed
+      cooldowns claw it back. Declined in the multi-home stack because the same admission shape
+      applies to the Main home's mode raises today — gating them on headroom is a planner-wide product
+      change (mode changes stop being immediate whenever the home is near its cap), not an area bug.
+      *Persona:* owner whose area runs close to its cap most hours. *Hypothesis:* an overshoot the
+      planner itself caused, however brief, reads as PELS breaking its one promise. Source: Codex
+      review of multi-home PR #1886 (thread "Admit fresh-sample raises against available headroom"),
+      2026-07-27. Files: `lib/plan/planDevices.ts`, `lib/plan/planActionMaterialization.ts`. [P2]
+- [ ] **The plan-time daily-budget provider still defaults where the new setup rule says assert.**
+      *Persona:* maintainer moving wiring out of `app.ts` under the `setup/AGENTS.md` boot-window rule.
+      *Hypothesis:* `buildMainHomeScope` builds `getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null`,
+      the same shape `AppSmartTaskApi.previewDeferredObjectivePlan` just replaced with an assertion. It is
+      unreachable today only because `initHomeRuntimeRegistry` runs after `initDailyBudgetService` in
+      `AppServiceWiring.startApp`, and nothing enforces that order. *Why:* `getSnapshot()` legitimately
+      returns `null`, so the default makes "no daily budget" and "service not wired yet" indistinguishable —
+      here on the path that feeds the *planner*, not a preview, so a reordering would silently plan without
+      the daily budget instead of failing loudly. Ship the rule with no live counter-example: assert, or
+      state in the closure why absence is a genuine domain value at this seam. Behaviour-neutral today.
+      Source: adversarial review of PR #1889, 2026-07-26. File: `setup/homeRuntime/homeScope.ts`.
+- [ ] **Three `.ts` files sit at 499–500 against the shared 500-line ceiling.**
+      *Persona:* Contributor (`notes/personas.md`) whose one-line change to a hot file is rejected at
+      commit time by a `max-lines` warning that has nothing to do with their change.
+      *Hypothesis:* after the PR-3b headroom pass, `lib/device/deviceTransport.ts` (500/500),
+      `lib/device/transport/binarySettleEvidence.ts` (499) and `lib/dailyBudget/dailyBudgetPlanCore.ts`
+      (499) cannot absorb a single line; `lib/dailyBudget/dailyBudgetManager.ts` and
+      `flowCards/deadlineObjectiveCards.ts` sit at 497. None carries a `max-lines` override — they all
+      ride the shared 500. (`lint-staged` does pass `eslint --max-warnings=0`, so this fails at commit
+      rather than in CI; the cost is an unplanned extraction mid-change, not a wasted CI round.)
+      PR 3b deliberately relieved only the eight files the multi-home train edits, to keep a
+      behaviour-free pass from touching unrelated subsystems — `deviceTransport.ts` in particular wants
+      a real subsystem boundary (`notes/complexity-cleanup/god-file-policy.md`), not a line shave.
+      *Why it's needed:* the next contributor to touch any of these has to do someone else's refactor
+      first. Relieve them when next touched.
+      Source: PR-3b census, 2026-07-26.
+- [ ] **`clearMultipleDeviceSettings` subsumes `clearDeviceSettings` — collapse the near-duplicate purge pair.**
+      *Persona:* Contributor (`notes/personas.md`) adding an eleventh per-device settings map and having to
+      remember to edit both copies.
+      *Hypothesis:* `packages/settings-ui/src/ui/advancedDeviceDataPurge.ts` holds two functions that write the
+      same ten `setSetting` keys and mirror the same ten `state` assignments; the only real difference is
+      `removeDeviceFromModeMap` vs `removeDeviceIdsFromModeMap`, and the plural version subsumes the singular
+      one (same falsy guard, same resulting JSON — it only differs by returning a fresh object where the
+      singular could return the same reference, which no consumer observes). Deleting `clearDeviceSettings` +
+      `removeDeviceFromModeMap` and calling `clearMultipleDeviceSettings([deviceId])` from `advanced.ts` drops
+      ~50 lines. *Why it's needed:* a per-device settings map that gets added to one copy and not the other
+      leaves stale config behind on exactly the path whose job is to remove it. Pre-existing duplication that
+      PR 3b relocated verbatim (behaviour-free pass, so it was not collapsed there).
+      Source: PR-3b adversarial review, 2026-07-26.
+- [ ] **`realtime.ts` is now a re-export facade for tab navigation it no longer owns.**
+      *Persona:* Contributor (`notes/personas.md`) looking for `showTab` and finding it re-exported from a file
+      named "realtime".
+      *Hypothesis:* PR 3b split `realtime.ts` into `uiRefreshTasks.ts` / `settingsChangeRouter.ts` /
+      `tabNavigation.ts` but kept `export { setActiveTabIndicator, showTab } from './tabNavigation.ts'` (and the
+      two refresh helpers) so existing importers did not have to move — six call sites across `boot.ts`,
+      `deadlinePlanRouter.ts` and `packages/settings-ui/test/settings.test.ts`. *Why it's needed:* the facade
+      spends half the readability win of the split. Repointing those six imports at the owning modules and
+      deleting the two `export … from` lines finishes it. Deliberately deferred: `realtime.ts` is edited by
+      several in-flight multi-home PRs, so the churn was not worth the conflict surface during the train.
+      Source: PR-3b adversarial review, 2026-07-26.
+- [ ] **Two extracted dep types duplicate their parent's members verbatim.**
+      *Persona:* Contributor (`notes/personas.md`) adding a dependency to the plan builder or the app
+      service wiring and having to edit two type declarations that must stay compatible.
+      *Hypothesis:* `PlanMaterializationDeps` (`lib/plan/planBuilderMaterialization.ts`) restates 15
+      members of `PlanBuilderDeps`, and `DeviceTransportWiringDeps`
+      (`setup/appInit/wireDeviceTransport.ts`) restates 15 members of `AppServiceWiringDeps`,
+      including two verbatim copies of the inline `getShedBehavior` / `getFlowConflict` shapes. Both
+      are drift-SAFE today — each call site passes a variable, not a fresh literal, so a rename or
+      narrowing on the parent fails the build — so this is duplication cost, not a correctness hole.
+      The plan one is free to collapse (`PlanBuilderDeps = PlanMaterializationDeps & { … }`; the two
+      sets partition cleanly). The setup one must use a **shared slice type** that both
+      `appServiceWiring.ts` and `wireDeviceTransport.ts` import — NOT a type-only import back into the
+      leaf. `appServiceWiring.ts → appInit/wireDeviceTransport.ts` is a value edge, so importing
+      `AppServiceWiringDeps` back would form a genuine cycle; `arch:check` would stay green only
+      because `tsPreCompilationDeps` is unset, which makes type-only edges invisible, NOT absent
+      (the cruiser config says so at `.dependency-cruiser.cjs:327`). A type-aware cruise reports it.
+      Do not cite checker blindness as permission. *Why it's needed:* the structural declaration was
+      chosen to avoid importing the parent back; that is worth keeping, but the copies should be
+      derived rather than retyped.
+      Source: PR-3b adversarial review, 2026-07-26.
+- [ ] **Residual tracker contamination after meter-scope invalidation.** When the whole-home meter
+      selection changes, the weather collector forgets its meter-derived state — but the kWh
+      reconcile still trusts the power tracker first, and the tracker's retained daily totals for
+      the last ~30 days were measured under the OLD scope, so recent days can be re-vouched with
+      old-scope values until they age out. Bounded (the fit spans up to two years of days), but a
+      fit seeded with mixed-scope days is quietly wrong for weeks. Persona: owner who split their
+      home into meter areas mid-season. *Hypothesis:* the energy signature drifts silently right
+      after the scope change, when the owner is most likely to be watching it. Files:
+      `lib/weather/weatherCollector.ts` (kWh reconcile), power-tracker daily totals.
+      Source: multi-home finishing train, weather meter-scope PR. [P3]
+- [ ] **`operating_mode_changed` Flow trigger fires only for the global mode.** A sub-home's pinned
+      mode change (`operating_mode:<homeId>`) does not fire it; the card has a mode arg but no home
+      token. Widening it is flow-card home-scope territory (the `capacity_shortfall` `Home`-token
+      pattern). Persona: meter-area owner automating on mode changes. *Hypothesis:* a trigger that
+      silently ignores area pins reads as broken the moment areas pin modes — today only reachable
+      via a raw suffixed settings write, so this ripens when the per-home mode UI ships.
+      Source: multi-home finishing train, runtime mode-pinning PR. [P3]
+- [ ] **Suffixed `operating_mode:<homeId>` writes are not noop-deduped.** Suffixed keys bypass the
+      settings write skipper by design, so repeated identical writes cause repeated (cheap) bundle
+      rebuilds. Only matters if a future per-home mode UI writes eagerly on every render. Persona:
+      contributor building the per-home mode picker. *Hypothesis:* an eager writer turns every
+      repaint into a plan rebuild for that area. Files: `lib/utils/settingsWriteDedupe.ts`,
+      `setup/homeRuntime/homeRuntimeRegistry.ts`.
+      Source: multi-home finishing train, runtime mode-pinning PR. [P3]
+- [ ] **Usage footer promises a Main-only reset under area scope.** "Reset usage history lives under
+      Settings → Advanced" resets Main's tracker; a per-home reset through the bundle's persistence
+      API is not built. Either scope the footer copy per home or build the per-home reset (route it
+      through the bundle's persistence API, never a raw suffixed settings write — it collides with
+      `SuffixedTrackerPersistenceController`'s echo-suppression latch). Persona: meter-area owner
+      wanting a clean slate for one rental unit. *Hypothesis:* the owner follows the footer, resets
+      the wrong home's history, and loses Main's data without clearing the area's. Files:
+      `packages/settings-ui/src/ui/power.ts` (footer), `setup/homeRuntime/` (persistence API).
+      Source: multi-home finishing train, per-home Usage PR. [P3]
+
+### Meter-area beta review follow-ups
+
+- [ ] **Finish scoped settings-surface loading and unavailable states.** Keep the beta treatment
+      deliberately lightweight, but avoid blank or contradictory surfaces: give an area's Limits
+      card a bounded loading/unavailable state; make single-home unavailable copy work without
+      promising a scope picker; include unmanaged-but-eligible candidates in scoped Devices; retain
+      the last-good source instead of normalizing a failed scoped read; and represent an unavailable
+      Power source without relying on a Material select value that has no option. Persona:
+      meter-area owner opening settings during boot, a transient read failure, or membership churn.
+      Source: deferred review threads on PRs #1896, #1908, #1914, #1915 and #1916. [P3]
+- [ ] **Remove remaining Main-only claims from area Overview and Usage renders.** Suppress Main's
+      "cheapest hour ahead" anticipation for capacity-only areas; make the detail overlay consume
+      the area's plan and effective simulation posture; preserve scoped power/plan unavailable
+      results instead of falling back to Main; use runtime `dryRunEffective` while an area's
+      actuation fence is closed; refresh the selected area's Usage source and tracker state; and
+      either hide or explicitly label Main-only smart-task detail. Persona: meter-area owner who
+      trusts the shown-home bar to describe every card below it. Source: deferred review threads on
+      PRs #1914, #1916 and #1917. [P3]
+- [ ] **Harden roster, badge and realtime churn after the beta settles.** Treat contradictory
+      `hasSubHomes`/homes payloads as unavailable, add a bounded retry for the first unavailable
+      badge read, preserve last-good badge state across unset/malformed payloads, repaint realtime
+      zone moves and mode edits without losing local choices, and explicitly reject prototype-key
+      and other malformed home identifiers. Keep truncated badge focus and similar keyboard polish
+      in this same batch rather than blocking the beta train. Persona: owner editing zones or meter
+      areas while another WebView is open. Source: deferred review threads on PRs #1909, #1911,
+      #1913 and #1914. [P3]
+- [ ] **Revisit non-critical runtime edges exposed by meter-area review.** Refit the weather model
+      once enough new-scope overlap days arrive; re-resolve held operating-mode aliases and make
+      partial rename rollback explicit; document/cache the per-home mode resolution contract; and
+      tighten markerless roster/readiness recovery without weakening the existing Main actuation
+      fence. Persona: long-running beta install that renames modes or changes meter topology.
+      Source: deferred review threads on PRs #1910, #1911 and #1913. [P3]
+- [ ] **Consolidate low-value mirror and fixture coverage from the stack review.** Add an executable
+      check for the deploy-time `homeId` query-key mirror, assert `CAPACITY_LIMIT_KW` in the existing
+      contracts/runtime settings-key mirror test, and clean up the test-lane/fixture-only comments
+      (including the #1894-style internal-port classification nit) when those suites are next
+      touched. These are drift guards, not evidence of current behavior regressions. Persona:
+      contributor renaming a shared key or reorganizing tests. Source: deferred review threads on
+      PRs #1894, #1896 and #1908. [P3]

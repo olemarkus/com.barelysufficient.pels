@@ -20,7 +20,6 @@ import type {
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   ObservedDeviceState,
-  SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from './packages/contracts/src/types';
 import type { HomeyDeviceLike } from './lib/utils/types';
@@ -29,7 +28,6 @@ import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import type { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
-import { createObjectivePriceHorizonBuilder } from './setup/appInit/objectivePriceHorizon';
 import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
@@ -51,16 +49,13 @@ import type {
 import type { SmartTaskHomeScope } from './packages/contracts/src/smartTaskHomeScope';
 import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import {
-  resolveSmartTaskDeviceKind,
-  resolveSmartTaskGoalBounds,
-} from './packages/shared-domain/src/smartTaskDeviceKind';
-import {
   AppDeviceControlHelpers,
   normalizeStoredDeviceControlProfiles,
 } from './setup/appDeviceControlHelpers';
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
+  resolveDevicePriority as resolveDevicePriorityHelper,
   resolveModeName as resolveModeNameHelper,
 } from './lib/utils/capacityHelpers';
 import {
@@ -70,17 +65,11 @@ import {
 } from './lib/utils/settingsKeys';
 import {
   buildStarvedRescueDevices,
-  mapObjectiveWriteRefusalReason,
   readCreateSmartTaskCandidateDevices,
   resolveSmartTaskHomeScope,
 } from './setup/appInit/smartTaskHomeScope';
 import type { PowerSource } from './lib/power/powerSource';
-import {
-  executePendingPowerRebuild,
-  PowerSampleRebuildState,
-} from './lib/plan/rebuildScheduler/powerDriven';
-import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from './lib/plan/rebuildScheduler/policy';
-import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActivePlansUiAssembler';
+import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerDriven';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { createHomePowerPipeline } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
@@ -96,13 +85,11 @@ import {
   type PowerTrackerPersistReason,
 } from './lib/power/sampleIngest';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
-import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildScheduler/scheduler';
+import { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import {
-  buildDeferredObjectiveDeviceWriteDeps,
-  cancelDeferredObjectiveForContext, type CancelDeferredObjectiveOutcome,
+  type CancelDeferredObjectiveOutcome,
   registerAppFlowCards,
   toObservedStateSeed,
-  toPlanDevice,
 } from './setup/appInit';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import {
@@ -111,17 +98,12 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
-  migrateBlobToPerKeyIfNeeded,
-  hasOpenDeferredObjective, type SmartTaskWriteOrigin,
-  normalizeDeferredObjectiveSettingsEntry,
-  previewDeferredObjectivePlan,
-  upsertObjectiveForDevice,
+  type SmartTaskWriteOrigin,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectivePlanRevisionBus,
-  type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
 import { buildDebugLoggingTopics } from './lib/utils/debugLoggingSettings';
@@ -130,8 +112,10 @@ import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
   seedMissingModeTargets as seedMissingModeTargetsHelper,
   isManagedFilterActive as isManagedFilterActiveHelper,
-  isRuntimePlannedDevice,
 } from './setup/appDeviceSupport';
+import {
+  resolveOperatingModeForDevice as resolveOperatingModeForDeviceHelper,
+} from './setup/homeRuntime/homeOperatingMode';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './setup/appManagedDeviceMigration';
 import { runBootMigrations as runBootMigrationsHelper } from './setup/appBootMigrations';
 import * as realtimeReconcile from './setup/appRealtimeDeviceReconcile';
@@ -144,9 +128,6 @@ import { logHomeyDeviceComparisonForDebugFromApp } from './setup/appDebugHelpers
 import { emitSettingsUiDevicesUpdatedForApp } from './setup/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
-import type { DeferredObjectivePlanHistoryEntry } from './packages/contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from './packages/shared-domain/src/deferredPlanHistoryResolvedView';
-import { isSteppedLoadSnapshot } from './packages/shared-domain/src/steppedLoadObservedState';
 import type {
   ResolvedDeferredObjectiveActivePlansV1,
 } from './packages/contracts/src/deferredObjectiveActivePlans';
@@ -166,6 +147,13 @@ import {
   type RefreshTargetDevicesSnapshotOptions,
 } from './setup/appSnapshotHelpers';
 import { AppFlowBacked } from './setup/appFlowBacked';
+import {
+  AppSmartTaskApi,
+  SMART_TASK_WIDGET_WRITE_ORIGIN,
+  type SmartTaskWriteResult,
+} from './setup/appSmartTaskApi';
+import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
+import { getAppPlanRebuildNowMs, PlanRebuildIntentPolicy } from './setup/planRebuildIntentPolicy';
 import { AppNativeWiring } from './setup/appNativeWiring';
 import { AppServiceWiring } from './setup/appServiceWiring';
 import { AppPowerTracker } from './setup/appPowerTracker';
@@ -178,19 +166,7 @@ import {
   type FlowReportedCapabilitiesForDevice,
 } from './lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
-const FLOW_REBUILD_COOLDOWN_MS = 1000;
-// Leading window before the first flow rebuild runs, so a burst of settings cards in one
-// flow (e.g. set deadline -> allow rescue -> allow rescue) coalesces into a single re-solve
-// / one plan revision. 0 in tests so the suite is not delayed.
-const FLOW_REBUILD_COALESCE_MS = process.env.NODE_ENV === 'test' ? 0 : 1000;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-const getAppPlanRebuildNowMs = (): number => (
-  process.env.NODE_ENV === 'test'
-  || typeof performance === 'undefined'
-  || typeof performance.now !== 'function'
-    ? Date.now()
-    : performance.now()
-);
 
 class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public startupBootstrap?: StartupBootstrapConfig;
@@ -329,10 +305,16 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getPowerSampleRebuildState: () => this.powerSampleRebuildState,
     setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
   });
+  private readonly planRebuildIntentPolicy = new PlanRebuildIntentPolicy({
+    getPowerSampleRebuildState: () => this.powerSampleRebuildState,
+    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
+    getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
+    getPlanService: () => this.planService,
+  });
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
-    resolveDueAtMs: (intent, state) => this.resolvePlanRebuildDueAtMs(intent, state),
-    executeIntent: (intent) => this.executePlanRebuildIntent(intent),
+    resolveDueAtMs: (intent, state) => this.planRebuildIntentPolicy.resolveDueAtMs(intent, state),
+    executeIntent: (intent) => this.planRebuildIntentPolicy.executeIntent(intent),
     shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
     onIntentDropped: this.schedulerTelemetry.onIntentDropped,
     onPendingIntentReplaced: this.schedulerTelemetry.onPendingIntentReplaced,
@@ -384,9 +366,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
-    disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
-      snapshot,
-      settings: this.homey.settings,
+    disableUnsupportedDevices: (snapshot, operatingModeResolver) => disableUnsupportedDevicesHelper({
+      snapshot, settings: this.homey.settings,
+      // Overshoot defaults follow the OWNING home's effective mode.
+      resolveOperatingModeForDevice: operatingModeResolver
+        ?? ((deviceId) => resolveOperatingModeForDeviceHelper(this.ctx, deviceId)),
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
@@ -401,13 +385,15 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       this.homey,
       (message, error) => this.error(message, error),
     ),
-    recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
+    // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
+    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
   });
   public readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
     pollHomePower: async (authorizeFanOut) => (await this.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
-    recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
+    // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
+    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     error: (...args) => this.error(...args),
   });
@@ -467,6 +453,10 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     prunePowerTrackerHistory: () => this.prunePowerTrackerHistory(),
   });
   private readonly ctx: AppContext = this;
+  // Smart-task (deferred-objective) preview/create/cancel/rescue + history
+  // payload bodies. Declared after `ctx` so the context field is initialized.
+  private readonly smartTaskApi = new AppSmartTaskApi(this.ctx);
+  private readonly smartTaskPayloads = new AppSmartTaskPayloads(this.ctx);
   // Boot/teardown orchestration + per-service construction. The bodies live in
   // `setup/appServiceWiring.ts`; `PelsApp` keeps slim `onInit`/`onUninit` plus
   // thin `init*` delegators (the integration-test boot helper calls those
@@ -503,6 +493,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getFlowConflict: (deviceId) => this.flowConflictsByDevice[deviceId],
     computeShortfallThreshold: () => this.computeShortfallThreshold(),
     getSnapshotDevice: (deviceId) => this.getSnapshotDevice(deviceId),
+    retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
+      (deviceId) => resolveOperatingModeForDeviceHelper(this.ctx, deviceId, membership, allowPending),
+    ),
     hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
     loadFlowReportedCapabilities: () => this.loadFlowReportedCapabilities(),
     loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
@@ -557,7 +550,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     this.backgroundTasks.startWeatherCollector(this.weatherCollector);
   }
 
-  public recordPowerSample(powerW: number, nowMs?: number): Promise<void> {
+  public recordPowerSample(powerW: number, nowMs?: number): ReturnType<AppContext['recordPowerSample']> {
     return this.powerSamplePipeline.recordPowerSample(powerW, nowMs);
   }
 
@@ -670,47 +663,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   private getPlanRebuildNowMs(): number {
     return this.planRebuildScheduler.now().nowMs;
-  }
-  private resolvePlanRebuildDueAtMs(intent: RebuildIntent, state: ReturnType<PlanRebuildScheduler['now']>): number {
-    const nowMs = state.nowMs;
-    // Execution-side floor: while nothing is actionable, no trigger (signal or
-    // hardCap) may execute a rebuild faster than the floor after the last one.
-    // Anchored to `lastMs` (set only on a real execution) so `now` deterministically
-    // passes it after the interval rather than sliding forward on each recompute.
-    // Requires `lastMs > 0`: with a monotonic clock (`performance.now`) an un-run
-    // scheduler (`lastMs === 0`) is process start, and `0 + interval` is a real
-    // future time that would wrongly defer the very first (initial-sample) rebuild.
-    const floorMs = this.powerSampleRebuildState.tightUnactionable === true
-      && this.powerSampleRebuildState.lastMs > 0
-      ? this.powerSampleRebuildState.lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
-      : Number.NEGATIVE_INFINITY;
-    if (intent.kind === 'hardCap') return Math.max(nowMs, floorMs);
-    if (intent.kind === 'signal') {
-      return Math.max(this.powerSampleRebuildState.pendingDueMs ?? nowMs, floorMs);
-    }
-    if (intent.kind === 'flow') {
-      if (state.activeIntent?.kind === 'flow') {
-        return Number.POSITIVE_INFINITY;
-      }
-      const lastCompletedAtMs = state.lastCompletedAtMsByKind.flow ?? Number.NEGATIVE_INFINITY;
-      // Leading coalesce window holds the first rebuild a beat so a multi-card flow collapses
-      // into one re-solve; the trailing cooldown still throttles subsequent bursts.
-      return Math.max(nowMs + FLOW_REBUILD_COALESCE_MS, lastCompletedAtMs + FLOW_REBUILD_COOLDOWN_MS);
-    }
-    return Number.POSITIVE_INFINITY;
-  }
-  private executePlanRebuildIntent(intent: RebuildIntent): Promise<void> {
-    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      return executePendingPowerRebuild({
-        getState: () => this.powerSampleRebuildState,
-        setState: (state) => {
-          this.powerSampleRebuildState = state;
-        },
-        getNowMs: () => this.getPlanRebuildNowMs(),
-        rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
-      });
-    }
-    return this.planService.rebuildPlanFromCache(intent.reason).then(() => undefined);
   }
   private initCapacityGuardProviders(): void {
     this.serviceWiring.initCapacityGuardProviders();
@@ -895,7 +847,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     registerAppFlowCards(this.ctx);
   }
   public async handleOperatingModeChange(rawMode: string): Promise<void> {
-    const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
+    const resolved = resolveModeNameHelper(
+      rawMode,
+      this.modeAliases,
+      getAllModesHelper('', this.capacityPriorities, this.modeDeviceTargets),
+    );
     const previousMode = this.operatingMode;
     if (resolved !== rawMode) {
       this.getStructuredDebugEmitter('settings', 'settings')({
@@ -1016,10 +972,16 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       error: (...args: unknown[]) => this.error(...args),
     });
   }
+  // Main's resolver ranks by the GLOBAL mode; a sub-home scope ranks by its
+  // own effective mode through the same shared helper (one formula).
   public getPriorityForDevice = (deviceId: string) => (
-    this.capacityPriorities[this.operatingMode || 'Home']?.[deviceId] ?? 100
+    resolveDevicePriorityHelper(this.capacityPriorities, this.operatingMode, deviceId)
   );
-  public resolveModeName = (name: string) => resolveModeNameHelper(name, this.modeAliases);
+  public resolveModeName = (name: string) => resolveModeNameHelper(
+    name,
+    this.modeAliases,
+    getAllModesHelper('', this.capacityPriorities, this.modeDeviceTargets),
+  );
   public getAllModes = () => getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   // A role-detected OBSERVE-ONLY device (home battery OR solar) is ALWAYS managed
   // observe-only. The AUTHORITATIVE resolution is STRUCTURAL at parse
@@ -1069,354 +1031,58 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
     return this.planService?.getDeviceLogUiPayload() ?? { version: 1, entriesByDeviceId: {} };
   }
-  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
-    const snapshot = this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
-    if (snapshot === null) return null;
-    // Stitch live in-progress trajectory (start progress + observed samples)
-    // onto the snapshot for the smart-tasks widget chart. UI-only — never
-    // persisted (see the assembler + the field doc on the contract).
-    return assembleActivePlansWithTrajectory(snapshot, this.deferredObjectivePlanHistoryRecorder);
-  }
   // Hidden weather-insight readout (null = flag off → structural UI absence).
   public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadoutPayload | null> {
     return assembleWeatherAdvisorReadout({ ctx: this.ctx, collector: this.weatherCollector });
   }
-  // Open-task predicate; semantics documented on the store helper.
+  // ─── Smart tasks (deferred objectives) ───────────────────────────────────
+  // Thin delegators onto `setup/appSmartTaskApi.ts` (the write/preview lanes)
+  // and `setup/appSmartTaskPayloads.ts` (the read-only UI payloads). They stay
+  // on the app class because the widget host API and the settings-UI handlers
+  // reach them through `homey.app`; the bodies (and their rationale) live in
+  // the setup classes. Regression cover for the wiring itself:
+  // `test/integration/appSmartTaskDelegation.test.ts`.
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
-    return hasOpenDeferredObjective(this.homey.settings, deviceId, this.getNow().getTime());
+    return this.smartTaskApi.hasDeferredObjectiveForDevice(deviceId);
   }
-  // Only stepped-load devices (EV chargers + stepped thermal) can honour the
-  // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
-  // which the boost resolvers gate on `isSteppedLoad`; a binary on/off device has
-  // no higher step to promote to. The rescue gates the grant on this so it never
-  // persists (nor surfaces) a permission the device can't use.
-  private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean {
-    return device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device);
+  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
+    return this.smartTaskPayloads.getDeferredObjectiveActivePlansUiPayload();
   }
-  // Gate a create-smart-task candidate's opt-in "Extra permissions" against the
-  // device BEFORE it is previewed or persisted — defence-in-depth, since the
-  // widget's toggle visibility is client-side and not trusted. Only
-  // `limitLowerPriorityDevices` is gated; `exemptFromBudget` is ungated (any
-  // device can exceed the soft daily budget). The limit grant is dropped unless
-  // it would ACTUALLY change the plan — i.e. it matches every conjunct of the
-  // planner's `fullyReserved` floor (`rescueReplan.ts`): the device is
-  // stepped-load eligible (a binary device has no higher step to promote to) AND
-  // at top priority (`priority === 1`) AND `exemptFromBudget` is granted as
-  // `'always'`. Anything weaker is inert at the planner, so we never persist it.
-  // This matches the widget's gate-on-effect visibility exactly, and runs on BOTH
-  // lanes so preview ≡ persist. Returns the candidate unchanged when it carries
-  // no limit-lower-priority grant.
-  private gateCandidateExtraPermissions(
-    device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ): DeferredObjectivePlanPreviewCandidate {
-    const rescue = candidate.rescue;
-    if (!rescue?.limitLowerPriorityDevices) return candidate;
-    const eligible = device !== undefined
-      && this.deviceSupportsLimitLowerPriority(device)
-      && device.priority === 1
-      && rescue.exemptFromBudget === 'always';
-    if (eligible) return candidate;
-    const { limitLowerPriorityDevices: _dropped, ...keptRescue } = rescue;
-    return {
-      ...candidate,
-      rescue: Object.keys(keptRescue).length > 0 ? keptRescue : undefined,
-    };
-  }
-  // Preview the plan the starvation rescue would actually persist. A rescue only
-  // ever runs on a device WITHOUT an existing smart task (`getStarvedRescueDevices`
-  // excludes task-having devices), so there is no merge: the fresh candidate IS
-  // what persists. This therefore just REUSES the create engine's preview
-  // (`previewDeferredObjectivePlan`), which applies the same
-  // `gateCandidateExtraPermissions` the create write does — so preview ≡ persist
-  // for the rescue's opt-in permissions without any rescue-specific merge logic.
-  // `hasExistingObjective` is always false (kept on the return for the widget's
-  // stable shape).
   public previewStarvationRescuePlan(
     deviceId: string,
     freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
   ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean } {
-    return {
-      estimate: this.previewDeferredObjectivePlan(deviceId, freshRescueCandidate),
-      deadlineAtMs: freshRescueCandidate.deadlineAtMs,
-      hasExistingObjective: false,
-    };
+    return this.smartTaskApi.previewStarvationRescuePlan(deviceId, freshRescueCandidate);
   }
-  // Instant, in-isolation estimate of the plan the planner WOULD produce for a
-  // candidate deferred objective that is not persisted. Gathers the same plan-
-  // cycle context the live recorder runs against (device snapshot, power
-  // tracker, daily-budget snapshot, hard cap, prices) so the projection stays
-  // faithful — see `previewDeferredObjectivePlan`.
-  //
-  // STRICTLY READ-ONLY: this never mutates live planner state. The candidate
-  // device is projected through `toPlanDevice`, a pure read projection with no
-  // live-state mutation.
-  //
-  // NOT A GUARANTEE — and specifically OPTIMISTIC about headroom: the
-  // projection assumes the candidate has the price bucket's reserved headroom
-  // to ITSELF (it passes `activePlans: null` and lets `concurrentEligibleCount`
-  // default to 1). When other reserved sibling tasks are competing for the same
-  // buckets, the live plan may schedule fewer or later hours than this estimate
-  // shows, so the divergence is toward overstating availability / understating
-  // `cannot_meet` risk. A UI must present this as an estimate, never a
-  // commitment.
   public previewDeferredObjectivePlan(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): DeferredObjectivePlanPreviewEstimate {
-    // The settings-UI device list spans managed devices AND unmanaged-but-
-    // eligible picker devices (see `getSettingsUiDevices`). A preview is most
-    // useful precisely for a candidate that is not managed yet, so fall back to
-    // the picker snapshot before treating the device as missing — otherwise
-    // every new-smart-task preview would come back `unavailable`.
-    const snapshotDevice = this.latestTargetSnapshot.find((device) => device.id === deviceId)
-      ?? this.getUiPickerDevices().find((device) => device.id === deviceId);
-    // Gate opt-in extra permissions the same way the create lane does, so the
-    // preview reflects exactly what would persist (preview ≡ persist).
-    const gatedCandidate = this.gateCandidateExtraPermissions(snapshotDevice, candidate);
-    return previewDeferredObjectivePlan({
-      nowMs: this.getNow().getTime(),
-      timeZone: this.getTimeZone(),
-      deviceId,
-      candidate: gatedCandidate,
-      // Convert through the same `toPlanDevice` producer the plan cycle uses so
-      // the projected steps/power match the live planner. `toPlanDevice` is a
-      // pure read projection (no live-state mutation), so the preview is
-      // read-only by construction. Undefined when the device is in neither
-      // snapshot → projection comes back `unavailable`.
-      device: snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined,
-      powerTracker: this.powerTracker,
-      dailyBudgetSnapshot: this.dailyBudgetService?.getSnapshot() ?? null,
-      buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),
-      priceOptimizationEnabled: this.priceOptimizationEnabled,
-      hardCapKw: this.capacitySettings.limitKw,
-      // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
-      // converts it to a money unit for the total `costEstimate`.
-      priceRateLabel: this.priceCoordinator.getPriceUnitLabel(),
-    });
-  }
-  // Persist a new smart task (deferred objective) for an eligible device,
-  // routing through the SAME device-scoped write op the deadline Flow cards use
-  // (`upsertObjectiveForDevice` over the per-device-key store, built by
-  // `buildDeferredObjectiveDeviceWriteDeps`). There is no parallel
-  // persistence path: the candidate is validated through the same
-  // `normalizeDeferredObjectiveSettingsEntry` normalizer that gates Flow-card
-  // and settings writes, and the device's eligibility/kind is checked against
-  // the live snapshot the same way the Flow cards check it.
-  //
-  // PLANNED-SET HONESTY: persistence is restricted to devices in
-  // `latestTargetSnapshot` — the managed, runtime-planned set. The planner only
-  // evaluates objectives whose device is in that snapshot (see
-  // `buildDeferredObjectiveDiagnostics`: a missing device yields
-  // `objective_missing_device` and is never planned). When the managed-device
-  // filter is active, a picker-only (unmanaged) device is absent from the
-  // snapshot, so creating a task on it would persist a task that never plans or
-  // controls anything. The Flow-card create path is already honest here — its
-  // device autocomplete is sourced from the same runtime snapshot — so to match
-  // it we reject picker-only devices with `device_not_planned` rather than
-  // inventing a promotion mechanism neither path has. (The preview at
-  // `previewDeferredObjectivePlan` keeps its picker fallback: previewing an
-  // unmanaged device is harmless and read-only.)
-  //
-  // The candidate's `deadlineAtMs` is resolved by the caller (the widget API
-  // handler, server-side, via `resolveDeferredObjectiveDeadline` against the
-  // app timezone) so this method stays timezone-agnostic and matches the
-  // Flow-card contract of receiving an already-absolute deadline.
-  //
-  // Returns `{ ok: false }` with a stable reason code on rejection so the
-  // widget can surface an honest error without leaking internal detail.
-  // Shared validation for both objective-write lanes (`createDeferredObjective`
-  // and `rescueDeviceWithBudgetExemption`): resolve the candidate against the
-  // runtime-planned snapshot, the device's goal kind, and the device's actual
-  // setpoint range, then normalise it through the canonical normalizer. Returns
-  // the validated device + normalised entry, or a stable rejection reason. Both
-  // callers share this so the device honesty / kind / bounds / normalizer gates
-  // never diverge between the two lanes.
-  private resolveValidatedObjectiveEntry(
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { ok: true; device: TargetDeviceSnapshot; entry: DeferredObjectiveSettingsEntry } | {
-    ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible'
-      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
-  } {
-    // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
-    // HONESTY above. A device that exists in the picker but not here, OR that is
-    // in the runtime snapshot but `managed: false` (so the planner's
-    // `isRuntimePlannedDevice` filter drops it — possible when the managed
-    // filter is inactive), is reported as `device_not_planned`, not silently
-    // persisted. Uses the SAME predicate the plan service and the candidate
-    // listing use so the three never diverge.
-    const device = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
-    if (!device || !isRuntimePlannedDevice(device)) {
-      const inPickerOrSnapshot = device !== undefined
-        || this.getUiPickerDevices().some((entry) => entry.id === deviceId);
-      return { ok: false, reason: inPickerOrSnapshot ? 'device_not_planned' : 'device_not_found' };
-    }
-    // Multi-home v1 scope: a sub-home device is rejected with its own honest
-    // reason BEFORE kind/bounds validation — the admission math is main-only,
-    // so the task would be planned against the wrong meter's budget. Mirrors
-    // the candidate-list exclusion and the write-op gate so the three can
-    // never disagree.
-    const homeScope = this.resolveSmartTaskHomeScope(deviceId);
-    if (homeScope === 'sub_home') return { ok: false, reason: 'device_in_sub_home' };
-    if (homeScope === 'source_device') return { ok: false, reason: 'device_not_planned' };
-    if (homeScope === 'unavailable') return { ok: false, reason: 'write_refused' };
-    // The device must support the goal kind the candidate claims — an EV-SoC
-    // goal on a thermostat (or vice versa) is rejected before it can persist.
-    const kind = resolveSmartTaskDeviceKind(device);
-    if (kind !== candidate.kind) {
-      return { ok: false, reason: 'device_not_eligible' };
-    }
-    // Validate the target against the DEVICE's actual setpoint range, not just
-    // the generic normalizer's -50..100 °C / 1..100 % envelope. This mirrors the
-    // Flow-card `validateTargetTemperature` (which reads the device capability
-    // min/max) and the picker bounds the widget itself offered, so the write
-    // rejects an impossible target (e.g. 90 °C on a 30..75 °C heater) instead of
-    // persisting one the device can never reach.
-    const bounds = resolveSmartTaskGoalBounds(device, kind);
-    const targetValue = candidate.kind === 'temperature' ? candidate.targetTemperatureC : candidate.targetPercent;
-    if (!Number.isFinite(targetValue) || targetValue < bounds.min || targetValue > bounds.max) {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-    // Gate opt-in extra permissions against the resolved device before the entry
-    // is normalised/persisted (drops an ineligible/inert limit-lower-priority
-    // grant), so a tampered or stale client can never persist a permission this
-    // device can't honour. Matches the gate the preview applies.
-    const gatedCandidate = this.gateCandidateExtraPermissions(device, candidate);
-    // Re-validate via the canonical normalizer with `enabled: true`; a creation
-    // is implicitly an enabled objective. This rejects malformed deadlines and
-    // the generic target envelope exactly as the Flow-card / settings paths do.
-    const entry = normalizeDeferredObjectiveSettingsEntry(
-      { ...gatedCandidate, enabled: true } as DeferredObjectiveSettingsEntry,
-    );
-    if (!entry) return { ok: false, reason: 'invalid_candidate' };
-    return { ok: true, device, entry };
+    return this.smartTaskApi.previewDeferredObjectivePlan(deviceId, candidate);
   }
   public createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-    // Rebuild-reason tag for the requesting lane (widget default = its historical string).
-    origin: SmartTaskWriteOrigin = 'flow_card:create_smart_task_widget',
-  ): { ok: true } | {
-    ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible'
-      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
-  } {
-    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
-    if (!validated.ok) return validated;
-    const { device, entry } = validated;
-
-    if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-
-    // Per-device-key write: touches only this device's settings key, so it
-    // cannot drop a sibling task. When the candidate carries opt-in "Extra
-    // permissions" (already eligibility-gated above), the entry's own `rescue` is
-    // persisted as-is. When it does not, the default `preserve` policy keeps a
-    // standing permission set elsewhere (e.g. by the budget-exempt rescue lane,
-    // `rescueDeviceWithBudgetExemption`) intact rather than wiping it. The write
-    // can still REFUSE on a transient un-confirmable migration or an untrustworthy
-    // absence read; surface that as a retryable failure instead of a false
-    // success so the widget can re-offer the create.
-    const outcome = upsertObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
-        nowMs: this.getNow().getTime(),
-        rebuildReason: origin,
-      }),
-      { deviceId, deviceName: device.name ?? null, entry },
-    );
-    // Refusal → reject union mapping (durable scope reasons stay typed; the
-    // transient refusals collapse to the retryable `write_refused` lane).
-    if (!outcome.persisted) return { ok: false, reason: mapObjectiveWriteRefusalReason(outcome.reason) };
-    return { ok: true };
+    origin: SmartTaskWriteOrigin = SMART_TASK_WIDGET_WRITE_ORIGIN,
+  ): SmartTaskWriteResult {
+    return this.smartTaskApi.createDeferredObjective(deviceId, candidate, origin);
   }
   public cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome {
-    return cancelDeferredObjectiveForContext(this.ctx, deviceId);
+    return this.smartTaskApi.cancelDeferredObjective(deviceId);
   }
-  // Grant a device the starvation-rescue widget's bounded budget-exempt rescue.
-  // A rescue is always a FRESH task: `getStarvedRescueDevices` only offers a
-  // device that has no smart task yet (and this method re-asserts it), so there
-  // is no merge — the rescue REUSES the create engine (`createDeferredObjective`).
-  // The candidate carries the rescue permissions (`exemptFromBudget` always, plus
-  // `limitLowerPriorityDevices`); `createDeferredObjective`'s
-  // `gateCandidateExtraPermissions` then keeps the budget exemption for any device
-  // and the limit-lower-priority grant only where it has effect (stepped + top
-  // priority). This lifts the DAILY BUDGET and (where effective) grants priority
-  // over lower-priority devices, but NEVER raises the capacity cap (the hard
-  // cap holds the tariff step; never a remedy): the priority permission only displaces lower-priority
-  // load WITHIN the cap. The budget-exemption assertion is defence-in-depth so it
-  // can't be smuggled through a generic create — it doesn't rest solely on the
-  // widget API being the only caller.
   public rescueDeviceWithBudgetExemption(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { ok: true } | {
-    ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible'
-      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
-  } {
-    // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
-    // grant a budget exemption; reject any candidate that does not carry one so
-    // the exemption can never be smuggled in through a generic create.
-    if (candidate.rescue?.exemptFromBudget !== 'always') {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-    // Migrate any legacy-blob objective to per-keys BEFORE the eligibility check:
-    // a task still only in the un-migrated blob is invisible to the per-key
-    // `hasDeferredObjectiveForDevice`, so without this the delegated create would
-    // migrate-then-REPLACE it, losing the user's target/deadline. (A transient-
-    // empty store defers the migration; the device then still looks task-free
-    // here, but `createDeferredObjective`'s own `ensureMigrated` guard refuses the
-    // write rather than clobbering — so the user's task is safe either way.)
-    migrateBlobToPerKeyIfNeeded(this.homey.settings);
-    // A device that already has an open smart task is not rescuable. Re-assert
-    // here (the list already excludes it) so this lane can never REPLACE a user's
-    // active or paused future task: the rescue is strictly a fresh create.
-    if (this.hasDeferredObjectiveForDevice(deviceId)) {
-      return { ok: false, reason: 'device_not_eligible' };
-    }
-    return this.createDeferredObjective(deviceId, candidate);
+  ): SmartTaskWriteResult {
+    return this.smartTaskApi.rescueDeviceWithBudgetExemption(deviceId, candidate);
   }
-  private buildPlanHistoryUiPayload(
-    accept?: (entry: DeferredObjectivePlanHistoryEntry) => boolean,
-  ): SettingsUiDeferredObjectivePlanHistoryPayload {
-    const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();
-    const entriesByDeviceId: SettingsUiDeferredObjectivePlanHistoryPayload['entriesByDeviceId'] = {};
-    if (snapshot) {
-      // Sort newest finalizedAtMs first within each device to match the UI expectation.
-      const byDevice = new Map<string, DeferredObjectivePlanHistoryEntry[]>();
-      for (const entry of snapshot.entries) {
-        if (accept && !accept(entry)) continue;
-        const list = byDevice.get(entry.deviceId) ?? [];
-        list.push(entry);
-        byDevice.set(entry.deviceId, list);
-      }
-      for (const [deviceId, list] of byDevice) {
-        // Resolve kind-split °C/% pairs to unit-agnostic numbers at this producer boundary.
-        entriesByDeviceId[deviceId] = list
-          .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs)
-          .map(toResolvedPlanHistoryEntry);
-      }
-    }
-    return { version: 1, entriesByDeviceId };
-  }
-
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
-    return this.buildPlanHistoryUiPayload();
+    return this.smartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload();
   }
-
-  // Bounded variant for the smart-tasks widget: only entries finalized at/after
-  // `sinceMs`. The widget refreshes every 60 s and only renders the last 24 h, so
-  // serializing the full (unbounded, all-time) history each cycle is wasteful —
-  // this keeps the payload proportional to recent activity.
   public getDeferredObjectivePlanHistoryRecentUiPayload(
     sinceMs: number,
   ): SettingsUiDeferredObjectivePlanHistoryPayload {
-    return this.buildPlanHistoryUiPayload(
-      (entry) => Number.isFinite(entry.finalizedAtMs) && entry.finalizedAtMs >= sinceMs,
-    );
+    return this.smartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload(sinceMs);
   }
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   public applySheddingToDevice = (deviceId: string, deviceName: string, reason?: string) =>

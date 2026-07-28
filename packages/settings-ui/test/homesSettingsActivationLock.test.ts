@@ -43,6 +43,9 @@ vi.mock('../src/ui/homey.ts', () => ({
 vi.mock('../src/ui/toast.ts', () => ({
   showToast: vi.fn().mockResolvedValue(undefined),
   showToastError: vi.fn().mockResolvedValue(undefined),
+  // `homesSettings.ts` gives a typed save refusal the error dwell; a factory
+  // mock must carry the constant or the module throws on import.
+  ERROR_DURATION_MS: 5000,
 }));
 vi.mock('../src/ui/logging.ts', () => ({
   logSettingsError: vi.fn().mockResolvedValue(undefined),

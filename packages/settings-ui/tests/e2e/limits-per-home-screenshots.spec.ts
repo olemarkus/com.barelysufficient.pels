@@ -8,6 +8,7 @@ import { expect, test as base, injectHomeyHostCss, type Page } from './fixtures/
 import {
   gotoApp,
   installRentalMeterDeviceList,
+  pickHomeScope,
   seedRentalArea,
   seedRentalMeterSnapshot,
   seedStubSetting,
@@ -28,7 +29,7 @@ test.beforeEach(({ page }, testInfo) => {
   );
 });
 
-type StateName = 'main-unchanged' | 'switcher' | 'simulation' | 'active-status';
+type StateName = 'main-unchanged' | 'scope-bar' | 'simulation' | 'active-status';
 
 const openLimitsPanel = async (page: Page): Promise<void> => {
   await page.getByRole('tab', { name: 'Settings' }).click();
@@ -40,8 +41,8 @@ const openLimitsPanel = async (page: Page): Promise<void> => {
 };
 
 const switchToArea = async (page: Page): Promise<void> => {
-  await expect(page.locator('#home-limits-home-select')).toBeVisible();
-  await page.selectOption('#home-limits-home-select', AREA_ID);
+  await expect(page.locator('#home-scope-chip')).toBeVisible();
+  await pickHomeScope(page, AREA_ID);
   await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
 };
 
@@ -67,12 +68,12 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
   }
   await openLimitsPanel(page);
   if (state === 'main-unchanged') {
-    // No meter areas ⇒ no switcher, the static form is the whole panel.
-    await expect(page.locator('#home-limits-home-select')).toHaveCount(0);
+    // No meter areas ⇒ no scope bar, the static form is the whole panel.
+    await expect(page.locator('#home-scope-chip')).toHaveCount(0);
     await expect(page.locator('#settings-limits-form')).toBeVisible();
   }
-  if (state === 'switcher') {
-    await expect(page.locator('#home-limits-home-select')).toBeVisible();
+  if (state === 'scope-bar') {
+    await expect(page.locator('#home-scope-chip')).toBeVisible();
     await expect(page.locator('#settings-limits-form')).toBeVisible();
   }
   if (state === 'simulation') {
@@ -85,7 +86,7 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
   }
 };
 
-for (const state of ['main-unchanged', 'switcher', 'simulation', 'active-status'] as StateName[]) {
+for (const state of ['main-unchanged', 'scope-bar', 'simulation', 'active-status'] as StateName[]) {
   test(`capture ${state}`, async ({ browser, baseURL }) => {
     for (const width of WIDTHS) {
       const context = await browser.newContext({
@@ -99,7 +100,10 @@ for (const state of ['main-unchanged', 'switcher', 'simulation', 'active-status'
         await injectHomeyHostCss(page);
         await prepareState(page, state);
         await page.waitForTimeout(300);
-        await page.screenshot({ path: `${OUT}/limits-${state}-${width}.png` });
+        // Full page, not the 900 px viewport: the panel runs past the fold in
+        // the area states, so a clipped shot hid everything below the cap
+        // fields — including the trailing note about the app-global settings.
+        await page.screenshot({ path: `${OUT}/limits-${state}-${width}.png`, fullPage: true });
       } finally {
         await context.close();
       }

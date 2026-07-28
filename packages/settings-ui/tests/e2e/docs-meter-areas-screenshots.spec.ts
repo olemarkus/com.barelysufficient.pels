@@ -16,6 +16,7 @@ import {
   gotoApp,
   installRentalMeterDeviceList,
   openHomesPanel,
+  pickHomeScope,
   seedRentalArea,
   seedRentalMeterSnapshot,
   seedStubSetting,
@@ -47,8 +48,8 @@ const openLimitsPanel = async (page: Page): Promise<void> => {
 };
 
 const switchToArea = async (page: Page): Promise<void> => {
-  await expect(page.locator('#home-limits-home-select')).toBeVisible();
-  await page.selectOption('#home-limits-home-select', AREA_ID);
+  await expect(page.locator('#home-scope-chip')).toBeVisible();
+  await pickHomeScope(page, AREA_ID);
   await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
 };
 
@@ -121,8 +122,29 @@ for (const shot of ['list', 'editor', 'limits-simulation', 'limits-active'] as S
       // Areas surface (no dead space on short panels, nothing cut off on tall
       // ones, and the off-topic whole-home dry-run banner is naturally excluded
       // since it lives outside the panel).
-      const panel = shot === 'list' || shot === 'editor' ? '#homes-panel' : '#limits-panel';
-      await page.locator(panel).screenshot({ path: `${OUT}/${shot}.png` });
+      //
+      // The two limits shots are the exception: the home the settings below
+      // belong to is named by the shell's scope bar, which is a SIBLING of
+      // `#limits-panel` under `main.screen`. Cropping the panel alone would
+      // produce a per-area editor with nothing on screen saying which area it
+      // is, so those two capture the shell region containing both.
+      const isLimitsShot = shot === 'limits-simulation' || shot === 'limits-active';
+      if (isLimitsShot) {
+        const clip = await page.evaluate(() => {
+          const bar = document.getElementById('home-scope-bar')!.getBoundingClientRect();
+          const panelRect = document.getElementById('limits-panel')!.getBoundingClientRect();
+          return {
+            x: Math.floor(Math.min(bar.left, panelRect.left)),
+            y: Math.floor(bar.top),
+            width: Math.ceil(Math.max(bar.right, panelRect.right) - Math.min(bar.left, panelRect.left)),
+            height: Math.ceil(panelRect.bottom - bar.top),
+          };
+        });
+        await page.screenshot({ path: `${OUT}/${shot}.png`, clip });
+        return;
+      }
+      // Both remaining shots ('list', 'editor') live in the Multiple meters panel.
+      await page.locator('#homes-panel').screenshot({ path: `${OUT}/${shot}.png` });
     } finally {
       await context.close();
     }

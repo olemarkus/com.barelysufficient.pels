@@ -8,9 +8,11 @@ import {
   periodsOverlapWindow,
   reconcileKwhSources,
   rollupDay,
+  stripMeterScopeDerivedState,
   upsertBackfillRecords,
   WEATHER_HISTORY_RETENTION_DAYS,
 } from '../../lib/weather/weatherHistory';
+import { readMeterScopeDailyKwh } from '../../lib/weather/weatherMeterScope';
 import { shiftDateKey } from '../../lib/utils/dateUtils';
 
 const liveRecord = (dateKey: string, overrides: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
@@ -29,6 +31,25 @@ const backfilledRecord = (dateKey: string, overrides: Partial<WeatherDailyRecord
   tempSampleCount: 4,
   quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true },
   ...overrides,
+});
+
+describe('readMeterScopeDailyKwh', () => {
+  it('preserves the historical tracker behavior when no scope transition was recorded', () => {
+    const read = vi.fn(() => ({ total: 42 }));
+    expect(readMeterScopeDailyKwh({ records: [] }, '2026-01-05', read)).toEqual({ total: 42 });
+    expect(read).toHaveBeenCalledWith('2026-01-05');
+  });
+
+  it('excludes old and mixed switch-day buckets, then admits the first full new-scope day', () => {
+    const read = vi.fn(() => ({ total: 42 }));
+    const state: WeatherHistoryState = { records: [], meterScopeSinceDateKey: '2026-01-10' };
+
+    expect(readMeterScopeDailyKwh(state, '2026-01-09', read)).toEqual({});
+    expect(readMeterScopeDailyKwh(state, '2026-01-10', read)).toEqual({});
+    expect(read).not.toHaveBeenCalled();
+    expect(readMeterScopeDailyKwh(state, '2026-01-11', read)).toEqual({ total: 42 });
+    expect(read).toHaveBeenCalledOnce();
+  });
 });
 
 describe('applyActualSample', () => {
@@ -383,6 +404,26 @@ describe('mergeRecoveredState markers', () => {
       .toBe(1);
   });
 
+  it('carries a recovered scope epoch only with its recovered signature', () => {
+    const recovered = {
+      records: [],
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: '2026-01-10',
+    };
+    expect(mergeRecoveredState(recovered, { records: [] })).toMatchObject({
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: '2026-01-10',
+    });
+    expect(mergeRecoveredState(
+      { records: [] },
+      {
+        records: [],
+        meterScopeSignature: 'source:flow',
+        meterScopeSinceDateKey: '2026-01-10',
+      },
+    ).meterScopeSinceDateKey).toBeUndefined();
+  });
+
   it('carries the temp backfill version with its deviceId as a pair', () => {
     const recovered = { records: [], backfilledDeviceId: 'dev-old', backfillVersion: 1 };
     const inMemory = { records: [], backfilledDeviceId: 'dev-new', backfillVersion: 2 };
@@ -405,6 +446,55 @@ describe('mergeRecoveredState markers', () => {
       { records: [], lastAutoApply: recoveredAudit },
       { records: [] },
     ).lastAutoApply).toEqual(recoveredAudit);
+  });
+});
+
+describe('stripMeterScopeDerivedState record-level strip', () => {
+  it('clears every retained record\'s kWh evidence — live snapshot, meter fill, and split alike', () => {
+    const state: WeatherHistoryState = {
+      records: [
+        liveRecord('2026-01-05', { kwhControlled: 12, kwhUncontrolled: 28, suppression: { targetDeficitMs: 60_000 } }),
+        backfilledRecord('2026-01-06', {
+          quality: {
+            partialTemp: true, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true,
+          },
+        }),
+      ],
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: 'meter-old',
+      kwhPurgeVersion: 1,
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: '2026-01-05',
+    };
+    const stripped = stripMeterScopeDerivedState(state);
+    const [live, filled] = stripped.records;
+    // The old-scope kWh layer is gone on BOTH record classes: keeping either
+    // would let the next refit reproduce the old-scope signature, and a
+    // surviving kwhBackfilled flag would count an old-meter fill as already
+    // validated where the new meter lacks history for the day.
+    expect(live.kwhTotal).toBeUndefined();
+    expect(live.kwhControlled).toBeUndefined();
+    expect(live.kwhUncontrolled).toBeUndefined();
+    expect(live.quality.missingKwh).toBe(true);
+    expect(filled.kwhTotal).toBeUndefined();
+    expect(filled.quality.kwhBackfilled).toBeUndefined();
+    expect(filled.quality.missingKwh).toBe(true);
+    // Scope-independent evidence survives: temperature, quality flags, suppression.
+    expect(live.tempMeanC).toBe(2);
+    expect(live.tempSampleCount).toBe(24);
+    expect(live.suppression).toEqual({ targetDeficitMs: 60_000 });
+    expect(live.quality.backfilled).toBe(false);
+    expect(filled.quality).toMatchObject({ partialTemp: true, backfilled: true });
+    expect(stripped.meterScopeSignature).toBeUndefined();
+    expect(stripped.meterScopeSinceDateKey).toBeUndefined();
+  });
+
+  it('returns a record with no kWh evidence by reference', () => {
+    const { kwhTotal: _withoutKwh, ...clean } = liveRecord('2026-01-05', {
+      quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: false },
+    });
+    const stripped = stripMeterScopeDerivedState({ records: [clean], meterKwhBackfillDone: true });
+    expect(stripped.records[0]).toBe(clean);
   });
 });
 
@@ -515,6 +605,8 @@ describe('normalizeWeatherHistoryState', () => {
       meterKwhBackfillDone: true,
       meterKwhDeviceId: 'meter-1',
       controlledBackfillVersion: 1,
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: '2026-01-07',
     };
     const withJunk = {
       ...valid,
@@ -528,6 +620,65 @@ describe('normalizeWeatherHistoryState', () => {
       // Sorted ascending; junk dropped.
       records: [liveRecord('2026-01-08'), liveRecord('2026-01-09')],
     });
+  });
+
+  it('drops malformed scope-marker pairs and orphaned epochs without discarding history', () => {
+    const malformed = normalizeWeatherHistoryState({
+      records: [liveRecord('2026-01-08')],
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: 'not-a-date',
+    });
+    expect(malformed?.records).toHaveLength(1);
+    expect(malformed?.meterScopeSignature).toBeUndefined();
+    expect(malformed?.meterScopeSinceDateKey).toBeUndefined();
+
+    const impossibleDate = normalizeWeatherHistoryState({
+      records: [liveRecord('2026-01-08')],
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: '2026-19-42',
+    });
+    expect(impossibleDate?.records).toHaveLength(1);
+    expect(impossibleDate?.meterScopeSignature).toBeUndefined();
+    expect(impossibleDate?.meterScopeSinceDateKey).toBeUndefined();
+
+    const unknownSignature = normalizeWeatherHistoryState({
+      records: [liveRecord('2026-01-08')],
+      meterScopeSignature: 'unknown-scope-format',
+    });
+    expect(unknownSignature?.records).toHaveLength(1);
+    expect(unknownSignature?.meterScopeSignature).toBeUndefined();
+
+    for (const meterScopeSignature of [
+      'source:homey_energy|main:automatic',
+      'source:homey_energy|main:meter|other',
+      'source:homey_energy|main:meter other',
+    ]) {
+      const noncanonical = normalizeWeatherHistoryState({
+        records: [liveRecord('2026-01-08')],
+        meterScopeSignature,
+      });
+      expect(noncanonical?.records).toHaveLength(1);
+      expect(noncanonical?.meterScopeSignature).toBeUndefined();
+    }
+
+    const orphaned = normalizeWeatherHistoryState({
+      records: [liveRecord('2026-01-08')],
+      meterScopeSinceDateKey: '2026-01-07',
+    });
+    expect(orphaned?.records).toHaveLength(1);
+    expect(orphaned?.meterScopeSinceDateKey).toBeUndefined();
+  });
+
+  it('drops scope markers whose epoch is later than the collector date', () => {
+    const normalized = normalizeWeatherHistoryState({
+      records: [liveRecord('2026-01-08')],
+      meterScopeSignature: 'source:flow',
+      meterScopeSinceDateKey: '2026-01-11',
+    }, '2026-01-10');
+
+    expect(normalized?.records).toHaveLength(1);
+    expect(normalized?.meterScopeSignature).toBeUndefined();
+    expect(normalized?.meterScopeSinceDateKey).toBeUndefined();
   });
 
   it('round-trips a valid per-day metForecast cache and drops malformed days', () => {

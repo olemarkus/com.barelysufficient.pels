@@ -18,23 +18,27 @@ import {
   getSettingsUiWeatherAdvisorReadout,
   getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
-  getSettingsUiHomesPayload,
-  saveSettingsUiHomesConfig,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
   logSettingsUiMessage,
   applySettingsUiDailyBudgetModel,
   previewSettingsUiDailyBudgetModel,
-  createSettingsUiStarvationRescue,
-  getSettingsUiStarvationRescueDevices,
-  previewSettingsUiStarvationRescue,
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
   recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from './setup/settingsUiApi';
+import {
+  getSettingsUiHomesPayload,
+  saveSettingsUiHomesConfig,
+} from './setup/settingsUiHomesApi';
+import {
+  createSettingsUiStarvationRescue,
+  getSettingsUiStarvationRescueDevices,
+  previewSettingsUiStarvationRescue,
+} from './setup/settingsUiStarvationRescueApi';
 import {
   cancelSettingsUiSmartTask,
   previewSettingsUiSmartTask,
@@ -91,11 +95,15 @@ export = {
   ui_bootstrap: withApiLogging('ui_bootstrap', ({ homey }: ApiContext) => (
     buildSettingsUiBootstrap({ homey })
   )),
-  ui_devices: withApiLogging('ui_devices', ({ homey }: ApiContext) => (
-    getSettingsUiDevicesPayload({ homey })
+  // The three `?homeId=`-aware reads. The app-API transport hands every handler
+  // `{ query, params, body }` alongside `homey` (the same seam `body` already
+  // arrives on for ui_homes_save); `setup/settingsUiHomeScope.ts` owns the
+  // complete classification of the raw bag, so this layer only forwards it.
+  ui_devices: withApiLogging('ui_devices', ({ homey, query }: ApiContext & { query?: unknown }) => (
+    getSettingsUiDevicesPayload({ homey, query })
   )),
-  ui_plan: withApiLogging('ui_plan', ({ homey }: ApiContext) => (
-    getSettingsUiPlanPayload({ homey })
+  ui_plan: withApiLogging('ui_plan', ({ homey, query }: ApiContext & { query?: unknown }) => (
+    getSettingsUiPlanPayload({ homey, query })
   )),
   ui_homes: withApiLogging('ui_homes', ({ homey }: ApiContext) => (
     getSettingsUiHomesPayload({ homey })
@@ -103,8 +111,8 @@ export = {
   ui_homes_save: withApiLogging('ui_homes_save', ({ homey, body }: ApiContext & { body?: unknown }) => (
     saveSettingsUiHomesConfig({ homey, body })
   )),
-  ui_power: withApiLogging('ui_power', ({ homey }: ApiContext) => (
-    getSettingsUiPowerPayload({ homey })
+  ui_power: withApiLogging('ui_power', ({ homey, query }: ApiContext & { query?: unknown }) => (
+    getSettingsUiPowerPayload({ homey, query })
   )),
   ui_prices: withApiLogging('ui_prices', ({ homey }: ApiContext) => (
     getSettingsUiPricesPayload({ homey })

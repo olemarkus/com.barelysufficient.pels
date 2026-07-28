@@ -2,12 +2,14 @@ import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector, type WeatherCollectorDeps } from '../../lib/weather/weatherCollector';
 import type { MetDaySummaryWithCoverage, MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { CONTROLLED_BACKFILL_VERSION } from '../../lib/weather/weatherHistory';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
 const OSLO = 'Europe/Oslo';
 // 2026-01-10T10:00:00Z = 11:00 in Oslo (UTC+1, winter): local dateKey 2026-01-10.
 const START_MS = Date.UTC(2026, 0, 10, 10, 0, 0);
 const HOUR_MS = 60 * 60 * 1000;
+const DEFAULT_METER_SCOPE_SIGNATURE = 'source:homey_energy|main:automatic|areas:active';
 
 type Harness = {
   collector: WeatherCollector;
@@ -18,9 +20,11 @@ type Harness = {
 };
 
 const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness => {
-  // Seed a valid empty state: an absent first read deliberately engages the
-  // 5-minute persistence grace window (covered by its own test below).
-  const persisted: { value: unknown } = { value: { records: [] } };
+  // Seed a valid, already-stamped empty state. Grace/adoption behavior is
+  // covered by tests that replace this value explicitly.
+  const persisted: { value: unknown } = {
+    value: { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE },
+  };
   const store = {
     read: vi.fn(() => persisted.value),
     write: vi.fn((state: WeatherHistoryState) => {
@@ -41,6 +45,16 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
     isManagedDevice: vi.fn(() => false),
     getUnreliablePeriods: vi.fn(() => []),
     getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1' })),
+    // Resolved by default so the pre-existing kWh/backfill specs run inside an
+    // admitted scope; unavailable-read recovery has its own regression below.
+    readMeterScopeSignature: vi.fn(() => DEFAULT_METER_SCOPE_SIGNATURE),
+    // Automatic by default: the open election the pre-existing specs drive.
+    readMainMeterSelection: vi.fn((): MainMeterSelection => ({ state: 'resolved', meterDeviceId: null })),
+    // Homey Energy by default: the meter election the pre-existing specs
+    // drive exists only for that producer; the Flow gate has its own specs.
+    readPowerSource: vi.fn((): ReturnType<WeatherCollectorDeps['readPowerSource']> => (
+      { state: 'resolved', value: 'homey_energy' }
+    )),
     getNowMs: () => Date.now(),
     getTimeZone: () => OSLO,
     logger: logger as unknown as PinoLogger,
@@ -161,6 +175,66 @@ describe('WeatherCollector', () => {
     await vi.advanceTimersByTimeAsync(0);
     collector.stop();
     expect(lastWritten(store).accumulators?.['2026-01-10']?.count).toBe(1);
+  });
+
+  it('retries an unavailable scope read and fences kWh until the live signature resolves', async () => {
+    const readMeterScopeSignature = vi.fn()
+      .mockReturnValueOnce(undefined)
+      .mockReturnValueOnce(undefined)
+      .mockReturnValue('source:homey_energy|main:meter-new');
+    const getDailyKwh = vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 }));
+    const { collector, persisted } = buildHarness({ readMeterScopeSignature, getDailyKwh });
+    persisted.value = {
+      records: [{
+        dateKey: '2026-01-05',
+        kwhTotal: 30,
+        tempMeanC: -5,
+        tempMinC: -8,
+        tempMaxC: -2,
+        tempSampleCount: 20,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
+      }],
+      accumulators: {
+        '2026-01-09': { sumC: -48, count: 24, minC: -5, maxC: 1, lastHourKey: '23' },
+      },
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: 'meter-old',
+      kwhPurgeVersion: 1,
+      controlledBackfillVersion: 2,
+      meterScopeSignature: 'source:homey_energy|main:meter-old',
+    };
+
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    // Boot catch-up may record temperature while scope truth is unavailable,
+    // but it must not read or attach tracker kWh under the old stamp.
+    expect(getDailyKwh).not.toHaveBeenCalled();
+    expect(collector.getHistoryStateSnapshot().records.find(
+      (record) => record.dateKey === '2026-01-09',
+    )?.kwhTotal).toBeUndefined();
+    expect(collector.getHistoryStateSnapshot().records.find(
+      (record) => record.dateKey === '2026-01-05',
+    )?.kwhTotal).toBe(30);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readMeterScopeSignature).toHaveBeenCalledTimes(2);
+    expect(collector.getHistoryStateSnapshot().meterScopeSignature)
+      .toBe('source:homey_energy|main:meter-old');
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readMeterScopeSignature).toHaveBeenCalledTimes(3);
+    expect(collector.getHistoryStateSnapshot()).toMatchObject({
+      meterScopeSignature: 'source:homey_energy|main:meter-new',
+      meterScopeSinceDateKey: '2026-01-10',
+    });
+    expect(collector.getHistoryStateSnapshot().records.every(
+      (record) => record.kwhTotal === undefined && record.quality.missingKwh,
+    )).toBe(true);
+    expect(getDailyKwh).not.toHaveBeenCalled();
+    collector.stop();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('recomputes derived fields after rollups and backfills', async () => {
@@ -447,6 +521,33 @@ describe('WeatherCollector', () => {
     collector.stop();
   });
 
+  it('retries a failed immediate write of an adopted meter-scope stamp', async () => {
+    const { collector, store, persisted } = buildHarness({
+      readDevice: vi.fn(async () => { throw new Error('device unavailable'); }),
+    });
+    persisted.value = {
+      records: [],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      kwhPurgeVersion: 1,
+      controlledBackfillVersion: CONTROLLED_BACKFILL_VERSION,
+    };
+    store.write.mockImplementationOnce(() => {
+      throw new Error('settings write failed');
+    });
+
+    collector.start();
+    expect(store.write).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(store.write).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(store.write).toHaveBeenCalledTimes(2);
+    expect(lastWritten(store).meterScopeSignature).toBe(DEFAULT_METER_SCOPE_SIGNATURE);
+    collector.stop();
+  });
+
   it('backfills from Insights once per device and never overwrites live records', async () => {
     const points = [Date.UTC(2026, 0, 4, 23, 0, 0), Date.UTC(2026, 0, 5, 23, 0, 0)]
       .flatMap(sixHourZeroPoints);
@@ -590,6 +691,74 @@ describe('WeatherCollector', () => {
     expect(trackerDay?.kwhTotal).toBe(40);
     expect(trackerDay?.quality.kwhBackfilled).toBeUndefined();
     expect(recomputeDerived).toHaveBeenCalled();
+  });
+
+  it('retries the meter election after a transiently suspect power-source read', async () => {
+    const readPowerSource = vi.fn()
+      .mockReturnValueOnce({ state: 'suspect' })
+      .mockReturnValue({ state: 'resolved', value: 'homey_energy' });
+    const fetchInsights = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return METER_DEVICES;
+      if (path.includes('meter-1:meter_power.imported')) {
+        return { step: 6 * HOUR_MS, values: meterCounterValues() };
+      }
+      return { step: 6 * HOUR_MS, values: [] };
+    });
+    const { collector, persisted } = buildHarness({
+      readPowerSource,
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
+      fetchInsights,
+    });
+    persisted.value = {
+      records: meterSeededRecords(),
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+    };
+
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchInsights).not.toHaveBeenCalledWith('manager/devices/device');
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readPowerSource).toHaveBeenCalledTimes(2);
+    expect(fetchInsights).toHaveBeenCalledWith('manager/devices/device');
+    expect(collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBe(true);
+    collector.stop();
+  });
+
+  it('retries the meter election after a transiently unavailable Main selection', async () => {
+    const readMainMeterSelection = vi.fn()
+      .mockReturnValueOnce({ state: 'unavailable' })
+      .mockReturnValue({ state: 'resolved', meterDeviceId: 'meter-1' });
+    const fetchInsights = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return METER_DEVICES;
+      if (path.includes('meter-1:meter_power.imported')) {
+        return { step: 6 * HOUR_MS, values: meterCounterValues() };
+      }
+      return { step: 6 * HOUR_MS, values: [] };
+    });
+    const { collector, persisted } = buildHarness({
+      readMainMeterSelection,
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
+      fetchInsights,
+    });
+    persisted.value = {
+      records: meterSeededRecords(),
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+    };
+
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchInsights).not.toHaveBeenCalledWith('manager/devices/device');
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readMainMeterSelection).toHaveBeenCalledTimes(2);
+    expect(fetchInsights).toHaveBeenCalledWith('manager/devices/device');
+    expect(collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBe(true);
+    collector.stop();
   });
 
   it('defers the refit until the meter kWh layer settles — never on the temperature pass alone', async () => {
@@ -911,6 +1080,64 @@ describe('WeatherCollector', () => {
     const oldest = written.records.find((record) => record.dateKey === meterDateKey(0));
     expect(oldest).toMatchObject({ kwhTotal: 40, quality: { missingKwh: false, kwhBackfilled: true } });
     expect(written.meterKwhBackfillDone).toBe(true);
+  });
+
+  it('discards and re-kicks a temperature backfill superseded by a meter-scope reload', async () => {
+    const oldSignature = 'source:homey_energy|main:meter-old';
+    const newSignature = 'source:homey_energy|main:meter-new';
+    const readMeterScopeSignature = vi.fn()
+      .mockReturnValueOnce(oldSignature)
+      .mockReturnValue(newSignature);
+    const temperaturePoints = Array.from({ length: 4 }, (_, index) => ({
+      t: new Date(Date.UTC(2026, 0, 5, index * 6)).toISOString(),
+      v: -5,
+    }));
+    const fetchInsights = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return {};
+      if (path.includes('measure_temperature')) {
+        return { step: 6 * HOUR_MS, values: temperaturePoints };
+      }
+      return { step: 6 * HOUR_MS, values: [] };
+    });
+    const reloadTarget: { collector?: WeatherCollector } = {};
+    let reloaded = false;
+    const getDailyKwh = vi.fn(() => {
+      if (!reloaded) {
+        reloaded = true;
+        // Re-enter through the real reload edge exactly while the OLD
+        // temperature run is joining tracker kWh into its result.
+        reloadTarget.collector?.start();
+      }
+      return { total: 99 };
+    });
+    const { collector, persisted } = buildHarness({
+      fetchInsights,
+      getDailyKwh,
+      readMeterScopeSignature,
+    });
+    reloadTarget.collector = collector;
+    persisted.value = { records: [], meterScopeSignature: oldSignature };
+
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    const state = collector.getHistoryStateSnapshot();
+    const historical = state.records.find((record) => record.dateKey === '2026-01-05');
+    // The old run built a 99 kWh record, but its generation was superseded.
+    // The re-kicked run is fenced by the new scope epoch and therefore lands
+    // the temperature-only record instead.
+    expect(historical).toMatchObject({
+      tempMeanC: -5,
+      quality: { missingKwh: true, backfilled: true },
+    });
+    expect(historical?.kwhTotal).toBeUndefined();
+    expect(state.backfilledDeviceId).toBe('out-1');
+    expect(state.backfillVersion).toBe(2);
+    expect(state.meterScopeSignature).toBe(newSignature);
+    expect(getDailyKwh).toHaveBeenCalledOnce();
+    expect(fetchInsights.mock.calls.filter(([path]) => String(path).includes('measure_temperature')))
+      .toHaveLength(8);
+    collector.stop();
   });
 
   it('applies a partial meter run but keeps the marker unset for retry', async () => {

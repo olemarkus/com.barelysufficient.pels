@@ -63,8 +63,11 @@ describe('buildMainHomeScope', () => {
 
   // R7b Cluster A+B: the policy stragglers and UI/side-effect singletons the
   // factories used to read straight off `ctx` are now scope members — the main
-  // home binds them to the IDENTICAL live ctx reads (byte-identical), while a
-  // sub-home scope binds neutral constants (proven in the bundle e2e/integration).
+  // home binds them to the IDENTICAL live ctx reads (byte-identical). A sub-home
+  // scope neutralizes the PRICE/BUDGET/UI members, but binds the operating mode
+  // and mode targets live like main does: the mode target is the restore anchor,
+  // and neutralizing it left an area temperature device shed forever (covered in
+  // test/e2e/homeCapacityBundlesSdkE2E.test.ts).
   it('binds the R7b policy stragglers to live ctx reads (byte-identical main)', () => {
     const priceOpt = { 'device-1': { enabled: true, cheapDelta: 1, expensiveDelta: 2 } as never };
     const ctx = createAppContextMock({ priceOptimizationSettings: priceOpt });

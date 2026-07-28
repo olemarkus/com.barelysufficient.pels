@@ -2057,7 +2057,9 @@ describe('Device plan snapshot', () => {
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
     await (app as any).powerSamplePipeline.recordPowerSample(600000); // 600kW definitely exceeds threshold
     // Shortfall is now detected by Plan calling checkShortfall() - no need for tick()
-    expect(triggerSpy).toHaveBeenCalled();
+    // The payload names the home: this app is the Main home, and every home
+    // fires the same global card.
+    expect(triggerSpy).toHaveBeenCalledWith({ home: 'Main home' });
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
   });

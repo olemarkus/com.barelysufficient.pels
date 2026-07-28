@@ -620,17 +620,18 @@ export default tseslint.config(
   {
     // app.ts is the central Homey app-lifecycle/service-wiring entrypoint: it owns the
     // app class that constructs and connects every runtime service. The boot/teardown
-    // orchestration and per-service construction now live in `setup/appServiceWiring.ts`;
-    // app.ts keeps slim `onInit`/`onUninit` plus the thin `init*` delegators the
-    // integration-test boot helper calls directly. What remains is irreducible without
-    // breaking documented test seams: the field/helper declarations, the ~60 thin
-    // AppContext/PelsWidgetHostApi delegators, and the smart-task widget API surface.
-    // Ceiling just above current. Target: <=500 needs the smart-task/deferred-objective
-    // API cluster and the per-domain delegator surface extracted next (TODO "Continue
-    // thinning app.ts ...").
+    // orchestration and per-service construction live in `setup/appServiceWiring.ts`,
+    // the smart-task/deferred-objective cluster in `setup/appSmartTaskApi.ts` +
+    // `setup/appSmartTaskPayloads.ts`, and the rebuild-intent policy in
+    // `setup/planRebuildIntentPolicy.ts`; app.ts keeps slim `onInit`/`onUninit` plus the
+    // thin `init*` delegators the integration-test boot helper calls directly. What
+    // remains is irreducible without breaking documented test seams: the field/helper
+    // declarations and the ~70 thin AppContext/PelsWidgetHostApi delegators.
+    // Ceiling just above current. Target: <=500 needs the per-domain delegator surface
+    // extracted next (TODO "Continue thinning app.ts ...").
     files: ['app.ts'],
     rules: {
-      'max-lines': ['warn', { max: 1110, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 950, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -699,18 +700,6 @@ export default tseslint.config(
     plugins: { 'import-x': importX },
     rules: {
       'import-x/max-dependencies': ['error', { max: 50, ignoreTypeImports: true }],
-    },
-  },
-  // setup/appServiceWiring.ts is the service-construction half of the composition
-  // root (PR8 moved the `new Service(...)`/`createService(...)` calls here out of
-  // app.ts). Its value-import fan-in is the set of service constructors it wires,
-  // inherently high and not type-only-reducible. The second principled override;
-  // splitting it further would only fragment the boot graph and launder the count.
-  {
-    files: ['setup/appServiceWiring.ts'],
-    plugins: { 'import-x': importX },
-    rules: {
-      'import-x/max-dependencies': ['error', { max: 30, ignoreTypeImports: true }],
     },
   },
 );

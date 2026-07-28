@@ -11,6 +11,7 @@ import {
   homeScopedSettingsKey,
   isHomeScopableBaseKey,
   MAIN_HOME_ID,
+  OPERATING_MODE_SETTING,
   parseHomeScopedSettingsKey,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
@@ -36,6 +37,7 @@ describe('parseHomeScopedSettingsKey', () => {
     CAPACITY_MARGIN_KW,
     CAPACITY_DRY_RUN,
     POWER_TRACKER_STATE,
+    OPERATING_MODE_SETTING,
   ];
 
   it.each(scopableBases)('round-trips %s through homeScopedSettingsKey for a non-main home', (baseKey) => {
@@ -93,10 +95,18 @@ describe('parseHomeScopedSettingsKey', () => {
 
 describe('isHomeScopableBaseKey', () => {
   it('accepts exactly the home-scopable base keys', () => {
-    for (const baseKey of [CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN, POWER_TRACKER_STATE]) {
+    const scopable = [
+      CAPACITY_LIMIT_KW,
+      CAPACITY_MARGIN_KW,
+      CAPACITY_DRY_RUN,
+      POWER_TRACKER_STATE,
+      OPERATING_MODE_SETTING,
+    ];
+    for (const baseKey of scopable) {
       expect(isHomeScopableBaseKey(baseKey)).toBe(true);
     }
     expect(isHomeScopableBaseKey('daily_budget_kwh')).toBe(false);
     expect(isHomeScopableBaseKey(`${CAPACITY_LIMIT_KW}:cabin`)).toBe(false);
+    expect(isHomeScopableBaseKey(`${OPERATING_MODE_SETTING}:cabin`)).toBe(false);
   });
 });

@@ -63,6 +63,12 @@ export type PlanEngineDeps = {
   // executor uses it solely for the `capacity_shortfall` flow trigger card.
   // Settings persistence goes through the typed writers below, never here.
   homey: HomeyRuntime & { flow: FlowPort };
+  // Producer-resolved name of the home this engine serves, forwarded untouched
+  // to the executor as the `capacity_shortfall` trigger's `home` token (the
+  // card is global; every home fires the same one).
+  getHomeDisplayName: PlanExecutorDeps['getHomeDisplayName'];
+  // Stable id of the same home, forwarded for structured-log correlation.
+  homeId: PlanExecutorDeps['homeId'];
   // --- Persisted-signal writers (setup wires both to `homey.settings.set`).
   // `setCapacityInShortfall` publishes the shortfall ("panic") flag to the
   // `capacity_in_shortfall` setting; its consumer is the `pels_insights`
@@ -124,6 +130,9 @@ export type PlanEngineDeps = {
   // and clears `hourlyBudgetExhausted` instead of deriving the soft limit
   // from the capacity budget.
   getDynamicSoftLimitOverride?: () => number | null;
+  // Producer-resolved per-home posture: hold a mode-target RAISE while this
+  // home's own power reading is unknown. Absent = no hold (the main home).
+  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   // --- Actuation feedback callbacks: routes from the executor back up into
   // the app/service layer after a write, so the published plan snapshot and
   // retry logging reflect actuation without waiting for a full rebuild.
@@ -206,6 +215,7 @@ export class PlanEngine {
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
+      holdsModeTargetRaisesWhilePowerUnknown: deps.holdsModeTargetRaisesWhilePowerUnknown,
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
@@ -217,6 +227,8 @@ export class PlanEngine {
 
     const executorDeps: PlanExecutorDeps = {
       homey: deps.homey,
+      getHomeDisplayName: deps.getHomeDisplayName,
+      homeId: deps.homeId,
       setCapacityInShortfall: deps.setCapacityInShortfall,
       persistLastControlledMs: deps.persistLastControlledMs,
       deviceManager: deps.deviceManager,

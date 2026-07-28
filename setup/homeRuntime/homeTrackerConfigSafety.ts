@@ -16,7 +16,10 @@ import {
   beginPersistedHomeTrackerFreshnessResetInSettings,
 } from './resetPersistedHomeTrackerFreshness';
 
-type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
+type AreaMutationRequest = Exclude<
+SettingsUiHomesSaveRequest,
+{ op: 'set_main_meter' } | { op: 'set_power_source' }
+>;
 
 type HomeTrackerConfigSafetyFailure =
   | {
@@ -39,7 +42,8 @@ type ApiLoggerProvider = {
   getApiStructuredLogger(): PinoLogger | undefined;
 };
 
-const resolveApiLoggerProvider = (value: unknown): ApiLoggerProvider | null => {
+/** Shape-guarded access to the app's structured API logger; `null` when unwired. */
+export const resolveApiLoggerProvider = (value: unknown): ApiLoggerProvider | null => {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Partial<ApiLoggerProvider>;
   return typeof candidate.getApiStructuredLogger === 'function'

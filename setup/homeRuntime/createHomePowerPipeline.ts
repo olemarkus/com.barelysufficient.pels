@@ -23,7 +23,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import type { HomeId } from '../../lib/utils/settingsKeys';
+import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { filterDevicesForHome } from '../homeMembership';
 import { PowerSamplePipeline } from '../powerSamplePipeline';
 
@@ -89,5 +89,23 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,
     recordPvGenerationSample: deps.recordPvGenerationSample,
     recordCurtailmentSample: deps.recordCurtailmentSample,
+    // Main home only: the sampled whole-home meter identity feeds membership's
+    // ownership fence, and only Main's samples carry one. Sub-home pipelines
+    // never receive identity-carrying options (their `recordMeterSample` route
+    // passes bare watts), so this is defence in depth on top of that. Lazy over
+    // ctx: membership is wired after the pipeline.
+    ...(deps.homeId === MAIN_HOME_ID
+      ? {
+        noteResolvedHomeMeter: (deviceId: string | null, sampleAtMs: number) => (
+          ctx.homeMembership?.noteResolvedHomeMeter(deviceId, sampleAtMs)
+        ),
+        // Same admitted ingest, same latch rules (`unproven` never overwrites):
+        // the arrangement is the config surface's evidence for the id-less
+        // whole-home-aggregate refusal, so it must ride the identical clock.
+        noteHomeMeterArrangement: (observation, _sampleAtMs) => (
+          ctx.homeMembership?.noteHomeMeterArrangement(observation)
+        ),
+      }
+      : {}),
   });
 }

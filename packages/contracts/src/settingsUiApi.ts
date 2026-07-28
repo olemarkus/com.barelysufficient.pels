@@ -28,6 +28,37 @@ export type HomeyEnergyMeterEntry = { id: string; name: string };
 export const SETTINGS_UI_PLAN_PATH = '/ui_plan';
 export const SETTINGS_UI_POWER_PATH = '/ui_power';
 export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
+
+/**
+ * Query parameter naming ONE sub-home on `ui_plan` / `ui_power` / `ui_devices`
+ * (multi-home). Absent = the historical whole-home / main-home read, whose URI
+ * and payload stay byte-identical: `?homeId=main` is never produced, and the
+ * runtime boundary REFUSES it if a client sends it anyway.
+ *
+ * Runtime mirror: the boundary parser (`setup/settingsUiHomeScope.ts`) reads
+ * `query.homeId` as a literal, because `packages/contracts` is types-only at
+ * runtime — the sanitize step drops it from the shipped bundle, so a VALUE
+ * import from the runtime backend crashes boot. Keep the two in sync.
+ */
+export const SETTINGS_UI_HOME_ID_QUERY_PARAM = 'homeId';
+
+/**
+ * Producer-resolved home scope of a settings-UI read model — the complete
+ * classification of a `?homeId=` request, so no consumer re-derives it.
+ *
+ * ABSENT on an unscoped read: the payload is then byte-identical to the
+ * pre-multi-home shape, which is what keeps a single-home install (and every
+ * whole-home surface) on exactly the response it has always had.
+ *
+ * `unavailable` folds every non-serving case the producer knows about — a
+ * malformed or refused id, an unknown sub-home, and a home whose runtime is not
+ * (or no longer) wired. Render it as "no data for this home"; never substitute
+ * another home's values, and never read the flat payload fields as if they were
+ * that home's real state (they are the empty shape, not measurements).
+ */
+export type SettingsUiHomeScope =
+  | { readonly state: 'resolved'; readonly homeId: string }
+  | { readonly state: 'unavailable' };
 export const SETTINGS_UI_REFRESH_DEVICES_PATH = '/ui_refresh_devices';
 export const SETTINGS_UI_REFRESH_PRICES_PATH = '/ui_refresh_prices';
 export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
@@ -217,6 +248,10 @@ export type SettingsUiPlanSnapshot = {
 
 export type SettingsUiPlanPayload = {
   plan: SettingsUiPlanSnapshot | null;
+  // Present only on a `?homeId=` read; absent keeps the whole-home payload
+  // byte-identical. `unavailable` means `plan: null` carries NO information
+  // about that home — it is the empty shape, not "this home has no plan".
+  homeScope?: SettingsUiHomeScope;
 };
 
 export type SettingsUiDevicesPayload = {
@@ -237,13 +272,21 @@ export type SettingsUiDevicesPayload = {
   // this home-level flag is the only signal the settings UI has that solar exists — it
   // gates the per-device "Use solar surplus" control, which is otherwise meaningless
   // (and misleading) in a home that does not export.
-  hasManagedSolarDevice: boolean;
+  // Optional (with hasExhibitedExport below) for one reason: an `unavailable`
+  // scoped read OMITS both flags rather than fabricating `false` — absence, not
+  // a measurement. Every whole-home and resolved scoped payload carries them.
+  hasManagedSolarDevice?: boolean;
   // True when the home has exhibited material accumulated grid export (a stable
   // export-kWh signal), even without a role-detected solar device — the meter-only PV
   // case (string inverter, no Homey solarpanel device). Broadens the "Use solar surplus"
   // toggle gate so such homes, whose surplus-absorb engine already works off whole-home
   // net export, also get the control. Always false on the flow power source.
-  hasExhibitedExport: boolean;
+  hasExhibitedExport?: boolean;
+  // Present only on a `?homeId=` read; absent keeps the whole-home payload
+  // byte-identical. `unavailable` means the empty `devices: []` is the empty
+  // shape, NOT "this home manages nothing" (the two solar flags are then
+  // omitted for the same reason).
+  homeScope?: SettingsUiHomeScope;
 };
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {
@@ -293,6 +336,19 @@ export type SettingsUiPowerPayload = {
   tracker: PowerTrackerState | null;
   status: SettingsUiPowerStatus | null;
   heartbeat: number | null;
+  // Runtime-authoritative Main-home simulation posture. The persisted
+  // `capacity_dry_run` key may be absent while the running app deliberately
+  // retains its last-good value, so a freshly opened WebView must not infer a
+  // boot default from settings absence. Present only on whole-home reads;
+  // scoped reads get their effective posture from the scoped status blob.
+  mainDryRunEffective?: boolean;
+  // Runtime-authoritative Main-home capacity scalars. Like dry-run above, the
+  // running adapter retains these values when a persisted key is absent or
+  // malformed; a WebView reload must render and preserve the same values.
+  mainCapacityScalars?: {
+    limitKw: number;
+    marginKw: number;
+  };
   // Home-level "this home has solar surfaces" gate for the Usage tab's Solar
   // card (which cannot read the lazy-loaded devices payload). True only when
   // a tracked solar/PV device exists AND the power source is homey_energy —
@@ -302,6 +358,10 @@ export type SettingsUiPowerPayload = {
   // pushes don't carry it — consumers treat absence as false and fall back to
   // the recorded solar buckets.
   hasManagedSolarDevice?: boolean;
+  // Present only on a `?homeId=` read; absent keeps the whole-home payload
+  // byte-identical (realtime pushes never carry it either). `unavailable` means
+  // `tracker: null` / `status: null` are the empty shape, NOT a measured idle.
+  homeScope?: SettingsUiHomeScope;
 };
 
 export type SettingsUiPricesPayload = {

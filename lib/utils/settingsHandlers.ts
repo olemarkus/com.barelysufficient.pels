@@ -145,6 +145,16 @@ export type SettingsHandlerDeps = {
    * still self-reconciles on the next suffixed-write dirty-mark.
    */
   reconcileHomeRuntimes?: () => void;
+  /**
+   * Fan a global `operating_mode` / `mode_device_targets` / `mode_aliases` /
+   * `capacity_priorities` write to every live sub-home plan. The bundles read
+   * those settings through live closures, but
+   * nothing re-RUNS their planners on the write — and an area whose meter is
+   * silent gets no power-driven rebuilds, so without this hook a mode change
+   * (e.g. a cooler-mode lowering) could stay unapplied indefinitely. Optional:
+   * absent in single-home wiring and tests.
+   */
+  rebuildHomeRuntimePlansForModeChange?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -311,10 +321,28 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
   return {
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
-    mode_aliases: async () => deps.loadCapacitySettings(),
+    mode_aliases: async () => {
+      deps.loadCapacitySettings();
+      // An alias remap changes what a pinned `operating_mode:<homeId>`
+      // resolves to. The rename flow writes `mode_device_targets` BEFORE
+      // `mode_aliases` (packages/settings-ui/src/ui/modes.ts renameMode), so
+      // the fan-out that ran on the targets write saw the old pinned name
+      // without a targets record and fell back to the global mode — only this
+      // write restores the pin, and an area whose meter is silent gets no
+      // power-driven rebuild to self-heal. Same fan-out as the mode keys above.
+      deps.rebuildHomeRuntimePlansForModeChange?.();
+    },
     capacity_priorities: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_priorities');
+      // Priorities are ranked per MODE, and a sub-home resolves them through
+      // its own effective mode (the accessor's `getPriorityForDevice`), so a
+      // reorder changes a pinned area's shedding order too. The bundles read
+      // the reloaded blob through live closures, but nothing re-RUNS their
+      // planners on this write — and an area whose meter is silent gets no
+      // power-driven rebuild — so without this fan-out the previous order
+      // would stick indefinitely. Same fan-out as the mode keys above.
+      deps.rebuildHomeRuntimePlansForModeChange?.();
     },
     [CONTROLLABLE_DEVICES]: async () => {
       deps.loadCapacitySettings();
@@ -386,6 +414,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'overshoot_behavior_change');
       await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
+      // The global behavior map is also read by every sub-home plan. This is
+      // especially important when a deferred temperature-only-device seed
+      // finally succeeds: a silent/Flow-backed area may have no later meter
+      // event to replace its previously committed turn_off default.
+      deps.rebuildHomeRuntimePlansForModeChange?.();
     },
     refresh_target_devices_snapshot: async () => {
       await refreshSnapshotWithLog(deps, 'manual_snapshot_refresh');
@@ -472,6 +505,11 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     [HOMES_CONFIG]: async () => {
       deps.recomputeHomeMembership?.();
       deps.reconcileHomeRuntimes?.();
+      // The active area-meter roster may have changed: restart the weather
+      // collector so its start()-time meter-scope reconcile can invalidate the
+      // learned energy signature (`lib/weather/weatherCollector.ts`). A
+      // scope-neutral write (rename, zone move) restarts but forgets nothing.
+      deps.reloadWeatherAdvisor?.();
     },
     [DEVICE_HOME_ASSIGNMENTS]: async () => {
       deps.recomputeHomeMembership?.();
@@ -523,6 +561,9 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
     });
     await rebuildPlanFromSettings(deps, 'mode_targets_fallback');
   }
+  // After the snapshot refresh (bundles read the same `latestTargetSnapshot`),
+  // so a sub-home's rebuild sees fresh device state alongside the new targets.
+  deps.rebuildHomeRuntimePlansForModeChange?.();
 }
 
 async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<void> {
@@ -547,6 +588,10 @@ async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<
   // but restart's immediate pollNow() surfaces the new meter's reading within
   // seconds instead of up to 10s. No-ops unless the source is homey_energy.
   deps.restartHomeyEnergyPoll?.();
+  // Main's measured scope changed with its meter: restart the weather
+  // collector so its start()-time meter-scope reconcile can invalidate the
+  // learned energy signature (`lib/weather/weatherCollector.ts`).
+  deps.reloadWeatherAdvisor?.();
   await rebuildPlanFromSettings(deps, 'homey_energy_meter');
 }
 
@@ -556,6 +601,12 @@ async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void>
   deps.restartHomeyEnergyPoll?.();
   deps.stopFlowPowerSampleFreshnessClock?.();
   deps.syncFlowPowerSampleFreshnessClock?.();
+  // Flow and Homey Energy are different producers of the power-tracker
+  // history the weather insight's kWh layer consumes, so the source is part
+  // of the meter-scope fingerprint: restart the collector so its start()-time
+  // reconcile can invalidate the learned energy signature
+  // (`lib/weather/weatherCollector.ts`).
+  deps.reloadWeatherAdvisor?.();
   await refreshSnapshotWithLog(deps, 'power_source_change');
   await rebuildPlanFromSettings(deps, 'power_source');
 }

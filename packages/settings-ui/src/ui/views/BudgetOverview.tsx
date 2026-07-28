@@ -161,6 +161,10 @@ export type BudgetOverviewProps = {
   // Hidden weather-insight surface; null (flag off) renders no weather DOM at
   // all — structural absence, not CSS hiding.
   weatherInsight: WeatherInsightCardData | null;
+  // Honest scope line under the header once meter areas are in use (multi-home
+  // locked decision 3: the daily budget is the MAIN home's). `null` (the
+  // single-meter home) renders no scope DOM at all.
+  mainHomeScopeLine: string | null;
   // Where the Done button leads from the Adjust view; 'settings' when the
   // session was opened from the Settings tab's "Daily budget" row.
   adjustReturnTarget: 'plan' | 'settings';
@@ -1235,6 +1239,7 @@ const BudgetOverviewRoot = ({
   allocationWarning,
   priceLevelChip,
   weatherInsight,
+  mainHomeScopeLine,
   adjustReturnTarget,
   onReturnToSettings,
   onShowUsage,
@@ -1260,6 +1265,14 @@ const BudgetOverviewRoot = ({
       onLocalViewChange={onLocalViewChange}
       onReturnToSettings={onReturnToSettings}
     />
+    {/* Rendered in every local view — the Adjust and Weather sub-views edit
+        and read the same Main-home budget, so the scope claim covers them
+        equally. */}
+    {mainHomeScopeLine !== null && (
+      <p class="pels-text-supporting muted budget-home-scope-line" id="budget-home-scope-line">
+        {mainHomeScopeLine}
+      </p>
+    )}
     {localView === 'plan' && (
       <div class="budget-redesign-view">
         <ToggleGroup

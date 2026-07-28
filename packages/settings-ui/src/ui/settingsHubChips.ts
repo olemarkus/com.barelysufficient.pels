@@ -8,7 +8,8 @@ import {
   type SettingsUiPowerPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { DAILY_BUDGET_ENABLED } from '../../../contracts/src/settingsKeys.ts';
-import { isPriceFeedAwaiting } from '../../../shared-domain/src/settingsHubChips.ts';
+import { isPriceFeedAwaiting, resolveSimulationChipLabel } from '../../../shared-domain/src/settingsHubChips.ts';
+import { resolveSimulationPosture } from '../../../shared-domain/src/simulationPosture.ts';
 import { getApiReadModel, getSetting } from './homey.ts';
 import { state } from './state.ts';
 
@@ -37,11 +38,27 @@ const readPricesChipHidden = async (): Promise<boolean> => {
 // sequence is re-checked AFTER the awaits so a stale slow read can never
 // flip `hidden` after a fresher sync already committed (checking only before
 // the await would leave that window open).
+// The Simulation chip renders the AGGREGATE posture across Main and the
+// active meter areas (`On` = everything simulates, `Partly on` = split) —
+// both inputs are state maintained by `loadCapacitySettings` / the capacity
+// posture refresh, so this stays a synchronous DOM sync. An area flag with no
+// resolved value this session passes through as `null`; the shared resolver
+// degrades the posture to the cautious `mixed` (`Partly on`) rather than
+// letting the known flags claim either absolute.
+const syncSimulationChip = (): void => {
+  const chip = document.getElementById('settings-nav-chip-simulation');
+  if (!chip) return;
+  const label = resolveSimulationChipLabel(resolveSimulationPosture({
+    mainSimulating: state.dryRun,
+    areaSimulating: state.meterAreaSimulation.map((area) => area.simulating),
+  }));
+  chip.hidden = label === null;
+  if (label !== null) chip.textContent = label;
+};
+
 let syncSequence = 0;
 export const syncSettingsHubChips = (): void => {
-  // Simulation syncs synchronously off `state.dryRun` (already maintained by
-  // `loadCapacitySettings` / the save path) — no async window to guard.
-  setChipHidden('settings-nav-chip-simulation', state.dryRun !== true);
+  syncSimulationChip();
 
   syncSequence += 1;
   const sequence = syncSequence;

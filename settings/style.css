@@ -1697,6 +1697,31 @@ md-filled-button.is-busy {
   color: var(--text);
 }
 
+/* Meter-area home badge on the Devices and Modes rows — a bounded-width layer
+   over the outline chip, not a second chip primitive. An area name is
+   unbounded user input (a real one: "Leilighet i underetasjen"), and
+   `.plan-chip` is `white-space: nowrap`, so an unclamped badge pushes the row
+   past a 320 px viewport. `display: inline-block` replaces the primitive's
+   `inline-flex` because `text-overflow: ellipsis` needs a block container —
+   inside a flex container the label sits in an anonymous flex item and the
+   ellipsis never applies. The full name stays reachable in the chip's
+   tooltip (touch-triggered in the Homey WebView), so nothing is lost. */
+.pels-home-badge {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  max-inline-size: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The priority row's name cell is an inline-flex that now holds the device
+   name AND (once meter areas are in use) its home badge. Give the name span a
+   shrink floor so it wraps rather than pushing the badge out of the row. */
+.mode-row__name-text {
+  min-inline-size: 0;
+}
+
 .plan-chip--link {
   /* `--link` is the only tappable chip modifier — every other tonal
      variant is an informational pill. Enforce the M3 48 px touch-target
@@ -4595,18 +4620,31 @@ md-filled-button.is-busy {
    neutral surface + neutral hairline on three sides + a 4px role-coloured
    left state-rail. The notice text itself is already role-toned, so the rail
    completes the status read without a full role-coloured edge or tint. */
+/* Railed info-notice primitive, generalized from the price surface exactly as
+   `.pels-notice-warning` was from `.price-notice-warning`: the left info rail
+   + contained surface carry the signal, so `.pels-notice-info` keeps body text
+   in the normal tone; the original `.price-notice-info` alias retains its
+   info-toned text + bottom margin for the existing price surfaces. */
+.pels-notice-info,
 .price-notice-info {
-  color: var(--color-state-info-text);
   font-style: normal;
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
-  margin-bottom: var(--spacing-3);
   background: var(--pels-surface-container-low);
   border-width: 1px 1px 1px var(--spacing-1);
   border-style: solid;
   border-color: var(--color-border-default) var(--color-border-default)
     var(--color-border-default) var(--color-state-info-border);
   border-radius: var(--radius-md);
+}
+
+.pels-notice-info {
+  color: var(--text);
+}
+
+.price-notice-info {
+  color: var(--color-state-info-text);
+  margin-bottom: var(--spacing-3);
 }
 
 /* Railed warning-notice primitive: the left warning rail + contained surface
@@ -5476,6 +5514,13 @@ details[open] > summary .disclosure-chevron {
 .budget-redesign-view {
   display: grid;
   gap: var(--spacing-3);
+}
+
+/* Honest Main-home scope line under the Budget header (multi-home): quiet
+   supporting text on the page background, spaced as its own row between the
+   header and whichever local view renders below. */
+.budget-home-scope-line {
+  margin: var(--spacing-2) 0 var(--spacing-3);
 }
 
 /* Budget page header now consumes the shared `.plan-hero` / `.pels-hero`
@@ -7307,6 +7352,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin-bottom: var(--spacing-3);
 }
 
+/* Honest Main-only notice under the Smart tasks header (multi-home): rides
+   the shared `.pels-notice-info` primitive, spaced as its own row between
+   the hero and the task cards (or the Past tasks archive when empty). */
+.deadlines-home-scope-notice {
+  margin-bottom: var(--spacing-3);
+}
+
+/* Honest scope note on the Simulation-mode settings page (multi-home):
+   spaced below the Main home's switch card it qualifies. */
+.simulation-home-scope-note {
+  margin-top: var(--spacing-3);
+}
+
 /* Hero subline affordance: when the subline names a specific card, the
  * subline wraps in this button so the user can scroll the named card into
  * view. Flat dark-theme treatment — the subline reads as ordinary
@@ -8029,6 +8087,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: none;
 }
 
+/* Per-home Usage honest state (multi-home): while the selected part of the
+ * home cannot be served (`homeScope: unavailable`), the data sections hide and
+ * the `#usage-scope-unavailable` notice card is the only content — zeros would
+ * read as that home's measurements. Mirrors the `data-loading` contract above;
+ * `power.ts` stamps `data-scope-read` on every stats render. */
+#usage-panel[data-scope-read="unavailable"] > .usage-return-link,
+#usage-panel[data-scope-read="unavailable"] > .usage-hero,
+#usage-panel[data-scope-read="unavailable"] > .usage-card:not(.usage-scope-unavailable),
+#usage-panel[data-scope-read="unavailable"] > .solar-usage-mount,
+#usage-panel[data-scope-read="unavailable"] > .usage-footer {
+  display: none;
+}
+
 /* ---------------------------------------------------------------------------
  * Usage tab — Solar card (display-only rows; see views/SolarUsageCard.tsx)
  *
@@ -8535,10 +8606,15 @@ md-switch {
  * breaks at word boundaries and only falls back to mid-word when no
  * opportunity exists — matches the segmented control's wrap strategy and
  * avoids awkward mid-glyph splits when a space or hyphen is available. */
+/* The cell also carries the meter-area home badge once areas are in use, so it
+ * wraps onto a second line rather than squeezing the name and the badge into
+ * one. Single-home installs render no badge and see no change. */
 #modes-panel .mode-row .device-row__name {
   white-space: normal;
   overflow-wrap: break-word;
   text-overflow: clip;
+  flex-wrap: wrap;
+  row-gap: var(--spacing-1);
 }
 
 #modes-panel .mode-row:last-child {
@@ -9150,13 +9226,116 @@ md-switch {
   justify-self: start;
 }
 
-/* Per-home Limits & safety surface (multi-home U3): the switcher + meter-area
-   editor stacked above the static Main-home form. Mirrors the .homes-settings
-   grid-stack rhythm so the two multi-home surfaces read as one system. */
+/* ── Global home scope bar (multi-home) ────────────────────────────────────
+   Shell chrome below the global banners: it names which part of the home the
+   page is about. A supporting `Showing` label plus a content-sized Material
+   menu button — chrome, not a form field, so it does not wear the filled-field
+   costume that out-ranked the tab strip beside it. One row exactly one touch
+   target tall, no card padding, so the bar costs the shell nothing more than
+   that.
+
+   STICKY, because the scope must hold at every scroll position: the panel runs
+   well past the fold, and a bar that scrolls away leaves the page silently
+   unscoped exactly where a wrong edit costs most. The alternative — restating
+   the home in the panel's own title — was measured and rejected: the app bar is
+   not sticky either, so the title left the viewport ~51 px of scroll after the
+   bar at 320 px and never scrolled at all at 480 px.
+
+   The background is the page's own, so content passing underneath is covered
+   without the bar reading as a card; the block padding plus its negating margin
+   widen only the painted area, never the layout. `z-index` sits below the toast
+   (20) and the modal layer (1000), above ordinary panel content.
+
+   The mount ships `hidden`: `display: none` neutralises every rule here, so a
+   home with no meter areas keeps a pixel-identical shell. */
+#home-scope-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
+  padding-block: var(--spacing-2);
+  margin-block: calc(-1 * var(--spacing-2));
+}
+
+.scope-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-height: var(--pels-touch-target-min);
+}
+
+/* Supporting role, not a field label: the home name is the loud element and
+   `Showing` only introduces it, so it must not compete with the `Hard cap` /
+   `Safety margin` labels a row below. Uses the repo's supporting type role
+   rather than a raw font-size primitive. */
+.scope-bar__label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+}
+
+/* Positioning context for the menu, and the flex item that may shrink. */
+.scope-bar__anchor {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+/* Content-sized: the button is as wide as the home it names, so a real
+   Norwegian area name ("Leilighet i underetasjen") renders in full at 320 px
+   instead of truncating, and 480 px gains no dead field. `max-width` is the
+   only bound — a pathological name shrinks the label rather than pushing the
+   row off-screen. A real container colour puts it one tier ABOVE the page and
+   with the nav/cards, so the control that governs the whole page is not the
+   quietest thing on screen: page -> chip -> nav/cards -> menu. Focus is left to
+   Material's own `md-focus-ring`; a manual outline here would draw a second
+   concentric ring (no `md-*` element in this stylesheet does that). */
+.scope-bar__chip {
+  min-width: 0;
+  max-width: 100%;
+  /* The Homey host stylesheet applies `* { padding: 0 }`, which outranks
+     Material's `:host` leading/trailing padding — without this the label
+     collapses against the state-layer edge and the caret spacing goes
+     asymmetric on-device. Same restoration the `.homes-settings` buttons and
+     `.banner__action` already carry. */
+  padding-inline: var(--spacing-4);
+  --md-filled-tonal-button-container-color: var(--pels-surface-container-low);
+  --md-filled-tonal-button-label-text-color: var(--text);
+  --md-filled-tonal-button-container-shape: var(--radius-md);
+  --md-filled-tonal-button-container-height: var(--pels-touch-target-min);
+}
+
+/* The menu is Material's own surface, so it follows the app's dark scheme
+   rather than the `light dark` the document advertises. It is bounded like the
+   button: the menu is where a truncated name has to stay readable, so it must
+   not be the one unbounded element in the row. The selected row needs a tier
+   ABOVE its own container — Material's default resolves through
+   `secondary-container`, which this app maps to an untinted grey, so the active
+   scope would read as a dent instead of a highlight. */
+.scope-bar__menu {
+  color-scheme: dark;
+  max-width: calc(100vw - 2 * var(--spacing-4));
+  --md-menu-container-color: var(--pels-surface-container-high);
+  --md-menu-item-selected-container-color: var(--pels-surface-container-highest);
+}
+
+/* Per-home Limits & safety surface (multi-home U3): the meter-area editor
+   stacked above the static Main-home form (which home is selected comes from
+   the scope bar above). Mirrors the .homes-settings grid-stack rhythm so the
+   two multi-home surfaces read as one system.
+
+   The area's name is user-authored, unbounded, and interpolated in several
+   places here (status heading, simulation notice, inactive notice). A single
+   long unbroken word would otherwise set the min-content width of the whole
+   panel and push it past 320 px, so breaking inside a word is permitted
+   throughout this block — it is inherited, which is exactly the point. */
 .home-limits {
   display: grid;
   gap: var(--spacing-3);
   margin-bottom: var(--spacing-4);
+  overflow-wrap: anywhere;
 }
 
 .home-limits__fields {
@@ -9174,7 +9353,11 @@ md-switch {
   margin: 0;
 }
 
-/* Title + posture chip on one baseline-shared row. */
+/* Title + posture chip on one baseline-shared row. The title carries a scoped
+   home name, and area names are user-authored with no maximum length, so the
+   heading must be allowed to shrink and to break inside an unbroken word —
+   otherwise its min-content width forces the card to overflow at 320 px. The
+   chip keeps its intrinsic size; it is the heading that yields. */
 .home-limits__status-head {
   display: flex;
   align-items: center;
@@ -9184,9 +9367,21 @@ md-switch {
 
 .home-limits__status-head h3 {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.home-limits__status-head .plan-chip {
+  flex: 0 0 auto;
 }
 
 .home-limits__status-line {
+  margin: 0;
+}
+
+/* Accounts for the app-global settings card hidden while an area is selected.
+   Carded like its siblings; the paragraph inside carries no margin of its own. */
+.home-limits__global-note p {
   margin: 0;
 }
 

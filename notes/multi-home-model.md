@@ -4,8 +4,12 @@ The home model that underpins the user-facing **Multiple meters** feature: one
 Homey Pro, several whole-home meters, each metering a distinct part of the home
 (a rental unit, an annex, a cabin). This note is the contributor-facing
 invariants record for the whole v1 train (R1–R8 + R7b per-home bundles + U1/U3
-UI). The feature is now generally available; the hidden `multi_home_enabled`
-release flag that formerly gated it has been removed. For the first
+UI) **and the 2026-07 finishing train** (sampled-meter identity fence, config
+invariants, per-home read seam, the global scope bar, per-home Overview/Usage,
+home badges, runtime mode pinning, Flow/area mutual exclusion, the aggregate
+simulation posture, and the honest scope states). The feature is now generally
+available; the hidden `multi_home_enabled` release flag that formerly gated it
+has been removed. For the first
 behavior-affecting slice — main becoming the membership complement — see
 [multi-home-complement](multi-home-complement.md);
 for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
@@ -23,8 +27,20 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   re-pairing, and it later doubles as a home-device `data.id`. **No `:` is
   allowed in an id** because `:` is the settings-key suffix separator (below).
 - An explicit meter device id has **exactly one owner across the Main home and
-  every meter area**. Main's `null`/Automatic combined-total fallback is not an
-  explicit identity and remains allowed. Both ownership mutations share the
+  every meter area**. Main's `null`/Automatic fallback is not an explicit identity
+  and remains allowed. That fallback is NOT a combined total: the reader takes the
+  first `cumulative` item in the Homey Energy payload
+  (`lib/device/managerEnergy.ts`), so it is one unidentified meter which may be a
+  superset of Main or an area's own meter. The sampled identity is resolved with
+  the reading, rides the sample into the admitted power ingest
+  (`setup/powerSamplePipeline.ts` publishes it atomically with the watts), and
+  on a proven collision with an area meter fences Main actuation for exactly the
+  colliding sample's usable lifetime (`setup/homeMainMeterAuthority.ts`). The
+  identity is in-memory only, so a RESTART inside that lifetime is fenced too:
+  the tracker reloads durable watts the planner still treats as fresh while no
+  ingest of the new process has attested them, and the sampled clause holds Main
+  closed until its first admitted sample re-proves provenance (or those restored
+  watts age out). Both ownership mutations share the
   typed save endpoint: the UI validates while editing, and the endpoint checks
   a fresh classified homes read before either area or Main-meter persistence,
   so either concurrent write order refuses the second owner. The homes-store
@@ -120,15 +136,152 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 - Lifecycle: bundles are (re)built on boot and on a `homes_config` change, and
   torn down in the uninit path; teardown fences in-flight work and nulls the
   actuator seam so a late callback cannot actuate after ownership moved.
+- **Reading a sub-home goes through its own narrow port, not the registry.** The
+  registry is a private `AppServiceWiring` field; `AppContext.homeRuntimeRead`
+  (`lib/home/homeRuntimeRead.ts`) is the only consumer surface, and it serves
+  ONLY already-committed values — the last committed plan snapshot, that home's
+  tracker state, the bundle diagnostics. It exposes no device list on purpose:
+  the scope's plan-device view seeds observed state and decorates the whole
+  snapshot, so serving it would turn a UI poll into a snapshot rebuild. Every
+  non-serving case (no such sub-home — main included, it has no bundle — a
+  fenced tombstone, or no wired registry) is the single typed `unavailable`
+  result, never a fabricated default.
+- **The settings UI reaches that port through an optional `?homeId=` on
+  `ui_plan` / `ui_power` / `ui_devices`** (`setup/settingsUiHomeScope.ts` owns
+  the boundary). Three rules hold this together and must not be relaxed:
+  - **Absent `homeId` ⇒ the bare URI and the historical payload, byte for
+    byte** — no `homeScope` member, and the client's `homeScopedApiUri` maps
+    both "no home" and the `'main'` sentinel to the unchanged path. The
+    WebView's `apiCache` is keyed by exact URI and ~20 sites invalidate the bare
+    path, so a whole-home read that silently became `?homeId=main` would miss
+    every one of them and serve a single-home owner a stale Overview with no
+    staleness signal. The runtime refuses `?homeId=main` for the same reason,
+    so both sides agree the main home *is* the bare URI.
+  - **A refused id never becomes a settings key.** `''`, `'main'`, anything
+    containing the `':'` key separator, the prototype-colliding keys, and any
+    non-string (express hands repeated/bracketed parameters through as arrays
+    and objects) are classified before any `homeScopedSettingsKey` call or
+    settings read. Refusal is DISTINCT from absence: it answers the empty shape
+    plus `homeScope: unavailable`, never a degraded main-home read.
+  - **The realtime `plan_updated` / `power_updated` streams stay the main
+    home's.** Widening them would repaint Main's Overview from a sub-home's
+    device set in a Homey-cached stale WebView. A sub-home's freshness rides
+    the suffixed `settings.set` stream (`pels_status:<id>`,
+    `power_tracker_state:<id>`) instead, which the change router turns into a
+    scoped-only cache sweep. Correspondingly, a main-home push re-seeds the bare
+    cache entry and drops the scoped entries it cannot speak for
+    (`invalidateApiCacheForScopedHomes`), while every other invalidation of a
+    home-scopable read model sweeps bare + scoped together
+    (`invalidateApiCacheForAllHomes`).
+  - Transport note: a GET query parameter does reach an app API handler. The
+    firmware's app-level route passes `args: { query, params, body }` (the same
+    shape the widget route uses) and the apps SDK spreads it into the handler
+    context — the identical seam `body` already arrives on for `ui_homes_save`.
 
 ## v1 scope boundary (do not widen without a scope decision)
 
 Per-meter: **hard cap, safety margin, dry-run (control on/off), device
 priorities, real-time limit/resume.** These are genuinely per-meter.
 
-Whole-home / main-only, on purpose: **daily budget, price optimization, smart
-tasks, operating mode.** Budget and price are about home-wide energy/cost, not a
-single meter; R8 blocks smart-task admission on a sub-home device: the
+**The active operating mode is per-home at runtime; the mode/priority BLOBS
+stay global.** `operating_mode` is in `HOME_SCOPABLE_BASE_KEYS`, so a sub-home
+may pin its active mode under `operating_mode:<homeId>`; absence means the
+sub-home follows the global mode. Resolution is producer-owned and
+boundary-validated once, in `resolveHomeOperatingMode`
+(`lib/utils/capacityHelpers.ts`): per-home value → global default, with a
+pinned mode **constrained to the mode-targets blob's own key set**. That
+constraint is the stuck-cold guard — an unknown pinned mode must never reach
+the planner's `modeDeviceTargets[mode] || {}` lookup, where empty targets
+would re-open the dropped-resume bug; a refused pin falls back to the global
+mode and surfaces as a structured fault, never a silent empty-target plan.
+Every runtime reader of the active mode resolves through one per-home accessor
+(`setup/homeRuntime/homeOperatingMode.ts`): the sub-home scope's
+`getOperatingMode`, the per-home priority resolver (priorities are ranked per
+mode, so each `HomeScope` binds its own resolver against its own effective
+mode), the overshoot default seed, the registry suffix-hook route table (an
+`operating_mode:<homeId>` write re-plans exactly that home, never Main's mode
+dispatch), and the bundle diagnostics. The mode-target and priority blobs stay
+one global mode-name-keyed map — membership partitions device ids disjointly,
+so no migration and no read-modify-write wipe hazard. **The UI half has not
+shipped:** the Modes page reads and writes the global key for every home, and
+no settings surface writes a pin yet — the per-home pin is a runtime
+capability exercised only by suffixed settings writes. Surfaces without a home
+input keep their global behaviour by product ruling (the mode Flow cards and
+the `pels_insights` mode tile).
+
+**Mode targets apply in EVERY home.** Every home's scope binds
+`getModeDeviceTargets` to the live `ctx` read. This is not a policy choice: the
+mode target is the **restore anchor**. Binding it to `{}` for a sub-home made
+`resolveTemperatureSeed` fall back to the device's live setpoint, which while
+shed IS the shed setpoint, so on release `plannedTarget === currentTarget`, the
+executor dropped the write, and an area temperature device stayed cold
+indefinitely. Price optimization and surplus absorb stay off for a sub-home
+independently, via `getPriceOptimizationSettings: () => ({})` — they only
+modulate a `kind: 'mode'` seed and both require a per-device config entry.
+
+Binding those targets live for a sub-home also opened a LOAD-ADDING write, so
+one more per-home posture rides alongside them: **`holdsModeTargetRaisesWhile
+PowerUnknown`** (sub-homes `true`, main `false`). When it is on and
+`context.powerKnown` is false, a load-adding mode-target change is held at the
+device's own current setpoint (`applyModeSeedModulation`,
+`lib/plan/planDevices.ts`).
+
+A mode target is the one load-adding thing the planner commands as an ordinary
+`target_update`, so it consults neither headroom — 0 or negative whenever power
+is unknown — nor the restore cooldowns and startup stabilization:
+`isTargetRestore` (`lib/executor/executableTargetProjection.ts`) only matches an
+observed value equal to the configured shed setpoint, so an 18→22 raise is not a
+restore. The hold's shape (rather than blanking `getModeDeviceTargets`) is
+load-bearing in these ways:
+
+- **Class-aware direction.** For heat-direction devices a RAISE is held and a
+  LOWERING still applies — blanking the map would strand an area consuming
+  *more* than the user configured. For cooling-capable classes
+  (`isCoolingCapableTemperatureDeviceClass`: heat pump, air conditioning, air
+  treatment) BOTH directions are held, because lowering adds compressor load in
+  cooling mode and PELS cannot observe which mode a reversible unit is in.
+- **Exact observed value, not its normalization.** The hold emits the device's
+  reported setpoint verbatim (an off-step 18.6 with a 1° step would otherwise
+  round to 19 — a load-adding write the executor could not drop). Planned equals
+  observed is by construction the no-op `Object.is(observedValue, desired)`
+  drops.
+- **Fail closed without an observation.** When the current setpoint is
+  unreadable (`buildTargets` omits `value` on a malformed read), no target is
+  planned at all: any emitted value would reach the executor with
+  `observedValue` undefined, where the no-op fence cannot trip.
+- **Honest to the planner.** The mode target stays present, so the device is not
+  routed through `resolveMissingModeTargetSeed` — no false `missing_mode_target`
+  diagnostics and no grace-window `skip` dropping the device from the plan.
+- **Freshness-based, not "never sampled".** `powerKnown` re-closes on every
+  stale window, so an area meter that reports once and then dies stops earning
+  raises.
+
+Because the hold deliberately lets heat-device lowerings through, those
+lowerings must actually reach a silent-meter area: a global `operating_mode` /
+`mode_device_targets` write now fans out to every live bundle's planner
+(`SettingsHandlerDeps.rebuildHomeRuntimePlansForModeChange` →
+`HomeRuntimeRegistry.onModeSettingsChanged`), because a silent meter produces no
+power-driven rebuilds and the freshness heartbeat fires at most once per stale
+period — without the fan-out a cooler-mode lowering could stay unapplied
+indefinitely.
+
+Main binds `false` deliberately. Its unknown-power window is normally the
+seconds before the first Homey Energy poll, where an area's unknown-power window lasts as long as its
+meter is offline; and main owns settle/dwell machinery for the
+power-goes-unknown transition (`lib/plan/planSurplusAbsorb.ts`) that a blanket
+clamp would pre-empt. Two exemptions apply to both homes: the deadline floor is
+applied after the hold (a smart task's floor is a promise, not opportunistic
+load), and a shed setpoint is written regardless, since `planDevicesBase.ts`
+overrides `plannedTarget` without consulting the mode map.
+
+Main-home-only, on purpose: **daily budget, price optimization, smart
+tasks.** The daily budget is a **Main-home** budget, not a whole-home one:
+`createDailyBudgetService` binds Main's tracker and capacity, so once an
+explicit Main meter is required the budget plans and measures Main's meter
+only. Areas are not aggregated and cannot be — no allocator exists; if
+per-area budgets are ever built they will be per-meter budgets, never one
+allocated household budget. User-facing copy must say "Main home";
+R8 blocks smart-task admission on a sub-home device: the
 create/edit/Flow write refuses with the typed **rejection reason**
 `device_in_sub_home` (`lib/objectives/deferredObjectives/objectiveWrite.ts`).
 A provisional/global Main authority fence is different from durable
@@ -139,9 +292,83 @@ relocation diagnostics/disarm; the reason-bearing authority resolver governs
 candidate, preview, create, Flow-write, and final-actuator seams.
 A distinct **decoration diagnostic**, `objective_device_in_sub_home`
 (`diagnosticTypes.ts`), marks an existing task whose device later moved into a
-meter area — do not conflate the two codes. Flow cards + widgets remain
-whole-home. The home device driver + device-scoped flow cards are a deferred
-follow-up train.
+meter area — do not conflate the two codes.
+
+**Flow cards follow the refined scope ruling** (a card that can do its job
+without the user naming a home keeps working; only cards that would need an
+explicit home argument are out of scope): cards that act on a **device** work
+wherever that device lives, including inside a meter area; cards about modes,
+prices, and the daily budget are app-global settings and behave as before;
+cards that read or write a **capacity number** (`Is there enough available
+power?`, `Is there available power for device?`, `Set capacity limit`) work
+from the Main home. One trigger is area-aware: the `capacity_shortfall`
+trigger ("Hard cap breach imminent — manual action needed") carries a `Home`
+token whose value is the home's display *name* (`resolveHomeAreaDisplayName`
+— `Main home`, the area's own name, or `Meter area` for a blank name), fired
+by every home's plan executor. Widgets remain whole-home. The home device
+driver + device-scoped flow cards are a deferred follow-up train.
+
+**Flow power source and meter areas are mutually exclusive, both directions**,
+enforced at the one serialized `ui_homes_save` seam: saving (creating or
+editing) an area is refused while the configured source resolves to Flow (a
+Flow sample carries no meter identity), and switching the source to Flow is
+refused while areas are RUNNING (a dormant pre-GA config does not block the
+switch; activation discrimination is shared with the Automatic-meter refusal).
+Deleting an area stays allowed on any source, and switching TO Homey Energy
+never consults the homes store — the remedy direction must always work. The
+settings UI persists the Power source select through the seam (typed refusal →
+select rollback + remedy toast), never a bare settings write.
+
+**Aggregate simulation posture.** Main's `capacity_dry_run` and each active
+area's `capacity_dry_run:<homeId>` are independent, so the global simulation
+banner and the Settings hub chip render the aggregate posture — all live / all
+simulating / mixed — resolved in shared-domain (`simulationPosture.ts`) from
+Main's flag plus each ACTIVE area's flag. Held pre-GA areas never enter the
+posture (their devices still belong to Main); an unresolved flag keeps its
+last-good value and an unknown joins no aggregate claim. Main live + a
+simulating area gets an area-scoped banner line naming the area and the
+Limits & safety page that holds its control; the Main-flag button hides there
+because it could not act on the area's flag.
+
+**Changing the whole-home meter selection invalidates the weather
+energy-signature backfill scope**: the collector owns a meter-scope signature
+and forgets meter-derived state when the scope changes, so the energy
+signature is never silently fitted against a meter that no longer measures
+what it did (`lib/weather/weatherCollector.ts`).
+
+## Settings-UI scope surfaces (what follows the picker, what says it doesn't)
+
+The shell renders one global home picker (the `Showing` bar, `homeScope.ts`)
+once at least one meter area exists in the roster. The bar renders **only on
+pages whose content is resolved against the selected home** — a surface earns
+it in the same change that teaches it the scope (`SCOPE_AWARE_PANELS`):
+**Limits & safety** (per-home cap/margin/control), **Usage** (the selected
+home's own tracker history via the scoped `ui_power` read), and **Overview**
+(the selected home's committed plan + power via scoped `ui_plan`/`ui_power`).
+Scoped surfaces render honest unavailable notices instead of fabricated zeros,
+and Main-only elements (smart-task row, daily-budget hero elements) are
+omitted under an area, never zeroed.
+
+The **Devices and Modes lists** are labeled, never filtered: every row carries
+a home badge (`homeBadges.ts`, gated on `runtimeActive`) because
+`savePriorities` ranks the *rendered* rows — filtering would corrupt the
+hidden home's stored priorities.
+
+Everything else states its scope honestly once meter areas are IN USE (active
+roster + `runtimeActive`; a held pre-GA config renders none of these because
+its devices still belong to Main). Copy in
+`packages/shared-domain/src/homeScopeCopy.ts`:
+
+- **Budget tab** carries a Main-home scope line (the budget is Main's, above).
+- **Smart tasks list** carries a Main-only notice (R8 refuses area devices).
+- **Device-detail diagnostics + activity log** for an area device render "not
+  measured / not recorded for meter areas yet" and skip the fetch — the
+  payloads are Main's recorders (`getDeviceDiagnostics: () => undefined` in
+  the bundle scope), so an empty answer would read as a healthy device.
+- **The Simulation-mode settings page** notes that its switch covers the Main
+  home and names each area's own "Control devices in this area" switch under
+  Limits & safety — the hub's `Partly on` chip routes there for any split
+  posture.
 
 ## Availability (generally available)
 
@@ -159,8 +386,8 @@ atomic activation marker at boot, while an unmarked populated pre-GA config
 without that evidence stays runtime-dormant until a successful current UI
 upsert marks it. This prevents an old experimental configuration from silently
 starting device control on upgrade. Membership still recomputes for
-diagnostics, `ui_homes` serves the full payload, and the nav card plus per-home
-Limits switcher remain visible (the switcher appears once at least one meter
+diagnostics, `ui_homes` serves the full payload, and the nav card plus the
+shell's home scope bar remain visible (the bar appears once at least one meter
 area exists).
 
 ## Reference implementations
@@ -174,4 +401,4 @@ area exists).
 | HomeScope (main vs sub) | `setup/homeRuntime/homeScope.ts` |
 | Per-meter live read | `extractLiveMeterPowerWatts` (power source) |
 | Suffixed key helper (`homeScopedSettingsKey`) | `lib/utils/settingsKeys.ts` |
-| Read/write UI seam | `setup/settingsUiApi.ts` |
+| Read/write UI seam | `setup/settingsUiHomesApi.ts` |

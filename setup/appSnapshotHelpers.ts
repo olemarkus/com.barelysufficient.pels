@@ -15,6 +15,7 @@ import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSele
 import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
+import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
@@ -50,6 +51,15 @@ export type RefreshTargetDevicesSnapshotOptions = {
 type HomePowerSample = {
   powerW: number;
   generationW?: number;
+  /**
+   * Identity of the meter `powerW` was read from (`null` = unknown), produced
+   * by the transport read. It rides the sample into `recordPowerSample`
+   * unchanged; the sample pipeline publishes it to membership atomically with
+   * the ingest, so an unadmitted sample discards its identity claim with it.
+   */
+  resolvedHomeMeterDeviceId?: string | null;
+  /** Rides with the identity; same admitted-ingest contract. */
+  homeMeterArrangement?: 'identified' | 'idless_aggregate_only' | 'unproven';
 };
 
 export class AppSnapshotHelpers {
@@ -104,7 +114,10 @@ export class AppSnapshotHelpers {
     getStructuredDebugEmitter: (component: string, topic: 'devices' | 'plan') => StructuredDebugEmitter;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
-    disableUnsupportedDevices: (snapshot: TargetDeviceSnapshot[]) => void;
+    disableUnsupportedDevices: (
+      snapshot: TargetDeviceSnapshot[],
+      resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
+    ) => void;
     seedMissingModeTargets: (snapshot: TargetDeviceSnapshot[]) => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
@@ -434,26 +447,69 @@ export class AppSnapshotHelpers {
     await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
   }
 
+  /**
+   * Retry only the support/default classification that may have been deferred
+   * when the snapshot arrived before ownership. The existing snapshot is
+   * enough; ownership readiness cannot make the Homey device payload fresher.
+   */
+  public retryDeferredOvershootSeed(
+    resolveOperatingModeForDevice: ResolveOperatingModeForDevice,
+  ): void {
+    this.deps.disableUnsupportedDevices(
+      this.deps.getLatestTargetSnapshot(),
+      resolveOperatingModeForDevice,
+    );
+  }
+
+  /**
+   * Will this cycle's live-power read become the sample the power tracker
+   * serves? Evaluated ONCE, at record time, and the answer gates the sample
+   * AND the meter identity riding on it as one object: an unadmitted sample
+   * never reaches `recordPowerSample`, so the pipeline never publishes its
+   * identity — there is no second decision to diverge from this one. (The
+   * post-actuation refresh — scheduled through these shared helpers by ANY
+   * home's actuation, including a meter area's — is exactly the caller this
+   * protects against: it reads live power and discards the sample, and must
+   * not republish Main's meter while the tracker still holds the area's watts.)
+   *
+   * Deliberately NOT total: `getPowerSource()` throws on a suspect settings
+   * read, and that has always surfaced as a failed refresh.
+   */
+  private classifyImplicitHomeyEnergySample(
+    options: RefreshTargetDevicesSnapshotOptions,
+    meterSelectionAtStart: MainMeterSelection,
+  ): 'admitted' | 'not_requested' | 'not_homey_energy' | 'selection_unavailable' | 'stale_meter' {
+    if (options.recordHomeyEnergySample === false) return 'not_requested';
+    if (this.deps.getPowerSource() !== 'homey_energy') return 'not_homey_energy';
+    // An unavailable start selection produces NO recordable sample: the fetch
+    // falls back to Automatic for the per-device lanes but discards the
+    // whole-home value (`fetchLivePowerReport` nulls `homePowerW`), so the
+    // `if (sample)` guard below never records regardless of this answer. The
+    // arm exists for classification honesty: without it, a selection that
+    // recovers mid-flight would classify `stale_meter` and emit a mislabelled
+    // `implicit_homey_energy_sample_discarded_stale_meter` event for a cycle
+    // that never had a recordable sample to discard.
+    if (meterSelectionAtStart.state !== 'resolved') return 'selection_unavailable';
+    return sameMainMeterSelection(this.resolveMainMeterSelection(), meterSelectionAtStart)
+      ? 'admitted'
+      : 'stale_meter';
+  }
+
   private async recordImplicitHomeyEnergySample(
     options: RefreshTargetDevicesSnapshotOptions,
     sample: HomePowerSample | null,
     meterSelectionAtStart: MainMeterSelection,
   ): Promise<void> {
-    if (
-      options.recordHomeyEnergySample === false
-      || this.deps.getPowerSource() !== 'homey_energy'
-    ) {
-      return;
-    }
-    if (!sameMainMeterSelection(this.resolveMainMeterSelection(), meterSelectionAtStart)) {
+    const admission = this.classifyImplicitHomeyEnergySample(options, meterSelectionAtStart);
+    if (admission === 'stale_meter') {
       // The whole-home meter selection changed while this refresh cycle was in
       // flight — the sample was read for the previous selection, so recording
       // it now would overwrite the new meter's fresh samples with stale watts.
       this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
         event: 'implicit_homey_energy_sample_discarded_stale_meter',
       });
-      return;
     }
+    if (admission !== 'admitted') return;
 
     if (sample) {
       await this.deps.recordPowerSample(sample);

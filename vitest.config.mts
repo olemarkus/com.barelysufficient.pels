@@ -19,6 +19,7 @@ export default defineConfig({
         'app.ts',
         'api.ts',
         'lib/**/*.ts',
+        'setup/**/*.ts',
         'flowCards/**/*.ts',
         'drivers/**/*.ts',
       ],

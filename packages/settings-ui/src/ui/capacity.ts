@@ -19,6 +19,14 @@ import { getSetting } from './homey.ts';
 import { state } from './state.ts';
 import { getPowerReadModel } from './power.ts';
 import {
+  mergeMeterAreaSimulation,
+  readAreaSimulationFlag,
+  readHomesConfigScope,
+  resolveActiveMeterAreas,
+  resolveHasMeterAreas,
+  resolveRetainedScopeClaim,
+} from './meterAreaPosture.ts';
+import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -30,7 +38,7 @@ import {
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   isHomeyEnergyMeterExplicit,
-  syncHomeyEnergyMeterField,
+  syncHomeyEnergyMeterSelection,
   syncHomeyEnergyMeterVisibility,
 } from './homeyEnergyMeter.ts';
 import {
@@ -42,35 +50,83 @@ import {
 } from '../../../shared-domain/src/utils/debugLogging.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powerFreshness.ts';
+import {
+  resolveSimulationBannerContent,
+  type SimulationBannerScope,
+} from '../../../shared-domain/src/simulationPosture.ts';
+import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 
-type PowerSource = 'flow' | 'homey_energy';
+export type PowerSource = 'flow' | 'homey_energy';
 
 type CapacitySettingsPatch = {
   limit?: number;
   margin?: number;
   dryRun?: boolean;
-  powerSource?: PowerSource;
 };
 
 type CurrentCapacitySettings = {
   limit: unknown;
   margin: unknown;
   dryRun: unknown;
-  powerSource: unknown;
 };
 
 type ResolvedCapacitySettings = {
   limit: number;
   margin: number;
   dryRun: boolean;
-  powerSource: PowerSource;
 };
 
-const normalizePowerSource = (raw: unknown): PowerSource => (
+// Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
+// then only a resolved boolean read or successful save replaces it.
+let lastGoodCapacityDryRun = true;
+let lastGoodCapacityLimit = 10;
+let lastGoodCapacityMargin = 0.2;
+
+const commitCapacityScalars = (limit: number, margin: number, dryRun: boolean): void => {
+  lastGoodCapacityLimit = limit;
+  lastGoodCapacityMargin = margin;
+  lastGoodCapacityDryRun = dryRun;
+  state.dryRun = dryRun;
+};
+
+const resolveMainCapacityNumber = (
+  persisted: unknown,
+  runtimeEffective: unknown,
+  lastGood: number,
+): number => {
+  if (typeof persisted === 'number' && Number.isFinite(persisted)) return persisted;
+  if (typeof runtimeEffective === 'number' && Number.isFinite(runtimeEffective)) return runtimeEffective;
+  return lastGood;
+};
+
+const needsRuntimeCapacityScalars = (
+  limit: unknown,
+  margin: unknown,
+  dryRun: unknown,
+): boolean => (
+  typeof limit !== 'number'
+  || !Number.isFinite(limit)
+  || typeof margin !== 'number'
+  || !Number.isFinite(margin)
+  || typeof dryRun !== 'boolean'
+);
+
+const resolveMainDryRun = (
+  persisted: unknown,
+  runtimeEffective: unknown,
+  lastGood: boolean,
+): boolean => {
+  if (typeof persisted === 'boolean') return persisted;
+  if (typeof runtimeEffective === 'boolean') return runtimeEffective;
+  return lastGood;
+};
+
+export const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
 );
 
@@ -90,7 +146,6 @@ const getStaleDataHint = (): string => (
 );
 
 export type StaleDataBannerContent = { text: string; actionLabel: string };
-export type DryRunBannerContent = { text: string; actionLabel: string };
 
 // Exported pure for tests. The runtime never writes a default `power_source`,
 // so an absent setting plus no sample ever received means a fresh install where
@@ -127,57 +182,6 @@ export const resolveStaleDataBannerContent = (input: {
 // truthful even when malformed state hides a meter area from this WebView.
 let hasMeterAreas: boolean | null = null;
 
-export type HomesConfigScopeRead = {
-  status: 'resolved';
-  config: unknown;
-  initializedMarker: unknown;
-} | {
-  status: 'unavailable';
-};
-
-export const resolveHasMeterAreas = (read: HomesConfigScopeRead): boolean | null => {
-  if (read.status === 'unavailable') return null;
-  const { config, initializedMarker } = read;
-  if (config === null || config === undefined) {
-    const markerAbsent = initializedMarker === null || initializedMarker === undefined;
-    return markerAbsent ? false : null;
-  }
-  if (typeof config !== 'object' || Array.isArray(config)) return null;
-  const subHomes = (config as { subHomes?: unknown }).subHomes;
-  return Array.isArray(subHomes) ? subHomes.length > 0 : null;
-};
-
-export const readDryRunBannerHomeScope = async (
-  readSetting: (key: string) => Promise<unknown> = getSetting,
-): Promise<boolean | null> => {
-  const [configRead, markerRead] = await Promise.allSettled([
-    readSetting(HOMES_CONFIG),
-    readSetting(HOMES_CONFIG_INITIALIZED),
-  ]);
-  if (configRead.status === 'rejected' || markerRead.status === 'rejected') {
-    return resolveHasMeterAreas({ status: 'unavailable' });
-  }
-  return resolveHasMeterAreas({
-    status: 'resolved',
-    config: configRead.value,
-    initializedMarker: markerRead.value,
-  });
-};
-
-export const resolveDryRunBannerContent = (
-  hasAreas: boolean | null,
-): DryRunBannerContent => (
-  hasAreas === false
-    ? {
-      text: 'Simulation on — devices stay as-is',
-      actionLabel: 'Turn off simulation',
-    }
-    : {
-      text: 'Main home simulation on — Main home devices stay as-is',
-      actionLabel: 'Turn off Main simulation',
-    }
-);
-
 const renderDryRunBannerText = (text: string): void => {
   if (!dryRunBannerText) return;
   const noBreakSuffix = 'as-is';
@@ -190,23 +194,110 @@ const renderDryRunBannerText = (text: string): void => {
   dryRunBannerText.replaceChildren(prefix, noBreak);
 };
 
-// The global simulation banner shows on every tab EXCEPT the Simulation-mode
-// settings page, whose own toggle is the single control there (a duplicate
-// control on one screen reads as confusing chrome). Reads live `state.dryRun`
-// + `state.activePanel`, so both the dry-run toggle and tab navigation call it.
+// Exported pure for tests. The Simulation-mode settings page suppresses only
+// the banners whose remedy its own Main switch already duplicates (`all` /
+// `main` scope — a duplicate control on one screen reads as confusing
+// chrome). The area-scoped line survives there: that page holds Main's
+// switch, which is OFF in that posture, so hiding the only warning naming the
+// simulating area would present an apparently all-live screen at the end of
+// the "Partly on" chip's trail — with no route to the area's own control on
+// Limits & safety.
+export const isSimulationBannerSuppressedOnPanel = (
+  scope: SimulationBannerScope,
+  activePanel: string,
+): boolean => activePanel === 'simulation' && scope !== 'areas';
+
+// The global simulation banner shows on every tab; the Simulation-mode
+// settings page suppresses only the Main-remedy variants (see
+// `isSimulationBannerSuppressedOnPanel`). Reads live `state.dryRun`
+// + `state.meterAreaSimulation` + `state.activePanel`, so the dry-run toggle,
+// tab navigation, and the posture refresh below all call it.
 export const syncDryRunBannerVisibility = (): void => {
-  const content = resolveDryRunBannerContent(hasMeterAreas);
-  renderDryRunBannerText(content.text);
-  if (simulationDisableButton) simulationDisableButton.textContent = content.actionLabel;
-  if (dryRunBanner) {
-    dryRunBanner.dataset.homeScope = hasMeterAreas === false ? 'all' : 'main';
-    dryRunBanner.hidden = !state.dryRun || state.activePanel === 'simulation';
+  const content = resolveSimulationBannerContent({
+    hasMeterAreas,
+    mainSimulating: state.dryRun,
+    // Only areas KNOWN to simulate are named; an unknown flag (`null`) never
+    // puts words in the banner's mouth.
+    simulatingAreaNames: state.meterAreaSimulation
+      .filter((area) => area.simulating === true)
+      .map((area) => area.name),
+  });
+  if (content !== null) {
+    renderDryRunBannerText(content.text);
+    if (simulationDisableButton) {
+      simulationDisableButton.textContent = content.actionLabel ?? '';
+      // The area-scoped line has no one-tap remedy: the button writes MAIN's
+      // flag, which is already off in that state, so it hides and the text
+      // names the page holding each area's own control.
+      simulationDisableButton.hidden = content.actionLabel === null;
+    }
   }
+  if (dryRunBanner) {
+    if (content !== null) dryRunBanner.dataset.homeScope = content.scope;
+    dryRunBanner.hidden = content === null
+      || isSimulationBannerSuppressedOnPanel(content.scope, state.activePanel);
+  }
+  // Honest Simulation-page scope note (multi-home): synced here because every
+  // input it depends on (the active-area roster) already drives this function.
+  syncSimulationHomeScopeNote(state.meterAreaSimulation.length > 0);
 };
 
+// Generation fence, mirroring `refreshHomeScope`: rapid suffixed-flag or
+// roster writes each start an async refresh, and an older one — carrying a
+// pre-change cached flag for another area — could finish last and overwrite
+// the newest answer for the rest of the session. Only the newest started
+// refresh may commit.
+let postureRefreshGeneration = 0;
+
 const refreshDryRunBannerHomeScope = async (): Promise<void> => {
-  hasMeterAreas = await readDryRunBannerHomeScope();
+  postureRefreshGeneration += 1;
+  const generation = postureRefreshGeneration;
+  const scopeRead = await readHomesConfigScope();
+  const rosterRead = resolveActiveMeterAreas(scopeRead);
+  if (rosterRead.status === 'unavailable') {
+    if (generation !== postureRefreshGeneration) return;
+    // Abandon-grace: an unclassifiable roster read keeps the last-good
+    // snapshot — wiping it would hide the one banner naming a simulating
+    // area (and flip the chip) on a single transient or suspect read. The
+    // scope claim is held on exactly the same terms, so the two can never
+    // contradict each other (`resolveRetainedScopeClaim`): only a RESOLVED
+    // roster may claim this install has no meter areas.
+    hasMeterAreas = resolveRetainedScopeClaim(hasMeterAreas, scopeRead);
+    syncDryRunBannerVisibility();
+    return;
+  }
+  const flags = await Promise.all(
+    rosterRead.areas.map((area) => readAreaSimulationFlag(area.homeId)),
+  );
+  // A newer refresh started while this one was awaiting; its answer wins and
+  // will paint the banner and chip.
+  if (generation !== postureRefreshGeneration) return;
+  hasMeterAreas = resolveHasMeterAreas(scopeRead);
+  state.meterAreaSimulation = mergeMeterAreaSimulation(rosterRead.areas, flags, state.meterAreaSimulation);
   syncDryRunBannerVisibility();
+};
+
+/**
+ * Realtime `settings.set`/`settings.unset` hook for every key the aggregate
+ * posture derives from. Two families qualify:
+ *
+ * - The SUFFIXED per-area control flags: the exact-key routing table cannot
+ *   match `capacity_dry_run:<homeId>` (the Limits page control toggle, or a
+ *   second WebView), yet that write flips the posture the banner and the
+ *   Settings hub chip render.
+ * - The roster keys: an area added, removed, or renamed rewrites
+ *   `homes_config`, changing which flags belong in the posture at all. On
+ *   `settings.set` this overlaps with `loadCapacitySettings`' own refresh —
+ *   benign under the generation fence — but the posture must not lean on that
+ *   panel loader's side effect, and `settings.unset` has no other posture
+ *   route.
+ */
+export const notifyAreaSimulationSettingChanged = (key: string): void => {
+  const isAreaFlagKey = key.startsWith(`${CAPACITY_DRY_RUN}:`);
+  if (!isAreaFlagKey && key !== HOMES_CONFIG && key !== HOMES_CONFIG_INITIALIZED) return;
+  void refreshDryRunBannerHomeScope()
+    .then(() => { syncSettingsHubChips(); })
+    .catch((caught: unknown) => logSettingsError('Failed to refresh the simulation posture', caught, 'capacity'));
 };
 
 const updateCapacityReactionHint = (limit: number, margin: number) => {
@@ -244,11 +335,10 @@ export const refreshLimitsValidationHints = () => {
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
 
-const syncCapacityControls = (
+const syncCapacityOwnedControls = (
   limit: number,
   margin: number,
   isDryRun: boolean,
-  powerSource: PowerSource,
 ) => {
   if (settingsCapacityLimitInput) {
     settingsCapacityLimitInput.value = limit.toString();
@@ -256,13 +346,9 @@ const syncCapacityControls = (
   if (settingsCapacityMarginInput) {
     settingsCapacityMarginInput.value = margin.toString();
   }
-  if (settingsPowerSourceSelect) {
-    settingsPowerSourceSelect.value = powerSource;
-  }
   if (settingsSimulationModeInput) {
     settingsSimulationModeInput.selected = isDryRun;
   }
-  syncHomeyEnergyMeterVisibility(powerSource);
   updateCapacityReactionHint(limit, margin);
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
@@ -274,23 +360,26 @@ const readNumberInput = (input: MdFilledTextFieldElement | null, label: string):
 };
 
 const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
-  const [limit, margin, dryRun, powerSource] = await Promise.all([
+  const [limit, margin, dryRun] = await Promise.all([
     getSetting(CAPACITY_LIMIT_KW),
     getSetting(CAPACITY_MARGIN_KW),
     getSetting(CAPACITY_DRY_RUN),
-    getSetting(POWER_SOURCE),
   ]);
-  return { limit, margin, dryRun, powerSource };
+  return { limit, margin, dryRun };
 };
 
 const resolveCapacitySettings = (
   current: CurrentCapacitySettings,
   patch: CapacitySettingsPatch,
 ): ResolvedCapacitySettings => ({
-  limit: patch.limit ?? (typeof current.limit === 'number' ? current.limit : 10),
-  margin: patch.margin ?? (typeof current.margin === 'number' ? current.margin : 0.2),
-  dryRun: patch.dryRun ?? (typeof current.dryRun === 'boolean' ? current.dryRun : true),
-  powerSource: patch.powerSource ?? normalizePowerSource(current.powerSource),
+  limit: patch.limit ?? resolveMainCapacityNumber(current.limit, undefined, lastGoodCapacityLimit),
+  margin: patch.margin ?? resolveMainCapacityNumber(current.margin, undefined, lastGoodCapacityMargin),
+  // The runtime retains its validated in-memory posture when the persisted
+  // key is absent or malformed. Mirror that last-good value so an unset never
+  // makes the WebView claim simulation while the current runtime remains live.
+  dryRun: patch.dryRun ?? (
+    typeof current.dryRun === 'boolean' ? current.dryRun : lastGoodCapacityDryRun
+  ),
 });
 
 const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) => {
@@ -313,6 +402,28 @@ let powerSourceConfigured: boolean | null = null;
 // first power read can re-render the copy without refetching power. undefined
 // = the banner has never rendered.
 let lastBannerPowerUpdate: number | null | undefined;
+// Newer loads supersede the entire older snapshot. Power-source saves have a
+// narrower generation: they fence stale source-dependent paint without
+// discarding unrelated capacity values read from a realtime refresh.
+let capacitySettingsLoadGeneration = 0;
+let capacitySettingsAppliedGeneration = 0;
+let powerSourcePaintGeneration = 0;
+let confirmedPowerSourcePaintGeneration = 0;
+
+export const supersedeCapacityPowerSourcePaints = (): number => {
+  powerSourcePaintGeneration += 1;
+  return confirmedPowerSourcePaintGeneration;
+};
+
+export const hasConfirmedPowerSourcePaintSince = (generation: number): boolean => (
+  confirmedPowerSourcePaintGeneration !== generation
+);
+
+const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
+  if (powerSource === 'flow' || powerSource === 'homey_energy') {
+    confirmedPowerSourcePaintGeneration += 1;
+  }
+};
 
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
   lastBannerPowerUpdate = lastPowerUpdate;
@@ -329,9 +440,13 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
   if (staleDataBannerAction) staleDataBannerAction.textContent = content.actionLabel;
 };
 
-const setPowerSourceConfigured = (configured: boolean) => {
+export const setPowerSourceConfigured = (configured: boolean) => {
   if (powerSourceConfigured === configured) return;
   powerSourceConfigured = configured;
+  if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
+};
+
+export const refreshStaleDataBanner = (): void => {
   if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
 };
 
@@ -353,7 +468,28 @@ export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayl
   updateStaleDataBanner(power ? resolveLastPowerUpdate(power) : null);
 };
 
+const syncLoadedPowerSource = (powerSource: unknown): void => {
+  const sourceResolved = powerSource === 'flow' || powerSource === 'homey_energy';
+  if (sourceResolved) {
+    setPowerSourceConfigured(true);
+    if (settingsPowerSourceSelect) settingsPowerSourceSelect.value = powerSource;
+    syncHomeyEnergyMeterVisibility(powerSource);
+    recordConfirmedPowerSourcePaint(powerSource);
+    return;
+  }
+  if (powerSourceConfigured === null) {
+    // First load with no configured source: keep the template's Flow default
+    // but mark it as onboarding, not persisted truth. After any confirmed
+    // paint, an unavailable read preserves that last-good source instead of
+    // fabricating Flow over a save rollback or another WebView's write.
+    setPowerSourceConfigured(false);
+  }
+};
+
 export const loadCapacitySettings = async () => {
+  capacitySettingsLoadGeneration += 1;
+  const generation = capacitySettingsLoadGeneration;
+  const sourceGeneration = powerSourcePaintGeneration;
   // Publish the home scope first and independently. A transient roster/marker
   // read failure must narrow the banner to Main even if another settings read
   // later rejects and aborts the rest of the capacity refresh.
@@ -361,24 +497,45 @@ export const loadCapacitySettings = async () => {
   const limit = await getSetting(CAPACITY_LIMIT_KW);
   const margin = await getSetting(CAPACITY_MARGIN_KW);
   const dryRun = await getSetting(CAPACITY_DRY_RUN);
+  // Missing persisted keys are not Main-home defaults: the running app keeps
+  // its last-good scalars. The bootstrap-primed whole-home power snapshot
+  // carries that authoritative in-memory state across a WebView reload.
+  const runtimeScalars = needsRuntimeCapacityScalars(limit, margin, dryRun)
+    ? await getPowerReadModel()
+    : null;
   const powerSource = await getSetting(POWER_SOURCE);
   const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);
-  const fallbackLimit = 10;
-  const fallbackMargin = 0.2;
-  const normalizedLimit = typeof limit === 'number' ? limit : fallbackLimit;
-  const normalizedMargin = typeof margin === 'number' ? margin : fallbackMargin;
-  const isDryRun = typeof dryRun === 'boolean' ? dryRun : true;
-  const normalizedPowerSource = normalizePowerSource(powerSource);
-  setPowerSourceConfigured(powerSource === 'flow' || powerSource === 'homey_energy');
-  // Adopt the persisted meter selection BEFORE syncCapacityControls runs its
-  // visibility-only sync, so the select renders the saved choice. Trimmed the
-  // same way as the runtime seam (resolveHomeyEnergyMeterDeviceId) so the UI
-  // and the poll never disagree about a padded id meaning Automatic.
+  const normalizedLimit = resolveMainCapacityNumber(
+    limit,
+    runtimeScalars?.mainCapacityScalars?.limitKw,
+    lastGoodCapacityLimit,
+  );
+  const normalizedMargin = resolveMainCapacityNumber(
+    margin,
+    runtimeScalars?.mainCapacityScalars?.marginKw,
+    lastGoodCapacityMargin,
+  );
+  const isDryRun = resolveMainDryRun(
+    dryRun,
+    runtimeScalars?.mainDryRunEffective,
+    lastGoodCapacityDryRun,
+  );
+  // Only a successfully completed newer load supersedes this snapshot. A load
+  // that merely STARTED later but failed must not discard valid settings with
+  // no remaining refresh guaranteed.
+  if (generation < capacitySettingsAppliedGeneration) return;
+  capacitySettingsAppliedGeneration = generation;
+  syncCapacityOwnedControls(normalizedLimit, normalizedMargin, isDryRun);
+  // Meter selection is independently persisted. A power-source save may fence
+  // source-owned paint while this load is in flight, but it must not discard a
+  // concurrent Whole-home meter refresh that this snapshot already read.
   const trimmedMeterId = typeof meterDeviceId === 'string' ? meterDeviceId.trim() : '';
-  syncHomeyEnergyMeterField(normalizedPowerSource, trimmedMeterId === '' ? null : trimmedMeterId);
-  syncCapacityControls(normalizedLimit, normalizedMargin, isDryRun, normalizedPowerSource);
+  syncHomeyEnergyMeterSelection(trimmedMeterId === '' ? null : trimmedMeterId);
+  if (sourceGeneration === powerSourcePaintGeneration) {
+    syncLoadedPowerSource(powerSource);
+  }
   const dryRunChanged = state.dryRun !== isDryRun;
-  state.dryRun = isDryRun;
+  commitCapacityScalars(normalizedLimit, normalizedMargin, isDryRun);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // An external simulation-mode change (e.g. a second open WebView, or a Flow)
@@ -394,27 +551,25 @@ const saveCapacitySettingsPatch = async (
   successMessage = 'Capacity settings saved.',
 ) => {
   const current = await readCurrentCapacitySettings();
-  const { limit, margin, dryRun, powerSource } = resolveCapacitySettings(current, patch);
-  validateCapacitySettings({ limit, margin, dryRun, powerSource });
+  const { limit, margin, dryRun } = resolveCapacitySettings(current, patch);
+  validateCapacitySettings({ limit, margin, dryRun });
 
   const writes: Array<Promise<void>> = [];
   pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, limit);
   pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, margin);
   pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, dryRun);
-  // Persist power_source ONLY when the patch explicitly carries it (the user
-  // changed the select). An unrelated hard-cap/margin/simulation save must not
-  // materialize the 'flow' default — that would silently flip the banner's
-  // fresh-install copy to "check your Flow" for a user who never chose a source.
-  if (patch.powerSource !== undefined) {
-    pushSettingWriteIfChanged(writes, POWER_SOURCE, current.powerSource, powerSource);
-  }
+  // Never power_source: a hard-cap/margin/simulation save must not materialize
+  // the 'flow' default for a user who never chose a source, and the select's
+  // own change goes through the guarded seam (`savePowerSourceSetting`).
   if (writes.length > 0) {
     await Promise.all(writes);
   }
   const dryRunChanged = current.dryRun !== dryRun;
-  state.dryRun = dryRun;
-  if (patch.powerSource !== undefined) setPowerSourceConfigured(true);
-  syncCapacityControls(limit, margin, dryRun, powerSource);
+  commitCapacityScalars(limit, margin, dryRun);
+  // This save owns only cap, margin and simulation. In particular it must not
+  // repaint the Power source from its pre-write read: a source save can overlap
+  // this awaited settings write and owns that control's final value.
+  syncCapacityOwnedControls(limit, margin, dryRun);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // Toggling simulation flips the hero decision sentence and the device-card
@@ -425,15 +580,10 @@ const saveCapacitySettingsPatch = async (
   await showToast(successMessage, 'ok');
 };
 
-export const saveSettingsLimitsSettings = async (
-  options?: { includePowerSource?: boolean },
-) => {
+export const saveSettingsLimitsSettings = async () => {
   await saveCapacitySettingsPatch({
     limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
     margin: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
-    ...(options?.includePowerSource === true
-      ? { powerSource: normalizePowerSource(settingsPowerSourceSelect?.value) }
-      : {}),
   }, 'Limits & safety saved.');
 };
 

@@ -7,6 +7,7 @@ import {
   notifyHomeLimitsSettingChanged,
   refreshHomeLimitsOnLimitsPanel,
 } from '../src/ui/homeLimits.ts';
+import { notifyHomeScopeSettingChanged, selectHomeScope } from '../src/ui/homeScope.ts';
 import { showToastError } from '../src/ui/toast.ts';
 import { state } from '../src/ui/state.ts';
 
@@ -21,10 +22,12 @@ vi.mock('../src/ui/logging.ts', () => ({
 }));
 
 /* -------------------------------------------------------------------------- *
- * Per-home Limits controller: the switcher list, the static-form visibility
- * toggle, and — the core contract — that a meter area's edits hit the SUFFIXED
- * scalar keys (`capacity_*:<homeId>`) while the Main home keeps the bare keys
- * (its untouched static form). Status reads come from `pels_status:<homeId>`.
+ * Per-home Limits controller: how it follows the shell's global scope bar, the
+ * static-form visibility toggle, and — the core contract — that a meter area's
+ * edits hit the SUFFIXED scalar keys (`capacity_*:<homeId>`) while the Main
+ * home keeps the bare keys (its untouched static form). Status reads come from
+ * `pels_status:<homeId>`. The scope bar is driven through its real DOM select,
+ * exactly as a user drives it.
  * -------------------------------------------------------------------------- */
 
 const AREA_ID = 'h_abc';
@@ -43,18 +46,39 @@ const homesPayload = (runtimeActive = true) => ({
   configDegraded: false,
 });
 
+const MAIN_HINT_AT_INSTALL = 'Your grid tariff step (effekttrinn) — '
+  + 'PELS keeps each hour’s average power under this.';
+
 const setupDom = () => {
-  document.body.innerHTML = '<div id="home-limits-mount"></div>'
-    + '<form id="settings-limits-form"></form>';
+  document.body.innerHTML = '<div id="home-scope-bar" hidden></div>'
+    + '<h2 id="limits-title">Limits &amp; safety</h2>'
+    + '<div id="home-limits-mount"></div>'
+    + '<form id="settings-limits-form">'
+    + `<small id="settings-capacity-limit-hint">${MAIN_HINT_AT_INSTALL}</small>`
+    + '</form>'
+    + '<div id="settings-limits-global"></div>';
 };
 
-const select = () => document.querySelector<HTMLSelectElement>('#home-limits-home-select');
+const chip = () => document.querySelector<HTMLElement>('#home-scope-chip');
+// The menu is mounted only while open, so read the roster through an open/close
+// cycle — the same way it is actually reachable to a user.
+const toggleMenu = () => chip()!.dispatchEvent(new Event('click', { bubbles: true }));
+const optionLabels = () => {
+  toggleMenu();
+  const labels = [...document.querySelectorAll('md-menu-item')].map((item) => item.textContent);
+  toggleMenu();
+  return labels;
+};
 const staticForm = () => document.querySelector<HTMLFormElement>('#settings-limits-form');
+const panelTitle = () => document.querySelector<HTMLElement>('#limits-title')!;
+const globalCard = () => document.querySelector<HTMLElement>('#settings-limits-global')!;
+const mainCapHint = () => document.querySelector<HTMLElement>('#settings-capacity-limit-hint')!;
 
+// Drive the shell's scope chip the way a user does: open it, tap a home.
 const selectArea = async (homeId: string) => {
-  const el = select()!;
-  el.value = homeId;
-  el.dispatchEvent(new Event('change'));
+  toggleMenu();
+  document.querySelector<HTMLElement>(`#home-scope-option-${homeId}`)!
+    .dispatchEvent(new Event('click', { bubbles: true }));
   await flushAsync();
 };
 
@@ -69,6 +93,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   setupDom();
   state.activePanel = 'limits';
+  // The scope bar is module state shared by the whole WebView, so a case that
+  // left an area selected must not leak into the next one.
+  selectHomeScope(MAIN_HOME_ID);
 });
 
 afterEach(() => {
@@ -76,13 +103,13 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('switcher + static-form visibility', () => {
-  it('shows the switcher (Main + area) and keeps the static form for the Main home', async () => {
+describe('scope bar + static-form visibility', () => {
+  it('offers Main + each area in the scope bar and keeps the static form for Main', async () => {
     install();
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
-    expect(select()).not.toBeNull();
-    expect([...select()!.options].map((option) => option.value)).toEqual(['main', AREA_ID]);
+    expect(chip()).not.toBeNull();
+    expect(optionLabels()).toEqual(['Main home', 'Utleie']);
     // Main selected by default ⇒ the static Main-home form stays visible.
     expect(staticForm()!.hidden).toBe(false);
   });
@@ -100,6 +127,30 @@ describe('switcher + static-form visibility', () => {
     await selectArea('main');
     expect(staticForm()!.hidden).toBe(false);
     expect(document.querySelector('#home-limits-hard-cap')).toBeNull();
+  });
+
+  it('clears an off-panel area editor synchronously before refreshing a new scope', async () => {
+    install({
+      [`capacity_limit_kw:${AREA_ID}`]: 7,
+      [`capacity_margin_kw:${AREA_ID}`]: 0.3,
+      [`capacity_dry_run:${AREA_ID}`]: true,
+    });
+    await refreshHomeLimitsOnLimitsPanel();
+    await selectArea(AREA_ID);
+    expect(document.querySelector('#home-limits-hard-cap')).not.toBeNull();
+
+    state.activePanel = 'overview';
+    selectHomeScope(MAIN_HOME_ID);
+    // Off-panel scope notifications intentionally retain the editor until the
+    // next activation, so it is still present before that hook starts.
+    expect(document.querySelector('#home-limits-hard-cap')).not.toBeNull();
+
+    state.activePanel = 'limits';
+    const refresh = refreshHomeLimitsOnLimitsPanel();
+
+    expect(document.querySelector('#home-limits-hard-cap')).toBeNull();
+    expect(staticForm()!.hidden).toBe(false);
+    await refresh;
   });
 
   it('falls back to safe defaults when persisted area limits are non-finite', async () => {
@@ -132,14 +183,42 @@ describe('switcher + static-form visibility', () => {
     setHomeyClient(homey as never);
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
-    expect(select()).toBeNull();
+    expect(chip()).toBeNull();
     expect(staticForm()!.hidden).toBe(false);
   });
 
-  it('keeps the mount hidden with 0 meter areas, un-hides it when one exists', async () => {
-    // Layout byte-identity: an empty mount that stays a grid child adds a stray
-    // gap before Main's form. It must be display:none until a meter area exists.
-    const noAreas = installHomeyMock({
+  it('names the area on the status card and lifts global settings out of its claim', async () => {
+    install({ [`capacity_limit_kw:${AREA_ID}`]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+
+    // Main scope with areas present: base title, the app-global card visible,
+    // and the Main hard-cap hint naming its home ("your" would now be a claim
+    // over the whole house from one home among several).
+    expect(panelTitle().textContent).toBe('Limits & safety');
+    expect(globalCard().hidden).toBe(false);
+    expect(mainCapHint().textContent).toContain('The Main home’s grid tariff step');
+
+    await selectArea(AREA_ID);
+    // Area scope: the title carries the area (survives scrolling, a persisted
+    // scope, and the simulation notice disappearing once control is on), the
+    // status card names it too, and the app-global settings step out from under
+    // the scope claim leaving an account of where they went.
+    // The sticky bar names the home at every scroll position, so the panel title
+    // never restates it — that put an untruncated name above a truncated copy.
+    expect(panelTitle().textContent).toBe('Limits & safety');
+    expect(document.querySelector('#home-limits-status')?.textContent)
+      .toContain('Status now · Utleie');
+    expect(globalCard().hidden).toBe(true);
+    // The two settings are described separately: only Power source is app-wide,
+    // while the whole-home meter is the Main home's OWN meter — calling both
+    // "for the whole home" invites an aggregate that counts the meter areas.
+    expect(document.querySelector('#home-limits-global-note')?.textContent)
+      .toContain('the whole-home meter is the Main home’s own meter');
+  });
+
+  it('leaves the Main hard-cap hint alone for a home with no meter areas', async () => {
+    homey = installHomeyMock({
       uiState: {
         homes: {
           homes: [],
@@ -151,15 +230,24 @@ describe('switcher + static-form visibility', () => {
         },
       },
     });
-    setHomeyClient(noAreas as never);
+    setHomeyClient(homey as never);
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    expect(mainCapHint().textContent).toBe(MAIN_HINT_AT_INSTALL);
+    expect(panelTitle().textContent).toBe('Limits & safety');
+    expect(globalCard().hidden).toBe(false);
+  });
+
+  it('keeps the mount hidden until a meter area is the selected scope', async () => {
+    // Layout identity: an empty mount that stays a grid child adds a stray gap
+    // before Main's form. It must be display:none while Main is the scope —
+    // which is every moment of a single-meter home's life.
+    install();
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
     expect(document.querySelector<HTMLElement>('#home-limits-mount')!.hidden).toBe(true);
 
-    setHomeyClient(null);
-    install();
-    await refreshHomeLimitsOnLimitsPanel();
-    await flushAsync();
+    await selectArea(AREA_ID);
     expect(document.querySelector<HTMLElement>('#home-limits-mount')!.hidden).toBe(false);
   });
 
@@ -606,7 +694,7 @@ describe('status card from pels_status:<homeId>', () => {
 });
 
 describe('load failure surfaces an error, never an unhandled rejection', () => {
-  it('a rejected scalar read leaves the switcher-only degraded state + toasts the error', async () => {
+  it('a rejected scalar read leaves the scope-bar-only degraded state + toasts the error', async () => {
     install({ [`capacity_limit_kw:${AREA_ID}`]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
@@ -619,19 +707,19 @@ describe('load failure surfaces an error, never an unhandled rejection', () => {
     // The discarded load must not throw unhandled — the guard catches it.
     await selectArea(AREA_ID);
 
-    // Degraded state: no editor rendered, switcher still present, error toasted.
+    // Degraded state: no editor rendered, the scope bar still there, error toasted.
     expect(document.querySelector('#home-limits-hard-cap')).toBeNull();
-    expect(select()).not.toBeNull();
+    expect(chip()).not.toBeNull();
     expect(showToastError).toHaveBeenCalled();
   });
 });
 
 describe('transient refresh error keeps the last-good roster (abandon-grace)', () => {
-  it('a failed ui_homes refetch retains the existing areas instead of blanking the switcher', async () => {
+  it('a failed ui_homes refetch retains the existing areas instead of blanking the bar', async () => {
     install({ [`capacity_limit_kw:${AREA_ID}`]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
-    expect([...select()!.options].map((option) => option.value)).toEqual(['main', AREA_ID]);
+    expect(optionLabels()).toEqual(['Main home', 'Utleie']);
 
     // The next roster refetch fails transiently.
     homey.api.mockImplementation((method: string, uri: string, bodyOrCb: unknown, cb?: unknown) => {
@@ -642,13 +730,13 @@ describe('transient refresh error keeps the last-good roster (abandon-grace)', (
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
 
-    // Roster + switcher retained (not blanked to Main-only).
-    expect(select()).not.toBeNull();
-    expect([...select()!.options].map((option) => option.value)).toEqual(['main', AREA_ID]);
+    // Roster + bar retained (not blanked to Main-only).
+    expect(chip()).not.toBeNull();
+    expect(optionLabels()).toEqual(['Main home', 'Utleie']);
   });
 });
 
-describe('homes_config change refreshes the switcher roster', () => {
+describe('homes_config change refreshes the scope roster', () => {
   const AREA_TWO = 'h_two';
   const twoAreaHomes = () => ({
     homes: [
@@ -670,18 +758,42 @@ describe('homes_config change refreshes the switcher roster', () => {
     configDegraded: false,
   });
 
-  it('adds a newly-created area to the switcher on a homes_config change', async () => {
+  it('adds a newly-created area to the scope bar on a homes_config change', async () => {
     install();
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
-    expect([...select()!.options].map((option) => option.value)).toEqual(['main', AREA_ID]);
+    expect(optionLabels()).toEqual(['Main home', 'Utleie']);
 
     // A second area is added elsewhere; the roster blob change fires.
     homey.__uiState.homes = twoAreaHomes();
-    notifyHomeLimitsSettingChanged(HOMES_CONFIG);
+    notifyHomeScopeSettingChanged(HOMES_CONFIG);
     await flushAsync();
 
-    expect([...select()!.options].map((option) => option.value)).toEqual(['main', AREA_ID, AREA_TWO]);
+    expect(optionLabels()).toEqual(['Main home', 'Utleie', 'Hytta']);
+  });
+
+  it('renames the open editor when the selected area is renamed', async () => {
+    // The area name is the one editor field sourced from the roster rather than
+    // a suffixed key, so a rename must reach the notice below — otherwise the
+    // scope bar and the notice would name two different homes.
+    install({ [`capacity_limit_kw:${AREA_ID}`]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+    expect(document.querySelector('#home-limits-sim-notice')?.textContent).toContain('Utleie');
+
+    homey.__uiState.homes = {
+      ...homesPayload(),
+      homes: [{
+        homeId: AREA_ID, name: 'Kjellerleilighet', rootZoneId: 'z1', meterDeviceId: 'dev_a',
+      }],
+    };
+    notifyHomeScopeSettingChanged(HOMES_CONFIG);
+    await flushAsync();
+
+    expect(optionLabels()).toEqual(['Main home', 'Kjellerleilighet']);
+    expect(document.querySelector('#home-limits-sim-notice')?.textContent)
+      .toContain('Kjellerleilighet');
   });
 
   it('falls back to Main when the selected area is deleted via homes_config', async () => {
@@ -693,11 +805,11 @@ describe('homes_config change refreshes the switcher roster', () => {
 
     // The selected area is removed elsewhere.
     homey.__uiState.homes = emptyHomes();
-    notifyHomeLimitsSettingChanged(HOMES_CONFIG);
+    notifyHomeScopeSettingChanged(HOMES_CONFIG);
     await flushAsync();
 
-    // Switcher gone (0 areas) and the Main static form is restored.
-    expect(select()).toBeNull();
+    // Scope bar gone (0 areas) and the Main static form is restored.
+    expect(chip()).toBeNull();
     expect(staticForm()!.hidden).toBe(false);
   });
 });

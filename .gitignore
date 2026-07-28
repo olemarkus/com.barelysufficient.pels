@@ -46,3 +46,8 @@ pr-*-feedback.*
 
 # Widget screenshot harness output (artifacts)
 tests/widget-shots/out/
+
+# Design-review screenshot output from the settings-UI Playwright specs
+# (`limits-per-home-screenshots.spec.ts` and friends write here). Local
+# artifacts only — the committed doc images live under docs/public/screenshots.
+/screenshots/

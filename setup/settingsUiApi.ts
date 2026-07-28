@@ -7,30 +7,14 @@ import type {
 import type {
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
-import type {
-  DeferredObjectivePlanPreviewCandidate,
-  DeferredObjectivePlanPreviewEstimate,
-} from '../packages/contracts/src/deferredObjectivePlanPreview';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
-import type {
-  SettingsUiStarvationRescueCreateResponse,
-  SettingsUiStarvationRescueDevicesPayload,
-  SettingsUiStarvationRescuePreviewResponse,
-  StarvationRescueRejectReason,
-} from '../packages/contracts/src/starvationRescue';
-import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
-import {
-  buildRescueCandidate,
-  mapAppRescueReason,
-  parseRescueRequest,
-  RESCUE_DEADLINE_HORIZON_MS,
-  resolveRescuableDeviceFromList,
-} from '../packages/shared-domain/src/starvationRescueShared';
-import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
-import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS, POWER_TRACKER_STATE } from '../lib/utils/settingsKeys';
+import {
+  SettingsUiHomeScopeAdapter,
+  type ResolvedSubHomeScope,
+} from './settingsUiHomeScope';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import type {
@@ -46,21 +30,7 @@ import type {
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
-import type {
-  SettingsUiHomesPayload,
-  SettingsUiHomesSaveRequest,
-  SettingsUiHomesSaveResponse,
-} from '../packages/contracts/src/settingsUiHomes';
-import {
-  generateHomeId,
-  isValidSubHomeId,
-  resolveExplicitMainMeterDeviceId,
-  type HomeConfig,
-  type SubHomeConfig,
-} from '../lib/home/homeConfig';
-import { createHomesStore } from './homeRegistryAdapter';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import type { HomeMembershipDiagnostics, HomeMembershipService } from './homeMembership';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { normalizePowerSource } from '../lib/power/powerSource';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
@@ -74,20 +44,10 @@ import {
   refreshSettingsUiPricesForApp,
   resetSettingsUiPowerStatsForApp,
 } from './settingsUiAppRuntime';
-import {
-  commitHomesConfigWriteWithTrackerFreshnessReset,
-} from './homeRuntime/homeTrackerConfigSafety';
-import {
-  areaRootsAtForestRoot,
-  saveMainMeterSelection,
-  violatesComposedHomeInvariants,
-} from './homeMeterOwnership';
-import {
-  resolveRescuableSettingsDevice,
-  type SettingsUiStarvationRescueScope,
-} from './settingsUiStarvationRescueScope';
 
-type SettingsUiApiApp = Homey.App & SettingsUiStarvationRescueScope & {
+type SettingsUiApiApp = Homey.App & {
+  capacityDryRun?: unknown;
+  capacitySettings?: unknown;
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
   recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
   previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
@@ -96,33 +56,20 @@ type SettingsUiApiApp = Homey.App & SettingsUiStarvationRescueScope & {
   getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
-  previewDeferredObjectivePlan?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => DeferredObjectivePlanPreviewEstimate;
   getWeatherAdvisorReadout?: () => Promise<WeatherAdvisorReadoutPayload | null>;
-  // Budget-exempt rescue surface — the same app methods the starvation_rescue
-  // widget calls. Optional like the rest (the app may be unwired during restart).
-  previewStarvationRescuePlan?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean };
-  rescueDeviceWithBudgetExemption?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => WidgetObjectiveWriteResult;
-  // The multi-home membership cache. `AppContext` deliberately types this
-  // member as the lib/home PORT (control surface only); this setup-internal
-  // cast re-narrows to the concrete service the wiring assigned, because the
-  // read-only `ui_homes` endpoint is the ONE sanctioned consumer of the
-  // diagnostics view (per-device `source`). Optional like the rest:
-  // unassigned during the boot window before `initHomeMembership` runs.
-  homeMembership?: HomeMembershipService;
 };
 
 type ApiContext = {
   homey: Homey.App['homey'];
 };
+
+/**
+ * The three read endpoints that accept an optional `?homeId=`. `query` is the
+ * raw inbound bag; `settingsUiHomeScope` owns its complete classification.
+ * Optional so every in-process caller (bootstrap, refresh endpoints, tests)
+ * keeps the whole-home behaviour without naming it.
+ */
+type HomeScopedApiContext = ApiContext & { query?: unknown };
 
 const getApp = (homey: Homey.App['homey']): SettingsUiApiApp | null => {
   if (!homey || typeof homey !== 'object') return null;
@@ -180,7 +127,19 @@ const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null
   getPlanSnapshotForUiFromHomey(homey)
 );
 
+const resolveMainCapacityScalars = (
+  value: unknown,
+): SettingsUiPowerPayload['mainCapacityScalars'] => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const { limitKw, marginKw } = value as { limitKw?: unknown; marginKw?: unknown };
+  if (typeof limitKw !== 'number' || !Number.isFinite(limitKw)) return undefined;
+  if (typeof marginKw !== 'number' || !Number.isFinite(marginKw)) return undefined;
+  return { limitKw, marginKw };
+};
+
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
+  const app = getApp(homey);
+  const mainCapacityScalars = resolveMainCapacityScalars(app?.capacitySettings);
   const tracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
   const status = homey.settings.get('pels_status') as {
@@ -195,6 +154,10 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     tracker: tracker && typeof tracker === 'object' ? tracker : null,
     status: status && typeof status === 'object' ? status : null,
     heartbeat: null,
+    ...(typeof app?.capacityDryRun === 'boolean'
+      ? { mainDryRunEffective: app.capacityDryRun }
+      : {}),
+    ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
     // Home-level "this home has solar surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). Requires BOTH a role-detected PV device (class-key
@@ -203,9 +166,8 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     // so the solar buckets can never fill — flagging such a home would render
     // an eternal "gathering" card that promises data that will never come
     // (terminology rule: flow homes get NO solar surfaces).
-    hasManagedSolarDevice: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
-      && getRawSettingsUiDeviceCandidates({ homey })
-        .some((device) => device.deviceClass === 'solarpanel'),
+    hasManagedSolarDevice: isHomeyEnergySource(homey)
+      && hasSolarCandidate(getRawSettingsUiDeviceCandidates({ homey })),
   };
 };
 
@@ -258,7 +220,114 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
   };
 };
 
-export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
+// Whether this home has solar surfaces, from ITS candidate list. Shared by the
+// whole-home and per-home composers so the two can never diverge; the two
+// endpoints keep their historical source gating (ui_power gates on
+// homey_energy, ui_devices deliberately does not — see each field's contract).
+const hasSolarCandidate = (candidates: readonly TargetDeviceSnapshot[]): boolean => (
+  candidates.some((device) => device.deviceClass === 'solarpanel')
+);
+
+const isHomeyEnergySource = (homey: Homey.App['homey']): boolean => (
+  normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+);
+
+// ── `?homeId=` composers ────────────────────────────────────────────────────
+// Each returns the empty shape plus an `unavailable` scope when the sub-home
+// cannot be served, so a consumer can never mistake the emptiness for a
+// measurement — the solar flags are OMITTED there, never fabricated `false`.
+// Values come from the read port + that home's own suffixed `pels_status`;
+// nothing here rebuilds, refreshes or actuates. The helpers accept only a
+// parser-resolved scope, so no untrusted string can reach them.
+
+const UNAVAILABLE_PLAN_PAYLOAD: SettingsUiPlanPayload = {
+  plan: null, homeScope: { state: 'unavailable' },
+};
+const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
+  tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+};
+const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
+  devices: [], homeScope: { state: 'unavailable' },
+};
+
+const planPayloadForHome = (
+  homey: Homey.App['homey'],
+  scope: ResolvedSubHomeScope,
+): SettingsUiPlanPayload => {
+  const reading = new SettingsUiHomeScopeAdapter(homey).readRuntime(scope);
+  if (!reading) return UNAVAILABLE_PLAN_PAYLOAD;
+  return { plan: reading.plan, homeScope: { state: 'resolved', homeId: scope.homeId } };
+};
+
+const powerPayloadForHome = (
+  homey: Homey.App['homey'],
+  scope: ResolvedSubHomeScope,
+): SettingsUiPowerPayload => {
+  const homeScope = new SettingsUiHomeScopeAdapter(homey);
+  const reading = homeScope.readRuntime(scope);
+  if (!reading) return UNAVAILABLE_POWER_PAYLOAD;
+  // Unwired or provisional membership refuses the WHOLE payload, exactly as
+  // the devices composer does, so `homeScope: resolved` always means every
+  // field is this home's truth — an absent solar flag never has to carry a
+  // second meaning (the contract's documented absence case is the realtime
+  // status-only push).
+  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
+  if (members === null) return UNAVAILABLE_POWER_PAYLOAD;
+  // A thrown status read (transient Homey store failure) is unavailable too:
+  // it is not "no status committed yet", and a resolved payload built from it
+  // could be cached for the session.
+  const statusRead = homeScope.readStatus(scope);
+  if (statusRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
+  // The `power_source` gate behind the solar flag is a settings read as well,
+  // so the adapter classifies its failure the same way — never an untyped
+  // transport error escaping a scoped request, never a flag fabricated from a
+  // failed read (absence already means "realtime status-only push" here).
+  const sourceRead = homeScope.readPowerSource();
+  if (sourceRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
+  return {
+    tracker: reading.powerTracker,
+    status: statusRead.status,
+    heartbeat: null,
+    hasManagedSolarDevice: sourceRead.source === 'homey_energy' && hasSolarCandidate(members),
+    homeScope: { state: 'resolved', homeId: scope.homeId },
+  };
+};
+
+const devicesPayloadForHome = (
+  homey: Homey.App['homey'],
+  scope: ResolvedSubHomeScope,
+): SettingsUiDevicesPayload => {
+  const homeScope = new SettingsUiHomeScopeAdapter(homey);
+  const reading = homeScope.readRuntime(scope);
+  if (reading === null) return UNAVAILABLE_DEVICES_PAYLOAD;
+  // Device→home attribution is what makes a per-home list true; without a
+  // wired, non-provisional membership service there is no honest list, only an
+  // unfiltered, empty or previous-generation one.
+  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
+  if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
+  // Same rule as the power composer's status read: the `power_source` gate is
+  // a settings read, and the adapter classifies its transient failure into the
+  // endpoint's typed `unavailable` instead of rejecting the request.
+  const sourceRead = homeScope.readPowerSource();
+  if (sourceRead.state === 'unavailable') return UNAVAILABLE_DEVICES_PAYLOAD;
+  return {
+    devices: members.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    hasManagedSolarDevice: hasSolarCandidate(members),
+    hasExhibitedExport: sourceRead.source === 'homey_energy' && hasMaterialExhibitedExport(reading.powerTracker),
+    homeScope: { state: 'resolved', homeId: scope.homeId },
+  };
+};
+
+export const getSettingsUiDevicesPayload = (
+  { homey, query }: HomeScopedApiContext,
+): SettingsUiDevicesPayload => {
+  const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
+  if (scope.state === 'whole_home') return getWholeHomeDevicesPayload({ homey });
+  if (scope.state === 'rejected') return UNAVAILABLE_DEVICES_PAYLOAD;
+  return devicesPayloadForHome(homey, scope);
+};
+
+const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
   const candidates = getRawSettingsUiDeviceCandidates({ homey });
   const tracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
@@ -279,199 +348,42 @@ export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDe
     // gates the runtime `surplusOnly` stamp to homey_energy), so the toggle is at worst inert
     // on flow, never destructive. Gating this flag to source-hide the surplus controls WITHOUT
     // hiding the export section needs a decoupled per-control gate — tracked in TODO.
-    hasManagedSolarDevice: candidates.some((device) => device.deviceClass === 'solarpanel'),
+    hasManagedSolarDevice: hasSolarCandidate(candidates),
     // Meter-only PV homes (a string inverter with no Homey solarpanel device) get no
     // `hasManagedSolarDevice` signal, yet the surplus-absorb engine keys off whole-home net
     // export, which they DO exhibit. Broaden the "Use solar surplus" toggle gate to them via a
     // stable, accumulated export-kWh signal. Source-gated to homey_energy: the flow power
     // boundary rejects negative watts, so a flow home's export families are always empty anyway.
-    hasExhibitedExport: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+    hasExhibitedExport: isHomeyEnergySource(homey)
       && hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
   };
 };
 
-export const getSettingsUiPlanPayload = ({ homey }: ApiContext): SettingsUiPlanPayload => ({
-  plan: getSettingsUiPlan({ homey }),
-});
+// ── The three `?homeId=`-aware endpoints ────────────────────────────────────
+// One dispatch shape each: an absent id returns the historical payload with NO
+// `homeScope` member, so the whole-home response — the one a single-home
+// install and every whole-home surface reads — stays byte-identical. A refused
+// id (`''`, `'main'`, `':'`-bearing, prototype-colliding, non-string) never
+// reaches a settings read; it returns the empty shape marked `unavailable`,
+// which is also what an unknown or unwired sub-home returns.
 
-// The full "config degraded" condition, as ONE predicate shared by the
-// read payload (its `configDegraded` field → the UI's degraded copy) and the
-// write seam (its refusal), so the two can never diverge. Degraded ⇔ no wired
-// membership service (boot window) OR the last recompute classified EITHER
-// persisted store (`homes_config` / `device_home_assignments`) `'suspect'`. A
-// whole-value write composed while any of these holds could erase persisted
-// areas — hence the write refuses on exactly the same condition the read reports.
-const isHomesConfigDegraded = (diagnostics: HomeMembershipDiagnostics | undefined): boolean => (
-  diagnostics === undefined || diagnostics.configDegraded
-);
-
-// Read-only multi-home view: the membership cache's diagnostics composed into
-// the contracts mirror (`SettingsUiHomesPayload`). Before `initHomeMembership`
-// runs (boot window) the payload is the honest empty single-home shape. Writes
-// go through the `homes_config`/`device_home_assignments` settings keys, never
-// through this endpoint.
-export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHomesPayload => {
-  const diagnostics = getApp(homey)?.homeMembership?.getDiagnostics();
-  if (!diagnostics) {
-    return {
-      // Boot window: nothing can vouch for the persisted config, so the
-      // payload is the empty single-home shape AND degraded — the UI must not
-      // compose a whole-value homes_config write from this view.
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, runtimeActive: false,
-      configDegraded: true,
-    };
-  }
-  // Uniform copy discipline: shallow-copy ALL collection members so the
-  // composed payload never aliases the service's live caches (a future
-  // in-process consumer mutating the payload must not corrupt membership).
-  return {
-    homes: [...diagnostics.subHomes],
-    membershipByDeviceId: { ...diagnostics.membershipByDeviceId },
-    zoneTree: diagnostics.zoneTree === null ? null : { ...diagnostics.zoneTree },
-    hasSubHomes: diagnostics.hasSubHomes,
-    runtimeActive: diagnostics.runtimeActive,
-    configDegraded: isHomesConfigDegraded(diagnostics),
-  };
+export const getSettingsUiPlanPayload = (
+  { homey, query }: HomeScopedApiContext,
+): SettingsUiPlanPayload => {
+  const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
+  if (scope.state === 'whole_home') return { plan: getSettingsUiPlan({ homey }) };
+  if (scope.state === 'rejected') return UNAVAILABLE_PLAN_PAYLOAD;
+  return planPayloadForHome(homey, scope);
 };
 
-// ── ui_homes_save: the Multiple meters UI's ONLY ownership-write seam ───────
-// Intent operations (upsert/delete ONE area or select Main's explicit meter),
-// never client-composed state: the runtime re-reads the persisted config
-// through the CLASSIFIED store reader, refuses when it classifies suspect,
-// then applies one operation. Area writes use the marker-first classified
-// writer; Main-meter writes validate and persist synchronously in this same
-// server turn. The app's single-threaded event loop therefore serializes both
-// sides of meter ownership, and stale panels cannot wipe or double-own areas.
-
-const asSaveRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-);
-
-const toSaveNonEmptyString = (value: unknown): string | null => (
-  typeof value === 'string' && value.length > 0 ? value : null
-);
-
-type ParsedUpsertArea = Extract<SettingsUiHomesSaveRequest, { op: 'upsert' }>['area'];
-
-/** Boundary parse of an upsert `area` payload; `null` = malformed. */
-const parseUpsertArea = (value: unknown): ParsedUpsertArea | null => {
-  const area = asSaveRecord(value);
-  if (!area) return null;
-  // A present-but-malformed homeId must refuse, never silently become a create.
-  let homeId: string | undefined;
-  if (area.homeId !== undefined) {
-    if (typeof area.homeId !== 'string' || !isValidSubHomeId(area.homeId)) return null;
-    homeId = area.homeId;
-  }
-  if (typeof area.name !== 'string') return null;
-  const rootZoneId = toSaveNonEmptyString(area.rootZoneId);
-  if (rootZoneId === null) return null;
-  // Explicit null = no meter (the domain allows it); anything else must be a
-  // non-empty string — absent/malformed refuses rather than coercing.
-  const meterRaw = area.meterDeviceId;
-  const meterDeviceId = meterRaw === null ? null : toSaveNonEmptyString(meterRaw);
-  if (meterRaw !== null && meterDeviceId === null) return null;
-  return {
-    ...(homeId === undefined ? {} : { homeId }), name: area.name, rootZoneId, meterDeviceId,
-  };
+export const getSettingsUiPowerPayload = (
+  { homey, query }: HomeScopedApiContext,
+): SettingsUiPowerPayload => {
+  const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
+  if (scope.state === 'whole_home') return getSettingsUiPower({ homey });
+  if (scope.state === 'rejected') return UNAVAILABLE_POWER_PAYLOAD;
+  return powerPayloadForHome(homey, scope);
 };
-
-/** Boundary parse of the untrusted request body; `null` = malformed. */
-const parseHomesSaveRequest = (body: unknown): SettingsUiHomesSaveRequest | null => {
-  const record = asSaveRecord(body);
-  if (!record) return null;
-  if (record.op === 'set_main_meter') {
-    const meterRaw = record.meterDeviceId;
-    if (meterRaw === null) return { op: 'set_main_meter', meterDeviceId: null };
-    const meterDeviceId = resolveExplicitMainMeterDeviceId(meterRaw);
-    return meterDeviceId === null ? null : { op: 'set_main_meter', meterDeviceId };
-  }
-  if (record.op === 'delete') {
-    const homeId = toSaveNonEmptyString(record.homeId);
-    return homeId !== null && isValidSubHomeId(homeId) ? { op: 'delete', homeId } : null;
-  }
-  if (record.op !== 'upsert') return null;
-  const area = parseUpsertArea(record.area);
-  return area === null ? null : { op: 'upsert', area };
-};
-
-const applyHomesUpsert = (
-  current: readonly SubHomeConfig[],
-  area: Extract<SettingsUiHomesSaveRequest, { op: 'upsert' }>['area'],
-): SubHomeConfig[] => {
-  // Id allocation is the runtime's (create = absent id); an upsert with a
-  // vanished id honestly re-adds the area — the UI's "Add again" semantics.
-  const homeId = area.homeId ?? generateHomeId(current.map((entry) => entry.homeId));
-  const entry: SubHomeConfig = {
-    homeId, name: area.name, rootZoneId: area.rootZoneId, meterDeviceId: area.meterDeviceId,
-  };
-  return current.some((existing) => existing.homeId === homeId)
-    ? current.map((existing) => (existing.homeId === homeId ? entry : existing))
-    : [...current, entry];
-};
-
-type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
-
-const saveAreaMutation = (
-  homey: Homey.App['homey'],
-  request: AreaMutationRequest,
-): SettingsUiHomesSaveResponse => {
-  const zoneTree = getApp(homey)?.homeMembership?.getDiagnostics().zoneTree ?? null;
-  if (areaRootsAtForestRoot(request, zoneTree)) return { ok: false, reason: 'invalid' };
-  // Refuse whenever the ui_homes read would report degraded — an unwired
-  // membership service (boot window) OR EITHER persisted store `'suspect'` as
-  // of the last recompute — not merely a suspect homes-store read: composing a
-  // whole-value write over an unknown/stale config could erase areas. Shares
-  // the read payload's predicate so the two gates can never diverge; the UI
-  // maps this refusal to its degraded copy.
-  if (isHomesConfigDegraded(getApp(homey)?.homeMembership?.getDiagnostics())) {
-    return { ok: false, reason: 'degraded' };
-  }
-  const store = createHomesStore(homey);
-  const read = store.read();
-  // TOCTOU close: a FRESH classified read (the homes store can go suspect
-  // between the last recompute and now). The persisted truth is unknown, and
-  // applying an op over a guess could erase areas.
-  if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
-  const currentConfig: HomeConfig = read.state === 'present' ? read.value : { subHomes: [] };
-  const next = request.op === 'delete'
-    ? currentConfig.subHomes.filter((area) => area.homeId !== request.homeId)
-    : applyHomesUpsert(currentConfig.subHomes, request.area);
-  // An upsert must not reuse a meter or nest/duplicate an existing root zone
-  // (a delete never can). Validate the freshly composed list before any
-  // tracker-reset side effect or persisted write.
-  if (request.op === 'upsert' && violatesComposedHomeInvariants(homey, next, zoneTree)) {
-    return { ok: false, reason: 'invalid' };
-  }
-  // Reset before config commit, but restore the old tracker if the boundary
-  // proves the old config survived a refused/thrown write.
-  const commit = commitHomesConfigWriteWithTrackerFreshnessReset({
-    apiApp: homey.app,
-    settings: homey.settings,
-    store,
-    request,
-    currentConfig,
-    next,
-  });
-  if (commit.state === 'committed') return { ok: true };
-  return { ok: false, reason: commit.state === 'invalid' ? 'invalid' : 'degraded' };
-};
-
-export const saveSettingsUiHomesConfig = (
-  { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiHomesSaveResponse => {
-  const request = parseHomesSaveRequest(body);
-  if (request === null) return { ok: false, reason: 'invalid' };
-  return request.op === 'set_main_meter'
-    ? saveMainMeterSelection(homey, request)
-    : saveAreaMutation(homey, request);
-};
-
-export const getSettingsUiPowerPayload = ({ homey }: ApiContext): SettingsUiPowerPayload => (
-  getSettingsUiPower({ homey })
-);
 
 export const getSettingsUiPricesPayload = ({ homey }: ApiContext): SettingsUiPricesPayload => (
   getSettingsUiPrices({ homey })
@@ -576,101 +488,6 @@ export const applySettingsUiDailyBudgetModel = (
   const app = getApp(homey);
   if (!app?.applyDailyBudgetModel) return null;
   return app.applyDailyBudgetModel(asDailyBudgetModelSettings(body));
-};
-
-// ─── Overview device-card budget-exempt rescue ("Let it run now") ────────────
-//
-// The same bounded rescue the starvation_rescue widget offers, surfaced from the
-// overview device card. These handlers run in the app process and reach the SAME
-// app methods the widget calls (`getStarvedRescueDevices`,
-// `previewStarvationRescuePlan`, `rescueDeviceWithBudgetExemption`), reusing the
-// shared request/candidate/gating helpers so the two surfaces resolve the rescue
-// identically. There is NO standing per-device toggle here — a budget exemption
-// is always BOUNDED to a fresh deferred objective (≈ now+3h, until the device
-// reaches its normal target), per feedback_hard_cap_is_physical.
-
-const previewRescueReject = (
-  reason: StarvationRescueRejectReason,
-): SettingsUiStarvationRescuePreviewResponse => ({ ok: false, reason });
-
-const createRescueReject = (
-  reason: StarvationRescueRejectReason,
-): SettingsUiStarvationRescueCreateResponse => ({ ok: false, reason });
-
-// The device IDs the overview chip may offer the rescue on — the same gate the
-// widget uses (budget-caused + task-free + a known target). Resolved from
-// `getStarvedRescueDevices` so a shown chip's create call can never be rejected
-// as not-rescuable.
-export const getSettingsUiStarvationRescueDevices = (
-  { homey }: ApiContext,
-): SettingsUiStarvationRescueDevicesPayload => {
-  const app = getApp(homey);
-  const devices = typeof app?.getStarvedRescueDevices === 'function' ? app.getStarvedRescueDevices() : null;
-  const rescuableDeviceIds = (devices ?? [])
-    .filter((device) => resolveRescuableDeviceFromList([device], device.deviceId).ok)
-    .map((device) => device.deviceId);
-  return { rescuableDeviceIds };
-};
-
-export const previewSettingsUiStarvationRescue = (
-  { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiStarvationRescuePreviewResponse => {
-  const request = parseRescueRequest(body);
-  if (!request) return previewRescueReject('invalid_request');
-  const app = getApp(homey);
-  if (typeof app?.previewStarvationRescuePlan !== 'function') return previewRescueReject('unavailable');
-
-  const rescuable = resolveRescuableSettingsDevice(app, request.deviceId);
-  if (!rescuable.ok) return previewRescueReject(rescuable.reason);
-
-  const nowMs = Date.now();
-  const timeZone = homey.clock.getTimezone();
-  // A rescue is always a fresh task (task-having devices are excluded), so the
-  // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
-  // persists (preview ≡ persist).
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, nowMs + RESCUE_DEADLINE_HORIZON_MS);
-  const { estimate, deadlineAtMs } = app.previewStarvationRescuePlan(request.deviceId, candidate);
-  return {
-    ok: true,
-    deadlineAtMs,
-    deadlineLabel: formatSmartTaskDeadlineLong(deadlineAtMs, nowMs, timeZone),
-    estimate,
-  };
-};
-
-export const createSettingsUiStarvationRescue = (
-  { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiStarvationRescueCreateResponse => {
-  const request = parseRescueRequest(body);
-  if (!request) return createRescueReject('invalid_request');
-  const app = getApp(homey);
-  if (typeof app?.rescueDeviceWithBudgetExemption !== 'function') return createRescueReject('unavailable');
-
-  // Re-check the guardrail at create time against the LIVE list: a row that
-  // recovered (or whose cause changed) between preview and confirm is rejected
-  // rather than silently granted a budget exemption.
-  const rescuable = resolveRescuableSettingsDevice(app, request.deviceId);
-  if (!rescuable.ok) return createRescueReject(rescuable.reason);
-
-  // Persist the EXACT deadline the preview resolved (echoed back), or a fresh
-  // near-term horizon when none was echoed (a plain confirm without a preview).
-  // Either way the deadline must be strictly future AND within the rescue horizon.
-  const nowMs = Date.now();
-  const deadlineAtMs = request.deadlineAtMs ?? nowMs + RESCUE_DEADLINE_HORIZON_MS;
-  if (deadlineAtMs <= nowMs || deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
-    return createRescueReject('deadline_passed');
-  }
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
-  const result = app.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
-  if (!result.ok) return createRescueReject(mapAppRescueReason(result.reason));
-  // Resolve the success flash against the JUST-PERSISTED plan at THIS moment
-  // (a pure re-derivation, no persist); absent the preview method, fall back to
-  // the honest-conservative "not running now".
-  const post = app.previewStarvationRescuePlan?.(request.deviceId, candidate);
-  return {
-    ok: true,
-    runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false,
-  };
 };
 
 export const logSettingsUiMessage = ({ homey, body }: ApiContext & { body?: unknown }): { ok: boolean } => {

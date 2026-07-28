@@ -30,6 +30,10 @@ export type OwnershipGenerationRuntime = {
 };
 
 export type WireHomeMembershipOptions = {
+  onOwnershipReadyBeforePlanWork?: (
+    membership: HomeMembershipWiring['service'],
+    allowPendingOwnershipGeneration: boolean,
+  ) => void;
   onZoneTreeCommitReady?: () => void;
   onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
   onSubHomeMembershipChanged?: () => void;
@@ -64,6 +68,7 @@ const isStableSampleRevision = (
 const prepareRecoveryAuthority = async (params: {
   membership: HomeMembershipWiring['service'];
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
+  retryDeferredOvershootSeed?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'];
   retryRevisionBeforeFence: number;
   getRetryRevision: () => number;
   schedule: () => void;
@@ -71,6 +76,7 @@ const prepareRecoveryAuthority = async (params: {
   const {
     membership,
     ownershipGenerationRuntime,
+    retryDeferredOvershootSeed,
     retryRevisionBeforeFence,
     getRetryRevision,
     schedule,
@@ -79,6 +85,7 @@ const prepareRecoveryAuthority = async (params: {
   const generationPending = membership.hasPendingOwnershipGeneration();
   if (!generationPending) {
     if (!membership.isMainHomeActuationFenced()) {
+      retryDeferredOvershootSeed?.(membership, false);
       return { ownershipGeneration, generationPending };
     }
     if (retryFencedAuthority(
@@ -93,6 +100,10 @@ const prepareRecoveryAuthority = async (params: {
   );
   if (preparation === 'retry') schedule();
   if (preparation !== 'ready') return null;
+  // The current observed map and settings have been classified ready, while
+  // final actuation remains fenced by the pending generation. Seed now so both
+  // Main and bundle preparation below build with the usable temperature action.
+  retryDeferredOvershootSeed?.(membership, true);
   if (ownershipGenerationRuntime && !(await ownershipGenerationRuntime.prepare())) {
     schedule();
     return null;
@@ -337,6 +348,7 @@ const createMainOwnershipRecovery = (
   ctx: AppContext,
   getMembership: () => HomeMembershipWiring['service'] | undefined,
   ownershipGenerationRuntime?: OwnershipGenerationRuntime,
+  retryDeferredOvershootSeed?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'],
 ): MainOwnershipRecovery => {
   let stopped = false;
   let inFlight = false;
@@ -383,6 +395,7 @@ const createMainOwnershipRecovery = (
       const prepared = await prepareRecoveryAuthority({
         membership,
         ownershipGenerationRuntime,
+        retryDeferredOvershootSeed,
         retryRevisionBeforeFence: retryRequestRevision,
         getRetryRevision: () => retryRequestRevision,
         schedule,
@@ -459,13 +472,19 @@ export const wireHomeMembership = (
   options: WireHomeMembershipOptions = {},
 ): HomeMembershipWiring => {
   const {
+    onOwnershipReadyBeforePlanWork,
     onZoneTreeCommitReady,
     onRuntimeActiveChanged,
     onSubHomeMembershipChanged,
     ownershipGenerationRuntime,
   } = options;
   let service: HomeMembershipWiring['service'] | undefined = undefined;
-  const recovery = createMainOwnershipRecovery(ctx, () => service, ownershipGenerationRuntime);
+  const recovery = createMainOwnershipRecovery(
+    ctx,
+    () => service,
+    ownershipGenerationRuntime,
+    onOwnershipReadyBeforePlanWork,
+  );
   const wiring = createHomeMembershipService({
     homey: ctx.homey,
     emitter,
@@ -473,6 +492,15 @@ export const wireHomeMembership = (
     onRuntimeActiveChanged,
     onMainOwnershipReady: recovery.applyNow,
     onMainAuthorityUnresolved: recovery.schedule,
+    // A repaired sampled-meter fence still leaves a committed plan derived
+    // under the old provenance. Advance the ownership generation synchronously
+    // before the authority latch opens; that generation is the takeover fence
+    // while the normal bounded recovery rebuilds and reconciles a fresh plan.
+    // `observeOwnershipConfigurationChanged` schedules through the existing
+    // unresolved-authority callback, so recovery remains deferred off the
+    // sample-dispatch stack.
+    onMainAuthorityReopened: () => service?.observeOwnershipConfigurationChanged(),
+    onOwnershipReadyBeforePlanWork,
     setOnZoneTreeCommitted: (callback) => ctx.deviceManager?.setOnZoneTreeCommitted(callback),
     setOnDeviceZoneChanged: (callback) => ctx.deviceManager?.setOnDeviceZoneChanged(callback),
     getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,
@@ -486,6 +514,14 @@ export const wireHomeMembership = (
       zoneId: device.zoneId ?? null,
     })),
     getLogger: () => ctx.getStructuredLogger('homes'),
+    // Restart fence anchor: the stamp of the sample Main's tracker currently
+    // serves. `loadPowerTracker` reloads the durable `lastPowerW`/
+    // `lastTimestamp`, so after a restart inside the freshness window the
+    // planner treats pre-restart watts as live while the sampled-identity owner
+    // starts empty — the authority reads this to fence Main until its own first
+    // ingest re-proves provenance. Lazy: the tracker may load after this wiring,
+    // and an unloaded `{}` honestly reports no restored sample.
+    getRestoredSampleAtMs: () => ctx.powerTracker?.lastTimestamp,
     // Change-gated plan invalidation, mirroring the settings-change rebuild
     // path (`rebuildPlanFromSettings` → `planService.rebuildPlanFromCache`): a
     // changed membership map means the committed plan governs the wrong device

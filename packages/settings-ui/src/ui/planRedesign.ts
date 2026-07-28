@@ -9,10 +9,15 @@ import {
   type SettingsUiPowerStatus,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
+import { getHomeScope } from './homeScope.ts';
+import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
+import { readUsagePower } from './usagePowerRead.ts';
 import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
+import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
 import {
@@ -22,7 +27,7 @@ import {
 } from '../../../shared-domain/src/overviewSmartTaskRow.ts';
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
-import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
+import type { PlanSnapshot } from './planTypes.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 
 let cachedPowerStatus: SettingsUiPowerStatus | null = null;
@@ -47,36 +52,37 @@ const getPlanSurface = (): HTMLElement | null => (
   planSurface ??= document.getElementById('plan-redesign-surface')
 );
 
-const hasStructuredReason = (value: unknown): boolean => (
-  Boolean(value)
-  && typeof value === 'object'
-  && typeof (value as { code?: unknown }).code === 'string'
-);
-
-const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
-  Boolean(value)
-  && typeof value === 'object'
-  && typeof (value as { id?: unknown }).id === 'string'
-  && typeof (value as { name?: unknown }).name === 'string'
-  && hasStructuredReason((value as { reason?: unknown }).reason)
-);
-
-export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
-  if (!value || typeof value !== 'object') return null;
-  const devices = (value as { devices?: unknown }).devices;
-  if (devices !== undefined && (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot))) {
-    return null;
-  }
-  return value as PlanSnapshot;
-};
-
 const getPlanSnapshotFromPayload = (payload: SettingsUiPlanPayload | null | undefined): PlanSnapshot | null => (
   parsePlanSnapshot(payload?.plan)
 );
 
+// Whole-home only, deliberately: this reader collapses the payload to
+// `PlanSnapshot | null`, so an `unavailable` scoped read would masquerade as
+// "no plan committed yet". A selected meter area reads through
+// `readOverviewPlan` (`overviewPlanRead.ts`), which discriminates
+// `payload.homeScope` before any flat field is reachable.
 const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (
   getPlanSnapshotFromPayload(await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH))
 );
+
+/**
+ * Which home the COMMITTED render state (`currentPlan`, `cachedPowerStatus`,
+ * `cachedSolarNowInput`) describes. One owner, three consequences in
+ * `doRender`:
+ *
+ * - `area` + `read: 'unavailable'` renders the honest notice instead of the
+ *   hero and cards — never fabricated numbers for a home the runtime could
+ *   not serve;
+ * - the smart-task row renders under Main only (smart tasks are a Main-home
+ *   feature — locked multi-home decision, same as the daily budget);
+ * - the hero's simulation context comes from the shown home's OWN flag
+ *   (`simulating` for an area, `state.dryRun` for Main).
+ */
+type OverviewScope =
+  | { kind: 'main' }
+  | { kind: 'area'; homeId: string; read: 'pending' | 'served' | 'unavailable'; simulating: boolean };
+
+let overviewScope: OverviewScope = { kind: 'main' };
 
 const toSolarNowInput = (tracker: SettingsUiPowerPayload['tracker']): SolarNowInput | null => (
   tracker && typeof tracker === 'object'
@@ -133,11 +139,18 @@ const doRender = () => {
   renderPlanOverview(surface, {
     plan: currentPlan,
     planResolved: planPayloadReceived,
+    scopeUnavailable: overviewScope.kind === 'area' && overviewScope.read === 'unavailable',
     power: cachedPowerStatus,
     prices: cachedPrices,
     solarNowInput: cachedSolarNowInput,
-    smartTaskRow: resolveSmartTaskRow(now),
-    context: { dryRun: state.dryRun },
+    // Smart tasks are a Main-home feature (locked multi-home decision):
+    // under a meter area the row is OMITTED as not-applicable — rendering
+    // Main's task states under the area's name would break the scope bar's
+    // honesty claim.
+    smartTaskRow: overviewScope.kind === 'main' ? resolveSmartTaskRow(now) : null,
+    context: {
+      dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
+    },
     renderedAtMs: currentRenderedAtMs,
     nowMs: now,
   });
@@ -150,11 +163,66 @@ const doRender = () => {
   }
 };
 
-export const renderPlan = (plan: PlanSnapshot | null) => {
+const commitPlan = (plan: PlanSnapshot | null, scope: OverviewScope) => {
+  overviewScope = scope;
   currentPlan = plan;
   currentRenderedAtMs = Date.now();
   planPayloadReceived = true;
   doRender();
+};
+
+/**
+ * MAIN-stream entry point — the realtime `plan_updated` push and the rescue
+ * gate's deferred repaint, both of which only ever carry the MAIN home's plan
+ * (`plan_updated` is deliberately never widened to sub-homes).
+ *
+ * THE bare-URI-prime guard (multi-home): that push also re-seeds the bare
+ * `/ui_plan` cache entry with Main's payload. While a meter area is the
+ * selected scope this paint must be DROPPED — Main's device set rendered
+ * under the area's name would be the exact lie the scope bar promises not to
+ * tell. The area keeps reading through its `?homeId=` URI (the prime cannot
+ * reach it) and its own freshness rides the suffixed `pels_status:<homeId>`
+ * settings stream, routed in `settingsChangeRouter.ts`. The guard also drops
+ * a stale Main read that resolves after the user switched scope mid-flight.
+ */
+export const renderPlan = (plan: PlanSnapshot | null) => {
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
+  commitPlan(plan, { kind: 'main' });
+};
+
+/**
+ * Blank the surface back to the loading skeleton for a just-picked scope.
+ * Called by the scope subscription BEFORE the new home's read resolves, so
+ * the previous home's numbers never sit under the new home's name — a wrong
+ * home's data labelled with the new one is worse than a moment of skeleton.
+ */
+export const resetPlanSurfaceForScopeChange = (): void => {
+  const { selectedHomeId } = getHomeScope();
+  overviewScope = selectedHomeId === MAIN_HOME_ID
+    ? { kind: 'main' }
+    : { kind: 'area', homeId: selectedHomeId, read: 'pending', simulating: false };
+  currentPlan = null;
+  planPayloadReceived = false;
+  cachedPowerStatus = null;
+  cachedSolarNowInput = null;
+  doRender();
+};
+
+/**
+ * Activation-path twin of the scope subscription's reset (`uiRefreshTasks.ts`):
+ * that subscriber only fires while the Overview is VISIBLE, so a home picked
+ * while the panel was hidden leaves the previous home's committed render
+ * behind. The Overview activation hook calls this AFTER the roster settles (a
+ * persisted pick or a deleted-area reconcile can move the selection again) and
+ * BEFORE the scoped refresh, so the stale home's hero/cards never sit under
+ * the new home's scope bar while the reads are in flight. No-op when the
+ * committed state already describes the selected home — an ordinary reopen
+ * keeps its instant repaint instead of flashing the skeleton.
+ */
+export const resetPlanSurfaceIfScopeChanged = (): void => {
+  const renderedHomeId = overviewScope.kind === 'main' ? MAIN_HOME_ID : overviewScope.homeId;
+  if (renderedHomeId === getHomeScope().selectedHomeId) return;
+  resetPlanSurfaceForScopeChange();
 };
 
 export const bumpPlanSurface = (): void => {
@@ -169,10 +237,17 @@ registerPlanSurfaceRenderer(doRender);
 // `tracker === undefined` means the realtime push carried no full tracker —
 // keep the cached solar triple (the resolver's staleness gate retires it on
 // its own); an explicit tracker (or null) replaces it.
+//
+// MAIN-stream entry point, exactly like `renderPlan`: `power_updated` is
+// Main's push and is never widened, so while a meter area is the selected
+// scope it must NOT stomp the area's cached hero status (freshness, solar,
+// shortfall) with Main's. The area's status arrives through its own scoped
+// `ui_power` read instead.
 export const updatePlanPower = (
   power: SettingsUiPowerStatus | null,
   tracker?: SettingsUiPowerPayload['tracker'],
 ): void => {
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
   cachedPowerStatus = power;
   if (tracker !== undefined) {
     cachedSolarNowInput = toSolarNowInput(tracker);
@@ -279,13 +354,94 @@ export const updatePlanPrices = async (): Promise<void> => {
   doRender();
 };
 
+// The scoped power read shared with the Usage surface (`readUsagePower`
+// follows the same selected home), wrapped so a transport failure degrades to
+// "no status" — the hero then falls back to the plan meta's own freshness
+// fields, matching the Main path's `readPowerForPlanRefresh` catch.
+const readScopedPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
+  try {
+    const read = await readUsagePower();
+    if (read.state !== 'served') return { status: null, solarNowInput: null };
+    return {
+      status: read.payload.status ?? null,
+      solarNowInput: toSolarNowInput(read.payload.tracker ?? null),
+    };
+  } catch {
+    return { status: null, solarNowInput: null };
+  }
+};
+
+// Monotonic run id covering BOTH `refreshPlan` branches (Main and area).
+// Same-scope refreshes overlap freely — the Overview activation hook and a
+// settings event both start one, and the home-id check cannot tell them apart
+// — and a Main → area → Main round trip returns the scope to Main before an
+// older Main refresh settles, so the identity check alone would admit its
+// stale overwrite of a newer Main commit. Every refresh start bumps the one
+// counter; only the newest-started refresh may commit (the `rosterGeneration`
+// precedent in `homeScope.ts`).
+let planRefreshGeneration = 0;
+
+// One meter area's Overview refresh: that area's own scoped plan/power reads,
+// discriminated before any flat field, plus its own simulation flag. Prices
+// stay global — the price horizon is the whole home's (and the whole
+// market's), so the anticipation subline renders under any scope.
+const refreshAreaPlan = async (homeId: string): Promise<void> => {
+  planRefreshGeneration += 1;
+  const generation = planRefreshGeneration;
+  const [planRead, power, prices, simulating] = await Promise.all([
+    readOverviewPlan(),
+    readScopedPowerForPlanRefresh(),
+    readPricesForPlanRefresh(),
+    readAreaSimulationPosture(homeId),
+  ]);
+  // Last-wins, two axes: the generation drops an older refresh (the scope
+  // check alone admits a same-area overlap — the home id has not changed),
+  // and the scope check drops a slow read for a scope the user has already
+  // left (the mirror of `renderPlan`'s Main-stream guard).
+  if (generation !== planRefreshGeneration) return;
+  if (getHomeScope().selectedHomeId !== homeId) return;
+  cachedPrices = prices;
+  if (planRead.state === 'unavailable') {
+    // The empty shape carries NO information about this home: render the
+    // honest notice, never `plan: null` dressed as "no plan committed yet".
+    cachedPowerStatus = null;
+    cachedSolarNowInput = null;
+    commitPlan(null, { kind: 'area', homeId, read: 'unavailable', simulating });
+    return;
+  }
+  cachedPowerStatus = power.status;
+  cachedSolarNowInput = power.solarNowInput;
+  // The reader already resolved the payload to a snapshot: a `served` plan is
+  // either a valid snapshot or a genuine "no plan committed yet". Re-parsing
+  // here would re-validate a typed invariant the producer owns.
+  commitPlan(planRead.payload.plan, { kind: 'area', homeId, read: 'served', simulating });
+};
+
 export const refreshPlan = async () => {
+  const { selectedHomeId } = getHomeScope();
+  if (selectedHomeId !== MAIN_HOME_ID) {
+    // The plan-history fetch feeds the smart-task row's miss-streak variant —
+    // a Main-home surface the area render omits, so skip the fetch too.
+    await refreshAreaPlan(selectedHomeId);
+    return;
+  }
+  planRefreshGeneration += 1;
+  const generation = planRefreshGeneration;
   refreshPlanHistoryInBackground();
   const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
     readPowerForPlanRefresh(),
     readPricesForPlanRefresh(),
   ]);
+  // Last-wins, two axes (the area branch's mirror). The generation drops an
+  // older Main refresh that a scope round trip (Main → area → Main) or a
+  // same-scope overlap would otherwise let overwrite a newer commit — the
+  // identity check below passes for both. The scope check drops a Main read
+  // that resolves after the user switched to an area mid-flight, cache writes
+  // included — `renderPlan`'s guard alone would leave Main's power status
+  // cached for the area's next live-tick repaint.
+  if (generation !== planRefreshGeneration) return;
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
   cachedPowerStatus = power.status;
   cachedSolarNowInput = power.solarNowInput;
   cachedPrices = prices;

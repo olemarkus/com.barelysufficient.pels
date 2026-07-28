@@ -16,8 +16,30 @@ type StubWindow = Window & {
     __stub: {
       getSetting: (key: string) => unknown;
       setSetting: (key: string, value: unknown) => void;
+      emitSettingsSet: (key: string) => void;
     };
   };
+};
+
+/**
+ * Write `homes_config` the way production does: the store write PLUS the
+ * `settings.set` push Homey emits for it.
+ *
+ * `__stub.setSetting` is a silent store poke, so a post-boot area seed left the
+ * app on the `hasMeterAreas === false` branch it resolved during boot — most
+ * visibly the global simulation banner, which kept the single-home copy
+ * ("Simulation on — devices stay as-is") instead of production's scoped
+ * "Main home simulation on …". Every screenshot taken from these fixtures
+ * inherited that wrong state, so the emit is part of seeding an area, not an
+ * optional extra.
+ */
+const setHomesConfig = async (page: Page, config: unknown): Promise<void> => {
+  await page.evaluate((value) => {
+    const stub = (window as StubWindow).Homey?.__stub;
+    if (!stub) throw new Error('Homey stub missing');
+    stub.setSetting('homes_config', value);
+    stub.emitSettingsSet('homes_config');
+  }, config);
 };
 
 /** Install the meter-list override (the two sensor meters the specs assign to areas). */
@@ -30,9 +52,11 @@ export const installRentalMeterDeviceList = async (page: Page): Promise<void> =>
         ...(stubWindow.__PELS_HOMEY_STUB__?.apiHandlers ?? {}),
         // Both meter pickers read the endpoint's resolved meter list (whole-home
         // cumulative + sensor-class device meters), already narrowed to real
-        // meters — appliances never appear here. The fixture home has two
-        // sensor sub-meters the specs assign to areas.
+        // meters — appliances never appear here. The fixture home has the
+        // whole-home HAN meter (the Main home's own, seeded by `gotoApp`) plus
+        // two sensor sub-meters the specs assign to areas.
         'GET /homey_energy_meters': () => [
+          { id: 'dev_han', name: 'HAN power meter' },
           { id: 'dev_rental_meter', name: 'Rental meter' },
           { id: 'dev_utility_meter', name: 'Utility meter' },
         ],
@@ -82,36 +106,44 @@ export const seedUtilityMeterSnapshot = async (page: Page): Promise<void> => {
 };
 
 /** Seed one configured meter area (the rental unit) into the stub settings. */
-export const seedRentalArea = async (page: Page): Promise<void> => {
-  await page.evaluate(() => {
-    const stub = (window as StubWindow).Homey?.__stub;
-    if (!stub) throw new Error('Homey stub missing');
-    stub.setSetting('homes_config', {
-      activationVersion: 1,
-      subHomes: [{
-        homeId: 'h_11111111',
-        name: 'Rental unit',
-        rootZoneId: 'z_rental',
-        meterDeviceId: 'dev_rental_meter',
-      }],
-    });
+export const seedRentalArea = async (page: Page, name = 'Rental unit'): Promise<void> => {
+  await setHomesConfig(page, {
+    activationVersion: 1,
+    subHomes: [{
+      homeId: 'h_11111111',
+      name,
+      rootZoneId: 'z_rental',
+      meterDeviceId: 'dev_rental_meter',
+    }],
   });
 };
 
 /** Seed the same area in the pre-GA held posture: populated, but not activated. */
 export const seedHeldRentalArea = async (page: Page): Promise<void> => {
-  await page.evaluate(() => {
-    const stub = (window as StubWindow).Homey?.__stub;
-    if (!stub) throw new Error('Homey stub missing');
-    stub.setSetting('homes_config', {
-      subHomes: [{
-        homeId: 'h_11111111',
-        name: 'Rental unit',
-        rootZoneId: 'z_rental',
-        meterDeviceId: 'dev_rental_meter',
-      }],
-    });
+  await setHomesConfig(page, {
+    subHomes: [{
+      homeId: 'h_11111111',
+      name: 'Rental unit',
+      rootZoneId: 'z_rental',
+      meterDeviceId: 'dev_rental_meter',
+    }],
   });
+};
+
+/**
+ * Drive the shell's home scope picker: open it, then tap a home. It is a
+ * Material menu button, not a native select, so there is nothing to
+ * `selectOption` — the menu item is the click target.
+ */
+export const pickHomeScope = async (page: Page, homeId: string): Promise<void> => {
+  await page.locator('#home-scope-chip').click();
+  const option = page.locator(`#home-scope-option-${homeId}`);
+  await expect(option).toBeVisible();
+  await option.click();
+  // The menu unmounts on pick. Asserting it here means a swallowed click fails
+  // on the picker itself rather than surfacing later as some unrelated locator
+  // never appearing.
+  await expect(option).toHaveCount(0);
 };
 
 export const gotoApp = async (page: Page): Promise<void> => {
@@ -125,6 +157,12 @@ export const gotoApp = async (page: Page): Promise<void> => {
   // default, so these fixtures model the Homey Energy owner explicitly. A spec
   // that exercises the Flow warning overrides this afterwards.
   await seedStubSetting(page, 'power_source', 'homey_energy');
+  // …and the Main home naming its own meter, which the runtime requires before
+  // an area can be saved on that source. `dev_han` is the whole-home meter both
+  // the stub default and `installRentalMeterDeviceList` list, so the picker
+  // shows it by name rather than as a not-found selection. Specs about the
+  // missing-meter notice or the save refusal clear this again.
+  await seedStubSetting(page, 'homey_energy_meter_device_id', 'dev_han');
 };
 
 /** Seed an arbitrary stub setting (e.g. power_source) before panel activation. */

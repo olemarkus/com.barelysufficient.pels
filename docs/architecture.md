@@ -47,9 +47,9 @@ The following rules are encoded in [`.dependency-cruiser.cjs`](https://github.co
 
 1. **No circular dependencies** anywhere in the runtime or shared packages.
 2. **Runtime code must not import test code.** "Runtime code" here means everything under `app.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`, and `packages/{settings-ui,contracts,shared-domain}/src/**`.
-3. **Backend must not import the settings UI.** Backend is `app.ts`, `lib/**`, `flowCards/**`, `drivers/**`. The boundary is one-way.
+3. **Backend must not import the settings UI.** Backend is `app.ts`, `api.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`. The boundary is one-way.
 4. **Settings UI must not import the backend.** The settings UI may only consume `packages/contracts/**` and `packages/shared-domain/**`. The same `shared-domain` helpers are used by both sides, so user-visible strings and runtime log strings stay in lockstep.
-5. **Shared packages must not import the runtime.** `packages/contracts/**` and `packages/shared-domain/**` cannot reach into `app.ts`, `lib/**`, `flowCards/**`, or `drivers/**`. This is what keeps the settings-UI bundle browser-safe.
+5. **Shared packages must not import the runtime.** `packages/contracts/**` and `packages/shared-domain/**` cannot reach into `app.ts`, `api.ts`, `lib/**`, `flowCards/**`, or `drivers/**`. This is what keeps the settings-UI bundle browser-safe.
 6. **Domain modules must not import `lib/app/**`.** Domain logic is independent of wiring.
 7. **`lib/**` and `packages/**` must not import `setup/**`** (rule `no-lib-to-setup`). The arrow always points from `setup/` down into the libraries it wires; see the [App wiring lives in `setup/`](#app-wiring-lives-in-setup) section below.
 8. **`flowCards/**` and `drivers/**` must not import `packages/settings-ui/**`.**
@@ -66,8 +66,7 @@ If any of these break, CI fails before tests run. Local check: `npm run arch:che
 **Conventions (reviewed at PR time, not cruiser-enforced):**
 
 - **One purpose per file**, named for the concrete wiring it does (`schedulerTelemetryObserver.ts`, `settingsRepository.ts`). No grab-bag `setupHelpers.ts`.
-- **Each file exposes a class, or a single `register*` / `init*` function.** Not bags of utility functions.
-- **Files larger than ~150 LOC are considered fat-fingered** and should split into smaller wirings.
+- **Each file exposes a class, or a single `register*` / `init*` / `create*` function.** Not bags of utility functions. The one carve-out is the settings-UI/widget endpoint handler files (`settingsUiApi.ts`, `settingsUiHomesApi.ts`, `settingsUiStarvationRescueApi.ts`, `settingsUiSmartTaskApi.ts`), which each export the handler set for one endpoint family because `api.ts` imports handlers by name. Cohesion still binds: a new endpoint family gets a new file, never an extra export bolted onto an unrelated one.
 
 **`lib/app/` is sunsetting.** As remaining wiring migrates to `setup/`, `lib/app/` shrinks. `lib/app/appContext.ts` (the shared `AppContext` type definition) is the expected long-term inhabitant; everything else moves out.
 

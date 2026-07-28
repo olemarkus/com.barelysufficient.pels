@@ -19,9 +19,16 @@ reviews:
 
   auto_review:
     enabled: true
+    # Placeholder stack PRs opened before their implementation stay unreviewed
+    # until marked ready. Everything else is reviewed.
     drafts: false
+    # Regex, matched against the PR's BASE branch. Pinning this to `main` meant a
+    # stacked PR (base = another feature branch) was skipped with "reviews are
+    # disabled for this base branch" — the same base-branch blind spot that kept
+    # `.github/workflows/test.yml` from running any tests on those PRs. Review
+    # every PR regardless of what it targets.
     base_branches:
-      - main
+      - .*
 
   # --- Generated / vendored / non-source paths: never review or comment on these.
   path_filters:

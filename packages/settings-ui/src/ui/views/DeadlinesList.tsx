@@ -15,6 +15,7 @@ import {
   type SmartTaskListStatusId,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import {
   DEADLINES_LIST_BASELINE_EYEBROW,
@@ -65,7 +66,12 @@ export type DeadlinesListState =
   // "history not known yet", which renders the conservative first-run copy
   // until the history fetch lands and the controller re-renders. Ignored when
   // `cards` is non-empty (the populated hero owns that case).
-  | { status: 'ready'; cards: DeadlinesListCard[]; historyPresent?: boolean };
+  // `meterAreasInUse` gates the honest Main-only notice (multi-home locked
+  // decision 4): smart tasks are refused on a device that lives in a meter
+  // area, so once areas are in use the page says so up front instead of
+  // letting the refusal be the first signal. Optional so existing callers and
+  // tests (single-home installs) render byte-identically.
+  | { status: 'ready'; cards: DeadlinesListCard[]; historyPresent?: boolean; meterAreasInUse?: boolean };
 
 // Route both list surfaces (active + past) through the same shared formatter
 // so the date/time shape can't drift again. Time-zone is resolved at render
@@ -388,6 +394,17 @@ const BetweenRunsBody = () => (
   </p>
 );
 
+// Honest not-supported-yet notice (multi-home locked decision 4), shown on
+// every ready state while meter areas are in use: the surface's scope claim
+// covers the whole page, not one card, and it matters most before the user
+// composes a Flow card for an area device. A single-home install (or a held
+// pre-GA config) renders no notice DOM at all.
+const MainHomeOnlyNotice = () => (
+  <p class="pels-notice-info deadlines-home-scope-notice" id="deadlines-home-scope-notice">
+    {HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE}
+  </p>
+);
+
 const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.status === 'loading') {
     return (
@@ -405,6 +422,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
       </>
     );
   }
+  const scopeNotice = state.meterAreasInUse === true ? <MainHomeOnlyNotice /> : null;
   if (state.cards.length === 0) {
     // No active cards. Branch on whether the Past tasks archive has finished
     // runs: a true first run (no history) keeps the "Add your first smart
@@ -415,15 +433,21 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
     // first-run copy shows until the controller re-renders with the flag.
     if (state.historyPresent === true) {
       return (
-        <BaselineHeader state="empty_between_runs">
-          <BetweenRunsBody />
-        </BaselineHeader>
+        <>
+          <BaselineHeader state="empty_between_runs">
+            <BetweenRunsBody />
+          </BaselineHeader>
+          {scopeNotice}
+        </>
       );
     }
     return (
-      <BaselineHeader state="empty">
-        <EmptyBody />
-      </BaselineHeader>
+      <>
+        <BaselineHeader state="empty">
+          <EmptyBody />
+        </BaselineHeader>
+        {scopeNotice}
+      </>
     );
   }
   const heroCopy = resolveDeadlinesListHero({
@@ -438,6 +462,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   return (
     <>
       {heroCopy !== null ? <Hero copy={heroCopy} /> : <BaselineHeader state="empty" />}
+      {scopeNotice}
       <div class="deadline-list">
         {state.cards.map((card) => (
           <Card key={card.deviceId} card={card} />

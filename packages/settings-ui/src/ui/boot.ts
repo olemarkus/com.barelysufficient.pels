@@ -34,7 +34,7 @@ import {
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { refreshDevices, renderDevices } from './devices.ts';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
+import { refreshPowerData } from './uiRefreshTasks.ts';
 import {
   loadCapacitySettings,
   loadAdvancedSettings,
@@ -44,9 +44,12 @@ import {
   saveSimulationModeSettings,
   syncDryRunBannerVisibility,
 } from './capacity.ts';
+import { initHomeScope, selectHomeScope } from './homeScope.ts';
 import { initHomeyEnergyMeterHandlers } from './homeyEnergyMeter.ts';
+import { savePowerSourceSetting } from './powerSourceSave.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
+  MAIN_HOME_ID,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   DEBUG_LOGGING_SCENARIOS,
@@ -119,6 +122,30 @@ import {
 } from './deadlinePlanMount.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
 
+// `showTab` only STARTS the target panel's async scope work (a Main-only deep
+// link switches scope first, and the panel's activation hook re-reads the
+// roster and re-renders), so the promised control can stay hidden for several
+// frames after the click handler returns. Scrolling immediately would anchor
+// against a hidden element and leave the user at the panel top, so poll
+// visibility across frames, bounded so a typo'd selector or a removed control
+// degrades to landing at the panel top instead of polling forever.
+const SETTINGS_ANCHOR_SCROLL_FRAMES = 60;
+const scrollSettingsAnchorWhenVisible = (selector: string, attempt = 0): void => {
+  let element: Element | null;
+  try {
+    element = document.querySelector(selector);
+  } catch (error) {
+    void logSettingsError('Invalid settings anchor selector', error, 'settingsAnchor');
+    return;
+  }
+  if (element instanceof HTMLElement && element.offsetParent !== null) {
+    element.scrollIntoView({ block: 'center' });
+    return;
+  }
+  if (attempt >= SETTINGS_ANCHOR_SCROLL_FRAMES) return;
+  requestAnimationFrame(() => scrollSettingsAnchorWhenVisible(selector, attempt + 1));
+};
+
 const initTabHandlers = () => {
   // The Budget header's Done button navigates back to Settings through
   // showTab so the leave path (draft discard, referrer reset, toast) stays
@@ -128,6 +155,11 @@ const initTabHandlers = () => {
     // The recourse answers "what used the energy TODAY" — reset a lingering
     // Yesterday selection before the jump.
     showUsageDayToday();
+    // The daily budget is a Main-home constraint (multi-home keeps budgets
+    // whole-home), so the destination must show Main's history — a lingering
+    // meter-area selection could never explain the overage. Same scope-first
+    // precedent as the `data-settings-home-scope` deep links below.
+    selectHomeScope(MAIN_HOME_ID);
     showTab('usage');
   });
   tabs.forEach((tab) => {
@@ -172,6 +204,11 @@ const initTabHandlers = () => {
       showTab('budget');
       return;
     }
+    // Some deep links promise a control that only exists in the Main home's
+    // scope (Power source, the whole-home meter). Following one while a meter
+    // area is selected would land the user on a page whose promised target is
+    // hidden, so the link names the scope it needs and we switch first.
+    if (trigger.dataset.settingsHomeScope === MAIN_HOME_ID) selectHomeScope(MAIN_HOME_ID);
     showTab(target);
     // Optional deep-link anchor: land on the field the trigger promised, not
     // the top of the target panel (e.g. the no-data banner's "Choose power
@@ -179,13 +216,7 @@ const initTabHandlers = () => {
     // The selector is repo-authored markup; guard anyway so a typo degrades to
     // landing at the panel top instead of an uncaught DOMException.
     const anchor = trigger.dataset.settingsAnchor;
-    if (anchor) {
-      try {
-        document.querySelector(anchor)?.scrollIntoView({ block: 'center' });
-      } catch (error) {
-        void logSettingsError('Invalid settings anchor selector', error, 'settingsAnchor');
-      }
-    }
+    if (anchor) scrollSettingsAnchorWhenVisible(anchor);
   });
   // Track the shown panel so the global simulation banner can suppress itself on
   // the Simulation-mode settings page (its own toggle is the single control
@@ -202,9 +233,9 @@ const initTabHandlers = () => {
 };
 
 const initLimitsAndSimulationHandlers = () => {
-  const autoSaveSettingsLimits = async (options?: { includePowerSource?: boolean }) => {
+  const autoSaveSettingsLimits = async () => {
     try {
-      await saveSettingsLimitsSettings(options);
+      await saveSettingsLimitsSettings();
     } catch (error) {
       await logSettingsError('Failed to save limits and safety settings', error, 'autoSaveSettingsLimits');
       await showToastError(error, 'Failed to save limits and safety settings.');
@@ -214,9 +245,12 @@ const initLimitsAndSimulationHandlers = () => {
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityMarginInput?.addEventListener('change', () => autoSaveSettingsLimits());
-  // Only the select's own change may carry power_source into the save — see
-  // the persist guard in saveCapacitySettingsPatch.
-  settingsPowerSourceSelect?.addEventListener('change', () => autoSaveSettingsLimits({ includePowerSource: true }));
+  // The power-source select persists itself through the guarded ui_homes_save
+  // seam (the runtime refuses Flow while meter areas run), so it never rides
+  // the bulk limits save. The handler owns its own error/rollback path.
+  settingsPowerSourceSelect?.addEventListener('change', () => {
+    void savePowerSourceSetting();
+  });
   // The meter select persists itself (its options load lazily, so routing it
   // through the bulk limits save could write an empty value before they load).
   initHomeyEnergyMeterHandlers();
@@ -362,8 +396,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   await loadModeAndPriorities();
 
   // Phase 2: Load remaining settings in parallel for faster load time
-  const [usage] = await Promise.all([
-    getPowerUsage(),
+  await Promise.all([
     loadCapacitySettings(),
     loadBudgetAdjust(),
     loadStaleDataStatus(),
@@ -383,13 +416,22 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // Phase 3: Render everything once with all state populated
   // Device-dependent renders (renderPriorities, renderDevices)
   // are deferred to first tab open via lazy loading in showTab().
-  renderPowerUsage(usage);
+  //
   // Budget payload before the first power-stats render: the Usage tab's
   // daily-history chart sources its budget overlay from the active
   // daily-budget payload (`activeDailyBudget.ts`), so the mark line and
   // readout context are present from first paint.
   await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
-  await renderPowerStats();
+  // The bootstrap Usage paint goes through the generation-fenced refresh, not
+  // a directly captured read: handlers are interactive before this point, so a
+  // scope pick made mid-boot has already painted the picked home via its own
+  // `refreshPowerData` run — a separately captured Main payload rendered here
+  // would overwrite that home's hourly chart with Main's entries while the
+  // stats pass recomputes the hero for the picked scope, mixing two homes on
+  // one panel. Routing through the same entry re-reads under the CURRENT
+  // scope, and a pick landing mid-flight supersedes this run instead of racing
+  // it.
+  await refreshPowerData();
   renderModeOptions();
   await refreshAdvancedDeviceLogger();
 
@@ -409,6 +451,10 @@ const initializeBootHandlers = () => {
   initRealtimeListeners();
   showTab('overview');
   initTabHandlers();
+  // After initTabHandlers: the scope bar's visibility depends on the shown
+  // panel, and that handler is what updates `state.activePanel` for the
+  // `pels:tab-shown` event both listeners receive.
+  initHomeScope();
   initDeviceDetailHandlers();
   initModeHandlers();
   initLimitsAndSimulationHandlers();

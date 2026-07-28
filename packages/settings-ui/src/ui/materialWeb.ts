@@ -19,6 +19,10 @@ import '@material/web/button/outlined-button.js';
 import '@material/web/button/text-button.js';
 import '@material/web/iconbutton/icon-button.js';
 import '@material/web/chips/assist-chip.js';
+// The menu element itself already arrives with `select/filled-select.js`; the
+// item is the only new registration. Both back the shell's home scope chip.
+import '@material/web/menu/menu.js';
+import '@material/web/menu/menu-item.js';
 import '@material/web/dialog/dialog.js';
 
 const defineMaterialSelectOptionCollection = () => {

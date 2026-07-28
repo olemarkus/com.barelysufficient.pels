@@ -7,11 +7,19 @@
  * `app.ts`/`setup/appServiceWiring.ts` is untouched and its four unsuffixed
  * persisted keys are never written by bundle code.
  *
- * Strictly capacity-only by construction: the sub-home `HomeScope` binds
+ * Capacity-only by construction: the sub-home `HomeScope` binds
  * `getDailyBudgetSnapshot: () => null`, price-optimization/cheap/expensive to
  * `false`, the surplus term to `null`, and omits the smart-task decoration
  * seam — the shared plan factories then collapse to pure capacity control
  * without branching on which home they serve.
+ *
+ * That is a claim about POLICY INPUTS, not about the write surface. The mode
+ * target is the RESTORE ANCHOR rather than a policy, so `getOperatingMode` /
+ * `getModeDeviceTargets` bind live here, and this bundle will command a member
+ * to its mode target with no capacity pressure at all. Neutralizing them left
+ * an area temperature device shed indefinitely. The ACTIVE mode is per home
+ * (`operating_mode:<homeId>` → global fallback, via the operating-mode
+ * accessor); the mode-target and priority BLOBS stay global (mode-name-keyed).
  *
  * Boot-window double-control guard: `getCapacityDryRun` reads `true` until
  * membership has resolved from a COMMITTED zone tree
@@ -31,6 +39,7 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeConfig } from '../../lib/home/homeConfig';
+import type { HomeRuntimeDiagnostics, HomeRuntimeReading } from '../../lib/home/homeRuntimeRead';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type {
   PowerTrackerMeterIdentity,
@@ -66,9 +75,12 @@ import { createHomePowerPipeline } from './createHomePowerPipeline';
 import {
   buildHomeCapacityBundleApi,
   createPreparedBundleSampleFence,
+  resolveEffectiveDryRun,
+  resolveHomeAreaDisplayName,
   startHomeCapacityBundle,
 } from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
+import { createHomeOperatingModeAccessor } from './homeOperatingMode';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
 import {
@@ -84,12 +96,6 @@ import { createCapacityShortfallSideEffectGate } from '../capacityShortfallSideE
 // main's contract limit. Dry-run defaults TRUE (the safe boot default): an
 // unconfigured sub-home plans but never actuates.
 const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = { limitKw: 10, marginKw: 0.2, dryRun: true };
-
-// A neutral operating mode for the capacity-only sub-home scope. The mode value
-// is only ever used to index `getModeDeviceTargets()`, which a sub-home binds to
-// `{}` — so no member is ever driven to a mode target regardless of this value.
-// A non-real sentinel makes the "no mode targets" intent explicit.
-const SUB_HOME_NEUTRAL_OPERATING_MODE = '';
 
 // Mirrors `STARTUP_RESTORE_STABILIZATION_MS` in `setup/appServiceWiring.ts`:
 // a freshly (re)created bundle holds restores until its meter proves live
@@ -119,17 +125,12 @@ export type HomeCapacityBundleDeps = {
   isMeterSourceEpochDiscarded: () => boolean;
 };
 
-/** Read-only per-bundle diagnostics (test observability + future `ui_homes`). */
-export type HomeCapacityBundleDiagnostics = {
-  homeId: HomeId;
-  meterDeviceId: string | null;
-  capacityScalars: CapacityScalarSettings;
-  /** Effective no-actuation switch (persisted flag, membership gate, or source-epoch gate). */
-  dryRunEffective: boolean;
-  /** Last meter reading this bundle's guard saw (kW), or null before the first sample. */
-  lastMeterPowerKw: number | null;
-  lastDeviceControlledMs: Record<string, number>;
-};
+/**
+ * Read-only per-bundle diagnostics. ONE declaration, owned by the read port's
+ * contract in `lib/home` — the legal direction is `setup → lib`, so there is no
+ * boundary reason to keep a second copy here (the field docs live there).
+ */
+export type HomeCapacityBundleDiagnostics = HomeRuntimeDiagnostics;
 
 /**
  * The realtime-reconcile routing seam for a device THIS home owns (multi-home
@@ -171,6 +172,13 @@ export type HomeCapacityBundle = {
   getMeterDeviceId: () => string | null;
   getDiagnostics: () => HomeCapacityBundleDiagnostics;
   /**
+   * This home's already-committed state for the per-home UI read seam
+   * (`lib/home/homeRuntimeRead.ts`): the last committed plan snapshot, this
+   * home's tracker state, and the diagnostics above. Pure reads — no rebuild,
+   * no snapshot refresh/decorate, no actuation.
+   */
+  getReadModel: () => HomeRuntimeReading;
+  /**
    * Realtime-reconcile routing hooks (see {@link RealtimeReconcileHooks}): the
    * reconcile wrapper binds these for a device this home owns so the drift is
    * reconciled through THIS bundle's plan, not main's.
@@ -178,6 +186,8 @@ export type HomeCapacityBundle = {
   getReconcileHooks: () => RealtimeReconcileHooks;
   /** Adopt a same-meter config change (root-zone/name) without teardown. */
   updateHomeConfig: (home: SubHomeConfig) => void;
+  /** Re-read the global operating-mode/mode-target closures into this home's plan. */
+  rebuildForModeSettingsChange: () => void;
   /**
    * Apply the once-only membership-ready edge (rebuild → reconcile). Idempotent
    * and latched; a no-op until the execution gate opens. Driven by the registry
@@ -227,7 +237,7 @@ function createBundleRebuildScheduler(params: {
 }): PlanRebuildScheduler {
   const { ctx, timerKey, getRebuildState, setRebuildState, getPlanService } = params;
   const nowMs = () => Date.now();
-  // Mirrors `PelsApp.resolvePlanRebuildDueAtMs` for the two intent kinds a
+  // Mirrors `PlanRebuildIntentPolicy.resolveDueAtMs` for the two intent kinds a
   // bundle emits; `flow` intents do not exist for sub-homes.
   const resolveDueAtMs = (intent: RebuildIntent, state: SchedulerState): number => {
     const rebuildState = getRebuildState();
@@ -266,6 +276,8 @@ function createBundleRebuildScheduler(params: {
 function buildSubHomeScope(params: {
   ctx: AppContext;
   homeId: HomeId;
+  /** Live read: a rename lands via `updateHomeConfig` without a teardown. */
+  getHome: () => SubHomeConfig;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
   /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
@@ -279,9 +291,13 @@ function buildSubHomeScope(params: {
   getPlanEngineForPending: () => ReturnType<typeof createPlanEngine> | undefined;
 }): HomeScope {
   const {
-    ctx, homeId, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard, getTracker,
-    getServiceForSync, getPlanEngineForPending,
+    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
+    getTracker, getServiceForSync, getPlanEngineForPending,
   } = params;
+  // THIS home's active-mode + priority resolution (per-home value → global
+  // fallback), one accessor per bundle so its mode-transition log latch
+  // follows the bundle lifecycle.
+  const operatingModeAccessor = createHomeOperatingModeAccessor(ctx, homeId);
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
   // rebuild/reconcile continuation that resolves AFTER teardown must not
   // re-create this home's suffixed keys (nor clobber a same-`homeId` bundle
@@ -293,13 +309,16 @@ function buildSubHomeScope(params: {
   };
   return {
     homeId,
+    // Names THIS area on the global `capacity_shortfall` Flow trigger, which
+    // every home shares — without it an area's alert reads as the Main home's.
+    getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
     getCapacitySettings: () => ({ limitKw: getScalars().limitKw, marginKw: getScalars().marginKw }),
-    // Both external trust boundaries fold into the canonical no-actuation
-    // switch: membership must be committed and this meter-bearing source epoch
-    // must be authorized before the persisted per-home toggle can enable writes.
-    getCapacityDryRun: () => (
-      isTornDown() || !isMembershipReady() || !isMeterSourceAuthorized() || getScalars().dryRun
-    ),
+    // The canonical no-actuation switch (see `resolveEffectiveDryRun`). This is
+    // the CONTROL path, so it passes the execution source predicate — the one
+    // that also arms source recovery.
+    getCapacityDryRun: () => resolveEffectiveDryRun({
+      isTornDown, isMembershipReady, isMeterSourceAuthorized, getScalars,
+    }),
     getCapacityGuard: getGuard,
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
@@ -320,15 +339,39 @@ function buildSubHomeScope(params: {
     writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),
     // Capacity-only policy: no price optimization, no cheap/expensive hours,
     // no surplus term, no smart-task decoration (absent = identity), no
-    // mode-target driving, no dynamic-soft-limit override.
+    // dynamic-soft-limit override.
     getPriceOptimizationEnabled: () => false,
     isCurrentHourCheap: () => false,
     isCurrentHourExpensive: () => false,
     getInferredSurplusKw: () => null,
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,
-    getOperatingMode: () => SUB_HOME_NEUTRAL_OPERATING_MODE,
-    getModeDeviceTargets: () => ({}),
+    // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
+    // bind live for every home. Binding them to `{}` made `resolveTemperatureSeed`
+    // fall back to the device's live setpoint (`lib/plan/planDevices.ts`); while
+    // shed that reading IS the shed setpoint, so on release `plannedTarget`
+    // equalled `currentTarget`, the executor dropped the write, and an area
+    // temperature device stayed cold indefinitely. Price-opt and surplus stay
+    // gated separately above — they only modulate a `kind: 'mode'` seed.
+    //
+    // The ACTIVE mode and the priority ranking are THIS home's own
+    // (`operating_mode:<homeId>` → global fallback; the accessor constrains a
+    // pinned mode to the blob's key set so `modeDeviceTargets[mode]` can never
+    // silently resolve empty). The targets BLOB itself stays the global,
+    // mode-name-keyed map — membership partitions device ids disjointly.
+    getOperatingMode: operatingModeAccessor.getOperatingMode,
+    getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getPriorityForDevice: operatingModeAccessor.getPriorityForDevice,
+    // ...but a RAISE to that target is held while this area's own draw is
+    // unknown. It adds load, and it is the one load-adding write nothing else
+    // fences: a restore is gated on headroom (0 whenever power is unknown),
+    // while an 18→22 raise is an ordinary `target_update`, not an
+    // `isTargetRestore`, so neither `BUNDLE_RESTORE_STABILIZATION_MS` nor the
+    // restore cooldowns see it. An area meter can stay silent indefinitely, and
+    // a never-sampled bundle has no aging timestamp for the freshness heartbeat
+    // to escalate. Held one-directionally: a mode change that LOWERS a setpoint
+    // removes draw, so it still applies (see `applyModeSeedModulation`).
+    holdsModeTargetRaisesWhilePowerUnknown: () => true,
     // Capacity-only UI/side-effect posture: no combined prices (→ price level
     // UNKNOWN, `price_level_changed` never fires), no shared `plan_updated`
     // emit (the settings UI reads only MAIN's plan stream), and no shared
@@ -481,6 +524,7 @@ function createBundlePlanningRuntime(params: {
   const scope = buildSubHomeScope({
     ctx: params.ctx,
     homeId: params.homeId,
+    getHome: params.getHome,
     isMembershipReady: params.isMembershipReady,
     isMeterSourceAuthorized: params.isMeterSourceAuthorizedForExecution,
     isTornDown: params.isTornDown,
@@ -657,6 +701,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planEngine,
     planService,
     scope,
+    // The registry's RAW predicates: unlike the scope's execution predicate they
+    // arm no source recovery, so the read surface stays inert. Listed
+    // explicitly rather than passed as `deps`, so the declared two-key shape and
+    // the runtime object cannot disagree (the consumer spreads this).
+    readDryRunGates: {
+      isMembershipReady: deps.isMembershipReady,
+      isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
+    },
     tracker,
     pipeline,
     planRebuildScheduler,

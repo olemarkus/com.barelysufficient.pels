@@ -19,6 +19,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { BinarySettleState } from '../../observer/binarySettle';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { DeviceFetchResult } from './managerFetch';
+import type { HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
 import type { ZoneTreeCache } from './zoneTreeCache';
 import type { PowerEstimateState } from '../devicePowerEstimate';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
@@ -131,7 +132,7 @@ export type TransportContext = {
   isSdkReady(): boolean;
   updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void;
   dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void;
-  refreshSnapshot(options?: SnapshotRefreshOptions): Promise<{ powerW: number; generationW?: number } | null>;
+  refreshSnapshot(options?: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null>;
 
   // --- Snapshot-refresh pipeline collaborators (snapshotRefresh.ts) ---
   // Parse-binding inputs (stable references built once in the constructor).

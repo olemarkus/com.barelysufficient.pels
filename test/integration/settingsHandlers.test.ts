@@ -16,6 +16,7 @@ import {
   HOMEY_ENERGY_METER_DEVICE_ID,
   HOMES_CONFIG,
   MANAGED_DEVICES,
+  OVERSHOOT_BEHAVIORS,
   POWER_TRACKER_STATE,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
@@ -120,6 +121,19 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('fans an overshoot behavior update out to sub-home plans', async () => {
+    const rebuildHomeRuntimePlansForModeChange = vi.fn();
+    const deps = buildDeps({ rebuildHomeRuntimePlansForModeChange });
+    const handler = createSettingsHandler(deps);
+
+    await handler(OVERSHOOT_BEHAVIORS);
+
+    expect(deps.loadCapacitySettings).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${OVERSHOOT_BEHAVIORS}`);
+    expect(rebuildHomeRuntimePlansForModeChange).toHaveBeenCalledTimes(1);
   });
 
   it('logs and still rebuilds if mode target refresh fails', async () => {
@@ -600,9 +614,11 @@ describe('createSettingsHandler', () => {
 
   it('refreshes snapshot, restarts poll, and rebuilds plan when power source changes', async () => {
     const order: string[] = [];
+    const reloadWeatherAdvisor = vi.fn();
     const deps = buildDeps({
       onHomeRuntimePowerSourceChanged: vi.fn(() => { order.push('home-runtime'); }),
       restartHomeyEnergyPoll: vi.fn(() => { order.push('poll'); }),
+      reloadWeatherAdvisor,
     });
     const handler = createSettingsHandler(deps);
 
@@ -614,6 +630,9 @@ describe('createSettingsHandler', () => {
     expect(order).toEqual(['home-runtime', 'poll']);
     expect(deps.stopFlowPowerSampleFreshnessClock).toHaveBeenCalled();
     expect(deps.syncFlowPowerSampleFreshnessClock).toHaveBeenCalled();
+    // The source is part of the weather meter-scope fingerprint: the switch
+    // must hit the collector's restart edge so its reconcile can invalidate.
+    expect(reloadWeatherAdvisor).toHaveBeenCalledTimes(1);
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');
   });

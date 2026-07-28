@@ -12,25 +12,19 @@ import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
-import {
-  readCurrentPriceSettings,
-  resolveChangedPriceSettingWrites,
-  parsePriceSettingsInputs,
-  normalizeNorwayPriceModel,
-  normalizePriceSchemeSetting,
-} from './priceSettingsPersistence.ts';
+import { readCurrentPriceSettings } from './priceSettingsPersistence.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import {
   applyExportSchemeChangePlan,
   createExportPriceHandlers,
-  readExportPriceSettings,
   recoverFromSchemeChangeFailure,
   resolveExportSchemeChangePlan,
 } from './exportPriceSettings.ts';
 import {
-  PRICE_OPTIMIZATION_ENABLED,
-  PRICE_SCHEME,
-} from '../../../contracts/src/settingsKeys.ts';
+  readPriceConfigSettings,
+  validateAndSavePriceSettings as saveValidatedPriceSettings,
+} from './priceConfigSettingsIo.ts';
+import { PRICE_OPTIMIZATION_ENABLED } from '../../../contracts/src/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -40,7 +34,7 @@ import {
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { buildFlowStatus, buildHomeyStatus } from './priceConfigStatus.ts';
-import { resolveLiveSummarySignals, type LiveSummarySignals } from './livePriceSignals.ts';
+import { resolveLiveSummarySignals } from './livePriceSignals.ts';
 import {
   renderElectricityPricesView,
   type ElectricityPricesViewProps,
@@ -50,39 +44,12 @@ import {
   type PriceAwareDevicesViewProps,
 } from './views/PriceAwareDevicesView.tsx';
 import type {
-  FlowStatus,
-  HomeyStatus,
+  PriceConfigState,
   PriceOptDevice,
   GridCompanyOption,
   PriceScheme,
   NorwayPriceModel,
 } from './priceConfigTypes.ts';
-
-type PriceConfigState = {
-  optimizationEnabled: boolean;
-  thresholdPercent: number;
-  minDiffOre: number;
-  priceScheme: PriceScheme;
-  norwayPriceModel: NorwayPriceModel;
-  priceArea: string;
-  providerSurcharge: number;
-  countyCode: string;
-  organizationNumber: string;
-  tariffGroup: string;
-  flowStatus: FlowStatus | null;
-  homeyStatus: HomeyStatus | null;
-  // `currentPriceLevel` is the raw Homey level read from the power read-model
-  // (same field the budget hero consumes). The rest of the "Right now" card's
-  // signals — last-fetched time, current-hour export price, and the `using your
-  // solar` reason line — are the combined-prices derivations in `liveSummary`
-  // (byte-identical to today for a non-prosumer; see livePriceSignals.ts).
-  currentPriceLevel: string | null;
-  liveSummary: LiveSummarySignals;
-  // Export (feed-in) price settings — normalized by `readExportPriceSettings`.
-  exportPriceEnabled: boolean;
-  exportSpotFactor: number;
-  exportFixed: number;
-};
 
 let configState: PriceConfigState = {
   optimizationEnabled: true,
@@ -200,36 +167,7 @@ const renderAll = () => {
 };
 
 const validateAndSavePriceSettings = async () => {
-  const { priceScheme, norwayPriceModel, priceArea, providerSurcharge, thresholdPercent, minDiffOre } = configState;
-
-  if (priceScheme === 'norway') {
-    const validAreas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5'];
-    if (!validAreas.includes(priceArea)) throw new Error('Invalid price area.');
-    if (providerSurcharge < -100 || providerSurcharge > 100) {
-      throw new Error('Provider surcharge must be between -100 and 100 øre.');
-    }
-  }
-  if (!Number.isFinite(thresholdPercent) || thresholdPercent < 0 || thresholdPercent > 100) {
-    throw new Error('Threshold must be between 0 and 100%.');
-  }
-  if (!Number.isFinite(minDiffOre) || minDiffOre < 0 || minDiffOre > 1000) {
-    throw new Error('Minimum difference must be between 0 and 1000.');
-  }
-
-  const nextSettings = parsePriceSettingsInputs({
-    priceSchemeValue: priceScheme,
-    norwayPriceModelValue: norwayPriceModel,
-    priceAreaValue: priceArea,
-    providerSurchargeValue: String(providerSurcharge),
-    thresholdPercentValue: String(thresholdPercent),
-    minDiffOreValue: String(minDiffOre),
-  });
-
-  const currentSettings = await readCurrentPriceSettings();
-  const writes = resolveChangedPriceSettingWrites(nextSettings, currentSettings);
-  for (const write of writes) {
-    await setSetting(write.key, write.value);
-  }
+  await saveValidatedPriceSettings(configState);
 };
 
 const handleOptimizationToggle = async (enabled: boolean) => {
@@ -490,67 +428,13 @@ const refreshStatusInfo = async () => {
   }
 };
 
-const stringSetting = (value: unknown, fallback: string): string => (
-  typeof value === 'string' && value ? value : fallback
-);
-
-const stringSettingOrEmpty = (value: unknown): string => (
-  typeof value === 'string' ? value : ''
-);
-
-const numberSetting = (value: unknown, fallback: number): number => (
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback
-);
-
 const loadPriceConfigSettings = async () => {
-  const [
-    priceScheme,
-    norwayPriceModel,
-    priceArea,
-    providerSurcharge,
-    thresholdPercent,
-    minDiffOre,
-    priceOptEnabled,
-    countyCode,
-    organizationNumber,
-    tariffGroup,
-    priceOptSettings,
-    exportSettings,
-  ] = await Promise.all([
-    getSetting(PRICE_SCHEME),
-    getSetting('norway_price_model'),
-    getSetting('price_area'),
-    getSetting('provider_surcharge'),
-    getSetting('price_threshold_percent'),
-    getSetting('price_min_diff_ore'),
-    getSetting(PRICE_OPTIMIZATION_ENABLED),
-    getSetting('nettleie_fylke'),
-    getSetting('nettleie_orgnr'),
-    getSetting('nettleie_tariffgruppe'),
-    getSetting('price_optimization_settings'),
-    readExportPriceSettings(),
-  ]);
-
-  if (priceOptSettings && typeof priceOptSettings === 'object') {
-    state.priceOptimizationSettings = priceOptSettings as typeof state.priceOptimizationSettings;
-  }
-
-  configState = {
-    ...configState,
-    optimizationEnabled: priceOptEnabled !== false,
-    priceScheme: normalizePriceSchemeSetting(priceScheme),
-    norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
-    priceArea: stringSetting(priceArea, 'NO1'),
-    providerSurcharge: numberSetting(providerSurcharge, 0),
-    thresholdPercent: numberSetting(thresholdPercent, 25),
-    minDiffOre: numberSetting(minDiffOre, 0),
-    countyCode: stringSetting(countyCode, '03'),
-    organizationNumber: stringSettingOrEmpty(organizationNumber),
-    tariffGroup: stringSetting(tariffGroup, 'Husholdning'),
-    exportPriceEnabled: exportSettings.enabled,
-    exportSpotFactor: exportSettings.spotFactorPercent,
-    exportFixed: exportSettings.fixed,
-  };
+  // Read FIRST, then merge. Spreading `configState` inside the same literal as
+  // the `await` would snapshot it before the 12 settings round trips and revert
+  // anything `refreshStatusInfo` wrote meanwhile (both run concurrently off a
+  // `price_scheme` change), leaving the "Right now" card stale for the session.
+  const patch = await readPriceConfigSettings();
+  configState = { ...configState, ...patch };
   settingsLoaded = true;
 };
 

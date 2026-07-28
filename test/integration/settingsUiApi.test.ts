@@ -21,6 +21,8 @@ import { buildComparablePlanReason } from '../../packages/shared-domain/src/plan
 describe('settingsUiApi', () => {
   const createHomey = (
     options: {
+      capacityDryRun?: boolean;
+      capacitySettings?: { limitKw: number; marginKw: number };
       cloudHomeyId?: string;
       latestPlanSnapshot?: Record<string, unknown> | null;
       settings?: Record<string, unknown>;
@@ -177,6 +179,10 @@ describe('settingsUiApi', () => {
       },
     });
     const app = {
+      ...(typeof options.capacityDryRun === 'boolean'
+        ? { capacityDryRun: options.capacityDryRun }
+        : {}),
+      ...(options.capacitySettings ? { capacitySettings: options.capacitySettings } : {}),
       log,
       error,
       refreshTargetDevicesSnapshot,
@@ -257,6 +263,18 @@ describe('settingsUiApi', () => {
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
+  });
+
+  it('serves the running Main simulation posture even when its setting is absent', () => {
+    const homey = createHomey({
+      capacityDryRun: false,
+      capacitySettings: { limitKw: 12, marginKw: 0.4 },
+      settings: { capacity_dry_run: undefined },
+    });
+
+    expect(getSettingsUiPowerPayload({ homey: homey as never }).mainDryRunEffective).toBe(false);
+    expect(getSettingsUiPowerPayload({ homey: homey as never }).mainCapacityScalars)
+      .toEqual({ limitKw: 12, marginKw: 0.4 });
   });
 
   it('serves the assembled per-device objectives under deferred_objectives (not the legacy blob)', async () => {

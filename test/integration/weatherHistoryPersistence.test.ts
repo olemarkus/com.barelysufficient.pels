@@ -14,7 +14,10 @@ import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAd
 const OSLO = 'Europe/Oslo';
 const START_MS = Date.UTC(2026, 0, 10, 10, 0, 0);
 
-const buildCollector = (homey: { settings: MockSettings }) => new WeatherCollector({
+const buildCollector = (
+  homey: { settings: MockSettings },
+  meterScopeSignature?: string,
+) => new WeatherCollector({
   store: createWeatherHistoryStore(homey as unknown as Homey.App['homey']),
   readDevice: async () => ({
     id: 'out-1',
@@ -27,6 +30,9 @@ const buildCollector = (homey: { settings: MockSettings }) => new WeatherCollect
   getUnreliablePeriods: () => [],
   getDaySuppression: () => ({}),
   getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
+  readMeterScopeSignature: () => meterScopeSignature,
+  readMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+  readPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
   getNowMs: () => Date.now(),
   getTimeZone: () => OSLO,
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as PinoLogger,
@@ -78,5 +84,53 @@ describe('weather history persistence through homey.settings', () => {
     collector.stop();
     expect(vi.getTimerCount()).toBe(0);
     expect(homey.settings.get(WEATHER_HISTORY_STATE)).toBeUndefined();
+  });
+
+  it('re-forgets recovered old-scope state before persisting it', async () => {
+    const homey = { settings: new MockSettings() };
+    homey.settings.set(WEATHER_ADVISOR_SETTINGS, { enabled: true, outdoorDeviceId: 'out-1' });
+    const staleRecord = {
+      dateKey: '2025-03-01',
+      kwhTotal: 55,
+      tempMeanC: -2,
+      tempMinC: -6,
+      tempMaxC: 1,
+      tempSampleCount: 24,
+      quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
+    };
+    homey.settings.set(WEATHER_HISTORY_STATE, {
+      records: [staleRecord],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: 'meter-old',
+      kwhPurgeVersion: 1,
+      controlledBackfillVersion: 2,
+      meterScopeSignature: 'source:homey_energy|main:meter-old',
+    });
+    const originalGet = homey.settings.get.bind(homey.settings);
+    let historyReads = 0;
+    vi.spyOn(homey.settings, 'get').mockImplementation((key: string) => {
+      if (key === WEATHER_HISTORY_STATE && historyReads++ === 0) return undefined;
+      return originalGet(key);
+    });
+
+    const collector = buildCollector(homey, 'source:flow');
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const persisted = originalGet(WEATHER_HISTORY_STATE) as WeatherHistoryState;
+    expect(persisted.meterKwhBackfillDone).toBeUndefined();
+    expect(persisted.meterKwhDeviceId).toBeUndefined();
+    expect(persisted.kwhPurgeVersion).toBeUndefined();
+    expect(persisted.controlledBackfillVersion).toBeUndefined();
+    expect(persisted.meterScopeSignature).toBe('source:flow');
+    expect(persisted.meterScopeSinceDateKey).toBe('2026-01-10');
+    expect(persisted.records[0].kwhTotal).toBeUndefined();
+    expect(persisted.records[0]).toMatchObject({
+      tempMeanC: -2,
+      quality: { missingKwh: true },
+    });
+    collector.stop();
   });
 });

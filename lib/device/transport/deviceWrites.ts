@@ -259,6 +259,11 @@ export async function applyDeviceTargets(
             });
         }
     }
+    // Post-write re-read. Its live-power lane still feeds per-device attribution
+    // (`byDeviceId` -> `parseSnapshotDeviceList`). The returned whole-home sample
+    // is dropped here, and with it the meter identity it carries: identity is
+    // published only by the admitted sample ingest, so a read nobody records
+    // claims nothing — by construction, not by a gate.
     await ctx.refreshSnapshot();
 }
 

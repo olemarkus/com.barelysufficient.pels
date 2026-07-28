@@ -59,6 +59,12 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
 
   return new PlanEngineClass({
     homey: ctx.homey,
+    // Scope-owned: the global `capacity_shortfall` card names the home that
+    // fired it, and only the scope knows which one that is.
+    getHomeDisplayName: scope.getHomeDisplayName,
+    // The id is already a plain scope field (a home id cannot change without a
+    // new scope), so log correlation needs no extra getter.
+    homeId: scope.homeId,
     setCapacityInShortfall: scope.setCapacityInShortfall,
     persistLastControlledMs: scope.persistLastControlledMs,
     deviceManager,
@@ -83,10 +89,15 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     getCapacityDryRun: scope.getCapacityDryRun,
     // Policy closures from the scope: the main home binds the live ctx reads
     // (byte-identical to the pre-R7b hardwiring); a sub-home capacity bundle
-    // binds disabled constants, so its engine is capacity-only without this
-    // factory branching on which home it serves.
+    // binds disabled constants for the PRICE/BUDGET members, so its engine is
+    // capacity-only without this factory branching on which home it serves.
+    // The two mode members are the exception — every home binds them live,
+    // because the mode target is the restore anchor (see `homeScope.ts`). What
+    // IS per-home is whether a mode-target RAISE is held while this home's own
+    // power reading is unknown; only a sub-home opts in.
     getOperatingMode: scope.getOperatingMode,
     getModeDeviceTargets: scope.getModeDeviceTargets,
+    holdsModeTargetRaisesWhilePowerUnknown: scope.holdsModeTargetRaisesWhilePowerUnknown,
     getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     isCurrentHourCheap: scope.isCurrentHourCheap,
@@ -98,7 +109,9 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     // constructs the DeferredObjectiveDecorationController; sub-home scopes
     // omit the member, so the builder falls back to identity decoration).
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
-    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
+    // Scope-owned: priorities are ranked per mode, and only the scope knows
+    // this home's ACTIVE mode (a sub-home may pin its own; see homeScope.ts).
+    getPriorityForDevice: scope.getPriorityForDevice,
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),

@@ -2,7 +2,9 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { invalidateApiCache } from './homey.ts';
+import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { getHomeScope } from './homeScope.ts';
+import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadStarvationRescuableDevices } from './starvationRescue.ts';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
 
@@ -39,9 +41,17 @@ export const repaintOverviewWithRescueGate = (
 // gate. Bumps the same token so a concurrent in-flight gate fetch can't repaint a
 // stale snapshot over this.
 export const refreshOverviewPlanWithRescueGate = (): Promise<void> => {
-  invalidateApiCache(SETTINGS_UI_PLAN_PATH);
-  invalidateApiCache(SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH);
+  invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
   ++generation;
+  // A selected meter area skips the gate fetch: the rescue lane is the MAIN
+  // home's daily-budget exemption (the budget is a Main-home constraint —
+  // locked multi-home decision), and an area's cards never offer the chip
+  // (the server-resolved gate holds Main's plan devices only). `refreshPlan`
+  // itself follows the selected scope.
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) {
+    return refreshPlan();
+  }
+  invalidateApiCache(SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH);
   // The gate loader already swallows + logs its own fetch errors, but guard the
   // chain so a transient gate failure can NEVER skip the plan refresh — opening
   // Overview must always re-render the latest plan, gate or no gate.

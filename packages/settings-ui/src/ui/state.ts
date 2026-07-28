@@ -95,6 +95,23 @@ export type UiState = {
   // view gates the chip on membership so a shown chip's create call cannot be
   // rejected as not-rescuable. Empty until the first rescuable-devices fetch.
   starvationRescuableDeviceIds: Set<string>;
+  // One entry per ACTIVE meter area (maintained by capacity.ts's roster+flag
+  // refresh). `simulating` is the area's resolved `capacity_dry_run:<homeId>`
+  // flag; `null` = no resolved value this session — a transient read miss or a
+  // malformed persisted value with nothing last-good to keep (the refresh
+  // preserves an area's last resolved value across bad reads, and an unknown
+  // joins no aggregate claim). Together with `dryRun` this is the aggregate
+  // simulation posture the global banner and the Settings hub chip render.
+  // Empty until areas exist.
+  meterAreaSimulation: MeterAreaSimulationEntry[];
+};
+
+// The posture snapshot entry for one ACTIVE meter area. Keyed by `homeId` so
+// a refresh can match an area across renames when it keeps last-good values.
+export type MeterAreaSimulationEntry = {
+  homeId: string;
+  name: string;
+  simulating: boolean | null;
 };
 
 export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
@@ -135,6 +152,7 @@ export const state: UiState = {
   hasManagedSolarDevice: false,
   hasExhibitedExport: false,
   starvationRescuableDeviceIds: new Set<string>(),
+  meterAreaSimulation: [],
 };
 
 export const resolveManagedState = (deviceId: string): boolean => {

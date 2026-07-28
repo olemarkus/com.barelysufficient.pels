@@ -206,6 +206,19 @@ describe('main-home meter notice', () => {
     const without = mountWith({ ...baseProps(), homes: [rentalRow] });
     expect(without.textContent).not.toContain(HOMES_MAIN_METER_NOTICE);
   });
+
+  it('names BOTH consequences, including the one where limiting stops entirely', () => {
+    // The same unattributable reading produces two opposite outcomes: an area's
+    // usage limiting Main devices that don't cause it, or — when the sampled
+    // meter IS an area's own — a proven ownership collision that fences Main
+    // actuation outright, leaving nothing to hold the home under its hard cap.
+    // The notice used to describe only the first, so the owner in the more
+    // serious state was told the opposite of what was happening.
+    expect(HOMES_MAIN_METER_NOTICE).toContain('stops limiting Main home devices');
+    expect(HOMES_MAIN_METER_NOTICE).toContain('hard cap');
+    // The hard cap is a physical tariff step, never offered as a thing to raise.
+    expect(HOMES_MAIN_METER_NOTICE).not.toMatch(/raise|increase|higher/i);
+  });
 });
 
 describe('load states', () => {

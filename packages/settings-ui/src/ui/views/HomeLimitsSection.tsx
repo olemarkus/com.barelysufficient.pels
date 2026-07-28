@@ -11,7 +11,7 @@ import {
   HOME_LIMITS_REACTION_NOTE,
   HOME_LIMITS_INACTIVE_CHIP,
   HOME_LIMITS_INACTIVE_STATUS,
-  HOME_LIMITS_SWITCHER_LABEL,
+  HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE,
 } from '../../../../shared-domain/src/homeLimitsCopy.ts';
 import {
   composeHomeLimitsStateLine,
@@ -22,23 +22,22 @@ import {
   resolveHomeLimitsPostureChip,
   type HomeLimitsStatus,
 } from '../../../../shared-domain/src/homeLimitsStatus.ts';
+import { composeHomeScopedTitle } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import { MdSwitch } from './materialWebJSX.tsx';
 
 // Per-home "Limits & safety" surface (multi-home U3). Progressive disclosure:
-// hidden entirely until at least one meter area exists, so a single-home user
-// sees the unchanged static Main-home form and nothing else. When areas exist a
-// home switcher appears; picking the Main home shows only the switcher (the
-// static form below is the Main-home editor, kept byte-identical), while picking
-// a meter area renders this Preact editor for that area's suffixed scalar keys.
+// this surface renders nothing at all unless a meter area is the selected home
+// scope, so a single-home user sees the unchanged static Main-home form and
+// nothing else. Which home is selected is the shell's business, not this
+// panel's — the picker lives in the global scope bar (`homeScope.ts`), and the
+// Main home's editor is the static form below this mount, kept byte-identical.
 //
-// All data + callbacks arrive as props (views/AGENTS.md); native input/select
-// wrapped in `.field`, md-switch per the Material interop pattern. Rendered into
+// All data + callbacks arrive as props (views/AGENTS.md); native input wrapped
+// in `.field`, md-switch per the Material interop pattern. Rendered into
 // `#home-limits-mount` above the static form by the homeLimits controller.
 
 /** md-switch exposes its state as a `.selected` property (Material Web interop). */
 type SwitchElement = HTMLElement & { selected: boolean };
-
-export type HomeLimitsHomeOption = { homeId: string; label: string };
 
 export type HomeLimitsEditorView = {
   /** The selected meter area's name — drives the simulation notice. */
@@ -66,35 +65,13 @@ export type HomeLimitsEditorView = {
 };
 
 export type HomeLimitsSectionProps = {
-  /** False until at least one meter area exists — then the whole surface hides. */
-  visible: boolean;
-  /** Main home first, then each meter area. */
-  homeOptions: HomeLimitsHomeOption[];
-  selectedHomeId: string;
-  onSelectHome: (homeId: string) => void;
-  /** null ⇒ Main home selected (the static form is the editor); else the area editor. */
+  /**
+   * null ⇒ the Main home is the selected scope (the static form is its
+   * editor), or the selected area's scalars are still being read. Non-null ⇒
+   * render the meter-area editor.
+   */
   editor: HomeLimitsEditorView | null;
 };
-
-const HomeSwitcher = ({ homeOptions, selectedHomeId, onSelectHome }: {
-  homeOptions: HomeLimitsHomeOption[];
-  selectedHomeId: string;
-  onSelectHome: (homeId: string) => void;
-}) => (
-  <label class="field settings-form-card home-limits__switcher">
-    <span class="field__label pels-text-settings-label">{HOME_LIMITS_SWITCHER_LABEL}</span>
-    <select
-      id="home-limits-home-select"
-      class="pels-select hy-nostyle"
-      value={selectedHomeId}
-      onChange={(event: Event) => onSelectHome((event.currentTarget as HTMLSelectElement).value)}
-    >
-      {homeOptions.map((option) => (
-        <option key={option.homeId} value={option.homeId}>{option.label}</option>
-      ))}
-    </select>
-  </label>
-);
 
 const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
   <section class="settings-form-card home-limits__fields">
@@ -174,9 +151,14 @@ const SimulationCard = ({ editor }: { editor: HomeLimitsEditorView }) => (
   </section>
 );
 
-const StatusCard = ({ status, runtimeActive }: {
+// `Power now` is the canonical whole-home hero label. Reading it unqualified on
+// a scoped page, next to an Overview that shows the same words for the whole
+// house, is the confusion the scoped title prevents — so the card names its
+// home too.
+const StatusCard = ({ status, runtimeActive, areaName }: {
   status: HomeLimitsStatus;
   runtimeActive: boolean;
+  areaName: string;
 }) => {
   const chip = runtimeActive
     ? resolveHomeLimitsPostureChip(status)
@@ -191,7 +173,7 @@ const StatusCard = ({ status, runtimeActive }: {
   return (
     <section class="settings-form-card home-limits__status" id="home-limits-status">
       <div class="home-limits__status-head">
-        <h3 class="pels-text-card-title">{HOME_LIMITS_STATUS_TITLE}</h3>
+        <h3 class="pels-text-card-title">{composeHomeScopedTitle(HOME_LIMITS_STATUS_TITLE, areaName)}</h3>
         <span class={`plan-chip plan-chip--${chip.tone}`} id="home-limits-status-chip">{chip.label}</span>
       </div>
       <div class="deadline-hero-stats">
@@ -213,24 +195,23 @@ const StatusCard = ({ status, runtimeActive }: {
   );
 };
 
-const HomeLimitsSectionView = (props: HomeLimitsSectionProps) => {
-  if (!props.visible) return null;
+const HomeLimitsSectionView = ({ editor }: HomeLimitsSectionProps) => {
+  if (editor === null) return null;
   return (
     <div class="home-limits">
-      <HomeSwitcher
-        homeOptions={props.homeOptions}
-        selectedHomeId={props.selectedHomeId}
-        onSelectHome={props.onSelectHome}
-      />
-      {props.editor !== null && (
-        <>
-          <CapFields editor={props.editor} />
-          <SimulationCard editor={props.editor} />
-          {props.editor.status !== null && (
-            <StatusCard status={props.editor.status} runtimeActive={props.editor.runtimeActive} />
-          )}
-        </>
+      <CapFields editor={editor} />
+      <SimulationCard editor={editor} />
+      {editor.status !== null && (
+        <StatusCard status={editor.status} runtimeActive={editor.runtimeActive} areaName={editor.areaName} />
       )}
+      {/* Stands in for the app-global Power source / Whole-home meter card the
+          controller hides in area scope, so those settings are accounted for
+          rather than silently absent. Carded like every sibling: bare
+          instructional prose at the foot of a card stack reads as leftover
+          text rather than part of the page. */}
+      <section class="settings-form-card home-limits__global-note">
+        <p class="muted" id="home-limits-global-note">{HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE}</p>
+      </section>
     </div>
   );
 };

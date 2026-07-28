@@ -178,12 +178,26 @@ export const renderSolarUsageSection = async (params: {
   timeZone: string;
   /** Home-level solar signal from the /ui_power payload (absence = false). */
   hasManagedSolarDevice: boolean;
+  /**
+   * Staleness gate owned by the caller's refresh pass (`refreshPowerData`'s run
+   * generation). This section awaits its OWN read (prices) after the caller's
+   * last check, so the caller cannot fence it from outside: by the time control
+   * returns, the card is already painted. A home whose prices settle after a
+   * newer scope pick has painted would overwrite just the solar card and then
+   * fail the caller's post-await check — a persistent mixed-home panel, one
+   * home's solar under another's hero. Required, not defaulted: every path into
+   * this section must name the run it belongs to.
+   */
+  isCurrentRun: () => boolean;
 }): Promise<SolarUsageSectionResult> => {
   const mount = document.getElementById('solar-usage-mount');
   if (!mount) return { todaySelfUsedKWh: null };
-  const { tracker, timeZone, hasManagedSolarDevice } = params;
+  const { tracker, timeZone, hasManagedSolarDevice, isCurrentRun } = params;
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
   const combined = await readCombinedPrices();
+  // Fence BEFORE the mutation, not after: this is the last statement that can
+  // still drop a superseded run without having touched the DOM.
+  if (!isCurrentRun()) return { todaySelfUsedKWh: null };
   const props = resolveSolarUsageCardProps({
     tracker,
     combined,

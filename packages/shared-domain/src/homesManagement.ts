@@ -13,6 +13,9 @@
  * the two sides behaviourally aligned when either changes.
  */
 
+import { HOMES_MAIN_HOME_NAME } from './homesManagementCopy';
+import { foldHomeAreaName } from './homeAreaConfigRules';
+
 /** One Homey zone as the `ui_homes` payload serves it. */
 export type HomesZoneNode = {
   id: string;
@@ -199,8 +202,10 @@ const validateDraftName = (
 ): SubHomeDraftError[] => {
   const trimmedName = name.trim();
   if (trimmedName.length === 0) return [{ kind: 'name_missing' }];
+  // Same normalized fold as the save seam (NFC + lowercase): an NFC/NFD pair
+  // renders identically, so the inline check must refuse what the save would.
   const nameClash = others.find(
-    (entry) => entry.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+    (entry) => foldHomeAreaName(entry.name) === foldHomeAreaName(trimmedName),
   );
   return nameClash === undefined ? [] : [{ kind: 'name_duplicate', otherName: nameClash.name }];
 };
@@ -212,7 +217,7 @@ const validateDraftMeter = (
 ): SubHomeDraftError[] => {
   if (meterDeviceId === null) return [{ kind: 'meter_missing' }];
   if (meterDeviceId === mainMeterDeviceId) {
-    return [{ kind: 'meter_in_use', otherName: 'Main home' }];
+    return [{ kind: 'meter_in_use', otherName: HOMES_MAIN_HOME_NAME }];
   }
   const meterClash = others.find((entry) => entry.meterDeviceId === meterDeviceId);
   return meterClash === undefined ? [] : [{ kind: 'meter_in_use', otherName: meterClash.name }];

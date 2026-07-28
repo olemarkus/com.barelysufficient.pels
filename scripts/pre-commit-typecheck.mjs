@@ -16,6 +16,7 @@ if (matches([
   'drivers/',
   'flowCards/',
   'lib/',
+  'setup/',
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',

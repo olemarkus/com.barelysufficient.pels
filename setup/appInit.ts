@@ -6,8 +6,7 @@
  *
  * New boot wiring lands as a new `setup/appInit/` file re-exported here —
  * never as logic in this barrel. Layer conventions (one purpose per file,
- * ~150 LOC ceiling, no lib→setup imports) are authoritative in
- * `setup/AGENTS.md` ("Boot path").
+ * no lib→setup imports) are authoritative in `setup/AGENTS.md` ("Boot path").
  */
 export {
   buildDeferredObjectiveDeviceWriteDeps,

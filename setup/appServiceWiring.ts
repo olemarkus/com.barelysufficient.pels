@@ -1,32 +1,14 @@
 import type Homey from 'homey';
-import { DeviceTransport, type DeviceTransportBinarySettleOps } from '../lib/device/deviceTransport';
-import {
-  clearAllPendingBinarySettleWindows,
-  clearPendingBinarySettleWindow,
-  hasPendingBinarySettleWindow,
-  notePendingBinarySettleObservation,
-  startPendingBinarySettleWindow,
-  type BinarySettleState,
-} from '../lib/observer/binarySettle';
-import {
-  ObservedStateEmitter,
-  type ObservedStateChangedEvent,
-  type PlanReconcileObservedEvent,
-} from '../lib/observer/observedStateEvents';
-import { ObservedHomePower } from '../lib/observer/observedHomePower';
-import { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
-import { createExternalOffHoldPolicy } from './externalOffHoldAdapter';
+import type { BinarySettleState } from '../lib/observer/binarySettle';
+import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
+import type { ObservedHomePower } from '../lib/observer/observedHomePower';
+import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanService } from '../lib/plan/planService';
-import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
-import {
-  PowerCalibrationStore,
-  createCalibrationSnapshotMutationHook,
-} from '../lib/device/devicePowerCalibrationStore';
+import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
+import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
 import { isNumberMap } from '../lib/utils/appTypeGuards';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
-import { isStateOfChargeCapabilityId } from '../lib/device/transport/stateOfCharge';
-import { incPerfCounters } from '../lib/utils/perfCounters';
 import {
   createRootLogger,
   setRootLogger,
@@ -49,12 +31,11 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
-  buildDeviceParseProviders,
-  createPersistedEvCarLinkAccess,
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
-import { createHomeRuntimeRegistryForApp } from './appInit/wireHomeRuntimeRegistry';
+import { buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp } from './appInit/wireHomeRuntimeRegistry';
+import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipService } from './homeMembership';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './appLifecycleHelpers';
@@ -71,13 +52,8 @@ import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
 import * as realtimeReconcile from './appRealtimeDeviceReconcile';
 import { scheduleAppRealtimeDeviceReconcileForApp } from './appRealtimeDeviceReconcileRuntime';
-import { readMainMeterSelection } from './mainMeterSettings';
-import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
-// Comfortably under the probe's shortest elapsed-time threshold (the 90 s edge
-// settle), so no decision window is stepped over.
-const EV_CAR_LINK_TICK_INTERVAL_MS = 30 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
 // startup: if `refreshSnapshot()` does not resolve in this window the gate
 // releases with reason `timeout` and the planner proceeds (next snapshot will
@@ -85,14 +61,6 @@ const EV_CAR_LINK_TICK_INTERVAL_MS = 30 * 1000;
 // to skip the wait entirely. Per `feedback_homey_sdk_unreliable`, a slow SDK
 // fetch is treated as a transient gap, not a persisted-state corruption.
 const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
-
-// Boundary-resolved whole-home meter authority for the homey_energy source.
-// `resolved/null` = Automatic; `unavailable` suppresses Main sampling instead
-// of silently promoting an SDK miss to Automatic. Read fresh per call so the
-// 10s poll picks up a changed selection without a transport restart.
-const resolveHomeyEnergyMeterSelection = (homey: Homey.App['homey']): MainMeterSelection => {
-  return readMainMeterSelection(homey.settings);
-};
 
 /**
  * Dependencies for {@link AppServiceWiring}. Service handles the wider app also
@@ -134,6 +102,10 @@ export type AppServiceWiringDeps = {
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
   computeShortfallThreshold: () => number;
   getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
+  retryDeferredOvershootSeed: (
+    membership: HomeMembershipService,
+    allowPendingOwnershipGeneration: boolean,
+  ) => void;
   hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
   loadFlowReportedCapabilities: () => void;
   loadPowerCalibrationStore: () => void;
@@ -310,141 +282,17 @@ export class AppServiceWiring {
     return logger;
   }
 
-  /**
-   * Build the observer-owned binarySettle operation bag passed into
-   * `DeviceTransport`. Binds each observer function so transport can
-   * invoke them through the bag without statically referencing
-   * `lib/observer/binarySettle.ts` (cruiser rule
-   * `no-device-to-peer-except-power`). PR #4 of the observer/transport
-   * split — `notes/state-management/observer-transport-split.md`.
-   */
-  private buildObserverBinarySettleOps(): DeviceTransportBinarySettleOps {
-    return {
-      start: startPendingBinarySettleWindow,
-      note: notePendingBinarySettleObservation,
-      hasWindow: hasPendingBinarySettleWindow,
-      clear: clearPendingBinarySettleWindow,
-      clearAll: clearAllPendingBinarySettleWindows,
-    };
-  }
-
+  // Body in `setup/appInit/wireDeviceTransport.ts`; kept as a method so the
+  // thin `PelsApp.initDeviceManager` delegator and the integration boot
+  // helper keep their call site.
   async initDeviceManager(): Promise<void> {
-    const { ctx } = this.deps;
-    const structuredLogger = this.deps.getStructuredLogger() ?? this.installStructuredLogger();
-    const structuredLog = structuredLogger.child({ component: 'devices' });
-    // Co-create the observed-state projection with the transport so their
-    // lifecycles are coupled. The projection's sequence guard is keyed on the
-    // transport's per-device `observationSeq`; a new DeviceTransport resets those
-    // counters, so a long-lived projection would drop a fresh transport's early
-    // deltas (seq <= the previous transport's higher seqs). `initDeviceManager`
-    // runs once today (no in-process restart path), so this is currently
-    // equivalent to the field initializer — but it documents and enforces the
-    // transport/projection epoch coupling for any future restart. The persistent
-    // emitter subscription reads the projection getter at event time, so
-    // reassigning the field is sufficient.
-    this.deps.setObservedDeviceStateProjection(new ObservedDeviceStateProjection());
-    // "Leave off until turned on again". Constructed here so the persisted holds
-    // are loaded before the first plan cycle can resume anything — a hold that
-    // survived a restart must win over the first rebuild, not lose a race with
-    // it. Assigned onto ctx (the wiring-assigns-ctx-members house pattern).
-    ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
-    // Bound here instead of via a constructor dep so the app.ts wiring literal
-    // stays untouched; same resolver instance the transport providers use.
-    ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterSelection(ctx.homey));
-    const deviceManager = new DeviceTransport(this.deps.homeyApp, {
-      log: ctx.log.bind(ctx),
-      debug: (...args: unknown[]) => ctx.logDebug('devices', ...args),
-      error: ctx.error.bind(ctx),
-      structuredLog,
-    }, buildDeviceParseProviders({
-      ctx,
-      deps: this.deps,
+    await wireDeviceTransport({
+      ...this.deps,
+      installStructuredLogger: () => this.installStructuredLogger(),
       getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
-      resolveMeterSelection: () => resolveHomeyEnergyMeterSelection(ctx.homey),
-    }), {
-      expectedPowerKwOverrides: ctx.expectedPowerKwOverrides,
-      lastKnownPowerKw: ctx.lastKnownPowerKw,
-      lastPositiveMeasuredPowerKw: ctx.lastPositiveMeasuredPowerKw,
-    }, {
-      debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
-      getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),
-      onSnapshotMutated: createCalibrationSnapshotMutationHook({
-        getStore: () => this.deps.getPowerCalibrationStore(),
-        debugStructured: ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
-      }),
-      binarySettleState: this.deps.getObserverBinarySettleState(),
-      binarySettleOps: this.buildObserverBinarySettleOps(),
-      pendingPredicate: (deviceId, capabilityId) => (
-        hasPendingBinarySettleWindow(this.deps.getObserverBinarySettleState(), deviceId, capabilityId)
-      ),
-      observedStateDispatcher: this.deps.getObservedStateEmitter().asDispatcher(this.deps.getObservedHomePower()),
-      evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey),
+      getHomeMembershipService: () => this.homeMembershipService,
+      scheduleRealtimeDeviceReconcile: (event) => this.scheduleRealtimeDeviceReconcile(event),
     });
-    ctx.deviceManager = deviceManager;
-    await deviceManager.init();
-    // The probe's decisions are time-based — edge settlement, away verdicts, and
-    // the self-stop dwell all need 90-180 s to elapse. Without a heartbeat they
-    // are only evaluated when unrelated telemetry happens to arrive, so a car
-    // sitting quietly at its charge limit (the single most valuable thing the
-    // probe records) is never noticed. Well inside the shortest deadline.
-    this.deps.timers.registerInterval('evCarLinkTick', setInterval(
-      () => ctx.deviceManager?.tickEvCarLink(Date.now()),
-      EV_CAR_LINK_TICK_INTERVAL_MS,
-    ));
-    const emitter = this.deps.getObservedStateEmitter();
-    // Wiring subscribes to the observer-owned emitter rather than the
-    // transport-side EventEmitter. Transport's dispatcher (above) routes
-    // every post-translation event through `observedStateEmitter`, which
-    // is the single source of truth for realtime fan-out post-PR #5. See
-    // notes/state-management/observer-transport-split.md.
-    emitter.onPlanReconcile((event: PlanReconcileObservedEvent) => {
-      this.scheduleRealtimeDeviceReconcile(event);
-    });
-    // Feed the projection FIRST, before any listener that reads it. Listeners
-    // fire in registration order, and `syncLivePlanState` below reads the
-    // projection (via `toPlanDevice`'s `currentOn`/`currentState`); applying the
-    // event here first ensures that pass sees the freshly-merged observed value for
-    // the same event instead of the previous one (stage 4b).
-    emitter.onObservedStateChanged((e) => this.deps.getObservedDeviceStateProjection().applyDelta(e));
-    emitter.onObservedStateRefresh((e) => this.deps.getObservedDeviceStateProjection().applyRefresh(e));
-    // NB: the projection is seeded lazily on the first plan build
-    // (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`),
-    // not here: right after `initDeviceManager` the transport's `getSnapshot()`
-    // is still empty (transport `init()` only attaches the live feed; the first
-    // snapshot arrives with the bootstrap refresh, which dispatches its own
-    // refresh into the projection). Seeding here would be a guaranteed no-op.
-    emitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
-      if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
-        incPerfCounters([
-          'plan_rebuild_requested_total',
-          'plan_rebuild_requested.flow_total',
-          'plan_rebuild_requested.flow.realtime_ev_soc_total',
-        ]);
-        this.deps.planRebuildScheduler.request({
-          kind: 'flow',
-          reason: 'realtime_ev_soc',
-        });
-      }
-      if (
-        event.measurePowerBecameSignificantlyPositive === true
-        && ctx.isCapacityControlEnabled(event.deviceId)
-      ) {
-        ctx.powerSampleRebuildState = {
-          ...ctx.powerSampleRebuildState,
-          shortfallSuppressionInvalidated: true,
-        };
-      }
-      void ctx.planService?.syncLivePlanState(event.source);
-    });
-  }
-
-  private shouldRebuildPlanForRealtimeEvSocObservation(event: ObservedStateChangedEvent): boolean {
-    const capabilityIds = [
-      ...(event.capabilityId ? [event.capabilityId] : []),
-      ...(event.observedCapabilityIds ?? []),
-    ];
-    if (!capabilityIds.some((capabilityId) => isStateOfChargeCapabilityId(capabilityId))) return false;
-    return this.deps.hasEnabledEvBoostForSnapshot(this.deps.getSnapshotDevice(event.deviceId));
   }
 
   // Body in `setup/appInit/wireHomeMembership.ts`; the trigger-teardown handle
@@ -468,6 +316,7 @@ export class AppServiceWiring {
         flushMainShortfallSideEffect: async () => (
           this.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true
         ),
+        retryDeferredOvershootSeed: this.deps.retryDeferredOvershootSeed,
       }),
     );
     this.deps.ctx.homeMembership = wiring.service;
@@ -491,6 +340,10 @@ export class AppServiceWiring {
       () => this.homeMembershipService?.isSubHomeExecutionReady() === true,
       () => this.homeMembershipService?.isRuntimeActive() === true,
     );
+    // Publish the per-home read seam. The registry stays private: `ctx` gets a
+    // closure over the field exposing only `readHome`, so it reports
+    // `unavailable` before this step and again once `runUninit` clears it.
+    this.deps.ctx.homeRuntimeRead = buildHomeRuntimeReadPort(() => this.homeRuntimeRegistry);
   }
 
   initCapacityGuard(): void {
@@ -632,6 +485,7 @@ export class AppServiceWiring {
     // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
     this.homeRuntimeRegistry?.teardownAll();
     this.homeRuntimeRegistry = undefined;
+    ctx.homeRuntimeRead = undefined;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.deps.getRealtimeDeviceReconcileState());
     this.stopUninitServices();

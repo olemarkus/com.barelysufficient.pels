@@ -13,15 +13,45 @@ const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-export const extractLiveHomePowerWatts = (liveReport: unknown): number | null => {
+/**
+ * The Automatic (no explicit selection) whole-home reading, resolved WITH the
+ * identity of the item it came from.
+ *
+ * `deviceId` is the load-bearing field: Automatic takes the FIRST `cumulative`
+ * item, which in a multi-meter house is not necessarily the Main home's own
+ * meter and may even be a meter area's. Ownership can only be proven when the
+ * sampled identity is known, so the reading carries it rather than leaving the
+ * caller to guess. `null` means the resolved item carried no usable id (the
+ * reading is still valid; its ownership simply cannot be proven).
+ *
+ * `cumulativeItemCount` is the ambiguity signal: exactly one cumulative item
+ * means Automatic is unambiguous, more than one means the choice was arbitrary.
+ */
+export type AutomaticHomePowerReading = {
+  watts: number;
+  deviceId: string | null;
+  cumulativeItemCount: number;
+};
+
+const toNonEmptyString = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim() !== '' ? value.trim() : null
+);
+
+export const extractAutomaticHomePowerReading = (
+  liveReport: unknown,
+): AutomaticHomePowerReading | null => {
   const report = asRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return null;
-  for (const rawItem of report.items) {
-    const item = asRecord(rawItem);
-    if (!item || item.type !== 'cumulative') continue;
+  const cumulativeItems = report.items
+    .map(asRecord)
+    .filter((item): item is UnknownRecord => item !== null && item.type === 'cumulative');
+  const cumulativeItemCount = cumulativeItems.length;
+  for (const item of cumulativeItems) {
     const values = asRecord(item.values);
     const watts = toFiniteNumber(values?.W);
-    if (watts !== null) return watts;
+    if (watts !== null) {
+      return { watts, deviceId: toNonEmptyString(item.id), cumulativeItemCount };
+    }
   }
   return null;
 };
@@ -33,7 +63,7 @@ export const extractLiveHomePowerWatts = (liveReport: unknown): number | null =>
  * carrying its real device id (and NOT as a `device` item); every other
  * power-reporting device appears as a `device` item. So the selection matches
  * `deviceId` across BOTH item types. Negative watts pass through (export —
- * same net semantics as `extractLiveHomePowerWatts`). Returns `null` when the
+ * same net semantics as `extractAutomaticHomePowerReading`). Returns `null` when the
  * id is absent or its reading is non-finite — it NEVER falls back to the first
  * cumulative item, because a silent fallback would mask a wrong or missing
  * selection with another meter's data.
