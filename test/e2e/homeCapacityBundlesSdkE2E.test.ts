@@ -26,6 +26,10 @@
 //    into a new sub-home is resumed by the sub-home's own planner via the
 //    provenance-free restore lane (stepped-modality candidates are covered in
 //    test/integration/homeCapacityBundles.test.ts).
+// 6. Mode targets in an area — a setpoint-shed area heater is commanded back to
+//    its mode target, and that same raise is HELD while the area's meter has
+//    not reported (the direction/clamp rule itself is pinned far more cheaply in
+//    test/integration/planDevices.test.ts).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { mockHomeyInstance, setMockDrivers, setMockZones, MockDevice, MockDriver } from '../mocks/homey';
@@ -55,6 +59,7 @@ const writeActiveHomesConfig = (config: HomeConfig): void => {
 };
 
 const ONOFF_CAP = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
+const TEMP_CAP = (deviceId: string) => `manager/devices/device/${deviceId}/capability/target_temperature`;
 
 const ZONES = {
   z1: { id: 'z1', name: 'Home', parent: null },
@@ -72,6 +77,23 @@ const buildOnOffDevice = async (deviceId: string, zoneId: string) => {
   );
   device.setZone(zoneId);
   await device.setCapabilityValue('onoff', true);
+  await device.setCapabilityValue('measure_power', 2000);
+  return device;
+};
+
+// A temperature-without-onoff load: PELS auto-assigns the `set_temperature`
+// shed behaviour to these, so shedding lowers the setpoint instead of switching
+// the device off. Its mode target is the RESTORE ANCHOR.
+const buildHeaterDevice = async (deviceId: string, zoneId: string, setpoint: number) => {
+  const device = new MockDevice(
+    deviceId,
+    `Heater ${deviceId}`,
+    ['target_temperature', 'measure_temperature', 'measure_power', 'meter_power'],
+    'heater',
+  );
+  device.setZone(zoneId);
+  await device.setCapabilityValue('target_temperature', setpoint);
+  await device.setCapabilityValue('measure_temperature', setpoint - 1);
   await device.setCapabilityValue('measure_power', 2000);
   return device;
 };
@@ -145,10 +167,14 @@ const advancePollsUntil = async (predicate: () => boolean, maxPolls = 30): Promi
   expect(predicate()).toBe(true);
 };
 
+// `boolean | number` (not `unknown`) so the same matcher covers boolean onoff
+// writes and numeric `target_temperature` writes while a mistyped literal — one
+// that could never match, silently turning a negative assertion into a pass —
+// still fails to compile.
 const wasCalledWith = (
   spy: ApiPutSpy,
   path: string,
-  value: boolean,
+  value: boolean | number,
   fromIndex = 0,
 ): boolean => spy.mock.calls.slice(fromIndex).some(([callPath, body]) => (
   callPath === path && (body as { value?: unknown } | undefined)?.value === value
@@ -626,5 +652,187 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     const mainOnWrites = callsFor(putSpy, 'device-main', adoptionPhaseStart)
       .filter(([, body]) => (body as { value?: unknown } | undefined)?.value === true);
     expect(mainOnWrites).toEqual([]);
+  }, 30_000);
+
+  // Regression: the sub-home scope used to bind `getModeDeviceTargets: () => ({})`
+  // and a neutral operating-mode sentinel, so `resolveTemperatureSeed` fell through
+  // to the device's LIVE setpoint. While shed that reading IS the shed setpoint, so
+  // on release `plannedTarget === currentTarget`, the executor dropped the write, and
+  // the heater stayed at the shed setpoint forever. The mode target is the restore
+  // anchor, so it binds live for every home.
+  it('an area temperature device shed to its shed setpoint is commanded back to its mode target', async () => {
+    const heater = await buildHeaterDevice('device-sub-heat', 'z2', 22);
+    const mainDevice = await buildOnOffDevice('device-main', 'z1');
+    setMockDrivers({ driverA: new MockDriver('driverA', [mainDevice, heater]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'device-main': true, 'device-sub-heat': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-main': true, 'device-sub-heat': true });
+    // The mode target the heater must be resumed TO (the restore anchor), and the
+    // shed setpoint PELS drops it to while the area is over its cap. The anchor
+    // write IS load-bearing: `seedMissingModeTargets` returns early on an absent
+    // or empty `mode_device_targets` blob (`setup/appDeviceSupport.ts`), so
+    // nothing would auto-seed it here. That unanchored case is a separate open
+    // defect (TODO: setpoint-shed device with no mode target stays stranded);
+    // what this test pins is the RELEASE write for an ANCHORED device.
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'device-sub-heat': 22 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'device-sub-heat': { action: 'set_temperature', temperature: 16 },
+    });
+    // The area cap must leave room to resume the heater against its EXPECTED
+    // power (retained at ~2 kW even after the shed drops measured draw to 0), or
+    // the resume is correctly held by `insufficient_headroom` forever and the
+    // test would pass for the wrong reason. Verified: a 1 kW area cap fails here.
+    configureSubHomeCapacity(6);
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(1000);
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // The area overshoots its 6 kW cap: the heater is shed by setpoint.
+    meterState.subW = 9000;
+    await advancePollsUntil(() => wasCalledWith(putSpy, TEMP_CAP('device-sub-heat'), 16));
+    // Homey now reports the shed setpoint back, and the heater stops drawing
+    // because the room (21 C) is already above it. That reported setpoint is the
+    // observation that used to poison the next cycle's seed.
+    await heater.setCapabilityValue('target_temperature', 16);
+    await heater.setCapabilityValue('measure_power', 0);
+    await drainPending();
+
+    // The area returns well under its cap: the heater must be commanded back to
+    // its mode target, not left sitting at the shed setpoint.
+    const resumePhaseStart = putSpy.mock.calls.length;
+    meterState.subW = 200;
+    await advancePollsUntil(
+      () => wasCalledWith(putSpy, TEMP_CAP('device-sub-heat'), 22, resumePhaseStart),
+      60,
+    );
+  }, 30_000);
+
+  // Regression (review P1): binding the mode targets live for a sub-home also
+  // opened a LOAD-ADDING write on a bundle that has never seen its own meter.
+  // A heater sitting below its mode target was raised on the very first
+  // actuating rebuild, with the area's draw completely unknown — and a
+  // never-sampled bundle is invisible to the freshness heartbeat (no aging
+  // timestamp), so nothing escalated it later. This is the SDK-boundary proof
+  // that the planner's unknown-power clamp reaches an area bundle; the clamp's
+  // direction rule is pinned in test/integration/planDevices.test.ts.
+  it('holds an area heater at its current setpoint until the area meter has reported, then applies the mode target', async () => {
+    const heater = await buildHeaterDevice('device-sub-heat', 'z2', 18);
+    const mainDevice = await buildOnOffDevice('device-main', 'z1');
+    setMockDrivers({ driverA: new MockDriver('driverA', [mainDevice, heater]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'device-main': true, 'device-sub-heat': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-main': true, 'device-sub-heat': true });
+    // Configured 22, device sitting at 18: a raise is pending from the first
+    // plan onward. Written before boot so `seedMissingModeTargets` cannot
+    // auto-seed 18 and make the assertion vacuous.
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'device-sub-heat': 22 } });
+    configureSubHomeCapacity(6);
+    // The area's meter is offline from boot: its item never appears in the live
+    // report, so this bundle never receives a sample (never a fabricated zero).
+    meterState.subOffline = true;
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    // Well past the zone-tree commit and the membership-ready apply edge, which
+    // is decoupled from sample arrival and so DOES run for a never-sampled
+    // bundle (`getStableSampleRevision()` is stable at revision 0).
+    for (let poll = 0; poll < 12; poll += 1) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+    }
+    // Positive control: the bundle IS live and allowed to actuate, so the silence
+    // below is the unknown-power hold and not some unrelated gate (dry-run,
+    // membership, source epoch) trivially suppressing every write.
+    expect((mockHomeyInstance.settings.get('pels_status:h_sub') as
+      | { dryRunEffective?: unknown }
+      | undefined)?.dryRunEffective).toBe(false);
+    expect(callsFor(putSpy, 'device-sub-heat')).toEqual([]);
+
+    // The meter comes back. Now the area's draw is known and well under its
+    // 6 kW cap, so the same mode target is applied — the hold is on the unknown,
+    // not a permanent loss of the restore anchor.
+    const meterLivePhaseStart = putSpy.mock.calls.length;
+    meterState.subOffline = false;
+    meterState.subW = 200;
+    await advancePollsUntil(
+      () => wasCalledWith(putSpy, TEMP_CAP('device-sub-heat'), 22, meterLivePhaseStart),
+      60,
+    );
+  }, 30_000);
+
+  // Regression (review P2): the sub-home mode closures read live ctx state, but
+  // a global `operating_mode` write rebuilt only MAIN's plan. A silent-meter
+  // area gets no power-driven rebuilds and the freshness heartbeat fires at most
+  // once per stale period, so a cooler-mode LOWERING — the direction the
+  // unknown-power hold deliberately lets through — could stay unapplied
+  // indefinitely. The settings handler now fans the mode write out to every
+  // live bundle's planner.
+  it('applies a cooler-mode lowering to an area heater while the area meter is silent', async () => {
+    const heater = await buildHeaterDevice('device-sub-heat', 'z2', 22);
+    const mainDevice = await buildOnOffDevice('device-main', 'z1');
+    setMockDrivers({ driverA: new MockDriver('driverA', [mainDevice, heater]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'device-main': true, 'device-sub-heat': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-main': true, 'device-sub-heat': true });
+    // Both modes are configured up front; only `operating_mode` changes later,
+    // so the write under test is the mode SWITCH, not a target edit.
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'device-sub-heat': 22 },
+      Away: { 'device-sub-heat': 16 },
+    });
+    configureSubHomeCapacity(6);
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(1000);
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
+    // Several live polls: the bundle samples its meter (so this is NOT the
+    // never-sampled case) and the heater sits at its Home target, nothing to do.
+    for (let poll = 0; poll < 3; poll += 1) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+    }
+    expect(callsFor(putSpy, 'device-sub-heat')).toEqual([]);
+
+    // The area meter goes silent, then the user switches to Away. Stay far
+    // below the 10-minute stale-shed window: within it there are NO sub-home
+    // rebuild triggers left except the mode fan-out itself, so the lowering
+    // landing here proves the fan-out (and a revert makes this time out).
+    meterState.subOffline = true;
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    const modeSwitchStart = putSpy.mock.calls.length;
+    mockHomeyInstance.settings.set('operating_mode', 'Away');
+    await vi.advanceTimersByTimeAsync(5_000);
+    await drainPending();
+    expect(wasCalledWith(putSpy, TEMP_CAP('device-sub-heat'), 16, modeSwitchStart)).toBe(true);
   }, 30_000);
 });

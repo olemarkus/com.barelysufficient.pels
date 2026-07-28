@@ -145,6 +145,15 @@ export type SettingsHandlerDeps = {
    * still self-reconciles on the next suffixed-write dirty-mark.
    */
   reconcileHomeRuntimes?: () => void;
+  /**
+   * Fan a global `operating_mode` / `mode_device_targets` write to every live
+   * sub-home plan. The bundles read those settings through live closures, but
+   * nothing re-RUNS their planners on the write — and an area whose meter is
+   * silent gets no power-driven rebuilds, so without this hook a mode change
+   * (e.g. a cooler-mode lowering) could stay unapplied indefinitely. Optional:
+   * absent in single-home wiring and tests.
+   */
+  rebuildHomeRuntimePlansForModeChange?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -523,6 +532,9 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
     });
     await rebuildPlanFromSettings(deps, 'mode_targets_fallback');
   }
+  // After the snapshot refresh (bundles read the same `latestTargetSnapshot`),
+  // so a sub-home's rebuild sees fresh device state alongside the new targets.
+  deps.rebuildHomeRuntimePlansForModeChange?.();
 }
 
 async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<void> {

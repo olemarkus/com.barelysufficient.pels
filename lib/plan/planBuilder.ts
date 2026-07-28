@@ -81,6 +81,10 @@ export type PlanBuilderDeps = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
+  // Producer-resolved per-home posture: hold a mode-target RAISE while this
+  // home's own power reading is unknown (see `applyModeSeedModulation` in
+  // `planDevices.ts`). Absent = no hold, which is the main home's binding.
+  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching
   // `state.pendingBinaryCommands[id]` directly, so the store stays the
@@ -389,6 +393,7 @@ export class PlanBuilder {
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
         getInferredSurplusKw: this.deps.getInferredSurplusKw,
         getOperatingMode: () => this.operatingMode,
+        holdsModeTargetRaisesWhilePowerUnknown: this.deps.holdsModeTargetRaisesWhilePowerUnknown,
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         debugStructured: this.deps.debugStructured,
       },
