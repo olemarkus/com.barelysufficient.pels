@@ -3133,3 +3133,43 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       the wrong home's history, and loses Main's data without clearing the area's. Files:
       `packages/settings-ui/src/ui/power.ts` (footer), `setup/homeRuntime/` (persistence API).
       Source: multi-home finishing train, per-home Usage PR. [P3]
+
+### Meter-area beta review follow-ups
+
+- [ ] **Finish scoped settings-surface loading and unavailable states.** Keep the beta treatment
+      deliberately lightweight, but avoid blank or contradictory surfaces: give an area's Limits
+      card a bounded loading/unavailable state; make single-home unavailable copy work without
+      promising a scope picker; include unmanaged-but-eligible candidates in scoped Devices; retain
+      the last-good source instead of normalizing a failed scoped read; and represent an unavailable
+      Power source without relying on a Material select value that has no option. Persona:
+      meter-area owner opening settings during boot, a transient read failure, or membership churn.
+      Source: deferred review threads on PRs #1896, #1908, #1914, #1915 and #1916. [P3]
+- [ ] **Remove remaining Main-only claims from area Overview and Usage renders.** Suppress Main's
+      "cheapest hour ahead" anticipation for capacity-only areas; make the detail overlay consume
+      the area's plan and effective simulation posture; preserve scoped power/plan unavailable
+      results instead of falling back to Main; use runtime `dryRunEffective` while an area's
+      actuation fence is closed; refresh the selected area's Usage source and tracker state; and
+      either hide or explicitly label Main-only smart-task detail. Persona: meter-area owner who
+      trusts the shown-home bar to describe every card below it. Source: deferred review threads on
+      PRs #1914, #1916 and #1917. [P3]
+- [ ] **Harden roster, badge and realtime churn after the beta settles.** Treat contradictory
+      `hasSubHomes`/homes payloads as unavailable, add a bounded retry for the first unavailable
+      badge read, preserve last-good badge state across unset/malformed payloads, repaint realtime
+      zone moves and mode edits without losing local choices, and explicitly reject prototype-key
+      and other malformed home identifiers. Keep truncated badge focus and similar keyboard polish
+      in this same batch rather than blocking the beta train. Persona: owner editing zones or meter
+      areas while another WebView is open. Source: deferred review threads on PRs #1909, #1911,
+      #1913 and #1914. [P3]
+- [ ] **Revisit non-critical runtime edges exposed by meter-area review.** Refit the weather model
+      once enough new-scope overlap days arrive; re-resolve held operating-mode aliases and make
+      partial rename rollback explicit; document/cache the per-home mode resolution contract; and
+      tighten markerless roster/readiness recovery without weakening the existing Main actuation
+      fence. Persona: long-running beta install that renames modes or changes meter topology.
+      Source: deferred review threads on PRs #1910, #1911 and #1913. [P3]
+- [ ] **Consolidate low-value mirror and fixture coverage from the stack review.** Add an executable
+      check for the deploy-time `homeId` query-key mirror, assert `CAPACITY_LIMIT_KW` in the existing
+      contracts/runtime settings-key mirror test, and clean up the test-lane/fixture-only comments
+      (including the #1894-style internal-port classification nit) when those suites are next
+      touched. These are drift guards, not evidence of current behavior regressions. Persona:
+      contributor renaming a shared key or reorganizing tests. Source: deferred review threads on
+      PRs #1894, #1896 and #1908. [P3]
