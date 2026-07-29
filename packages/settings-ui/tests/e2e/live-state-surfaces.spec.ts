@@ -52,6 +52,7 @@ test('device detail opens with the live status row matching the plan card', asyn
   await expect(row).toBeVisible();
   await expect(page.locator('#device-detail-live-state')).toHaveText('Running');
   await expect(page.locator('#device-detail-live-power')).toHaveText('1.2 kW');
+  await expect(page.locator('#device-detail-live-reason')).toBeHidden();
 
   // Closing the overlay retires the row so the next open never flashes a
   // stale device's status.

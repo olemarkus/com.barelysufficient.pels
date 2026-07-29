@@ -19,7 +19,7 @@
 //    notes/ui-terminology.md § Device state chips).
 // 2. Simulation renders the FACTUAL device state: `held`/`resuming` are
 //    PELS-acted claims, and in simulation PELS acts on nothing — the bold
-//    word shows what the device is actually doing (Running/Idle) and the
+//    word shows what the device is actually doing (Running/Idle/Off) and the
 //    hypothetical action lives only in the reason line ("Would be limited …",
 //    via `toSimulationReasonLine`). This replaces the pre-sweep card that
 //    said a factual "Limited" over a hypothetical reason.
@@ -32,7 +32,13 @@
 //   4. Always on (budget exempt)
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import { isOnLikeState } from './deviceStatePredicates';
-import { PLAN_STATE_LABEL, resolvePlanStateKind, type PlanStateKind } from './planStateLabels';
+import {
+  PLAN_STATE_LABEL,
+  PLAN_STATE_TONE,
+  resolvePlanStateKind,
+  type PlanStateKind,
+  type PlanStateTone,
+} from './planStateLabels';
 import { formatStarvationBadge } from './planStarvation';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
@@ -46,6 +52,14 @@ const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
   || value === 'unavailable'
   || value === 'unknown'
 );
+
+// `off` is a display fact, not a planner state. The runtime keeps resolving
+// inactive devices to `idle`; the card grammar adds `off` only when the
+// observer-resolved output state explicitly says the device is off (binary off
+// or a reported stepped-load off step). Keeping the distinction here avoids
+// widening the settings-UI wire contract or teaching the planner about a
+// presentation concern.
+export type PlanDisplayStateKind = PlanStateKind | 'off';
 
 // The raw plan-state kind: the producer-resolved `stateKind` when the
 // snapshot carries a valid one, else a fresh resolution. One helper so no
@@ -126,7 +140,7 @@ export type DisplayStateParams = IntentStateParams & {
 };
 
 // The state word the card displays (and the `data-state-kind` styling hook).
-export const resolveDisplayStateKind = (params: DisplayStateParams): PlanStateKind => {
+export const resolveDisplayStateKind = (params: DisplayStateParams): PlanDisplayStateKind => {
   const { dryRun, currentState } = params;
   const intentKind = resolveIntentStateKind(params);
   if (dryRun && (intentKind === 'held' || intentKind === 'resuming')) {
@@ -135,12 +149,40 @@ export const resolveDisplayStateKind = (params: DisplayStateParams): PlanStateKi
     // target-only device with no on/off axis) counts as active, matching
     // `resolvePlanStateKind`'s own active-state rule.
     const factualActive = currentState === 'not_applicable' || isOnLikeState(currentState);
-    return factualActive ? 'active' : 'idle';
+    if (factualActive) return 'active';
+    return currentState?.trim().toLowerCase() === 'off' ? 'off' : 'idle';
   }
+  // `Idle` describes a device that remains available/on but has nothing to do.
+  // An affirmative observed OFF is more specific. Apply this after the intent
+  // upgrades so `Limited`, `Resuming`, `Manual`, and unavailable states keep
+  // precedence over the physical output fact.
+  if (intentKind === 'idle' && currentState?.trim().toLowerCase() === 'off') return 'off';
   return intentKind;
 };
 
-export const displayStateLabel = (kind: PlanStateKind): string => PLAN_STATE_LABEL[kind];
+export const displayStateLabel = (kind: PlanDisplayStateKind): string => (
+  kind === 'off' ? 'Off' : PLAN_STATE_LABEL[kind]
+);
+
+export const displayStateTone = (kind: PlanDisplayStateKind): PlanStateTone => (
+  kind === 'off' ? PLAN_STATE_TONE.idle : PLAN_STATE_TONE[kind]
+);
+
+export const isDimmedDisplayStateKind = (kind: PlanDisplayStateKind): boolean => (
+  kind === 'idle' || kind === 'off' || kind === 'manual'
+);
+
+// External-off guidance is meaningful only while the state word can honestly
+// read `Off`. A persisted hold can outlive a fresh observation and coexist with
+// higher-priority `Unavailable`, `Manual`, or `Resuming` states; those states
+// must not tell the user to turn on a device PELS cannot currently observe or
+// act on.
+export const shouldDisplayExternalOffReason = (
+  kind: PlanDisplayStateKind,
+  reasonCode: string | undefined,
+): boolean => (
+  kind === 'off' && reasonCode === PLAN_REASON_CODES.externalOffHold
+);
 
 // ─── Status chip ladder ───────────────────────────────────────────────────────
 
@@ -157,7 +199,7 @@ export type PlanCardStatusChip =
   | { type: 'status'; label: string; tone: 'warn' | 'info' | 'ok' | 'muted'; tooltip?: string };
 
 export type PlanCardChipParams = {
-  displayKind: PlanStateKind;
+  displayKind: PlanDisplayStateKind;
   dryRun: boolean;
   starvation: SettingsUiPlanDeviceStarvation | undefined;
   // View-resolved: shouldOfferBudgetExemptCardAction && isStarvationRescuable.

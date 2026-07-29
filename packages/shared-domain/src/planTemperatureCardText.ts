@@ -1,10 +1,17 @@
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
-import { resolveIntentStateKind, resolveRawPlanStateKind } from './planCardGrammar';
+import {
+  resolveDisplayStateKind,
+  resolveIntentStateKind,
+  resolveRawPlanStateKind,
+  shouldDisplayExternalOffReason,
+} from './planCardGrammar';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
+  PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
+  type PlanStateKind,
 } from './planStateLabels';
 import { formatStarvationReason } from './planStarvation';
 import {
@@ -16,6 +23,7 @@ import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/setting
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
+  stateKind?: PlanStateKind;
   measuredPowerKw?: number;
   currentTemperature?: number;
   currentTarget?: unknown;
@@ -172,7 +180,7 @@ const resolveTemperatureIntentKind = (device: TemperatureDevice, reasonCode: str
   })
 );
 
-export const resolveTemperatureReasonLine = (
+const resolveTemperaturePlanReasonLine = (
   device: TemperatureDevice,
   dryRun = false,
 ): string | null => {
@@ -198,4 +206,25 @@ export const resolveTemperatureReasonLine = (
   // `kind` is necessarily 'held' here (idle/resuming/other returned above), so
   // the held device's action reads hypothetically in simulation mode.
   return resolveHeldTemperatureActionLabel(dryRun);
+};
+
+// This reason explains a binary OFF fact rather than a temperature decision,
+// so it must survive even when temperature evidence is absent. Generic cards
+// already format the same reason through `formatDeviceReasonUserFacing`;
+// keeping it here gives temperature cards the same one-line explanation.
+export const resolveTemperatureReasonLine = (
+  device: TemperatureDevice,
+  dryRun = false,
+): string | null => {
+  const reasonCode = (device.reason as { code?: string } | undefined)?.code;
+  const displayKind = resolveDisplayStateKind({
+    kind: resolveRawPlanStateKind(device),
+    reasonCode,
+    starved: device.starvation?.isStarved === true,
+    dryRun,
+    currentState: device.currentState,
+  });
+  return shouldDisplayExternalOffReason(displayKind, reasonCode)
+    ? PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS
+    : resolveTemperaturePlanReasonLine(device, dryRun);
 };

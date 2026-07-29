@@ -26,7 +26,7 @@ The Overview page shows the current plan: what PELS wants each managed device to
 | **Power now** | Current whole-home power draw. |
 | **Safe pace now** | The current pace PELS reacts around. It can come from the hourly hard cap, the daily budget, or both. |
 | **Hard cap** | The hourly average power you don't want any hour to exceed (your grid tariff step). |
-| **Device cards** | Running, Idle, Limited, Resuming, Manual, Unavailable, or Unknown. |
+| **Device cards** | Running, Idle, Off, Limited, Resuming, Manual, Unavailable, or Unknown. |
 | **Status line** | Short explanation of why PELS is waiting, limiting, or resuming. |
 
 Use **Overview** when you want to understand live behavior. Use **Settings** when you want to change setup.
@@ -133,8 +133,8 @@ device on again hands it straight back to normal PELS control. Devices PELS
 turned off itself still resume on their own; this only applies to an off action
 that did not come from PELS.
 
-On the Overview the device reads **Idle** with *Staying off until turned on
-again*.
+On the Overview the device reads **Off** with *Turned off elsewhere — turn it
+on to resume*.
 
 It is worth being clear about how this differs from turning **Power-limit
 control** off, since both stop PELS resuming a device:

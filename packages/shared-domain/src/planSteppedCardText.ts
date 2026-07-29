@@ -1,6 +1,11 @@
 import type { EvChargingState, SteppedLoadProfile } from '../../contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
+import {
+  resolveDisplayStateKind,
+  resolveRawPlanStateKind,
+  shouldDisplayExternalOffReason,
+} from './planCardGrammar';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import { formatStarvationReason } from './planStarvation';
@@ -8,7 +13,9 @@ import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
+  PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
+  type PlanStateKind,
 } from './planStateLabels';
 
 const capitalize = (s: string): string => (
@@ -58,6 +65,7 @@ type SteppedLoadCardState = {
 };
 
 type SteppedCardDevice = DeviceOverviewSnapshot & {
+  stateKind?: PlanStateKind;
   steppedLoad?: SteppedLoadCardState;
   starvation?: SettingsUiPlanDeviceStarvation;
 };
@@ -247,7 +255,13 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   return null;
 };
 
-const resolveOffStatusLine = (device: SteppedDevice): string | null => {
+const resolveOffStatusLine = (
+  device: SteppedDevice,
+  showExternalOffReason: boolean,
+): string | null => {
+  if (showExternalOffReason) {
+    return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
+  }
   if (isWaitingReason(device.reason.code)) {
     const gap = resolveHeadroomGapKw(device.reason);
     return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
@@ -279,6 +293,7 @@ export const resolveSteppedStatusLine = (
   device: SteppedDevice,
   profile: SteppedLoadProfile,
   nowMs: number,
+  dryRun = false,
 ): string | null => {
   // Active-movement states win first: a budget-held device commanded back up
   // (transit) or settling after a command is RECOVERING, but diagnostics keeps
@@ -308,7 +323,19 @@ export const resolveSteppedStatusLine = (
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
-  if (isSteppedCardOffLikeState(device.currentState)) return resolveOffStatusLine(device);
+  if (isSteppedCardOffLikeState(device.currentState)) {
+    const displayKind = resolveDisplayStateKind({
+      kind: resolveRawPlanStateKind(device),
+      reasonCode: device.reason.code,
+      starved: device.starvation?.isStarved === true,
+      dryRun,
+      currentState: device.currentState,
+    });
+    return resolveOffStatusLine(
+      device,
+      shouldDisplayExternalOffReason(displayKind, device.reason.code),
+    );
+  }
   // Quiet steady state renders NO status line (2026-07 card grammar: the
   // reason slot is exception-only). The former "Maintaining level" filler
   // said nothing the state row + level fact don't already say.

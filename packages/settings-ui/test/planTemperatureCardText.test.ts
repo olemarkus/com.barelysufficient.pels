@@ -5,6 +5,7 @@ import {
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
 } from '../../shared-domain/src/planStateLabels.ts';
 
 describe('resolveTemperatureLine', () => {
@@ -63,6 +64,23 @@ describe('resolveTemperatureReasonLine', () => {
       currentTemperature: 20.2,
       plannedTarget: 21,
       reason: { code: 'none' },
+    })).toBeNull();
+  });
+
+  it('explains an external off hold even when temperature evidence is unavailable', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'off',
+      plannedState: 'inactive',
+      reason: { code: 'external_off_hold' },
+    })).toBe(PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS);
+  });
+
+  it('suppresses stale external-off guidance when the device is unavailable', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'off',
+      plannedState: 'inactive',
+      stateKind: 'unavailable',
+      reason: { code: 'external_off_hold' },
     })).toBeNull();
   });
 
