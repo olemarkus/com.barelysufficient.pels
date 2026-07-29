@@ -465,6 +465,11 @@ describe('modes list meter-area filtering', () => {
     homey.__settingsStore[`operating_mode:${RENTAL}`] = 'Home';
     homey.__settingsStore[`capacity_priorities:${RENTAL}`] = { Home: { 'dev-rental': 1 } };
     homey.__settingsStore[`mode_device_targets:${RENTAL}`] = { Home: {} };
+    homey.__settingsStore.managed_devices = {
+      'dev-rental': true,
+      'dev-annex': true,
+      'dev-main': true,
+    };
     const {
       loadModeAndPriorities,
       renderPriorities,
@@ -474,7 +479,6 @@ describe('modes list meter-area filtering', () => {
     const { state } = await import('../src/ui/state.ts');
     state.activeMode = 'Home';
     state.editingMode = 'Home';
-    state.managedMap = { 'dev-rental': true, 'dev-annex': true, 'dev-main': true };
     state.capacityPriorities = { Home: { 'dev-rental': 1 } };
     state.modeTargets = { Home: {} };
     state.latestDevices = THREE_DEVICES;
@@ -498,6 +502,73 @@ describe('modes list meter-area filtering', () => {
     await savePriorities();
     expect((homey.set as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === `capacity_priorities:${ANNEX}`)).toHaveLength(0);
+  });
+
+  it('shows an honest unavailable state when the selected area catalog cannot be loaded', async () => {
+    const homey = await primeBadges(buildHomesPayload());
+    homey.__settingsStore.managed_devices = {
+      'dev-rental': true,
+      'dev-annex': true,
+      'dev-main': true,
+    };
+    const { refreshHomeScope, selectHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    const { loadModeAndPriorities, renderPriorities } = await import('../src/ui/modes.ts');
+    await loadModeAndPriorities();
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = THREE_DEVICES;
+    renderPriorities(THREE_DEVICES);
+    expect(document.querySelectorAll('#priority-list .device-row')).toHaveLength(1);
+
+    selectHomeScope(RENTAL);
+    await expect(loadModeAndPriorities()).rejects.toThrow('Mode catalog unavailable');
+    renderPriorities(THREE_DEVICES);
+
+    expect(document.querySelector('#mode-select')).toHaveProperty('disabled', true);
+    const empty = document.querySelector('#priority-empty') as HTMLElement;
+    expect(empty.hidden).toBe(false);
+    expect(empty.textContent).toBe('Modes couldn’t be loaded. Reopen this page to try again.');
+    expect(document.querySelectorAll('#priority-list .device-row')).toHaveLength(0);
+
+    homey.__settingsStore[`operating_mode:${RENTAL}`] = 'Home';
+    homey.__settingsStore[`capacity_priorities:${RENTAL}`] = { Home: {} };
+    homey.__settingsStore[`mode_device_targets:${RENTAL}`] = { Home: {} };
+    homey.__settingsStore.managed_devices = { 'dev-main': true };
+    const { invalidateSettingCache } = await import('../src/ui/homey.ts');
+    invalidateSettingCache(`operating_mode:${RENTAL}`);
+    invalidateSettingCache(`capacity_priorities:${RENTAL}`);
+    invalidateSettingCache(`mode_device_targets:${RENTAL}`);
+    invalidateSettingCache('managed_devices');
+    await loadModeAndPriorities();
+    renderPriorities(THREE_DEVICES);
+
+    expect(empty.hidden).toBe(false);
+    expect(empty.textContent).toBe('No controllable devices found. Refresh devices first.');
+  });
+
+  it('clears an earlier catalog when refreshing the same area fails', async () => {
+    const homey = await primeBadges(buildHomesPayload());
+    homey.__settingsStore[`operating_mode:${RENTAL}`] = 'Home';
+    homey.__settingsStore[`capacity_priorities:${RENTAL}`] = { Home: { 'dev-rental': 1 } };
+    homey.__settingsStore[`mode_device_targets:${RENTAL}`] = { Home: {} };
+    homey.__settingsStore.managed_devices = { 'dev-rental': true };
+    const { refreshHomeScope, selectHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    selectHomeScope(RENTAL);
+    const { loadModeAndPriorities, renderPriorities } = await import('../src/ui/modes.ts');
+    await loadModeAndPriorities();
+    renderPriorities(THREE_DEVICES);
+    expect(document.querySelectorAll('#priority-list .device-row')).toHaveLength(1);
+
+    delete homey.__settingsStore[`capacity_priorities:${RENTAL}`];
+    const { invalidateSettingCache } = await import('../src/ui/homey.ts');
+    invalidateSettingCache(`capacity_priorities:${RENTAL}`);
+    await expect(loadModeAndPriorities()).rejects.toThrow('Mode catalog unavailable');
+
+    const { state } = await import('../src/ui/state.ts');
+    expect(state.loadedModeHomeId).toBeNull();
+    expect(document.querySelector('#mode-select')).toHaveProperty('disabled', true);
+    expect(document.querySelectorAll('#priority-list .device-row')).toHaveLength(0);
   });
 });
 

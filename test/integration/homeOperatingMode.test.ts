@@ -186,6 +186,30 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(setSpy).toHaveBeenCalledTimes(writeCount);
   });
 
+  it('initializes an unwritten area catalog when Homey returns null for missing settings', () => {
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: (deviceId: string) => deviceId === 'dev-1' ? 'h_a' : 'main',
+    } as unknown as AppContext['homeMembership'];
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+      originalGet(key) ?? null
+    ));
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+
+    catalog.reload();
+
+    expect(catalog.isInitialized()).toBe(true);
+    expect(catalog.getSnapshot()).toMatchObject({
+      operatingMode: 'Home',
+      priorities: { Home: { 'dev-1': 1 } },
+      targets: { Home: { 'dev-1': 21 } },
+    });
+    expect(setSpy.mock.calls.at(-1)).toEqual(['mode_catalog_initialized:h_a', true]);
+  });
+
   it('creates an independent Home mode instead of inheriting Main’s active mode', () => {
     rig.ctx.operatingMode = 'Away';
     rig.ctx.capacityPriorities = { Away: { 'dev-1': 1 } };
@@ -256,6 +280,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => 'h_a',
     } as unknown as AppContext['homeMembership'];
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+      originalGet(key) ?? null
+    ));
 
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
 
@@ -292,24 +320,27 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     });
   });
 
-  it('never recopies Main when the existing initialization marker read is ambiguous', () => {
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
-    catalog.reload();
-    mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
-    catalog.reload();
-    expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
-    const writeCount = vi.spyOn(mockHomeyInstance.settings, 'set').mock.calls.length;
-    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
-      key === 'mode_catalog_initialized:h_a' ? undefined : originalGet(key)
-    ));
+  it.each([undefined, null])(
+    'never recopies Main when the existing initialization marker reads %s',
+    (ambiguousMarker) => {
+      const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+      catalog.reload();
+      mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
+      catalog.reload();
+      expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
+      const writeCount = vi.spyOn(mockHomeyInstance.settings, 'set').mock.calls.length;
+      const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+      vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+        key === 'mode_catalog_initialized:h_a' ? ambiguousMarker : originalGet(key)
+      ));
 
-    catalog.reload();
+      catalog.reload();
 
-    expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
-    expect(mockHomeyInstance.settings.set).toHaveBeenCalledTimes(writeCount);
-    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
-  });
+      expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
+      expect(mockHomeyInstance.settings.set).toHaveBeenCalledTimes(writeCount);
+      expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    },
+  );
 
   it('waits rather than overwriting a pre-migration area selection on an ambiguous read', () => {
     const pinKey = `${OPERATING_MODE_SETTING}:h_a`;
