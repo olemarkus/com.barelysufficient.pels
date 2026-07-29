@@ -68,13 +68,15 @@
       "vitest.config.unit.mts",
       "vitest.config.integration.mts",
       "vitest.config.e2e.mts",
-      "vitest.config.tz.mts"
+      "vitest.config.tz.mts",
+      "vitest.config.changed.mts"
     ]
   },
   "ignore": [
     "test/mocks/echarts-subpath-shim.ts",
     "test/mocks/homey.ts",
     "vitest-env.d.ts",
+    "scripts/lib/change-impact.d.mts",
     "scripts/lib/run-parallel.d.mts",
     "scripts/with-validation-lock.d.mts"
   ],
