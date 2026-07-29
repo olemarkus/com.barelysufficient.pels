@@ -407,11 +407,11 @@ describe('external-off hold — release under an unreadable store', () => {
   it('uses a newer pull-observed raw EV ON to end old PELS-OFF attribution', () => {
     const h = buildCtx({ optedIn: true });
     const store = createPendingBinaryCommandStore({});
-    store.recordSuccessfulBinaryCommand({
+    store.recordConfirmedBinaryCommand({
       deviceId: DEVICE_ID,
       capabilityId: 'evcharger_charging',
       desired: false,
-      issuedAtMs: NOW,
+      confirmedAtMs: NOW,
     });
     h.ctx.externalOffHold?.startHold(DEVICE_ID);
     const observed = toExternalOffHoldObservedDevice(buildSnapshot({
@@ -427,14 +427,14 @@ describe('external-off hold — release under an unreadable store', () => {
       policy: h.ctx.externalOffHold,
       deviceIds: [DEVICE_ID],
       isObservedOn: () => observed.binaryAxisOn,
-      onObservedOn: () => store.clearRecentSuccessfulOff(
+      onObservedOn: () => store.clearRecentConfirmedOff(
         DEVICE_ID,
         'evcharger_charging',
         observed.binaryAxisObservedAtMs,
       ),
     });
 
-    expect(store.hasRecentSuccessfulOff(DEVICE_ID, 'evcharger_charging', NOW + 2)).toBe(false);
+    expect(store.hasRecentConfirmedOff(DEVICE_ID, 'evcharger_charging', NOW + 2)).toBe(false);
     expect(h.ctx.externalOffHold?.isHeld(DEVICE_ID)).toBe(false);
   });
 

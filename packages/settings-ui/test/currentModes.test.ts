@@ -242,4 +242,163 @@ describe('current modes settings hub', () => {
     expect(homey.set.mock.calls.map(([, value]) => value)).toEqual(['Away', 'Sleep']);
     releases[1]();
   });
+
+  it('rolls a failed current-mode change back to the persisted mode', async () => {
+    const homey = await loadView({
+      operating_mode: 'Home',
+      capacity_priorities: { Home: {}, Away: {} },
+      mode_device_targets: { Home: {}, Away: {} },
+    }, {
+      homes: [],
+      membershipByDeviceId: {},
+      zoneTree: null,
+      hasSubHomes: false,
+      runtimeActive: false,
+      configDegraded: false,
+    });
+    let rejectWrite: (() => void) | undefined;
+    homey.set.mockImplementation((_key, _value, callback) => {
+      rejectWrite = () => callback?.(new Error('write failed'));
+    });
+    let select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+
+    select.value = 'Away';
+    select.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(rejectWrite).toBeDefined());
+    rejectWrite?.();
+
+    await vi.waitFor(() => {
+      select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+      expect(select.value).toBe('Home');
+    });
+  });
+
+  it('rolls two failed rapid changes back to the last persisted mode', async () => {
+    const homey = await loadView({
+      operating_mode: 'Home',
+      capacity_priorities: { Home: {}, Away: {}, Sleep: {} },
+      mode_device_targets: { Home: {}, Away: {}, Sleep: {} },
+    }, {
+      homes: [],
+      membershipByDeviceId: {},
+      zoneTree: null,
+      hasSubHomes: false,
+      runtimeActive: false,
+      configDegraded: false,
+    });
+    const rejectWrites: Array<() => void> = [];
+    homey.set.mockImplementation((_key, _value, callback) => {
+      rejectWrites.push(() => callback?.(new Error('write failed')));
+    });
+    let select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+
+    select.value = 'Away';
+    select.dispatchEvent(new Event('change'));
+    select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+    select.value = 'Sleep';
+    select.dispatchEvent(new Event('change'));
+
+    await vi.waitFor(() => expect(rejectWrites).toHaveLength(1));
+    rejectWrites[0]();
+    await vi.waitFor(() => expect(rejectWrites).toHaveLength(2));
+    rejectWrites[1]();
+
+    await vi.waitFor(() => {
+      select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+      expect(select.value).toBe('Home');
+    });
+  });
+
+  it('does not let an overlapping stale refresh replace a successful write baseline', async () => {
+    const homey = await loadView({
+      operating_mode: 'Home',
+      capacity_priorities: { Home: {}, Away: {}, Sleep: {} },
+      mode_device_targets: { Home: {}, Away: {}, Sleep: {} },
+    }, {
+      homes: [],
+      membershipByDeviceId: {},
+      zoneTree: null,
+      hasSubHomes: false,
+      runtimeActive: false,
+      configDegraded: false,
+    });
+    const writes: Array<(error?: Error) => void> = [];
+    homey.set.mockImplementation((_key, _value, callback) => {
+      writes.push((error) => callback?.(error ?? null));
+    });
+    let select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+    select.value = 'Away';
+    select.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(writes).toHaveLength(1));
+
+    const { refreshCurrentModes } = await import('../src/ui/currentModes.ts');
+    await refreshCurrentModes();
+    select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+    expect(select.value).toBe('Away');
+
+    writes[0]();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Active mode set to Away'));
+    select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+    select.value = 'Sleep';
+    select.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(writes).toHaveLength(2));
+    writes[1](new Error('write failed'));
+
+    await vi.waitFor(() => {
+      select = document.querySelector('#active-mode-select') as HTMLElement & { value: string };
+      expect(select.value).toBe('Away');
+    });
+  });
+
+  it('reruns a discarded refresh after an unrelated home write settles', async () => {
+    const homey = await loadView({
+      operating_mode: 'Home',
+      capacity_priorities: { Home: {}, Away: {} },
+      mode_device_targets: { Home: {}, Away: {} },
+      [`operating_mode:${AREA_A}`]: 'Sleep',
+      [`capacity_priorities:${AREA_A}`]: { Sleep: {}, Guests: {} },
+      [`mode_device_targets:${AREA_A}`]: { Sleep: {}, Guests: {} },
+      [`mode_catalog_initialized:${AREA_A}`]: true,
+      [`operating_mode:${AREA_B}`]: 'Eco',
+      [`capacity_priorities:${AREA_B}`]: { Eco: {} },
+      [`mode_device_targets:${AREA_B}`]: { Eco: {} },
+      [`mode_catalog_initialized:${AREA_B}`]: true,
+    }, homesPayload);
+    let finishWrite: (() => void) | undefined;
+    homey.set.mockImplementation((_key, _value, callback) => {
+      finishWrite = () => callback?.(null);
+    });
+    const mainSelect = document.querySelector('#active-mode-select') as HTMLElement & {
+      value: string;
+    };
+    mainSelect.value = 'Away';
+    mainSelect.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(finishWrite).toBeDefined());
+
+    const { getHomeScope, refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    const { refreshCurrentModes } = await import('../src/ui/currentModes.ts');
+    await refreshHomeScope();
+    expect(getHomeScope()).toMatchObject({ runtimeActive: true });
+    expect(getHomeScope().areas).toHaveLength(2);
+    await refreshCurrentModes();
+    homey.__settingsStore.operating_mode = 'Away';
+    homey.__settingsStore[`operating_mode:${AREA_A}`] = 'Guests';
+    const { invalidateSettingCache } = await import('../src/ui/homey.ts');
+    invalidateSettingCache(`operating_mode:${AREA_A}`);
+    finishWrite?.();
+
+    await vi.waitFor(() => {
+      expect(homey.get.mock.calls.filter(([key]) => key === `operating_mode:${AREA_A}`))
+        .toHaveLength(2);
+    });
+    await vi.waitFor(() => {
+      const areaRow = [...document.querySelectorAll<HTMLElement>('.settings-current-mode__row')]
+        .find((row) => row.querySelector('.settings-current-mode__home-name')?.textContent
+          === 'Basement apartment with a long name');
+      const areaSelect = areaRow?.querySelector('md-filled-select') as HTMLElement & {
+        value: string;
+      };
+      expect(areaSelect.value).toBe('Guests');
+    });
+  });
 });

@@ -9,7 +9,10 @@ import {
 } from '../../lib/executor/binaryControlDispatch';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import {
+  createPendingBinaryCommandStore,
+  syncPendingBinaryCommands,
+} from '../../lib/observer/pendingBinaryCommands';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
@@ -26,20 +29,38 @@ afterEach(() => {
 describe('recent successful OFF provenance', () => {
   it('does not let an older late success replace a newer issue timestamp', () => {
     const store = createPendingBinaryCommandStore({});
-    store.recordSuccessfulBinaryCommand({
+    store.recordConfirmedBinaryCommand({
       deviceId: 'socket1',
       capabilityId: 'onoff',
       desired: false,
-      issuedAtMs: 2_000,
+      confirmedAtMs: 2_000,
     });
-    store.recordSuccessfulBinaryCommand({
+    store.recordConfirmedBinaryCommand({
       deviceId: 'socket1',
       capabilityId: 'onoff',
       desired: false,
-      issuedAtMs: 1_000,
+      confirmedAtMs: 1_000,
     });
 
-    expect(store.hasRecentSuccessfulOff('socket1', 'onoff', 301_999)).toBe(true);
+    expect(store.hasRecentConfirmedOff('socket1', 'onoff', 301_999)).toBe(true);
+  });
+
+  it('does not let an older ON confirmation erase a newer confirmed OFF', () => {
+    const store = createPendingBinaryCommandStore({});
+    store.recordConfirmedBinaryCommand({
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: false,
+      confirmedAtMs: 2_000,
+    });
+    store.recordConfirmedBinaryCommand({
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: true,
+      confirmedAtMs: 1_000,
+    });
+
+    expect(store.hasRecentConfirmedOff('socket1', 'onoff', 3_000)).toBe(true);
   });
 });
 
@@ -261,21 +282,72 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
       desired: false,
       flowBackedControl: true,
     });
+    expect(transport.pendingBinaryCommandStore.hasRecentConfirmedOff('socket1', 'onoff')).toBe(false);
+    nowSpy.mockReturnValue(issuedAtMs + 1);
+    expect(syncPendingBinaryCommands({
+      store: transport.pendingBinaryCommandStore,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        binaryControlObservation: {
+          capabilityId: 'onoff',
+          observedValue: false,
+          observedCapabilityIds: ['onoff'],
+          observedAtMs: issuedAtMs + 1,
+        },
+      }],
+      source: 'realtime_capability',
+    })).toBe(true);
+    expect(transport.pendingBinaryCommandStore.hasRecentConfirmedOff('socket1', 'onoff')).toBe(true);
     nowSpy.mockReturnValue(issuedAtMs + 80_000);
-    expect(transport.pendingBinaryCommandStore.get('socket1')).toBeUndefined();
-    expect(transport.pendingBinaryCommandStore.hasRecentSuccessfulOff('socket1', 'onoff')).toBe(true);
-    transport.pendingBinaryCommandStore.clearRecentSuccessfulOff(
+    expect(transport.pendingBinaryCommandStore.hasRecentConfirmedOff('socket1', 'onoff')).toBe(true);
+    transport.pendingBinaryCommandStore.clearRecentConfirmedOff(
       'socket1',
       'onoff',
       issuedAtMs - 1,
     );
-    expect(transport.pendingBinaryCommandStore.hasRecentSuccessfulOff('socket1', 'onoff')).toBe(true);
-    transport.pendingBinaryCommandStore.clearRecentSuccessfulOff(
+    expect(transport.pendingBinaryCommandStore.hasRecentConfirmedOff('socket1', 'onoff')).toBe(true);
+    transport.pendingBinaryCommandStore.clearRecentConfirmedOff(
       'socket1',
       'onoff',
-      issuedAtMs + 1,
+      issuedAtMs + 2,
     );
-    expect(transport.pendingBinaryCommandStore.hasRecentSuccessfulOff('socket1', 'onoff')).toBe(false);
+    expect(transport.pendingBinaryCommandStore.hasRecentConfirmedOff('socket1', 'onoff')).toBe(false);
+  });
+
+  it('does not attribute a later manual off to an accepted command that never converged', async () => {
+    const state = createPlanEngineState();
+    const issuedAtMs = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(issuedAtMs);
+    const transport = buildTransport(state, {
+      setCapability: vi.fn(),
+      triggerFlowBackedBinaryControl: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(await dispatchBinaryControlDecision({
+      decision: {
+        deviceId: 'socket1',
+        name: 'Socket',
+        capabilityId: 'onoff',
+        desired: false,
+        flowBackedControl: true,
+        logContext: 'capacity',
+        actuationMode: 'plan',
+      },
+      transport,
+      snapshot: snapshot({
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        flowBackedCapabilityIds: ['onoff'],
+      }),
+    })).toEqual({ ok: true });
+
+    nowSpy.mockReturnValue(issuedAtMs + 80_000);
+    expect(transport.pendingBinaryCommandStore.get('socket1')).toBeUndefined();
+    expect(
+      transport.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('socket1', 'onoff'),
+    ).toBe(false);
   });
 
   it('clears the recorded pending entry when dispatch fails', async () => {

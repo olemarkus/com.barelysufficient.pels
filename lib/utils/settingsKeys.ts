@@ -161,6 +161,11 @@ export const HOMES_CONFIG = 'homes_config';
 export const HOMES_CONFIG_INITIALIZED = 'homes_config_initialized';
 export const DEVICE_HOME_ASSIGNMENTS = 'device_home_assignments';
 export const DEVICE_HOME_ASSIGNMENTS_INITIALIZED = 'device_home_assignments_initialized';
+// Last owner whose persisted mode target was fully transferred for each
+// thermostat, plus its marker-first staged copy. Internal runtime recovery
+// state; the settings UI never reads either key.
+export const MODE_TARGET_OWNERSHIP_STATE = 'mode_target_ownership_state';
+export const MODE_TARGET_OWNERSHIP_STATE_INITIALIZED = 'mode_target_ownership_state_initialized';
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
 // Weather-insight feature: config blob (enable flag + device ids, written by the

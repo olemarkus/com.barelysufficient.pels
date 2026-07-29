@@ -57,3 +57,71 @@ test('Settings renders independent Main and meter-area mode selectors without ov
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test('mode catalog initialization refreshes the current and selected-home mode surfaces', async ({ page }) => {
+  await gotoApp(page);
+  await seedStubSetting(page, `operating_mode:${AREA_ID}`, 'Sleep');
+  await seedStubSetting(page, `capacity_priorities:${AREA_ID}`, {
+    Sleep: { dev_bedroom: 1 },
+    Guests: { dev_bedroom: 1 },
+  });
+  await seedStubSetting(page, `mode_device_targets:${AREA_ID}`, {
+    Sleep: { dev_bedroom: 17 },
+    Guests: { dev_bedroom: 20 },
+  });
+  await seedStubSetting(page, `mode_catalog_initialized:${AREA_ID}`, true);
+  await seedStubSetting(page, 'device_home_assignments', { dev_bedroom: AREA_ID });
+  await seedRentalArea(page);
+
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.locator('.settings-nav-card[data-settings-target="modes"]').click();
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#mode-select')).toHaveJSProperty('value', 'Sleep');
+
+  await page.evaluate((areaId) => {
+    const stub = (window as Window & {
+      Homey?: {
+        __stub?: {
+          emitSettingsSet: (key: string) => void;
+        };
+      };
+    }).Homey?.__stub;
+    if (!stub) throw new Error('Homey stub missing');
+    const modeSelect = document.querySelector('#mode-select') as HTMLElement & { value: string };
+    const currentModeSelect = document.querySelectorAll<HTMLElement>(
+      '.settings-current-mode__row md-filled-select',
+    )[1] as HTMLElement & { value: string };
+    modeSelect.value = 'Guests';
+    currentModeSelect.value = 'Guests';
+    stub.emitSettingsSet(`mode_catalog_initialized:${areaId}`);
+  }, AREA_ID);
+
+  await expect(page.locator('#mode-select')).toHaveJSProperty('value', 'Sleep');
+  const areaCurrentMode = page.locator('.settings-current-mode__row').nth(1).locator('md-filled-select');
+  await expect(areaCurrentMode).toHaveJSProperty('value', 'Sleep');
+});
+
+test('keeps two-digit mode temperatures visible at 480px in the light fine-pointer layout', async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 900 });
+  await gotoApp(page);
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.locator('.settings-nav-card[data-settings-target="modes"]').click();
+
+  const target = page.locator('#priority-list .mode-target-input').first();
+  await expect(target).toHaveJSProperty('value', '21');
+  const rendered = await target.evaluate((element) => {
+    const input = element.shadowRoot?.querySelector('input');
+    const suffix = element.shadowRoot?.querySelector('.suffix');
+    if (!(input instanceof HTMLInputElement) || !(suffix instanceof HTMLElement)) {
+      throw new Error('Material mode target internals missing');
+    }
+    return {
+      inputValue: input.value,
+      inputWidth: input.getBoundingClientRect().width,
+      suffix: suffix.textContent,
+    };
+  });
+
+  expect(rendered).toMatchObject({ inputValue: '21', suffix: '°C' });
+  expect(rendered.inputWidth).toBeGreaterThanOrEqual(40);
+});
