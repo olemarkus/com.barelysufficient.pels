@@ -68,6 +68,10 @@ This note is for contributors changing runtime logging.
 - `overshoot_entered`
 - `overshoot_cleared`
 - `hard_cap_shortfall_detected`
+- `hard_cap_shortfall_alert_hold_started`
+- `hard_cap_shortfall_alert_hold_cancelled`
+- `hard_cap_shortfall_alert_triggered`
+- `hard_cap_shortfall_alert_failed`
 - `hard_cap_shortfall_recovery_started`
 - `hard_cap_shortfall_recovery_reset`
 - `hard_cap_shortfall_recovered`

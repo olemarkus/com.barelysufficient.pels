@@ -12,7 +12,6 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
-import { mockHomeyInstance } from '../mocks/homey';
 import {
   buildPlanDevice,
   steppedInputDevice,
@@ -43,17 +42,12 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
 });
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
-  const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
   });
   const state = createPlanEngineState();
   const deps: PlanExecutorDeps = {
-    homey: {
-      ...mockHomeyInstance,
-      flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
-    } as never,
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),

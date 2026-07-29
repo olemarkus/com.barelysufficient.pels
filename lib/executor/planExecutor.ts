@@ -1,6 +1,3 @@
-import type { SettingsPort, FlowPort } from '../ports/homeyRuntime';
-import type { HomeId } from '../utils/settingsKeys';
-import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
@@ -21,7 +18,6 @@ export type PlanExecutorDeviceTransport = DeviceObservation;
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
-import { incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   closeActivationAttemptForShedActuation,
@@ -51,28 +47,12 @@ import {
   dispatchPlanActions,
   type PlanExecutorCore,
 } from './planExecutorDispatch';
+import { ShortfallExecutor, type ShortfallExecutorDeps } from './shortfallExecutor';
 
 export type { PlanActuationResult } from './planExecutorDispatch';
 import type { PlanActuationResult } from './planExecutorDispatch';
 
-export type PlanExecutorDeps = {
-  homey: { settings: SettingsPort; flow: FlowPort };
-  /**
-   * Producer-resolved display name of the home this executor serves. It is the
-   * `home` token on the single global `capacity_shortfall` Flow trigger: every
-   * home fires the same card, so without it a Flow cannot tell which part of
-   * the home ran out of managed load. Required, so a new home runtime cannot
-   * ship an unattributed alert.
-   */
-  getHomeDisplayName: () => string;
-  /**
-   * Stable id of the same home, for structured logs only. The token carries the
-   * human name, but a name can be renamed mid-incident, which would split a
-   * shortfall enter from its clear in the log series; every other home-scoped
-   * event in the runtime keys on this id, so these join with them.
-   */
-  homeId: HomeId;
-  setCapacityInShortfall: (inShortfall: boolean) => void;
+export type PlanExecutorDeps = ShortfallExecutorDeps & {
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   deviceManager: PlanExecutorDeviceTransport;
   /**
@@ -88,8 +68,6 @@ export type PlanExecutorDeps = {
    * `notes/state-management/actuator-write-seam.md`.
    */
   actuator: Actuator;
-  getCapacityGuard: () => CapacityGuard | undefined;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
@@ -132,13 +110,10 @@ export type PlanExecutorDeps = {
 export class PlanExecutor {
   private lastControlledPersistenceDirty = false;
   private controlPersistenceBatchDepth = 0;
-  // Distinct from `state.inShortfall`: the builder synchronizes that shared
-  // planner/persistence latch from CapacityGuard even while the global Flow
-  // callback is temporarily authority-fenced. This latch records only whether
-  // the retained enter side effect has actually reached its Flow seam.
-  private shortfallSideEffectActive = false;
+  private readonly shortfallExecutor: ShortfallExecutor;
 
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
+    this.shortfallExecutor = new ShortfallExecutor(deps, state);
   }
 
   private readonly boundGetShedBehavior = (deviceId: string) => this.getShedBehavior(deviceId);
@@ -183,14 +158,6 @@ export class PlanExecutor {
 
   private get deviceManager(): PlanExecutorDeviceTransport {
     return this.deps.deviceManager;
-  }
-
-  private get capacityGuard(): CapacityGuard | undefined {
-    return this.deps.getCapacityGuard();
-  }
-
-  private get capacitySettings(): { limitKw: number; marginKw: number } {
-    return this.deps.getCapacitySettings();
   }
 
   private get capacityDryRun(): boolean {
@@ -448,78 +415,11 @@ export class PlanExecutor {
   }
 
   public async handleShortfall(deficitKw: number): Promise<void> {
-    if (this.shortfallSideEffectActive) return;
-
-    const shortfallThreshold = this.capacityGuard
-      ? this.capacityGuard.getShortfallThreshold()
-      : this.capacitySettings.limitKw;
-    const softLimit = this.capacityGuard ? this.capacityGuard.getSoftLimit() : this.capacitySettings.limitKw;
-    const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
-    const totalStr = total === null ? 'unknown' : total.toFixed(2);
-    // Every home fires the SAME global card, so the home has to travel with
-    // both the log line and the Flow payload or neither can be attributed.
-    const home = this.deps.getHomeDisplayName();
-
-    logger.info({
-      event: 'executor_plan_log',
-      home,
-      homeId: this.deps.homeId,
-      msg: `Capacity shortfall: projected hard-cap budget breach, over by `
-        + `~${deficitKw.toFixed(2)}kW `
-        + `(total ${totalStr}kW, `
-        + `threshold ${shortfallThreshold.toFixed(2)}kW, `
-        + `soft ${softLimit.toFixed(2)}kW)`,
-    });
-
-    if (!this.state.inShortfall) {
-      // Persist first, then commit the in-memory latch. The shortfall side-effect
-      // gate retains this transition when the settings writer throws; flipping
-      // the latch before that write would make the retry return early and lose
-      // both the durable state and the one-shot Flow trigger.
-      this.deps.setCapacityInShortfall(true);
-      this.state.inShortfall = true;
-      incPerfCounter('settings_set.capacity_in_shortfall');
-    }
-
-    // Trigger flow card. The `home` token is the only discriminator a Flow
-    // gets: a meter area's shortfall would otherwise be indistinguishable from
-    // the Main home's, and the alert names a device the owner has to go and
-    // switch off by hand.
-    const card = this.deps.homey.flow?.getTriggerCard?.('capacity_shortfall');
-    if (card && typeof card.trigger === 'function') {
-      const trigger = card.trigger({ home });
-      this.shortfallSideEffectActive = true;
-      trigger.catch((err: Error) => logger.error({
-        event: 'executor_plan_error',
-        home,
-        homeId: this.deps.homeId,
-        msg: 'Failed to trigger capacity_shortfall',
-        err,
-      }));
-      return;
-    }
-    this.shortfallSideEffectActive = true;
+    await this.shortfallExecutor.handleShortfall(deficitKw);
   }
 
   public async handleShortfallCleared(): Promise<void> {
-    if (!this.state.inShortfall && !this.shortfallSideEffectActive) return;
-
-    // Attributed like the enter above: an anonymous clear following a named
-    // enter is unreadable once a second home is configured.
-    logger.info({
-      event: 'executor_plan_log',
-      home: this.deps.getHomeDisplayName(),
-      homeId: this.deps.homeId,
-      msg: 'Capacity shortfall resolved',
-    });
-    if (this.state.inShortfall) {
-      // Same commit ordering as enter: a failed durable write must leave the
-      // in-memory latch retryable so a deferred clear is not silently consumed.
-      this.deps.setCapacityInShortfall(false);
-      this.state.inShortfall = false;
-      incPerfCounter('settings_set.capacity_in_shortfall');
-    }
-    this.shortfallSideEffectActive = false;
+    await this.shortfallExecutor.handleShortfallCleared();
   }
 
   public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {

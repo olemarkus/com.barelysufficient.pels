@@ -6,9 +6,12 @@ import {
   createCapacityShortfallSideEffectGate,
   type CapacityShortfallSideEffectGate,
 } from '../capacityShortfallSideEffectGate';
+import { createCapacityShortfallAlertHold } from '../capacityShortfallAlertHold';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
 
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_TIMER = 'mainShortfallSideEffectRetry';
+const MAIN_SHORTFALL_ALERT_HOLD_TIMER = 'mainShortfallAlertHold';
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 
 export const createMainCapacityGuard = (params: {
@@ -42,12 +45,27 @@ export const createMainCapacityGuard = (params: {
     applyShortfall: async (deficitKw) => ctx.planService?.handleShortfall(deficitKw),
     applyClear: async () => ctx.planService?.handleShortfallCleared(),
   });
+  const shortfallAlertHold = createCapacityShortfallAlertHold({
+    homeId: MAIN_HOME_ID,
+    timers: ctx.timers,
+    timerKey: MAIN_SHORTFALL_ALERT_HOLD_TIMER,
+    isDiscarded: params.isDiscarded,
+    isTemporarilyFenced: params.isTemporarilyFenced,
+    isConditionActive: () => guard.isShortfallAlertConditionActive(),
+    getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
+    flow: ctx.homey.flow,
+  });
   const guard = new CapacityGuard({
     homeId: MAIN_HOME_ID,
     limitKw: ctx.capacitySettings.limitKw,
     softMarginKw: ctx.capacitySettings.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
-    onShortfallCleared: shortfallSideEffectGate.onShortfallCleared,
+    onShortfallCleared: async () => {
+      shortfallAlertHold.onIncidentCleared();
+      await shortfallSideEffectGate.onShortfallCleared();
+    },
+    onShortfallAlertCandidate: shortfallAlertHold.onCandidate,
+    onShortfallAlertConditionCleared: shortfallAlertHold.onConditionCleared,
     structuredLog: ctx.getStructuredLogger('capacity'),
     capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
       ctx.planService?.getLatestPlanSnapshot(),

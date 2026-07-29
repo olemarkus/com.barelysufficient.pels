@@ -42,7 +42,6 @@
  * charger itself could never start its own planned bucket.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -169,13 +168,6 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
 
 // ── The executor harness (mirrors steppedLoadRestoreBinaryOnSdkBoundary) ─────
 const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite: (value: boolean) => void) => {
-  const triggerCards = {
-    desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
-    flow_backed_device_turn_on_requested: { trigger: vi.fn().mockResolvedValue(true) },
-    flow_backed_device_turn_off_requested: { trigger: vi.fn().mockResolvedValue(true) },
-    flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
-    flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
-  } as const;
   const state = createPlanEngineState();
   const setCapability = vi.fn(async (deviceId: string, capabilityId: string, value: unknown) => {
     if (deviceId === DEVICE_ID && capabilityId === 'evcharger_charging' && typeof value === 'boolean') {
@@ -195,12 +187,6 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    homey: {
-      settings: { set: vi.fn() },
-      flow: {
-        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
-      },
-    } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({

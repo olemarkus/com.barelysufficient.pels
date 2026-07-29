@@ -39,7 +39,7 @@ When Homey Energy reports solar production, PELS keeps two accounting figures se
 
 - **Hard cap**: Your contracted grid capacity limit (`limitKw`). This corresponds to an hourly hard-cap energy budget of `limitKw` kWh for each hour. Exceeding this for a full hour triggers penalties.
 - **Hourly safe pace**: A dynamic run-rate limit derived from the hourly budget after the safety margin and the time remaining. PELS starts limiting managed devices when power exceeds this, giving time to react.
-- **Manual action needed**: Triggered when PELS projects an hourly hard-cap budget breach at the current run rate and cannot limit any more devices. Diagnostics may still call this `shortfall`.
+- **Manual action needed**: Triggered after PELS has projected an hourly hard-cap budget breach for 10 continuous seconds at the current run rate and cannot limit any more devices. PELS still limits devices immediately. Diagnostics may still call this `shortfall`.
 
 The Overview label **Safe pace now** can come from the hourly safe pace, daily budget pace, or both. This section describes the hourly capacity side.
 

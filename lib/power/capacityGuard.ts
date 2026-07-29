@@ -11,6 +11,8 @@ import {
 
 type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
+type ShortfallAlertCandidateCallback = (candidate: CapacityShortfallAlertCandidate) => void;
+type ShortfallAlertConditionClearedCallback = () => void;
 type SoftLimitProvider = () => number | null;
 type ShortfallThresholdProvider = () => number | null;
 type CapacityStateSummaryProvider = () => PlanCapacityStateSummary;
@@ -29,8 +31,16 @@ export type CapacityGuardOptions = {
   onSheddingEnd?: TriggerCallback;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
+  onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
+  onShortfallAlertConditionCleared?: ShortfallAlertConditionClearedCallback;
   structuredLog?: CapacityGuardLogger;
   capacityStateSummaryProvider?: CapacityStateSummaryProvider;
+};
+
+export type CapacityShortfallAlertCandidate = {
+  incidentId: string;
+  deficitKw: number;
+  detectedAtMs: number;
 };
 
 const SHEDDING_CLEAR_HYSTERESIS_KW = 0.2;
@@ -63,6 +73,8 @@ export default class CapacityGuard {
   private onSheddingEnd?: TriggerCallback;
   private onShortfall?: ShortfallCallback;
   private onShortfallCleared?: TriggerCallback;
+  private onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
+  private onShortfallAlertConditionCleared?: ShortfallAlertConditionClearedCallback;
 
   // Providers
   private softLimitProvider?: SoftLimitProvider;
@@ -73,6 +85,7 @@ export default class CapacityGuard {
   private homeId: HomeId;
   private incidentId: string | null = null;
   private incidentStartMs = 0;
+  private shortfallHasCandidates: boolean | null = null;
 
   constructor(options: CapacityGuardOptions) {
     this.homeId = options.homeId;
@@ -84,6 +97,8 @@ export default class CapacityGuard {
     this.onSheddingEnd = options.onSheddingEnd;
     this.onShortfall = options.onShortfall;
     this.onShortfallCleared = options.onShortfallCleared;
+    this.onShortfallAlertCandidate = options.onShortfallAlertCandidate;
+    this.onShortfallAlertConditionCleared = options.onShortfallAlertConditionCleared;
     this.capacityStateSummaryProvider = options.capacityStateSummaryProvider
       ?? buildNullCapacityStateSummary;
   }
@@ -111,6 +126,9 @@ export default class CapacityGuard {
   reportTotalPower(powerKw: number): void {
     if (!Number.isFinite(powerKw)) return;
     this.mainPowerKw = powerKw;
+    if (this.shortfallHasCandidates === false && !this.isShortfallAlertConditionActive()) {
+      this.onShortfallAlertConditionCleared?.();
+    }
   }
 
   getLastTotalPower(): number | null {
@@ -126,6 +144,9 @@ export default class CapacityGuard {
    */
   resetLastTotalPower(): void {
     this.mainPowerKw = null;
+    if (this.shortfallHasCandidates === false) {
+      this.onShortfallAlertConditionCleared?.();
+    }
   }
 
   // --- Limit calculations ---
@@ -207,19 +228,41 @@ export default class CapacityGuard {
     deficitKw: number,
     capacityStateSummary?: PlanCapacityStateSummary,
   ): Promise<void> {
+    this.shortfallHasCandidates = hasCandidates;
     const shortfallThreshold = this.getShortfallThreshold();
     const thresholdExceeded = this.mainPowerKw !== null && this.mainPowerKw > shortfallThreshold;
+    const alertConditionActive = thresholdExceeded && !hasCandidates;
 
     // Enter shortfall if over threshold AND no candidates left
-    if (thresholdExceeded && !hasCandidates && !this.inShortfall) {
-      await this.enterShortfall(deficitKw, capacityStateSummary);
-      return;
-    }
+    const enterPromise = alertConditionActive && !this.inShortfall
+      ? this.enterShortfall(deficitKw, capacityStateSummary)
+      : null;
+    this.publishShortfallAlertCondition(alertConditionActive, deficitKw);
+    await enterPromise;
 
     // Check for shortfall clearing (requires sustained positive headroom)
     if (this.inShortfall) {
       await this.maybeClearShortfall(shortfallThreshold);
     }
+  }
+
+  public isShortfallAlertConditionActive(): boolean {
+    return this.shortfallHasCandidates === false
+      && this.mainPowerKw !== null
+      && this.mainPowerKw > this.getShortfallThreshold();
+  }
+
+  private publishShortfallAlertCondition(active: boolean, deficitKw: number): void {
+    if (!active) {
+      this.onShortfallAlertConditionCleared?.();
+      return;
+    }
+    if (this.incidentId === null) return;
+    this.onShortfallAlertCandidate?.({
+      incidentId: this.incidentId,
+      deficitKw,
+      detectedAtMs: this.incidentStartMs,
+    });
   }
 
   private async enterShortfall(
