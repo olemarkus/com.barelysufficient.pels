@@ -62,6 +62,21 @@ const expectNoHorizontalOverflow = async (page: Page, label: string) => {
 };
 
 test.describe('settings shell layout regressions', () => {
+  test('keeps the safe-pace budget allowance explanation within 320px', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+        scenario: 'budget-allowance',
+      };
+    });
+    await openApp(page, 320);
+    const composition = page.locator('.plan-hero__safe-pace-composition');
+    await expect(composition).toHaveText(
+      'Safe pace reserves 7.0 kW for devices allowed beyond today\'s budget; '
+      + 'usage counted toward today\'s budget is paced at 5.0 kW.',
+    );
+    await expectNoHorizontalOverflow(page, 'Safe pace budget allowance');
+  });
+
   // Lock in the a11y-tree invariant: each top destination must be reachable
   // exactly once. The TODO entry (~line 1899) suspected a hidden mobile-nav
   // surface duplicated tabs at narrow widths; a CDP / getByRole audit at

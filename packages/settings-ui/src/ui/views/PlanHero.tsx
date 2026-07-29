@@ -17,6 +17,7 @@ import {
   HERO_INFO_TOOLTIP_TEXT,
   formatHardCapEnergyTooltip,
   formatHardCapTooltip,
+  formatSafePaceComposition,
   formatSafePaceTooltip,
 } from '../../../../shared-domain/src/planHeroTooltips.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
@@ -208,6 +209,8 @@ type BarScale = {
   hardCapKw: number | null;
   scaleKw: number;
   softLimitSource: PlanMetaSnapshot['softLimitSource'];
+  budgetPaceKw: number | null;
+  projectedExemptKw: number | null;
 };
 
 type MeterMarker = {
@@ -252,6 +255,8 @@ const computePowerBarScale = (
     hardCapKw,
     scaleKw,
     softLimitSource: meta.softLimitSource,
+    budgetPaceKw: typeof meta.budgetPaceKw === 'number' ? meta.budgetPaceKw : null,
+    projectedExemptKw: typeof meta.projectedExemptKw === 'number' ? meta.projectedExemptKw : null,
   };
 };
 
@@ -481,7 +486,10 @@ const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
 };
 
 const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolean }) => {
-  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource ?? null);
+  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource ?? null, {
+    budgetPaceKw: scale.budgetPaceKw,
+    projectedExemptKw: scale.projectedExemptKw,
+  });
   const markers: MeterMarker[] = [
     {
       kind: 'target',
@@ -538,6 +546,14 @@ const PowerSection = ({
   solarNowText: string | null;
 }) => {
   const scale = computePowerBarScale(headline, meta);
+  const safePaceComposition = scale === null ? null : formatSafePaceComposition(
+    scale.safePaceKw,
+    scale.softLimitSource,
+    {
+      budgetPaceKw: scale.budgetPaceKw,
+      projectedExemptKw: scale.projectedExemptKw,
+    },
+  );
   // M3: one tonal story per surface. The hero rim + status chip already carry
   // the warn/alert signal — the headline tone stays neutral.
   return (
@@ -560,6 +576,11 @@ const PowerSection = ({
           {scale.controlled > 0 && (
             <div class="plan-hero__energy-support">
               Managed {scale.controlled.toFixed(1)} kW · Background {scale.uncontrolled.toFixed(1)} kW
+            </div>
+          )}
+          {safePaceComposition !== null && (
+            <div class="plan-hero__energy-support plan-hero__safe-pace-composition">
+              {safePaceComposition}
             </div>
           )}
         </div>

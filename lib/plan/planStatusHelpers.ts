@@ -39,28 +39,52 @@ const roundRequired = (value: number, step: number): number => {
   return Math.round(value / step) * step;
 };
 
-export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => ({
-  ...meta,
-  totalKw: roundNullable(meta.totalKw, PLAN_META_KW_STEP),
-  softLimitKw: roundOptional(meta.softLimitKw, PLAN_META_KW_STEP) ?? meta.softLimitKw,
-  capacitySoftLimitKw: roundOptional(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
-  dailySoftLimitKw: roundOptionalNullable(meta.dailySoftLimitKw, PLAN_META_KW_STEP),
-  headroomKw: roundRequired(meta.headroomKw, PLAN_META_KW_STEP),
-  shortfallBudgetThresholdKw: roundOptional(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
-  shortfallBudgetHeadroomKw: roundOptionalNullable(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
-  hardCapLimitKw: roundOptionalNullable(meta.hardCapLimitKw, PLAN_META_KW_STEP),
-  hardCapHeadroomKw: roundOptionalNullable(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
-  usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
-  budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),
-  capacityLimitKw: roundOptional(meta.capacityLimitKw, PLAN_META_KW_STEP),
-  minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
-  controlledKw: roundOptional(meta.controlledKw, PLAN_META_KW_STEP),
-  uncontrolledKw: roundOptional(meta.uncontrolledKw, PLAN_META_KW_STEP),
-  hourControlledKWh: roundOptional(meta.hourControlledKWh, PLAN_META_KWH_STEP),
-  hourUncontrolledKWh: roundOptional(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
-  dailyBudgetRemainingKWh: roundOptional(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
-  dailyBudgetHourKWh: roundOptional(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
-});
+const normalizeDailyPaceComposition = (
+  meta: DevicePlan['meta'],
+): Pick<DevicePlan['meta'], 'dailySoftLimitKw' | 'budgetPaceKw' | 'projectedExemptKw'> => {
+  const dailySoftLimitKw = roundOptionalNullable(meta.dailySoftLimitKw, PLAN_META_KW_STEP);
+  const projectedExemptKw = roundOptionalNullable(meta.projectedExemptKw, PLAN_META_KW_STEP);
+  const hasCompleteComposition = typeof dailySoftLimitKw === 'number'
+    && Number.isFinite(dailySoftLimitKw)
+    && typeof projectedExemptKw === 'number'
+    && Number.isFinite(projectedExemptKw)
+    && typeof meta.budgetPaceKw === 'number'
+    && Number.isFinite(meta.budgetPaceKw);
+
+  return {
+    dailySoftLimitKw,
+    budgetPaceKw: hasCompleteComposition
+      ? Number((dailySoftLimitKw - projectedExemptKw).toFixed(1))
+      : roundOptionalNullable(meta.budgetPaceKw, PLAN_META_KW_STEP),
+    projectedExemptKw,
+  };
+};
+
+export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => {
+  const dailyPaceComposition = normalizeDailyPaceComposition(meta);
+  return {
+    ...meta,
+    totalKw: roundNullable(meta.totalKw, PLAN_META_KW_STEP),
+    softLimitKw: roundOptional(meta.softLimitKw, PLAN_META_KW_STEP) ?? meta.softLimitKw,
+    capacitySoftLimitKw: roundOptional(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
+    ...dailyPaceComposition,
+    headroomKw: roundRequired(meta.headroomKw, PLAN_META_KW_STEP),
+    shortfallBudgetThresholdKw: roundOptional(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
+    shortfallBudgetHeadroomKw: roundOptionalNullable(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
+    hardCapLimitKw: roundOptionalNullable(meta.hardCapLimitKw, PLAN_META_KW_STEP),
+    hardCapHeadroomKw: roundOptionalNullable(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
+    usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
+    budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),
+    capacityLimitKw: roundOptional(meta.capacityLimitKw, PLAN_META_KW_STEP),
+    minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
+    controlledKw: roundOptional(meta.controlledKw, PLAN_META_KW_STEP),
+    uncontrolledKw: roundOptional(meta.uncontrolledKw, PLAN_META_KW_STEP),
+    hourControlledKWh: roundOptional(meta.hourControlledKWh, PLAN_META_KWH_STEP),
+    hourUncontrolledKWh: roundOptional(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
+    dailyBudgetRemainingKWh: roundOptional(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
+    dailyBudgetHourKWh: roundOptional(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
+  };
+};
 
 export const normalizePelsStatus = (
   status: ReturnType<typeof buildPelsStatus>['status'],

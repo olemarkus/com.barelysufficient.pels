@@ -496,12 +496,14 @@ explicitly rather than defaulting to zero.
 The hero power bar's x-axis is `P_import`, and it carries one pace tick
 (`bindingPaceKw`) plus the `hardCapKw` tick. As established above, a single tick
 on that axis is necessarily the rebased expression, so the hero cannot show an
-exempt-independent budget pace by computing it differently. It can only show the
-carve-out.
+exempt-independent budget pace by computing it differently. The shipped first
+slice therefore explains the rebase textually; any later geometry has to show the
+projected/measured difference explicitly.
 
-Preferred direction: **make the rebase visible as geometry.** The bar already
-renders `[managed][background][free]` (`notes/overview-hero-spec.md`). When exempt
-load is non-zero, pull the exempt devices out as a leading sub-segment of managed:
+Deferred direction: **make the rebase visible as geometry.** The bar already
+renders `[managed][background][free]` (`notes/overview-hero-spec.md`). A future
+treatment could pull budget-exempt devices out as a leading sub-segment of
+managed:
 
 ```text
 [ exempt ][ managed ][ background ][ free .......... ]
@@ -510,13 +512,12 @@ load is non-zero, pull the exempt devices out as a leading sub-segment of manage
    from this edge
 ```
 
-With the budget tick drawn at `exemptKw + budgetPaceKw`, "over budget" reads as
-"everything to the right of the exempt slab exceeds the tick". The segment to the
-right of the slab **is** `P_nonExempt`, and the tick is `budgetPaceKw`, so the
-geometry is a direct rendering of `overBudgetPace` rather than a re-derivation of
-it. The carve-out is visible, so the number stops looking like the budget got
-looser, and the tick position explains itself. Gate the treatment on
-`exemptKw > 0`, which is rare, so the default hero is unchanged.
+If control and display used the same exempt sum, drawing the budget tick at
+`exemptKw + budgetPaceKw` would make the segment to the right of the exempt slab
+read directly against `budgetPaceKw`. They do not reliably use the same sum:
+control may reserve projected power for an observed-off device while the bar
+shows measured load. The geometry is therefore deferred rather than treated as a
+direct rendering of `overBudgetPace`.
 
 **Feed the slab `measuredExemptKw`, not `projectedExemptKw`.** The value
 `computeDailySoftLimit` uses is the projected one: `resolveUsageKw` falls through to
@@ -538,13 +539,12 @@ yet either.
 
 Two supporting changes:
 
-- **The reason line needs a third case.** With the budget constraint binding and
-  exempt load non-zero, "slowed to stay within today's budget" is false. The copy
-  should name the carve-out, in the register of the existing "Get power now"
-  vocabulary rather than the word *exempt*, which is jargon. Run wording past
-  `notes/ui-terminology.md` first. This needs the plan payload to carry
-  `budgetPaceKw` and `measuredExemptKw`; `plan.meta` exposes neither, and
-  `meta.dailySoftLimitKw` is `budgetPaceImportKw`, not the pace wanted here.
+- **The first slice is textual composition.** When the budget constraint binds
+  and the projected allowance is non-zero, the hero names both the raw
+  `budgetPaceKw` and the exact `projectedExemptKw` add-back already used by
+  control. This makes the rebased marker explainable without claiming that a
+  projected reservation is measured load. The plan payload carries both values;
+  `meta.dailySoftLimitKw` remains their rebased sum.
 - **Do not present "available power" as capacity-only for an exempt device.** The
   exemption buys immunity from daily-budget *shedding* (`shedding/candidates.ts`)
   and nothing more. Restore admission still gates on `bindingPaceKw` with no
@@ -570,6 +570,12 @@ Two supporting changes:
 Rejected: two permanently visible pace ticks. Three ticks at 320 px, with the
 `hardCapKw` tick already mandatory, for a state most homes never enter.
 
+Deferred: carve-out geometry. The visible bar remains measured whole-home load,
+while `projectedExemptKw` can include expected power for an observed-off device.
+A measured slab therefore cannot honestly encode the current control predicate.
+Keep the first slice textual until the projected/measured delta has an explicit
+visual treatment.
+
 ## What remains: materialise `P_nonExempt`
 
 `P_nonExempt = P_import - exemptKw`, unclamped, is settled (see § "Canonical
@@ -578,7 +584,8 @@ as an implicit term inside the rebased threshold. Until it exists as a named
 quantity on `PlanContext` and `plan.meta`:
 
 - The hero cannot show the user what is being measured against their budget, which
-  is what makes the "Safe pace now" jump in symptom 1 unexplainable on screen.
+  means the textual composition can explain the "Safe pace now" jump but cannot
+  render the current non-exempt load as a measured quantity.
 - The reason copy and the starvation cause attribution keep inferring budget
   pressure from `softLimitSource` instead of reading `overBudgetPace`.
 - The negative case (solar more than covering the non-exempt load) is invisible
@@ -613,9 +620,8 @@ sections above as answering them.
   while a measured slab with the tick at 5 kW says the opposite. Putting the
   projected 7 kW into the tick instead disconnects the tick from the visible slab
   edge. So the carve-out geometry does *not* directly render `overBudgetPace` once
-  the slab is measured-only, contrary to what § "Overview hero" claims. Either the
-  display needs its own stated semantics or the projected/measured delta has to be
-  visualised.
+  the slab is measured-only. Either the display needs its own stated semantics or
+  the projected/measured delta has to be visualised.
 - **Whether the observed-off projection is right for control is not settled
   here.** The open TODO item on observed-off usage attribution deliberately leaves
   the choice open between attributing the restore step and attributing zero with a
@@ -629,8 +635,8 @@ sections above as answering them.
 
 Revisit when any of these lands or is reported:
 
-- A support report of "Safe pace now" jumping without a settings or budget change,
-  which is symptom 1 above.
+- A support report that the textual composition still does not explain a
+  "Safe pace now" jump without a settings or budget change.
 - Work on the deferred-objective rescue or "Get power now" surface, which is what
   makes exempt load common enough for the hero treatment to pay for itself.
 - Any change to `resolveSoftLimitSource`, since the argmin reading of `'both'` and

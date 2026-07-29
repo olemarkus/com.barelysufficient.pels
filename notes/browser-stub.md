@@ -9,12 +9,13 @@ responses for every declared API route.
 **Audit scenarios** are named, coherent overrides that flip the SDK-boundary
 responses to render a specific UI state on demand.
 
-## Six built-in scenarios
+## Seven built-in scenarios
 
 | Name | Intent |
 |------|--------|
 | `normal` | Baseline. Matches the stub's long-standing defaults. |
 | `pressure` | Capacity guard active; soft limit exceeded; two devices planned to shed. |
+| `budget-allowance` | Daily safe pace includes a visible allowance for devices outside today's budget. |
 | `over-budget` | Daily budget exhausted; over-budget chip should appear. |
 | `missing-price` | Price feed unavailable; all price arrays null. |
 | `empty-history` | No smart-task history; past-tasks zero state. |

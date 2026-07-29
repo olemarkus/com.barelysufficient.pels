@@ -94,6 +94,14 @@ describe('PlanBuilder budget exemption handling', () => {
     const currentHourIso = '2026-03-11T10:00:00.000Z';
     const nextHourIso = '2026-03-11T11:00:00.000Z';
     const todayKey = '2026-03-11';
+    let dynamicSoftLimitKw = 10;
+    let dailyBudgetSnapshot: DailyBudgetUiPayload | null = buildDailyBudgetSnapshot({
+      nowIso,
+      currentHourIso,
+      nextHourIso,
+      todayKey,
+      plannedKWh: 1.5,
+    });
     const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(3);
 
@@ -136,30 +144,49 @@ describe('PlanBuilder budget exemption handling', () => {
         },
         lastTimestamp: Date.now(),
       }),
-      getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot({
-        nowIso,
-        currentHourIso,
-        nextHourIso,
-        todayKey,
-        plannedKWh: 1.5,
-      }),
+      getDailyBudgetSnapshot: () => dailyBudgetSnapshot,
       getPriorityForDevice: (deviceId: string) => (deviceId === 'budget-exempt' ? 100 : 10),
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-      getDynamicSoftLimitOverride: () => 10,
+      getDynamicSoftLimitOverride: () => dynamicSoftLimitKw,
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
 
-    const plan = await builder.buildDevicePlanSnapshot(devices);
+    let plan = await builder.buildDevicePlanSnapshot(devices);
 
     expect(plan.meta.softLimitSource).toBe('daily');
+    expect(plan.meta.budgetPaceKw).toBeCloseTo(1, 6);
+    expect(plan.meta.projectedExemptKw).toBeCloseTo(2, 6);
     expect(plan.meta.dailySoftLimitKw).toBeCloseTo(3, 6);
+    expect(plan.meta.dailySoftLimitKw).toBeCloseTo(
+      (plan.meta.budgetPaceKw ?? 0) + (plan.meta.projectedExemptKw ?? 0),
+      6,
+    );
     expect(plan.meta.headroomKw).toBeCloseTo(0, 6);
     expect(plan.devices).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'budget-exempt', plannedState: 'keep' }),
       expect.objectContaining({ id: 'regular', plannedState: 'keep' }),
     ]));
+
+    dynamicSoftLimitKw = 2.5;
+    capacityGuard.reportTotalPower(2.5);
+    plan = await builder.buildDevicePlanSnapshot(devices);
+
+    expect(plan.meta.softLimitSource).toBe('capacity');
+    expect(plan.meta.softLimitKw).toBeCloseTo(2.5, 6);
+    expect(plan.meta.budgetPaceKw).toBeCloseTo(1, 6);
+    expect(plan.meta.projectedExemptKw).toBeCloseTo(2, 6);
+    expect(plan.meta.dailySoftLimitKw).toBeCloseTo(3, 6);
+
+    dynamicSoftLimitKw = 10;
+    dailyBudgetSnapshot = null;
+    plan = await builder.buildDevicePlanSnapshot(devices);
+
+    expect(plan.meta.softLimitSource).toBe('capacity');
+    expect(plan.meta.dailySoftLimitKw).toBeNull();
+    expect(plan.meta.budgetPaceKw).toBeNull();
+    expect(plan.meta.projectedExemptKw).toBeNull();
   });
 
   it('uses the producer-resolved gross uncontrolled bucket for plan meta hourly other energy', async () => {
@@ -205,6 +232,8 @@ describe('PlanBuilder budget exemption handling', () => {
     expect(plan.meta.hourControlledKWh).toBeCloseTo(0.6, 6);
     expect(plan.meta.hourUncontrolledKWh).toBeCloseTo(0.15, 6);
     expect(plan.meta.usedKWh).toBeCloseTo(1.8, 6);
+    expect(plan.meta.budgetPaceKw).toBeNull();
+    expect(plan.meta.projectedExemptKw).toBeNull();
   });
 
   it('uses the planning hour bucket for plan meta hourly energy split', async () => {

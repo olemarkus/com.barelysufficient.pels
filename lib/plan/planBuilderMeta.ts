@@ -56,6 +56,8 @@ export function buildPlanMeta(params: {
     softLimitKw: context.softLimit,
     capacitySoftLimitKw: context.capacitySoftLimit,
     dailySoftLimitKw: context.dailySoftLimit,
+    budgetPaceKw: context.budgetPaceKw,
+    projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
     headroomKw: context.headroom,
     powerKnown: context.powerKnown,
