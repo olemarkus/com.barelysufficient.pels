@@ -1,6 +1,6 @@
 import path from 'node:path';
 import process from 'node:process';
-import { runParallel } from './lib/run-parallel.mjs';
+import { runSequential } from './lib/run-parallel.mjs';
 
 const files = process.argv.slice(2)
   .map((file) => path.relative(process.cwd(), path.resolve(file)).replaceAll(path.sep, '/'))
@@ -95,5 +95,5 @@ if (settingsFiles.length > 0) {
 }
 
 if (commands.length > 0) {
-  await runParallel(commands);
+  await runSequential(commands);
 }

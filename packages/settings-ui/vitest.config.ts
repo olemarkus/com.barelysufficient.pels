@@ -1,6 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
+const configuredWorkers = Number(process.env.PELS_TEST_WORKERS ?? '2');
+if (!Number.isInteger(configuredWorkers) || configuredWorkers < 1 || configuredWorkers > 2) {
+  throw new Error('PELS_TEST_WORKERS must be 1 or 2');
+}
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -32,7 +37,7 @@ export default defineConfig({
     // headroom the sibling layout config already uses.
     testTimeout: 30_000,
     pool: 'forks',
-    maxWorkers: 1,
+    maxWorkers: configuredWorkers,
     silent: true,
   },
 });

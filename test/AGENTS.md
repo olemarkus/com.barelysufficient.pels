@@ -51,5 +51,9 @@ npm run test:unit:tz         # test/tz/ timezone lane
 npm run test:coverage        # all tiers in one pass + 80% coverage gate
 ```
 
+The npm entrypoints acquire the cross-worktree validation lock and cap Vitest
+at two forks on Linux. Non-Linux hosts retain the worker cap without the
+cross-worktree lock. Never invoke raw Vitest in a multi-agent session.
+
 Every spec is classified into a tier folder; there are no flat `test/*.test.ts` specs left. A
 new spec lands directly in its tier folder (see `notes/testing-taxonomy.md`).

@@ -8,14 +8,15 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run clean && npm run build:script && npm run build:tokens && npm run copy:public",
+    "build": "node ../../scripts/with-validation-lock.mjs settings-ui:build -- npm run build:unlocked",
+    "build:unlocked": "npm run clean && npm run build:script && npm run build:tokens && npm run copy:public",
     "build:script": "esbuild src/script.ts --bundle --outfile=dist/script.js --format=iife --target=es2020 --minify --jsx=automatic --jsx-import-source=preact",
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
     "copy:public": "node scripts/copy-public.mjs",
     "lint": "eslint src test tests ../contracts/src ../shared-domain/src --max-warnings=0",
     "test": "npm run build && npm run test:unit && npm run test:layout",
-    "test:unit": "vitest run --config vitest.config.ts",
-    "test:layout": "vitest run --config vitest.config.layout.ts",
-    "test:e2e": "playwright test --config playwright.config.ts"
+    "test:unit": "node ../../scripts/with-validation-lock.mjs settings-ui:test:unit -- vitest run --config vitest.config.ts",
+    "test:layout": "node ../../scripts/with-validation-lock.mjs settings-ui:test:layout -- vitest run --config vitest.config.layout.ts",
+    "test:e2e": "node ../../scripts/with-validation-lock.mjs settings-ui:test:e2e -- playwright test --config playwright.config.ts"
   }
 }

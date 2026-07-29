@@ -1,6 +1,6 @@
 import path from 'node:path';
 import process from 'node:process';
-import { runParallel } from './lib/run-parallel.mjs';
+import { runBounded } from './lib/run-parallel.mjs';
 
 const files = process.argv.slice(2)
   .map((file) => path.relative(process.cwd(), path.resolve(file)).replaceAll(path.sep, '/'))
@@ -20,6 +20,7 @@ if (matches([
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',
+  'packages/planner-types/src/',
   'vitest.shared.mts',
   'vitest.config.mts',
   'vitest.config.unit.mts',
@@ -46,5 +47,5 @@ if (matches(['widgets/'])) {
 }
 
 if (commands.length > 0) {
-  await runParallel(commands);
+  await runBounded(commands, 2);
 }

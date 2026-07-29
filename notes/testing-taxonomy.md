@@ -155,9 +155,9 @@ unaffected.
 ## Commands and lane configs
 
 Every spec lives under `test/unit/`, `test/integration/`, or `test/e2e/` (plus `test/tz/` for
-the timezone harness). Each tier is its own vitest config that runs in **parallel isolated
-forks** — there is no shared `maxWorkers: 1`, and no spec runs at the tail of one giant
-single-fork process. Shared options and aliases live in `vitest.shared.mts`.
+the timezone harness). Each tier is its own vitest config and uses isolated forks, bounded
+to at most two workers locally so concurrent worktrees cannot exhaust the machine. Shared
+options and aliases live in `vitest.shared.mts`.
 
 | Command | Config | Tier / scope | Engine |
 |---|---|---|---|

@@ -6,6 +6,11 @@ const BASE_URL = process.env.PELS_E2E_BASE_URL
   ?? (IS_DYNAMIC_PORT ? undefined : `http://127.0.0.1:${PORT}`);
 const SHOULD_BUILD = process.env.PELS_E2E_BUILD !== '0';
 const CHROMIUM_EXECUTABLE_PATH = process.env.PELS_E2E_CHROMIUM_EXECUTABLE_PATH;
+const configuredWorkers = Number(process.env.PELS_PLAYWRIGHT_WORKERS ?? '2');
+
+if (!Number.isInteger(configuredWorkers) || configuredWorkers < 1 || configuredWorkers > 2) {
+  throw new Error('PELS_PLAYWRIGHT_WORKERS must be 1 or 2');
+}
 
 const chromiumUse = {
   browserName: 'chromium' as const,
@@ -19,7 +24,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : configuredWorkers,
   reporter: 'html',
   use: {
     baseURL: BASE_URL,

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
-import { runParallel } from './lib/run-parallel.mjs';
+import { runSequential } from './lib/run-parallel.mjs';
 
 const ZERO_SHA_PATTERN = /^0+$/;
 const DRY_RUN = process.env.PELS_PRE_PUSH_DRY_RUN === '1';
@@ -170,7 +170,7 @@ const main = async () => {
 
   if (DRY_RUN) return;
 
-  await runParallel(commands);
+  await runSequential(commands);
 };
 
 await main();
