@@ -17,6 +17,7 @@
     "test": "npm run build && npm run test:unit && npm run test:layout",
     "test:unit": "node ../../scripts/with-validation-lock.mjs settings-ui:test:unit -- vitest run --config vitest.config.ts",
     "test:layout": "node ../../scripts/with-validation-lock.mjs settings-ui:test:layout -- vitest run --config vitest.config.layout.ts",
-    "test:e2e": "node ../../scripts/with-validation-lock.mjs settings-ui:test:e2e -- playwright test --config playwright.config.ts"
+    "test:e2e": "node ../../scripts/with-validation-lock.mjs settings-ui:test:e2e -- playwright test --config playwright.config.ts",
+    "test:e2e:capture": "node ../../scripts/with-validation-lock.mjs settings-ui:test:e2e:capture -- playwright test --config playwright.capture.config.ts"
   }
 }

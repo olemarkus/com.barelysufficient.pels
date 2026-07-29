@@ -13,4 +13,5 @@
   - `npm run lint`
   - `npm run test`
   - `npm run test:e2e`
+  - `npm run test:e2e:capture` for screenshot/documentation capture harnesses excluded from normal E2E
 - Homey settings UI is mobile-first. Optimize for a max effective width of `480px`, keep `320px` usable, and keep Playwright validation focused on that viewport range.
