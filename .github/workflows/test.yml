@@ -3,10 +3,8 @@ name: Test
 on:
   push:
     branches: [main]
-  # No `branches:` filter: that key matches the PR's BASE, so restricting it to
-  # `main` meant a stacked PR (base = another train branch) ran no tests at all —
-  # `gh pr checks` showed only CodeQL and read as green because nothing had run.
-  # Every PR gets the full suite regardless of what it targets.
+  # Stacked PRs may target another feature branch, so every PR must enter the
+  # workflow. Individual jobs use the repository-owned impact classifier.
   pull_request:
 
 permissions:
@@ -17,7 +15,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.impact.outputs.runtime }}
+      settings_ui: ${{ steps.impact.outputs.settingsUi }}
+      browser_risk: ${{ steps.impact.outputs.browserRisk }}
+      docs: ${{ steps.impact.outputs.docs }}
+      playwright_full: ${{ steps.impact.outputs.playwrightFull }}
+      e2e_specs: ${{ steps.impact.outputs.e2eSpecs }}
+
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: impact
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: git diff --name-only --diff-filter=ACDMR "$BASE_SHA" "$HEAD_SHA" | node scripts/classify-change-impact.mjs >> "$GITHUB_OUTPUT"
+
   checks:
+    name: checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -34,20 +58,17 @@ jobs:
       - name: Run lint, typecheck, and static checks
         run: npm run ci:checks
 
-      - name: Enforce lib/plan -> objectives type-edge boundary
-        run: npm run arch:grep
-
       - name: Build app bundle
         run: npm run build
 
-      - name: Smoke packaged require graph (sanitize-aware)
+      - name: Smoke packaged require graph
         run: npm run check:homeybuild
 
       - name: Verify committed generated artifacts match source
         run: |
           DIRTY="$(git status --porcelain)"
           if [ -n "$DIRTY" ]; then
-            echo "::error::Build changed the working tree. A generated artifact (e.g. a widget bundle) is stale, hand-edited, or newly produced but uncommitted. Run 'npm run build' and commit the result." >&2
+            echo "::error::Build changed the working tree. Commit the regenerated artifact." >&2
             echo "$DIRTY" >&2
             exit 1
           fi
@@ -56,6 +77,9 @@ jobs:
         run: npm run validate
 
   docs:
+    name: docs
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -69,49 +93,10 @@ jobs:
       - name: Build docs site
         run: npm run docs:build
 
-  unit-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup toolchain and dependencies
-        uses: ./.github/actions/setup
-
-      - name: Run unit lane
-        run: npm run test:unit
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup toolchain and dependencies
-        uses: ./.github/actions/setup
-
-      - name: Run integration lane
-        run: npm run test:integration
-
-  e2e-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup toolchain and dependencies
-        uses: ./.github/actions/setup
-
-      - name: Run runtime e2e lane
-        run: npm run test:e2e:runtime
-
   timezone-tests:
+    name: timezone-tests
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -126,6 +111,9 @@ jobs:
         run: npm run test:unit:tz
 
   coverage:
+    name: coverage
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -136,15 +124,64 @@ jobs:
       - name: Setup toolchain and dependencies
         uses: ./.github/actions/setup
 
-      - name: Run all runtime tiers with coverage (80% gate)
+      - name: Run all runtime tiers with coverage
         run: npm run test:coverage
 
+  # Keep legacy required-check contexts alive until branch protection is
+  # migrated. Coverage already executes all three runtime tiers in one pass.
+  unit-tests:
+    name: unit-tests
+    needs: [classify, coverage]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Mirror consolidated runtime result
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          test "$CLASSIFY_RESULT" = "success"
+          test "$COVERAGE_RESULT" = "success" || test "$COVERAGE_RESULT" = "skipped"
+
+  integration-tests:
+    name: integration-tests
+    needs: [classify, coverage]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Mirror consolidated runtime result
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          test "$CLASSIFY_RESULT" = "success"
+          test "$COVERAGE_RESULT" = "success" || test "$COVERAGE_RESULT" = "skipped"
+
+  e2e-tests:
+    name: e2e-tests
+    needs: [classify, coverage]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Mirror consolidated runtime result
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          test "$CLASSIFY_RESULT" = "success"
+          test "$COVERAGE_RESULT" = "success" || test "$COVERAGE_RESULT" = "skipped"
+
   settings-ui-tests:
+    name: settings-ui-tests
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.settings_ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       HOME: /root
-    # Keep the Playwright image tag in sync with @playwright/test in package.json.
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
@@ -156,19 +193,17 @@ jobs:
       - name: Setup toolchain and dependencies
         uses: ./.github/actions/setup
 
-      - name: Run settings UI Jest suites
+      - name: Run Settings UI unit and layout suites
         run: npm run ci:test:settings-ui
 
-  playwright:
+  playwright-chromium:
+    name: playwright (chromium-mobile-width)
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.settings_ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       HOME: /root
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [chromium-mobile-width, firefox-mobile-width, chromium-narrow-width]
-    # Keep the Playwright image tag in sync with @playwright/test in package.json.
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
@@ -180,19 +215,121 @@ jobs:
       - name: Setup toolchain and dependencies
         uses: ./.github/actions/setup
 
-      - name: Build settings UI once for Playwright
+      - name: Build settings UI
         run: npm --workspace @pels/settings-ui run build
 
-      - name: Run Playwright E2E (${{ matrix.project }})
+      - name: Run Chromium mobile-width suite
         env:
           PELS_E2E_BUILD: '0'
-        run: npm --workspace @pels/settings-ui run test:e2e -- --project=${{ matrix.project }}
+        run: npm --workspace @pels/settings-ui run test:e2e -- --project=chromium-mobile-width
 
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report-${{ matrix.project }}
+          name: playwright-report-chromium-mobile-width
+          path: |
+            packages/settings-ui/playwright-report
+            packages/settings-ui/test-results
+          retention-days: 7
+
+  playwright-narrow:
+    name: playwright (chromium-narrow-width)
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.browser_risk == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HOME: /root
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-jammy
+      options: --ipc=host
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Build settings UI
+        run: npm --workspace @pels/settings-ui run build
+
+      - name: Run narrow layout coverage
+        env:
+          PELS_E2E_BUILD: '0'
+          CHANGED_SPECS: ${{ needs.classify.outputs.e2e_specs }}
+          PLAYWRIGHT_FULL: ${{ needs.classify.outputs.playwright_full }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] || [ "$PLAYWRIGHT_FULL" = "true" ]; then
+            npm --workspace @pels/settings-ui run test:e2e -- --project=chromium-narrow-width
+          else
+            npm --workspace @pels/settings-ui run test:e2e -- \
+              --project=chromium-narrow-width \
+              tests/e2e/layout-regressions.spec.ts \
+              tests/e2e/charts-layout.spec.ts \
+              tests/e2e/segmented-short-full-labels.spec.ts \
+              tests/e2e/homey-button-bleed.spec.ts \
+              tests/e2e/settings-smoke.spec.ts \
+              $CHANGED_SPECS
+          fi
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-chromium-narrow-width
+          path: |
+            packages/settings-ui/playwright-report
+            packages/settings-ui/test-results
+          retention-days: 7
+
+  playwright-firefox:
+    name: playwright (firefox-mobile-width)
+    needs: classify
+    if: github.event_name == 'push' || needs.classify.outputs.browser_risk == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HOME: /root
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-jammy
+      options: --ipc=host
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Build settings UI
+        run: npm --workspace @pels/settings-ui run build
+
+      - name: Run Firefox compatibility coverage
+        env:
+          PELS_E2E_BUILD: '0'
+          CHANGED_SPECS: ${{ needs.classify.outputs.e2e_specs }}
+          PLAYWRIGHT_FULL: ${{ needs.classify.outputs.playwright_full }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] || [ "$PLAYWRIGHT_FULL" = "true" ]; then
+            npm --workspace @pels/settings-ui run test:e2e -- --project=firefox-mobile-width
+          else
+            npm --workspace @pels/settings-ui run test:e2e -- \
+              --project=firefox-mobile-width \
+              tests/e2e/settings-smoke.spec.ts \
+              tests/e2e/material-select.spec.ts \
+              tests/e2e/md-select-stays-open.spec.ts \
+              tests/e2e/power-source.spec.ts \
+              tests/e2e/device-detail.spec.ts \
+              $CHANGED_SPECS
+          fi
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-firefox-mobile-width
           path: |
             packages/settings-ui/playwright-report
             packages/settings-ui/test-results

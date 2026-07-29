@@ -44,8 +44,12 @@ case "$cmd" in
       exit 99
     fi
     if [ "$range" = "\${FAKE_DIFF_RANGE:-}" ]; then
-      printf '%s' "\${FAKE_DIFF_OUTPUT:-}"
-      if [ -n "\${FAKE_DIFF_OUTPUT:-}" ]; then
+      output="\${FAKE_DIFF_OUTPUT:-}"
+      if [[ "$*" == *"--diff-filter=D"* ]]; then
+        output="\${FAKE_DELETED_OUTPUT:-}"
+      fi
+      printf '%s' "$output"
+      if [ -n "$output" ]; then
         printf '\\n'
       fi
       exit 0
@@ -62,7 +66,10 @@ esac
   return { dir, logPath };
 };
 
-const runPrePush = (envOverrides: NodeJS.ProcessEnv) => {
+const runPrePush = (
+  envOverrides: NodeJS.ProcessEnv,
+  input = 'refs/heads/fix local-sha refs/heads/fix 0000000000000000000000000000000000000000\n',
+) => {
   const result = spawnSync(
     process.execPath,
     [scriptPath],
@@ -74,7 +81,7 @@ const runPrePush = (envOverrides: NodeJS.ProcessEnv) => {
         PELS_PRE_PUSH_DRY_RUN: '1',
         ...envOverrides,
       },
-      input: 'refs/heads/fix local-sha refs/heads/fix 0000000000000000000000000000000000000000\n',
+      input,
     },
   );
 
@@ -105,7 +112,7 @@ describe('pre-push checks script', () => {
     expect(result.stdout).not.toContain('pre-push: running npm run ci:full');
     expect(result.stdout).not.toContain('playwright');
     expect(fs.readFileSync(logPath, 'utf8')).toContain(
-      `diff --name-only --diff-filter=ACMR ${EMPTY_TREE_SHA}..local-sha`,
+      `diff --name-only --diff-filter=ACDMR ${EMPTY_TREE_SHA}..local-sha`,
     );
   });
 
@@ -136,9 +143,9 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit:tz');
-    expect(result.stdout).toContain('pre-push: running npm --workspace @pels/settings-ui exec -- vitest run --config vitest.config.ts');
+    expect(result.stdout).toContain('pre-push: running npx vitest related --config vitest.config.changed.mts');
+    expect(result.stdout).toContain('pre-push: running node scripts/run-timezone-tests.mjs --related');
+    expect(result.stdout).toContain('pre-push: running npm --workspace @pels/settings-ui exec -- vitest related --config vitest.config.ts');
     expect(result.stdout).not.toContain('playwright');
     expect(result.stdout).not.toContain('ci:test:runtime');
     expect(result.stdout).not.toContain('ci:full');
@@ -156,8 +163,8 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit:tz');
+    expect(result.stdout).toContain('pre-push: running npx vitest related --config vitest.config.changed.mts');
+    expect(result.stdout).toContain('pre-push: running node scripts/run-timezone-tests.mjs --related');
     expect(result.stdout).toContain('pre-push: running npm run validate');
     expect(result.stdout).not.toContain('playwright');
   });
@@ -203,7 +210,7 @@ describe('pre-push checks script', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run validate');
-    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).not.toContain('vitest.config.changed.mts');
   });
 
   it('runs validate for .homeycompose changes', () => {
@@ -232,7 +239,7 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).toContain('pre-push: running npx vitest run --config vitest.config.changed.mts');
   });
 
   it('runs ci:checks and fast runtime tests for runtime test file changes', () => {
@@ -247,7 +254,57 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).toContain('pre-push: running npx vitest related --config vitest.config.changed.mts');
+  });
+
+  it('runs full affected lanes when a pushed path was deleted', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_DIFF_RANGE: 'remote-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'test/unit/removed.test.ts',
+      FAKE_DELETED_OUTPUT: 'test/unit/removed.test.ts',
+    }, 'refs/heads/fix local-sha refs/heads/fix remote-sha\n');
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npx vitest run --config vitest.config.changed.mts');
+    expect(result.stdout).toContain('pre-push: running node scripts/run-timezone-tests.mjs');
+    expect(result.stdout).not.toContain('run-timezone-tests.mjs --related');
+  });
+
+  it('runs full affected lanes for a deletion on the first branch push', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'test/unit/removed.test.ts',
+      FAKE_DELETED_OUTPUT: 'test/unit/removed.test.ts',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npx vitest run --config vitest.config.changed.mts');
+    expect(result.stdout).toContain('pre-push: running node scripts/run-timezone-tests.mjs');
+    expect(result.stdout).not.toContain('run-timezone-tests.mjs --related');
+  });
+
+  it('runs the full UI suite for filesystem-read public assets', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'packages/settings-ui/public/style.css',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      'pre-push: running npm --workspace @pels/settings-ui exec -- vitest run --config vitest.config.ts',
+    );
+    expect(result.stdout).not.toContain('vitest related --config vitest.config.ts');
   });
 
   it('runs only ci:checks for unrelated changes like docs', () => {
@@ -262,7 +319,7 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).not.toContain('vitest.config.changed.mts');
     expect(result.stdout).not.toContain('pre-push: running npm run validate');
     expect(result.stdout).not.toContain('vitest.config.ts');
   });
