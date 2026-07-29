@@ -50,7 +50,7 @@ const createCapacityGuardMock = (params: {
     softLimitKw = limitKw - marginKw,
     totalPowerKw,
   } = params;
-  const capacityGuard = new CapacityGuard({ limitKw, softMarginKw: marginKw });
+  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw, softMarginKw: marginKw });
   capacityGuard.setSoftLimitProvider(() => softLimitKw);
   if (typeof totalPowerKw === 'number') {
     capacityGuard.reportTotalPower(totalPowerKw);
@@ -1412,6 +1412,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall,
@@ -1452,6 +1453,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       backoffUntilMs: Date.now() + 60_000,
     };
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
     });
@@ -1494,7 +1496,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.5 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
     capacityGuard.reportTotalPower(9.3);
@@ -1527,7 +1529,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.5 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.0);
     capacityGuard.reportTotalPower(9.3);
@@ -1561,7 +1563,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.5 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
     capacityGuard.reportTotalPower(9.3);
@@ -1590,6 +1592,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall,
@@ -1705,6 +1708,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall,
@@ -1767,6 +1771,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     await Promise.resolve();
 
     const urgentCapacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall: vi.fn(),
@@ -1799,6 +1804,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall,
@@ -1833,6 +1839,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9600, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall,
@@ -1866,6 +1873,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('skips full rebuilds while shortfall is active and no actionable reduction remains', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall: vi.fn(),
@@ -1911,6 +1919,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('suppresses the rebuild storm when overshoot persists but the plan is unactionable', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall: vi.fn(),
@@ -1956,6 +1965,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
     const onShortfallCleared = vi.fn();
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall: vi.fn(),
@@ -2025,6 +2035,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       shortfallSuppressionInvalidated: true,
     };
     const capacityGuard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
       onShortfall: vi.fn(),

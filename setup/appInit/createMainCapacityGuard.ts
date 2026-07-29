@@ -6,6 +6,7 @@ import {
   createCapacityShortfallSideEffectGate,
   type CapacityShortfallSideEffectGate,
 } from '../capacityShortfallSideEffectGate';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_TIMER = 'mainShortfallSideEffectRetry';
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
@@ -27,6 +28,7 @@ export const createMainCapacityGuard = (params: {
       void shortfallSideEffectGate.flush().catch((error: unknown) => {
         ctx.getStructuredLogger('capacity')?.warn({
           event: 'main_shortfall_side_effect_retry_failed',
+          homeId: MAIN_HOME_ID,
           err: normalizeError(error),
         });
       });
@@ -41,6 +43,7 @@ export const createMainCapacityGuard = (params: {
     applyClear: async () => ctx.planService?.handleShortfallCleared(),
   });
   const guard = new CapacityGuard({
+    homeId: MAIN_HOME_ID,
     limitKw: ctx.capacitySettings.limitKw,
     softMarginKw: ctx.capacitySettings.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,

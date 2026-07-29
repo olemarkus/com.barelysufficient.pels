@@ -180,7 +180,7 @@ const buildBuilder = (
   powerTrackerRef: { current: PowerTrackerState },
   overrides: BuilderOverrides = {},
 ) => {
-  const capacityGuard = overrides.capacityGuard ?? new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
+  const capacityGuard = overrides.capacityGuard ?? new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
   if (!overrides.capacityGuard) capacityGuard.reportTotalPower(0);
   const capacitySettings = overrides.capacitySettings ?? { limitKw: 100, marginKw: 0 };
   const deferredController = new DeferredObjectiveDecorationController({
@@ -327,7 +327,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => {
-        const guard = new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
+        const guard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
         guard.reportTotalPower(0);
         return guard;
       },
@@ -436,7 +436,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
   // externally before bucket 5 runs, the deferred device is admitted again and meets its
   // target via the backup.
   it('falls back to a backup bucket when capacity contention costs the deferred device a planned hour', async () => {
-    const capacityGuard = new CapacityGuard({ limitKw: 2.5, softMarginKw: 0 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 2.5, softMarginKw: 0 });
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
     const priorityByModeRef = {
@@ -552,7 +552,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     vi.setSystemTime(new Date(nowMs));
     const powerTracker = buildPowerTracker(nowMs);
 
-    const capacityGuard = new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
     capacityGuard.reportTotalPower(0);
     const deferredController = new DeferredObjectiveDecorationController({
       getDeferredObjectiveSettings: () => ({

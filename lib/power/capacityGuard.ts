@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';
+import type { HomeId } from '../utils/settingsKeys';
 
 const moduleLogger = getLogger('power/capacity-guard');
 import {
@@ -13,8 +14,14 @@ type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type SoftLimitProvider = () => number | null;
 type ShortfallThresholdProvider = () => number | null;
 type CapacityStateSummaryProvider = () => PlanCapacityStateSummary;
+type CapacityGuardLogger = Pick<PinoLogger, 'info'>;
 
 export type CapacityGuardOptions = {
+  /**
+   * Stable identity of the capacity controller that owns this guard.
+   * Required so every hard-cap incident record is attributable.
+   */
+  homeId: HomeId;
   limitKw?: number;
   softMarginKw?: number;
   restoreMarginKw?: number;
@@ -22,7 +29,7 @@ export type CapacityGuardOptions = {
   onSheddingEnd?: TriggerCallback;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
-  structuredLog?: PinoLogger;
+  structuredLog?: CapacityGuardLogger;
   capacityStateSummaryProvider?: CapacityStateSummaryProvider;
 };
 
@@ -62,11 +69,13 @@ export default class CapacityGuard {
   private shortfallThresholdProvider?: ShortfallThresholdProvider;
   private capacityStateSummaryProvider: CapacityStateSummaryProvider;
 
-  private structuredLog?: PinoLogger;
+  private structuredLog?: CapacityGuardLogger;
+  private homeId: HomeId;
   private incidentId: string | null = null;
   private incidentStartMs = 0;
 
-  constructor(options: CapacityGuardOptions = {}) {
+  constructor(options: CapacityGuardOptions) {
+    this.homeId = options.homeId;
     this.limitKw = options.limitKw ?? 10;
     this.softMarginKw = options.softMarginKw ?? 0.2;
     this.structuredLog = options.structuredLog;
@@ -224,6 +233,7 @@ export default class CapacityGuard {
     const summary = capacityStateSummary ?? this.capacityStateSummaryProvider();
     (this.structuredLog ?? moduleLogger).info({
       event: 'hard_cap_shortfall_detected',
+      homeId: this.homeId,
       incidentId: this.incidentId,
       powerW,
       thresholdW,
@@ -251,6 +261,7 @@ export default class CapacityGuard {
       this.shortfallClearStartTime = now;
       (this.structuredLog ?? moduleLogger).info({
         event: 'hard_cap_shortfall_recovery_started',
+        homeId: this.homeId,
         incidentId: this.incidentId,
         sustainRequiredMs: CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS,
       });
@@ -261,6 +272,7 @@ export default class CapacityGuard {
       const thresholdW = Math.round(shortfallThreshold * 1000);
       (this.structuredLog ?? moduleLogger).info({
         event: 'hard_cap_shortfall_recovered',
+        homeId: this.homeId,
         incidentId: this.incidentId,
         powerW,
         thresholdW,
@@ -279,6 +291,7 @@ export default class CapacityGuard {
     if (this.shortfallClearStartTime !== null) {
       (this.structuredLog ?? moduleLogger).info({
         event: 'hard_cap_shortfall_recovery_reset',
+        homeId: this.homeId,
         incidentId: this.incidentId,
       });
       this.shortfallClearStartTime = null;

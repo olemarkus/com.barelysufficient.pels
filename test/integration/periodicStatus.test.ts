@@ -38,6 +38,7 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
 
+    expect(fields.homeId).toBe('main');
     expect(fields.softLimitKw).toBe(6.5);
     expect(fields.usedKWh).toBe(0.75);
     expect(fields.hourRemainingKWh).toBe(5.75);

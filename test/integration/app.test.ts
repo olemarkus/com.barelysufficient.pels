@@ -51,6 +51,7 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../../lib/utils/dateUtils';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
+import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -2975,6 +2976,29 @@ describe('periodic snapshot refresh scheduling', () => {
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false });
+  });
+
+  it('detaches the global post-actuation refresh from the scheduling home context', async () => {
+    const app = createApp();
+    const refreshContexts: Array<Record<string, unknown>> = [];
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot')
+      .mockImplementation(async () => { refreshContexts.push(getCurrentContext()); });
+    const emitted: Array<{ event: string; context: Record<string, unknown> }> = [];
+    vi.spyOn(app as any, 'getStructuredDebugEmitter').mockImplementation(() => (
+      (payload: { event: string }) => { emitted.push({ event: payload.event, context: getCurrentContext() }); }
+    ));
+
+    runWithContext({ homeId: 'h_area', rebuildId: 'rb_test' }, () => {
+      (app as any).snapshotHelpers.schedulePostActuationRefresh();
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(emitted.find(({ event }) => event === 'post_actuation_refresh_scheduled')?.context)
+      .toMatchObject({ homeId: 'h_area', rebuildId: 'rb_test' });
+    expect(emitted.find(({ event }) => event === 'post_actuation_refresh_running')?.context)
+      .toEqual({});
+    expect(refreshContexts).toEqual([{}]);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 
   it('clears stale Homey Energy interval state when polling is disabled', () => {

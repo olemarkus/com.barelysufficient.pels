@@ -2,6 +2,7 @@ import type CapacityGuard from '../power/capacityGuard';
 import { resolveCapacitySoftLimitKw, resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import { getHourBucketKey } from '../utils/dateUtils';
+import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
   CapacityGuard,
@@ -19,6 +20,7 @@ type CapacityStatusMetrics = {
 
 export type PeriodicStatusLogFields = {
   event: 'periodic_status';
+  homeId: HomeId;
   powerKw: number | null;
   softLimitKw: number;
   softHeadroomKw: number | null;
@@ -34,6 +36,11 @@ export type PeriodicStatusLogFields = {
   dryRun: boolean;
 };
 
+/**
+ * Builds the whole-app periodic status record. The producer is the Main-home
+ * app loop; sub-home bundles publish their own scoped plan/capacity records
+ * instead. Keeping `MAIN_HOME_ID` here makes that ownership explicit.
+ */
 export function buildPeriodicStatusLogFields(params: {
   capacityGuard?: CapacityGuardView;
   powerTracker: PowerTrackerState;
@@ -58,6 +65,7 @@ export function buildPeriodicStatusLogFields(params: {
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
   return {
     event: 'periodic_status',
+    homeId: MAIN_HOME_ID,
     powerKw: metrics.total,
     softLimitKw: metrics.softLimit,
     softHeadroomKw: metrics.headroom,

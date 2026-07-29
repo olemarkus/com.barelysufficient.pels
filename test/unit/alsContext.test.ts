@@ -1,7 +1,11 @@
 /**
  * @vitest-environment node
  */
-import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
+import {
+  getCurrentContext,
+  runWithContext,
+  runWithoutContext,
+} from '../../lib/logging/alsContext';
 
 function nestedContext(): Record<string, unknown> {
   return runWithContext({ correlationId: 'abc', component: 'plan' }, () => (
@@ -73,5 +77,12 @@ describe('alsContext', () => {
       // inside scope
     });
     expect(getCurrentContext()).toEqual({});
+  });
+
+  it('detaches global work without clearing the caller context', () => {
+    runWithContext({ homeId: 'h_area', rebuildId: 'rb_test' }, () => {
+      expect(runWithoutContext(() => getCurrentContext())).toEqual({});
+      expect(getCurrentContext()).toEqual({ homeId: 'h_area', rebuildId: 'rb_test' });
+    });
   });
 });

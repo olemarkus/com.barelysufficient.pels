@@ -50,7 +50,7 @@ const buildDevices = (reservedDrawKw: number): PlanInputDevice[] => [
 ];
 
 const makeBuilder = (params: { limitKw: number; totalKw: number; devices: PlanInputDevice[] }): PlanBuilder => {
-  const capacityGuard = new CapacityGuard({ limitKw: params.limitKw, softMarginKw: 0.2 });
+  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0.2 });
   capacityGuard.reportTotalPower(params.totalKw);
   return new PlanBuilder({
     setCapacityInShortfall: vi.fn(),

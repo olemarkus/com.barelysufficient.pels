@@ -10,6 +10,7 @@ describe('Daily Budget Shortfall Prevention', () => {
 
   beforeEach(() => {
     guard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 10,
       softMarginKw: 1,
     });
