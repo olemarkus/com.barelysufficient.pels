@@ -14,5 +14,5 @@ export type SteppedLoadStepRequestTransport = 'native_capability' | 'flow';
  * issued.
  */
 export type SteppedLoadStepRequestResult =
-    | { requested: false }
+    | { requested: false; reason?: 'flow_trigger_timeout' }
     | { requested: true; transport: SteppedLoadStepRequestTransport };

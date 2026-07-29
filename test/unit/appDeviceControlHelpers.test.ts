@@ -58,6 +58,221 @@ const baseSnapshot = (
 });
 
 describe('appDeviceControlHelpers', () => {
+  it('tracks optimistic lowest-step initialization without entering the retry lifecycle', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      issuedAtMs: 1_000,
+      confirmationPolicy: 'assume_applied',
+    });
+
+    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.get('dev-1')).toBe('low');
+    expect(runtimeState.steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 1_000_000)).toBe(false);
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(decorated).toMatchObject({
+      reportedStepId: undefined,
+      selectedStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'idle',
+    });
+  });
+
+  it('does not treat preserved planner intent as issued command history', () => {
+    let profiles = steppedProfiles;
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => profiles,
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
+      getLatestPlanSnapshot: () => ({
+        devices: [{ id: 'dev-1', targetStepId: 'low', desiredStepId: 'low' }],
+      } as never),
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'low',
+      status: 'idle',
+    });
+
+    profiles = {
+      'dev-1': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+        ],
+      },
+    };
+
+    expect(helpers.getSteppedLoadCommandSession('dev-1')).toEqual({
+      initializationAssumedStepId: undefined,
+      hasPriorStepCommand: false,
+      reportedStepId: undefined,
+    });
+  });
+
+  it('clears the ended on-session before an unknown-level device turns on again', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 500,
+    });
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      confirmationPolicy: 'assume_applied',
+    });
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+
+    const whileOff = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: false } }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(whileOff.reportedStepId).toBeUndefined();
+    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has('dev-1')).toBe(false);
+    expect(runtimeState.steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+
+    const afterTurnOn = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 3_000,
+    });
+
+    expect(afterTurnOn).toMatchObject({
+      reportedStepId: undefined,
+      desiredStepId: undefined,
+      stepCommandPending: false,
+      stepCommandStatus: 'idle',
+    });
+  });
+
+  it('does not reinsert an ended-session command from a matching report on the off snapshot', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 500,
+    });
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      issuedAtMs: 1_000,
+    });
+
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        binaryControl: { on: false },
+        reportedStepId: 'max',
+      }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(runtimeState.steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+  });
+
+  it('ends the session when an off-step report contradicts a binary-on capability', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 500,
+    });
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      confirmationPolicy: 'assume_applied',
+    });
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        binaryControl: { on: true },
+        reportedStepId: 'off',
+      }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has('dev-1')).toBe(false);
+  });
+
+  it('invalidates optimistic initialization when the configured lowest step changes', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      confirmationPolicy: 'assume_applied',
+    });
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+    const changedProfiles: DeviceControlProfiles = {
+      'dev-1': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'minimum', planningPowerW: 800 },
+          { id: 'low', planningPowerW: 1250 },
+        ],
+      },
+    };
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
+      profiles: changedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(decorated.selectedStepId).toBe('minimum');
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has('dev-1')).toBe(false);
+    expect(runtimeState.steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+  });
+
   it('keeps a slow stepped-load step-up pending for 60s before confirmative telemetry arrives', () => {
     const runtimeState = createDeviceControlRuntimeState();
 

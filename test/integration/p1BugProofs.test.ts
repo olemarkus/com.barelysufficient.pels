@@ -73,6 +73,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };

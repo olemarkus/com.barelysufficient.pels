@@ -1,6 +1,7 @@
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
+  isSteppedLoadOffStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
 } from '../lib/utils/deviceControlProfiles';
@@ -92,6 +93,17 @@ const resolveSuggestedSteppedLoadProfile = (
     : null
 );
 
+const resolveObservedSteppedOn = (
+  binaryOn: boolean | undefined,
+  profile: SteppedLoadProfile,
+  observedStepId: string | undefined,
+): boolean | undefined => {
+  if (binaryOn === false) return false;
+  if (observedStepId && isSteppedLoadOffStep(profile, observedStepId)) return false;
+  if (binaryOn === true) return true;
+  return observedStepId ? true : undefined;
+};
+
 export const resolveEffectiveSteppedLoadProfile = (params: {
   // Owner-seam read of the producer-fed transport snapshot, which carries
   // `steppedLoadProfile` / `targetPowerConfig` via the descriptor probe (omitted
@@ -140,13 +152,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
   }
 
   pruneStaleSteppedLoadCommandStates(runtimeState, nowMs);
-  expireConfirmedDesiredStepOnBinaryOff({
-    runtimeState,
-    deviceId: snapshot.id,
-    observedOn: snapshot.binaryControl?.on,
-  });
-
-  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
   const reported = runtimeState.steppedLoadReportedByDeviceId.get(snapshot.id);
   const nativeSteppedControlEnabled = nativeProfile !== null;
   const snapshotReportedStepId = getSteppedLoadStep(profile, snapshot.reportedStepId)?.id;
@@ -155,11 +160,24 @@ export const decorateSnapshotWithDeviceControl = (params: {
     runtimeState.steppedLoadReportedByDeviceId.delete(snapshot.id);
   }
   const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
+  const observedStepId = nativeReportedStepId ?? reported?.stepId ?? snapshotReportedStepId;
+  expireConfirmedDesiredStepOnBinaryOff({
+    runtimeState,
+    deviceId: snapshot.id,
+    observedOn: resolveObservedSteppedOn(snapshot.binaryControl?.on, profile, observedStepId),
+  });
+  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
   if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
     confirmSteppedLoadDesiredStep({ runtimeState, deviceId: snapshot.id, desired });
   }
   const currentDesired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
+  const initializedStepId = runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.get(snapshot.id);
+  if (initializedStepId && initializedStepId !== fallbackStepId) {
+    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(snapshot.id);
+    runtimeState.steppedLoadDesiredByDeviceId.delete(snapshot.id);
+    runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(snapshot.id);
+  }
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
     nowMs,
@@ -221,6 +239,36 @@ export class AppDeviceControlHelpers {
     });
   }
 
+  getSteppedLoadCommandSession(deviceId: string): {
+    initializationAssumedStepId?: string;
+    hasPriorStepCommand: boolean;
+    reportedStepId?: string;
+  } {
+    const profile = this.getSteppedLoadProfile(deviceId);
+    const lowestStepId = profile
+      ? getSteppedLoadLowestActiveStep(profile)?.id
+      : undefined;
+    const initializedStepId = this.runtimeState
+      .steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
+    if (initializedStepId && initializedStepId !== lowestStepId) {
+      this.runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
+      this.runtimeState.steppedLoadDesiredByDeviceId.delete(deviceId);
+      this.runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
+    }
+    return {
+      initializationAssumedStepId: initializedStepId === lowestStepId
+        ? initializedStepId
+        : undefined,
+      hasPriorStepCommand: this.runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(deviceId),
+      reportedStepId: profile
+        ? getSteppedLoadStep(
+          profile,
+          this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId,
+        )?.id
+        : undefined,
+    };
+  }
+
   decorateTargetSnapshotList(
     snapshot: Array<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>,
   ): DecoratedDeviceSnapshot[] {
@@ -243,6 +291,7 @@ export class AppDeviceControlHelpers {
       previousStepId: params.previousStepId,
       issuedAtMs: params.issuedAtMs,
       pendingWindowMs: params.pendingWindowMs,
+      confirmationPolicy: params.confirmationPolicy,
     });
   }
 

@@ -11,7 +11,10 @@ import {
   setObservedNativeSteppedLoadStep,
 } from '../../lib/device/managerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
-import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import {
+  PELS_TARGET_STEP_CAPABILITY_ID,
+  type SteppedLoadStepRequestResult,
+} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlan,
@@ -138,7 +141,12 @@ const buildExecutor = (
   // `controlCapabilityId` widens to `string` and richer fields like
   // `deviceClass`/`targets`/`flowBacked` may be present) and normalise to the
   // strict snapshot array the transport mock expects.
-  snapshotInput: readonly (Partial<TargetDeviceSnapshot & EvObservedProbe> & { id: string })[] = [
+  snapshotInput: readonly (
+    Partial<
+      TargetDeviceSnapshot & EvObservedProbe
+      & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+    > & { id: string }
+  )[] = [
     {
       id: 'dev-1',
       name: 'Heater',
@@ -174,7 +182,7 @@ const buildExecutor = (
       planningPowerW: number;
       planningCurrentA: number;
       previousStepId?: string;
-    }) => {
+    }): Promise<SteppedLoadStepRequestResult> => {
       const nativeRequested = await setObservedNativeSteppedLoadStep({
         owner: deviceManager,
         deviceId: params.deviceId,
@@ -227,6 +235,7 @@ const buildExecutor = (
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     ...depsOverrides,
@@ -1622,6 +1631,7 @@ describe('PlanExecutor stepped loads', () => {
     targets: [],
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
+    reportedStepId: 'low',
     ...overrides,
   } as TargetDeviceSnapshot & EvObservedProbe];
 
@@ -1638,6 +1648,7 @@ describe('PlanExecutor stepped loads', () => {
       reason: KEEP_REASON,
       commandableNow: true,
       steppedLoadProfile: steppedProfile,
+      reportedStepId: 'low',
       selectedStepId: 'low',
       desiredStepId: 'max',
       ...overrides,
@@ -1658,13 +1669,154 @@ describe('PlanExecutor stepped loads', () => {
     };
   };
 
-  it('triggers desired stepped-load change and records the issued command', async () => {
+  it('initializes an unknown running stepped load at its lowest step before ramping higher', async () => {
     const { executor, deviceManager, desiredSteppedTrigger, state, deps } = buildExecutor(
       undefined,
-      steppedSnapshot({ binaryControlObservation: onoffObservation(true) }),
+      steppedSnapshot({
+        reportedStepId: undefined,
+        binaryControlObservation: onoffObservation(true),
+      }),
     );
 
-    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({
+    await expect(executor.applyPlanActions(steppedPlan({
+      reportedStepId: undefined,
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'low',
+      planning_power_w: 1250,
+      planning_current_a: 0,
+      previous_step_id: '',
+    }, {
+      deviceId: 'dev-1',
+    });
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      confirmationPolicy: 'assume_applied',
+      issuedAtMs: expect.any(Number),
+    });
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      desiredStepId: 'low',
+      commandPurpose: 'step_initialization',
+      plannedDesiredStepId: 'max',
+    }));
+    expect(state.lastRestoreMs).toBeNull();
+  });
+
+  it('does not initialize when a real level report arrives after planning', async () => {
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        reportedStepId: 'max',
+        selectedStepId: 'max',
+        binaryControlObservation: onoffObservation(true),
+      }),
+      {
+        getSteppedLoadCommandSession: () => ({
+          hasPriorStepCommand: false,
+          reportedStepId: 'low',
+        }),
+      },
+    );
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      reportedStepId: undefined,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    });
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+  });
+
+  it('uses an admitted flow level report that is not present in the raw transport snapshot', async () => {
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        reportedStepId: undefined,
+        binaryControlObservation: onoffObservation(true),
+      }),
+      {
+        getSteppedLoadCommandSession: () => ({
+          hasPriorStepCommand: false,
+          reportedStepId: 'max',
+        }),
+      },
+    );
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      reportedStepId: undefined,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    });
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+  });
+
+  it('keeps initialization eligible when the transport rejects the low-step request', async () => {
+    const { executor, deviceManager, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        reportedStepId: undefined,
+        binaryControlObservation: onoffObservation(true),
+      }),
+    );
+    deviceManager.requestSteppedLoadStep.mockResolvedValue({ requested: false });
+
+    const plan = steppedPlan({ reportedStepId: undefined });
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    });
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    });
+
+    expect(deviceManager.requestSteppedLoadStep).toHaveBeenCalledTimes(2);
+    expect(deviceManager.requestSteppedLoadStep).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ desiredStepId: 'low', previousStepId: undefined }),
+    );
+    expect(deviceManager.requestSteppedLoadStep).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ desiredStepId: 'low', previousStepId: undefined }),
+    );
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+  });
+
+  it('ramps to the planned higher step after initialization without waiting for level feedback', async () => {
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        reportedStepId: undefined,
+        binaryControlObservation: onoffObservation(true),
+      }),
+      {
+        getSteppedLoadCommandSession: () => ({
+          initializationAssumedStepId: 'low',
+          hasPriorStepCommand: false,
+        }),
+      },
+    );
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      reportedStepId: undefined,
+    }))).resolves.toEqual({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     });
@@ -1684,13 +1836,36 @@ describe('PlanExecutor stepped loads', () => {
       issuedAtMs: expect.any(Number),
       pendingWindowMs: expect.any(Number),
     });
-    expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'stepped_load_command_requested',
-      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      desiredStepId: 'max',
-    }));
-    expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  it('does not repeat initialization when the assumed lowest step remains the planned target', async () => {
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        reportedStepId: undefined,
+        binaryControlObservation: onoffObservation(true),
+      }),
+      {
+        getSteppedLoadCommandSession: () => ({
+          initializationAssumedStepId: 'low',
+          hasPriorStepCommand: false,
+        }),
+      },
+    );
+
+    const plan = steppedPlan({
+      reportedStepId: undefined,
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+    expect(executor.hasStablePlanActuation(plan)).toBe(false);
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    });
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
 
   // Regression: prod 2026-06-03 — a Høiax water heater (controlCapabilityId 'onoff')
@@ -1790,7 +1965,11 @@ describe('PlanExecutor stepped loads', () => {
       binaryControl: { on: true },
       binaryControlObservation: onoffObservation(true),
     }];
-    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
+      undefined,
+      snapshot,
+      { getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true }) },
+    );
     desiredSteppedTrigger.trigger.mockImplementation(async () => {
       Object.assign(snapshot[0], {
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
@@ -1819,7 +1998,9 @@ describe('PlanExecutor stepped loads', () => {
       available: true,
       binaryControl: { on: true },
       binaryControlObservation: onoffObservation(true),
-    }]);
+    }], {
+      getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true }),
+    });
     observeNativeSteppedLoadCommandAdapter({
       owner: deviceManager,
       deviceId: 'dev-1',
@@ -2657,7 +2838,7 @@ describe('PlanExecutor stepped loads', () => {
         flow: { getTriggerCard: vi.fn(() => null) },
       } as unknown as Homey.App['homey'],
     });
-    deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false, transport: 'native_capability' });
+    deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false });
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -2850,6 +3031,7 @@ describe('PlanExecutor stepped loads', () => {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'set_step',
+      reportedStepId: 'max',
       selectedStepId: 'max',
       desiredStepId: 'low',
     }));
@@ -2880,6 +3062,9 @@ describe('PlanExecutor stepped loads', () => {
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
+        controlModel: 'stepped_load' as const,
+        steppedLoadProfile: steppedProfile,
+        reportedStepId: 'off',
       },
     ];
     const { executor, deps } = buildExecutor(state, snapshot);
@@ -3063,6 +3248,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       controlCapabilityId: 'onoff',
       reason: KEEP_REASON,
       steppedLoadProfile: steppedProfile,
+      reportedStepId: 'low',
       selectedStepId: 'low',
       desiredStepId: 'low',
       ...overrides,
@@ -3270,7 +3456,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // with desiredStepId='low' — only stepViolated is true.
     // The decorated snapshot derives currentState='off' from the off-step, which
     // lets applySteppedLoadRestore enter.
-    const snapshot = buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) });
+    const snapshot = buildSnapshot({
+      binaryControl: { on: true },
+      binaryControlObservation: onoffObservation(true),
+      reportedStepId: 'off',
+    });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -3294,7 +3484,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('does not log current_state restore skip when a keep device is already on but needs a higher step', async () => {
-    const snapshot = buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) });
+    const snapshot = buildSnapshot({
+      binaryControl: { on: true },
+      binaryControlObservation: onoffObservation(true),
+      reportedStepId: 'low',
+    });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -3591,7 +3785,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'low',
       desiredStepId: 'low',
     });
-    const liveDevices = buildLiveDevices({ binaryControl: { on: true }, selectedStepId: 'max' });
+    const liveDevices = buildLiveDevices({
+      binaryControl: { on: true },
+      reportedStepId: 'max',
+      selectedStepId: 'max',
+    });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
@@ -3626,6 +3824,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'max',
       desiredStepId: 'low',
       reportedStepId: 'max',
+      lastDesiredStepId: 'low',
     });
     const liveDevices = buildLiveDevices({ binaryControl: { on: true } });
 

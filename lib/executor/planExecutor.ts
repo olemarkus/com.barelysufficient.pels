@@ -99,7 +99,13 @@ export type PlanExecutorDeps = {
     previousStepId?: string;
     issuedAtMs?: number;
     pendingWindowMs?: number;
+    confirmationPolicy?: 'required' | 'assume_applied';
   }) => void;
+  getSteppedLoadCommandSession: (deviceId: string) => {
+    initializationAssumedStepId?: string;
+    hasPriorStepCommand: boolean;
+    reportedStepId?: string;
+  };
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -143,6 +149,7 @@ export class PlanExecutor {
     previousStepId?: string;
     issuedAtMs?: number;
     pendingWindowMs?: number;
+    confirmationPolicy?: 'required' | 'assume_applied';
   }): void => this.markSteppedLoadDesiredStepIssued(params);
   private readonly boundRecordShedActuation = (
     deviceId: string,
@@ -246,6 +253,7 @@ export class PlanExecutor {
     previousStepId?: string;
     issuedAtMs?: number;
     pendingWindowMs?: number;
+    confirmationPolicy?: 'required' | 'assume_applied';
   }): void {
     this.deps.markSteppedLoadDesiredStepIssued(params);
   }
@@ -408,6 +416,7 @@ export class PlanExecutor {
         buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
         buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
         getShedBehavior: this.boundGetShedBehavior,
+        getSteppedLoadCommandSession: this.deps.getSteppedLoadCommandSession,
         recordReleaseShedActuation: this.recordReleaseShedActuation,
         latestTargetSnapshot: () => this.latestTargetSnapshot,
         capacityDryRun: () => this.capacityDryRun,
@@ -430,7 +439,10 @@ export class PlanExecutor {
     return plan.devices.some((dev) => (
       hasStableUncontrolledRestoreActuation(dev, this.state)
       || hasStableBinaryReleaseActuation(dev)
-      || hasStableSteppedLoadStepActuation(dev)
+      || hasStableSteppedLoadStepActuation(
+        dev,
+        this.deps.getSteppedLoadCommandSession(dev.id),
+      )
       || hasStableSteppedLoadBinaryRestoreActuation(dev)
     ));
   }

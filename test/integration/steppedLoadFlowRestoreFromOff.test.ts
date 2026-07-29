@@ -1,5 +1,5 @@
 /**
- * SDK/flow-boundary e2e for the flow-backed stepped-load restore-from-off
+ * Flow-boundary integration coverage for the flow-backed stepped-load restore-from-off
  * confirmation deadlock (prod incident 2026-07-05, "Elbillader" Easee EV
  * charger, 1-phase target-power stepping).
  *
@@ -116,12 +116,15 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
 // An Easee-style charger: official `evcharger_charging` control capability
 // (trusted off), NOT a Zaptec native-wiring candidate, and no native stepped
 // capability — the stepped axis is purely flow-backed via the stored profile.
-const buildEaseeDevice = (freshIso: string): HomeyDeviceLike => {
+const buildEaseeDevice = (freshIso: string, charging = false): HomeyDeviceLike => {
   const capabilitiesObj: Record<string, CapabilityValue<unknown> | undefined> = {
-    measure_power: { value: 0, lastUpdated: freshIso },
-    evcharger_charging: { value: false, setable: true, lastUpdated: freshIso },
+    measure_power: { value: charging ? 1_380 : 0, lastUpdated: freshIso },
+    evcharger_charging: { value: charging, setable: true, lastUpdated: freshIso },
     // Prod state while PELS holds the charger paused: car connected, waiting.
-    evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: freshIso },
+    evcharger_charging_state: {
+      value: charging ? 'plugged_in_charging' : 'plugged_in_paused',
+      lastUpdated: freshIso,
+    },
   };
   return {
     id: DEVICE_ID,
@@ -140,9 +143,10 @@ const parseEaseeSnapshot = (params: {
   freshIso: string;
   nowMs: number;
   logger: Logger;
+  charging?: boolean;
 }): TransportDeviceSnapshot => {
   const parsed = parseDevice({
-    device: buildEaseeDevice(params.freshIso),
+    device: buildEaseeDevice(params.freshIso, params.charging),
     now: params.nowMs,
     deps: buildParseDeps(params.logger),
   });
@@ -177,6 +181,35 @@ const buildRestoreTo6aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
         reason: KEEP_REASON,
       }),
       binaryControl: { on: false },
+    }),
+  ],
+});
+
+const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan => ({
+  meta: { totalKw: 1.38, softLimitKw: 5, headroomKw: 3.62 },
+  devices: [
+    withBinaryDiscriminant({
+      ...steppedPlanDevice({
+        id: DEVICE_ID,
+        name: DEVICE_NAME,
+        deviceClass: 'evcharger',
+        currentState: 'on',
+        plannedState: 'keep',
+        controllable: true,
+        steppedLoadProfile: EV_PROFILE,
+        controlCapabilityId: 'evcharger_charging',
+        reportedStepId: decorated.reportedStepId,
+        selectedStepId: decorated.selectedStepId ?? '6a',
+        desiredStepId: '8a',
+        lastDesiredStepId: decorated.desiredStepId,
+        lastStepCommandIssuedAt: decorated.lastStepCommandIssuedAt,
+        stepCommandRetryCount: decorated.stepCommandRetryCount,
+        nextStepCommandRetryAtMs: decorated.nextStepCommandRetryAtMs,
+        stepCommandPending: decorated.stepCommandPending,
+        stepCommandStatus: decorated.stepCommandStatus,
+        reason: KEEP_REASON,
+      }),
+      binaryControl: { on: true },
     }),
   ],
 });
@@ -259,6 +292,7 @@ const buildHarness = (initialSnapshot: TransportDeviceSnapshot) => {
     // stepCommandPending/stepCommandStatus, and the flow report has to confirm
     // it — the loop under test.
     markSteppedLoadDesiredStepIssued: (params) => helpers.markSteppedLoadDesiredStepIssued(params),
+    getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
@@ -267,6 +301,9 @@ const buildHarness = (initialSnapshot: TransportDeviceSnapshot) => {
     deviceManager,
     helpers,
     decorate,
+    setSnapshot: (snapshot: TransportDeviceSnapshot) => {
+      snapshotHolder.current = snapshot;
+    },
     desiredSteppedTrigger: triggerCards.desired_stepped_load_changed,
   };
 };
@@ -279,6 +316,101 @@ afterEach(() => {
 });
 
 describe('flow-backed stepped restore-from-off — step confirmation via flow report (prod deadlock repro)', () => {
+  it('initializes an unknown running level once, then ramps higher without an echo', async () => {
+    const logger = createLogger();
+    const cycle1Iso = '2026-07-29T08:00:00.000Z';
+    const cycle1Ms = Date.parse(cycle1Iso);
+    vi.useFakeTimers();
+    vi.setSystemTime(cycle1Ms);
+
+    const snapshot = parseEaseeSnapshot({
+      freshIso: cycle1Iso,
+      nowMs: cycle1Ms,
+      logger,
+      charging: true,
+    });
+    expect(snapshot.binaryControl?.on).toBe(true);
+    expect(snapshot.reportedStepId).toBeUndefined();
+
+    const {
+      executor, helpers, decorate, setSnapshot, desiredSteppedTrigger,
+    } = buildHarness(snapshot);
+
+    await executor.applyPlanActions(buildRunningTo8aPlan(decorate()), 'plan');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(1, {
+      step_id: '6a',
+      planning_power_w: 1380,
+      planning_current_a: 0,
+      previous_step_id: '',
+    }, { deviceId: DEVICE_ID });
+    const afterInitialization = decorate();
+    expect(afterInitialization).toMatchObject({
+      reportedStepId: undefined,
+      selectedStepId: '6a',
+      stepCommandPending: false,
+      stepCommandStatus: 'idle',
+    });
+    expect(helpers.getSteppedLoadCommandSession(DEVICE_ID)).toMatchObject({
+      initializationAssumedStepId: '6a',
+      hasPriorStepCommand: true,
+    });
+
+    // No flow report arrives. The accepted initialization is a one-shot
+    // command-axis premise, so the next eligible cycle may issue the real ramp.
+    vi.setSystemTime(cycle1Ms + 10_000);
+    await executor.applyPlanActions(buildRunningTo8aPlan(decorate()), 'plan');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(2, {
+      step_id: '8a',
+      planning_power_w: 1840,
+      planning_current_a: 0,
+      previous_step_id: '6a',
+    }, { deviceId: DEVICE_ID });
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(2);
+    expect(decorate()).toMatchObject({
+      reportedStepId: undefined,
+      selectedStepId: '6a',
+      desiredStepId: '8a',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    });
+
+    // The charger then stops without ever reporting a level. The observed off
+    // ends the command session; a later unknown-level on-session must begin at
+    // the lowest step again instead of retrying the previous 8a command.
+    const offMs = cycle1Ms + 20_000;
+    setSnapshot(parseEaseeSnapshot({
+      freshIso: new Date(offMs).toISOString(),
+      nowMs: offMs,
+      logger,
+      charging: false,
+    }));
+    vi.setSystemTime(offMs);
+    expect(decorate()).toMatchObject({
+      reportedStepId: undefined,
+      desiredStepId: undefined,
+    });
+
+    const turnedOnAgainMs = cycle1Ms + 30_000;
+    setSnapshot(parseEaseeSnapshot({
+      freshIso: new Date(turnedOnAgainMs).toISOString(),
+      nowMs: turnedOnAgainMs,
+      logger,
+      charging: true,
+    }));
+    vi.setSystemTime(turnedOnAgainMs);
+    await executor.applyPlanActions(buildRunningTo8aPlan(decorate()), 'plan');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(3, {
+      step_id: '6a',
+      planning_power_w: 1380,
+      planning_current_a: 0,
+      previous_step_id: '',
+    }, { deviceId: DEVICE_ID });
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(3);
+  });
+
   it('dispatches evcharger_charging=true after the flow confirms the prepared step', async () => {
     const logger = createLogger();
     const cycle1Iso = '2026-07-05T21:09:57.000Z';

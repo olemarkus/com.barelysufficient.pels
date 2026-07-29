@@ -63,6 +63,7 @@ export const applySteppedLoadCommand = async (
 ): Promise<boolean> => {
   const commandStepId = action.desired.stepId;
   const currentOn = resolveCurrentOn(action, snapshot);
+  const initializesUnknownStep = action.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
   if (currentOn === false && action.desired.on === false) return false;
   if (!commandStepId) return false;
   if (isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
@@ -84,7 +85,7 @@ export const applySteppedLoadCommand = async (
     options,
     desiredStep,
     transition: action.transition,
-    previousStepId: action.previousStepId,
+    previousStepId: initializesUnknownStep ? undefined : action.previousStepId,
     now: Date.now(),
   });
 };

@@ -25,6 +25,7 @@ export type PlanExecutorSteppedContext = {
     previousStepId?: string;
     issuedAtMs?: number;
     pendingWindowMs?: number;
+    confirmationPolicy?: 'required' | 'assume_applied';
   }) => void;
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;

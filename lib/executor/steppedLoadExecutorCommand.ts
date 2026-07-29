@@ -122,7 +122,17 @@ const markAcceptedSteppedLoadCommand = (
     desiredStep,
     previousStepId,
     now,
+    transition,
   } = params;
+  if (transition?.effectiveTransition === 'initialize_unknown_step_at_low') {
+    ctx.markSteppedLoadDesiredStepIssued({
+      deviceId: action.id,
+      desiredStepId: desiredStep.id,
+      issuedAtMs: now,
+      confirmationPolicy: 'assume_applied',
+    });
+    return;
+  }
   ctx.markSteppedLoadDesiredStepIssued({
     deviceId: action.id,
     desiredStepId: desiredStep.id,
@@ -130,6 +140,16 @@ const markAcceptedSteppedLoadCommand = (
     issuedAtMs: now,
     pendingWindowMs: resolveSteppedLoadCommandPendingMs(action.communicationModel),
   });
+};
+
+const resolveCommandPurpose = (
+  transition: ExecutableSteppedLoadTransition | null | undefined,
+): 'step_initialization' | 'step_preparation' | 'step_adjustment' => {
+  if (transition?.stepPreparationPurpose === 'initialize_unknown_step') {
+    return 'step_initialization';
+  }
+  if (transition?.stepPreparationPurpose) return 'step_preparation';
+  return 'step_adjustment';
 };
 
 const logAcceptedSteppedLoadCommand = (
@@ -144,9 +164,10 @@ const logAcceptedSteppedLoadCommand = (
     previousStepId,
     commandTransport,
   } = params;
+  const commandPurpose = resolveCommandPurpose(transition);
   const transitionFields = transition ? {
     plannedDesiredStepId: transition.plannedDesiredStepId ?? desiredStep.id,
-    commandPurpose: transition.stepPreparationPurpose ? 'step_preparation' : 'step_adjustment',
+    commandPurpose,
     stepPreparationPurpose: transition.stepPreparationPurpose ?? null,
     effectiveTransition: transition.effectiveTransition,
     binaryTarget: transition.binaryTarget ?? null,

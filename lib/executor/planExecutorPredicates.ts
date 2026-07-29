@@ -1,12 +1,14 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { DevicePlan } from '../plan/planTypes';
+import type { DevicePlan, SteppedPlanDevice } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
 import type {
+  ExecutableSteppedLoadCommandSession,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
 import {
   isPlanDeviceObservedOff,
+  isPlanDeviceObservedOn,
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadTransition,
@@ -86,15 +88,37 @@ export function isSteppedLoadRestoreFromOff(
   return Boolean(intent?.purpose === 'keep' && action?.current.on === false);
 }
 
-export function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][number]): boolean {
+const shouldInitializeUnknownRunningStep = (
+  dev: SteppedPlanDevice,
+  desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>,
+  commandSession: ExecutableSteppedLoadCommandSession,
+): boolean => {
+  return dev.reportedStepId === undefined
+    && dev.lastDesiredStepId === undefined
+    && isPlanDeviceObservedOn(dev)
+    && desiredStep.planningPowerW > 0
+    && commandSession.reportedStepId === undefined
+    && commandSession.initializationAssumedStepId === undefined
+    && !commandSession.hasPriorStepCommand;
+};
+
+export function hasStableSteppedLoadStepActuation(
+  dev: DevicePlan['devices'][number],
+  commandSession: ExecutableSteppedLoadCommandSession,
+): boolean {
   if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
   const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  if (!desiredStepId || !dev.selectedStepId || desiredStepId === dev.selectedStepId) return false;
+  if (!desiredStepId || !dev.selectedStepId) return false;
+  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
+  if (!desiredStep) return false;
+  if (shouldInitializeUnknownRunningStep(dev, desiredStep, commandSession)) {
+    return allowsSteppedLoadKeepInvariantRestore(dev.reason);
+  }
+  if (desiredStepId === dev.selectedStepId) return false;
   if (hasEquivalentSteppedLoadCommandHold(dev, desiredStepId)) return false;
 
   const selectedStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
-  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
-  if (!selectedStep || !desiredStep) return false;
+  if (!selectedStep) return false;
   if (desiredStep.planningPowerW < selectedStep.planningPowerW) {
     // Stepping down. "Off" is kind-aware: a binary stepper via `currentOn`, a
     // step-only stepper (no onoff handle) via the step axis. Not-off ⇒ it can

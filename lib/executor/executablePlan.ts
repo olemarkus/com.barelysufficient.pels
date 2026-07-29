@@ -140,10 +140,11 @@ export type ExecutableSteppedLoadTransition = {
   effectiveTransition:
     | 'full_shed_to_off'
     | 'restore_from_off_at_low'
+    | 'initialize_unknown_step_at_low'
     | 'step_down_while_on'
     | 'step_up_while_on'
     | 'steady';
-  stepPreparationPurpose: 'prepare_for_off' | 'prepare_for_on' | null;
+  stepPreparationPurpose: 'prepare_for_off' | 'prepare_for_on' | 'initialize_unknown_step' | null;
   binaryTarget: boolean | null;
   commandStepId: string | undefined;
   plannedDesiredStepId: string | undefined;
@@ -226,4 +227,11 @@ export type ExecutableSteppedLoadDevice = {
   stepNeedsAdjustment: boolean;
   stepCommandRetryCount: number;
   nextStepCommandRetryAtMs?: number;
+  initializationStepId?: string;
+};
+
+export type ExecutableSteppedLoadCommandSession = {
+  initializationAssumedStepId?: string;
+  hasPriorStepCommand: boolean;
+  reportedStepId?: string;
 };

@@ -181,6 +181,23 @@ Contributor rules:
 - do not use `selectedStepId` or `actualStepId` as human-facing observed truth without first
   resolving whether they are actually reported
 
+### One-shot initialization of an unknown running step
+
+An active stepped device can start a runtime session without any reported step. In that cold-unknown
+case, execution requests the lowest active step once before applying a higher planned target. A
+transport-accepted initialization creates an in-memory command-axis latch for that on-session:
+
+- the conservative lowest-step fallback remains the effective planning state
+- the latch is not `reportedStepId`, materialization, restore preparation, command success, or
+  pending/retry state
+- the Overview therefore continues to show `Level unknown` until real feedback arrives
+- a later planned step change uses the ordinary confirmation and retry lifecycle
+- observed off, a changed lowest configured step, or app restart clears/recreates the premise
+
+This is a deliberate optimistic execution policy, not a weakening of observed-state truth. It
+prevents an unknown fallback from suppressing the first step request while avoiding a confirmation
+retry loop for the idempotent lowest-step initialization.
+
 ## Generic Device-State Assumptions
 
 These rules are intentionally generic. They apply across vendors, transports, and device models.

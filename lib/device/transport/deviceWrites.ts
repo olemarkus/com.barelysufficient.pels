@@ -26,6 +26,7 @@ import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportContext } from './transportContext';
 
 const moduleLogger = getLogger('device/transport');
+const FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS = 10_000;
 
 function normalizeCapabilityValue(
     ctx: TransportContext,
@@ -168,6 +169,24 @@ function resolveSteppedLoadFlowTriggerCard(ctx: TransportContext): SteppedLoadFl
     return ctx.getFlowTriggerCard?.('desired_stepped_load_changed');
 }
 
+async function awaitFlowTriggerAcceptance(
+    trigger: () => Promise<unknown> | unknown,
+): Promise<'accepted' | 'timed_out'> {
+    let acceptanceTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const triggerResult = Promise.resolve()
+            .then(trigger)
+            .then(() => 'accepted' as const);
+        const timeoutResult = new Promise<'timed_out'>((resolve) => {
+            acceptanceTimeout = setTimeout(() => resolve('timed_out'), FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS);
+            acceptanceTimeout.unref();
+        });
+        return await Promise.race([triggerResult, timeoutResult]);
+    } finally {
+        if (acceptanceTimeout) clearTimeout(acceptanceTimeout);
+    }
+}
+
 export async function requestSteppedLoadStep(ctx: TransportContext, params: {
     deviceId: string;
     profile: SteppedLoadProfile;
@@ -202,15 +221,31 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
     const triggerCard = resolveSteppedLoadFlowTriggerCard(ctx);
     if (!triggerCard?.trigger) return { requested: false };
 
-    const triggerPromise = triggerCard.trigger({
-        step_id: desiredStepId,
-        planning_power_w: planningPowerW,
-        planning_current_a: planningCurrentA,
-        previous_step_id: previousStepId ?? '',
-    }, {
-        deviceId,
-    });
-    void Promise.resolve(triggerPromise).catch((error: unknown) => {
+    try {
+        const outcome = await awaitFlowTriggerAcceptance(() => triggerCard.trigger({
+            step_id: desiredStepId,
+            planning_power_w: planningPowerW,
+            planning_current_a: planningCurrentA,
+            previous_step_id: previousStepId ?? '',
+        }, {
+            deviceId,
+        }));
+        if (outcome === 'timed_out') {
+            (ctx.logger.structuredLog ?? moduleLogger).error({
+                event: 'stepped_load_command_failed',
+                reasonCode: 'flow_trigger_timeout',
+                deviceId,
+                deviceName: snapshot?.name,
+                desiredStepId,
+                planningPowerW,
+                commandTransport: 'flow',
+                timeoutMs: FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS,
+                ...(actuationMode ? { mode: actuationMode } : {}),
+            });
+            return { requested: false, reason: 'flow_trigger_timeout' };
+        }
+        return { requested: true, transport: 'flow' };
+    } catch (error: unknown) {
         const normalizedError = normalizeError(error);
         (ctx.logger.structuredLog ?? moduleLogger).error({
             event: 'stepped_load_command_failed',
@@ -223,8 +258,8 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
             ...(actuationMode ? { mode: actuationMode } : {}),
             err: normalizedError,
         });
-    });
-    return { requested: true, transport: 'flow' };
+        return { requested: false };
+    }
 }
 
 export async function applyDeviceTargets(

@@ -1,4 +1,8 @@
-import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import {
+  getBinaryOn,
+  isBinaryControlled,
+  isBinaryOnOrUnknown,
+} from '../../packages/shared-domain/src/binaryControlState';
 import type { DevicePlan } from '../plan/planTypes';
 import {
   isSteppedLoadDevice,
@@ -19,11 +23,13 @@ import type {
   ExecutableObservedDeviceState,
   ExecutableObservedSteppedLoadState,
   ExecutableSteppedLoadCurrentFallback,
+  ExecutableSteppedLoadCommandSession,
   ExecutableSteppedLoadCurrentState,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
 import {
+  getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
@@ -101,35 +107,97 @@ export function buildExecutableSteppedLoadDevice(
   intent: ExecutableSteppedLoadIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
   currentFallback?: ExecutableSteppedLoadCurrentFallback,
+  commandSession?: ExecutableSteppedLoadCommandSession,
 ): ExecutableSteppedLoadDevice | null {
   if (!intent) return null;
-  const current = buildCurrentState(intent, observed, currentFallback);
+  const resolvedObserved = withCommandSessionReportedStep(observed, commandSession);
+  const current = buildCurrentState(intent, resolvedObserved, currentFallback);
+  const initializationStepId = resolveInitializationStepId(intent, resolvedObserved, commandSession);
+  const initializesUnknownStep = initializationStepId !== undefined;
+  const desired = initializesUnknownStep
+    ? { ...intent.desired, stepId: initializationStepId }
+    : intent.desired;
+  const transition: ExecutableSteppedLoadDevice['transition'] = initializesUnknownStep
+    ? {
+      effectiveTransition: 'initialize_unknown_step_at_low',
+      stepPreparationPurpose: 'initialize_unknown_step',
+      binaryTarget: null,
+      commandStepId: initializationStepId,
+      plannedDesiredStepId: intent.desired.plannedStepId ?? intent.desired.stepId,
+      transitionPhase: 'step_preparation',
+    }
+    : intent.transition;
   // A confirmed step command counts as restore-preparation evidence ONLY while
   // the device is observed off (trusted off) — the restore-preparation window.
   // While on, observed reports keep sole materialization authority so clamped
   // devices still get adjusted. Requires a present observation: `current.on`
   // falls back to the plan-derived value when the device is absent from this
   // cycle's snapshot, and a plan-derived 'off' is not trusted-off evidence.
-  const confirmedCommandStepId = observed !== undefined && current.on === false
+  const confirmedCommandStepId = resolvedObserved !== undefined && current.on === false
     ? intent.confirmedCommandStepId
     : undefined;
   const stepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId, confirmedCommandStepId),
+    step: toExecutableSteppedStepState(
+      resolvedObserved?.steppedLoad,
+      desired.stepId,
+      confirmedCommandStepId,
+    ),
   });
   // Same inputs, same resolution — the two fields exist for their distinct
   // consumers (restore gating vs command dispatch), not distinct semantics.
   const commandStepActuation = stepActuation;
-  const desiredIsNonOff = intent.desired.stepId
-    && !isSteppedLoadOffStep(intent.steppedLoadProfile, intent.desired.stepId);
+  const desiredIsNonOff = desired.stepId
+    && !isSteppedLoadOffStep(intent.steppedLoadProfile, desired.stepId);
   return {
     ...intent,
     current,
+    desired,
+    transition,
     previousStepId: current.stepId ?? intent.previousStepId,
     stepActuation,
     commandStepActuation,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),
+    initializationStepId,
   };
 }
+
+const withCommandSessionReportedStep = (
+  observed: ExecutableObservedDeviceState | undefined,
+  commandSession: ExecutableSteppedLoadCommandSession | undefined,
+): ExecutableObservedDeviceState | undefined => {
+  const reportedStepId = commandSession?.reportedStepId;
+  if (!observed || !reportedStepId) return observed;
+  if (observed.steppedLoad?.reportedStepId !== undefined) return observed;
+  return {
+    ...observed,
+    steppedLoad: {
+      on: observed.steppedLoad?.on ?? null,
+      stepId: reportedStepId,
+      reportedStepId,
+      measuredPowerKw: observed.steppedLoad?.measuredPowerKw,
+    },
+  };
+};
+
+const resolveInitializationStepId = (
+  intent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedDeviceState | undefined,
+  commandSession: ExecutableSteppedLoadCommandSession | undefined,
+): string | undefined => {
+  if (intent.purpose !== 'keep') return undefined;
+  if (!isBinaryControlled(observed) || !getBinaryOn(observed)) return undefined;
+  if (observed.steppedLoad?.reportedStepId !== undefined) return undefined;
+  if (commandSession?.reportedStepId !== undefined) return undefined;
+  if (!commandSession || commandSession.hasPriorStepCommand) return undefined;
+  const lowestActiveStep = getSteppedLoadLowestActiveStep(intent.steppedLoadProfile);
+  const desiredStep = intent.desired.stepId
+    ? getSteppedLoadStep(intent.steppedLoadProfile, intent.desired.stepId)
+    : undefined;
+  if (!lowestActiveStep || !desiredStep || desiredStep.planningPowerW <= 0) return undefined;
+  return commandSession.initializationAssumedStepId === lowestActiveStep.id
+    ? undefined
+    : lowestActiveStep.id;
+};
 
 const buildCurrentState = (
   intent: ExecutableSteppedLoadIntent,
