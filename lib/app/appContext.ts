@@ -272,8 +272,8 @@ export type AppContext = {
   homeRuntimeRead?: HomeRuntimeReadPort;
   planEngine?: PlanEngine;
   // "Leave off until turned on again": the opt-in config plus the per-device
-  // hold state recording that a device was turned off outside PELS while the
-  // plan expected it to run. ASSIGNED by `AppServiceWiring.initDeviceManager`
+  // hold state recording that a device was turned off outside PELS, independent
+  // of the current plan. ASSIGNED by `AppServiceWiring.initDeviceManager`
   // (the wiring-assigns-ctx-members house pattern) so it exists before the
   // first plan cycle can resume anything. Consumers get only the resolved
   // policy — never the provenance evidence, which is settled once at the

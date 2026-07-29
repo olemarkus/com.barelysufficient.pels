@@ -353,21 +353,28 @@ export class PlanEngine {
   }
 
   /**
-   * Whether PELS has an outstanding binary command on this capability, in EITHER
-   * direction. Deliberately `peek` (raw) rather than the freshness-gated
-   * `getPendingBinaryCommandForDevice`: the external-off detector uses this to
-   * answer "is PELS mid-command on this device?", where a late or unconfirmed
-   * command still means the observed state is PELS's doing. Missing a real
-   * outside-off is far cheaper than fabricating one.
+   * Whether an observed binary change is still attributable to PELS: either an
+   * active command in either direction, or the longer-lived breadcrumb from a
+   * successfully dispatched OFF. The latter outlives convergence timeout so a
+   * delayed cloud/Flow confirmation cannot fabricate an outside-off hold.
    */
   public hasPendingBinaryCommandForCapability(deviceId: string, capabilityId: string): boolean {
-    // `get`, not `peek`: the store's own freshness window is what bounds "could
-    // this off still be ours?". A raw read never evicts, so a completed command
-    // can linger past its timeout — on a flow-powered install with irregular plan
-    // cycles, or when a matching local-write echo dropped the event that would
-    // have cleared it — and a genuine ON->OFF minutes later would be attributed
-    // to PELS, starting no hold and letting reconcile turn the device back on.
-    return this.pendingBinaryCommandStore.get(deviceId)?.capabilityId === capabilityId;
+    return this.pendingBinaryCommandStore.isBinaryChangeAttributableToPels(
+      deviceId,
+      capabilityId,
+    );
+  }
+
+  public clearRecentBinaryOffCommandForCapability(
+    deviceId: string,
+    capabilityId: string,
+    observedOnAtMs?: number,
+  ): void {
+    this.pendingBinaryCommandStore.clearRecentSuccessfulOff(
+      deviceId,
+      capabilityId,
+      observedOnAtMs,
+    );
   }
 
   public evaluateHeadroomForDevice(params: {

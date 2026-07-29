@@ -4,10 +4,10 @@
  * release.
  *
  * WHY HERE. This runs at the realtime-reconcile gate, immediately before PELS
- * would otherwise queue the reconcile that turns the device back on. That is the
+ * would otherwise queue a reconcile from the stale plan. That is the
  * one point where every required fact is available at once — the observed state,
- * the plan's expectation, the observed transition, and the owning home's pending
- * commands — and it covers both push ingest routes (`realtime_capability` and
+ * the observed transition, and the owning home's pending commands — and it
+ * covers both push ingest routes (`realtime_capability` and
  * `device_update` each dispatch through `plan_reconcile`).
  *
  * A HOLD NEEDS A TRANSITION, NOT A LEVEL. The single most dangerous mistake here
@@ -30,13 +30,11 @@
  *     consulted for a pending command in EITHER direction: mid-command is
  *     mid-command, and a pending ON is precisely the slow-restore case above.
  *
- * PROVENANCE-FREE CONSUMPTION. The eligibility gates read only producer-resolved
- * flat bits off `PlanInputDevice` (`controllable`, `commandableNow`, `currentOn`)
- * — never a raw plug-state string or an evidence source. `commandableNow` is what
- * makes the EV rule exact: it is true only for `plugged_in_paused` and
- * `plugged_in_charging`, so pairing it with `currentOn === false` isolates
- * "connected and explicitly paused" and excludes unplugged, discharging,
- * unknown-state, and unavailable devices in one read.
+ * PLAN-INDEPENDENT. A genuine outside OFF starts the hold regardless of whether
+ * the current plan says keep, shed, or inactive, and regardless of availability,
+ * control mode, or simulation. The only domain carve-out is an EV session
+ * becoming unplugged/discharging: that can fold the observed control to OFF but
+ * is not an explicit outside OFF action.
  *
  * RELEASE IS THE SAFE DIRECTION and is deliberately looser than detection: it
  * needs no transition, no opt-in, and no provenance. `releaseExternalOffHoldsForObservedOn`
@@ -44,11 +42,13 @@
  * observably running just because its ON arrived while the live feed was down.
  */
 
-import { isBinaryPlanDevice } from '../lib/plan/planBinaryDevice';
-import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
-import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
+import { resolveCommandableNow } from '../lib/device/deviceActionProjection';
+import type {
+  EvObservedProbe,
+  TargetDeviceSnapshot,
+} from '../packages/contracts/src/types';
 
 /**
  * `started` — a hold was created; the caller must suppress this reconcile (it
@@ -63,19 +63,55 @@ export type ExternalOffHoldSyncOutcome = 'started' | 'cleared' | 'none';
 /** One observed capability change, as carried on the reconcile event. */
 export type ObservedBinaryChange = {
   capabilityId?: string;
+  observedCapabilityId?: string;
   previousValue?: string;
   nextValue?: string;
 };
 
 /**
+ * Narrow observer projection consumed by hold detection. It deliberately stays
+ * outside `PlanInputDevice`: affirmative axis evidence and outside-action
+ * provenance are observation concerns, and detection must also cover devices
+ * filtered out of the current home's plan input.
+ */
+export type ExternalOffHoldObservedDevice = {
+  id: string;
+  controlCapabilityId?: string;
+  binaryAxisOn: boolean;
+  binaryAxisObservedAtMs?: number;
+  evSessionInactive: boolean;
+};
+
+export function toExternalOffHoldObservedDevice(
+  device: (TargetDeviceSnapshot & EvObservedProbe) | undefined,
+): ExternalOffHoldObservedDevice | undefined {
+  if (!device) return undefined;
+  return {
+    id: device.id,
+    controlCapabilityId: device.controlCapabilityId,
+    // EV's effective `binaryControl.on` is session-state-authoritative and may
+    // remain false after its raw `evcharger_charging` axis is explicitly turned
+    // on. Hold release follows that raw control axis; other binary devices have
+    // no separate fold.
+    binaryAxisOn: device.controlCapabilityId === 'evcharger_charging'
+      ? device.evCharging === true
+      : device.binaryControl?.on === true,
+    binaryAxisObservedAtMs: device.controlCapabilityId === 'evcharger_charging'
+      ? device.evChargingObservedAtMs
+      : device.binaryControlObservation?.observedAtMs,
+    evSessionInactive: resolveCommandableNow({ dev: device }).evSessionInactive,
+  };
+}
+
+/**
  * Per-home seams the reconcile wrapper binds for the device's OWNING home.
  * Both are wrong if taken from main for a sub-home device: its pending commands
- * live in its own engine, and its plan lives in its own service.
+ * live in its own engine, and its rebuild belongs to its own service.
  */
 export type ExternalOffHoldReconcileHooks = {
   hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
+  clearRecentBinaryOffCommand: (deviceId: string, capabilityId: string) => void;
   rebuild: (reason: string) => Promise<unknown>;
-  isDryRun: () => boolean;
 };
 
 export type ExternalOffHoldSyncDeps = {
@@ -86,38 +122,9 @@ export type ExternalOffHoldSyncDeps = {
    * "no pending command" for PELS's own write and fabricate a hold.
    */
   hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
-  /** Simulation mode never actuates, so devices legitimately sit off while the
-   *  plan says keep. Writing runtime state there would leave the user with
-   *  silently unmanaged devices once they switch simulation off. */
-  isDryRun: () => boolean;
-  nowMs: number;
+  clearRecentBinaryOffCommand: (deviceId: string, capabilityId: string) => void;
   debugStructured?: StructuredDebugEmitter;
 };
-
-/**
- * The plan expected this device to be running. `keep` is the only planned state
- * meaning "PELS wants this on"; `shed` and `inactive` mean PELS already put it
- * (or left it) off, which the spec excludes from starting a hold.
- *
- * A missing plan snapshot returns `false` on purpose: with no expectation there is
- * no contradiction to detect, and guessing from an ambiguous cold-start off state
- * is exactly what v1 must not do.
- */
-function planExpectedDeviceOn(plan: DevicePlan | null, deviceId: string): boolean {
-  if (!plan) return false;
-  const planned = plan.devices.find((device) => device.id === deviceId);
-  if (!planned) return false;
-  if (planned.plannedState === 'keep') return true;
-  // A plan still carrying THIS feature's own inactive posture is the plan from
-  // before the release, not a decision to leave the device off: releasing a hold
-  // schedules the rebuild asynchronously, so a user who turns the device off
-  // again during that window (or after a failed rebuild) would otherwise be read
-  // as "PELS already planned it off" — no new hold, and the rebuild that lands a
-  // moment later commands the explicitly-off device back on. The pre-hold
-  // expectation was ON, so it stays ON until a rebuild says otherwise.
-  return planned.plannedState === 'inactive'
-    && planned.reason?.code === PLAN_REASON_CODES.externalOffHold;
-}
 
 /**
  * The observation carried a genuine ON→OFF transition on the control capability.
@@ -137,6 +144,30 @@ function sawOnToOffTransition(
   ));
 }
 
+function sawRawControlOnToOffTransition(
+  changes: readonly ObservedBinaryChange[] | undefined,
+  capabilityId: string,
+): boolean {
+  return (changes ?? []).some((change) => (
+    change.capabilityId === capabilityId
+    && (change.observedCapabilityId ?? change.capabilityId) === capabilityId
+    && change.previousValue === 'on'
+    && change.nextValue === 'off'
+  ));
+}
+
+function sawRawControlOffToOnTransition(
+  changes: readonly ObservedBinaryChange[] | undefined,
+  capabilityId: string,
+): boolean {
+  return (changes ?? []).some((change) => (
+    change.capabilityId === capabilityId
+    && (change.observedCapabilityId ?? change.capabilityId) === capabilityId
+    && change.previousValue === 'off'
+    && change.nextValue === 'on'
+  ));
+}
+
 /**
  * Every precondition for CREATING a hold. Split out from the sync entry point so
  * the release path stays visibly unconditional above it — release must never
@@ -144,26 +175,25 @@ function sawOnToOffTransition(
  */
 function shouldStartHold(params: {
   deps: ExternalOffHoldSyncDeps;
-  device: PlanInputDevice & { currentOn: boolean };
+  device: ExternalOffHoldObservedDevice;
   deviceId: string;
   capabilityId: string;
-  latestPlanSnapshot: DevicePlan | null;
   changes: readonly ObservedBinaryChange[] | undefined;
 }): boolean {
   const {
-    deps, device, deviceId, capabilityId, latestPlanSnapshot, changes,
+    deps, device, deviceId, capabilityId, changes,
   } = params;
   if (!sawOnToOffTransition(changes, capabilityId)) return false;
   if (deps.policy?.isEnabledForDevice(deviceId) !== true) return false;
-  // Power-limit control off is the OTHER opt-out; PELS has no control authority
-  // there, so an off state is not an override of anything.
-  if (device.controllable !== true) return false;
-  // Producer-resolved: excludes unavailable devices, and for an EV excludes
-  // unplugged / discharging / not-resumable / unknown plug state.
-  if (device.commandableNow !== true) return false;
-  if (!planExpectedDeviceOn(latestPlanSnapshot, deviceId)) return false;
-  if (deps.hasPendingBinaryCommand(deviceId, capabilityId)) return false;
-  return !deps.isDryRun();
+  // A charger becoming unplugged or entering discharge also folds its binary
+  // control to OFF, but that is a session-state transition rather than an
+  // external request to leave the charger off after reconnect. All other device
+  // availability, planning, and control postures are deliberately irrelevant.
+  if (
+    device.evSessionInactive === true
+    && !sawRawControlOnToOffTransition(changes, capabilityId)
+  ) return false;
+  return !deps.hasPendingBinaryCommand(deviceId, capabilityId);
 }
 
 /**
@@ -177,27 +207,29 @@ function shouldStartHold(params: {
 export function syncExternalOffHoldForDevice(params: {
   deps: ExternalOffHoldSyncDeps;
   deviceId: string;
-  liveDevices: PlanInputDevice[];
-  latestPlanSnapshot: DevicePlan | null;
+  observedDevice: ExternalOffHoldObservedDevice | undefined;
   changes?: readonly ObservedBinaryChange[];
 }): ExternalOffHoldSyncOutcome {
   const {
-    deps, deviceId, liveDevices, latestPlanSnapshot, changes,
+    deps, deviceId, observedDevice: device, changes,
   } = params;
   const { policy } = deps;
   if (!policy) return 'none';
 
-  const device = liveDevices.find((entry) => entry.id === deviceId);
-  if (!device) return 'none';
-  // v1 is binary-capability only. A step-only stepped load resolves its on/off
-  // from the step axis, which is weaker evidence than a binary handle and would
-  // let a step change read as a deliberate off action. Narrowing here is also
-  // what makes `currentOn` readable — it lives on the binary cluster.
-  if (!isBinaryPlanDevice(device)) return 'none';
+  if (!device || device.id !== deviceId) return 'none';
+  // v1 is binary-capability only. A step-only stepped load has no affirmative
+  // binary-axis evidence, so a step change must not read as an outside OFF.
   const { controlCapabilityId: capabilityId } = device;
   if (capabilityId === undefined) return 'none';
 
-  if (device.currentOn) {
+  if (device.binaryAxisOn) {
+    // An affirmative outside ON ends both the hold and the older PELS-OFF
+    // attribution. The level alone may be the stale pre-OFF observation, so
+    // provenance clears only on an explicit raw-axis OFF→ON action; the pull
+    // sweep has its own timestamp comparison.
+    if (sawRawControlOffToOnTransition(changes, capabilityId)) {
+      deps.clearRecentBinaryOffCommand(deviceId, capabilityId);
+    }
     if (!policy.isHeld(deviceId)) return 'none';
     policy.clearHold(deviceId);
     deps.debugStructured?.({
@@ -215,7 +247,7 @@ export function syncExternalOffHoldForDevice(params: {
   // carries no ON→OFF transition, and `startHold` is itself idempotent, so an
   // already-recorded hold reports `none` and triggers no write and no rebuild.
   if (!shouldStartHold({
-    deps, device, deviceId, capabilityId, latestPlanSnapshot, changes,
+    deps, device, deviceId, capabilityId, changes,
   })) return 'none';
   if (!policy.startHold(deviceId)) return 'none';
 
@@ -245,8 +277,16 @@ export function syncExternalOffHoldForDevice(params: {
  * Starting a hold may lean on inference; ending one may not.
  */
 export const isAffirmativelyOn = (
-  device: { binaryControl?: { on?: boolean } } | undefined,
-): boolean => device?.binaryControl?.on === true;
+  device: {
+    controlCapabilityId?: string;
+    binaryControl?: { on?: boolean };
+    evCharging?: boolean;
+  } | undefined,
+): boolean => (
+  device?.controlCapabilityId === 'evcharger_charging'
+    ? device.evCharging === true
+    : device?.binaryControl?.on === true
+);
 
 export function releaseExternalOffHoldsForObservedOn(params: {
   policy: ExternalOffHoldPolicy | undefined;
@@ -261,13 +301,17 @@ export function releaseExternalOffHoldsForObservedOn(params: {
    */
   deviceIds: readonly string[];
   isObservedOn: (deviceId: string) => boolean;
+  onObservedOn?: (deviceId: string) => void;
   debugStructured?: StructuredDebugEmitter;
 }): string[] {
-  const { policy, deviceIds, isObservedOn, debugStructured } = params;
+  const {
+    policy, deviceIds, isObservedOn, onObservedOn, debugStructured,
+  } = params;
   if (!policy) return [];
-  const released = Array.from(new Set([...policy.heldDeviceIds(), ...deviceIds]))
-    .filter((deviceId) => isObservedOn(deviceId))
-    .filter((deviceId) => policy.clearHold(deviceId));
+  const observedOn = Array.from(new Set([...policy.heldDeviceIds(), ...deviceIds]))
+    .filter((deviceId) => isObservedOn(deviceId));
+  for (const deviceId of observedOn) onObservedOn?.(deviceId);
+  const released = observedOn.filter((deviceId) => policy.clearHold(deviceId));
   for (const deviceId of released) {
     debugStructured?.({ event: 'external_off_hold_cleared', deviceId, cause: 'observed_on_sweep' });
   }

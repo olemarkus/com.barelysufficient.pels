@@ -271,8 +271,9 @@ export type PlanInputDeviceBase = {
   surplusOnly?: true;
   /**
    * Producer-resolved "Leave off until turned on again" posture. `true` when the
-   * device is opted in, PELS observed it turn off outside PELS while the plan
-   * expected it to run, and it is STILL observed off. Resolved once at
+   * device is opted in, PELS observed an outside OFF action, and it is STILL
+   * observed off. The outside action is independent of the current plan.
+   * Resolved once at
    * `toPlanDevice` from the hold store + `currentOn`; the planner reads this
    * flat bit and never asks why the device is off (resolution-in-producer).
    *

@@ -34,6 +34,7 @@ import {
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { createFencedActuator } from './createPlanEngine';
+import { requirePlanEngine } from './contextGuards';
 import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
@@ -150,6 +151,48 @@ export const buildShedActuator = (ctx: AppContext): Actuator | null => {
 // observation) cannot keep the task enabled forever. ~5 min ≈ 10 ticks at the 30 s
 // lifecycle cadence — generous against slow snapshot refresh, bounded against drift.
 const TERMINAL_RELEASE_DISARM_GRACE_MS = 5 * 60 * 1000;
+
+type TerminalBinaryOffProvenance = {
+  settle: (requested: boolean) => void;
+  clear: () => void;
+};
+
+const beginTerminalBinaryOffProvenance = (
+  ctx: AppContext,
+  deviceId: string,
+  command: ShedActuationCommand,
+): TerminalBinaryOffProvenance | null => {
+  if (command.kind !== 'binary_off') return null;
+  const store = requirePlanEngine(ctx).pendingBinaryCommandStore;
+  const issuedAtMs = Date.now();
+  const pendingCommand = {
+    capabilityId: command.capabilityId,
+    desired: false,
+    startedMs: issuedAtMs,
+    logContext: 'capacity_control_off',
+    actuationMode: 'plan',
+    lifecycleRelease: true,
+  } as const;
+  store.record(deviceId, pendingCommand);
+  const clearIfCurrent = (): void => {
+    if (store.peek(deviceId) === pendingCommand) store.clear(deviceId);
+  };
+  return {
+    settle: (requested) => {
+      if (!requested) {
+        clearIfCurrent();
+        return;
+      }
+      store.recordSuccessfulBinaryCommand({
+        deviceId,
+        capabilityId: command.capabilityId,
+        desired: false,
+        issuedAtMs,
+      });
+    },
+    clear: clearIfCurrent,
+  };
+};
 
 // Binary on/off for the terminal release, read directly from the
 // producer-resolved `currentOn` bit for EVERY device kind, EV chargers included.
@@ -301,6 +344,7 @@ export const handleDeferredDeadlineReached = (
   const observed = readTerminalObserved(device);
   const { actuate, disarm: shouldDisarm } = planTerminalEnding(command, observed, graceElapsed);
   if (actuate) {
+    const binaryProvenance = beginTerminalBinaryOffProvenance(ctx, deviceId, command);
     // Issue the shed command (a no-op inside applyShedBehavior when there is no
     // trusted observation). Fire-and-forget: the tick is synchronous and must not
     // block on a transport write; a dropped write self-heals on the next tick
@@ -314,7 +358,9 @@ export const handleDeferredDeadlineReached = (
       markSteppedLoadDesiredStepIssued: (markParams) =>
         ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(markParams),
     })
+      .then((requested) => binaryProvenance?.settle(requested))
       .catch((error: unknown) => {
+        binaryProvenance?.clear();
         terminalReleaseLogger.warn({ event: 'terminal_release_failed', deviceId, error: String(error) });
       });
   }

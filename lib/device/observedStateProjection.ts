@@ -45,6 +45,9 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Observe
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
+    if (snapshot.evChargingObservedAtMs !== undefined) {
+        projected.evChargingObservedAtMs = snapshot.evChargingObservedAtMs;
+    }
     if (snapshot.evChargingState !== undefined) projected.evChargingState = snapshot.evChargingState;
     if (snapshot.stateOfCharge !== undefined) projected.stateOfCharge = { ...snapshot.stateOfCharge };
     if (snapshot.currentTemperature !== undefined) projected.currentTemperature = snapshot.currentTemperature;

@@ -12,7 +12,11 @@
 // routes pending-binary reads to its own engine).
 
 import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
-import { isAffirmativelyOn, releaseExternalOffHoldsForObservedOn } from '../externalOffHoldDetection';
+import {
+  isAffirmativelyOn,
+  releaseExternalOffHoldsForObservedOn,
+  toExternalOffHoldObservedDevice,
+} from '../externalOffHoldDetection';
 import { filterDevicesForHome } from '../homeMembership';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import type { AppContext } from '../../lib/app/appContext';
@@ -36,7 +40,10 @@ import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
  * from the main home's plan input, but it is still present on Homey, so its
  * cached per-device state must survive for the per-home bundles.
  */
-const runSnapshotPrePass = (ctx: AppContext): AppContext['latestTargetSnapshot'] => {
+const runSnapshotPrePass = (
+  ctx: AppContext,
+  options?: ToPlanDeviceOptions,
+): AppContext['latestTargetSnapshot'] => {
   ctx.seedObservedStateFromSnapshot();
   const snapshot = ctx.latestTargetSnapshot;
   releaseExternalOffHoldsForObservedOn({
@@ -45,6 +52,28 @@ const runSnapshotPrePass = (ctx: AppContext): AppContext['latestTargetSnapshot']
     // Affirmative evidence only — see `isAffirmativelyOn`. Release is the one
     // direction where silence must not count as consent.
     isObservedOn: (deviceId) => isAffirmativelyOn(ctx.deviceManager?.getSnapshotByDeviceId(deviceId)),
+    onObservedOn: (deviceId) => {
+      const device = snapshot.find((entry) => entry.id === deviceId);
+      const observation = toExternalOffHoldObservedDevice(device);
+      if (
+        !device?.controlCapabilityId
+        || observation?.binaryAxisOn !== true
+        || observation.binaryAxisObservedAtMs === undefined
+      ) return;
+      if (options?.clearRecentBinaryOffCommand) {
+        options.clearRecentBinaryOffCommand(
+          deviceId,
+          device.controlCapabilityId,
+          observation.binaryAxisObservedAtMs,
+        );
+        return;
+      }
+      ctx.planEngine?.clearRecentBinaryOffCommandForCapability(
+        deviceId,
+        device.controlCapabilityId,
+        observation.binaryAxisObservedAtMs,
+      );
+    },
     debugStructured: ctx.getStructuredDebugEmitter('reconcile', 'devices'),
   });
   evictMissingDeviceCacheEntries(ctx, snapshot);
@@ -70,7 +99,7 @@ export const buildHomePlanDevices = (
   homeId: HomeId,
   options?: ToPlanDeviceOptions,
 ): PlanInputDevice[] => (
-  filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx), homeId)
+  filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId)
     .map((device) => toPlanDevice(ctx, device, options))
     .filter(isRuntimePlannedDevice)
 );

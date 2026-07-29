@@ -26,9 +26,9 @@ export const PLAN_REASON_CODES = {
   // marks it eligible. Deliberately carries NO numbers/timestamps — the reason
   // must be byte-stable across plan cycles (rebuild-storm class, f1550cea).
   awaitingSolarSurplus: 'awaiting_solar_surplus',
-  // "Leave off until turned on again": the device was turned off outside PELS
-  // while the plan expected it to run, and the user opted this device in to
-  // having that win. PELS is NOT holding the device back — it is respecting an
+  // "Leave off until turned on again": an opted-in device was turned off outside
+  // PELS, independently of its current plan. PELS is NOT holding the device back
+  // — it is respecting an
   // explicit action — so this pairs with the `Idle` state word, never `Limited`.
   // Like `awaitingSolarSurplus`, it deliberately carries NO detail: the reason
   // must be byte-stable across plan cycles (rebuild-storm class, f1550cea).

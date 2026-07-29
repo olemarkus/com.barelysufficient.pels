@@ -48,6 +48,7 @@ function applyControlCapabilityObservation(
     const previousEvCharging = snapshot.evCharging;
     if (snapshot.controlCapabilityId === 'evcharger_charging') {
         snapshot.evCharging = observation.value;
+        snapshot.evChargingObservedAtMs = observation.observedAt;
         snapshot.binaryControl = {
             on: resolveEvCurrentOn({
                 evChargingState: snapshot.evChargingState,
@@ -89,6 +90,7 @@ function applyEvChargingStateObservation(
     // normalise it to `undefined` and apply it — never strand the stale (and
     // possibly commandable) prior state. A non-string value (above) is ignored.
     const normalized = isEvChargingState(observation.value) ? observation.value : undefined;
+    snapshot.evChargingStateObservedAtMs = observation.observedAt;
     if (snapshot.evChargingState === normalized) return false;
     snapshot.evChargingState = normalized;
     snapshot.binaryControl = {

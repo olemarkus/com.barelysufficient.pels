@@ -79,6 +79,7 @@ function applyEvChargingStateUpdate(
 ): FreshnessOnlyCapabilityUpdateResult {
   const mutableSnapshot = snapshot;
   const observedAtMs = Date.now();
+  mutableSnapshot.evChargingStateObservedAtMs = observedAtMs;
   const binaryControlObservation = buildEvChargingStateBinaryControlObservation(value, observedAtMs);
   if (binaryControlObservation) mutableSnapshot.binaryControlObservation = binaryControlObservation;
   else delete mutableSnapshot.binaryControlObservation;
@@ -117,6 +118,7 @@ function buildEvChargingStateReconcileChange(
   if (previousCurrentOn === nextCurrentOn) return undefined;
   return {
     capabilityId: 'evcharger_charging',
+    observedCapabilityId: 'evcharger_charging_state',
     previousValue: formatBinaryState(previousCurrentOn),
     nextValue: formatBinaryState(nextCurrentOn),
   };

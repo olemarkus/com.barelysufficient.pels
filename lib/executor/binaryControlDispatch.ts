@@ -149,6 +149,11 @@ export async function dispatchBinaryControlDecision(params: {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
+    transport.pendingBinaryCommandStore.recordSuccessfulBinaryCommand({
+      deviceId: decision.deviceId,
+      capabilityId: decision.capabilityId,
+      desired: decision.desired,
+    });
     emitBinaryCommandSuccess({
       decision,
     });

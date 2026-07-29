@@ -23,6 +23,26 @@ afterEach(() => {
   logCapture.restore();
 });
 
+describe('recent successful OFF provenance', () => {
+  it('does not let an older late success replace a newer issue timestamp', () => {
+    const store = createPendingBinaryCommandStore({});
+    store.recordSuccessfulBinaryCommand({
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: false,
+      issuedAtMs: 2_000,
+    });
+    store.recordSuccessfulBinaryCommand({
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: false,
+      issuedAtMs: 1_000,
+    });
+
+    expect(store.hasRecentSuccessfulOff('socket1', 'onoff', 301_999)).toBe(true);
+  });
+});
+
 const buildObservation = (snapshots: { id: string; currentOn?: boolean }[] = []) =>
   withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshots),
@@ -198,6 +218,8 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
 
   it('routes a flow-backed decision through the trigger and skips setCapability', async () => {
     const state = createPlanEngineState();
+    const issuedAtMs = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(issuedAtMs);
     const setCapability = vi.fn().mockResolvedValue(undefined);
     const triggerFlowBackedBinaryControl = vi.fn().mockResolvedValue(undefined);
     const transport = buildTransport(state, { setCapability, triggerFlowBackedBinaryControl });
@@ -239,6 +261,21 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
       desired: false,
       flowBackedControl: true,
     });
+    nowSpy.mockReturnValue(issuedAtMs + 80_000);
+    expect(transport.pendingBinaryCommandStore.get('socket1')).toBeUndefined();
+    expect(transport.pendingBinaryCommandStore.hasRecentSuccessfulOff('socket1', 'onoff')).toBe(true);
+    transport.pendingBinaryCommandStore.clearRecentSuccessfulOff(
+      'socket1',
+      'onoff',
+      issuedAtMs - 1,
+    );
+    expect(transport.pendingBinaryCommandStore.hasRecentSuccessfulOff('socket1', 'onoff')).toBe(true);
+    transport.pendingBinaryCommandStore.clearRecentSuccessfulOff(
+      'socket1',
+      'onoff',
+      issuedAtMs + 1,
+    );
+    expect(transport.pendingBinaryCommandStore.hasRecentSuccessfulOff('socket1', 'onoff')).toBe(false);
   });
 
   it('clears the recorded pending entry when dispatch fails', async () => {

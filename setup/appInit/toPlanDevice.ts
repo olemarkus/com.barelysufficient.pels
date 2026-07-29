@@ -48,6 +48,12 @@ export type ToPlanDeviceOptions = {
     deviceId: string,
     communicationModel?: 'local' | 'cloud',
   ) => { desired: boolean } | null;
+  /** Owning-home PELS-OFF provenance cleanup for pull-observed ON. */
+  clearRecentBinaryOffCommand?: (
+    deviceId: string,
+    capabilityId: string,
+    observedOnAtMs: number,
+  ) => void;
 };
 
 // Resolve the device's in-flight binary command. Default (no override) reads

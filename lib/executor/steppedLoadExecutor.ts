@@ -26,6 +26,7 @@ import {
   logSteppedLoadRestoreViolations,
   maybeSkipSteppedLoadRestoreBinary,
 } from './steppedLoadExecutorRestore';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
 export type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
@@ -61,6 +62,19 @@ export const applySteppedLoadCommand = async (
   snapshot?: ExecutorDeviceSnapshot,
   options: { recordPlanActuation?: boolean } = {},
 ): Promise<boolean> => {
+  // A plan built before an outside OFF can still carry a step-up command. Step
+  // commands are real actuation too: suppress every one while the durable hold
+  // is active, just as the binary restore funnels do.
+  if (ctx.state.isExternalOffHeld?.(action.id) === true) {
+    logger.debug({
+      event: 'stepped_load_command_skipped',
+      deviceId: action.id,
+      deviceName: action.name,
+      mode,
+      reasonCode: PLAN_REASON_CODES.externalOffHold,
+    });
+    return false;
+  }
   const commandStepId = action.desired.stepId;
   const currentOn = resolveCurrentOn(action, snapshot);
   const initializesUnknownStep = action.transition?.effectiveTransition === 'initialize_unknown_step_at_low';

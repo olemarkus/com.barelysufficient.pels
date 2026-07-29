@@ -230,6 +230,8 @@ export type ObservedDeviceState = {
     // true` ("may always draw, so stays sheddable").
     binaryControl?: { on: boolean };
     evCharging?: boolean;
+    /** Timestamp of the raw `evcharger_charging` boolean-axis observation. */
+    evChargingObservedAtMs?: number;
     // `evChargingState` is deliberately NOT here (EV-observed slice of the
     // discriminated-types refactor): it lives on `EvObservedFields`, regrouped onto
     // the snapshot by the `isEvObserved` guard
@@ -317,6 +319,8 @@ export type TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState;
  */
 export type EvObservedFields = {
     evChargingState: EvChargingState;
+    /** Timestamp of the `evcharger_charging_state` observation. */
+    evChargingStateObservedAtMs?: number;
 };
 
 /**
@@ -331,6 +335,7 @@ export type EvObservedFields = {
  */
 export type EvObservedProbe = {
     evChargingState?: EvChargingState;
+    evChargingStateObservedAtMs?: number;
 };
 
 /**

@@ -22,6 +22,7 @@ import {
   getEvCharging,
   getEvChargingState,
   resolveEvChargingStateBinaryEvidence,
+  toCapabilityTimestampMs,
   type DeviceCapabilityMap,
 } from '../managerControl';
 import {
@@ -232,7 +233,13 @@ export function assembleDeviceSnapshot(params: {
         powerCapable: control.powerCapable,
         binaryControl: control.binaryControl,
         evCharging: control.evCharging,
+        evChargingObservedAtMs: toCapabilityTimestampMs(
+            overlay.capabilityObj.evcharger_charging?.lastUpdated,
+        ),
         evChargingState: control.evChargingState,
+        evChargingStateObservedAtMs: toCapabilityTimestampMs(
+            overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
+        ),
         stateOfCharge: resolveParsedSoc(
             deviceClassKey, now, overlay.capabilityObj, overlay.reportedCapabilities,
             previousSnapshot?.stateOfCharge,
@@ -324,7 +331,9 @@ function buildParsedDeviceSnapshot(params: {
     powerCapable: boolean;
     binaryControl: TargetDeviceSnapshot['binaryControl'];
     evCharging: TargetDeviceSnapshot['evCharging'];
+    evChargingObservedAtMs?: number;
     evChargingState: EvChargingState | undefined;
+    evChargingStateObservedAtMs?: number;
     stateOfCharge: DeviceStateOfChargeSnapshot | undefined;
     currentTemperature: number | undefined;
     capabilities: string[];
@@ -357,7 +366,9 @@ function buildParsedDeviceSnapshot(params: {
         powerCapable,
         binaryControl,
         evCharging,
+        evChargingObservedAtMs,
         evChargingState,
+        evChargingStateObservedAtMs,
         stateOfCharge,
         currentTemperature,
         capabilities,
@@ -398,7 +409,9 @@ function buildParsedDeviceSnapshot(params: {
         powerCapable,
         binaryControl,
         evCharging,
+        evChargingObservedAtMs,
         evChargingState,
+        evChargingStateObservedAtMs,
         stateOfCharge,
         currentTemperature,
         measuredPowerKw: powerEstimate.measuredPowerKw,
