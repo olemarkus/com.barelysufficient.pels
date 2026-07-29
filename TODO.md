@@ -1079,18 +1079,6 @@ program) remain deferred.*
       lands mutates the stale in-memory snapshot and writes the cleared opt-ins back. Distinguish
       a resolved-absent setting from an unavailable read before applying the fallback snapshot.
 
-- [ ] **"Leave off until turned on again" can strand a DUAL-CONTROL device (binary + stepped).**
-      `resolveCurrentOn` folds both axes, so a device whose step axis sits at the off step reports
-      `currentOn: false` even after the user turns the binary capability ON. The release branch in
-      `syncExternalOffHoldForDevice` never fires, and the hold also suppresses drift, so in flow
-      mode with no later plan cycle the device can stay held indefinitely despite an explicit ON.
-      The pull sweep already uses affirmative binary evidence (`isAffirmativelyOn`); the push path
-      cannot, because `BinaryPlanInputKind` deliberately carries only the folded `currentOn` and
-      the raw `binaryControl` is transport/observer-internal by design. Fixing it therefore means
-      a DESIGN choice, not a patch: either the producer resolves a second flat bit (a per-axis
-      `binaryAxisOn`) onto the binary cluster, or detection stops consuming `PlanInputDevice` for
-      this question. Decide before implementing — do not read `binaryControl` from the plan device.
-
 - [ ] **"Leave off until turned on again": the smart-task warning goes stale.**
       `reloadObjectivesIfObjectiveKey` updates `state.deferredObjectiveSettings` but neither
       refreshes the open detail controls nor emits `devices-updated`, and the `plan-updated`
@@ -1131,14 +1119,8 @@ program) remain deferred.*
       `undefined` permanently. Failing closed on that would be a permanent block, which is strictly
       worse than the cooldown stamp. The real fix is a producer-resolved distinction
       (`resolved | unavailable`) at the capability read, per the resolution-in-producer rule, so the
-      consumer can fail open only for genuine absence. Second observable consequence, found while
-      rebasing #1901 onto the merged external-off hold: `setup/externalOffHoldDetection.ts` ~163
-      gates on `commandableNow`, so a charger in an unknown plug state that is switched off outside
-      PELS now STARTS a "leave off until turned on again" hold
-      (`externalOffHoldDetection.test.ts` records this). That is the correct reading of the
-      fail-open decision — such a charger really is commandable — but it means the unresolved-state
-      case now has behaviour attached to it in two places, so the producer-resolved fix should
-      revisit both. Third site, and the one that makes this structural rather than cosmetic:
+      consumer can fail open only for genuine absence. Second site, and the one that makes this
+      structural rather than cosmetic:
       `lib/executor/planExecutionDrift.ts` ~183 RE-DERIVES commandability with
       `resolveCommandableNow({ dev: observed.snapshot })`. Its comment claims a raw snapshot, but
       `ExecutableObservedDeviceState` documents (`executablePlan.ts` ~56) that the drift/reconcile

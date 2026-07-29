@@ -404,11 +404,9 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       hasPendingBinaryCommand: (deviceId, capabilityId) => (
         planEngine.hasPendingBinaryCommandForCapability(deviceId, capabilityId)
       ),
+      clearRecentBinaryOffCommand: (deviceId, capabilityId) => (
+        planEngine.clearRecentBinaryOffCommandForCapability(deviceId, capabilityId)),
       rebuild: (reason) => planService.rebuildPlanFromCache(reason),
-      // The scope's EFFECTIVE posture, which also covers not-membership-ready
-      // and not-source-authorized — both states where this home is observing
-      // without controlling, so an off device is not evidence of a user action.
-      isDryRun: () => scope.getCapacityDryRun(),
     }),
     updateHomeConfig: (next) => {
       setHome(next);

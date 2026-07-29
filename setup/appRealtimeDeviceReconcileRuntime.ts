@@ -6,7 +6,10 @@ import {
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
 import { evictMissingDeviceCacheEntries, toPlanDevice } from './appInit/toPlanDevice';
-import { syncExternalOffHoldForDevice } from './externalOffHoldDetection';
+import {
+  syncExternalOffHoldForDevice,
+  toExternalOffHoldObservedDevice,
+} from './externalOffHoldDetection';
 import type { ExternalOffHoldReconcileHooks } from './externalOffHoldDetection';
 import { hasPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
@@ -67,10 +70,11 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   const timerKey = subHomeRoute === undefined
     ? 'realtimeDeviceReconcile'
     : `realtimeDeviceReconcile:${subHomeRoute.homeId}`;
+  const targetSnapshotForEvent = perEventCache(() => ctx.latestTargetSnapshot);
   const getLatestPlanSnapshot = subHomeHooks?.getLatestPlanSnapshot
     ?? ((): DevicePlan | null => ctx.planService?.getLatestReconcilePlanSnapshot() ?? null);
   const getLiveDevices = subHomeHooks?.getLiveDevices ?? ((): PlanInputDevice[] => {
-    const snapshot = ctx.latestTargetSnapshot;
+    const snapshot = targetSnapshotForEvent.read();
     evictMissingDeviceCacheEntries(ctx, snapshot);
     return snapshot.map((device) => toPlanDevice(ctx, device));
   });
@@ -85,12 +89,16 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   if (applyExternalOffHoldToReconcile({
     ctx,
     event,
-    latestPlanSnapshot: planSnapshotForEvent.read(),
-    liveDevices: liveDevicesForEvent.read(),
+    observedDevice: toExternalOffHoldObservedDevice(
+      targetSnapshotForEvent.read().find((device) => device.id === event.deviceId),
+    ),
     hooks: buildExternalOffHoldHooks(ctx, subHomeHooks),
     structuredLog,
     debugStructured,
-  })) return;
+  })) {
+    targetSnapshotForEvent.release();
+    return;
+  }
   const timer = scheduleAppRealtimeDeviceReconcile({
     event,
     state,
@@ -117,6 +125,7 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   // circuit breaker and suppress genuine drift on the device for 60 s.
   planSnapshotForEvent.release();
   liveDevicesForEvent.release();
+  targetSnapshotForEvent.release();
   if (timer) {
     timers.registerTimeout(timerKey, timer);
   }
@@ -147,9 +156,12 @@ function buildExternalOffHoldHooks(
       ?? ((deviceId, capabilityId) => (
         ctx.planEngine?.hasPendingBinaryCommandForCapability(deviceId, capabilityId) === true
       )),
+    clearRecentBinaryOffCommand: subHomeHooks?.clearRecentBinaryOffCommand
+      ?? ((deviceId, capabilityId) => {
+        ctx.planEngine?.clearRecentBinaryOffCommandForCapability(deviceId, capabilityId);
+      }),
     rebuild: subHomeHooks?.rebuild
       ?? ((reason: string) => ctx.planService?.rebuildPlanFromCache(reason) ?? Promise.resolve()),
-    isDryRun: subHomeHooks?.isDryRun ?? (() => ctx.capacityDryRun === true),
   };
 }
 
@@ -164,8 +176,8 @@ function buildExternalOffHoldHooks(
  * off, moments after the user turned it on. The rebuild re-plans it under
  * current conditions, which may legitimately limit it again.
  *
- * Every seam is routed to the device's OWNING home: pending commands, the plan
- * snapshot, the live devices, and the rebuild. Main and each sub-home keep their
+ * Every seam is routed to the device's OWNING home: pending commands, live
+ * devices, and the rebuild. Main and each sub-home keep their
  * own plan engine and service, so asking main's about a sub-home device reports
  * "no pending command" for PELS's own write (fabricating a hold) and rebuilds a
  * plan that does not contain the device.
@@ -173,27 +185,24 @@ function buildExternalOffHoldHooks(
 function applyExternalOffHoldToReconcile(params: {
   ctx: AppContext;
   event: RealtimeDeviceReconcileEvent;
-  latestPlanSnapshot: DevicePlan | null;
-  liveDevices: PlanInputDevice[];
+  observedDevice: ReturnType<typeof toExternalOffHoldObservedDevice>;
   hooks: ExternalOffHoldReconcileHooks;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
-    ctx, event, latestPlanSnapshot, liveDevices, hooks, structuredLog, debugStructured,
+    ctx, event, observedDevice, hooks, structuredLog, debugStructured,
   } = params;
   if (!ctx.externalOffHold) return false;
   const outcome = syncExternalOffHoldForDevice({
     deps: {
       policy: ctx.externalOffHold,
       hasPendingBinaryCommand: hooks.hasPendingBinaryCommand,
-      isDryRun: hooks.isDryRun,
-      nowMs: Date.now(),
+      clearRecentBinaryOffCommand: hooks.clearRecentBinaryOffCommand,
       debugStructured,
     },
     deviceId: event.deviceId,
-    liveDevices,
-    latestPlanSnapshot,
+    observedDevice,
     changes: event.changes,
   });
   if (outcome === 'none') return false;

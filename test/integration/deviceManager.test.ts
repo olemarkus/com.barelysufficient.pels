@@ -2300,6 +2300,361 @@ describe('DeviceTransport', () => {
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
         });
 
+        it('does not refresh unchanged ON evidence from device.update receipt time', () => {
+            vi.useFakeTimers();
+            try {
+                const originalObservedAtMs = new Date('2026-06-03T06:00:00.000Z').getTime();
+                deviceManager.setSnapshotForTests([{
+                    id: 'dev1',
+                    name: 'Heater',
+                    targets: [],
+                    deviceClass: 'heater',
+                    deviceType: 'onoff',
+                    controlCapabilityId: 'onoff',
+                    binaryControl: { on: true },
+                    binaryControlObservation: {
+                        valid: true,
+                        capabilityId: 'onoff',
+                        observedValue: true,
+                        observedCapabilityIds: ['onoff'],
+                        observedAtMs: originalObservedAtMs,
+                        source: 'snapshot_refresh',
+                    },
+                }]);
+                vi.setSystemTime(new Date('2026-06-03T06:05:00.000Z'));
+
+                deviceManager.injectDeviceUpdateForTest({
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 750, id: 'measure_power' },
+                    },
+                });
+
+                expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
+                    .toEqual(expect.objectContaining({
+                        observedValue: true,
+                        observedAtMs: originalObservedAtMs,
+                    }));
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('rejects an older raw EV OFF from a delayed device.update', () => {
+            const newerRawObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            deviceManager.setSnapshotForTests([{
+                id: 'ev1',
+                name: 'Charger',
+                targets: [],
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                binaryControl: { on: false },
+                evCharging: true,
+                evChargingObservedAtMs: newerRawObservedAtMs,
+                evChargingState: 'plugged_in_paused',
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+            const reconcileListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false,
+                        id: 'evcharger_charging',
+                        setable: true,
+                        lastUpdated: '2026-06-03T06:04:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused',
+                        id: 'evcharger_charging_state',
+                        lastUpdated: '2026-06-03T06:05:00.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
+                evCharging: true,
+                evChargingObservedAtMs: newerRawObservedAtMs,
+            }));
+            expect(reconcileListener).not.toHaveBeenCalled();
+        });
+
+        it('rejects stale raw EV OFF and stale paused state from one delayed update', () => {
+            const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            deviceManager.setSnapshotForTests([{
+                id: 'ev1',
+                name: 'Charger',
+                targets: [],
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingObservedAtMs: newerObservedAtMs,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: newerObservedAtMs,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'evcharger_charging',
+                    observedValue: true,
+                    observedCapabilityIds: ['evcharger_charging_state'],
+                    observedAtMs: newerObservedAtMs,
+                    source: 'snapshot_refresh',
+                },
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+            const reconcileListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false,
+                        id: 'evcharger_charging',
+                        setable: true,
+                        lastUpdated: '2026-06-03T06:04:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused',
+                        id: 'evcharger_charging_state',
+                        lastUpdated: '2026-06-03T06:04:00.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingObservedAtMs: newerObservedAtMs,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: newerObservedAtMs,
+            }));
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')?.binaryControlObservation)
+                .toEqual(expect.objectContaining({
+                    observedValue: true,
+                    observedAtMs: newerObservedAtMs,
+                    observedCapabilityIds: ['evcharger_charging_state'],
+                }));
+            expect(reconcileListener).not.toHaveBeenCalled();
+        });
+
+        it('keeps the state clock after a raw EV event and rejects a later stale state', () => {
+            const stateObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            deviceManager.setSnapshotForTests([{
+                id: 'ev1',
+                name: 'Charger',
+                targets: [],
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingObservedAtMs: stateObservedAtMs,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: stateObservedAtMs,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'evcharger_charging',
+                    observedValue: true,
+                    observedCapabilityIds: ['evcharger_charging_state'],
+                    observedAtMs: stateObservedAtMs,
+                    source: 'snapshot_refresh',
+                },
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false,
+                        id: 'evcharger_charging',
+                        setable: true,
+                        lastUpdated: '2026-06-03T06:06:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_charging',
+                        id: 'evcharger_charging_state',
+                        lastUpdated: '2026-06-03T06:05:00.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
+                evCharging: false,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: stateObservedAtMs,
+            }));
+
+            const reconcileListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false,
+                        id: 'evcharger_charging',
+                        setable: true,
+                        lastUpdated: '2026-06-03T06:06:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused',
+                        id: 'evcharger_charging_state',
+                        lastUpdated: '2026-06-03T06:04:30.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
+                binaryControl: { on: true },
+                evCharging: false,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: stateObservedAtMs,
+            }));
+            expect(reconcileListener).not.toHaveBeenCalled();
+        });
+
+        it('preserves EV state when stale raw OFF is bundled with timestamp-less paused state', () => {
+            const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            deviceManager.setSnapshotForTests([{
+                id: 'ev1',
+                name: 'Charger',
+                targets: [],
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingObservedAtMs: newerObservedAtMs,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: newerObservedAtMs,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'evcharger_charging',
+                    observedValue: true,
+                    observedCapabilityIds: ['evcharger_charging_state'],
+                    observedAtMs: newerObservedAtMs,
+                    source: 'snapshot_refresh',
+                },
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+            const reconcileListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false,
+                        id: 'evcharger_charging',
+                        setable: true,
+                        lastUpdated: '2026-06-03T06:04:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused',
+                        id: 'evcharger_charging_state',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: newerObservedAtMs,
+            }));
+            expect(reconcileListener).not.toHaveBeenCalled();
+        });
+
+        it('preserves the EV state clock after stale raw evidence bundles unchanged timestamp-less state', () => {
+            const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            deviceManager.setSnapshotForTests([{
+                id: 'ev1',
+                name: 'Charger',
+                targets: [],
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingObservedAtMs: newerObservedAtMs,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: newerObservedAtMs,
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+            const reconcileListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false,
+                        id: 'evcharger_charging',
+                        setable: true,
+                        lastUpdated: '2026-06-03T06:04:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_charging',
+                        id: 'evcharger_charging_state',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'ev1',
+                name: 'Charger',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: true,
+                        id: 'evcharger_charging',
+                        setable: true,
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused',
+                        id: 'evcharger_charging_state',
+                        lastUpdated: '2026-06-03T06:04:30.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
+                binaryControl: { on: true },
+                evCharging: true,
+                evChargingState: 'plugged_in_charging',
+                evChargingStateObservedAtMs: newerObservedAtMs,
+            }));
+            expect(reconcileListener).not.toHaveBeenCalled();
+        });
+
         it("clears binary evidence and logs when device.update carries invalid direct onoff='unknown'", async () => {
             const previousEvidence = {
                 valid: true as const,
@@ -3691,6 +4046,112 @@ describe('DeviceTransport', () => {
                 } finally {
                     vi.useRealTimers();
                 }
+            });
+
+            it('emits a raw EV control-axis ON transition while session state remains paused', async () => {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {});
+                await evDeviceManager.init();
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                        capabilitiesObj: {
+                            evcharger_charging: {
+                                value: false,
+                                id: 'evcharger_charging',
+                                setable: true,
+                            },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_paused',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-04-01T12:00:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging', true);
+
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'ev1',
+                    changes: [{
+                        capabilityId: 'evcharger_charging',
+                        observedCapabilityId: 'evcharger_charging',
+                        previousValue: 'off',
+                        nextValue: 'on',
+                    }],
+                }));
+                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    binaryControl: { on: false },
+                    evCharging: true,
+                    evChargingState: 'plugged_in_paused',
+                }));
+                evDeviceManager.destroy();
+            });
+
+            it('prefers bundled raw EV axis changes over simultaneous non-charging state changes', async () => {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {});
+                await evDeviceManager.init();
+                const evDevice = (charging: boolean, state: string) => ({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: {
+                            value: charging,
+                            id: 'evcharger_charging',
+                            setable: true,
+                        },
+                        evcharger_charging_state: {
+                            value: state,
+                            id: 'evcharger_charging_state',
+                            lastUpdated: '2026-04-01T12:00:00.000Z',
+                        },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+                mockApiGet.mockResolvedValue({ ev1: evDevice(true, 'plugged_in') });
+                await evDeviceManager.refreshSnapshot();
+                // Full refresh treats session state as effective binary evidence;
+                // seed the distinct raw control axis before exercising a bundled
+                // update where both raw and state fields change.
+                evDeviceManager.injectCapabilityUpdateForTest(
+                    'ev1',
+                    'evcharger_charging',
+                    true,
+                );
+                const realtimeListener = vi.fn();
+                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                evDeviceManager.injectDeviceUpdateForTest(evDevice(false, 'plugged_in_paused'));
+                evDeviceManager.injectDeviceUpdateForTest(evDevice(true, 'plugged_in'));
+
+                expect(realtimeListener).toHaveBeenNthCalledWith(1, expect.objectContaining({
+                    deviceId: 'ev1',
+                    changes: [expect.objectContaining({
+                        capabilityId: 'evcharger_charging',
+                        observedCapabilityId: 'evcharger_charging',
+                        previousValue: 'on',
+                        nextValue: 'off',
+                    })],
+                }));
+                expect(realtimeListener).toHaveBeenNthCalledWith(2, expect.objectContaining({
+                    deviceId: 'ev1',
+                    changes: [expect.objectContaining({
+                        capabilityId: 'evcharger_charging',
+                        observedCapabilityId: 'evcharger_charging',
+                        previousValue: 'off',
+                        nextValue: 'on',
+                    })],
+                }));
+                evDeviceManager.destroy();
             });
 
             it('shares cursor for EV charging-state drift during binary settle', async () => {

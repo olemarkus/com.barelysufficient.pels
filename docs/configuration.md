@@ -127,11 +127,11 @@ Notes:
 
 Off by default, and available for devices PELS can switch on and off.
 
-When it is on and you turn the device off — in Homey, on the device itself, or
-from another Flow — while PELS expects it to be running, PELS leaves it off and
-uses the freed power elsewhere. Turning the device on again hands it straight
-back to normal PELS control. Devices PELS turned off itself still resume on
-their own; this only applies to an off action that did not come from PELS.
+When it is on and the device is turned off — in Homey, on the device itself, or
+from another Flow — PELS leaves it off until it is turned on again. Turning the
+device on again hands it straight back to normal PELS control. Devices PELS
+turned off itself still resume on their own; this only applies to an off action
+that did not come from PELS.
 
 On the Overview the device reads **Idle** with *Staying off until turned on
 again*.

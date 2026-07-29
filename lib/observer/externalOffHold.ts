@@ -1,6 +1,6 @@
 /**
- * Owns the **external-off hold**: the per-device state recording that a managed
- * device was turned off outside PELS while the plan expected it to run, and that
+ * Owns the **external-off hold**: the per-device state recording that an opted-in
+ * device was turned off outside PELS, independent of the current plan, and that
  * PELS must therefore leave it off until it is turned on again.
  *
  * Ownership split:

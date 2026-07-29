@@ -52,6 +52,7 @@ import {
   withTemperatureDiscriminant,
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -484,6 +485,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     const forgetDevice = vi.fn();
     const setCapability = vi.fn().mockResolvedValue(undefined);
     const applyDeviceTargets = vi.fn().mockResolvedValue(undefined);
+    const pendingBinaryCommandStore = createPendingBinaryCommandStore({});
     let fenced = initiallyFenced;
     let deviceOn = true;
     const homey = {
@@ -510,6 +512,9 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         }),
       } as unknown as AppContext['homeMembership'],
       deviceManager: { setCapability, applyDeviceTargets } as unknown as AppContext['deviceManager'],
+      planEngine: {
+        pendingBinaryCommandStore,
+      } as unknown as AppContext['planEngine'],
       // Present, available, ON binary device — the exact fixture that WOULD
       // actuate a binary-off terminal release without the sub-home gate (the
       // control test below proves it).
@@ -537,6 +542,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       forgetDevice,
       setCapability,
       applyDeviceTargets,
+      pendingBinaryCommandStore,
       setFenced: (next: boolean) => { fenced = next; },
       setDeviceOn: (next: boolean) => { deviceOn = next; },
     };
@@ -547,14 +553,66 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
   const settleActuation = async (): Promise<void> => {
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
   };
 
   it('control: a main-home device DOES receive the terminal release command', async () => {
     const h = buildLifecycleCtx('main');
     handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    expect(h.pendingBinaryCommandStore.peek('d1')).toEqual(expect.objectContaining({
+      capabilityId: 'onoff',
+      desired: false,
+      lifecycleRelease: true,
+    }));
     await settleActuation();
     expect(h.setCapability).toHaveBeenCalled();
     expect(h.setCapability.mock.calls[0].slice(0, 3)).toEqual(['d1', 'onoff', false]);
+    expect(h.pendingBinaryCommandStore.hasRecentSuccessfulOff('d1', 'onoff')).toBe(true);
+  });
+
+  it('attributes terminal OFF before the actuator promise resolves', async () => {
+    const h = buildLifecycleCtx('main');
+    let resolveWrite!: () => void;
+    h.setCapability.mockImplementation(() => new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    }));
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+
+    expect(h.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('d1', 'onoff')).toBe(true);
+    expect(h.pendingBinaryCommandStore.hasRecentSuccessfulOff('d1', 'onoff')).toBe(false);
+
+    resolveWrite();
+    await settleActuation();
+
+    expect(h.pendingBinaryCommandStore.hasRecentSuccessfulOff('d1', 'onoff')).toBe(true);
+  });
+
+  it('does not let an older failed attempt clear newer terminal OFF attribution', async () => {
+    const h = buildLifecycleCtx('main');
+    const attempts: {
+      resolve: () => void;
+      reject: (error: Error) => void;
+    }[] = [];
+    h.setCapability.mockImplementation(() => new Promise<void>((resolve, reject) => {
+      attempts.push({ resolve, reject });
+    }));
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    const firstPending = h.pendingBinaryCommandStore.peek('d1');
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 90_000);
+    const secondPending = h.pendingBinaryCommandStore.peek('d1');
+    expect(secondPending).not.toBe(firstPending);
+
+    attempts[0].reject(new Error('first attempt failed late'));
+    await settleActuation();
+
+    expect(h.pendingBinaryCommandStore.peek('d1')).toBe(secondPending);
+    expect(h.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('d1', 'onoff')).toBe(true);
+
+    attempts[1].resolve();
+    await settleActuation();
   });
 
   it('a sub-home device gets NO device command and the task ends via the immediate disarm', async () => {

@@ -155,15 +155,8 @@ export type RealtimeReconcileHooks = {
    * external) and rebuild a plan that does not contain the device.
    */
   hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
+  clearRecentBinaryOffCommand: (deviceId: string, capabilityId: string) => void;
   rebuild: (reason: string) => Promise<unknown>;
-  /**
-   * THIS home's effective dry-run posture — which is not main's. A sub-home in
-   * simulation, not membership-ready, or not source-authorized has no actuation
-   * authority, so its devices sit off for reasons that are not user actions and
-   * must never create a hold; conversely main being in simulation must not
-   * suppress holds for a sub-home that is actively controlling.
-   */
-  isDryRun: () => boolean;
 };
 
 export type HomeCapacityBundle = {
@@ -333,9 +326,10 @@ function buildSubHomeScope(params: {
       // (not MAIN's via `ctx.planEngine`).
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: false,
-        getPendingBinaryCommand: (id, model) => (
-          getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
-        ),
+        getPendingBinaryCommand: (id, model) => getPlanEngineForPending()
+          ?.getPendingBinaryCommandForDevice(id, model) ?? null,
+        clearRecentBinaryOffCommand: (id, capabilityId, observedOnAtMs) => getPlanEngineForPending()
+          ?.clearRecentBinaryOffCommandForCapability(id, capabilityId, observedOnAtMs),
       });
     },
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),

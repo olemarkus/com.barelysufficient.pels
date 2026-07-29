@@ -17,6 +17,12 @@ import type { RealtimeReconcileHooks } from '../../setup/homeRuntime/createHomeC
 import type { AppContext } from '../../lib/app/appContext';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { drainPending } from '../utils/asyncDrain';
+import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import {
+  RESPECT_EXTERNAL_OFF_DEVICES,
+} from '../../lib/utils/settingsKeys';
+import type { DevicePlan } from '../../lib/plan/planTypes';
+import { buildPlanDevice } from '../utils/planTestUtils';
 
 // The reconcile debounce is 250 ms; advance past it to fire the flush.
 const RECONCILE_ADVANCE_MS = 300;
@@ -40,8 +46,8 @@ const subHooks = (reconcile: ReconcileMock): RealtimeReconcileHooks => ({
   getLiveDevices: () => [],
   reconcile,
   hasPendingBinaryCommand: () => false,
+  clearRecentBinaryOffCommand: () => undefined,
   rebuild: () => Promise.resolve(),
-  isDryRun: () => false,
 });
 
 const routerFor = (
@@ -114,6 +120,56 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
     expect(subReconcile).not.toHaveBeenCalled();
   });
 
+  it('detects a sub-home outside OFF even when that device is filtered out of plan input', () => {
+    const settings = new Map<string, unknown>([
+      [RESPECT_EXTERNAL_OFF_DEVICES, { 'sub-dev': true }],
+    ]);
+    const subRebuild = vi.fn(async () => undefined);
+    const subReconcile = makeReconcile();
+    const mainReconcile = makeReconcile();
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: [{
+        id: 'sub-dev',
+        name: 'Annex heater',
+        targets: [],
+        controlCapabilityId: 'onoff',
+        binaryControl: { on: false },
+      }],
+      planService: {
+        getLatestReconcilePlanSnapshot: () => null,
+        reconcileLatestPlanState: mainReconcile,
+      } as unknown as AppContext['planService'],
+    });
+    ctx.externalOffHold = createExternalOffHoldPolicy({
+      get: (key) => settings.get(key),
+      set: (key, value) => { settings.set(key, value); },
+    });
+    const hooks: RealtimeReconcileHooks = {
+      ...subHooks(subReconcile),
+      // Mirrors the planned-set filter: the observation must not disappear just
+      // because this device is absent from this cycle's plan input.
+      getLiveDevices: () => [],
+      rebuild: subRebuild,
+    };
+
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx,
+      event: {
+        deviceId: 'sub-dev',
+        capabilityId: 'onoff',
+        changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
+      },
+      state: createRealtimeDeviceReconcileState(),
+      timers: ctx.timers,
+      getHomeRuntimeRegistry: () => routerFor({ 'sub-dev': { homeId: 'h_sub', hooks } }),
+    });
+
+    expect(ctx.externalOffHold.isHeld('sub-dev')).toBe(true);
+    expect(subRebuild).toHaveBeenCalledWith('external_off_hold_started');
+    expect(mainReconcile).not.toHaveBeenCalled();
+    expect(subReconcile).not.toHaveBeenCalled();
+  });
+
   it('reconciles MAIN and sub-home drift independently inside one debounce window', async () => {
     const subReconcile = makeReconcile();
     const mainReconcile = makeReconcile();
@@ -174,4 +230,53 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
     expect(secondSubReconcile).toHaveBeenCalledTimes(1);
     expect(mainReconcile).not.toHaveBeenCalled();
   });
+
+  it.each(['keep', 'shed', 'inactive'] as const)(
+    'starts an outside-off hold regardless of the current %s plan state',
+    (plannedState) => {
+      const settings = new Map<string, unknown>([
+        [RESPECT_EXTERNAL_OFF_DEVICES, { 'heater-1': true }],
+      ]);
+      const rebuild = vi.fn(async () => undefined);
+      const plan: DevicePlan = {
+        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        devices: [buildPlanDevice({
+          id: 'heater-1',
+          name: 'Water heater',
+          plannedState,
+        })],
+      };
+      const ctx = createAppContextMock({
+        latestTargetSnapshot: [{
+          id: 'heater-1',
+          name: 'Water heater',
+          targets: [],
+          controlCapabilityId: 'onoff',
+          binaryControl: { on: false },
+        }],
+        planService: {
+          getLatestReconcilePlanSnapshot: () => plan,
+          rebuildPlanFromCache: rebuild,
+        } as unknown as AppContext['planService'],
+      });
+      ctx.externalOffHold = createExternalOffHoldPolicy({
+        get: (key) => settings.get(key),
+        set: (key, value) => { settings.set(key, value); },
+      });
+
+      scheduleAppRealtimeDeviceReconcileForApp({
+        ctx,
+        event: {
+          deviceId: 'heater-1',
+          capabilityId: 'onoff',
+          changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
+        },
+        state: createRealtimeDeviceReconcileState(),
+        timers: ctx.timers,
+      });
+
+      expect(ctx.externalOffHold.isHeld('heater-1')).toBe(true);
+      expect(rebuild).toHaveBeenCalledWith('external_off_hold_started');
+    },
+  );
 });

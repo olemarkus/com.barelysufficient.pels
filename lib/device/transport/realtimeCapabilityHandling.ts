@@ -45,6 +45,16 @@ const moduleLogger = getLogger('device/transport');
 
 type ObservedCursorFields = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
 
+const resolveBinaryAxisOn = (
+    snapshot: TargetDeviceSnapshot,
+    capabilityId: string,
+    fallback: boolean,
+): boolean => (
+    capabilityId === 'evcharger_charging'
+        ? (snapshot.evCharging ?? fallback)
+        : (snapshot.binaryControl?.on ?? fallback)
+);
+
 /** Returns true if the change was handled by the binary settle window. */
 function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
@@ -62,6 +72,11 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     } = params;
     const snapshot = ctx.latestSnapshot[snapshotIndex];
     const previousCurrentOn = snapshot.binaryControl?.on;
+    const previousBinaryAxisOn = resolveBinaryAxisOn(
+        snapshot,
+        capabilityId,
+        previousCurrentOn ?? true,
+    );
     // Check the settle window before the equality check so a confirmation
     // observation (value === currentOn) can still settle it.
     const hasSettleWindow = ctx.binarySettleOps.hasWindow(ctx.binarySettleState, deviceId, capabilityId);
@@ -116,11 +131,12 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     }
     // Resolve both sides through the may-draw default before comparing so an
     // absent (non-binary) previous state can't read as a spurious on<->on change.
-    const previousOn = previousCurrentOn ?? true;
-    const nextOn = snapshot.binaryControl?.on ?? true;
+    const previousOn = previousBinaryAxisOn;
+    const nextOn = resolveBinaryAxisOn(snapshot, capabilityId, true);
     if (nextOn === previousOn) return false;
     changes.push({
         capabilityId,
+        ...(capabilityId === 'evcharger_charging' ? { observedCapabilityId: capabilityId } : {}),
         previousValue: formatBinaryState(previousOn),
         nextValue: formatBinaryState(nextOn),
     });

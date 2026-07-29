@@ -455,6 +455,7 @@ export function applyBinaryObservationToSnapshot(
     const observedAtMs = Date.now();
     if (capabilityId === 'evcharger_charging') {
         mutableSnapshot.evCharging = value;
+        mutableSnapshot.evChargingObservedAtMs = observedAtMs;
         mutableSnapshot.binaryControl = {
             on: resolveEvCurrentOn({
                 evChargingState: mutableSnapshot.evChargingState,

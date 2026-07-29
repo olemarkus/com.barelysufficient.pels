@@ -37,6 +37,7 @@ export type {
 } from './pendingBinaryCommandTypes';
 
 const logger = getLogger('observer/pending-binary-commands');
+export const RECENT_BINARY_OFF_PROVENANCE_MS = 5 * 60 * 1000;
 
 /**
  * Observer-owned facade over the pending-binary-command map. The backing
@@ -46,11 +47,76 @@ const logger = getLogger('observer/pending-binary-commands');
  * store is the single source of truth in both directions.
  */
 export class PendingBinaryCommandStore {
+  private readonly recentSuccessfulOffByDevice = new Map<string, {
+    capabilityId: BinaryControlCapabilityId;
+    issuedAtMs: number;
+  }>();
+
   constructor(private readonly backing: Record<string, PendingBinaryCommand>) {}
 
   /** Record a freshly issued command keyed by `deviceId`; replaces any prior entry. */
   record(deviceId: string, command: PendingBinaryCommand): void {
     this.backing[deviceId] = command;
+  }
+
+  /**
+   * Preserve successful PELS actuation provenance beyond the convergence
+   * window. Cloud/Flow confirmations can arrive after pending expires; without
+   * this separate breadcrumb that late OFF is indistinguishable from an
+   * outside action and can fabricate an external-off hold.
+   */
+  recordSuccessfulBinaryCommand(params: {
+    deviceId: string;
+    capabilityId: BinaryControlCapabilityId;
+    desired: boolean;
+    issuedAtMs?: number;
+  }): void {
+    const {
+      deviceId, capabilityId, desired, issuedAtMs = Date.now(),
+    } = params;
+    if (desired) {
+      this.recentSuccessfulOffByDevice.delete(deviceId);
+      return;
+    }
+    const current = this.recentSuccessfulOffByDevice.get(deviceId);
+    if (current && current.issuedAtMs > issuedAtMs) return;
+    this.recentSuccessfulOffByDevice.set(deviceId, { capabilityId, issuedAtMs });
+  }
+
+  hasRecentSuccessfulOff(
+    deviceId: string,
+    capabilityId: BinaryControlCapabilityId,
+    nowMs = Date.now(),
+  ): boolean {
+    const recent = this.recentSuccessfulOffByDevice.get(deviceId);
+    if (!recent) return false;
+    if ((nowMs - recent.issuedAtMs) >= RECENT_BINARY_OFF_PROVENANCE_MS) {
+      this.recentSuccessfulOffByDevice.delete(deviceId);
+      return false;
+    }
+    return recent.capabilityId === capabilityId;
+  }
+
+  clearRecentSuccessfulOff(
+    deviceId: string,
+    capabilityId: BinaryControlCapabilityId,
+    observedOnAtMs?: number,
+  ): void {
+    const recent = this.recentSuccessfulOffByDevice.get(deviceId);
+    if (
+      recent?.capabilityId === capabilityId
+      && (observedOnAtMs === undefined || observedOnAtMs > recent.issuedAtMs)
+    ) {
+      this.recentSuccessfulOffByDevice.delete(deviceId);
+    }
+  }
+
+  isBinaryChangeAttributableToPels(
+    deviceId: string,
+    capabilityId: BinaryControlCapabilityId,
+  ): boolean {
+    return this.get(deviceId)?.capabilityId === capabilityId
+      || this.hasRecentSuccessfulOff(deviceId, capabilityId);
   }
 
   /** Clear the pending entry for a device, if any. */

@@ -884,6 +884,39 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
+  it('does not apply a stale stepped command while an outside-off hold is active', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => ({
+      requested: true,
+      transport: 'native_capability' as const,
+    }));
+    const ctx = {
+      state: { isExternalOffHeld: (deviceId: string) => deviceId === 'hoiax-1' },
+      buildBinaryControlTransport: () => ({}),
+      markSteppedLoadDesiredStepIssued: vi.fn(),
+      recordShedActuation: vi.fn(),
+      recordRestoreActuation: vi.fn(),
+      getRestoreLogSource: () => 'current_plan',
+      requestSteppedLoadStep,
+    } as unknown as PlanExecutorSteppedContext;
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTarget: null,
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      controlCapabilityId: 'onoff',
+      reason: { code: 'keep', detail: null },
+    });
+
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!, 'plan')).toBe(false);
+    expect(requestSteppedLoadStep).not.toHaveBeenCalled();
+  });
+
   it('triggers the stepped-load flow for configured target_power models without native capability support', async () => {
     const trigger = vi.fn(async (..._args: unknown[]) => undefined);
     const requestSteppedLoadStep = vi.fn(async (params: {
