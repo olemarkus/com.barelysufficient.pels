@@ -134,7 +134,6 @@ export const modeDeleteDialog = document.querySelector('#mode-delete-dialog') as
   HTMLElement & { open: boolean; returnValue: string; show: () => void; close: (value?: string) => void }
 ) | null;
 export const modeDeleteMessage = document.querySelector('#mode-delete-message') as HTMLElement | null;
-export const activeModeSelect = document.querySelector('#active-mode-select') as MdFilledSelectElement;
 export const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 export const priorityList = qs('#priority-list');
 export const priorityEmpty = qs('#priority-empty');

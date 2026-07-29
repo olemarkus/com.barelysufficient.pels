@@ -841,20 +841,23 @@ locked decision 3 — an area's plan meta simply carries no daily allocation, so
 hero's `Simulation mode` chip and hypothetical voice follow the area's OWN
 control flag (`capacity_dry_run:<id>`), never Main's.
 
-### Home badges on the Devices and Modes lists
+### Home badges and the Modes filter
 
-Once a meter area is in use, every row in the Devices and Modes lists carries a
-quiet outline chip naming the home it belongs to: the area's own name as the
-owner authored it, or **Main home** for the implicit complement — the same word
-the Limits switcher uses, never a synonym. A single-home install renders no
-badge at all.
+Once a meter area is in use, every row in the Devices list carries a quiet
+outline chip naming the home it belongs to: the area's own name as the owner
+authored it, or **Main home** for the implicit complement. A single-home
+install renders no badge.
 
-The badge is a label, never a filter: both lists keep showing every device.
-Chips stay short, so the "why it matters" sentence lives in the tooltip
+The Devices badge is a label, never a filter. Chips stay short, so the "why it
+matters" sentence lives in the tooltip
 (`This device belongs to “Rental unit” and counts against that meter.`), which
 doubles as the full-name reveal when a long area name is truncated. Source:
 `composeHomeBadgeLabel` / `composeHomeBadgeTooltip` in
 `packages/shared-domain/src/homesManagementCopy.ts`.
+
+Modes is filtered instead: the shell's **Showing** picker chooses one home, and
+the list contains only managed devices assigned to it. Do not repeat a home
+badge on those rows—the picker already supplies that context.
 
 Internal terms that stay internal: `sub-home`, `homeId`, `membership`,
 `scope` (as a word in copy), `zone rule`, `pin`, `suspect`/`degraded` (store
@@ -978,9 +981,16 @@ rather than a generic failure. Three of them pin vocabulary:
 
 ## Mode label
 
-The Settings page renders the current operating mode as a single selector
-labelled `Current mode`. The selected option is the untranslated mode name
-(Home, Away, Night, or any user-authored name such as `Hjemme`).
+With one home, the Settings page renders one selector labelled `Current mode`.
+With meter areas, the card is labelled `Current modes` and renders one selector
+for **Main home** and each active area. Each selector uses that home's
+independent catalog. Selected options remain untranslated user-authored names
+(Home, Away, Night, or `Hjemme`).
+
+Every newly configured meter area starts with its own `Home` mode. While that
+initial catalog is being committed, show the usable `Home` selector rather
+than an unavailable message. Reserve `Modes couldn’t be loaded.` for a
+partial, malformed, or failed catalog read.
 
 Do not render `${name} mode`; that form was retired in PR9 (owner walk
 2026-05-17) because it produced awkward mid-phrase code-switches at

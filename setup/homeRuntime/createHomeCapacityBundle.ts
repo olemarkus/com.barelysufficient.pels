@@ -17,9 +17,9 @@
  * target is the RESTORE ANCHOR rather than a policy, so `getOperatingMode` /
  * `getModeDeviceTargets` bind live here, and this bundle will command a member
  * to its mode target with no capacity pressure at all. Neutralizing them left
- * an area temperature device shed indefinitely. The ACTIVE mode is per home
- * (`operating_mode:<homeId>` → global fallback, via the operating-mode
- * accessor); the mode-target and priority BLOBS stay global (mode-name-keyed).
+ * an area temperature device shed indefinitely. The active mode, targets,
+ * aliases and priorities come from this area's coherent suffixed catalog,
+ * with the legacy Main snapshot used only until marker-last initialization.
  *
  * Boot-window double-control guard: `getCapacityDryRun` reads `true` until
  * membership has resolved from a COMMITTED zone tree
@@ -80,7 +80,11 @@ import {
   startHomeCapacityBundle,
 } from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
-import { createHomeOperatingModeAccessor } from './homeOperatingMode';
+import {
+  createHomeModeCatalog,
+  getPriorityFromHomeModeCatalog,
+  type HomeModeCatalog,
+} from './homeModeCatalog';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
 import {
@@ -186,8 +190,11 @@ export type HomeCapacityBundle = {
   getReconcileHooks: () => RealtimeReconcileHooks;
   /** Adopt a same-meter config change (root-zone/name) without teardown. */
   updateHomeConfig: (home: SubHomeConfig) => void;
-  /** Re-read the global operating-mode/mode-target closures into this home's plan. */
+  /** Rebuild the plan after this area's mode catalog changes. */
   rebuildForModeSettingsChange: () => void;
+  /** Re-read this area's coherent suffixed mode catalog. */
+  reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
+  isModeCatalogInitialized: () => boolean;
   /**
    * Apply the once-only membership-ready edge (rebuild → reconcile). Idempotent
    * and latched; a no-op until the execution gate opens. Driven by the registry
@@ -289,15 +296,12 @@ function buildSubHomeScope(params: {
   getServiceForSync: () => PlanService | undefined;
   /** Late-bound: the bundle's OWN engine, for the sub-home pending-binary read. */
   getPlanEngineForPending: () => ReturnType<typeof createPlanEngine> | undefined;
+  modeCatalog: HomeModeCatalog;
 }): HomeScope {
   const {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
-    getTracker, getServiceForSync, getPlanEngineForPending,
+    getTracker, getServiceForSync, getPlanEngineForPending, modeCatalog,
   } = params;
-  // THIS home's active-mode + priority resolution (per-home value → global
-  // fallback), one accessor per bundle so its mode-transition log latch
-  // follows the bundle lifecycle.
-  const operatingModeAccessor = createHomeOperatingModeAccessor(ctx, homeId);
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
   // rebuild/reconcile continuation that resolves AFTER teardown must not
   // re-create this home's suffixed keys (nor clobber a same-`homeId` bundle
@@ -354,14 +358,15 @@ function buildSubHomeScope(params: {
     // temperature device stayed cold indefinitely. Price-opt and surplus stay
     // gated separately above — they only modulate a `kind: 'mode'` seed.
     //
-    // The ACTIVE mode and the priority ranking are THIS home's own
-    // (`operating_mode:<homeId>` → global fallback; the accessor constrains a
-    // pinned mode to the blob's key set so `modeDeviceTargets[mode]` can never
-    // silently resolve empty). The targets BLOB itself stays the global,
-    // mode-name-keyed map — membership partitions device ids disjointly.
-    getOperatingMode: operatingModeAccessor.getOperatingMode,
-    getModeDeviceTargets: () => ctx.modeDeviceTargets,
-    getPriorityForDevice: operatingModeAccessor.getPriorityForDevice,
+    // Mode names, targets and priorities are independent per meter area. The
+    // catalog adapter exposes one coherent last-good snapshot, and retains the
+    // legacy Main snapshot only until the area's marker-last initialization
+    // succeeds.
+    getOperatingMode: () => modeCatalog.getSnapshot().operatingMode,
+    getModeDeviceTargets: () => modeCatalog.getSnapshot().targets,
+    getPriorityForDevice: (deviceId) => (
+      getPriorityFromHomeModeCatalog(modeCatalog.getSnapshot(), deviceId)
+    ),
     // ...but a RAISE to that target is held while this area's own draw is
     // unknown. It adds load, and it is the one load-adding write nothing else
     // fences: a restore is gated on headroom (0 whenever power is unknown),
@@ -523,6 +528,7 @@ function createBundlePlanningRuntime(params: {
   getCapacityScalars: () => CapacityScalarSettings;
   getRebuildState: () => PowerSampleRebuildState;
   setRebuildState: (state: PowerSampleRebuildState) => void;
+  modeCatalog: HomeModeCatalog;
 }) {
   const scope = buildSubHomeScope({
     ctx: params.ctx,
@@ -536,6 +542,7 @@ function createBundlePlanningRuntime(params: {
     getTracker: params.tracker.getState,
     getServiceForSync: () => planService,
     getPlanEngineForPending: () => planEngine,
+    modeCatalog: params.modeCatalog,
   });
   const isActuationFenced = (): boolean => {
     if (
@@ -621,6 +628,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     timerKey,
     isTornDown,
   });
+  const modeCatalog = createHomeModeCatalog(ctx, homeId);
   let scheduleSourceActuationRetry = (): void => undefined;
   const isMeterSourceAuthorizedForExecution = (): boolean => {
     const authorized = deps.isMeterSourceAuthorized();
@@ -637,20 +645,18 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     pipeline,
     planRebuildScheduler,
   } = createBundlePlanningRuntime({
-    ctx,
-    homeId,
+    ctx, homeId,
     isMembershipReady: deps.isMembershipReady,
     isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
     isMeterSourceEpochDiscarded: deps.isMeterSourceEpochDiscarded,
     isMeterSourceAuthorizedForExecution,
     isTornDown,
-    timerKey,
-    preparedSampleFence,
-    tracker,
+    timerKey, preparedSampleFence, tracker,
     getHome: () => home,
     getCapacityScalars: () => capacityScalars,
     getRebuildState: () => rebuildState,
     setRebuildState: (state) => { rebuildState = state; },
+    modeCatalog,
   });
   preparedSampleFence.bindReader(() => pipeline.getStableSampleRevision());
   const beginPreparedOwnershipReconcile = (sampleRevision: number): (() => void) => {
@@ -697,14 +703,8 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   startHomeCapacityBundle(planService, logger, home, capacityScalars);
 
   return buildHomeCapacityBundleApi({
-    ctx,
-    homeId,
-    logger,
-    timerKey,
-    guard,
-    planEngine,
-    planService,
-    scope,
+    ctx, homeId, logger, timerKey,
+    guard, planEngine, planService, scope,
     // The registry's RAW predicates: unlike the scope's execution predicate they
     // arm no source recovery, so the read surface stays inert. Listed
     // explicitly rather than passed as `deps`, so the declared two-key shape and
@@ -713,20 +713,16 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
       isMembershipReady: deps.isMembershipReady,
       isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
     },
-    tracker,
-    pipeline,
-    planRebuildScheduler,
-    capacityStore,
-    applyMembershipReadyEdge,
-    markPreparedOwnershipGenerationReconciled,
+    tracker, pipeline, planRebuildScheduler, capacityStore,
+    applyMembershipReadyEdge, markPreparedOwnershipGenerationReconciled,
     getHome: () => home,
     setHome: (next) => { home = next; },
     getScalars: () => capacityScalars,
     setScalars: (next) => { capacityScalars = next; },
     getStableSampleRevision: () => pipeline.getStableSampleRevision(),
-    beginPreparedOwnershipReconcile,
-    flushDeferredShortfallSideEffect,
-    isTornDown,
+    beginPreparedOwnershipReconcile, flushDeferredShortfallSideEffect, isTornDown,
     markTornDown: () => { tornDown = true; },
+    reloadModeCatalog: modeCatalog.reload,
+    isModeCatalogInitialized: modeCatalog.isInitialized,
   });
 }

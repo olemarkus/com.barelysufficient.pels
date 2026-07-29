@@ -23,7 +23,10 @@ const getRedesignDeviceRow = (page: Page, deviceId: string) => (
 );
 
 const expectModeOption = async (page: Page, mode: string) => {
-  await expect(page.locator(`#active-mode-select md-select-option[value="${mode}"]`)).toHaveCount(1);
+  await expect.poll(() => page.locator('#active-mode-select md-select-option')
+    .evaluateAll((options, expected) => (
+      options.filter((option) => (option as HTMLElement & { value?: string }).value === expected).length
+    ), mode)).toBe(1);
 };
 
 test.describe('Settings UI (smoke)', () => {
@@ -113,7 +116,7 @@ test.describe('Settings UI (smoke)', () => {
     await expect(activeHeading).toHaveText('Current mode');
     await expect(activeHeading).toHaveJSProperty('tagName', 'H3');
     await expect(activeSelect).toHaveJSProperty('value', 'Home');
-    await expect(page.locator('#active-mode-select md-select-option[value="Away"]')).toHaveCount(1);
+    await expectModeOption(page, 'Away');
 
     await setMdValue(page, '#active-mode-select', 'Away');
 

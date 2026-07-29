@@ -189,10 +189,10 @@ A meter area is about **capacity and safety for its own meter**. Each one has
 its own hard cap and safety margin, and its own real-time limiting and resume on
 that meter.
 
-Which devices give way first follows your existing **device priorities**. You
-set those once per operating mode and they apply across your whole home; inside
-a busy meter area, its own lower-priority devices give way first, and a device
-keeps the same priority wherever it lives.
+Each home has its own **modes and device priorities**. On the Modes page, use
+**Showing** to choose Main home or a meter area, then arrange only the devices
+assigned there. The same mode name can mean different temperatures and
+priorities in different areas.
 
 Your **per-mode temperature settings** apply inside meter areas too. Where you
 have set a target for the current mode, a heater or thermostat in an area is
@@ -205,8 +205,9 @@ follow within about half a minute; a change that would raise a device's
 setpoint waits until PELS has a live reading from the area's meter, the same
 rule as below.
 
-The **Devices** and **Modes** lists label every device with the part of the
-home it belongs to, so you can always see which meter a device counts against.
+The **Devices** list labels every device with the part of the home it belongs
+to. The **Modes** list is filtered to the home selected under **Showing**.
+Settings lists a current-mode selector for Main home and for every meter area.
 
 Some PELS features stay with the **Main home**. The daily energy budget,
 price-based load shifting, and smart tasks plan and measure your Main-home

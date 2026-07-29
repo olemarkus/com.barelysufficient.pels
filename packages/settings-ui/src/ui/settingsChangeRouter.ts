@@ -24,8 +24,11 @@ import {
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
+  CAPACITY_PRIORITIES,
   HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
   MAIN_HOME_ID,
+  MODE_ALIASES,
+  MODE_DEVICE_TARGETS,
   NORWAY_PRICE_MODEL,
   PELS_STATUS,
   POWER_TRACKER_STATE,
@@ -36,6 +39,7 @@ import {
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
+import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged } from './homeLimits.ts';
 import { getHomeScope, notifyHomeScopeSettingChanged } from './homeScope.ts';
@@ -45,7 +49,6 @@ import {
   invalidateApiCacheForScopedHomes,
   invalidateSettingCache,
 } from './homey.ts';
-import { refreshActiveMode } from './modes.ts';
 import { reloadPriceConfigSettings } from './priceConfig.ts';
 import { refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
@@ -117,11 +120,29 @@ const DEVICE_CONTROL_KEYS = new Set([
   TEMPERATURE_BOOST_SETTINGS,
 ]);
 const PLAN_REFRESH_KEYS = new Set([
-  'capacity_priorities',
-  'mode_device_targets',
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
   BUDGET_EXEMPT_DEVICES,
   OPERATING_MODE_SETTING,
 ]);
+const MODE_CATALOG_KEYS = [
+  OPERATING_MODE_SETTING,
+  MODE_ALIASES,
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
+] as const;
+
+const refreshModeCatalogSurfaces = (key: string, context: string): void => {
+  const { selectedHomeId } = getHomeScope();
+  if (!MODE_CATALOG_KEYS.some((baseKey) => (
+    key === baseKey || key.startsWith(`${baseKey}:`)
+  ))) return;
+  runLoggedTask(refreshCurrentModes(), 'Failed to refresh current modes', context);
+  if (!MODE_CATALOG_KEYS.some((baseKey) => (
+    key === homeScopedSettingsKey(baseKey, selectedHomeId)
+  ))) return;
+  refreshModeAndDeviceControls();
+};
 
 // An area added/removed elsewhere rewrites `homes_config`: refresh the shell's
 // scope roster first (it owns the selection), then let the open meter-area
@@ -308,6 +329,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
   reloadActivePlansIfActivePlansKey(key, 'settings.unset');
   reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
+  refreshModeCatalogSurfaces(key, 'settings.unset');
   // An unset device-control map is a real configuration change — the runtime
   // reads an absent map as "nobody opted in" — so it has to reload here too.
   // Only `settings.set` consulted this set before, leaving switches asserting a
@@ -338,9 +360,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
-  if (key === OPERATING_MODE_SETTING) {
-    runLoggedTask(refreshActiveMode(), 'Failed to refresh active mode', 'settings.set');
-  }
+  refreshModeCatalogSurfaces(key, 'settings.set');
   if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) {
     refreshPlanForUi('settings.set');
   }
@@ -359,10 +379,8 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (DEVICE_CONTROL_KEYS.has(key)) {
     refreshModeAndDeviceControls();
   }
-  // Both the roster (`homes_config`) and the device→home pins
-  // (`device_home_assignments`) decide what a row's home badge says — an area
-  // rename/delete changes the label, a re-pin moves a device — so either write
-  // refetches membership and repaints the two badge-carrying lists.
+  // Both writes affect Devices badges; the shared home-scope refresh above
+  // separately updates the ownership map used by the filtered Modes list.
   if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
     refreshHomeBadgesForUi('settings.set');
   }

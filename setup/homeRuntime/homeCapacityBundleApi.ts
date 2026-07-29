@@ -175,13 +175,10 @@ const buildOwnershipGenerationOperations = (params: {
 };
 
 /**
- * Global `operating_mode` / `mode_device_targets` fan-out target: the bundle's
- * mode closures read live `ctx` state, but nothing re-RUNS the planner on a
- * mode write — the settings handler rebuilds only Main. Without this, an area
- * whose meter is silent (no power-driven rebuilds; the freshness heartbeat
- * skips never-sampled bundles and fires once per stale period) would never
- * re-read the closures, leaving e.g. a cooler-mode lowering unapplied
- * indefinitely. Mirrors `reloadCapacityScalars`' direct rebuild.
+ * Rebuild after this area's coherent catalog snapshot reloads. The explicit
+ * trigger matters for a silent-meter area, which may receive no power-driven
+ * rebuild after a mode change. Also serves legacy Main-following areas until
+ * marker-last migration completes.
  */
 const buildModeSettingsRebuild = (params: {
   homeId: HomeId;
@@ -326,7 +323,7 @@ const buildScopedBundleReads = (params: {
   });
 };
 
-export function buildHomeCapacityBundleApi(params: {
+type HomeCapacityBundleApiParams = {
   ctx: AppContext;
   homeId: HomeId;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
@@ -356,7 +353,11 @@ export function buildHomeCapacityBundleApi(params: {
   flushDeferredShortfallSideEffect: () => Promise<boolean>;
   isTornDown: () => boolean;
   markTornDown: () => void;
-}): HomeCapacityBundle {
+  reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
+  isModeCatalogInitialized: () => boolean;
+};
+
+export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {
   const {
     ctx, homeId, logger, timerKey, guard, planEngine, planService, scope, tracker,
     readDryRunGates,
@@ -365,6 +366,7 @@ export function buildHomeCapacityBundleApi(params: {
     getHome, setHome, getScalars, setScalars,
     getStableSampleRevision, beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect, isTornDown, markTornDown,
+    reloadModeCatalog, isModeCatalogInitialized,
   } = params;
   const ownershipGenerationOperations = buildOwnershipGenerationOperations({
     homeId,
@@ -412,6 +414,8 @@ export function buildHomeCapacityBundleApi(params: {
       setHome(next);
     },
     rebuildForModeSettingsChange: buildModeSettingsRebuild({ homeId, logger, planService, isTornDown }),
+    reloadModeCatalog,
+    isModeCatalogInitialized,
     applyMembershipReadyEdge,
     ...ownershipGenerationOperations,
     flushDeferredShortfallSideEffect,

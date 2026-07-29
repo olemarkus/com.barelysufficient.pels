@@ -24,6 +24,10 @@ export const homeScopedSettingsKey = (baseKey: string, homeId: string): string =
 // Declared above the scopable set below; the historical position further down
 // kept a re-export comment breadcrumb instead.
 export const OPERATING_MODE_SETTING = 'operating_mode';
+export const MODE_ALIASES = 'mode_aliases';
+export const CAPACITY_PRIORITIES = 'capacity_priorities';
+export const MODE_DEVICE_TARGETS = 'mode_device_targets';
+export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
 // Base keys whose values may be scoped per home via `homeScopedSettingsKey`
 // (multi-home train). Kept private: the parse helper below is the boundary,
 // and consumers route on its output (or the predicate) rather than probing
@@ -33,10 +37,13 @@ const HOME_SCOPABLE_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
   POWER_TRACKER_STATE,
-  // Per-home active operating mode (multi-home): a sub-home may pin its own
-  // mode; absence means the home follows the global (main) mode. Resolution
-  // lives in `resolveHomeOperatingMode` (lib/utils/capacityHelpers.ts).
+  // Main keeps the historical unsuffixed mode catalog. Meter areas use these
+  // suffixed keys and commit MODE_CATALOG_INITIALIZED last.
   OPERATING_MODE_SETTING,
+  MODE_ALIASES,
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
+  MODE_CATALOG_INITIALIZED,
 ]);
 /** Whether `baseKey` is one of the home-scopable base settings keys. */
 export const isHomeScopableBaseKey = (baseKey: string): boolean => (

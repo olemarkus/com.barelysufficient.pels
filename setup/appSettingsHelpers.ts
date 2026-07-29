@@ -38,8 +38,12 @@ import {
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
+  CAPACITY_PRIORITIES,
   MAIN_HOME_ID,
   MANAGED_DEVICES,
+  MODE_ALIASES,
+  MODE_CATALOG_INITIALIZED,
+  MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   parseHomeScopedSettingsKey,
@@ -291,10 +295,7 @@ export function initSettingsHandlerForApp(
     onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
     /** Reconcile the per-home capacity bundles after a `homes_config` write. */
     reconcileHomeRuntimes?: () => void;
-    /**
-     * Fan a global `operating_mode`/`mode_device_targets`/`mode_aliases`/
-     * `capacity_priorities` write to every live sub-home plan.
-     */
+    /** Rebuild pre-migration area followers after a Main catalog write. */
     rebuildHomeRuntimePlansForModeChange?: () => void;
     /** Synchronously fence per-home runtimes for a newly observed source epoch. */
     onHomeRuntimePowerSourceObserved?: () => void;
@@ -361,9 +362,17 @@ export function initSettingsHandlerForApp(
     }
   };
   ctx.homey.settings.on('set', onSettingsSet);
+  const modeCatalogKeys = new Set([
+    OPERATING_MODE_SETTING,
+    MODE_ALIASES,
+    CAPACITY_PRIORITIES,
+    MODE_DEVICE_TARGETS,
+    MODE_CATALOG_INITIALIZED,
+  ]);
   const onSettingsUnset = async (key: string) => {
     const scoped = parseHomeScopedSettingsKey(key);
-    if (scoped.homeId === MAIN_HOME_ID || scoped.baseKey !== OPERATING_MODE_SETTING) return;
+    const modeCatalogKey = modeCatalogKeys.has(scoped.baseKey);
+    if (scoped.homeId === MAIN_HOME_ID || !modeCatalogKey) return;
     await settingsHandler?.(key);
   };
   ctx.homey.settings.on('unset', onSettingsUnset);

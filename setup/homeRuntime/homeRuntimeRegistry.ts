@@ -33,9 +33,13 @@ import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import {
   CAPACITY_DRY_RUN,
+  CAPACITY_PRIORITIES,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   MAIN_HOME_ID,
+  MODE_ALIASES,
+  MODE_CATALOG_INITIALIZED,
+  MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
@@ -61,11 +65,19 @@ import {
   preparePersistedHomeTrackerForMeter,
   resetPersistedHomeTrackerFreshness,
 } from './resetPersistedHomeTrackerFreshness';
+import { HomeModeOwnershipTransfer } from './homeModeOwnershipTransfer';
 
 const CAPACITY_SCALAR_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
+]);
+const MODE_CATALOG_BASE_KEYS: ReadonlySet<string> = new Set([
+  OPERATING_MODE_SETTING,
+  MODE_ALIASES,
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
+  MODE_CATALOG_INITIALIZED,
 ]);
 
 const RECOVERY_RETRY_TIMER_KEY = 'homeRuntimeRegistryRecovery';
@@ -100,17 +112,24 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     bundle: HomeCapacityBundle;
     sampleRevision: number;
   }>();
+  private readonly modeOwnershipTransfer: HomeModeOwnershipTransfer;
   // Edge-latch for the flow-source misconfiguration warn (see the emitter).
   private subHomesUnderFlowWarned = false;
 
   constructor(private readonly deps: HomeRuntimeRegistryDeps) {
     this.homesStore = deps.homesStore ?? createHomesStore(deps.ctx.homey);
     this.epoch = new PowerSourceEpochFence(() => this.tryReadConfiguredPowerSource());
+    this.modeOwnershipTransfer = new HomeModeOwnershipTransfer(deps.ctx);
     this.handledRuntimeActive = deps.isRuntimeActive();
   }
 
   private getLiveBundles(): HomeCapacityBundle[] {
     return [...this.bundles.values()].filter((bundle) => !bundle.isTornDown());
+  }
+
+  private reconcileModeOwnershipTransfer(complete: boolean, deferred: boolean): boolean {
+    if (deferred) return complete;
+    return this.modeOwnershipTransfer.reconcile() && complete;
   }
 
   /** Live sub-home ids, for tests and diagnostics. */
@@ -185,7 +204,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   }
 
   /** Reconcile bundles against the persisted homes registry (see module doc). */
-  reconcile(): boolean {
+  reconcile(options: { deferModeOwnershipTransfer?: boolean } = {}): boolean {
     if (this.stopped) return false;
     // A failed source transition leaves every old runtime fenced in this map.
     // Retry that transition before reading/reconciling home config; otherwise a
@@ -222,6 +241,10 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       complete = this.reconcileDesiredBundle(home) && complete;
     }
     this.warnIfSubHomesUnderFlowSource(desired.length);
+    complete = this.reconcileModeOwnershipTransfer(
+      complete,
+      options.deferModeOwnershipTransfer === true,
+    );
     if (complete) {
       this.handledRuntimeActive = runtimeActive;
       this.activationResetHomeIds.clear();
@@ -305,7 +328,9 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     const existing = this.bundles.get(home.homeId);
     if (!existing) {
       try {
-        this.bundles.set(home.homeId, this.createBundle(home));
+        const bundle = this.createBundle(home);
+        this.bundles.set(home.homeId, bundle);
+        bundle.reloadModeCatalog();
         return true;
       } catch (error) {
         logBundleReplacementFailure(this.deps.ctx, home, error);
@@ -323,7 +348,9 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       return false;
     }
     try {
-      this.bundles.set(home.homeId, this.createBundle(home));
+      const bundle = this.createBundle(home);
+      this.bundles.set(home.homeId, bundle);
+      bundle.reloadModeCatalog();
       return true;
     } catch (error) {
       logBundleReplacementFailure(this.deps.ctx, home, error);
@@ -386,21 +413,48 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
    */
   onMembershipReady(): void {
     for (const bundle of this.bundles.values()) {
-      if (!bundle.isTornDown()) bundle.applyMembershipReadyEdge();
+      if (!bundle.isTornDown()) {
+        bundle.reloadModeCatalog();
+        bundle.applyMembershipReadyEdge();
+      }
     }
   }
 
-  /** Rebuild every live sub-home plan after the producer commits new ownership. */
-  onMembershipChanged(): void {
-    for (const bundle of this.getLiveBundles()) void bundle.rebuildForMembershipChange();
+  /**
+   * Make every area's persisted mode catalog available before owner-aware
+   * support defaults are derived from an active mode. On first ownership
+   * resolution this may create the dormant bundles; their normal membership
+   * ready edge still controls plan application.
+   */
+  prepareModeCatalogsForOwnership(allowPendingOwnershipGeneration = false): boolean {
+    // Catalog initialization must precede target transfer: a newly created
+    // destination has no independent catalog for the transfer to write yet.
+    if (!this.reconcile({ deferModeOwnershipTransfer: true })) return false;
+    let ready = true;
+    for (const bundle of this.getLiveBundles()) {
+      bundle.reloadModeCatalog(allowPendingOwnershipGeneration);
+      ready = bundle.isModeCatalogInitialized() && ready;
+    }
+    return ready && this.modeOwnershipTransfer.reconcile();
   }
 
-  /**
-   * Fan a global `operating_mode`/`mode_device_targets`/`mode_aliases`/
-   * `capacity_priorities` write to every live plan.
-   */
+  /** Rebuild every live sub-home plan after the producer commits new ownership. */
+  onMembershipChanged(): boolean {
+    if (!this.reconcile()) return false;
+    for (const bundle of this.getLiveBundles()) {
+      bundle.reloadModeCatalog();
+      void bundle.rebuildForMembershipChange();
+    }
+    return true;
+  }
+
+  /** Keep only pre-migration areas following a Main catalog change. */
   onModeSettingsChanged(): void {
-    for (const bundle of this.getLiveBundles()) bundle.rebuildForModeSettingsChange();
+    for (const bundle of this.getLiveBundles()) {
+      if (bundle.isModeCatalogInitialized()) continue;
+      bundle.reloadModeCatalog();
+      bundle.rebuildForModeSettingsChange();
+    }
   }
 
   /** Route one poll's per-meter readings to the owning bundles' pipelines. */
@@ -444,10 +498,9 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       bundle.reloadPowerTracker();
       return;
     }
-    // Per-home active mode: the scope's closures re-resolve on read, so a
-    // rebuild is all that is needed — same funnel as the global mode fan-out
-    // (`onModeSettingsChanged`), where the accessor also logs the transition.
-    if (baseKey === OPERATING_MODE_SETTING) {
+    // Reload the owning area's coherent catalog before its plan rebuild.
+    if (MODE_CATALOG_BASE_KEYS.has(baseKey)) {
+      bundle.reloadModeCatalog();
       bundle.rebuildForModeSettingsChange();
       return;
     }

@@ -45,6 +45,7 @@ import {
   syncDryRunBannerVisibility,
 } from './capacity.ts';
 import { initHomeScope, selectHomeScope } from './homeScope.ts';
+import { initCurrentModes } from './currentModes.ts';
 import { initHomeyEnergyMeterHandlers } from './homeyEnergyMeter.ts';
 import { savePowerSourceSetting } from './powerSourceSave.ts';
 import {
@@ -455,6 +456,7 @@ const initializeBootHandlers = () => {
   // panel, and that handler is what updates `state.activePanel` for the
   // `pels:tab-shown` event both listeners receive.
   initHomeScope();
+  initCurrentModes();
   initDeviceDetailHandlers();
   initModeHandlers();
   initLimitsAndSimulationHandlers();

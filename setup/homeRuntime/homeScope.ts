@@ -116,11 +116,8 @@ export type HomeScope = {
   getModeDeviceTargets: PlanEngineDeps['getModeDeviceTargets'];
   /**
    * Device priority under THIS home's active mode. Priorities are ranked per
-   * mode, so a home pinned to its own operating mode must rank its members by
-   * that mode. Main binds the app's resolver (global mode, byte-identical to
-   * the pre-existing `ctx.getPriorityForDevice` wiring); a sub-home bundle
-   * binds its operating-mode accessor's resolver
-   * (`setup/homeRuntime/homeOperatingMode.ts`).
+   * mode. Main binds the historical app resolver; a meter-area bundle binds
+   * the priority map in its coherent catalog snapshot.
    */
   getPriorityForDevice: PlanEngineDeps['getPriorityForDevice'];
   /**

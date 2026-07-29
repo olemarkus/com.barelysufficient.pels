@@ -19,7 +19,12 @@ import {
   refreshWeatherInsightOnBudgetTab,
   refreshWeatherInsightOnWeatherPanel,
 } from './weatherInsight.ts';
-import { loadDevicesOnce, refreshPowerData, runLoggedTask } from './uiRefreshTasks.ts';
+import {
+  loadDevicesOnce,
+  refreshPowerData,
+  runLoggedTask,
+} from './uiRefreshTasks.ts';
+import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 
 /**
  * Shell navigation: which panel is visible, which shell-nav entry is lit, and
@@ -46,6 +51,20 @@ const DEVICE_DEPENDENT_TABS = new Set([
   'price-aware-devices',
   'advanced',
 ]);
+
+const refreshHomeSettingsPanel = (tabId: string): void => {
+  if (tabId === 'homes') {
+    runLoggedTask(refreshHomesOnHomesPanel(), 'Failed to load meter areas', 'showTab');
+    return;
+  }
+  runLoggedTask(
+    refreshHomeScope().then(() => loadModeAndPriorities()).then(() => {
+      if (state.devicesLoaded) renderPriorities(state.latestDevices);
+    }),
+    'Failed to load modes for the selected home',
+    'showTab',
+  );
+};
 
 const runTabActivationSideEffects = (tabId: string) => {
   if (tabId === 'overview') {
@@ -107,9 +126,10 @@ const runTabActivationSideEffects = (tabId: string) => {
     }
     return;
   }
-  if (tabId === 'homes') {
-    // Refetch ui_homes on every open so edits never start from a stale list.
-    runLoggedTask(refreshHomesOnHomesPanel(), 'Failed to load meter areas', 'showTab');
+  if (tabId === 'homes' || tabId === 'modes') {
+    // Both area-owned settings panels refresh their authoritative home view on
+    // open; Modes then reloads its selected area's catalog and filtered rows.
+    refreshHomeSettingsPanel(tabId);
     return;
   }
   if (tabId === 'weather') {

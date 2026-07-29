@@ -66,10 +66,8 @@ export type HomeRuntimeDiagnostics = Readonly<{
   homeId: HomeId;
   meterDeviceId: string | null;
   /**
-   * The EFFECTIVE operating mode this home plans with: its pinned
-   * `operating_mode:<homeId>` when that names a configured mode, else the
-   * global mode (resolution: `resolveHomeOperatingMode`). Purely derived at
-   * read time from already-committed settings state.
+   * The operating mode in this area's coherent, independently persisted mode
+   * catalog (or the legacy Main fallback before initialization).
    */
   operatingMode: string;
   /** Effective no-actuation switch (persisted flag, membership gate, or source-epoch gate). */

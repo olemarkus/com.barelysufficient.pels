@@ -3,15 +3,7 @@ import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../contracts/src/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
-/* -------------------------------------------------------------------------- *
- * Meter-area home badges on the Devices and Modes lists.
- *
- * The load-bearing case is the Modes list: `savePriorities` ranks the RENDERED
- * rows `index + 1`, so a badge that filtered the list would silently rewrite
- * the hidden home's stored priorities. The suite therefore asserts both that
- * every device still renders and that the saved rank map is byte-identical to
- * the single-home one.
- * -------------------------------------------------------------------------- */
+/* Meter-area badges on Devices, and owner filtering on the Modes list. */
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -456,7 +448,7 @@ describe('devices list home badges', () => {
   });
 });
 
-describe('modes list home badges', () => {
+describe('modes list meter-area filtering', () => {
   beforeEach(() => {
     vi.resetModules();
     // The devices suite doMock-ed modes.ts as a peer; this suite drives the
@@ -465,36 +457,47 @@ describe('modes list home badges', () => {
     setupModesDom();
   });
 
-  it('labels every row without filtering, and leaves savePriorities ranks untouched', async () => {
+  it('renders and saves only devices assigned to the selected meter area', async () => {
     const homey = await primeBadges(buildHomesPayload());
-    const { renderPriorities, savePriorities } = await import('../src/ui/modes.ts');
+    const { refreshHomeScope, selectHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    selectHomeScope(RENTAL);
+    homey.__settingsStore[`operating_mode:${RENTAL}`] = 'Home';
+    homey.__settingsStore[`capacity_priorities:${RENTAL}`] = { Home: { 'dev-rental': 1 } };
+    homey.__settingsStore[`mode_device_targets:${RENTAL}`] = { Home: {} };
+    const {
+      loadModeAndPriorities,
+      renderPriorities,
+      savePriorities,
+    } = await import('../src/ui/modes.ts');
+    await loadModeAndPriorities();
     const { state } = await import('../src/ui/state.ts');
     state.activeMode = 'Home';
     state.editingMode = 'Home';
     state.managedMap = { 'dev-rental': true, 'dev-annex': true, 'dev-main': true };
-    state.capacityPriorities = { Home: { 'dev-rental': 1, 'dev-annex': 2, 'dev-main': 3 } };
+    state.capacityPriorities = { Home: { 'dev-rental': 1 } };
     state.modeTargets = { Home: {} };
     state.latestDevices = THREE_DEVICES;
 
     renderPriorities(THREE_DEVICES);
 
-    // NOT filtered: all three homes' devices render, in priority order.
     const rows = Array.from(document.querySelectorAll<HTMLElement>('#priority-list .device-row'));
-    expect(rows.map((row) => row.dataset.deviceId)).toEqual(['dev-rental', 'dev-annex', 'dev-main']);
-    expect(rows.map((row) => row.querySelector('.pels-home-badge')?.textContent))
-      .toEqual(['Leilighet i underetasjen', 'Annex', 'Main home']);
-    // The badge is additive — the device name is still its own text node.
+    expect(rows.map((row) => row.dataset.deviceId)).toEqual(['dev-rental']);
+    expect(rows[0]?.querySelector('.pels-home-badge')).toBeNull();
     expect(rows[0]?.querySelector('.mode-row__name-text')?.textContent).toBe('Rental panel');
 
     await savePriorities();
     await flushPromises();
 
-    // `savePriorities` ranks the RENDERED rows 1..N. Every device is rendered,
-    // so no home's stored rank is rewritten by the badge feature.
     const priorityWrites = (homey.set as ReturnType<typeof vi.fn>).mock.calls
-      .filter((call) => call[0] === 'capacity_priorities');
+      .filter((call) => call[0] === `capacity_priorities:${RENTAL}`);
     const written = priorityWrites[priorityWrites.length - 1]?.[1];
-    expect(written).toEqual({ Home: { 'dev-rental': 1, 'dev-annex': 2, 'dev-main': 3 } });
+    expect(written).toEqual({ Home: { 'dev-rental': 1 } });
+
+    selectHomeScope(ANNEX);
+    await savePriorities();
+    expect((homey.set as ReturnType<typeof vi.fn>).mock.calls
+      .filter((call) => call[0] === `capacity_priorities:${ANNEX}`)).toHaveLength(0);
   });
 });
 

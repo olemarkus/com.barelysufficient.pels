@@ -96,27 +96,20 @@ describe('index.html panel headers consume the shared hero primitive', () => {
     expect(landmark?.classList.contains('visually-hidden')).toBe(true);
     expect(landmark?.textContent?.trim()).toBe('Settings');
     expect(doc.querySelector('#settings-panel')?.getAttribute('aria-labelledby')).toBe('settings-title');
-    // The landmark is followed directly by the current-mode card — no filler
-    // content stands between the tab bar and the first real control.
-    expect(landmark?.nextElementSibling?.classList.contains('settings-current-mode')).toBe(true);
+    // The landmark is followed directly by the Preact-owned current-mode mount.
+    expect(landmark?.nextElementSibling?.id).toBe('current-modes-root');
   });
 
   // The active-mode card sits between the visually-hidden `h2 "Settings"`
   // landmark and the nav-card list; without an h3 rung the screen-reader
   // heading nav jumps straight from h2 to navigation. The label is promoted
   // to an h3 so the hierarchy stays h2 -> h3 within the Settings landing page.
-  it('Settings active-mode card carries an h3 heading rung under the Settings h2', () => {
+  it('Settings current-mode card is owned by the dynamic per-area view', () => {
     const doc = mountIndexFragment();
-    const heading = doc.querySelector('#settings-active-mode-summary');
-    expect(heading, 'active-mode heading must exist').not.toBeNull();
-    expect(heading?.tagName.toLowerCase()).toBe('h3');
-    expect(heading?.textContent?.trim()).toBe('Current mode');
-    expect(heading?.classList.contains('field__label')).toBe(true);
-    // Same id used to label both the surrounding section and the select.
-    const section = doc.querySelector('#settings-panel .settings-current-mode');
-    expect(section?.getAttribute('aria-labelledby')).toBe('settings-active-mode-summary');
-    const select = doc.querySelector('#active-mode-select');
-    expect(select?.getAttribute('aria-labelledby')).toBe('settings-active-mode-summary');
+    const mount = doc.querySelector('#current-modes-root');
+    expect(mount).not.toBeNull();
+    expect(mount?.children).toHaveLength(0);
+    expect(doc.querySelector('#active-mode-select')).toBeNull();
   });
 
   // Advanced (like every settings sub-page) swapped its boxed hero card for

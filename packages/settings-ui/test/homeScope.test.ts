@@ -1,14 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.ts';
 import { setHomeyClient } from '../src/ui/homey.ts';
-import { HOMES_CONFIG, MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts';
+import {
+  DEVICE_HOME_ASSIGNMENTS,
+  HOMES_CONFIG,
+  MAIN_HOME_ID,
+} from '../../contracts/src/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
 import { HOME_SCOPE_BAR_LABEL } from '../../shared-domain/src/homeScopeCopy.ts';
 import {
   getHomeScope,
+  getHomeIdForUiDevice,
   initHomeScope,
   notifyHomeScopeSettingChanged,
   refreshHomeScope,
+  refreshHomeScopeAndNotify,
   selectHomeScope,
   subscribeToHomeScope,
 } from '../src/ui/homeScope.ts';
@@ -330,6 +336,23 @@ describe('reconciliation against a fresh roster', () => {
     expect(getHomeScope().areas).toEqual([]);
   });
 
+  it('refreshes device ownership after an assignment change', async () => {
+    install([{ homeId: AREA_ID, name: 'Utleie' }]);
+    await refreshHomeScope();
+    expect(getHomeIdForUiDevice('dev-1')).toBe(MAIN_HOME_ID);
+
+    homey.__uiState.homes = {
+      ...homesPayload([{ homeId: AREA_ID, name: 'Utleie' }]),
+      membershipByDeviceId: {
+        'dev-1': { homeId: AREA_ID, source: 'pin' },
+      },
+    };
+    notifyHomeScopeSettingChanged(DEVICE_HOME_ASSIGNMENTS);
+    await flushAsync();
+
+    expect(getHomeIdForUiDevice('dev-1')).toBe(AREA_ID);
+  });
+
   it('keeps the last-good roster when the runtime cannot vouch for the config', async () => {
     // `configDegraded` means the served `homes` may be a stale or empty cache
     // while real areas persist; trusting it would delete the user's scope for
@@ -391,6 +414,41 @@ describe('reconciliation against a fresh roster', () => {
     expect(optionHomeIds()).toEqual([MAIN_HOME_ID, AREA_ID]);
   });
 
+  it('ignores inert membership data while meter-area runtime is inactive', async () => {
+    install([{ homeId: AREA_ID, name: 'Utleie' }]);
+    await refreshHomeScope();
+    selectHomeScope(AREA_ID);
+
+    homey.__uiState.homes = {
+      ...homesPayload([]),
+      membershipByDeviceId: null,
+      runtimeActive: false,
+    };
+    await refreshHomeScope();
+    await flushAsync();
+
+    expect(getHomeScope().selectedHomeId).toBe(MAIN_HOME_ID);
+    expect(getHomeScope().areas).toEqual([]);
+  });
+
+  it('keeps the last-good ownership generation when an active roster omits membership', async () => {
+    install([{ homeId: AREA_ID, name: 'Utleie' }]);
+    await refreshHomeScope();
+    await flushAsync();
+    selectHomeScope(AREA_ID);
+
+    homey.__uiState.homes = {
+      homes: [{ homeId: 'h_other', name: 'Other' }],
+      runtimeActive: true,
+      configDegraded: false,
+    };
+    await refreshHomeScope();
+    await flushAsync();
+
+    expect(getHomeScope().selectedHomeId).toBe(AREA_ID);
+    expect(optionHomeIds()).toEqual([MAIN_HOME_ID, AREA_ID]);
+  });
+
   it('keeps the last-good roster when an area id is domain-invalid or duplicated', async () => {
     install([{ homeId: AREA_ID, name: 'Utleie' }]);
     await refreshHomeScope();
@@ -448,6 +506,38 @@ describe('reconciliation against a fresh roster', () => {
     await flushAsync();
 
     expect(optionHomeIds()).toEqual([MAIN_HOME_ID, AREA_ID]);
+  });
+
+  it('notifies subscribers after the newest overlapping roster refresh settles', async () => {
+    install([]);
+    await refreshHomeScope();
+    const notifiedRosters: string[][] = [];
+    subscribeToHomeScope(() => {
+      notifiedRosters.push(getHomeScope().areas.map((area) => area.homeId));
+    });
+    const pending: Array<() => void> = [];
+    homey.api.mockImplementation((method: string, uri: string, bodyOrCb: unknown, cb?: unknown) => {
+      const callback = (typeof bodyOrCb === 'function' ? bodyOrCb : cb) as (
+        err: Error | null, value?: unknown,
+      ) => void;
+      if (method === 'GET' && uri === SETTINGS_UI_HOMES_PATH) {
+        const served = homey.__uiState.homes;
+        pending.push(() => callback(null, served));
+        return;
+      }
+      callback(null, {});
+    });
+
+    homey.__uiState.homes = homesPayload([]);
+    const stale = refreshHomeScopeAndNotify();
+    homey.__uiState.homes = homesPayload([{ homeId: AREA_ID, name: 'Utleie' }]);
+    const fresh = refreshHomeScopeAndNotify();
+
+    pending[0]!();
+    pending[1]!();
+    await Promise.all([stale, fresh]);
+
+    expect(notifiedRosters[notifiedRosters.length - 1]).toEqual([AREA_ID]);
   });
 
   it('keeps the last-good roster and selection when the refetch fails', async () => {

@@ -1360,9 +1360,10 @@ program) remain deferred.*
       scoped read would masquerade as "healthy home, no devices") AND writes the HOME-level
       `state.hasManagedSolarDevice` / `state.hasExhibitedExport` gates, which a resolved sub-home payload
       would silently retract for the whole home (an area without PV would hide the export-price section
-      home-wide). The Devices/Modes lists are deliberately badge-grouped, never scope-filtered, so no
-      current consumer needs a scoped devices read — a future one must resolve through
-      `resolveHomeScopedRead` and never funnel a scoped payload into the two global solar flags. P2.
+      home-wide). Devices remains badge-grouped. Modes filters that same flat, already-loaded device
+      list through the authoritative membership roster; neither surface needs a scoped devices read.
+      A future scoped consumer must resolve through `resolveHomeScopedRead` and never funnel a scoped
+      payload into the two global solar flags. P2.
       Source: adversarial review (typing + correctness lenses) of multi-home PR 5b, 2026-07-27. Files:
       `packages/settings-ui/src/ui/devices.ts`, `packages/contracts/src/homeScopedRead.ts`.
 
@@ -3096,18 +3097,11 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       after the scope change, when the owner is most likely to be watching it. Files:
       `lib/weather/weatherCollector.ts` (kWh reconcile), power-tracker daily totals.
       Source: multi-home finishing train, weather meter-scope PR. [P3]
-- [ ] **`operating_mode_changed` Flow trigger fires only for the global mode.** A sub-home's pinned
-      mode change (`operating_mode:<homeId>`) does not fire it; the card has a mode arg but no home
-      token. Widening it is flow-card home-scope territory (the `capacity_shortfall` `Home`-token
-      pattern). Persona: meter-area owner automating on mode changes. *Hypothesis:* a trigger that
-      silently ignores area pins reads as broken the moment areas pin modes — today only reachable
-      via a raw suffixed settings write, so this ripens when the per-home mode UI ships.
-      Source: multi-home finishing train, runtime mode-pinning PR. [P3]
 - [ ] **Suffixed `operating_mode:<homeId>` writes are not noop-deduped.** Suffixed keys bypass the
       settings write skipper by design, so repeated identical writes cause repeated (cheap) bundle
-      rebuilds. Only matters if a future per-home mode UI writes eagerly on every render. Persona:
-      contributor building the per-home mode picker. *Hypothesis:* an eager writer turns every
-      repaint into a plan rebuild for that area. Files: `lib/utils/settingsWriteDedupe.ts`,
+      rebuilds. The shipped per-home selector writes only on an explicit changed value, so normal UI
+      renders do not trigger it; the remaining edge is an integration repeatedly writing the same
+      suffixed value. Files: `lib/utils/settingsWriteDedupe.ts`,
       `setup/homeRuntime/homeRuntimeRegistry.ts`.
       Source: multi-home finishing train, runtime mode-pinning PR. [P3]
 - [ ] **Usage footer promises a Main-only reset under area scope.** "Reset usage history lives under
@@ -3150,8 +3144,14 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       once enough new-scope overlap days arrive; re-resolve held operating-mode aliases and make
       partial rename rollback explicit; document/cache the per-home mode resolution contract; and
       tighten markerless roster/readiness recovery without weakening the existing Main actuation
-      fence. Persona: long-running beta install that renames modes or changes meter topology.
-      Source: deferred review threads on PRs #1910, #1911 and #1913. [P3]
+      fence. Also make rapid current-mode write failures refresh the last persisted selection
+      instead of rolling back to an optimistic intermediate mode; make interrupted additive mode
+      renames resumable; show Home or an honest unavailable state in device detail before a new
+      area's catalog lands; preserve matching source-mode targets across ownership moves instead
+      of filling every missing destination mode from one anchor; and suppress the five
+      initialization-setting echoes after the catalog write. Persona: long-running beta install
+      that renames modes or changes meter topology. Source: deferred review threads on PRs #1910,
+      #1911, #1913 and #1923. [P3]
 - [ ] **Consolidate low-value mirror and fixture coverage from the stack review.** Add an executable
       check for the deploy-time `homeId` query-key mirror, assert `CAPACITY_LIMIT_KW` in the existing
       contracts/runtime settings-key mirror test, and clean up the test-lane/fixture-only comments

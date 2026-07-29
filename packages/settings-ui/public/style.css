@@ -912,6 +912,25 @@ md-primary-tab.tab[active] {
   width: 100%;
 }
 
+.settings-current-mode__rows {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.settings-current-mode__row {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.settings-current-mode__row md-filled-select {
+  width: 100%;
+}
+
+.settings-current-mode__home-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /*
  * `.settings-current-mode__heading` promotes the field label to an <h3>
  * so the Settings page keeps a screen-reader nav rung between the

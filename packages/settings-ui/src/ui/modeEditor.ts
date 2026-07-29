@@ -9,6 +9,7 @@ import {
   modeNameCancel,
   modeDeleteDialog,
   modeDeleteMessage,
+  priorityList,
 } from './dom.ts';
 import { state } from './state.ts';
 
@@ -25,6 +26,22 @@ export type ModeEditorHandlers = {
 };
 
 let modeEditorMode: 'add' | 'rename' | null = null;
+
+export const setModeEditorPending = (pending: boolean): void => {
+  [
+    addModeButton,
+    renameModeButton,
+    deleteModeButton,
+    modeNameConfirm,
+    modeNameCancel,
+    modeNewInput,
+    modeSelect,
+  ].forEach((control) => control?.toggleAttribute('disabled', pending));
+  priorityList?.toggleAttribute('inert', pending);
+  priorityList?.querySelectorAll('.mode-target-input').forEach((input) => {
+    input.toggleAttribute('disabled', pending);
+  });
+};
 
 export const closeModeNameEditor = () => {
   modeEditorMode = null;

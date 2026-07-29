@@ -8,9 +8,13 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PRIORITIES,
   homeScopedSettingsKey,
   isHomeScopableBaseKey,
   MAIN_HOME_ID,
+  MODE_ALIASES,
+  MODE_CATALOG_INITIALIZED,
+  MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   parseHomeScopedSettingsKey,
   POWER_TRACKER_STATE,
@@ -38,6 +42,10 @@ describe('parseHomeScopedSettingsKey', () => {
     CAPACITY_DRY_RUN,
     POWER_TRACKER_STATE,
     OPERATING_MODE_SETTING,
+    MODE_ALIASES,
+    CAPACITY_PRIORITIES,
+    MODE_DEVICE_TARGETS,
+    MODE_CATALOG_INITIALIZED,
   ];
 
   it.each(scopableBases)('round-trips %s through homeScopedSettingsKey for a non-main home', (baseKey) => {
@@ -101,6 +109,10 @@ describe('isHomeScopableBaseKey', () => {
       CAPACITY_DRY_RUN,
       POWER_TRACKER_STATE,
       OPERATING_MODE_SETTING,
+      MODE_ALIASES,
+      CAPACITY_PRIORITIES,
+      MODE_DEVICE_TARGETS,
+      MODE_CATALOG_INITIALIZED,
     ];
     for (const baseKey of scopable) {
       expect(isHomeScopableBaseKey(baseKey)).toBe(true);

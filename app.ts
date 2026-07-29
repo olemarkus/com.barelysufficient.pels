@@ -113,9 +113,7 @@ import {
   seedMissingModeTargets as seedMissingModeTargetsHelper,
   isManagedFilterActive as isManagedFilterActiveHelper,
 } from './setup/appDeviceSupport';
-import {
-  resolveOperatingModeForDevice as resolveOperatingModeForDeviceHelper,
-} from './setup/homeRuntime/homeOperatingMode';
+import * as homeMode from './setup/homeRuntime/homeOperatingMode';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './setup/appManagedDeviceMigration';
 import { runBootMigrations as runBootMigrationsHelper } from './setup/appBootMigrations';
 import * as realtimeReconcile from './setup/appRealtimeDeviceReconcile';
@@ -370,12 +368,12 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       snapshot, settings: this.homey.settings,
       // Overshoot defaults follow the OWNING home's effective mode.
       resolveOperatingModeForDevice: operatingModeResolver
-        ?? ((deviceId) => resolveOperatingModeForDeviceHelper(this.ctx, deviceId)),
+        ?? ((deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId)),
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
-      snapshot,
-      settings: this.homey.settings,
+      snapshot, settings: this.homey.settings,
+      resolveHomeIdForDevice: (deviceId) => homeMode.resolveHomeIdForModeCatalogSeed(this.ctx, deviceId),
       structuredLog: (event) => this.getStructuredLogger('devices')?.info(event),
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
@@ -494,7 +492,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     computeShortfallThreshold: () => this.computeShortfallThreshold(),
     getSnapshotDevice: (deviceId) => this.getSnapshotDevice(deviceId),
     retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
-      (deviceId) => resolveOperatingModeForDeviceHelper(this.ctx, deviceId, membership, allowPending),
+      (deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId, membership, allowPending),
     ),
     hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
     loadFlowReportedCapabilities: () => this.loadFlowReportedCapabilities(),

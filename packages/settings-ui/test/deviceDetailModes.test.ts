@@ -55,6 +55,7 @@ describe('device detail target writes', () => {
     const { state } = await import('../src/ui/state.ts');
     state.activeMode = 'Home';
     state.editingMode = 'Home';
+    state.loadedModeHomeId = 'main';
     state.latestDevices = [buildDevice()];
     state.capacityPriorities = { Home: { 'heater-1': 1 } };
     state.modeTargets = { Home: { 'heater-1': 20 }, Away: { 'heater-1': 18 } };
@@ -84,7 +85,61 @@ describe('device detail target writes', () => {
       { Home: { 'heater-1': 21 }, Away: { 'heater-1': 19 } },
       expect.any(Function),
     );
+    expect(state.modeTargets).toEqual({
+      Home: { 'heater-1': 21 },
+      Away: { 'heater-1': 19 },
+    });
     expect(renderPriorities).toHaveBeenCalledWith(state.latestDevices);
+  });
+
+  it('merges debounced edits made from consecutive device detail views', async () => {
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    const secondDevice = {
+      ...buildDevice(),
+      id: 'heater-2',
+      name: 'Bedroom Heater',
+    };
+    const homey = createHomeyMock({
+      settings: {
+        operating_mode: 'Home',
+        capacity_priorities: { Home: { 'heater-1': 1, 'heater-2': 2 } },
+        mode_device_targets: { Home: { 'heater-1': 20, 'heater-2': 19 } },
+      },
+    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { state } = await import('../src/ui/state.ts');
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+    state.loadedModeHomeId = 'main';
+    state.latestDevices = [buildDevice(), secondDevice];
+    state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
+    state.modeTargets = { Home: { 'heater-1': 20, 'heater-2': 19 } };
+    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
+
+    renderDeviceDetailModes(state.latestDevices[0]);
+    const firstInput = document.querySelector(
+      '.detail-mode-temp[data-mode="Home"]',
+    ) as HTMLInputElement;
+    firstInput.value = '21';
+    firstInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    renderDeviceDetailModes(secondDevice);
+    const secondInput = document.querySelector(
+      '.detail-mode-temp[data-mode="Home"]',
+    ) as HTMLInputElement;
+    secondInput.value = '18';
+    secondInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.advanceTimersByTimeAsync(300);
+    await vi.waitFor(() => expect(homey.set).toHaveBeenCalledTimes(1));
+    expect(homey.set).toHaveBeenCalledWith(
+      'mode_device_targets',
+      { Home: { 'heater-1': 21, 'heater-2': 18 } },
+      expect.any(Function),
+    );
   });
 
   it('hides the per-mode section for on/off devices and shows it again for thermal devices', async () => {
@@ -94,6 +149,7 @@ describe('device detail target writes', () => {
 
     const { state } = await import('../src/ui/state.ts');
     state.activeMode = 'Home';
+    state.loadedModeHomeId = 'main';
 
     const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
     const section = document.querySelector('#device-detail-modes-section') as HTMLElement;
@@ -106,5 +162,34 @@ describe('device detail target writes', () => {
     renderDeviceDetailModes(buildDevice());
     expect(section.hidden).toBe(false);
     expect(document.querySelectorAll('#device-detail-modes .detail-mode-row').length).toBeGreaterThan(0);
+  });
+
+  it('loads the device owner catalog when the in-memory Modes catalog belongs elsewhere', async () => {
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/homeScope.ts', () => ({
+      getHomeIdForUiDevice: () => 'h_area',
+    }));
+    const homey = createHomeyMock({
+      settings: {
+        'operating_mode:h_area': 'Sleep',
+        'capacity_priorities:h_area': { Sleep: { 'heater-1': 1 } },
+        'mode_device_targets:h_area': { Sleep: { 'heater-1': 16 } },
+      },
+    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
+
+    renderDeviceDetailModes(buildDevice());
+    await vi.waitFor(() => {
+      expect(document.querySelector('.detail-mode-row[data-mode="Sleep"]')).not.toBeNull();
+    });
+
+    const input = document.querySelector(
+      '.detail-mode-temp[data-mode="Sleep"]',
+    ) as HTMLInputElement;
+    expect(input.value).toBe('16');
   });
 });
