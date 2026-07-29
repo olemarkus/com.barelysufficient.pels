@@ -189,7 +189,10 @@ export function buildBasePlanDevice(params: {
     currentState,
     plannedState,
     desiredStepId,
-  }, { anyOtherDeviceLimited: params.anyOtherDeviceLimited });
+  }, {
+    anyOtherDeviceLimited: params.anyOtherDeviceLimited,
+    boostActive: [temperatureBoostActive, evBoostActive].includes(true),
+  });
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };

@@ -33,8 +33,8 @@
  *      (`inCooldown === false`, `shouldPlanRestores` true).
  *
  * ON THE UNFIXED BASE all three fail, and that failure IS the prod P0: chargers
- * can never skip an already-satisfied binary write (`observedStateComparable
- * === false` disables the already-matched gate), every re-write is recorded as
+ * use a direction-specific already-matched rule that cannot treat their strict
+ * resolved off-state as command-equivalent, every re-write is recorded as
  * a fresh capacity shed (`recordShedActuation`), and the restamped GLOBAL
  * 60 s cooldown blocks `shouldPlanRestores` for every device in the house —
  * all 12 prod devices sat at `cooldown (shedding)` with countdowns resetting

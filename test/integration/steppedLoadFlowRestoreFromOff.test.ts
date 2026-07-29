@@ -1,19 +1,13 @@
 /**
- * Flow-boundary integration coverage for the flow-backed stepped-load restore-from-off
- * confirmation deadlock (prod incident 2026-07-05, "Elbillader" Easee EV
- * charger, 1-phase target-power stepping).
+ * Flow-boundary integration coverage for flow-backed stepped-load
+ * restore-from-off ordering ("Elbillader" Easee EV charger, 1-phase
+ * target-power stepping).
  *
- * The verified-from-logs prod sequence:
- *   1. The planner admits a restore off -> '6a'; the executor issues the step
- *      command over the FLOW transport (`desired_stepped_load_changed`,
- *      purpose `prepare_for_on`) and records the pending desired step.
- *   2. The user's flow complies: it sets the charger current and reports the
- *      commanded step back via the `report_stepped_load_power` card (~26 s).
- *   3. `SteppedLoadControlHelper.reportSteppedLoadActualStep` suppressed the
- *      report (`non_off_step_while_off`) BEFORE anything confirmed the pending
- *      command, so the command expired stale, the restore looped
- *      `waiting_confirmation -> stale -> retry_backoff` forever, and the binary
- *      `evcharger_charging=true` write NEVER reached the SDK boundary.
+ * Easee resets its temporary current limit when a charging session starts.
+ * Therefore a step confirmed while OFF is not durable activation evidence:
+ * the executor must issue binary ON first and always reassert the desired step
+ * immediately afterwards. A fast OFF/reset echo must reapply the step without
+ * issuing a second toggle-style binary ON.
  *
  * That suppression is gone as of 2026-07-25: a non-off flow report while the
  * binary axis reads off is admitted as observed evidence, so the confirmation
@@ -30,9 +24,9 @@
  * flow trigger card; the user's flow is simulated by calling the real report
  * entry point with the step the trigger commanded.
  *
- * Deliverable assertion: after the flow confirms the prepared step, the binary
- * `evcharger_charging=true` write reaches the SDK boundary. On the buggy base
- * it never does — that failure IS the reproduction.
+ * Deliverable assertions: binary ON reaches the SDK boundary before the step
+ * Flow trigger; the post-activation step is sent even when the pre-activation
+ * report already matches; and an OFF/32 A reset reissues only the step.
  *
  * Invariant guard: the report becomes observed evidence, but the binary axis
  * still owns the on/off fold — `binaryControl.on` stays false, so a non-off
@@ -157,7 +151,10 @@ const parseEaseeSnapshot = (params: {
 // Plan device mirroring what the real plan carries after decoration: the
 // planner wants the charger kept ON at the lowest step ('6a') from off, and the
 // pending step-command cluster rides in from the decorated snapshot.
-const buildRestoreTo6aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan => ({
+const buildRestoreTo6aPlan = (
+  decorated: DecoratedDeviceSnapshot,
+  profile: SteppedLoadProfile = EV_PROFILE,
+): DevicePlan => ({
   meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
   devices: [
     withBinaryDiscriminant({
@@ -168,7 +165,7 @@ const buildRestoreTo6aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
         currentState: 'off',
         plannedState: 'keep',
         controllable: true,
-        steppedLoadProfile: EV_PROFILE,
+        steppedLoadProfile: profile,
         controlCapabilityId: 'evcharger_charging',
         selectedStepId: decorated.selectedStepId ?? '6a',
         desiredStepId: '6a',
@@ -215,11 +212,14 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
 });
 
 // ── Executor harness with the REAL control helper in the loop ────────────────
-const buildHarness = (initialSnapshot: TransportDeviceSnapshot) => {
+const buildHarness = (
+  initialSnapshot: TransportDeviceSnapshot,
+  profiles: DeviceControlProfiles = PROFILES,
+) => {
   const snapshotHolder: { current: TransportDeviceSnapshot } = { current: initialSnapshot };
   const structuredLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   const helpers = new AppDeviceControlHelpers({
-    getProfiles: () => PROFILES,
+    getProfiles: () => profiles,
     getDeviceSnapshots: () => [snapshotHolder.current],
     getLatestPlanSnapshot: () => null,
     getStructuredLogger: () => structuredLogger as never,
@@ -315,7 +315,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('flow-backed stepped restore-from-off — step confirmation via flow report (prod deadlock repro)', () => {
+describe('flow-backed stepped restore-from-off — binary activation before step reassertion', () => {
   it('initializes an unknown running level once, then ramps higher without an echo', async () => {
     const logger = createLogger();
     const cycle1Iso = '2026-07-29T08:00:00.000Z';
@@ -411,7 +411,7 @@ describe('flow-backed stepped restore-from-off — step confirmation via flow re
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(3);
   });
 
-  it('dispatches evcharger_charging=true after the flow confirms the prepared step', async () => {
+  it('dispatches evcharger_charging=true before requesting the post-activation 6a step', async () => {
     const logger = createLogger();
     const cycle1Iso = '2026-07-05T21:09:57.000Z';
     const cycle1Ms = Date.parse(cycle1Iso);
@@ -430,21 +430,33 @@ describe('flow-backed stepped restore-from-off — step confirmation via flow re
       executor, deviceManager, helpers, decorate, desiredSteppedTrigger,
     } = buildHarness(snapshot);
 
-    // ── CYCLE 1 (prod 21:09:58Z): restore admitted; the executor issues the
-    // step-preparation command over the flow transport and records it pending.
+    // Restore admission activates the binary axis first, then requests the
+    // desired current in the same executor cycle.
     await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
 
+    expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
-      expect.objectContaining({ step_id: '6a', planning_power_w: 1380 }),
+      expect.objectContaining({
+        step_id: '6a',
+        planning_power_w: 1380,
+        previous_step_id: '6a',
+      }),
       { deviceId: DEVICE_ID },
     );
+    expect(deviceManager.setCapability.mock.invocationCallOrder[0])
+      .toBeLessThan(desiredSteppedTrigger.trigger.mock.invocationCallOrder[0]!);
     const afterCommand = decorate();
     expect(afterCommand.stepCommandPending).toBe(true);
-    // The binary turn-on is correctly deferred behind the unconfirmed step.
-    expect(deviceManager.setCapability).not.toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
 
-    // ── The user's flow answers (prod 21:10:24Z, ~26 s): it set the charger
-    // current and reports the commanded step back through the REAL entry point.
+    // Before either command has echoed back, a rebuild must suppress both a
+    // duplicate binary ON and a duplicate step Flow request.
+    vi.setSystemTime(cycle1Ms + 10_000);
+    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+
+    // The user's Flow reports the applied post-activation current through the
+    // real feedback entry point.
     vi.setSystemTime(cycle1Ms + 26_000);
     helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
 
@@ -460,43 +472,22 @@ describe('flow-backed stepped restore-from-off — step confirmation via flow re
     expect(afterReport.stepCommandStatus).toBe('success');
     expect(afterReport.stepCommandPending).toBe(false);
 
-    // ── CYCLE 2 (next plan cycle): with the step confirmed, the executor must
-    // proceed to phase two and dispatch the binary turn-on.
+    // While Homey's binary echo still reads OFF, the recent binary-restore
+    // dampener prevents another toggle-style ON. Confirmed 6a also prevents a
+    // duplicate post-activation Flow request.
     vi.setSystemTime(cycle1Ms + 35_000);
     await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
 
-    // Deliverable assertion — the prod deadlock: this write NEVER happened
-    // (the charger stayed "Charging paused" indefinitely). The fix makes the
-    // confirmed command satisfy the restore-step gate while the device is off.
-    expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
-
-    // Exactly ONE step trigger for the whole restore: the go-cycle must not
-    // re-fire the already-confirmed preparation (a duplicate would reset the
-    // confirmation to pending and — for flows that report only on change —
-    // decay it to a phantom 'stale', polluting the flow-health signal).
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'recent_binary_restore_attempt',
+      deviceId: DEVICE_ID,
+    }));
   });
 
-  it('keeps deferring the binary turn-on when the flow never confirms the step', async () => {
-    const logger = createLogger();
-    const cycle1Iso = '2026-07-05T21:09:57.000Z';
-    const cycle1Ms = Date.parse(cycle1Iso);
-    vi.useFakeTimers();
-    vi.setSystemTime(cycle1Ms);
-
-    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger });
-    const { executor, deviceManager, decorate } = buildHarness(snapshot);
-
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
-    // No flow report arrives. The next cycle must NOT blind-fire the binary
-    // turn-on — the prepared-step gate stays closed without confirmation.
-    vi.setSystemTime(cycle1Ms + 35_000);
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
-
-    expect(deviceManager.setCapability).not.toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
-  });
-
-  it('does not let a non-matching flow report confirm the pending step', async () => {
+  it('reasserts 6a after binary ON even when the charger already reported 6a while off', async () => {
     const logger = createLogger();
     const cycle1Iso = '2026-07-05T21:09:57.000Z';
     const cycle1Ms = Date.parse(cycle1Iso);
@@ -505,23 +496,78 @@ describe('flow-backed stepped restore-from-off — step confirmation via flow re
 
     const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger });
     const {
-      executor, deviceManager, helpers, decorate,
+      executor, deviceManager, helpers, decorate, desiredSteppedTrigger,
     } = buildHarness(snapshot);
 
+    helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
+    expect(decorate()).toMatchObject({
+      reportedStepId: '6a',
+      stepCommandPending: false,
+      stepCommandStatus: 'idle',
+    });
     await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
 
-    // A contradictory non-off report (wrong step) while off becomes observed
-    // truth — the charger really is at 8a — but confirms nothing, so the
-    // prepare-for-on command stays unconfirmed and the binary turn-on is held.
-    vi.setSystemTime(cycle1Ms + 26_000);
-    helpers.reportSteppedLoadActualStep(DEVICE_ID, '8a');
+    expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: '6a' }),
+      { deviceId: DEVICE_ID },
+    );
+    // A same-value post-activation reassertion must not turn an already
+    // materialized report into pending/stale when the vendor emits no change.
+    expect(decorate()).toMatchObject({
+      reportedStepId: '6a',
+      stepCommandPending: false,
+      stepCommandStatus: 'idle',
+    });
+  });
+
+  it('reapplies 6a without a second binary ON when activation resets the off report to 32a', async () => {
+    const logger = createLogger();
+    const cycle1Iso = '2026-07-05T21:09:57.000Z';
+    const cycle1Ms = Date.parse(cycle1Iso);
+    vi.useFakeTimers();
+    vi.setSystemTime(cycle1Ms);
+
+    const resetProfile: SteppedLoadProfile = {
+      ...EV_PROFILE,
+      steps: [...EV_PROFILE.steps, { id: '32a', planningPowerW: 7360 }],
+    };
+    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger });
+    const {
+      executor, deviceManager, helpers, decorate, desiredSteppedTrigger,
+    } = buildHarness(snapshot, { [DEVICE_ID]: resetProfile });
+
+    helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
+    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate(), resetProfile), 'plan');
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+
+    // Easee starts a session, resets its current while the delayed binary echo
+    // still reads OFF, and reports that real 32a state.
+    vi.setSystemTime(cycle1Ms + 5_000);
+    helpers.reportSteppedLoadActualStep(DEVICE_ID, '32a');
 
     const afterReport = decorate();
-    expect(afterReport.reportedStepId).toBe('8a');
-    expect(afterReport.stepCommandStatus).not.toBe('success');
+    expect(afterReport.reportedStepId).toBe('32a');
+    expect(afterReport.stepCommandPending).toBe(false);
 
-    vi.setSystemTime(cycle1Ms + 35_000);
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
-    expect(deviceManager.setCapability).not.toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
+    vi.setSystemTime(cycle1Ms + 6_000);
+    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate(), resetProfile), 'plan');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(2, {
+      step_id: '6a',
+      planning_power_w: 1380,
+      planning_current_a: 0,
+      previous_step_id: '32a',
+    }, { deviceId: DEVICE_ID });
+
+    vi.setSystemTime(cycle1Ms + 30_000);
+    helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
+    expect(decorate()).toMatchObject({
+      reportedStepId: '6a',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+    });
   });
 });

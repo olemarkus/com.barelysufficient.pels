@@ -21,12 +21,12 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import type {
   DevicePlanDevice,
   PlanInputDevice,
+  ShedAction,
   SteppedDiscriminantProbe,
   SteppedLoadKind,
   SteppedPlanDevice,
   SteppedPlanInputDevice,
 } from './planTypes';
-import type { ShedAction } from './planTypes';
 import {
   isReportedStep,
   normalizeSteppedLoadStepStateFromLegacyFields,
@@ -49,12 +49,7 @@ type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   | 'measuredPowerKw'
   | 'stepPowerCalibration'
 >;
-type StepIdentityFields = Pick<
-StepCapableDevice,
-| 'reportedStepId'
-| 'selectedStepId'
-| 'desiredStepId'
->;
+type StepIdentityFields = Pick<StepCapableDevice, 'reportedStepId' | 'selectedStepId' | 'desiredStepId'>;
 type StepSheddingCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice,
   | 'stepCommandPending'
@@ -246,15 +241,15 @@ export const resolveSteppedKeepDesiredStepId = (
     currentOn?: boolean;
     plannedState?: string;
   },
-  options: { anyOtherDeviceLimited?: boolean } = {},
+  options: { anyOtherDeviceLimited?: boolean; boostActive?: boolean } = {},
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return device.desiredStepId;
   if (device.plannedState !== 'keep') return device.desiredStepId;
 
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
-  const lowestActiveStepId = lowestActiveStep?.id;
-  if (!lowestActiveStepId || !lowestActiveStep) return device.desiredStepId;
+  if (!lowestActiveStep) return device.desiredStepId;
+  const lowestActiveStepId = lowestActiveStep.id;
 
   // On/off is kind-aware: a binary stepper reads `currentOn`, a step-only stepper
   // the step axis. A strict `currentOn === true/false` would skip BOTH branches
@@ -264,6 +259,13 @@ export const resolveSteppedKeepDesiredStepId = (
     const baseStepId = device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
       ? lowestActiveStepId
       : device.desiredStepId;
+    if (options.boostActive) {
+      return resolveHigherSteppedLoadStepId({
+        profile,
+        firstStepId: baseStepId,
+        secondStepId: resolvePlannerEffectiveStepId(device),
+      }) ?? lowestActiveStepId;
+    }
     return clampToLowestActiveWhenOtherDevicesLimited({
       profile,
       stepId: baseStepId,
@@ -284,6 +286,19 @@ export const resolveSteppedKeepDesiredStepId = (
     lowestActiveStep,
     anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
   });
+};
+
+const resolveHigherSteppedLoadStepId = (params: {
+  profile: SteppedLoadProfile;
+  firstStepId: string | undefined;
+  secondStepId: string | undefined;
+}): string | undefined => {
+  const { profile, firstStepId, secondStepId } = params;
+  const firstStep = getSteppedLoadStep(profile, firstStepId);
+  const secondStep = getSteppedLoadStep(profile, secondStepId);
+  if (!firstStep) return secondStep?.id;
+  if (!secondStep) return firstStep.id;
+  return secondStep.planningPowerW > firstStep.planningPowerW ? secondStep.id : firstStep.id;
 };
 
 // docs/technical.md:222 — "While any other managed device is still limited, stepped devices

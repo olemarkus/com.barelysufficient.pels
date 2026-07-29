@@ -257,20 +257,6 @@ What remains open is below.*
       single highest-value line on the screen and it is absent. Source: prod screenshot + log,
       2026-07-26. [P1]
 
-- [ ] **Residual re-shed freeze class: a charger with no observable switch still restamps the
-      global shed cooldown every rebuild.** The charger re-shed deadlock fix (skip + edge-triggered
-      stamp) is evidence-gated by design — absence of an observed `evcharger_charging` value means
-      "write and stamp" — so a flow-backed charger whose switch is never observed reproduces the
-      2026-07-26 house-wide `cooldown (shedding)` freeze unchanged. Two sub-parts: (a) surface or
-      synthesize switch evidence for flow-backed chargers (the flow report path already carries the
-      boolean); (b) `handleConfirmedBinaryCommand` stamps flow-backed off-confirmations with no
-      reassert-awareness — give it the same trusted-observed-off gate. Related refinement: the skip
-      gate keys off the raw switch while the stamp gate keys off the evidence record; a
-      producer-resolved `observedControlOff` bit on the executable action would collapse the two
-      truth sources. Persona: owner with a flow-integrated charger watching the same resetting
-      countdown the native-charger fix removed; hypothesis: the freeze class is configuration-shaped,
-      not device-shaped, and the flow-backed arm is untested in prod. Source: pels-runtime-reality
-      review of the deadlock fix, 2026-07-27. [P2]
 - [ ] **A fenced Main home stops protecting its physical hard cap, and the UI can only warn that it
       MIGHT be happening, not that it IS.**
       *Persona:* multi-meter owner on the DEFAULT Automatic whole-home meter whose area meter happens
@@ -410,18 +396,6 @@ What remains open is below.*
       actuated. Source: prod log review + adversarial review, 2026-07-25; re-confirmed while
       shipping 2.17.5. [P1]
 
-- [ ] **Rejected stepped restores re-write `off` to an already-off device and re-stamp the shed
-      cooldown.** Each restore rejection flips the plan device back to shed posture via
-      `buildOffSteppedRestoreShedUpdate` (`lib/plan/restore/planDeviceUpdates.ts` ~24), which
-      changes the plan action signature, re-runs the executor, and writes the control capability
-      to `false` on a device already observed off. Observed live 2026-07-25 21:01–21:06: six such
-      writes to Elbillader at ~30 s intervals, each with a `diagnostics_shed_recorded` and a fresh
-      60 s shed cooldown. When background usage then collapsed 2.85 → 0.71 kW at 21:06:39 and
-      ~3.97 kW became available, the resume was blocked on `cooldown (shedding)` stamped by the
-      redundant 21:06:22 write, costing about a minute of charging. Skip the write when the
-      observed binary state already matches the shed target, or stop the posture from oscillating
-      between `shed` and `keep` on alternating cycles. Source: prod log review 2026-07-25. [P1]
-
 - [ ] **An observed-off device attributes usage from whatever step it is parked at.**
       `resolveObservedOffUsageKw` (`lib/plan/planUsage.ts` ~36-41) falls to
       `getHighestKnownPowerKw`, which takes the max of measured/expected/planning/configured —
@@ -447,16 +421,6 @@ What remains open is below.*
       knip stays green. Its reserved purpose ("suppressed flow feedback may be considered later
       only as explicit restore-preparation evidence") was retired when flow reports became
       admissible on 2026-07-25. Source: adversarial review, 2026-07-25. [P2]
-
-- [ ] **Redundant off-writes to a charger already observed off.** `Elbillader` took 8
-      `evcharger_charging=false` writes in 17 min, 7 of them with `currentOn=false` and the observed
-      binary already agreeing (`binary_observation_consolidated` → `values_match`). Each recorded a
-      `diagnostics_shed_recorded`, so diagnostics logged 7 sheds for the charger vs 1 for the water
-      heater; two writes were 19 s and 31 s apart, so the 60 s shed cooldown does not gate
-      re-assertions of an existing shed. Likely trigger: `binary_write_timeout` fires on 8 of 8
-      writes to this device and on no other (the Easee never echoes `evcharger_charging` inside the
-      5 s settle window, `lib/observer/binarySettle.ts` ~28), so the executor never sees the command
-      materialize. Source: prod log review 2026-07-25. [P1]
 
 - [ ] **"Not enough available power to resume" prints two numbers that say it should have resumed.**
       The card read "needs 1.6 kW, 2.0 kW available" while the gate that actually failed was

@@ -184,6 +184,15 @@ export class PlanEngineState {
 
   lastDeviceRestoreMs: Record<string, number> = {};
 
+  /**
+   * Executor-owned binary activation attempts for dual-control stepped loads.
+   *
+   * Separate from `lastDeviceRestoreMs`, which step adjustments also stamp.
+   * This cursor prevents an activation-time OFF/reset echo from immediately
+   * reissuing a toggle-style binary ON before the post-activation step lands.
+   */
+  lastSteppedBinaryRestoreAttemptMs: Record<string, number> = {};
+
   activationAttemptByDevice: Record<string, ActivationAttemptState> = {};
 
   surplusEligibilityByDevice: Record<string, SurplusEligibilityState> = {};
@@ -371,6 +380,18 @@ export class PlanEngineState {
   /** Clear a stepped-load keep-invariant shed block for a device. */
   clearKeepInvariantShedBlock(deviceId: string): void {
     delete this.keepInvariantShedBlockedByDevice[deviceId];
+  }
+
+  /** Record a dual-control stepped load's binary activation attempt. */
+  markSteppedBinaryRestoreAttempt(deviceId: string, nowMs: number): void {
+    this.lastSteppedBinaryRestoreAttemptMs[deviceId] = nowMs;
+  }
+
+  /** Whether a dual-control stepped load was recently sent binary ON. */
+  hasRecentSteppedBinaryRestoreAttempt(deviceId: string, nowMs: number): boolean {
+    const attemptedAtMs = this.lastSteppedBinaryRestoreAttemptMs[deviceId];
+    return typeof attemptedAtMs === 'number'
+      && nowMs - attemptedAtMs < this.restoreCooldownMs;
   }
 
   /** Drop the pending target-command record for a device (confirmed/settled). */

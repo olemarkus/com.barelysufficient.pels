@@ -63,8 +63,8 @@ export const isBinaryControlled = <T extends BinaryControlObserved>(
 export const getBinaryOn = (device: BinaryControlled): boolean => device.binaryControl.on;
 
 /**
- * The observed control-state shape the two control-value readers below
- * consume: the latched on-state and the evidence record. Structural so
+ * The observed control-state shape the evidence reader below consumes.
+ * Structural so
  * transport snapshots, plan-side decision snapshots, and executor snapshots
  * all fit. Browser-safe: contracts types only, no Homey SDK types.
  */
@@ -77,40 +77,23 @@ type ObservedBinaryControlFields = BinaryControlObserved & {
 };
 
 /**
- * The observed value of the device's binary CONTROL capability — the thing a
- * binary write actually changes.
+ * Planner command-equivalence state as one strict boolean.
  *
- * For a charger (`evcharger_charging`) this must be the raw switch, and the
- * ONLY read that speaks for the switch is an evidence record whose PROVENANCE
- * is the raw capability itself (`observedCapabilityIds ===
- * ['evcharger_charging']`). Neither of the tempting shortcuts is safe:
- * `binaryControl.on` is activity-derived (state-authoritative via
- * `resolveEvCurrentOn`), and the snapshot's `evCharging` field is overwritten
- * with state-derived evidence by `applyBinarySettleEvidenceToSnapshot` — so a
- * paused-but-armed charger (state `plugged_in_paused`, switch still true)
- * reads `false` through both. State-derived provenance
- * (`['evcharger_charging_state']`) therefore resolves `undefined`, never a
- * value. For every other binary device the control IS the latched on-state.
+ * The ordinary binary state is the complete answer for generic controls. EV
+ * chargers add one orthogonal producer-resolved fact: `evCharging=true` means
+ * charging is permitted even when the activity-derived binary state is still
+ * off (`plugged_in`, car not accepting charge). Conversely, observed charging
+ * activity is on even if the raw control read lags false. OR the two trusted
+ * facts here so the planner compares desired commands against one non-nullable
+ * value and never interprets the EV capability ID or plug-state enum.
  *
- * `undefined` = no raw-switch evidence; callers must not treat it as either
- * state.
+ * This is a command de-duplication projection only and does not redefine
+ * transport, session, SoC, or UI state.
  */
-export function getObservedBinaryControlValue(
-  snapshot: ObservedBinaryControlFields | undefined,
-  capabilityId: BinaryControlCapabilityId,
-): boolean | undefined {
-  if (!snapshot) return undefined;
-  if (capabilityId === 'evcharger_charging') {
-    const observation = snapshot.binaryControlObservation;
-    if (observation?.valid !== true) return undefined;
-    if (observation.capabilityId !== 'evcharger_charging') return undefined;
-    const observedIds = observation.observedCapabilityIds;
-    if (!Array.isArray(observedIds) || observedIds.length !== 1 || observedIds[0] !== 'evcharger_charging') {
-      return undefined;
-    }
-    return observation.observedValue;
-  }
-  return snapshot.binaryControl?.on;
+export function resolveBinaryCommandCurrentOn(
+  snapshot: BinaryControlled & { evCharging?: boolean },
+): boolean {
+  return snapshot.binaryControl.on || snapshot.evCharging === true;
 }
 
 /**
@@ -122,11 +105,9 @@ export function getObservedBinaryControlValue(
  * device") from a real load-changing shed; absence of evidence resolves
  * `false` — an unproven no-op is treated as a real shed.
  *
- * Deliberately provenance-AGNOSTIC, unlike `getObservedBinaryControlValue`:
- * state-derived off evidence (a charger paused with its switch still armed)
+ * State-derived off evidence (a charger paused with its switch still armed)
  * answers this question correctly — no charging activity means the off-write
- * changes no load — while it must never answer the "is the switch already
- * off" question the skip gate asks.
+ * changes no load.
  */
 export function isTrustedObservedBinaryOff(snapshot: ObservedBinaryControlFields | undefined): boolean {
   if (!snapshot?.controlCapabilityId) return false;
