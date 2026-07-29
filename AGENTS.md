@@ -127,7 +127,7 @@ When `.homeycompose/` changes, run `homey app validate` — this regenerates roo
 
 ### Testing
 
-Each runtime tier is its own fast lane with its own config (`vitest.config.{unit,integration,e2e,tz}.mts`); the lanes run in **parallel isolated forks** (no shared `maxWorkers: 1`). Coverage is collected once, across all tiers, by `vitest.config.mts`.
+Each runtime tier is its own fast lane with its own config (`vitest.config.{unit,integration,e2e,tz}.mts`); the lanes use isolated forks bounded to two local workers. Coverage is collected once, across all tiers, by `vitest.config.mts`.
 
 ```bash
 npm run test:unit           # unit tier only (test/unit/, fast, no coverage)
@@ -140,6 +140,16 @@ npm run test:ui             # Settings UI vitest tests
 npm run test:e2e            # Settings-UI Playwright E2E (chromium + firefox mobile); alias: test:e2e:ui
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
+
+**Shared-machine resource safety.** Standard build, check, test, and Git-hook
+entrypoints coordinate through one per-user Linux `flock` across every PELS
+worktree. Do not bypass the npm scripts with raw `npx vitest` or `playwright`
+commands. Vitest and local Playwright accept only one or two workers through
+`PELS_TEST_WORKERS` and `PELS_PLAYWRIGHT_WORKERS`; two is the default. In a
+multi-agent session, the lead agent owns broad validation. Review agents run
+read-only analysis or request a targeted run from the lead instead of launching
+the full suite independently. Non-Linux hosts retain the worker caps but cannot
+coordinate across worktrees because `flock` is unavailable.
 
 **Test taxonomy.** Tests are classified into three tiers — **unit** (one pure function, no I/O), **integration** (one layer, only outward seams mocked via shared helpers), **e2e** (nothing internal mocked; driven through an external seam — Homey SDK for runtime e2e, the UI for Playwright e2e — and observed through that seam + structured logs, never parsed prose). Every spec lives in `test/unit/`, `test/integration/`, or `test/e2e/`; shared mocks/helpers/setup stay at `test/` root. jsdom widget-render specs are unit-tier and self-declare their environment via a `// @vitest-environment jsdom` pragma. Before adding or moving a test, read `notes/testing-taxonomy.md` (and `test/AGENTS.md` for the short rules); bump import depth when moving a spec, then run `knip`.
 

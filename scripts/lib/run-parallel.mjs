@@ -1,4 +1,8 @@
-import { spawn } from 'node:child_process';
+import {
+  getTerminationExitCode,
+  signalExitCode,
+  spawnManagedChild,
+} from './managed-child.mjs';
 
 export const createLinePrefixer = (label, write) => {
   let buffer = '';
@@ -22,10 +26,10 @@ export const createLinePrefixer = (label, write) => {
   };
 };
 
-const runOne = (command, args, label) => new Promise((resolve) => {
+export const runOne = (command, args, label) => new Promise((resolve) => {
   const start = Date.now();
   console.log(`[${label}] starting: ${command} ${args.join(' ')}`);
-  const child = spawn(command, args, {
+  const child = spawnManagedChild(command, args, {
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -43,33 +47,49 @@ const runOne = (command, args, label) => new Promise((resolve) => {
     resolve({ label, code: 1 });
   });
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
     stdoutPrefixer.flush();
     stderrPrefixer.flush();
     const seconds = ((Date.now() - start) / 1000).toFixed(1);
-    const status = code === 0 ? 'ok' : `exit ${code}`;
+    const resultCode = getTerminationExitCode()
+      ?? (signal ? signalExitCode(signal) : (code ?? 1));
+    const status = resultCode === 0 ? 'ok' : `exit ${resultCode}`;
     console.log(`[${label}] done (${status}) in ${seconds}s`);
-    resolve({ label, code: code ?? 1 });
+    resolve({ label, code: resultCode });
   });
 });
 
-export const runParallel = async (commands) => {
-  const results = await Promise.all(
-    commands.map(({ command, args, label }) => runOne(command, args, label)),
-  );
-
-  const failed = results.filter((result) => result.code !== 0);
-  if (failed.length > 0) {
-    console.error(`\nFailed: ${failed.map((result) => result.label).join(', ')}`);
-    process.exit(failed[0].code);
+export const runBounded = async (commands, maxConcurrency = 2) => {
+  if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1) {
+    throw new Error('maxConcurrency must be a positive integer');
   }
-};
 
-export const runSequential = async (commands) => {
-  for (const entry of commands) {
-    const { code } = await runOne(entry.command, entry.args, entry.label);
-    if (code !== 0) {
-      process.exit(code);
+  const results = [];
+  let nextIndex = 0;
+  let failed = false;
+
+  const worker = async () => {
+    while (!failed && nextIndex < commands.length) {
+      const entry = commands[nextIndex];
+      nextIndex += 1;
+      const result = await runOne(entry.command, entry.args, entry.label);
+      results.push(result);
+      if (result.code !== 0) {
+        failed = true;
+      }
     }
+  };
+
+  const workerCount = Math.min(maxConcurrency, commands.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+
+  const failures = results.filter((result) => result.code !== 0);
+  if (failures.length > 0) {
+    console.error(`\nFailed: ${failures.map((result) => result.label).join(', ')}`);
+    process.exit(failures[0].code);
   }
 };
+
+export const runParallel = (commands) => runBounded(commands, 2);
+
+export const runSequential = (commands) => runBounded(commands, 1);

@@ -74,12 +74,15 @@
   "ignore": [
     "test/mocks/echarts-subpath-shim.ts",
     "test/mocks/homey.ts",
-    "vitest-env.d.ts"
+    "vitest-env.d.ts",
+    "scripts/lib/run-parallel.d.mts",
+    "scripts/with-validation-lock.d.mts"
   ],
   "ignoreDependencies": [
     "homey",
     "homey-api",
-    "playwright"
+    "playwright",
+    "lint-staged"
   ],
   "ignoreBinaries": [
     "homey",

@@ -1,2 +1,1 @@
-npx lint-staged
-node scripts/pre-commit-extra-checks.mjs
+node scripts/with-validation-lock.mjs pre-commit -- node scripts/pre-commit-checks.mjs
