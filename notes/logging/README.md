@@ -28,8 +28,12 @@ This note is for contributors changing runtime logging.
   problem where every layer redeclares `structuredLog?` / `debugStructured?`.
 - Transport still routes by Homey SDK log level callbacks, but payloads should remain JSON
   objects with stable field names.
-- AsyncLocalStorage lives in `lib/logging/alsContext.ts` and currently injects
-  `rebuildId` through `withRebuildContext(...)`.
+- AsyncLocalStorage lives in `lib/logging/alsContext.ts`. PlanService establishes
+  the owning `homeId` around every queued operation, and nested
+  `withRebuildContext(...)` adds `rebuildId`. Planner and executor descendants
+  therefore inherit both fields without redeclaring logging dependencies.
+  Global async handoffs must use `runWithoutContext(...)` when their later work
+  no longer belongs to the home/rebuild that happened to schedule it.
 - `incidentId` is still attached manually by `CapacityGuard`; other important flows still lack
   automatic correlation IDs.
 - Debug-level structured events should follow the existing debug-topic model. When a topic is
@@ -133,6 +137,10 @@ This note is for contributors changing runtime logging.
 - Capacity-state summary fields should stay semantically explicit. Do not reuse one counter name
   for planned shed selection, pending shed actuation, and currently active shed devices; log
   separate counters plus `summarySource`/`summarySourceAtMs` when the source snapshot can differ.
+- Every home-scoped plan, executor, status, and hard-cap incident record must
+  carry the stable `homeId`; use `'main'` for the Main home. Device-feed events
+  remain device-scoped unless their producer has authoritative home ownership
+  at the moment it emits.
 - Do not label hourly-budget-derived thresholds or margins as plain hard-cap headroom. If a field
   comes from remaining-hour budget math, say so explicitly in the field name or adjacent text, and
   reserve `hardCapHeadroomKw` for actual `limitKw - totalKw` semantics.

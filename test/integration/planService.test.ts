@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import type { Mock } from 'vitest';
 import { PlanService } from '../../lib/plan/planService';
 import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
@@ -27,6 +28,11 @@ import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { createMockPlanEngine } from '../utils/planEngineMock';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+import {
+  createRootLogger,
+  getLogger,
+  setRootLogger,
+} from '../../lib/logging/logger';
 
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
@@ -70,6 +76,7 @@ const buildPlan = (
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
   const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
+    homeId: 'main',
     homey: {
       settings: { set: vi.fn() },
       api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -131,6 +138,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -188,6 +196,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -710,6 +719,7 @@ describe('PlanService', () => {
     const overviewDebugStructured = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -866,6 +876,7 @@ describe('PlanService', () => {
     let currentOn = false;
     const overviewDebugStructured = vi.fn();
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -943,6 +954,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -974,6 +986,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockRejectedValue('boom');
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1026,6 +1039,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -1052,6 +1066,7 @@ describe('PlanService', () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1129,6 +1144,7 @@ describe('PlanService', () => {
     // the now-stale reapply (R7b P1 TOCTOU).
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1191,6 +1207,7 @@ describe('PlanService', () => {
       currentOn: false,
     }) as PlanInputDevice];
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1249,6 +1266,7 @@ describe('PlanService', () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1335,6 +1353,7 @@ describe('PlanService', () => {
     }));
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -1422,6 +1441,7 @@ describe('PlanService', () => {
     }));
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -1484,6 +1504,7 @@ describe('PlanService', () => {
   it('preserves generatedAtMs when syncLivePlanState refreshes live state', async () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1550,6 +1571,7 @@ describe('PlanService', () => {
   it('skips plan reconcile for power-only drift', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1604,6 +1626,7 @@ describe('PlanService', () => {
   it('skips plan reconcile for target-only drift while a shed device is already off', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1653,6 +1676,7 @@ describe('PlanService', () => {
   it('reapplies shed-off intent when live binary state is still on', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1713,6 +1737,7 @@ describe('PlanService', () => {
     let hasPendingBinaryCommands = true;
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1784,6 +1809,7 @@ describe('PlanService', () => {
       }),
     );
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1856,6 +1882,7 @@ describe('PlanService', () => {
   it('reapplies the current plan when reconcile runs from a stale keep/off snapshot', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1914,6 +1941,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -1995,6 +2023,7 @@ describe('PlanService', () => {
       };
     });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2115,6 +2144,7 @@ describe('PlanService', () => {
       currentOn = true;
     });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2190,6 +2220,7 @@ describe('PlanService', () => {
       };
     });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2310,6 +2341,7 @@ describe('PlanService', () => {
       };
     });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2432,6 +2464,7 @@ describe('PlanService', () => {
       currentOn = false;
     });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2502,6 +2535,7 @@ describe('PlanService', () => {
     });
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2580,6 +2614,7 @@ describe('PlanService', () => {
       };
     }));
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2642,6 +2677,7 @@ describe('PlanService', () => {
     }));
     const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2708,6 +2744,7 @@ describe('PlanService', () => {
       decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
     };
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2770,6 +2807,7 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'stable'));
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2839,6 +2877,7 @@ describe('PlanService', () => {
     let liveDevices = [buildLiveDevice(snapshotRefreshEvidence)];
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -2898,6 +2937,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -2960,6 +3000,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3006,6 +3047,7 @@ describe('PlanService', () => {
   it('reuses cached pels status computation when inputs are unchanged', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3061,6 +3103,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       // The pels_status write is what `statusWriteMs` measures; route the injected
       // writer to the same fake-timer-advancing spy the settings.set used to be, so
       // the phase-timing assertion keeps observing the ~7ms status write cost.
@@ -3115,6 +3158,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
@@ -3192,6 +3236,79 @@ describe('PlanService', () => {
       summarySourceAtMs: expect.any(Number),
     }));
     expect(structuredLog.info.mock.calls[0]?.[0]).not.toHaveProperty('shedDevices');
+  });
+
+  it('isolates owning-home attribution across concurrent queued rebuilds', async () => {
+    const destination = new PassThrough();
+    const lines: string[] = [];
+    destination.on('data', (chunk: Buffer) => { lines.push(chunk.toString()); });
+    setRootLogger(createRootLogger(destination, 'debug'));
+
+    try {
+      const serviceFor = (homeId: string) => {
+        const scopedOverrides = {
+          homeId,
+          getCapacityDryRun: () => false,
+          planEngine: {
+            ...createMockPlanEngine(),
+            buildDevicePlanSnapshot: vi.fn(async () => {
+              await Promise.resolve();
+              getLogger('executor/test').info({
+                event: 'home_scoped_descendant_test',
+                expectedHomeId: homeId,
+              });
+              return buildPlan(20, 'stable');
+            }),
+            computeDynamicSoftLimit: vi.fn(() => 0),
+            computeShortfallThreshold: vi.fn(() => 0),
+            handleShortfall: vi.fn().mockResolvedValue(undefined),
+            handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+            applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+            applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+          },
+        };
+        return createPlanService(scopedOverrides).service;
+      };
+      const homeIds = ['h_area_a', 'h_area_b'];
+      const services = homeIds.map(serviceFor);
+
+      await Promise.all(services.map((service) => service.rebuildPlanFromCache('initial')));
+      const failingHomeId = 'h_area_failure';
+      const failingOverrides = {
+        homeId: failingHomeId,
+        getCapacityDryRun: () => false,
+        planEngine: {
+          ...createMockPlanEngine(),
+          buildDevicePlanSnapshot: vi.fn().mockRejectedValue(new Error('expected test failure')),
+        },
+      };
+      await createPlanService(failingOverrides).service.rebuildPlanFromCache('failure_test');
+
+      const events = lines.join('').trim().split('\n').map((line) => JSON.parse(line));
+      for (const homeId of homeIds) {
+        const descendant = events.find((event) => (
+          event.event === 'home_scoped_descendant_test'
+          && event.expectedHomeId === homeId
+        ));
+        expect(descendant).toMatchObject({
+          homeId,
+          rebuildId: expect.any(String),
+        });
+        expect(events.find((event) => (
+          event.event === 'plan_rebuild_completed'
+          && event.rebuildId === descendant.rebuildId
+        ))).toMatchObject({
+          homeId,
+          rebuildId: descendant.rebuildId,
+        });
+      }
+      expect(events.find((event) => (
+        event.event === 'plan_operation_failed'
+        && event.message === 'Failed to rebuild plan'
+      ))).toMatchObject({ homeId: failingHomeId });
+    } finally {
+      setRootLogger(createRootLogger(new PassThrough(), 'silent'));
+    }
   });
 
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
@@ -3405,6 +3522,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1 });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3453,6 +3571,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3534,6 +3653,7 @@ describe('PlanService', () => {
       )),
     };
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3576,6 +3696,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3628,6 +3749,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applySheddingToDevice = vi.fn().mockResolvedValue(true);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
@@ -3663,6 +3785,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applySheddingToDevice = vi.fn().mockResolvedValue(false);
     const service = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },

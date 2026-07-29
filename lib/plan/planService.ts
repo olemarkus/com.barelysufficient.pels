@@ -37,6 +37,7 @@ import type { IdleClassification } from '../../packages/shared-domain/src/idleCl
 import { buildPlanDetailSignature } from './planLogging';
 import { createPlanRebuildOutcome } from './planRebuildMetrics';
 import { getLogger } from '../logging/logger';
+import { runWithContext } from '../logging/alsContext';
 import type {
   SettingsUiDeviceLogPayload,
   SettingsUiPlanSnapshot,
@@ -190,11 +191,11 @@ export class PlanService {
   }
 
   handleShortfall(deficitKw: number): Promise<void> {
-    return this.deps.planEngine.handleShortfall(deficitKw);
+    return this.withHomeLogContext(() => this.deps.planEngine.handleShortfall(deficitKw));
   }
 
   handleShortfallCleared(): Promise<void> {
-    return this.deps.planEngine.handleShortfallCleared();
+    return this.withHomeLogContext(() => this.deps.planEngine.handleShortfallCleared());
   }
 
   getLastNotifiedPriceLevel(): PriceLevel {
@@ -258,6 +259,10 @@ export class PlanService {
   }
 
   syncLivePlanStateInline(source: PendingTargetObservationSource): boolean {
+    return this.withHomeLogContext(() => this.syncLivePlanStateInlineInContext(source));
+  }
+
+  private syncLivePlanStateInlineInContext(source: PendingTargetObservationSource): boolean {
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands();
     const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands();
     if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
@@ -321,7 +326,7 @@ export class PlanService {
   }
 
   applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
-    return this.deps.planEngine.applyPlanActions(plan, mode);
+    return this.withHomeLogContext(() => this.deps.planEngine.applyPlanActions(plan, mode));
   }
 
   applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<void> {
@@ -417,13 +422,15 @@ export class PlanService {
     let result = fallbackValue;
     this.planOperationQueue = this.planOperationQueue
       .then(async () => {
-        result = await operation();
+        result = await this.withHomeLogContext(operation);
       })
       .catch((error) => {
-        (this.deps.loggers?.structuredLog ?? logger).error({
-          event: 'plan_operation_failed',
-          message: errorMessage,
-          error: normalizeError(error),
+        this.withHomeLogContext(() => {
+          (this.deps.loggers?.structuredLog ?? logger).error({
+            event: 'plan_operation_failed',
+            message: errorMessage,
+            error: normalizeError(error),
+          });
         });
       })
       .finally(() => {
@@ -432,6 +439,10 @@ export class PlanService {
 
     await this.planOperationQueue;
     return result;
+  }
+
+  private withHomeLogContext<T>(operation: () => T): T {
+    return runWithContext({ homeId: this.deps.homeId }, operation);
   }
 
   private async performPlanReconcile(

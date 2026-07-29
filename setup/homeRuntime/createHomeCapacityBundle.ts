@@ -392,6 +392,7 @@ function buildSubHomeScope(params: {
 // collapse to the pure capacity math.
 function createBundleGuard(params: {
   ctx: AppContext;
+  homeId: HomeId;
   scalars: CapacityScalarSettings;
   planEngine: ReturnType<typeof createPlanEngine>;
   planService: PlanService;
@@ -408,7 +409,7 @@ function createBundleGuard(params: {
   holdDeferredShortfallSideEffect: () => void;
 } {
   const {
-    ctx, scalars, planEngine, planService, isTornDown, isMembershipReady,
+    ctx, homeId, scalars, planEngine, planService, isTornDown, isMembershipReady,
     isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
     isPreparedReconcileActive, shortfallRetryTimerKey,
   } = params;
@@ -419,6 +420,7 @@ function createBundleGuard(params: {
       void shortfallSideEffectGate.flush().catch((error: unknown) => {
         ctx.getStructuredLogger('homes')?.warn({
           event: 'home_shortfall_side_effect_retry_failed',
+          homeId,
           err: normalizeError(error),
         });
       });
@@ -435,6 +437,7 @@ function createBundleGuard(params: {
     applyClear: () => planService.handleShortfallCleared(),
   });
   const guard = new CapacityGuard({
+    homeId,
     limitKw: scalars.limitKw,
     softMarginKw: scalars.marginKw,
     // `handleShortfall`/`handleShortfallCleared` fire the app's SINGLE global
@@ -556,6 +559,7 @@ function createBundlePlanningRuntime(params: {
     holdDeferredShortfallSideEffect,
   } = createBundleGuard({
     ctx: params.ctx,
+    homeId: params.homeId,
     scalars: params.getCapacityScalars(),
     planEngine,
     planService,

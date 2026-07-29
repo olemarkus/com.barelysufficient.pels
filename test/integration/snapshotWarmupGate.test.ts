@@ -188,6 +188,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
       planEngine: {
@@ -234,6 +235,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
       planEngine: {
@@ -271,6 +273,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
       planEngine: {

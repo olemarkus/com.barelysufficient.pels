@@ -237,7 +237,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   vi.setSystemTime(new Date(nowMs));
 
   const powerTracker = buildPowerTracker(nowMs);
-  const capacityGuard = new CapacityGuard({ limitKw: LIMIT_KW, softMarginKw: 0 });
+  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: LIMIT_KW, softMarginKw: 0 });
   capacityGuard.reportTotalPower(STEP_LOW_KW);
 
   const deferredController = new DeferredObjectiveDecorationController({

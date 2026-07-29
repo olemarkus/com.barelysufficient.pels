@@ -94,7 +94,7 @@ const makeHarness = (params: {
   decorate?: (devices: PlanInputDevice[]) => DeferredDecorationBundle;
 }): Harness => {
   const limitKw = params.limitKw ?? 10;
-  const guard = new CapacityGuard({ limitKw, softMarginKw: 0.2 });
+  const guard = new CapacityGuard({ homeId: 'main', limitKw, softMarginKw: 0.2 });
   guard.reportTotalPower(params.totalKw);
   const state = createPlanEngineState();
   const builder = new PlanBuilder({

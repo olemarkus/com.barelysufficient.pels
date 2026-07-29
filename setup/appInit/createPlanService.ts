@@ -15,6 +15,7 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 // through to `ctx.planEngine` would silently drive the MAIN home's engine.
 export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?: PlanEngine): PlanService {
   return new PlanService({
+    homeId: scope.homeId,
     homey: ctx.homey,
     writePelsStatus: scope.writePelsStatus,
     planEngine: planEngine ?? requirePlanEngine(ctx),

@@ -1,10 +1,3 @@
-/**
- * `PlanServiceDeps` — the injection contract for `PlanService`. Extracted to its
- * own module so the rebuild-orchestration slice (`planServiceRebuild.ts`) can
- * type its host seam against it without importing the service class, keeping the
- * `planService ↔ planServiceRebuild` edge acyclic. Re-exported from
- * `planService.ts` so existing importers see no change.
- */
 import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
@@ -15,11 +8,48 @@ import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
 import type { DeviceControlModel, EvChargingState } from '../../packages/contracts/src/types';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
+import type { HomeId } from '../../packages/contracts/src/settingsKeys';
 
+type PlanServicePlanEngine = Pick<
+  PlanEngine,
+  | 'state'
+  | 'buildDevicePlanSnapshot'
+  | 'computeDynamicSoftLimit'
+  | 'computeShortfallThreshold'
+  | 'handleShortfall'
+  | 'handleShortfallCleared'
+  | 'applyPlanActions'
+  | 'shouldApplyStablePlanActions'
+  | 'syncPendingTargetCommands'
+  | 'syncPendingBinaryCommands'
+  | 'prunePendingTargetCommands'
+  | 'decoratePlanWithPendingTargetCommands'
+  | 'hasPendingTargetCommands'
+  | 'hasPendingBinaryCommands'
+  | 'applySheddingToDevice'
+  | 'evaluateHeadroomForDevice'
+  | 'syncHeadroomCardState'
+  | 'syncHeadroomUsageObservation'
+>;
+
+/**
+ * Injection contract owned by `PlanService` and shared with the rebuild
+ * orchestration slice to keep their dependency edge acyclic. Setup callers
+ * must provide the stable owning home and live service dependencies.
+ *
+ * Every queued operation establishes `homeId` in AsyncLocalStorage so
+ * descendant planner/executor logs inherit it; see `notes/logging/README.md`.
+ * Re-exported from `planService.ts` so existing importers retain one seam.
+ */
 export type PlanServiceDeps = {
+  /**
+   * Stable owner of this plan-operation queue. Every caller must supply it so
+   * queued descendant logs can inherit `homeId` through AsyncLocalStorage.
+   */
+  homeId: HomeId;
   homey: { settings: SettingsPort; flow: FlowPort; api: ApiPort };
   writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
-  planEngine: PlanEngine;
+  planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
   // Binary-settle evidence (`binaryControlObservation`) is observer-internal and NOT
   // exposed on `PlanInputDevice`; the settle reads it off the device snapshot directly.

@@ -3826,6 +3826,7 @@ describe('buildSheddingPlan', () => {
 
   it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
     const guard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 4,
       softMarginKw: 0,
       restoreMarginKw: 0.2,
@@ -3903,6 +3904,7 @@ describe('buildSheddingPlan', () => {
 
   it('clears shedding using the active plan headroom even if capacity guard headroom is lower', async () => {
     const guard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 4,
       softMarginKw: 0.5,
       restoreMarginKw: 0.2,
@@ -3938,6 +3940,7 @@ describe('buildSheddingPlan', () => {
 
   it('clears shedding active once headroom clears the restore margin plus hysteresis', async () => {
     const guard = new CapacityGuard({
+      homeId: 'main',
       limitKw: 4,
       softMarginKw: 0,
       restoreMarginKw: 0.2,

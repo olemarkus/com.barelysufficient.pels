@@ -76,6 +76,7 @@ describe('Price level flow cards', () => {
     });
 
     const planService = new PlanService({
+      homeId: 'main',
       homey: mockHomeyInstance as any,
       writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
       planEngine: {} as any,

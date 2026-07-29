@@ -14,6 +14,7 @@ import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../packag
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
+import { runWithoutContext } from '../lib/logging/alsContext';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 
@@ -379,21 +380,23 @@ export class AppSnapshotHelpers {
       event: 'post_actuation_refresh_scheduled',
       delayMs: POST_ACTUATION_REFRESH_DELAY_MS,
     });
-    this.postActuationRefreshTimer = this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
-      this.postActuationRefreshTimer = undefined;
-      this.deps.timers.clear('postActuationRefresh');
-      this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
-        event: 'post_actuation_refresh_running',
-      });
-      try {
-        await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
-      } catch (error) {
-        this.deps.getStructuredLogger('snapshot')?.error({
-          event: 'post_actuation_snapshot_refresh_failed',
-          err: normalizeError(error),
+    this.postActuationRefreshTimer = runWithoutContext(() => (
+      this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
+        this.postActuationRefreshTimer = undefined;
+        this.deps.timers.clear('postActuationRefresh');
+        this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+          event: 'post_actuation_refresh_running',
         });
-      }
-    }, POST_ACTUATION_REFRESH_DELAY_MS));
+        try {
+          await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
+        } catch (error) {
+          this.deps.getStructuredLogger('snapshot')?.error({
+            event: 'post_actuation_snapshot_refresh_failed',
+            err: normalizeError(error),
+          });
+        }
+      }, POST_ACTUATION_REFRESH_DELAY_MS))
+    ));
   }
 
   private async runSnapshotRefreshCycle(

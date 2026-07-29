@@ -20,31 +20,31 @@ describe('CapacityGuard', () => {
 
   describe('Limit calculations', () => {
     it('returns default soft limit when no provider', () => {
-      const guard = new CapacityGuard({ limitKw: 5, softMarginKw: 0.2 });
+      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       expect(guard.getSoftLimit()).toBe(4.8);
     });
 
     it('uses soft limit provider when set', () => {
-      const guard = new CapacityGuard({ limitKw: 5, softMarginKw: 0.2 });
+      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       guard.setSoftLimitProvider(() => 3.5);
       expect(guard.getSoftLimit()).toBe(3.5);
     });
 
     it('uses shortfall threshold provider when set', () => {
-      const guard = new CapacityGuard({ limitKw: 5, softMarginKw: 0.2 });
+      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       guard.setShortfallThresholdProvider(() => 10.0);
       expect(guard.getShortfallThreshold()).toBe(10.0);
     });
 
     it('falls back to hard limit for shortfall threshold', () => {
-      const guard = new CapacityGuard({ limitKw: 5, softMarginKw: 0.2 });
+      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       expect(guard.getShortfallThreshold()).toBe(5);
     });
   });
 
   describe('Power tracking', () => {
     it('reports and retrieves total power', () => {
-      const guard = new CapacityGuard();
+      const guard = new CapacityGuard({ homeId: 'main' });
       expect(guard.getLastTotalPower()).toBeNull();
 
       guard.reportTotalPower(3.5);
@@ -52,7 +52,7 @@ describe('CapacityGuard', () => {
     });
 
     it('calculates headroom correctly', () => {
-      const guard = new CapacityGuard({ limitKw: 5, softMarginKw: 0.2 });
+      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       expect(guard.getHeadroom()).toBeNull();
 
       guard.reportTotalPower(3.0);
@@ -63,7 +63,7 @@ describe('CapacityGuard', () => {
     });
 
     it('ignores invalid power values', () => {
-      const guard = new CapacityGuard();
+      const guard = new CapacityGuard({ homeId: 'main' });
       guard.reportTotalPower(3.0);
       guard.reportTotalPower(NaN);
       expect(guard.getLastTotalPower()).toBe(3.0);
@@ -72,13 +72,14 @@ describe('CapacityGuard', () => {
 
   describe('Shedding state', () => {
     it('starts with shedding inactive', () => {
-      const guard = new CapacityGuard();
+      const guard = new CapacityGuard({ homeId: 'main' });
       expect(guard.isSheddingActive()).toBe(false);
     });
 
     it('can set shedding active', async () => {
       const callbacks: string[] = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         onSheddingStart: () => { callbacks.push('start'); },
         onSheddingEnd: () => { callbacks.push('end'); },
       });
@@ -98,6 +99,7 @@ describe('CapacityGuard', () => {
 
     it('uses override headroom when clearing shedding state', async () => {
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 4,
         softMarginKw: 0.5,
         restoreMarginKw: 0.2,
@@ -113,13 +115,14 @@ describe('CapacityGuard', () => {
 
   describe('Shortfall detection', () => {
     it('starts without shortfall', () => {
-      const guard = new CapacityGuard();
+      const guard = new CapacityGuard({ homeId: 'main' });
       expect(guard.isInShortfall()).toBe(false);
     });
 
     it('enters shortfall when hard cap exceeded and no candidates', async () => {
       const shortfallEvents: Array<{ type: string; deficit?: number }> = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: (deficit) => { shortfallEvents.push({ type: 'shortfall', deficit }); },
@@ -136,6 +139,7 @@ describe('CapacityGuard', () => {
     it('does not enter shortfall when candidates remain', async () => {
       const shortfallEvents: string[] = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => { shortfallEvents.push('shortfall'); },
@@ -151,6 +155,7 @@ describe('CapacityGuard', () => {
     it('does not enter shortfall when under hard cap', async () => {
       const shortfallEvents: string[] = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => { shortfallEvents.push('shortfall'); },
@@ -168,12 +173,14 @@ describe('CapacityGuard', () => {
       const structuredLog: Pick<import('../../lib/logging/logger').Logger, 'info'> = {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
-      const guard = new CapacityGuard({
+      const options = {
+        homeId: 'h_area',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => {},
-        structuredLog: structuredLog as unknown as import('../../lib/logging/logger').Logger,
-      });
+        structuredLog,
+      };
+      const guard = new CapacityGuard(options);
 
       guard.reportTotalPower(5.5);
       await guard.checkShortfall(false, 0.5);
@@ -181,6 +188,7 @@ describe('CapacityGuard', () => {
       expect(logEvents).toHaveLength(1);
       expect(logEvents[0]).toMatchObject({
         event: 'hard_cap_shortfall_detected',
+        homeId: 'h_area',
         powerW: 5500,
         thresholdW: 5000,
         headroomW: -500,
@@ -204,10 +212,11 @@ describe('CapacityGuard', () => {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => {},
-        structuredLog: structuredLog as unknown as import('../../lib/logging/logger').Logger,
+        structuredLog,
       });
 
       guard.reportTotalPower(5.38);
@@ -236,6 +245,7 @@ describe('CapacityGuard', () => {
       expect(logEvents).toHaveLength(1);
       expect(logEvents[0]).toMatchObject({
         event: 'hard_cap_shortfall_detected',
+        homeId: 'main',
         powerW: 5380,
         thresholdW: 5000,
         excessW: 380,
@@ -254,6 +264,7 @@ describe('CapacityGuard', () => {
     it('requires 60s sustained positive headroom to clear shortfall', async () => {
       const events: string[] = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
@@ -286,6 +297,7 @@ describe('CapacityGuard', () => {
     it('resets timer when headroom drops', async () => {
       const events: string[] = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
@@ -328,10 +340,12 @@ describe('CapacityGuard', () => {
       const structuredLog: Pick<import('../../lib/logging/logger').Logger, 'info'> = {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
-      const guard = new CapacityGuard({
+      const options = {
+        homeId: 'h_area',
         limitKw: 5,
-        structuredLog: structuredLog as unknown as import('../../lib/logging/logger').Logger,
-      });
+        structuredLog,
+      };
+      const guard = new CapacityGuard(options);
 
       guard.reportTotalPower(5.5);
       await guard.checkShortfall(false, 0.5);
@@ -368,10 +382,12 @@ describe('CapacityGuard', () => {
       await guard.checkShortfall(true, 0);
       expect(logEvents[4]).toMatchObject({
         event: 'hard_cap_shortfall_recovered',
+        homeId: 'h_area',
         powerW: 4700,
         thresholdW: 5000,
         headroomW: 300,
       });
+      expect(logEvents.every((event) => event.homeId === 'h_area')).toBe(true);
     });
   });
 
@@ -379,6 +395,7 @@ describe('CapacityGuard', () => {
     it('uses shortfall threshold provider for detection', async () => {
       const events: string[] = [];
       const guard = new CapacityGuard({
+      homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },

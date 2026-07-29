@@ -38,7 +38,7 @@ describe('power sample freshness policy', () => {
   });
 
   it('uses real computed headroom for fresh samples', () => {
-    const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
     capacityGuard.reportTotalPower(3.2);
 
     const context = buildPlanContext({
@@ -62,7 +62,7 @@ describe('power sample freshness policy', () => {
   });
 
   it('uses stale-hold fallback headroom 0 for short gaps and startup with no sample', () => {
-    const staleCapacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0 });
+    const staleCapacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
     staleCapacityGuard.reportTotalPower(4.4);
     const staleHoldContext = buildPlanContext({
       devices: [],
@@ -161,7 +161,7 @@ describe('planner behavior under stale power freshness states', () => {
   }
 
   it('does not proactively shed solely because power data is in stale-hold', async () => {
-    const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0.2 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(5.8);
     const builder = buildBuilder({
       tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
@@ -177,7 +177,7 @@ describe('planner behavior under stale power freshness states', () => {
   });
 
   it('logs stale-hold only on transition, not on every rebuild', async () => {
-    const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0.2 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(5.8);
     const structuredLog = {
       info: vi.fn(),
@@ -201,7 +201,7 @@ describe('planner behavior under stale power freshness states', () => {
 
   it('allows fail-closed shedding and clears once a fresh sample returns', async () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
-    const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0.2 });
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(4.9);
     const structuredLog = {
       info: vi.fn(),
