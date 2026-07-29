@@ -7,6 +7,9 @@ const BASE_URL = process.env.PELS_E2E_BASE_URL
 const SHOULD_BUILD = process.env.PELS_E2E_BUILD !== '0';
 const CHROMIUM_EXECUTABLE_PATH = process.env.PELS_E2E_CHROMIUM_EXECUTABLE_PATH;
 const configuredWorkers = Number(process.env.PELS_PLAYWRIGHT_WORKERS ?? '2');
+const explicitlyRequestedCapture = process.argv.some((argument) => (
+  /screenshots?(?:\.spec\.ts)?(?::\d+(?::\d+)?)?$/u.test(argument)
+));
 
 if (!Number.isInteger(configuredWorkers) || configuredWorkers < 1 || configuredWorkers > 2) {
   throw new Error('PELS_PLAYWRIGHT_WORKERS must be 1 or 2');
@@ -21,6 +24,7 @@ const chromiumUse = {
 
 export default defineConfig({
   testDir: './tests/e2e',
+  testIgnore: explicitlyRequestedCapture ? [] : ['**/*screenshot*.spec.ts'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

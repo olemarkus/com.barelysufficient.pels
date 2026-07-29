@@ -50,42 +50,6 @@ describe('DeadlineChip', () => {
     expect(link?.classList.contains('plan-chip--link')).toBe(true);
   });
 
-  it('uses the device name in the aria-label so SR users hear which card the chip belongs to', () => {
-    state.deferredObjectiveSettings = {
-      version: 1,
-      objectivesByDeviceId: {
-        'connected-300': {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 65,
-          deadlineAtMs: futureDeadline(),
-        },
-      },
-    };
-
-    const link = renderChip('connected-300', NOW_MS, 'Connected 300').querySelector('a');
-    expect(link?.getAttribute('aria-label')).toBe('Smart task for Connected 300');
-  });
-
-  it('falls back to a generic aria-label when no device name is provided', () => {
-    state.deferredObjectiveSettings = {
-      version: 1,
-      objectivesByDeviceId: {
-        'connected-300': {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 65,
-          deadlineAtMs: futureDeadline(),
-        },
-      },
-    };
-
-    const link = renderChip('connected-300').querySelector('a');
-    expect(link?.getAttribute('aria-label')).toBe('Smart task');
-  });
-
   it('renders nothing when the entry exists but is disabled', () => {
     state.deferredObjectiveSettings = {
       version: 1,

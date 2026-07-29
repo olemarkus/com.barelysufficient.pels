@@ -138,6 +138,7 @@ npm run test:coverage       # all runtime tiers in one instrumented pass + 80% g
 npm run test:unit:ci        # alias entry for the coverage lane
 npm run test:ui             # Settings UI vitest tests
 npm run test:e2e            # Settings-UI Playwright E2E (chromium + firefox mobile); alias: test:e2e:ui
+npm run test:e2e:capture    # Explicit local screenshot/documentation capture harnesses
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
 

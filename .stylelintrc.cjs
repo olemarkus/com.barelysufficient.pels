@@ -53,6 +53,27 @@ module.exports = {
       // backlog to defer.
       files: ['packages/settings-ui/public/**/*.css'],
       rules: {
+        'declaration-property-value-disallowed-list': [
+          {
+            '/^(color|background|background-color|background-image|border(-(top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end))?(-color)?|outline|outline-color|fill|stroke|box-shadow|caret-color|text-decoration|text-decoration-color|text-emphasis-color|column-rule|column-rule-color)$/': [
+              '/var\\(\\s*--color-base-(?!white|black)/',
+              '/var\\(\\s*--color-surface-/',
+            ],
+            '/^(gap|padding|margin|margin-(top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end))$/': [
+              '/^(?:4|8|12|16|24|32)px$/',
+            ],
+            'border-radius': [
+              '/\\b(?:8|999)px\\b/',
+            ],
+            'font-size': [
+              '/^[0-9][0-9.]*(?:px|rem)$/',
+            ],
+            'animation': [
+              '/^[\\w-]*pulse\\s+1\\.[456]s\\b/',
+            ],
+          },
+          { message: 'Use the matching Settings UI design token instead of a bindable literal or primitive colour token.' },
+        ],
         'scale-unlimited/declaration-strict-value': [
           ['/color$/', 'fill', 'stroke', 'background'],
           {

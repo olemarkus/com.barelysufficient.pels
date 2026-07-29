@@ -15,6 +15,17 @@ import {
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 
+const toastMocks = vi.hoisted(() => ({
+  showToast: vi.fn<(
+    message: string,
+    tone: string,
+    options?: { action?: { label: string; onClick: () => void } },
+  ) => Promise<void>>(async () => {}),
+  showToastError: vi.fn<(error: unknown, fallback: string) => Promise<void>>(async () => {}),
+}));
+
+vi.mock('../src/ui/toast.ts', () => toastMocks);
+
 type ApiHandler = (method: string, uri: string, body: unknown) => unknown;
 
 const setupDom = () => {
@@ -52,6 +63,8 @@ describe('budgetAdjustController', () => {
   beforeEach(() => {
     setupDom();
     vi.resetModules();
+    toastMocks.showToast.mockClear();
+    toastMocks.showToastError.mockClear();
   });
 
   it('seeds drafts from settings on load', async () => {
@@ -199,57 +212,53 @@ describe('budgetAdjustController', () => {
   });
 
   it('offers an Undo action that reapplies the previous active settings', async () => {
-    vi.useFakeTimers();
-    try {
-      const refreshSpy = vi.fn(async () => {});
-      const applyBodies: unknown[] = [];
-      const applyHandler = vi.fn<(body: unknown) => unknown>((body) => {
-        applyBodies.push(body);
-        return { days: {}, todayKey: 'today' };
-      });
-      await installHomey(
-        {
-          daily_budget_enabled: true,
-          daily_budget_kwh: MIN_DAILY_BUDGET_KWH,
-          daily_budget_price_shaping_enabled: true,
-          daily_budget_controlled_weight: UNMANAGED_RESERVE_BALANCED_MODE,
-          daily_budget_price_flex_share: PRICE_FLEX_MEDIUM,
-        },
-        (method, uri, body) => {
-          if (method === 'POST' && uri === SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH) {
-            return applyHandler(body);
-          }
-          throw new Error(`unexpected ${method} ${uri}`);
-        },
-      );
-      const controller = await import('../src/ui/budgetAdjustController.ts');
-      controller.setBudgetAdjustRefresh(refreshSpy);
-      await controller.loadBudgetAdjust();
+    const refreshSpy = vi.fn(async () => {});
+    const applyBodies: unknown[] = [];
+    const applyHandler = vi.fn<(body: unknown) => unknown>((body) => {
+      applyBodies.push(body);
+      return { days: {}, todayKey: 'today' };
+    });
+    await installHomey(
+      {
+        daily_budget_enabled: true,
+        daily_budget_kwh: MIN_DAILY_BUDGET_KWH,
+        daily_budget_price_shaping_enabled: true,
+        daily_budget_controlled_weight: UNMANAGED_RESERVE_BALANCED_MODE,
+        daily_budget_price_flex_share: PRICE_FLEX_MEDIUM,
+      },
+      (method, uri, body) => {
+        if (method === 'POST' && uri === SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH) {
+          return applyHandler(body);
+        }
+        throw new Error(`unexpected ${method} ${uri}`);
+      },
+    );
+    const controller = await import('../src/ui/budgetAdjustController.ts');
+    controller.setBudgetAdjustRefresh(refreshSpy);
+    await controller.loadBudgetAdjust();
 
-      controller.updateBudgetAdjustField({ dailyBudgetKWh: 80 });
-      const applyPromise = controller.applyBudgetAdjust();
-      // Flush microtasks so the toast renders before the sleep begins.
-      await vi.advanceTimersByTimeAsync(0);
-      expect(controller.getBudgetAdjustView().draft.dailyBudgetKWh).toBe(80);
+    controller.updateBudgetAdjustField({ dailyBudgetKWh: 80 });
+    await controller.applyBudgetAdjust();
+    expect(controller.getBudgetAdjustView().draft.dailyBudgetKWh).toBe(80);
 
-      const toast = document.getElementById('toast');
-      const undoButton = toast?.querySelector<HTMLButtonElement>('.toast__action');
-      expect(undoButton).not.toBeNull();
-      expect(undoButton?.textContent).toBe('Undo');
+    const latestToastCall = toastMocks.showToast.mock.calls[
+      toastMocks.showToast.mock.calls.length - 1
+    ];
+    const toastOptions = latestToastCall?.[2] as {
+      action?: { label: string; onClick: () => void };
+    } | undefined;
+    expect(toastOptions?.action?.label).toBe('Undo');
+    toastOptions?.action?.onClick();
 
-      undoButton?.click();
-      await vi.runAllTimersAsync();
-      await applyPromise;
-
-      const view = controller.getBudgetAdjustView();
-      expect(view.draft.dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
-      expect(view.status).toBe('clean');
+    await vi.waitFor(() => {
       expect(applyHandler).toHaveBeenCalledTimes(2);
-      expect((applyBodies[1] as { dailyBudgetKWh: number }).dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
       expect(refreshSpy).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+      expect(controller.getBudgetAdjustView().draft.dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
+    });
+    const view = controller.getBudgetAdjustView();
+    expect(view.draft.dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
+    expect(view.status).toBe('clean');
+    expect((applyBodies[1] as { dailyBudgetKWh: number }).dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
   });
 
   it('discards a pending preview and reverts the working draft', async () => {
