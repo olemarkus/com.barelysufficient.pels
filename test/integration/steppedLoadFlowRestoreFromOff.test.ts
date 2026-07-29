@@ -42,7 +42,6 @@
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -268,12 +267,6 @@ const buildHarness = (initialSnapshot: TransportDeviceSnapshot) => {
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    homey: {
-      settings: { set: vi.fn() },
-      flow: {
-        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
-      },
-    } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({

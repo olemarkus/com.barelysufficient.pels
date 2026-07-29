@@ -15,7 +15,6 @@
  * boundary.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -191,12 +190,6 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    homey: {
-      settings: { set: vi.fn() },
-      flow: {
-        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
-      },
-    } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route step writes through the actuator over the SAME device-manager stepped

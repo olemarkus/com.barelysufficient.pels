@@ -17,7 +17,6 @@
  * decoration arrives only through the injected `decorateDeferredObjectives`
  * seam. Capacity-model internals: `docs/technical.md`.
  */
-import type { HomeyRuntime, FlowPort } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
@@ -59,13 +58,9 @@ const moduleLogger = getLogger('plan/engine');
  * so settings changes take effect on the next rebuild without re-wiring.
  */
 export type PlanEngineDeps = {
-  // --- SDK/runtime port. The only Homey surface the engine sees; the
-  // executor uses it solely for the `capacity_shortfall` flow trigger card.
-  // Settings persistence goes through the typed writers below, never here.
-  homey: HomeyRuntime & { flow: FlowPort };
-  // Producer-resolved name of the home this engine serves, forwarded untouched
-  // to the executor as the `capacity_shortfall` trigger's `home` token (the
-  // card is global; every home fires the same one).
+  // Producer-resolved name of the home this engine serves, forwarded to the
+  // executor for attributed immediate shortfall-state logs. Setup independently
+  // uses the same scope-owned name on the delayed global Flow card.
   getHomeDisplayName: PlanExecutorDeps['getHomeDisplayName'];
   // Stable id of the same home, forwarded for structured-log correlation.
   homeId: PlanExecutorDeps['homeId'];
@@ -232,7 +227,6 @@ export class PlanEngine {
     };
 
     const executorDeps: PlanExecutorDeps = {
-      homey: deps.homey,
       getHomeDisplayName: deps.getHomeDisplayName,
       homeId: deps.homeId,
       setCapacityInShortfall: deps.setCapacityInShortfall,

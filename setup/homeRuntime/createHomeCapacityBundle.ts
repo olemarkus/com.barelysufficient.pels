@@ -54,11 +54,9 @@ import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { executePendingPowerRebuild } from '../../lib/plan/rebuildScheduler/powerDriven';
 import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from '../../lib/plan/rebuildScheduler/policy';
-import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
 import {
   isNumberMap,
 } from '../../lib/utils/appTypeGuards';
-import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,
@@ -91,7 +89,7 @@ import {
   createSuffixedTrackerPersistence,
 } from './suffixedTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
-import { createCapacityShortfallSideEffectGate } from '../capacityShortfallSideEffectGate';
+import { createBundleCapacityGuard } from './createBundleCapacityGuard';
 
 // A sub-home's OWN fallback seed for its capacity store. Mirrors the app-boot
 // defaults (`PelsApp.capacitySettings` / `capacityDryRun`) but is deliberately
@@ -105,7 +103,6 @@ const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = { limitKw: 10, margin
 // a freshly (re)created bundle holds restores until its meter proves live
 // (the first fresh sample clears the window via the pipeline).
 const BUNDLE_RESTORE_STABILIZATION_MS = 60 * 1000;
-const SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 
 export type HomeCapacityBundleDeps = {
   ctx: AppContext;
@@ -386,84 +383,6 @@ function buildSubHomeScope(params: {
   };
 }
 
-// Same provider wiring as main's `initCapacityGuard` + `initCapacityGuardProviders`;
-// with the capacity-only scope (null budget, price-opt off) both providers
-// collapse to the pure capacity math.
-function createBundleGuard(params: {
-  ctx: AppContext;
-  homeId: HomeId;
-  scalars: CapacityScalarSettings;
-  planEngine: ReturnType<typeof createPlanEngine>;
-  planService: PlanService;
-  /** Lifecycle/ownership/source fences: callbacks fire the GLOBAL capacity_shortfall Flow. */
-  isTornDown: () => boolean;
-  isMembershipReady: () => boolean;
-  isMeterSourceAuthorized: () => boolean;
-  isMeterSourceEpochDiscarded: () => boolean;
-  isPreparedReconcileActive: () => boolean;
-  shortfallRetryTimerKey: string;
-}): {
-  guard: CapacityGuard;
-  flushDeferredShortfallSideEffect: () => Promise<boolean>;
-  holdDeferredShortfallSideEffect: () => void;
-} {
-  const {
-    ctx, homeId, scalars, planEngine, planService, isTornDown, isMembershipReady,
-    isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
-    isPreparedReconcileActive, shortfallRetryTimerKey,
-  } = params;
-  const scheduleShortfallRetry = (): void => {
-    if (isTornDown() || ctx.timers.has(shortfallRetryTimerKey)) return;
-    ctx.timers.registerTimeout(shortfallRetryTimerKey, setTimeout(() => {
-      ctx.timers.clear(shortfallRetryTimerKey);
-      void shortfallSideEffectGate.flush().catch((error: unknown) => {
-        ctx.getStructuredLogger('homes')?.warn({
-          event: 'home_shortfall_side_effect_retry_failed',
-          homeId,
-          err: normalizeError(error),
-        });
-      });
-    }, SHORTFALL_SIDE_EFFECT_RETRY_MS));
-  };
-  const shortfallSideEffectGate = createCapacityShortfallSideEffectGate({
-    isDiscarded: () => isTornDown() || isMeterSourceEpochDiscarded(),
-    isTemporarilyFenced: () => (
-      isPreparedReconcileActive() || !isMembershipReady() || !isMeterSourceAuthorized()
-    ),
-    shouldHoldDeferredForPreparedApply: isPreparedReconcileActive,
-    scheduleRetry: scheduleShortfallRetry,
-    applyShortfall: (deficitKw) => planService.handleShortfall(deficitKw),
-    applyClear: () => planService.handleShortfallCleared(),
-  });
-  const guard = new CapacityGuard({
-    homeId,
-    limitKw: scalars.limitKw,
-    softMarginKw: scalars.marginKw,
-    // `handleShortfall`/`handleShortfallCleared` fire the app's SINGLE global
-    // `capacity_shortfall` Flow card (not a per-home signal). Re-check both
-    // lifecycle and source authorization at this final side-effect seam: an
-    // in-flight rebuild can otherwise raise/clear that card after synchronous
-    // source observation has fenced the meter but before queued teardown runs.
-    onShortfall: shortfallSideEffectGate.onShortfall,
-    onShortfallCleared: shortfallSideEffectGate.onShortfallCleared,
-    structuredLog: ctx.getStructuredLogger('capacity'),
-    capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
-      planService.getLatestPlanSnapshot(),
-      {
-        summarySource: 'plan_snapshot',
-        summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-      },
-    ),
-  });
-  guard.setSoftLimitProvider(() => planEngine.computeDynamicSoftLimit());
-  guard.setShortfallThresholdProvider(() => planService.computeShortfallThreshold());
-  return {
-    guard,
-    flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,
-    holdDeferredShortfallSideEffect: shortfallSideEffectGate.holdDeferredUntilPreparedApply,
-  };
-}
-
 // Assembles the bundle's sample-ingest runtime: the per-bundle rebuild
 // scheduler and the sample pipeline wired over it. Returns both so `teardown`
 // can cancel the scheduler. Extracted to keep `createHomeCapacityBundle` within
@@ -558,18 +477,20 @@ function createBundlePlanningRuntime(params: {
     guard,
     flushDeferredShortfallSideEffect,
     holdDeferredShortfallSideEffect,
-  } = createBundleGuard({
+  } = createBundleCapacityGuard({
     ctx: params.ctx,
     homeId: params.homeId,
     scalars: params.getCapacityScalars(),
     planEngine,
     planService,
+    getHomeDisplayName: scope.getHomeDisplayName,
     isTornDown: params.isTornDown,
     isMembershipReady: params.isMembershipReady,
     isMeterSourceAuthorized: params.isMeterSourceAuthorized,
     isMeterSourceEpochDiscarded: params.isMeterSourceEpochDiscarded,
     isPreparedReconcileActive: params.preparedSampleFence.isActive,
     shortfallRetryTimerKey: params.timerKey('shortfallSideEffectRetry'),
+    shortfallAlertTimerKey: params.timerKey('shortfallAlertHold'),
   });
   const { pipeline, scheduler: planRebuildScheduler } = createBundleSamplePipeline({
     ctx: params.ctx,

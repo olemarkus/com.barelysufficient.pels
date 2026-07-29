@@ -207,7 +207,7 @@ const buildExecutor = (
     getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
   } as unknown as Homey.App['homey']['flow'];
   const settingsSet = vi.fn();
-  const deps: PlanExecutorDeps = {
+  const deps: PlanExecutorDeps & { homey: Homey.App['homey'] } = {
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
@@ -261,23 +261,13 @@ afterEach(() => { logCapture.restore(); });
 describe('PlanExecutor shortfall side-effect retry', () => {
   it('keeps enter and clear retryable when the durable writer fails once', async () => {
     const state = createPlanEngineState();
-    const trigger = vi.fn().mockResolvedValue(true);
     let failNextWrite = true;
     const setCapacityInShortfall = vi.fn((_value: boolean) => {
       if (!failNextWrite) return;
       failNextWrite = false;
       throw new Error('settings unavailable');
     });
-    const homey = {
-      flow: {
-        getTriggerCard: vi.fn((id: string) => (
-          id === 'capacity_shortfall' ? { trigger } : undefined
-        )),
-      },
-      settings: { set: vi.fn() },
-    } as unknown as Homey.App['homey'];
     const { executor } = buildExecutor(state, undefined, {
-      homey,
       setCapacityInShortfall,
     });
     const gate = createCapacityShortfallSideEffectGate({
@@ -289,62 +279,24 @@ describe('PlanExecutor shortfall side-effect retry', () => {
 
     await expect(gate.onShortfall(2)).rejects.toThrow('settings unavailable');
     expect(state.inShortfall).toBe(false);
-    expect(trigger).not.toHaveBeenCalled();
 
     await expect(gate.flush()).resolves.toBe(true);
     expect(state.inShortfall).toBe(true);
-    expect(trigger).toHaveBeenCalledTimes(1);
 
     failNextWrite = true;
     await expect(gate.onShortfallCleared()).rejects.toThrow('settings unavailable');
     expect(state.inShortfall).toBe(true);
     await expect(gate.flush()).resolves.toBe(true);
     expect(state.inShortfall).toBe(false);
-    expect(trigger).toHaveBeenCalledTimes(1);
     expect(setCapacityInShortfall.mock.calls.map(([value]) => value))
       .toEqual([true, true, false, false]);
   });
 
-  it('names the home it serves on the shortfall Flow payload', async () => {
-    const state = createPlanEngineState();
-    const trigger = vi.fn().mockResolvedValue(true);
-    const homey = {
-      flow: {
-        getTriggerCard: vi.fn((id: string) => (
-          id === 'capacity_shortfall' ? { trigger } : undefined
-        )),
-      },
-      settings: { set: vi.fn() },
-    } as unknown as Homey.App['homey'];
-    // Every home fires this SINGLE global card, so the token is the only thing
-    // that tells a Flow whether the Main home or a meter area ran out of load
-    // to limit — and the alert asks someone to go and switch something off.
-    const { executor } = buildExecutor(state, undefined, {
-      homey,
-      getHomeDisplayName: () => 'Annex',
-      setCapacityInShortfall: vi.fn(),
-    });
-
-    await executor.handleShortfall(2);
-
-    expect(trigger).toHaveBeenCalledExactlyOnceWith({ home: 'Annex' });
-  });
-
-  it('emits a deferred enter after Builder pre-sync and rearms after a pre-synced clear', async () => {
+  it('emits deferred state transitions after Builder pre-sync', async () => {
     const state = createPlanEngineState();
     state.inShortfall = true;
-    const trigger = vi.fn().mockResolvedValue(true);
     const setCapacityInShortfall = vi.fn();
-    const homey = {
-      flow: {
-        getTriggerCard: vi.fn((id: string) => (
-          id === 'capacity_shortfall' ? { trigger } : undefined
-        )),
-      },
-      settings: { set: vi.fn() },
-    } as unknown as Homey.App['homey'];
     const { executor } = buildExecutor(state, undefined, {
-      homey,
       setCapacityInShortfall,
     });
     const gate = createCapacityShortfallSideEffectGate({
@@ -354,20 +306,17 @@ describe('PlanExecutor shortfall side-effect retry', () => {
       applyClear: () => executor.handleShortfallCleared(),
     });
 
-    // Builder already persisted/synchronized the guard state while the Flow
-    // callback was fenced. Executor must still deliver the retained enter.
+    // Builder already persisted/synchronized the guard state while the
+    // immediate state callback was fenced. Executor must still apply it.
     await gate.onShortfall(1);
-    expect(trigger).toHaveBeenCalledTimes(1);
     expect(setCapacityInShortfall).not.toHaveBeenCalled();
 
     // Model Builder pre-syncing the clear before the retained callback lands.
-    // The callback still has to reset the Flow-side latch for the next incident.
     state.inShortfall = false;
     await gate.onShortfallCleared();
     state.inShortfall = true;
     await gate.onShortfall(2);
 
-    expect(trigger).toHaveBeenCalledTimes(2);
     expect(setCapacityInShortfall).not.toHaveBeenCalled();
   });
 
@@ -2832,12 +2781,7 @@ describe('PlanExecutor stepped loads', () => {
         binaryControl: { on: false },
       },
     ];
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
-      homey: {
-        settings: { set: vi.fn() },
-        flow: { getTriggerCard: vi.fn(() => null) },
-      } as unknown as Homey.App['homey'],
-    });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
     deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false });
 
     await executor.applyPlanActions(steppedPlan({

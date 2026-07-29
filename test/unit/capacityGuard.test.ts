@@ -206,6 +206,62 @@ describe('CapacityGuard', () => {
       expect(logEvents).toHaveLength(1); // No new event
     });
 
+    it('publishes alert candidates separately from the slower incident-clear latch', async () => {
+      const candidates: Array<{ incidentId: string; deficitKw: number }> = [];
+      const conditionCleared = vi.fn();
+      const guard = new CapacityGuard({
+        homeId: 'main',
+        limitKw: 5,
+        onShortfallAlertCandidate: (entry) => { candidates.push(entry); },
+        onShortfallAlertConditionCleared: conditionCleared,
+      });
+
+      guard.reportTotalPower(5.5);
+      await guard.checkShortfall(false, 0.5);
+      await guard.checkShortfall(false, 0.6);
+
+      expect(guard.isInShortfall()).toBe(true);
+      expect(guard.isShortfallAlertConditionActive()).toBe(true);
+      expect(candidates).toHaveLength(2);
+      expect(candidates[1]).toMatchObject({
+        incidentId: candidates[0].incidentId,
+        deficitKw: 0.6,
+      });
+
+      guard.reportTotalPower(4.5);
+      expect(guard.isShortfallAlertConditionActive()).toBe(false);
+      expect(conditionCleared).toHaveBeenCalledOnce();
+
+      // A later high sample cannot silently resume the old hold. The planner
+      // must first reconfirm that no further limiting candidates exist.
+      guard.reportTotalPower(5.6);
+      expect(candidates).toHaveLength(2);
+      await guard.checkShortfall(false, 0.7);
+      expect(candidates).toHaveLength(3);
+
+      guard.reportTotalPower(4.5);
+      await guard.checkShortfall(true, 0);
+
+      expect(conditionCleared).toHaveBeenCalledTimes(3);
+      expect(guard.isInShortfall()).toBe(true);
+    });
+
+    it('publishes the alert candidate even when the immediate state write rejects', async () => {
+      const candidate = vi.fn();
+      const guard = new CapacityGuard({
+        homeId: 'main',
+        limitKw: 5,
+        onShortfall: () => Promise.reject(new Error('settings unavailable')),
+        onShortfallAlertCandidate: candidate,
+      });
+
+      guard.reportTotalPower(5.5);
+      await expect(guard.checkShortfall(false, 0.5)).rejects.toThrow('settings unavailable');
+
+      expect(candidate).toHaveBeenCalledOnce();
+      expect(guard.isShortfallAlertConditionActive()).toBe(true);
+    });
+
     it('logs hard-shortfall diagnostics, planned-shed counters, and source metadata', async () => {
       const logEvents: Array<Record<string, unknown>> = [];
       const structuredLog: Pick<import('../../lib/logging/logger').Logger, 'info'> = {

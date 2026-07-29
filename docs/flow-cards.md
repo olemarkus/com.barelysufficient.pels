@@ -27,7 +27,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 
 | Card | What it does |
 | --- | --- |
-| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
+| **Hard cap breach imminent — manual action needed** | Fires after PELS has projected for 10 seconds that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. A recovery during those 10 seconds cancels the trigger, while PELS still limits devices immediately. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
@@ -41,6 +41,8 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **Daily budget adjusted for the weather forecast** | Fires once a day when PELS sets your daily budget from the weather forecast (requires the weather insight's automatic apply to be turned on). Exposes a `budget_kwh` token (the new daily budget) and a `forecast_temperature` token (the forecast °C that set it). Manual and Flow budget changes do not fire it. |
 
 Use **Hard cap breach imminent — manual action needed** for urgent notifications, not for normal daily pacing.
+The 10-second confirmation keeps a brief recovery from starting your Flow after the need has passed; it does not
+delay PELS limiting managed devices.
 
 ## Conditions
 
