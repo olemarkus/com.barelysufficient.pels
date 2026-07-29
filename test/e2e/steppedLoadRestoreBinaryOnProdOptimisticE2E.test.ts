@@ -238,6 +238,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };

@@ -1348,7 +1348,7 @@ describe('native stepped-load wiring', () => {
     }
   });
 
-  it('logs async stepped-load flow trigger failures with execution context', async () => {
+  it('rejects stepped-load flow requests whose trigger fails', async () => {
     const logger = createLogger();
     const failure = new Error('trigger failed');
     const homey = {
@@ -1382,8 +1382,7 @@ describe('native stepped-load wiring', () => {
       planningCurrentA: 0,
       actuationMode: 'reconcile',
     }))
-      .resolves.toEqual({ requested: true, transport: 'flow' });
-    await Promise.resolve();
+      .resolves.toEqual({ requested: false });
 
     expect(logger.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_command_failed',
@@ -1398,6 +1397,62 @@ describe('native stepped-load wiring', () => {
         message: 'trigger failed',
       }),
     }));
+  });
+
+  it('abandons a stepped-load flow request when trigger acceptance never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const logger = createLogger();
+      const trigger = vi.fn(() => new Promise<never>(() => {}));
+      const homey = {
+        flow: {
+          getTriggerCard: () => ({ trigger }),
+        },
+      } as unknown as Homey.App;
+      const deviceManager = new DeviceTransport(
+        homey,
+        logger,
+        undefined,
+        undefined,
+        { getFlowTriggerCard: () => ({ trigger }) },
+      );
+      deviceManager.setSnapshotForTests([{
+        id: 'flow-step-1',
+        name: 'Flow backed charger',
+        targets: [],
+        binaryControl: { on: true },
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      } as TargetDeviceSnapshot]);
+
+      const request = deviceManager.requestSteppedLoadStep({
+        deviceId: 'flow-step-1',
+        profile: steppedProfile,
+        desiredStepId: 'medium',
+        planningPowerW: 1750,
+        planningCurrentA: 0,
+        actuationMode: 'plan',
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(request).resolves.toEqual({
+        requested: false,
+        reason: 'flow_trigger_timeout',
+      });
+      expect(logger.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'stepped_load_command_failed',
+        reasonCode: 'flow_trigger_timeout',
+        deviceId: 'flow-step-1',
+        deviceName: 'Flow backed charger',
+        desiredStepId: 'medium',
+        planningPowerW: 1750,
+        commandTransport: 'flow',
+        timeoutMs: 10_000,
+        mode: 'plan',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('ignores native stepped-load local write echoes as reported step feedback', async () => {

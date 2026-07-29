@@ -165,7 +165,13 @@ export type PlanEngineDeps = {
     previousStepId?: string;
     issuedAtMs?: number;
     pendingWindowMs?: number;
+    confirmationPolicy?: 'required' | 'assume_applied';
   }) => void;
+  getSteppedLoadCommandSession: (deviceId: string) => {
+    initializationAssumedStepId?: string;
+    hasPriorStepCommand: boolean;
+    reportedStepId?: string;
+  };
   // --- Legacy prose loggers (prose-logging sweep retires these in favour of
   // `structuredLog`/`debugStructured`; do not add new call sites).
   log: (...args: unknown[]) => void;
@@ -240,6 +246,7 @@ export class PlanEngine {
       getOperatingMode: deps.getOperatingMode,
       getShedBehavior: deps.getShedBehavior,
       markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
+      getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,

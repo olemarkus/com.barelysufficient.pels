@@ -115,6 +115,9 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
+    getSteppedLoadCommandSession: (deviceId) => (
+      ctx.deviceControlHelpers.getSteppedLoadCommandSession(deviceId)
+    ),
     logTargetRetryComparison: (params) => ctx.logTargetRetryComparison?.(params),
     // Scope-owned so the sync targets THIS home's plan service (see HomeScope).
     syncLivePlanStateAfterTargetActuation: scope.syncLivePlanStateAfterTargetActuation,

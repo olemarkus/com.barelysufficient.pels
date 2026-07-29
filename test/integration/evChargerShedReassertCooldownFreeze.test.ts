@@ -215,6 +215,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };

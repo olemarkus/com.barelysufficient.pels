@@ -46,9 +46,17 @@ export type SteppedLoadReportedRuntimeState = {
 export type DeviceControlRuntimeState = {
   steppedLoadDesiredByDeviceId: Map<string, SteppedLoadDesiredRuntimeState>;
   steppedLoadReportedByDeviceId: Map<string, SteppedLoadReportedRuntimeState>;
+  // Command-axis latch: the lowest-step initialization request was handed to
+  // the device transport during this on-session. It is an optimistic planning
+  // premise only — never reported/materialized evidence and never retry state.
+  steppedLoadInitializedAtLowestStepByDeviceId: Map<string, string>;
+  // Actual accepted step-command history for the current on-session. Kept
+  // separate from `steppedLoadDesiredByDeviceId`, which may contain preserved
+  // planner intent that was never issued.
+  steppedLoadStepCommandIssuedByDeviceId: Set<string>;
   // Last observed raw binary on/off per stepped device, kept only to detect the
-  // on→off transition that expires a confirmed command (see
-  // `expireConfirmedDesiredStepOnBinaryOff`).
+  // on→off transition that expires command-axis state from the ended on-session
+  // (see `expireConfirmedDesiredStepOnBinaryOff`).
   steppedLoadLastBinaryOnByDeviceId: Map<string, boolean>;
 };
 
@@ -60,20 +68,23 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
   previousStepId?: string;
   issuedAtMs?: number;
   pendingWindowMs?: number;
+  confirmationPolicy?: 'required' | 'assume_applied';
 };
 
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
   steppedLoadDesiredByDeviceId: new Map(),
   steppedLoadReportedByDeviceId: new Map(),
+  steppedLoadInitializedAtLowestStepByDeviceId: new Map(),
+  steppedLoadStepCommandIssuedByDeviceId: new Set(),
   steppedLoadLastBinaryOnByDeviceId: new Map(),
 });
 
-// A command confirmation is evidence about the device's configuration AT THE
-// TIME it was given. Once the device transitions on→off, that configuration can
-// drift, so a stale `'success'` must not fast-track a later restore-from-off
-// past its fresh prepare-and-confirm handshake. Downgrade to 'idle' on the
-// observed on→off transition; a confirmation given WHILE off (the restore
-// handshake itself) sees no such transition and survives untouched.
+// A command is evidence about the device's configuration AT THE TIME it was
+// given. Once the device transitions on→off, that command-axis state belongs to
+// the ended on-session and must not suppress initialization after a later
+// unknown-level turn-on or fast-track a restore-from-off. Delete it on the
+// observed on→off transition. A preparation command given WHILE already off
+// sees no such transition and survives untouched.
 //
 // Still wanted after flow reports became admissible while off (2026-07-25): the
 // observed axis now usually shows the drift directly, but only for devices whose
@@ -86,16 +97,14 @@ export const expireConfirmedDesiredStepOnBinaryOff = (params: {
 }): void => {
   const { runtimeState, deviceId, observedOn } = params;
   if (typeof observedOn !== 'boolean') return;
+  if (!observedOn) {
+    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
+    runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
+  }
   const previousOn = runtimeState.steppedLoadLastBinaryOnByDeviceId.get(deviceId);
   runtimeState.steppedLoadLastBinaryOnByDeviceId.set(deviceId, observedOn);
   if (previousOn !== true || observedOn) return;
-  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
-  if (!desired || desired.status !== 'success') return;
-  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-    ...desired,
-    pending: false,
-    status: 'idle',
-  });
+  runtimeState.steppedLoadDesiredByDeviceId.delete(deviceId);
 };
 
 // Mark the tracked desired step command confirmed. Called from the decorate-time
@@ -123,6 +132,7 @@ export const markSteppedLoadDesiredStepIssued = (params: {
   previousStepId?: string;
   issuedAtMs?: number;
   pendingWindowMs?: number;
+  confirmationPolicy?: 'required' | 'assume_applied';
 }): void => {
   const {
     runtimeState,
@@ -131,7 +141,14 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     previousStepId,
     issuedAtMs = Date.now(),
     pendingWindowMs,
+    confirmationPolicy = 'required',
   } = params;
+  if (confirmationPolicy === 'assume_applied') {
+    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(deviceId, desiredStepId);
+    runtimeState.steppedLoadStepCommandIssuedByDeviceId.add(deviceId);
+    return;
+  }
+  runtimeState.steppedLoadStepCommandIssuedByDeviceId.add(deviceId);
   const previousDesired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   const shouldIncrementRetryCount = previousDesired?.stepId === desiredStepId
     && previousDesired.status !== 'success';

@@ -80,6 +80,11 @@ export type PlanExecutorCore = {
   buildSteppedExecutorContext: () => PlanExecutorSteppedContext;
   buildBinaryExecutorContext: () => PlanExecutorBinaryContext;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getSteppedLoadCommandSession: (deviceId: string) => {
+    initializationAssumedStepId?: string;
+    hasPriorStepCommand: boolean;
+    reportedStepId?: string;
+  };
   recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
   latestTargetSnapshot: () => ExecutorDeviceSnapshot[];
   capacityDryRun: () => boolean;
@@ -356,6 +361,7 @@ const applyDeviceIntent = async (
     intent.steppedLoad,
     args.observed,
     args.steppedFallback,
+    core.getSteppedLoadCommandSession(intent.id),
   );
   if (shouldSkipUnavailable({
     snapshot: args.snapshot,
