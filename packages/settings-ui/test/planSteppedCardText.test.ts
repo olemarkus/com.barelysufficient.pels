@@ -10,6 +10,7 @@ import {
 import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
+  PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
 } from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
@@ -175,6 +176,31 @@ describe('resolveSteppedStatusLine', () => {
     it('returns null when off and no target', () => {
       expect(resolveSteppedStatusLine(
         { ...baseDevice, currentState: 'off' },
+        profile,
+        NOW_MS,
+      )).toBeNull();
+    });
+
+    it('explains when the device was turned off elsewhere', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          reason: { code: 'external_off_hold' },
+        },
+        profile,
+        NOW_MS,
+      )).toBe(PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS);
+    });
+
+    it('suppresses stale external-off guidance when the device is unavailable', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          stateKind: 'unavailable',
+          reason: { code: 'external_off_hold' },
+        },
         profile,
         NOW_MS,
       )).toBeNull();

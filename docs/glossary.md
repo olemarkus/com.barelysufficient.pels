@@ -86,11 +86,13 @@ A saved profile — such as **Home**, **Away**, or **Night** — holding its own
 of priorities and target temperatures. Switch modes from Homey Flows. See
 [Configuration → Modes](/configuration#settings-modes).
 
-### Device states (Limited, Resuming, Idle, Manual)
-The chips on the Overview that say what PELS is doing to each device right now.
+### Device states (Limited, Resuming, Idle, Off, Manual)
+The state words on the Overview that say what each device is doing right now.
 **Limited** = PELS is lowering, pausing, or turning it off to stay under the hard
 cap or daily budget pace; **Resuming** = bringing
-it back as power frees up; **Idle** = off and not held back; **Manual** = managed
+it back as power frees up; **Idle** = on or available with nothing to do;
+**Off** = Homey reports the device off and PELS is not limiting it;
+**Manual** = managed
 but PELS has no power-limit control of it right now. Full list:
 [Plan States](/plan-states).
 

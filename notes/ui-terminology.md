@@ -155,17 +155,15 @@ state row (source: `PLAN_STATE_LABEL` in `planStateLabels.ts`; grammar in
 | State word | Used when |
 |---|---|
 | **Running** | The device is on, charging, heating, or otherwise active. |
-| **Idle** | The device is off or unavailable to run, and PELS is not holding it back. |
+| **Idle** | The device is available and on (or has no binary on/off axis), but currently has nothing to do. |
+| **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
 
-**One carve-out to "never pair `Idle` with a hold reason":** a device kept off by
-**Leave off until turned on again** renders `Idle` + `Staying off until turned on
-again`. The rule above is about *waiting-for-power* holds, where `Idle` would hide
-that PELS is restraining the device. Here PELS is restraining nothing — it is
-respecting an off action the user took outside PELS — so `Limited` would be a lie,
-and the reason line carries the explanation. This is why the `externalOffHold`
-reason code is deliberately absent from `HOLD_REASON_CODES` in
-`planCardGrammar.ts`.
+**Leave off until turned on again** renders `Off` + `Turned off elsewhere —
+turn it on to resume`. A waiting-for-power hold still renders `Limited`; `Off`
+is the factual binary state only when PELS is not currently limiting or
+resuming the device. This is why the `externalOffHold` reason code remains
+absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
 | **Resuming** | PELS is bringing the device back as power becomes available. |
 | **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
@@ -177,8 +175,9 @@ title + at most ONE status chip (ladder: `Let it run now` → `Budget limited`/
 identity/route badge and may coexist), the state row (state word + power
 fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · level
 6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
-exception reason line. Quiet states render no chip and no reason. The old
-bare `On`/`Off` output state and the `Off now` / `Level: Max` bold slots are
+exception reason line. Quiet states render no chip and no reason. `Off` is now
+one of the shared state words; the older modality-specific bare `On`/`Off`
+output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.
 
 The reason line under a Limited card names the action or the binding
@@ -188,7 +187,7 @@ needed`, and so on.
 
 In **simulation mode** the state word stays FACTUAL — `held`/`resuming` are
 PELS-acted claims and PELS acts on nothing in simulation, so the bold word
-shows what the device is actually doing (Running/Idle) and only the reason
+shows what the device is actually doing (Running/Idle/Off) and only the reason
 line is hypothetical: **Would be turned off (simulation)**, **Would be
 lowered (simulation)**, **Charging would pause (simulation)**, `Would be
 limited …`. The `(simulation)` tag keeps a card scrolled away from the banner
@@ -227,8 +226,8 @@ Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (both card reas
 | Concept | Label |
 |---|---|
 | Setting name (device Setup) | `Leave off until turned on again` |
-| Overview state word while held | `Idle` |
-| Overview reason line while held | `Staying off until turned on again` |
+| Overview state word while held | `Off` |
+| Overview reason line while held | `Turned off elsewhere — turn it on to resume` |
 
 Internal name for the state is **external-off hold** — "external" means outside
 PELS, and it does not claim a human necessarily performed the action. Keep that

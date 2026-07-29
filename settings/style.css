@@ -1042,6 +1042,7 @@ md-primary-tab.tab[active] {
    `data-state-kind`, matching the card's role-toned text). */
 .device-detail-live-status {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--spacing-2);
@@ -1070,6 +1071,11 @@ md-primary-tab.tab[active] {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.device-detail-live-status__reason {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
 }
 
 .settings-detail-panel {

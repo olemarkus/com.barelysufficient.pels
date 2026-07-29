@@ -107,15 +107,15 @@ planning failure.
   plan, that's expected until usage drops back under plan.
 - **A Smart task with Power-limit control off** keeps a device idle outside its
   planned hours by design — common for EV chargers. That's not a fault.
-- **You turned it off yourself and asked PELS to respect that.** If the device's
-  Overview card says *Staying off until turned on again*, PELS is honouring an
-  off action that did not come from it. Turn the device on in Homey or on the
+- **It was turned off elsewhere and PELS was asked to respect that.** If the
+  device's Overview card says *Turned off elsewhere — turn it on to resume*,
+  PELS is honouring an off action that did not come from it. Turn the device on in Homey or on the
   device to hand it back, or turn off **Leave off until turned on again** in the
   device's **Setup** section. Note PELS only sees an off action your device's
   Homey integration reports — a physical switch that stays silent is invisible.
 
-See [Plan States](/plan-states) for what each Overview chip (Limited, Resuming,
-Idle, Manual, and more) means.
+See [Plan States](/plan-states) for what each Overview state word (Limited,
+Resuming, Idle, Off, Manual, and more) means.
 
 ## No power data, or the Overview is empty
 
