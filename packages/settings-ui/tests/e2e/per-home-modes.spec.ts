@@ -1,6 +1,7 @@
 import { expect, test } from './fixtures/test';
 import {
   gotoApp,
+  pickHomeScope,
   seedRentalArea,
   seedStubSetting,
 } from './fixtures/homes';
@@ -26,6 +27,7 @@ test('Settings renders independent Main and meter-area mode selectors without ov
     Guests: { dev_bedroom: 20 },
   });
   await seedStubSetting(page, `mode_catalog_initialized:${AREA_ID}`, true);
+  await seedStubSetting(page, 'device_home_assignments', { dev_bedroom: AREA_ID });
   await seedRentalArea(page, 'Basement apartment with a very long name');
 
   await page.getByRole('tab', { name: 'Settings' }).click();
@@ -45,6 +47,12 @@ test('Settings renders independent Main and meter-area mode selectors without ov
   await setMdValue(page, '.settings-current-mode__row:nth-child(2) md-filled-select', 'Guests');
   await expect(areaSelect).toHaveJSProperty('value', 'Guests');
   await expect(page.locator('#active-mode-select')).toHaveJSProperty('value', 'Home');
+
+  await page.locator('.settings-nav-card[data-settings-target="modes"]').click();
+  await expect(page.locator('#modes-panel')).toBeVisible();
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#priority-list .device-row')).toHaveCount(1);
+  await expect(page.locator('#priority-list .device-row')).toHaveAttribute('data-device-id', 'dev_bedroom');
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);

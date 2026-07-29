@@ -128,14 +128,20 @@ const readOptionalSetting = (
   key: string,
 ): { state: 'resolved'; value: unknown } | { state: 'unavailable' } => {
   const value = settings.get(key) as unknown;
-  if (value !== undefined) return { state: 'resolved', value };
+  if (value !== undefined && value !== null) return { state: 'resolved', value };
   const keys = settings.getKeys() as unknown;
   if (!Array.isArray(keys) || keys.length === 0 || !keys.every((entry) => typeof entry === 'string')) {
     return { state: 'unavailable' };
   }
-  return keys.includes(key)
-    ? { state: 'unavailable' }
-    : { state: 'resolved', value: undefined };
+  if (!keys.includes(key)) return { state: 'resolved', value: undefined };
+  // Homey Self-Hosted Server returns null for an unwritten setting while the
+  // mock SDK and some Homey runtimes return undefined. The key list is the
+  // authority for absence: a present null remains an explicit value for
+  // optional pins (and invalid for the boolean initialization marker), while a
+  // fulfilled undefined for a present key stays suspect.
+  return value === null
+    ? { state: 'resolved', value }
+    : { state: 'unavailable' };
 };
 
 const readInitializationState = (

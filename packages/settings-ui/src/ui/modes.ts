@@ -50,6 +50,7 @@ import {
   readStrictBooleanSettingMap,
   type ModeSettingsRead,
 } from './modeSettingsRead.ts';
+import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
 
 type MaterialTextFieldElement = HTMLElement & {
   value: string;
@@ -99,15 +100,6 @@ const selectedModeSettingKey = (baseKey: string, homeId = getHomeScope().selecte
   homeScopedSettingsKey(baseKey, homeId)
 );
 
-const prepareModeHomeLoad = (homeId: string): void => {
-  if (state.loadedModeHomeId === homeId) return;
-  state.loadedModeHomeId = null;
-  modeSelect?.replaceChildren();
-  if (modeSelect) modeSelect.disabled = true;
-  priorityList?.replaceChildren();
-  if (priorityEmpty) priorityEmpty.hidden = true;
-};
-
 const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   const allowAbsent = homeId === MAIN_HOME_ID;
   const priorities = parseModeNumberMap(read.priorities, allowAbsent);
@@ -136,9 +128,16 @@ export const loadModeAndPriorities = async () => {
   const generation = modeLoadGeneration;
   const homeId = getHomeScope().selectedHomeId;
   prepareModeHomeLoad(homeId);
-  const read = await readModeSettings(homeId);
-  if (generation !== modeLoadGeneration || homeId !== getHomeScope().selectedHomeId) return;
-  applyModeSettings(homeId, read);
+  try {
+    const read = await readModeSettings(homeId);
+    if (generation !== modeLoadGeneration || homeId !== getHomeScope().selectedHomeId) return;
+    applyModeSettings(homeId, read);
+  } catch (error) {
+    if (generation === modeLoadGeneration && homeId === getHomeScope().selectedHomeId) {
+      showModeCatalogUnavailable();
+    }
+    throw error;
+  }
 };
 
 export const renderModeOptions = () => {
@@ -250,8 +249,9 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
 
 export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   if (!priorityList) return;
-  priorityList.innerHTML = '';
   const selectedHomeId = getHomeScope().selectedHomeId;
+  if (state.loadedModeHomeId !== selectedHomeId) return;
+  priorityList.innerHTML = '';
   const managedDevices = devices.filter((device) => (
     resolveManagedState(device.id) && getHomeIdForUiDevice(device.id) === selectedHomeId
   ));
