@@ -48,6 +48,15 @@ reviews:
     - "!**/__snapshots__/**"
     - "!**/*.png"
     - "!**/*.svg"
+    # Product code still receives all three automatic reviewers. CodeRabbit
+    # focuses on that product diff instead of repeating test/docs review work.
+    - "!test/**"
+    - "!tests/**"
+    - "!packages/settings-ui/test/**"
+    - "!packages/settings-ui/tests/**"
+    - "!docs/**"
+    - "!notes/**"
+    - "!TODO.md"
 
   # --- Targeted guidance per area. Mirrors the project's review subagents and
   #     the hard rules in AGENTS.md.
