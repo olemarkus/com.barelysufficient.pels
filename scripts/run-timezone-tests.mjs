@@ -22,14 +22,19 @@ const TEST_FILES = Object.freeze([
   'test/tz/dailyBudgetPlanningPriceDst.test.ts',
 ]);
 
+const relatedIndex = nodeProcess.argv.indexOf('--related');
+const relatedFiles = relatedIndex === -1 ? [] : nodeProcess.argv.slice(relatedIndex + 1);
+
 for (const timeZone of TIME_ZONES) {
   const args = [
     './node_modules/vitest/vitest.mjs',
-    'run',
+    relatedIndex === -1 ? 'run' : 'related',
     '--config',
     'vitest.config.tz.mts',
     '--reporter=verbose',
-    ...TEST_FILES,
+    ...(relatedIndex === -1
+      ? TEST_FILES
+      : ['--passWithNoTests', ...relatedFiles]),
   ];
 
   nodeProcess.stdout.write(`\nRunning timezone regression suite with TZ=${timeZone}\n`);

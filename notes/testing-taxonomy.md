@@ -169,8 +169,9 @@ options and aliases live in `vitest.shared.mts`.
 | `npm run test:e2e:ui` (alias of `test:e2e`) | — | settings-UI e2e | Playwright |
 
 The three tier commands partition the runtime suite cleanly; the coverage lane globs
-`test/**/*.test.ts` so the 80% gate sees every tier at once. CI runs the tiers as separate
-jobs (`unit-tests`, `integration-tests`, `e2e-tests`, `timezone-tests`, `coverage`).
+`test/**/*.test.ts` so the 80% gate sees every tier at once. PR CI runs that instrumented
+coverage pass once plus the timezone lane; the legacy tier check names mirror the consolidated
+result until branch protection is migrated. Local hooks use `vitest related` across all tiers.
 
 **jsdom widget specs.** A handful of widget-render specs need a DOM. They are unit-tier and
 self-declare their environment with a `// @vitest-environment jsdom` pragma on line 1, so they

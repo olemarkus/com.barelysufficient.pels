@@ -242,11 +242,10 @@ GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 
 1. **checks** — `npm run ci:checks` (all lints, architecture, dead code, typecheck) followed by `npm run build` and `npm run validate`.
 2. **docs** — VitePress build validation.
-3. **unit-tests** / **integration-tests** / **e2e-tests** — the three runtime tiers, each its own parallel job (`npm run test:unit` / `test:integration` / `test:e2e:runtime`).
+3. **coverage** — `npm run test:coverage` executes all runtime tiers once in one instrumented pass (80% gate); legacy tier check names mirror this result until branch protection is migrated.
 4. **timezone-tests** — `npm run test:unit:tz`.
-5. **coverage** — `npm run test:coverage` (all tiers in one instrumented pass, 80% gate).
-6. **settings-ui-tests** — `npm run ci:test:settings-ui`.
-7. **playwright** — E2E matrix (`chromium-mobile-width`, `firefox-mobile-width`, `chromium-narrow-width`).
+5. **settings-ui-tests** — `npm run ci:test:settings-ui`.
+6. **playwright** — full Chromium mobile coverage plus change-aware Firefox and narrow-layout smoke lanes; main runs every browser lane in full.
 
 `docs.yml` deploys docs to GitHub Pages at `pels.barelysufficient.org` on every push to `main`.
 
