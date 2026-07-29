@@ -10,10 +10,6 @@ import {
 } from '../plan/planExecutorSupport';
 import { decideAndDispatchBinaryControl } from './binaryControlDispatch';
 import { skipRestoreForExternalOffHold } from './binaryControlShared';
-import {
-  isRequestedStepMaterialized,
-  type SteppedStepActuationState,
-} from './steppedLoadActuation';
 import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
@@ -36,10 +32,7 @@ export const logSteppedLoadRestoreSkip = (
       | 'missing_snapshot'
       | 'not_setable'
       | 'already_in_progress'
-      | 'pre_restore_step_required';
-    skipDetailCode?:
-      | 'pre_restore_step_pending_confirmation'
-      | 'pre_restore_step_command_not_issued';
+      | 'recent_binary_restore_attempt';
     desiredStepId?: string;
   },
 ): false => {
@@ -47,13 +40,11 @@ export const logSteppedLoadRestoreSkip = (
     action,
     mode,
     reasonCode,
-    skipDetailCode,
     desiredStepId,
   } = params;
   logger.debug({
     event: 'restore_command_skipped',
     reasonCode,
-    ...(skipDetailCode ? { skipDetailCode } : {}),
     ...(desiredStepId ? { desiredStepId } : {}),
     deviceId: action.id,
     deviceName: action.name,
@@ -116,35 +107,20 @@ export const logSteppedLoadRestoreAttemptSkip = (
   });
 };
 
-const isStepMaterializationPending = (state: SteppedStepActuationState): boolean => (
-  state.materialization.kind === 'not_materialized'
-  && state.materialization.reason === 'fallback_only'
-);
-
 export const maybeSkipSteppedLoadRestoreBinary = (
   ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
     snapshot: ExecutorDeviceSnapshot | undefined;
     mode: PlanActuationMode;
-    matchingRestoreAttempt: ExecutableSteppedLoadDevice['matchingRestoreAttempt'];
-    stepActuation: SteppedStepActuationState;
     stepNeedsAdjustment: boolean;
-    stepViolated: boolean;
-    desiredStepId?: string;
-    preRestoreStepIssued?: boolean;
   },
 ): false | null => {
   const {
     action,
     snapshot,
     mode,
-    matchingRestoreAttempt,
-    stepActuation,
     stepNeedsAdjustment,
-    stepViolated,
-    desiredStepId,
-    preRestoreStepIssued,
   } = params;
   if (!snapshot) {
     return logSteppedLoadRestoreSkip(ctx, {
@@ -166,23 +142,6 @@ export const maybeSkipSteppedLoadRestoreBinary = (
       action,
       mode,
       reasonCode: 'already_in_progress',
-    });
-  }
-  if (
-    snapshotOn === false
-    && stepViolated
-    && !isRequestedStepMaterialized(stepActuation)
-  ) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      action,
-      mode,
-      reasonCode: 'pre_restore_step_required',
-      skipDetailCode: preRestoreStepIssued === true
-        || matchingRestoreAttempt?.status === 'awaiting_confirmation'
-        || isStepMaterializationPending(stepActuation)
-        ? 'pre_restore_step_pending_confirmation'
-        : 'pre_restore_step_command_not_issued',
-      desiredStepId,
     });
   }
   if (snapshotOn !== false && !stepNeedsAdjustment) {
@@ -259,21 +218,20 @@ export const executeSteppedLoadRestoreBinary = async (
       name,
     });
     if (!applied) return false;
+    ctx.state.markSteppedBinaryRestoreAttempt(action.id, Date.now());
     logger.info({
       event: 'stepped_load_binary_transition_applied',
       deviceId: action.id,
       deviceName: name,
       desiredBinaryState: true,
       effectiveTransition: 'restore_from_off_at_low',
-      stepPreparationPurpose: stepViolated ? 'prepare_for_on' : null,
+      stepPreparationPurpose: null,
       transitionPhase: 'binary_transition',
       mode,
       onoffViolated,
       stepViolated,
-      // Which evidence satisfied the prepared-step gate: 'observed' (a real
-      // step report) or 'confirmed_command' (flow-confirmed while off). The
-      // only consumer of materialization provenance — diagnosability, not
-      // control flow.
+      // Step evidence present when activation began. This is diagnostic only;
+      // activation never treats it as proof that a vendor will retain the step.
       stepMaterializationSource: action.stepActuation.materialization.kind === 'materialized'
         ? action.stepActuation.materialization.source
         : null,

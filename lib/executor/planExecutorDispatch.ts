@@ -1,4 +1,3 @@
-import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import type { DevicePlan, ShedAction } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
 import {
@@ -224,7 +223,12 @@ const dispatchSteppedLoadCommand = async (
   action: ExecutableSteppedLoadDevice | null,
   mode: PlanActuationMode,
   snapshot?: ExecutorDeviceSnapshot,
-  options: { recordPlanActuation?: boolean } = {},
+  options: {
+    recordPlanActuation?: boolean;
+    force?: boolean;
+    preserveMaterializedConfirmation?: boolean;
+    commandPurpose?: 'post_activation_step';
+  } = {},
 ): Promise<boolean> => (action
   ? applySteppedLoadCommand(core.buildSteppedExecutorContext(), action, mode, snapshot, options)
   : false);
@@ -236,7 +240,6 @@ const dispatchSteppedLoadRestore = async (
     snapshot: ExecutorDeviceSnapshot | undefined;
     mode: PlanActuationMode;
     hasShedDevices: boolean;
-    options?: { preRestoreStepIssued?: boolean };
   },
 ) => (action
   ? applySteppedLoadRestore(core.buildSteppedExecutorContext(), { action, ...params })
@@ -294,28 +297,26 @@ const applySteppedRestoreFromOffIntent = async (
     if (await applyTargetIntent(core, intent.target, observed, mode)) deviceWriteCount += 1;
     return delta(deviceWriteCount, commandRequestCount);
   }
-  const onoffViolated = isBinaryObservedOff(snapshot);
-  // Once the prepared step is materialized (device-confirmed while off), do NOT
-  // re-issue the preparation command on the go-cycle: it would re-fire the flow
-  // trigger and reset the freshly-consumed confirmation to pending in the same
-  // cycle the binary-on goes out — double-triggering user flows and, when a flow
-  // only reports on change, decaying to a phantom 'stale' that pollutes the
-  // step-flow health signal.
-  const preRestoreStepIssued = onoffViolated
-    && !isRequestedStepMaterialized(steppedAction.commandStepActuation)
-    ? await dispatchSteppedLoadCommand(core, steppedAction, mode, snapshot, { recordPlanActuation: false })
-    : false;
-  if (preRestoreStepIssued) commandRequestCount += 1;
   const stepRestore = await dispatchSteppedLoadRestore(core, steppedAction, {
     snapshot,
     mode,
     hasShedDevices,
-    options: { preRestoreStepIssued },
   });
   if (
     stepRestore.ready
-    && !onoffViolated
-    && await dispatchSteppedLoadCommand(core, steppedAction, mode, snapshot)
+    && (
+      stepRestore.wroteBinary
+      || !isRequestedStepMaterialized(steppedAction.commandStepActuation)
+    )
+    && await dispatchSteppedLoadCommand(core, steppedAction, mode, snapshot, {
+      recordPlanActuation: false,
+      // The activation cycle must reassert even a matching observed step.
+      // Later OFF-echo cycles may reconcile a contradictory report, but keep
+      // normal pending/backoff dampening so they cannot churn the same Flow.
+      force: stepRestore.wroteBinary,
+      preserveMaterializedConfirmation: true,
+      commandPurpose: 'post_activation_step',
+    })
   ) commandRequestCount += 1;
   if (stepRestore.wroteBinary) deviceWriteCount += 1;
   if (await applyTargetIntent(core, intent.target, observed, mode)) deviceWriteCount += 1;

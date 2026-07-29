@@ -64,13 +64,6 @@ import {
 
 export type BinaryControlPlan = {
   capabilityId: BinaryControlCapabilityId;
-  /**
-   * True when the device's observed `binaryControl.on` faithfully mirrors its
-   * control-capability state, so an already-matched command can be safely
-   * skipped. False for chargers, whose charging-state observation does not
-   * track the on/off control.
-   */
-  observedStateComparable: boolean;
   canSet: boolean;
 };
 
@@ -187,7 +180,6 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
   if (!snapshot || !capabilityId) return null;
   return {
     capabilityId,
-    observedStateComparable: capabilityId !== 'evcharger_charging',
     // Routed through `resolveCanSetControl` so the planner-side producer bit
     // (consumed by the migrated `canTurnOnDevice`) and the legacy
     // `getBinaryControlPlan().canSet` view stay bit-exact in lockstep.
