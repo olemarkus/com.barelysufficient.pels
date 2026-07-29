@@ -710,6 +710,55 @@ describe('Redesign plan UI', () => {
       expect(labels).toEqual(['Safe pace now 2.3 kW']);
     });
 
+    it('explains a daily safe pace that includes power allowed beyond the daily budget', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 12.5,
+          softLimitKw: 12,
+          headroomKw: -0.5,
+          softLimitSource: 'daily',
+          budgetPaceKw: 5,
+          projectedExemptKw: 7,
+          controlledKw: 7,
+          uncontrolledKw: 5.5,
+          powerFreshnessState: 'fresh',
+        },
+        devices: [],
+      });
+
+      const line = document.querySelector('.plan-hero__safe-pace-composition') as HTMLElement | null;
+      expect(line?.textContent?.trim()).toBe(
+        'Safe pace reserves 7.0 kW for devices allowed beyond today\'s budget; '
+        + 'usage counted toward today\'s budget is paced at 5.0 kW.',
+      );
+      const marker = document.querySelector(
+        '.plan-hero .pels-meter-track__marker--target',
+      ) as HTMLElement | null;
+      expect(marker?.dataset.tooltip).toContain(
+        'today\'s budget paces counted usage at 5.0 kW, plus 7.0 kW reserved for devices allowed beyond it',
+      );
+      expect(document.querySelector('.plan-chip--warn')?.textContent).toBe('Above safe pace');
+    });
+
+    it.each([
+      ['capacity source', { softLimitSource: 'capacity', budgetPaceKw: 5, projectedExemptKw: 7 }],
+      ['zero allowance', { softLimitSource: 'daily', budgetPaceKw: 5, projectedExemptKw: 0 }],
+      ['legacy payload', { softLimitSource: 'daily' }],
+    ])('hides the daily safe-pace composition for %s', async (_case, fields) => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 4,
+          softLimitKw: 5,
+          headroomKw: 1,
+          powerFreshnessState: 'fresh',
+          ...fields,
+        },
+        devices: [],
+      });
+
+      expect(document.querySelector('.plan-hero__safe-pace-composition')).toBeNull();
+    });
+
     it('uses only the explicit backend hour budget for the energy hero', async () => {
       await renderPlanSnapshot({
         meta: {

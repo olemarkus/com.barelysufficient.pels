@@ -578,20 +578,6 @@ What remains open is below.*
       because a future "project the candidate draw so exempt devices are capacity-bound for
       restore" change would double-count. Same fallback as the open P1 observed-off attribution
       item. Source: safe-pace model review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
-- [ ] **The hero's budget reason line contradicts the number it explains.** When a device is
-      budget-exempt, `computeDailySoftLimit` rebases the daily pace into total-power space by
-      adding the exempt live draw (`lib/plan/planBuilder.ts:528-539`), so a 7 kW "Get power now"
-      load makes "Safe pace now" jump by 7 kW while the tooltip still reads "slowed to stay
-      within today's budget; daily pacing is the tighter constraint right now"
-      (`packages/shared-domain/src/planHeroTooltips.ts:24-28`). The budget did not get looser.
-      Needs a third copy case naming the carve-out (in "Get power now" vocabulary, not the word
-      *exempt*; clear wording via `notes/ui-terminology.md`), which in turn needs `plan.meta` to
-      carry the un-rebased budget pace and the exempt kW, neither of which it exposes today.
-      Do not reach for `meta.dailySoftLimitKw`: that field is the *rebased* value (the
-      `+ exemptKw` add-back happens inside `computeDailySoftLimit` before it reaches the
-      context), and the raw budget pace is an unnamed intermediate that no contract carries.
-      Persona: skeptical optimiser watching the hero during a boost. Source: safe-pace model
-      review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
 - [ ] **A tight-capacity hour hands `softLimitSource` over to `'capacity'` near `:00`.**
       `capacityPaceKw` decays toward `sustainableRateKw` as the hour ends
       (`lib/plan/planBudget.ts:44-46`) while `budgetPaceImportKw` holds level, so a hand-over

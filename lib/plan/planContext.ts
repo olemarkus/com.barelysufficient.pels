@@ -27,6 +27,8 @@ export type PlanContext = {
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
+  budgetPaceKw?: number | null;
+  projectedExemptKw?: number | null;
   softLimitSource: SoftLimitSource;
   hourBucketKey: string;
   budgetKWh: number;
@@ -46,6 +48,8 @@ export function buildPlanContext(params: {
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
+  budgetPaceKw?: number | null;
+  projectedExemptKw?: number | null;
   softLimitSource: SoftLimitSource;
   desiredForMode: Record<string, number>;
   hourlyBudgetExhausted: boolean;
@@ -59,6 +63,8 @@ export function buildPlanContext(params: {
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,
+    budgetPaceKw,
+    projectedExemptKw,
     softLimitSource,
     desiredForMode,
     hourlyBudgetExhausted,
@@ -102,6 +108,8 @@ export function buildPlanContext(params: {
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,
+    budgetPaceKw,
+    projectedExemptKw,
     softLimitSource,
     hourBucketKey: hourContext.bucketKey,
     budgetKWh,

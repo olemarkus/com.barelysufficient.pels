@@ -185,6 +185,8 @@ export type SettingsUiPlanMetaSnapshot = {
   softLimitKw?: number;
   capacitySoftLimitKw?: number;
   dailySoftLimitKw?: number | null;
+  budgetPaceKw?: number | null;
+  projectedExemptKw?: number | null;
   softLimitSource?: 'capacity' | 'daily' | 'both';
   headroomKw?: number;
   powerKnown?: boolean;

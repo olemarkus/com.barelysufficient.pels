@@ -16,6 +16,9 @@ describe('settingsOverviewReadModel', () => {
       meta: {
         totalKw: 0.6,
         softLimitKw: 4.54,
+        dailySoftLimitKw: 4.54,
+        budgetPaceKw: 1.46,
+        projectedExemptKw: 3.08,
         headroomKw: 3.94,
         usedKWh: 0.02,
         budgetKWh: 9.5,
@@ -27,12 +30,18 @@ describe('settingsOverviewReadModel', () => {
 
     expect(readModel?.meta).toMatchObject({
       softLimitKw: 4.5,
+      dailySoftLimitKw: 4.5,
+      budgetPaceKw: 1.4,
+      projectedExemptKw: 3.1,
       budgetKWh: 9.5,
       capacityHourBudgetKWh: 9.5,
       capacityLimitKw: 5,
       dailyBudgetHourKWh: 12,
       hourBudgetKWh: 9.5,
     });
+    expect(
+      (readModel?.meta?.budgetPaceKw ?? 0) + (readModel?.meta?.projectedExemptKw ?? 0),
+    ).toBe(readModel?.meta?.dailySoftLimitKw);
   });
 
   it('excludes auto-tracked observe-only role devices (battery / solar) from the overview devices', () => {

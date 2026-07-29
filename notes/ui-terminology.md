@@ -51,9 +51,19 @@ The dynamic tick on the power bar shows where PELS starts reacting. It can come 
 
 | Source (`meta.softLimitSource`) | Tooltip (appended after the `Safe pace now N kW —` stem plus a space, so the body separates with a semicolon, not a second em-dash) |
 |---|---|
-| `capacity` | the pace that keeps this hour within its energy budget; PELS starts reacting here |
-| `daily` | slowed to stay within today's budget; daily pacing is the tighter constraint right now |
-| `both` | both capacity and daily pacing are constraining PELS right now |
+| `capacity` | the hourly pace sets this marker; PELS starts reacting here |
+| `daily` | today's budget sets this marker, which may include power allowed beyond today's budget; PELS starts reacting here |
+| `both` | the hourly and daily paces meet at this marker; PELS starts reacting here |
+
+When `daily` or `both` is active and the plan supplies a non-zero allowance for
+devices outside today's budget, expose the composition below the power bar:
+`Safe pace reserves 7.0 kW for devices allowed beyond today's budget; usage
+counted toward today's budget is paced at 5.0 kW.` The marker tooltip uses the
+corresponding detailed form:
+`Safe pace now 12.0 kW — today's budget paces counted usage at 5.0 kW, plus
+7.0 kW reserved for devices allowed beyond it; PELS starts reacting here.`
+When both constraints meet at the marker, the detailed tooltip must also name
+the hourly pace. Do not call those devices "exempt" in user-facing copy.
 
 The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always renders — including when the dynamic safe pace sits at or above it — and reads **Hard cap** with tooltip body: `your grid tariff step; PELS keeps each hour's average power under this`. Never "breaker trips": an hourly-average ceiling cannot prevent them (see § "Hard cap is an hourly ceiling"). When the hour's projection pushes the energy bar's scale up to the cap, the energy bar also renders a cap tick labelled `Hard cap this hour N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made.
 

@@ -100,6 +100,12 @@ export type PlanBuilderDeps = {
 };
 const SOFT_LIMIT_EPSILON = 1e-3;
 
+type DailySoftLimitResolution = {
+  dailySoftLimitKw: number;
+  budgetPaceKw: number;
+  projectedExemptKw: number;
+};
+
 export class PlanBuilder {
   private readonly overshootTracker: OvershootTracker;
 
@@ -275,7 +281,8 @@ export class PlanBuilder {
   }> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const capacitySoftLimit = this.computeDynamicSoftLimit();
-    const dailySoftLimit = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
+    const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
+    const dailySoftLimit = dailySoftLimitResolution?.dailySoftLimitKw ?? null;
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
     const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
 
@@ -287,6 +294,8 @@ export class PlanBuilder {
       softLimit,
       capacitySoftLimit,
       dailySoftLimit,
+      budgetPaceKw: dailySoftLimitResolution?.budgetPaceKw ?? null,
+      projectedExemptKw: dailySoftLimitResolution?.projectedExemptKw ?? null,
       softLimitSource,
       desiredForMode,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
@@ -347,16 +356,21 @@ export class PlanBuilder {
   private computeDailySoftLimit(
     snapshot: DailyBudgetUiPayload | null,
     devices: PlanInputDevice[],
-  ): number | null {
+  ): DailySoftLimitResolution | null {
     const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker);
     if (!bucket) return null;
-    const exemptKw = sumBudgetExemptLiveUsageKw(devices) ?? 0;
+    const projectedExemptKw = Math.max(0, sumBudgetExemptLiveUsageKw(devices) ?? 0);
+    const budgetPaceKw = computeDailyUsageSoftLimit({
+      ...bucket,
+    });
     // Budget-exempt load should not trigger daily-budget shedding of other devices.
     // Remove exempt energy already metered this hour, then add back the exempt live
     // run rate so the effective daily limit still allows that load to remain on.
-    return computeDailyUsageSoftLimit({
-      ...bucket,
-    }) + Math.max(0, exemptKw);
+    return {
+      budgetPaceKw,
+      projectedExemptKw,
+      dailySoftLimitKw: budgetPaceKw + projectedExemptKw,
+    };
   }
 
   private applySheddingUpdates(sheddingPlan: SheddingPlan): void {

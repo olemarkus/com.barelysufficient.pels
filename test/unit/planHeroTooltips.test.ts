@@ -3,6 +3,7 @@ import {
   HERO_INFO_TOOLTIP_TEXT,
   SAFE_PACE_TOOLTIP_BY_SOURCE,
   formatHardCapTooltip,
+  formatSafePaceComposition,
   formatSafePaceTooltip,
 } from '../../packages/shared-domain/src/planHeroTooltips';
 
@@ -32,7 +33,7 @@ describe('planHeroTooltips', () => {
       // margin" (only true at the top of the hour) — the copy must not claim
       // the formula.
       expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).not.toMatch(/minus/i);
-      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).toMatch(/energy budget/);
+      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).toMatch(/hourly pace/);
     });
   });
 
@@ -45,6 +46,68 @@ describe('planHeroTooltips', () => {
     it('falls back to the capacity source when none is given', () => {
       expect(formatSafePaceTooltip(6, null)).toContain(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity);
       expect(formatSafePaceTooltip(6, undefined)).toContain(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity);
+    });
+
+    it('explains the budget pace and added allowance when both are available', () => {
+      expect(formatSafePaceTooltip(12, 'daily', {
+        budgetPaceKw: 5,
+        projectedExemptKw: 7,
+      })).toBe(
+        'Safe pace now 12.0 kW — today\'s budget paces counted usage at 5.0 kW, plus 7.0 kW '
+        + 'reserved for devices allowed beyond it; PELS starts reacting here.',
+      );
+    });
+
+    it('names both binding sources when detailed composition is available', () => {
+      expect(formatSafePaceTooltip(12, 'both', {
+        budgetPaceKw: 5,
+        projectedExemptKw: 7,
+      })).toBe(
+        'Safe pace now 12.0 kW — the hourly pace and today\'s budget meet here; today\'s budget '
+        + 'paces counted usage at 5.0 kW, plus 7.0 kW reserved for devices allowed beyond it; '
+        + 'PELS starts reacting here.',
+      );
+    });
+
+    it('uses honest generic wording for daily and both sources without composition', () => {
+      expect(formatSafePaceTooltip(5, 'daily')).toContain('may include power allowed beyond');
+      expect(formatSafePaceTooltip(5, 'both')).toContain('meet at this marker');
+      expect(formatSafePaceTooltip(5, 'both')).not.toContain('constraining');
+    });
+  });
+
+  describe('formatSafePaceComposition', () => {
+    it('formats a visible daily-budget composition line', () => {
+      expect(formatSafePaceComposition(12, 'daily', {
+        budgetPaceKw: 5,
+        projectedExemptKw: 7,
+      })).toBe(
+        'Safe pace reserves 7.0 kW for devices allowed beyond today\'s budget; '
+        + 'usage counted toward today\'s budget is paced at 5.0 kW.',
+      );
+    });
+
+    it('keeps the displayed components equal to the displayed marker across rounding boundaries', () => {
+      expect(formatSafePaceComposition(12.08, 'daily', {
+        budgetPaceKw: 5.04,
+        projectedExemptKw: 7.04,
+      })).toBe(
+        'Safe pace reserves 7.0 kW for devices allowed beyond today\'s budget; '
+        + 'usage counted toward today\'s budget is paced at 5.1 kW.',
+      );
+    });
+
+    it('suppresses capacity, zero, sub-rounding, missing, and malformed allowances', () => {
+      expect(formatSafePaceComposition(12, 'capacity', { budgetPaceKw: 5, projectedExemptKw: 7 })).toBeNull();
+      expect(formatSafePaceComposition(5, 'daily', { budgetPaceKw: 5, projectedExemptKw: 0 })).toBeNull();
+      expect(formatSafePaceComposition(5.049, 'daily', { budgetPaceKw: 5, projectedExemptKw: 0.049 })).toBeNull();
+      expect(formatSafePaceComposition(12, 'daily', { projectedExemptKw: 7 })).toBeNull();
+      expect(formatSafePaceComposition(12, 'daily', {
+        budgetPaceKw: Number.NaN,
+        projectedExemptKw: 7,
+      })).toBeNull();
+      expect(formatSafePaceComposition(6, 'daily', { budgetPaceKw: -1, projectedExemptKw: 7 })).toBeNull();
+      expect(formatSafePaceComposition(13, 'daily', { budgetPaceKw: 5, projectedExemptKw: 7 })).toBeNull();
     });
   });
 
