@@ -457,5 +457,8 @@
   },
   "2.19.0": {
     "en": "Added beta support for meter areas. PELS can now manage separate parts of a property, such as an apartment, garage, or cabin, using their own power meter and capacity limit. Devices are assigned from their Homey zones, and each area can have its own operating mode and simulation setting.\n\nThe Overview and Usage pages can now be switched between meter areas, and capacity warnings identify the affected area. This update also includes fixes for area-specific device control meter selection, and resuming heating devices."
+  },
+  "2.19.1": {
+    "en": "This test release adds independent operating modes for each meter area, including per-home mode selection, device priorities, and temperature targets.\n\nIt also improves how PELS responds when devices are turned off elsewhere, initializes stepped loads more safely, and explains how Safe pace now is calculated more clearly."
   }
 }
