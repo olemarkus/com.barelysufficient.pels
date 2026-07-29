@@ -207,7 +207,11 @@ its persisted source-mode target into any missing destination-mode entries
 before either home's plan rebuilds. It never derives that anchor from the live
 setpoint, which may be the temporarily lowered control value. Devices without a
 saved target need no transfer; unavailable catalogs or failed writes keep the
-membership generation fenced for retry.
+membership generation fenced for retry. The last owner whose target transfer
+completed is stored separately from current membership. That recovery ledger is
+updated only after the destination write succeeds, survives restart between an
+ownership commit and target transfer, learns devices that appear after the
+initial snapshot, and retains history across transient snapshot absence.
 
 **Mode targets apply in EVERY home.** Every home's scope binds
 `getModeDeviceTargets` to its own catalog. This is not a policy choice: the

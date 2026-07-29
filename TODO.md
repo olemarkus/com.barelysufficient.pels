@@ -3126,14 +3126,12 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       once enough new-scope overlap days arrive; re-resolve held operating-mode aliases and make
       partial rename rollback explicit; document/cache the per-home mode resolution contract; and
       tighten markerless roster/readiness recovery without weakening the existing Main actuation
-      fence. Also make rapid current-mode write failures refresh the last persisted selection
-      instead of rolling back to an optimistic intermediate mode; make interrupted additive mode
-      renames resumable; show Home or an honest unavailable state in device detail before a new
-      area's catalog lands; preserve matching source-mode targets across ownership moves instead
-      of filling every missing destination mode from one anchor; and suppress the five
-      initialization-setting echoes after the catalog write. Persona: long-running beta install
-      that renames modes or changes meter topology. Source: deferred review threads on PRs #1910,
-      #1911, #1913 and #1923. [P3]
+      fence. Also make interrupted additive mode renames resumable; show Home or an honest
+      unavailable state in device detail before a new area's catalog lands; preserve matching
+      source-mode targets across ownership moves instead of filling every missing destination mode
+      from one anchor; and suppress the five initialization-setting echoes after the catalog
+      write. Persona: long-running beta install that renames modes or changes meter topology.
+      Source: deferred review threads on PRs #1910, #1911, #1913 and #1923. [P3]
 - [ ] **Consolidate low-value mirror and fixture coverage from the stack review.** Add an executable
       check for the deploy-time `homeId` query-key mirror, assert `CAPACITY_LIMIT_KW` in the existing
       contracts/runtime settings-key mirror test, and clean up the test-lane/fixture-only comments
