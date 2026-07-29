@@ -33,6 +33,7 @@ const SCOPED_POWER_URI = `/ui_power?homeId=${AREA}`;
 
 const ROSTER_PAYLOAD = {
   homes: [{ homeId: AREA, name: 'Rental unit' }],
+  membershipByDeviceId: {},
   runtimeActive: true,
   configDegraded: false,
 };

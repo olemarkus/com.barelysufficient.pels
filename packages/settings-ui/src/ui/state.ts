@@ -63,6 +63,10 @@ export type UiState = {
   // settings page, whose own toggle is the single control there.
   activePanel: string;
   capacityPriorities: Record<string, Record<string, number>>;
+  // The home whose complete mode catalog currently backs the shared mode maps.
+  // `null` while a scope change is loading, so no consumer can mistake stale
+  // maps for the newly selected area's catalog.
+  loadedModeHomeId: string | null;
   activeMode: string;
   editingMode: string;
   latestDevices: SettingsUiDeviceView[];
@@ -131,6 +135,7 @@ export const state: UiState = {
   dryRun: false,
   activePanel: 'overview',
   capacityPriorities: {},
+  loadedModeHomeId: null,
   activeMode: DEFAULT_MODE_NAME,
   editingMode: DEFAULT_MODE_NAME,
   latestDevices: [],

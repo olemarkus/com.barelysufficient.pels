@@ -7,28 +7,49 @@ import {
 } from '../../../contracts/src/targetCapabilities.ts';
 import {
   modeSelect,
-  activeModeSelect,
   priorityList,
   priorityEmpty,
   modeNewInput,
 } from './dom.ts';
-import { closeModeNameEditor, initModeEditor } from './modeEditor.ts';
+import {
+  closeModeNameEditor,
+  initModeEditor,
+} from './modeEditor.ts';
 import { getSetting, setSetting } from './homey.ts';
 import {
-  BUDGET_EXEMPT_DEVICES,
-  RESPECT_EXTERNAL_OFF_DEVICES,
-  NATIVE_EV_WIRING_DEVICES,
+  MAIN_HOME_ID,
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
+  homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
-import { appendHomeBadge } from './homeBadges.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { debouncedSetSetting } from './utils.ts';
+import { getHomeIdForUiDevice, getHomeScope } from './homeScope.ts';
+import {
+  applyModeCatalog,
+  captureModeCatalog,
+  isModeMutationLocked,
+  persistModeRename,
+  serializeModeCatalogWrite,
+  type ModeCatalogDraft,
+  withModeMutationLock,
+} from './modeRename.ts';
+import { applyCurrentModeRename } from './currentModes.ts';
+import { parseModeNumberMap, parseRequiredModeMaps } from './modeCatalogMaps.ts';
+import {
+  readBooleanSettingMap,
+  readModeAliases,
+  readModeSettings,
+  readStrictBooleanSettingMap,
+  type ModeSettingsRead,
+} from './modeSettingsRead.ts';
 
 type MaterialTextFieldElement = HTMLElement & {
   value: string;
@@ -49,13 +70,8 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
   const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
   option.value = value;
   option.setAttribute('value', value);
-  // md-select reads `firstSelectedOption.displayText` synchronously while
-  // resolving its initial value. By default that getter walks the option's
-  // `[slot="headline"]` assignedElements, which are only available after the
-  // option's own first render — a race that leaves the closed field blank.
-  // Setting `displayText` (and `typeaheadText` for keyboard typeahead) as
-  // properties bypasses the slot lookup and guarantees a non-empty label on
-  // first paint regardless of child-render ordering.
+  // Bypass md-select's deferred headline-slot lookup so its closed label is
+  // available synchronously on first paint.
   option.displayText = value;
   option.typeaheadText = value;
   const headline = document.createElement('div');
@@ -68,90 +84,61 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
 };
 
 const supportsTemperatureDevice = (device: SettingsUiDeviceListItem): boolean => (
-  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
-);
+  device.deviceType === 'temperature' || Boolean(device.targets?.length));
 
 const getPrimaryTemperatureTarget = (device: SettingsUiDeviceListItem) => getPrimaryTargetCapability(device.targets);
 
 const normalizeDeviceTargetValue = (
   device: SettingsUiDeviceListItem,
   value: number,
-): number => normalizeTargetCapabilityValue({
-  target: getPrimaryTemperatureTarget(device),
-  value,
-});
+): number => normalizeTargetCapabilityValue({ target: getPrimaryTemperatureTarget(device), value });
 
-const readBooleanSettingMap = (value: unknown): Record<string, boolean> => (
-  value && typeof value === 'object' ? value as Record<string, boolean> : {}
+let modeLoadGeneration = 0;
+
+const selectedModeSettingKey = (baseKey: string, homeId = getHomeScope().selectedHomeId): string => (
+  homeScopedSettingsKey(baseKey, homeId)
 );
 
-// `respect_external_off_devices` is validated as a WHOLE by the runtime
-// (`isBooleanMap` in `setup/externalOffHoldAdapter.ts`), which rejects the entire
-// map on a single non-boolean entry — and, crucially, then KEEPS ITS LAST GOOD
-// map rather than treating it as empty. Mirror both halves: a shape-cast would
-// render a device as opted in while the runtime honoured nothing, and collapsing
-// a malformed reload to `{}` would show a held device as opted out while the
-// runtime went on leaving it off. `null` means "cannot say", and the caller
-// keeps whatever it already had.
-const readStrictBooleanSettingMap = (value: unknown): Record<string, boolean> | null => {
-  if (value === undefined || value === null) return {};
-  if (typeof value !== 'object' || Array.isArray(value)) return null;
-  const entries = Object.entries(value);
-  if (!entries.every(([, entry]) => typeof entry === 'boolean')) return null;
-  return Object.fromEntries(entries.filter(([, entry]) => entry === true));
+const prepareModeHomeLoad = (homeId: string): void => {
+  if (state.loadedModeHomeId === homeId) return;
+  state.loadedModeHomeId = null;
+  modeSelect?.replaceChildren();
+  if (modeSelect) modeSelect.disabled = true;
+  priorityList?.replaceChildren();
+  if (priorityEmpty) priorityEmpty.hidden = true;
 };
 
-const readModeAliases = (value: unknown): Record<string, string> => (
-  value && typeof value === 'object'
-    ? Object.entries(value).reduce<Record<string, string>>((acc, [key, alias]) => {
-      if (typeof key === 'string' && typeof alias === 'string') {
-        return { ...acc, [key.toLowerCase()]: alias };
-      }
-      return acc;
-    }, {})
-    : {}
-);
+const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
+  const allowAbsent = homeId === MAIN_HOME_ID;
+  const priorities = parseModeNumberMap(read.priorities, allowAbsent);
+  const targets = parseModeNumberMap(read.targets, allowAbsent);
+  if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
+  state.loadedModeHomeId = homeId;
+  if (modeSelect) modeSelect.disabled = false;
+  state.activeMode = typeof read.mode === 'string' && read.mode.trim()
+    ? read.mode
+    : DEFAULT_MODE_NAME;
+  state.editingMode = state.activeMode;
+  state.capacityPriorities = normalizeModePriorities(priorities);
+  state.modeTargets = targets;
+  state.controllableMap = readBooleanSettingMap(read.controllables);
+  state.managedMap = readBooleanSettingMap(read.managed);
+  state.budgetExemptMap = readBooleanSettingMap(read.budgetExempt);
+  state.respectExternalOffMap = readStrictBooleanSettingMap(read.respectExternalOff)
+    ?? state.respectExternalOffMap;
+  state.nativeWiringMap = readBooleanSettingMap(read.nativeWiring);
+  state.modeAliases = readModeAliases(read.aliases);
+  renderModeOptions();
+};
 
 export const loadModeAndPriorities = async () => {
-  const mode = await getSetting(OPERATING_MODE_SETTING);
-  const priorities = await getSetting('capacity_priorities');
-  const targets = await getSetting('mode_device_targets');
-  const controllables = await getSetting('controllable_devices');
-  const managed = await getSetting('managed_devices');
-  const budgetExempt = await getSetting(BUDGET_EXEMPT_DEVICES);
-  const respectExternalOff = await getSetting(RESPECT_EXTERNAL_OFF_DEVICES);
-  const nativeWiring = await getSetting(NATIVE_EV_WIRING_DEVICES);
-  const aliases = await getSetting('mode_aliases');
-  state.activeMode = typeof mode === 'string' && mode.trim() ? mode : DEFAULT_MODE_NAME;
-  state.editingMode = state.activeMode; // Start editing the active mode
-  // Persisted priorities may carry duplicates or gaps; resolve to the same
-  // strict 1..N order the runtime planner uses so the UI list and the planner
-  // agree on which device wins.
-  state.capacityPriorities = normalizeModePriorities(
-    priorities && typeof priorities === 'object'
-      ? priorities as Record<string, Record<string, number>>
-      : {},
-  );
-  state.modeTargets = targets && typeof targets === 'object'
-    ? targets as Record<string, Record<string, number>>
-    : {};
-  state.controllableMap = readBooleanSettingMap(controllables);
-  state.managedMap = readBooleanSettingMap(managed);
-  state.budgetExemptMap = readBooleanSettingMap(budgetExempt);
-  // Keep the last known map when the read cannot be interpreted, exactly as the
-  // runtime adapter does — otherwise the UI and the runtime disagree about which
-  // devices are opted in, in a direction the user cannot see.
-  state.respectExternalOffMap = readStrictBooleanSettingMap(respectExternalOff)
-    ?? state.respectExternalOffMap;
-  state.nativeWiringMap = readBooleanSettingMap(nativeWiring);
-  state.modeAliases = readModeAliases(aliases);
-  renderModeOptions();
-};
-
-export const refreshActiveMode = async () => {
-  const mode = await getSetting(OPERATING_MODE_SETTING);
-  state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
-  renderModeOptions();
+  modeLoadGeneration += 1;
+  const generation = modeLoadGeneration;
+  const homeId = getHomeScope().selectedHomeId;
+  prepareModeHomeLoad(homeId);
+  const read = await readModeSettings(homeId);
+  if (generation !== modeLoadGeneration || homeId !== getHomeScope().selectedHomeId) return;
+  applyModeSettings(homeId, read);
 };
 
 export const renderModeOptions = () => {
@@ -166,13 +153,6 @@ export const renderModeOptions = () => {
       ...sortedModes.map((mode) => createModeOption(mode, mode === state.editingMode)),
     );
     modeSelect.value = state.editingMode || sortedModes[0] || DEFAULT_MODE_NAME;
-  }
-
-  if (activeModeSelect) {
-    activeModeSelect.replaceChildren(
-      ...sortedModes.map((mode) => createModeOption(mode, mode === state.activeMode)),
-    );
-    activeModeSelect.value = state.activeMode || sortedModes[0] || DEFAULT_MODE_NAME;
   }
 };
 
@@ -248,10 +228,6 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   nameText.className = 'mode-row__name-text';
   nameText.textContent = formatDisplayDeviceName(device.name);
   name.appendChild(nameText);
-  // Meter-area badge only — this list is NEVER filtered by home. `savePriorities`
-  // ranks the rendered rows `index + 1`, so hiding one home's rows would rewrite
-  // that home's stored priorities on the next save.
-  appendHomeBadge(name, device.id);
 
   const desired = getDesiredTarget(device);
   const input = buildModeTargetInput(device, desired);
@@ -275,7 +251,10 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
 export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   if (!priorityList) return;
   priorityList.innerHTML = '';
-  const managedDevices = devices.filter((device) => resolveManagedState(device.id));
+  const selectedHomeId = getHomeScope().selectedHomeId;
+  const managedDevices = devices.filter((device) => (
+    resolveManagedState(device.id) && getHomeIdForUiDevice(device.id) === selectedHomeId
+  ));
   if (!managedDevices.length) {
     priorityEmpty.hidden = false;
     return;
@@ -291,19 +270,6 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   refreshPriorityBadges();
 };
 
-export const setActiveMode = async (mode: string) => {
-  const next = resolveModeName(mode);
-  state.activeMode = next;
-  renderModeOptions();
-  try {
-    await setSetting(OPERATING_MODE_SETTING, state.activeMode);
-  } catch (error) {
-    await logSettingsError('Failed to set active mode', error, 'setActiveMode');
-    await showToastError(error as Error, 'Failed to set active mode.');
-    throw error;
-  }
-};
-
 export const setEditingMode = (mode: string) => {
   const next = resolveModeName(mode);
   state.editingMode = next;
@@ -312,63 +278,27 @@ export const setEditingMode = (mode: string) => {
 };
 
 export const renameMode = async (oldName: string, newName: string) => {
-  const oldKey = oldName.trim();
-  const newKey = newName.trim();
-  if (!oldKey || !newKey || oldKey === newKey) return;
-  if (state.capacityPriorities[newKey] || state.modeTargets[newKey]) {
-    await showToast('Mode name already exists.', 'warn');
-    return;
-  }
-  const oldPriorities = state.capacityPriorities[oldKey];
-  const oldTargets = state.modeTargets[oldKey];
-  if (state.capacityPriorities[oldKey]) {
-    state.capacityPriorities[newKey] = state.capacityPriorities[oldKey];
-    delete state.capacityPriorities[oldKey];
-  }
-  if (state.modeTargets[oldKey]) {
-    state.modeTargets[newKey] = state.modeTargets[oldKey];
-    delete state.modeTargets[oldKey];
-  }
-  // Keep aliases direct for newly written renames. The runtime still follows
-  // retained chains from older versions with cycle protection, but flattening
-  // here prevents another rename from leaving an old Flow argument or per-home
-  // pin pointing at a mode name this operation is about to remove.
-  state.modeAliases = Object.fromEntries(
-    Object.entries(state.modeAliases)
-      .map(([alias, target]) => [alias, target === oldKey ? newKey : target] as const),
-  );
-  state.modeAliases[oldKey.toLowerCase()] = newKey;
-
-  // Publish the rename as an additive transition. Runtime settings events are
-  // handled one write at a time and each mode-target write rebuilds plans. If
-  // the old record disappeared before the alias existed, a pinned meter area
-  // would briefly fall back to the global mode and could command a warmer
-  // target (adding load) before the alias rebuild corrected it. Keep both
-  // records addressable until every old name resolves to the new record:
-  //
-  //   add new alongside old → switch active/aliases → remove old
-  //
-  // A failure at any step leaves either the old record or both records, never
-  // an alias/pin with no target record.
-  const transitionPriorities = oldPriorities === undefined
-    ? state.capacityPriorities
-    : { ...state.capacityPriorities, [oldKey]: oldPriorities };
-  const transitionTargets = oldTargets === undefined
-    ? state.modeTargets
-    : { ...state.modeTargets, [oldKey]: oldTargets };
-  await setSetting('capacity_priorities', transitionPriorities);
-  await setSetting('mode_device_targets', transitionTargets);
-  if (state.activeMode === oldKey) {
-    state.activeMode = newKey;
-    await setSetting(OPERATING_MODE_SETTING, state.activeMode);
-  }
-  await setSetting('mode_aliases', state.modeAliases);
-  if (state.editingMode === oldKey) state.editingMode = newKey;
-  await setSetting('capacity_priorities', state.capacityPriorities);
-  await setSetting('mode_device_targets', state.modeTargets);
-  renderModeOptions();
-  renderPriorities(state.latestDevices);
-  await showToast(`Renamed mode to ${newKey}`, 'ok');
+  const homeId = getHomeScope().selectedHomeId;
+  if (state.loadedModeHomeId !== homeId) return;
+  await withModeMutationLock(homeId, async () => {
+    const { result, catalog } = await persistModeRename({
+      oldName,
+      newName,
+      homeId,
+      catalog: captureModeCatalog(),
+    });
+    if (result === 'duplicate') {
+      await showToast('Mode name already exists.', 'warn');
+      return;
+    }
+    if (result === 'noop') return;
+    applyCurrentModeRename(homeId, oldName.trim(), newName.trim());
+    if (state.loadedModeHomeId !== homeId) return;
+    applyModeCatalog(catalog);
+    renderModeOptions();
+    renderPriorities(state.latestDevices);
+    void showToast(`Renamed mode to ${newName.trim()}`, 'ok');
+  });
 };
 
 const refreshPriorityBadges = () => {
@@ -408,6 +338,8 @@ const initSortable = () => {
 
 export const savePriorities = async () => {
   try {
+    const homeId = getHomeScope().selectedHomeId;
+    if (state.loadedModeHomeId !== homeId || isModeMutationLocked(homeId)) return;
     const mode = resolveModeName(modeSelect?.value || '');
     state.editingMode = mode;
     const rows = getPriorityRows();
@@ -419,7 +351,12 @@ export const savePriorities = async () => {
       }
     });
     state.capacityPriorities[mode] = modeMap;
-    await setSetting('capacity_priorities', state.capacityPriorities);
+    const prioritiesForSave = Object.fromEntries(
+      Object.entries(state.capacityPriorities).map(([name, entries]) => [name, { ...entries }]),
+    );
+    await serializeModeCatalogWrite(homeId, () => (
+      setSetting(selectedModeSettingKey(CAPACITY_PRIORITIES, homeId), prioritiesForSave)
+    ));
     await showToast(`Priorities saved for ${mode}.`, 'ok');
   } catch (error) {
     await logSettingsError('Failed to save priorities', error, 'savePriorities');
@@ -429,6 +366,8 @@ export const savePriorities = async () => {
 
 export const applyTargetChange = async (deviceId: string, rawValue: string) => {
   try {
+    const homeId = getHomeScope().selectedHomeId;
+    if (state.loadedModeHomeId !== homeId || isModeMutationLocked(homeId)) return;
     const mode = resolveModeName(modeSelect?.value || state.editingMode || DEFAULT_MODE_NAME);
     state.editingMode = mode;
     const val = parseFloat(rawValue);
@@ -437,111 +376,149 @@ export const applyTargetChange = async (deviceId: string, rawValue: string) => {
     const normalizedValue = device ? normalizeDeviceTargetValue(device, val) : val;
     if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
     state.modeTargets[mode][deviceId] = normalizedValue;
-    await debouncedSetSetting('mode_device_targets', () => state.modeTargets);
+    const targetsForSave = Object.fromEntries(
+      Object.entries(state.modeTargets).map(([name, entries]) => [name, { ...entries }]),
+    );
+    await serializeModeCatalogWrite(homeId, () => (
+      debouncedSetSetting(
+        selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId),
+        () => targetsForSave,
+      )
+    ));
   } catch (error) {
     await logSettingsError('Failed to update mode target', error, 'applyTargetChange');
     await showToastError(error as Error, 'Failed to update mode target.');
   }
 };
 
-const buildPrioritiesFromDevices = (devices: SettingsUiDeviceListItem[]) => (
-  Object.fromEntries(devices.map((device, index) => [device.id, index + 1]))
+const buildPrioritiesFromDeviceIds = (deviceIds: readonly string[]) => (
+  Object.fromEntries(deviceIds.map((deviceId, index) => [deviceId, index + 1]))
 );
 
 const getPriorityTemplate = (
-  storedPriorities: Record<string, Record<string, number>> | null,
+  priorities: Record<string, Record<string, number>>,
   templateMode: string,
+  deviceIds: readonly string[],
 ) => {
-  let template = (storedPriorities && storedPriorities[templateMode])
-    || (storedPriorities && storedPriorities.Home)
-    || state.capacityPriorities[templateMode]
-    || state.capacityPriorities.Home
-    || {};
-  if (Object.keys(template).length === 0 && storedPriorities) {
-    const source = storedPriorities[templateMode] || storedPriorities.Home || {};
-    template = Object.fromEntries(Object.keys(source).map((deviceId, index) => [deviceId, index + 1]));
-  }
-  if (Object.keys(template).length === 0 && Array.isArray(state.latestDevices)) {
-    template = buildPrioritiesFromDevices(state.latestDevices);
-  }
-  return template;
+  const template = priorities[templateMode] || priorities.Home || {};
+  return Object.keys(template).length > 0
+    ? template
+    : buildPrioritiesFromDeviceIds(deviceIds);
 };
 
 const getTargetTemplate = (
-  storedTargets: Record<string, Record<string, number>> | null,
+  targets: Record<string, Record<string, number>>,
   templateMode: string,
 ) => (
-  (storedTargets && storedTargets[templateMode])
-  || (storedTargets && storedTargets.Home)
-  || state.modeTargets[templateMode]
-  || state.modeTargets.Home
+  targets[templateMode]
+  || targets.Home
   || {}
 );
 
-const ensureModeTemplates = async (mode: string) => {
-  if (Object.keys(state.capacityPriorities || {}).length === 0 || Object.keys(state.modeTargets || {}).length === 0) {
-    await loadModeAndPriorities();
-  }
-  const templateMode = state.activeMode || DEFAULT_MODE_NAME;
-  const storedPriorities = await getSetting('capacity_priorities') as Record<string, Record<string, number>> | null;
-  const storedTargets = await getSetting('mode_device_targets') as Record<string, Record<string, number>> | null;
-
-  if (!state.capacityPriorities[mode]) {
-    const template = getPriorityTemplate(storedPriorities, templateMode);
-    state.capacityPriorities = {
-      ...(storedPriorities || {}),
-      ...(state.capacityPriorities || {}),
-      [mode]: { ...template },
-    };
-  }
-  if (!state.modeTargets[mode]) {
-    const templateTargets = getTargetTemplate(storedTargets, templateMode);
-    state.modeTargets = {
-      ...(storedTargets || {}),
-      ...(state.modeTargets || {}),
-      [mode]: { ...templateTargets },
-    };
-  }
+const ensureModeTemplates = async (
+  mode: string,
+  homeId: string,
+  captured: ModeCatalogDraft,
+): Promise<ModeCatalogDraft> => {
+  const templateMode = captured.activeMode || DEFAULT_MODE_NAME;
+  const deviceIds = state.latestDevices
+    .filter((device) => getHomeIdForUiDevice(device.id) === homeId)
+    .map((device) => device.id);
+  const [prioritiesRaw, targetsRaw] = await Promise.all([
+    getSetting(
+    selectedModeSettingKey(CAPACITY_PRIORITIES, homeId),
+    ),
+    getSetting(
+      selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId),
+    ),
+  ]);
+  const [storedPriorities, storedTargets] = parseRequiredModeMaps(prioritiesRaw, targetsRaw, homeId === MAIN_HOME_ID);
+  const priorities = {
+    ...storedPriorities,
+    ...captured.priorities,
+  };
+  const targets = {
+    ...storedTargets,
+    ...captured.targets,
+  };
+  return {
+    ...captured,
+    editingMode: mode,
+    priorities: priorities[mode]
+      ? priorities
+      : {
+        ...priorities,
+        [mode]: { ...getPriorityTemplate(priorities, templateMode, deviceIds) },
+      },
+    targets: targets[mode]
+      ? targets
+      : {
+        ...targets,
+        [mode]: { ...getTargetTemplate(targets, templateMode) },
+      },
+  };
 };
 
 const handleAddMode = async () => {
-  try {
-    const mode = (modeNewInput?.value || '').trim();
-    if (!mode) return;
-    await ensureModeTemplates(mode);
-    state.editingMode = mode;
-    renderModeOptions();
-    renderPriorities(state.latestDevices);
-    await setSetting('capacity_priorities', state.capacityPriorities);
-    await setSetting('mode_device_targets', state.modeTargets);
-    modeNewInput.value = '';
-    await showToast(`Added mode ${mode}`, 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to add mode', error, 'handleAddMode');
-    await showToastError(error as Error, 'Failed to add mode.');
-  }
+  const homeId = getHomeScope().selectedHomeId;
+  if (state.loadedModeHomeId !== homeId) return;
+  await withModeMutationLock(homeId, async () => {
+    try {
+      const mode = (modeNewInput?.value || '').trim();
+      if (!mode) return;
+      const catalog = await ensureModeTemplates(mode, homeId, captureModeCatalog());
+      await setSetting(selectedModeSettingKey(CAPACITY_PRIORITIES, homeId), catalog.priorities);
+      await setSetting(selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId), catalog.targets);
+      if (state.loadedModeHomeId !== homeId) return;
+      applyModeCatalog(catalog);
+      renderModeOptions();
+      renderPriorities(state.latestDevices);
+      modeNewInput.value = '';
+      void showToast(`Added mode ${mode}`, 'ok');
+    } catch (error) {
+      await logSettingsError('Failed to add mode', error, 'handleAddMode');
+      await showToastError(error as Error, 'Failed to add mode.');
+    }
+  });
 };
 
 const handleDeleteMode = async () => {
-  try {
-    const mode = modeSelect?.value || state.editingMode;
-    if (!mode || !state.capacityPriorities[mode]) return;
-    delete state.capacityPriorities[mode];
-    if (state.modeTargets[mode]) delete state.modeTargets[mode];
-    if (state.activeMode === mode) {
-      state.activeMode = 'Home';
-      await setSetting(OPERATING_MODE_SETTING, state.activeMode);
+  const homeId = getHomeScope().selectedHomeId;
+  if (state.loadedModeHomeId !== homeId) return;
+  await withModeMutationLock(homeId, async () => {
+    try {
+      const mode = modeSelect?.value || state.editingMode;
+      const catalog = captureModeCatalog();
+      if (!mode || !catalog.priorities[mode]) return;
+      const remainingModes = Object.keys(catalog.priorities).filter((entry) => entry !== mode);
+      if (remainingModes.length === 0) {
+        await showToast('Keep at least one mode.', 'warn');
+        return;
+      }
+      delete catalog.priorities[mode];
+      if (catalog.targets[mode]) delete catalog.targets[mode];
+      if (catalog.activeMode === mode) {
+        catalog.activeMode = remainingModes.includes(DEFAULT_MODE_NAME)
+          ? DEFAULT_MODE_NAME
+          : [...remainingModes].sort((left, right) => left.localeCompare(right))[0];
+        await setSetting(
+          selectedModeSettingKey(OPERATING_MODE_SETTING, homeId),
+          catalog.activeMode,
+        );
+      }
+      catalog.editingMode = catalog.activeMode;
+      await setSetting(selectedModeSettingKey(CAPACITY_PRIORITIES, homeId), catalog.priorities);
+      await setSetting(selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId), catalog.targets);
+      if (state.loadedModeHomeId !== homeId) return;
+      applyModeCatalog(catalog);
+      renderModeOptions();
+      renderPriorities(state.latestDevices);
+      void showToast(`Deleted mode ${mode}`, 'warn');
+    } catch (error) {
+      await logSettingsError('Failed to delete mode', error, 'handleDeleteMode');
+      await showToastError(error as Error, 'Failed to delete mode.');
     }
-    state.editingMode = 'Home';
-    renderModeOptions();
-    renderPriorities(state.latestDevices);
-    await setSetting('capacity_priorities', state.capacityPriorities);
-    await setSetting('mode_device_targets', state.modeTargets);
-    await showToast(`Deleted mode ${mode}`, 'warn');
-  } catch (error) {
-    await logSettingsError('Failed to delete mode', error, 'handleDeleteMode');
-    await showToastError(error as Error, 'Failed to delete mode.');
-  }
+  });
 };
 
 const handleRenameMode = async () => {
@@ -566,15 +543,5 @@ export const initModeHandlers = () => {
   modeSelect?.addEventListener('change', () => {
     closeModeNameEditor();
     setEditingMode(modeSelect.value || DEFAULT_MODE_NAME);
-  });
-  activeModeSelect?.addEventListener('change', async () => {
-    const mode = (activeModeSelect?.value || '').trim();
-    if (!mode) return;
-    try {
-      await setActiveMode(mode);
-      await showToast(`Active mode set to ${mode}`, 'ok');
-    } catch {
-      // setActiveMode already logged and toasted
-    }
   });
 };

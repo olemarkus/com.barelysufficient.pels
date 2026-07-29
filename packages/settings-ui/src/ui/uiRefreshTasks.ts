@@ -7,7 +7,7 @@ import {
 import { getTargetDevices, renderDevices } from './devices.ts';
 import { loadStaleDataStatus } from './capacity.ts';
 import { refreshHomeBadges } from './homeBadges.ts';
-import { subscribeToHomeScope } from './homeScope.ts';
+import { refreshHomeScopeAndNotify, subscribeToHomeScope } from './homeScope.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
@@ -149,6 +149,13 @@ subscribeToHomeScope(() => {
   runLoggedTask(refreshOverviewPlanWithRescueGate(), 'Failed to refresh plan', 'homeScope');
 });
 
+subscribeToHomeScope(() => {
+  if (!isPanelVisible('#modes-panel')) return;
+  runLoggedTask(loadModeAndPriorities().then(() => {
+    if (state.devicesLoaded) renderPriorities(state.latestDevices);
+  }), 'Failed to load modes for the selected home', 'homeScope');
+});
+
 const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices>>) => {
   state.latestDevices = devices;
   renderPriorities(devices);
@@ -192,10 +199,9 @@ export const refreshDevicesForUi = () => {
  * (`loadDevicesOnce` only ever runs once).
  */
 export const refreshHomeBadgesForUi = (context: string) => {
-  runLoggedTask(refreshHomeBadges().then(() => {
+  runLoggedTask(Promise.all([refreshHomeScopeAndNotify(), refreshHomeBadges()]).then(() => {
     if (!state.devicesLoaded) return;
-    renderPriorities(state.latestDevices);
-    renderDevices(state.latestDevices);
+    renderLatestDevices(state.latestDevices);
   }), 'Failed to refresh meter area badges', context);
 };
 

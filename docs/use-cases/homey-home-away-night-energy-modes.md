@@ -14,6 +14,11 @@ The split:
 
 A mode is a name. PELS ships with `Home` as the default; you create the others (`Away`, `Night`, `Vacation`, or anything else that fits your household).
 
+If you use meter areas, each area has its own mode names, targets, priorities,
+and current mode. A new area starts with its own `Home` mode. Choose the area
+under **Showing** on the Modes page. The Settings page then gives Main home and
+every area its own current-mode selector.
+
 ## When this is useful
 
 Use modes when the same managed devices should behave differently depending on the situation:
@@ -86,7 +91,9 @@ Vacation is the strictest energy-saving mode.
 
 ## Switching modes from Homey Flows
 
-Anything that can trigger a Homey Flow can change the PELS mode. Use the **Set operating mode** action card.
+Anything that can trigger a Homey Flow can change the Main home's PELS mode.
+Use the **Set operating mode** action card. Meter-area modes are currently
+changed from the Settings page.
 
 When the last person leaves:
 

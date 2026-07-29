@@ -1,4 +1,8 @@
-import { HOMES_CONFIG, MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import {
+  DEVICE_HOME_ASSIGNMENTS,
+  HOMES_CONFIG,
+  MAIN_HOME_ID,
+} from '../../../contracts/src/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import { MAIN_HOME_NAME } from '../../../shared-domain/src/homeScopeCopy.ts';
 import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homesManagementCopy.ts';
@@ -35,7 +39,7 @@ import { renderHomeScopeBar, type HomeScopeOption } from './views/HomeScopeBar.t
  * (hero + device cards from the selected home's own plan/power, Main-only
  * elements omitted, honest unavailable notice).
  */
-const SCOPE_AWARE_PANELS = new Set(['limits', 'usage', 'overview']);
+const SCOPE_AWARE_PANELS = new Set(['limits', 'usage', 'overview', 'modes']);
 
 /**
  * Persisted selection. Namespaced under `pels.` so it cannot collide with other
@@ -59,10 +63,13 @@ export type HomeScopeState = {
    * simulation: it is a held legacy config whose devices still belong to Main.
    */
   runtimeActive: boolean;
+  /** Authoritative device ownership from the same roster generation. */
+  membershipByDeviceId: Readonly<Record<string, string>>;
 };
 
 let areas: HomeScopeArea[] = [];
 let runtimeActive = false;
+let membershipByDeviceId: Record<string, string> = {};
 let selectedHomeId: string = MAIN_HOME_ID;
 // Armed at boot, consumed by the session's first roster resolution: the
 // persisted id is only ever a CANDIDATE. A stale id (its area deleted from
@@ -111,7 +118,13 @@ const writePersistedScope = (homeId: string): void => {
   }
 };
 
-export const getHomeScope = (): HomeScopeState => ({ selectedHomeId, areas, runtimeActive });
+export const getHomeScope = (): HomeScopeState => ({
+  selectedHomeId, areas, runtimeActive, membershipByDeviceId,
+});
+
+export const getHomeIdForUiDevice = (deviceId: string): string => (
+  runtimeActive ? membershipByDeviceId[deviceId] ?? MAIN_HOME_ID : MAIN_HOME_ID
+);
 
 /**
  * Whether at least one meter area is actually IN USE — the gate for the honest
@@ -244,7 +257,12 @@ const reconcileSelection = (): void => {
  * why a read failed (root AGENTS.md, "Validation belongs at the boundary").
  */
 type RosterRead =
-  | { status: 'resolved'; areas: HomeScopeArea[]; runtimeActive: boolean }
+  | {
+    status: 'resolved';
+    areas: HomeScopeArea[];
+    runtimeActive: boolean;
+    membershipByDeviceId: Record<string, string>;
+  }
   | { status: 'unavailable' };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -266,6 +284,31 @@ const DANGEROUS_RECORD_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 const isValidRosterAreaId = (value: string): boolean => (
   value !== MAIN_HOME_ID && !value.includes(':') && !DANGEROUS_RECORD_KEYS.has(value)
 );
+
+const resolveRosterMembership = (
+  raw: unknown,
+  resolvedAreas: readonly HomeScopeArea[],
+): Record<string, string> | null => {
+  if (raw !== undefined && !isRecord(raw)) return null;
+  const validHomeIds = new Set([MAIN_HOME_ID, ...resolvedAreas.map((area) => area.homeId)]);
+  const membership: Record<string, string> = {};
+  for (const [deviceId, entry] of Object.entries(raw ?? {})) {
+    if (!isRecord(entry) || typeof entry.homeId !== 'string' || !validHomeIds.has(entry.homeId)) {
+      return null;
+    }
+    membership[deviceId] = entry.homeId;
+  }
+  return membership;
+};
+
+const resolvePayloadMembership = (
+  payload: Record<string, unknown>,
+  resolvedAreas: readonly HomeScopeArea[],
+): Record<string, string> | null => {
+  if (!payload.runtimeActive) return {};
+  if (payload.membershipByDeviceId === undefined) return null;
+  return resolveRosterMembership(payload.membershipByDeviceId, resolvedAreas);
+};
 
 const resolveRosterPayload = (payload: unknown): RosterRead => {
   if (!isRecord(payload)) return { status: 'unavailable' };
@@ -302,7 +345,14 @@ const resolveRosterPayload = (payload: unknown): RosterRead => {
     }
     resolved.push({ homeId, name });
   }
-  return { status: 'resolved', areas: resolved, runtimeActive: payload.runtimeActive };
+  const membership = resolvePayloadMembership(payload, resolved);
+  if (membership === null) return { status: 'unavailable' };
+  return {
+    status: 'resolved',
+    areas: resolved,
+    runtimeActive: payload.runtimeActive,
+    membershipByDeviceId: payload.runtimeActive ? membership : {},
+  };
 };
 
 export const refreshHomeScope = async (): Promise<void> => {
@@ -326,24 +376,30 @@ export const refreshHomeScope = async (): Promise<void> => {
     // the last-good roster and the still-armed persisted candidate.
     areas = read.areas;
     runtimeActive = read.runtimeActive;
+    membershipByDeviceId = read.membershipByDeviceId;
     reconcileSelection();
   }
   renderScopeBar();
 };
 
+/** Refresh ownership and then publish the settled last-good scope to consumers. */
+export const refreshHomeScopeAndNotify = async (): Promise<void> => {
+  await refreshHomeScope();
+  notifyListeners();
+};
+
 /**
- * Realtime `settings.set` hook. A roster change (an area added or removed from
- * the Multiple-meters panel, or from a second WebView) rewrites `homes_config`;
- * refetch so the bar and every subscriber track it. Deliberately NOT gated on
+ * Realtime `settings.set` hook. Roster and device-assignment changes refetch
+ * `ui_homes` so the bar, ownership map, and every subscriber track them.
+ * Deliberately NOT gated on
  * the shown panel: the common edit happens on the Multiple-meters panel, and
  * skipping the refetch there would let the next hop into a scope-aware page
  * paint the bar from a roster that still lists a just-deleted area. Roster edits
  * are rare, so one `ui_homes` GET per edit is the cheaper side of that trade.
  */
 export const notifyHomeScopeSettingChanged = (key: string): void => {
-  if (key !== HOMES_CONFIG) return;
-  void refreshHomeScope()
-    .then(() => { notifyListeners(); })
+  if (key !== HOMES_CONFIG && key !== DEVICE_HOME_ASSIGNMENTS) return;
+  void refreshHomeScopeAndNotify()
     .catch((caught: unknown) => logSettingsError('Failed to refresh the home scope', caught, 'homeScope'));
 };
 

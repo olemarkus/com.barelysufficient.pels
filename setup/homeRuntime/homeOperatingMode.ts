@@ -1,22 +1,18 @@
 /**
- * Per-home operating-mode wiring (multi-home): the ONE accessor every
- * sub-home-facing reader of the active mode resolves through, so no surface is
- * left on the global mode by accident.
+ * Legacy pre-migration operating-mode resolution plus the stateless,
+ * owner-aware device-support reader.
  *
- * Storage: `operating_mode:<homeId>` (now a `HOME_SCOPABLE_BASE_KEYS` member).
- * Resolution: the pure `resolveHomeOperatingMode` chain — per-home value →
- * global (main) mode — with the pinned mode constrained to the global
- * `mode_device_targets` key set so the planner's `[mode] || {}` lookup can
- * never collapse a pinned mode to empty targets (the stuck-cold regression
- * guard). The mode-targets and priority BLOBS stay global by design
- * (mode-name-keyed; membership partitions device ids disjointly) — only the
- * ACTIVE mode is per home.
+ * Main uses the historical unsuffixed catalog. Initialized meter areas own
+ * suffixed aliases, priorities, targets, and active mode; before initialization
+ * they deliberately follow Main as a compatibility fallback. This module keeps
+ * the legacy active-mode accessor for pre-migration reads and exposes the
+ * owner-aware device-support resolver used outside a registered bundle.
  *
  * The accessor also carries this home's priority resolver: priorities are
  * ranked per mode, so a home on its own mode must rank devices by that mode
  * (`resolveDevicePriority`), not by main's.
  *
- * Logging is edge-triggered per accessor (one per bundle): a transition of the
+ * The legacy accessor's logging is edge-triggered: a transition of the
  * effective mode logs `home_operating_mode_changed` naming the home, a
  * refused pinned mode logs `home_operating_mode_unconfigured`, a
  * malformed pin (non-string persisted value) logs
@@ -24,8 +20,7 @@
  * `home_operating_mode_read_failed` / `home_operating_mode_read_suspect` while
  * the accessor holds a last-known pin or keeps following the current global
  * mode when no pin was known — each once per distinct fault. Reads between
- * transitions stay silent, so live closures can resolve on every plan cycle
- * without log spam.
+ * transitions stay silent.
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
@@ -41,9 +36,10 @@ import {
   MAIN_HOME_ID,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
+import { readPersistedHomeModeCatalog } from './homeModeCatalog';
 
 export type HomeOperatingModeAccessor = {
-  /** This home's effective operating mode (per-home value → global default). */
+  /** Legacy effective mode (per-home pin → Main fallback). */
   getOperatingMode: () => string;
   /** Device priority under this home's OWN effective mode. */
   getPriorityForDevice: (deviceId: string) => number;
@@ -123,10 +119,8 @@ const resolveForHome = (ctx: AppContext, homeId: HomeId): HomeOperatingModeReadO
 };
 
 /**
- * One sub-home's live operating-mode accessor. Constructed once per capacity
- * bundle; every read re-resolves against the current settings/ctx state, so a
- * suffixed write, a global mode change, or a mode-targets edit is picked up by
- * the next plan cycle without any push wiring beyond the rebuild fan-out.
+ * Legacy live accessor retained for compatibility tests and pre-marker
+ * resolution. Initialized bundles use `HomeModeCatalog` instead.
  */
 /** One edge-trigger key per DISTINCT fault (reason + payload), null when clean. */
 const faultLogKey = (fault: HomeOperatingModeFault | null): string | null => {
@@ -289,8 +283,30 @@ export const createHomeOperatingModeAccessor = (
  * decide, and skip.
  */
 export type DeviceOperatingModeOutcome =
-  | { state: 'resolved'; mode: string | null }
+  | { state: 'resolved'; mode: string | null; homeId: HomeId; catalogHomeId: HomeId }
   | { state: 'unavailable' };
+
+export const resolveHomeIdForModeCatalogSeed = (
+  ctx: AppContext,
+  deviceId: string,
+): HomeId | null => {
+  const membership = ctx.homeMembership;
+  if (!membership) return MAIN_HOME_ID;
+  return membership.isOwnershipReady() && !membership.hasPendingOwnershipGeneration()
+    ? membership.getHomeIdForDevice(deviceId)
+    : null;
+};
+
+const isDeviceOwnershipUnavailable = (
+  membership: AppContext['homeMembership'],
+  allowPendingOwnershipGeneration: boolean,
+): boolean => Boolean(
+  membership
+  && (
+    !membership.isOwnershipReady()
+    || (!allowPendingOwnershipGeneration && membership.hasPendingOwnershipGeneration())
+  ),
+);
 
 /**
  * The active mode governing ONE DEVICE, for device-keyed readers outside the
@@ -314,19 +330,33 @@ export const resolveOperatingModeForDevice = (
   allowPendingOwnershipGeneration = false,
 ): DeviceOperatingModeOutcome => {
   const membership = membershipOverride ?? ctx.homeMembership;
-  if (
-    membership
-    && (
-      !membership.isOwnershipReady()
-      || (!allowPendingOwnershipGeneration && membership.hasPendingOwnershipGeneration())
-    )
-  ) {
+  if (isDeviceOwnershipUnavailable(membership, allowPendingOwnershipGeneration)) {
     return { state: 'unavailable' };
   }
   const homeId = membership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
   if (homeId === MAIN_HOME_ID) {
-    const raw = ctx.homey.settings.get(OPERATING_MODE_SETTING) as unknown;
-    return { state: 'resolved', mode: typeof raw === 'string' && raw.trim() ? raw : null };
+    let raw: unknown;
+    try {
+      raw = ctx.homey.settings.get(OPERATING_MODE_SETTING) as unknown;
+    } catch {
+      return { state: 'unavailable' };
+    }
+    return {
+      state: 'resolved',
+      mode: typeof raw === 'string' && raw.trim() ? raw : null,
+      homeId,
+      catalogHomeId: homeId,
+    };
+  }
+  const catalog = readPersistedHomeModeCatalog(ctx, homeId);
+  if (catalog.state === 'unavailable') return { state: 'unavailable' };
+  if (catalog.state === 'resolved') {
+    return {
+      state: 'resolved',
+      mode: catalog.snapshot.operatingMode,
+      homeId,
+      catalogHomeId: homeId,
+    };
   }
   const outcome = resolveForHome(ctx, homeId);
   // A suspect pin read stays UNKNOWN to the caller — never the global mode.
@@ -340,5 +370,10 @@ export const resolveOperatingModeForDevice = (
     return { state: 'unavailable' };
   }
   const { mode } = outcome.resolution;
-  return { state: 'resolved', mode: mode.trim() ? mode : null };
+  return {
+    state: 'resolved',
+    mode: mode.trim() ? mode : null,
+    homeId,
+    catalogHomeId: MAIN_HOME_ID,
+  };
 };

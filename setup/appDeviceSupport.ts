@@ -3,11 +3,15 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeviceOperatingModeOutcome } from './homeRuntime/homeOperatingMode';
 import { isBooleanMap, isModeDeviceTargets } from '../lib/utils/appTypeGuards';
 import {
+  MODE_DEVICE_TARGETS,
+  MAIN_HOME_ID,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_SETTINGS,
+  homeScopedSettingsKey,
+  type HomeId,
 } from '../lib/utils/settingsKeys';
 import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../lib/utils/airtreatmentConstants';
 import {
@@ -109,6 +113,8 @@ function resolveModeForDeviceTarget(params: {
   return {
     state: 'resolved',
     mode: typeof operatingModeRaw === 'string' && operatingModeRaw.trim() ? operatingModeRaw : null,
+    homeId: MAIN_HOME_ID,
+    catalogHomeId: MAIN_HOME_ID,
   };
 }
 
@@ -134,7 +140,9 @@ function readModeTarget(params: {
 
   let modeTargetsRaw: unknown;
   try {
-    modeTargetsRaw = params.settings.get('mode_device_targets') as unknown;
+    modeTargetsRaw = params.settings.get(
+      homeScopedSettingsKey(MODE_DEVICE_TARGETS, operatingMode.catalogHomeId),
+    ) as unknown;
   } catch {
     return { state: 'unavailable' };
   }
@@ -397,7 +405,7 @@ export function disableUnsupportedDevices(params: {
 }
 
 type ModeTargetsBlob = Record<string, Record<string, number>>;
-type SeedPlan = { device: TargetDeviceSnapshot; modes: string[]; value: number };
+type SeedPlan = { device: TargetDeviceSnapshot; modes: string[]; value: number; homeId: HomeId };
 
 function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -437,8 +445,8 @@ const skipFingerprint = (deviceId: string, mode: string, reason: string): string
 // the next boot, seeding it again is the correct behaviour (and the user
 // hasn't had a chance to clear it post-restart).
 const seededEntryFingerprints = new Set<string>();
-const seededEntryFingerprint = (deviceId: string, mode: string): string => (
-  `${mode}::${deviceId}`
+const seededEntryFingerprint = (homeId: HomeId, deviceId: string, mode: string): string => (
+  `${homeId}::${mode}::${deviceId}`
 );
 
 export function __resetSeedSkipDedupeForTests(): void {
@@ -469,6 +477,7 @@ function isSeedCandidate(
 function findMissingModesForDevice(
   device: TargetDeviceSnapshot,
   existing: ModeTargetsBlob,
+  homeId: HomeId,
 ): string[] {
   return Object.keys(existing).filter((mode) => {
     // Edge-trigger: if we've already auto-seeded this (device, mode) once in
@@ -478,7 +487,7 @@ function findMissingModesForDevice(
     // back. On process restart we lose this memory, which is acceptable: if
     // the entry is still missing the user hasn't had a chance to clear it
     // post-restart, so re-seeding is the right call.
-    if (seededEntryFingerprints.has(seededEntryFingerprint(device.id, mode))) return false;
+    if (seededEntryFingerprints.has(seededEntryFingerprint(homeId, device.id, mode))) return false;
     const value = existing[mode]?.[device.id];
     return !(typeof value === 'number' && Number.isFinite(value));
   });
@@ -519,51 +528,70 @@ function emitSeedSkipped(
 function buildSeedPlans(
   candidates: TargetDeviceSnapshot[],
   existing: ModeTargetsBlob,
+  homeId: HomeId,
   structuredLog?: StructuredEventEmitter,
 ): SeedPlan[] {
   return candidates.flatMap((device) => {
-    const modes = findMissingModesForDevice(device, existing);
+    const modes = findMissingModesForDevice(device, existing, homeId);
     if (modes.length === 0) return [];
     const value = resolveSeedValue(device);
     if (value === null) {
       emitSeedSkipped({ device, modes }, 'no_seed_source', structuredLog);
       return [];
     }
-    return [{ device, modes, value }];
+    return [{ device, modes, value, homeId }];
   });
 }
 
 export function seedMissingModeTargets(params: {
   snapshot: TargetDeviceSnapshot[];
   settings: Homey.App['homey']['settings'];
+  resolveHomeIdForDevice?: (deviceId: string) => HomeId | null;
   structuredLog?: StructuredEventEmitter;
   debugStructured: StructuredEventEmitter;
 }): void {
-  const { snapshot, settings, structuredLog, debugStructured } = params;
-  const existing = parseModeDeviceTargets(settings.get('mode_device_targets') as unknown);
-  // No modes configured at all → nothing to seed against. A fresh install
-  // with no operating mode is handled by the first UI write rather than
-  // fabricating a mode here.
-  if (!existing || Object.keys(existing).length === 0) return;
-
+  const {
+    snapshot, settings, resolveHomeIdForDevice, structuredLog, debugStructured,
+  } = params;
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
   const candidates = snapshot.filter((device) => isSeedCandidate(device, managed, controllable));
   if (candidates.length === 0) return;
 
-  const plans = buildSeedPlans(candidates, existing, structuredLog);
+  const byHome = new Map<HomeId, TargetDeviceSnapshot[]>();
+  candidates.forEach((device) => {
+    const homeId = resolveHomeIdForDevice
+      ? resolveHomeIdForDevice(device.id)
+      : MAIN_HOME_ID;
+    if (homeId === null) return;
+    const entries = byHome.get(homeId) ?? [];
+    byHome.set(homeId, [...entries, device]);
+  });
+  const homeSeedPlans = [...byHome].flatMap(([homeId, devices]) => {
+    const key = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
+    const existing = parseModeDeviceTargets(settings.get(key) as unknown);
+    // No modes configured at all → nothing to seed against. A fresh catalog
+    // is populated by its marker-last initializer before this pass can write it.
+    if (!existing || Object.keys(existing).length === 0) return [];
+    const plans = buildSeedPlans(devices, existing, homeId, structuredLog);
+    return plans.length === 0
+      ? []
+      : [{ homeId, plans, next: applySeedPlans(existing, plans) }];
+  });
+  const plans = homeSeedPlans.flatMap((entry) => entry.plans);
   if (plans.length === 0) return;
 
-  const next = applySeedPlans(existing, plans);
-  if (!isModeDeviceTargets(next)) {
+  if (homeSeedPlans.some((entry) => !isModeDeviceTargets(entry.next))) {
     plans.forEach((plan) => emitSeedSkipped(plan, 'normalize_failed', structuredLog));
     return;
   }
 
-  settings.set('mode_device_targets', next);
+  homeSeedPlans.forEach((entry) => {
+    settings.set(homeScopedSettingsKey(MODE_DEVICE_TARGETS, entry.homeId), entry.next);
+  });
   plans.forEach((entry) => {
     entry.modes.forEach((mode) => {
-      seededEntryFingerprints.add(seededEntryFingerprint(entry.device.id, mode));
+      seededEntryFingerprints.add(seededEntryFingerprint(entry.homeId, entry.device.id, mode));
     });
     structuredLog?.({
       event: 'mode_target_auto_seeded',

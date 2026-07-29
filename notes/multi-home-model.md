@@ -183,34 +183,34 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 Per-meter: **hard cap, safety margin, dry-run (control on/off), device
 priorities, real-time limit/resume.** These are genuinely per-meter.
 
-**The active operating mode is per-home at runtime; the mode/priority BLOBS
-stay global.** `operating_mode` is in `HOME_SCOPABLE_BASE_KEYS`, so a sub-home
-may pin its active mode under `operating_mode:<homeId>`; absence means the
-sub-home follows the global mode. Resolution is producer-owned and
-boundary-validated once, in `resolveHomeOperatingMode`
-(`lib/utils/capacityHelpers.ts`): per-home value → global default, with a
-pinned mode **constrained to the mode-targets blob's own key set**. That
-constraint is the stuck-cold guard — an unknown pinned mode must never reach
-the planner's `modeDeviceTargets[mode] || {}` lookup, where empty targets
-would re-open the dropped-resume bug; a refused pin falls back to the global
-mode and surfaces as a structured fault, never a silent empty-target plan.
-Every runtime reader of the active mode resolves through one per-home accessor
-(`setup/homeRuntime/homeOperatingMode.ts`): the sub-home scope's
-`getOperatingMode`, the per-home priority resolver (priorities are ranked per
-mode, so each `HomeScope` binds its own resolver against its own effective
-mode), the overshoot default seed, the registry suffix-hook route table (an
-`operating_mode:<homeId>` write re-plans exactly that home, never Main's mode
-dispatch), and the bundle diagnostics. The mode-target and priority blobs stay
-one global mode-name-keyed map — membership partitions device ids disjointly,
-so no migration and no read-modify-write wipe hazard. **The UI half has not
-shipped:** the Modes page reads and writes the global key for every home, and
-no settings surface writes a pin yet — the per-home pin is a runtime
-capability exercised only by suffixed settings writes. Surfaces without a home
-input keep their global behaviour by product ruling (the mode Flow cards and
-the `pels_insights` mode tile).
+**Modes are independent per home.** Main keeps the historical unsuffixed
+`operating_mode`, `mode_aliases`, `capacity_priorities`, and
+`mode_device_targets` keys. Each meter area stores the same four values under
+`:<homeId>` suffixed keys. A marker-last initialization copies Main's mode
+names and aliases, guarantees an area-local `Home` mode, partitions
+target/priority entries by authoritative device ownership, starts a new area
+in `Home` (or preserves a valid existing area selection), then writes
+`mode_catalog_initialized:<homeId>`. Until that marker lands, the area follows
+the legacy Main catalog; afterwards Main edits never change the area.
+
+The bundle reads one coherent last-good catalog snapshot, so a transient
+settings failure cannot mix one generation's mode with another generation's
+targets. Scoped catalog writes reload and rebuild only the owning bundle.
+Device-detail target edits, overshoot defaults, and automatic missing-target
+seeding resolve through the device's assigned catalog. The Settings page shows
+one current-mode selector per home; the Modes page follows the global
+**Showing** picker and lists only devices assigned to that home. Mode Flow
+cards and the `pels_insights` mode tile remain Main-home-only.
+
+When a temperature device moves between homes, ownership reconciliation copies
+its persisted source-mode target into any missing destination-mode entries
+before either home's plan rebuilds. It never derives that anchor from the live
+setpoint, which may be the temporarily lowered control value. Devices without a
+saved target need no transfer; unavailable catalogs or failed writes keep the
+membership generation fenced for retry.
 
 **Mode targets apply in EVERY home.** Every home's scope binds
-`getModeDeviceTargets` to the live `ctx` read. This is not a policy choice: the
+`getModeDeviceTargets` to its own catalog. This is not a policy choice: the
 mode target is the **restore anchor**. Binding it to `{}` for a sub-home made
 `resolveTemperatureSeed` fall back to the device's live setpoint, which while
 shed IS the shed setpoint, so on release `plannedTarget === currentTarget`, the
@@ -257,13 +257,12 @@ load-bearing in these ways:
   raises.
 
 Because the hold deliberately lets heat-device lowerings through, those
-lowerings must actually reach a silent-meter area: a global `operating_mode` /
-`mode_device_targets` write now fans out to every live bundle's planner
-(`SettingsHandlerDeps.rebuildHomeRuntimePlansForModeChange` →
-`HomeRuntimeRegistry.onModeSettingsChanged`), because a silent meter produces no
-power-driven rebuilds and the freshness heartbeat fires at most once per stale
-period — without the fan-out a cooler-mode lowering could stay unapplied
-indefinitely.
+lowerings must actually reach a silent-meter area: every suffixed area-catalog
+write reloads the owning bundle and explicitly rebuilds its planner. A silent
+meter produces no power-driven rebuilds and the freshness heartbeat fires at
+most once per stale period, so relying on a future sample could leave a
+cooler-mode lowering unapplied indefinitely. The Main-catalog fan-out remains
+only for a pre-migration area still following Main.
 
 Main binds `false` deliberately. Its unknown-power window is normally the
 seconds before the first Homey Energy poll, where an area's unknown-power window lasts as long as its
@@ -342,17 +341,18 @@ The shell renders one global home picker (the `Showing` bar, `homeScope.ts`)
 once at least one meter area exists in the roster. The bar renders **only on
 pages whose content is resolved against the selected home** — a surface earns
 it in the same change that teaches it the scope (`SCOPE_AWARE_PANELS`):
-**Limits & safety** (per-home cap/margin/control), **Usage** (the selected
+**Limits & safety** (per-home cap/margin/control), **Modes** (the selected
+home's independent catalog and assigned devices), **Usage** (the selected
 home's own tracker history via the scoped `ui_power` read), and **Overview**
 (the selected home's committed plan + power via scoped `ui_plan`/`ui_power`).
 Scoped surfaces render honest unavailable notices instead of fabricated zeros,
 and Main-only elements (smart-task row, daily-budget hero elements) are
 omitted under an area, never zeroed.
 
-The **Devices and Modes lists** are labeled, never filtered: every row carries
-a home badge (`homeBadges.ts`, gated on `runtimeActive`) because
-`savePriorities` ranks the *rendered* rows — filtering would corrupt the
-hidden home's stored priorities.
+The **Devices** list stays whole-home and labels each row with a home badge
+(`homeBadges.ts`, gated on `runtimeActive`). **Modes** is filtered by the
+global picker; priorities are safe to rank from its rendered rows because each
+home owns a separate catalog.
 
 Everything else states its scope honestly once meter areas are IN USE (active
 roster + `runtimeActive`; a held pre-GA config renders none of these because

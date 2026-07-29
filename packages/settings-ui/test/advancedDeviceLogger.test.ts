@@ -35,6 +35,7 @@ const flushPromises = async () => new Promise<void>((resolve) => {
 
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: vi.fn(),
+  getSetting: vi.fn().mockResolvedValue({}),
   setSetting: vi.fn(),
 }));
 
@@ -296,7 +297,9 @@ describe('advanced device cleanup', () => {
       },
     });
     expect(homey.setSetting).toHaveBeenCalledWith('overshoot_behaviors', { 'dev-2': { action: 'turn_off' } });
-    expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for Device One.', 'ok');
+    await vi.waitFor(() => {
+      expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for Device One.', 'ok');
+    });
   });
 
   it('includes the device id when the selected device is no longer in the live list', async () => {
@@ -321,7 +324,9 @@ describe('advanced device cleanup', () => {
     await flushPromises();
 
     expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
-    expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for device dev-1.', 'ok');
+    await vi.waitFor(() => {
+      expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for device dev-1.', 'ok');
+    });
   });
 
   it('clears unknown devices after confirmation', async () => {

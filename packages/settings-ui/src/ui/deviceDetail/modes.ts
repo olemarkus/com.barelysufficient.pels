@@ -10,29 +10,123 @@ import { logSettingsError } from '../logging.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { debouncedSetSetting } from '../utils.ts';
 import { renderPriorities } from '../modes.ts';
+import {
+  CAPACITY_PRIORITIES,
+  MAIN_HOME_ID,
+  MODE_DEVICE_TARGETS,
+  OPERATING_MODE_SETTING,
+  homeScopedSettingsKey,
+} from '../../../../contracts/src/settingsKeys.ts';
+import { getSetting } from '../homey.ts';
+import { getHomeIdForUiDevice } from '../homeScope.ts';
+import { parseModeNumberMap } from '../modeCatalogMaps.ts';
+import { serializeModeCatalogWrite } from '../modeRename.ts';
 
-const getAllModes = () => {
-  const modes = new Set([state.activeMode]);
-  Object.keys(state.capacityPriorities || {}).forEach((mode) => modes.add(mode));
-  Object.keys(state.modeTargets || {}).forEach((mode) => modes.add(mode));
+type DetailModeCatalog = {
+  activeMode: string;
+  priorities: Record<string, Record<string, number>>;
+  targets: Record<string, Record<string, number>>;
+};
+type DetailModeDraft = { current: DetailModeCatalog };
+type PendingTargetPatch = {
+  mode: string;
+  deviceId: string;
+  value: number;
+  revision: number;
+};
+
+const pendingTargetPatches = new Map<string, PendingTargetPatch[]>();
+const pendingTargetSaves = new Map<string, Promise<void>>();
+let targetPatchRevision = 0;
+
+const mergeTargetPatches = (
+  targets: Record<string, Record<string, number>>,
+  patches: readonly PendingTargetPatch[],
+): Record<string, Record<string, number>> => {
+  const merged = Object.fromEntries(
+    Object.entries(targets).map(([name, entries]) => [name, { ...entries }]),
+  );
+  for (const patch of patches) {
+    merged[patch.mode] = {
+      ...(merged[patch.mode] ?? {}),
+      [patch.deviceId]: patch.value,
+    };
+  }
+  return merged;
+};
+
+const persistTargetPatchBatch = async (homeId: string): Promise<void> => {
+  await serializeModeCatalogWrite(homeId, async () => {
+    if ((pendingTargetPatches.get(homeId)?.length ?? 0) === 0) return;
+    const key = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
+    const stored = parseModeNumberMap(
+      await getSetting(key),
+      homeId === MAIN_HOME_ID,
+    );
+    if (stored === null) throw new Error('Mode catalog unavailable');
+    let flushedThroughRevision = 0;
+    let flushedPatches: readonly PendingTargetPatch[] = [];
+    try {
+      await debouncedSetSetting(key, () => {
+        const patches = pendingTargetPatches.get(homeId) ?? [];
+        flushedThroughRevision = patches.length > 0
+          ? patches[patches.length - 1]!.revision
+          : 0;
+        flushedPatches = [...patches];
+        return mergeTargetPatches(stored, patches);
+      });
+      if (state.loadedModeHomeId === homeId) {
+        state.modeTargets = mergeTargetPatches(state.modeTargets, flushedPatches);
+      }
+    } finally {
+      const remaining = (pendingTargetPatches.get(homeId) ?? [])
+        .filter((patch) => patch.revision > flushedThroughRevision);
+      if (remaining.length === 0) pendingTargetPatches.delete(homeId);
+      else pendingTargetPatches.set(homeId, remaining);
+    }
+  });
+};
+
+const persistPendingTargetPatches = (homeId: string): Promise<void> => {
+  const pending = pendingTargetSaves.get(homeId);
+  if (pending) return pending;
+  const save = (async () => {
+    while ((pendingTargetPatches.get(homeId)?.length ?? 0) > 0) {
+      await persistTargetPatchBatch(homeId);
+    }
+  })().finally(() => {
+    if (pendingTargetSaves.get(homeId) === save) pendingTargetSaves.delete(homeId);
+  });
+  pendingTargetSaves.set(homeId, save);
+  return save;
+};
+
+const getAllModes = (catalog: DetailModeCatalog) => {
+  const modes = new Set([catalog.activeMode]);
+  Object.keys(catalog.priorities).forEach((mode) => modes.add(mode));
+  Object.keys(catalog.targets).forEach((mode) => modes.add(mode));
   if (modes.size === 0) modes.add('Home');
   return Array.from(modes).sort();
 };
 
-const getPriorityLabel = (mode: string, deviceId: string) => {
+const getPriorityLabel = (catalog: DetailModeCatalog, mode: string, deviceId: string) => {
   // The stored map only carries an explicit rank once the user has ordered
   // devices for that mode (drag on the Modes screen assigns 1..N). An unset
   // device falls back to the lowest slot (100), which reads as noise as a
   // "#100" — surface a humane "not set" instead, and drop the "#" jargon on the
   // real ranks.
-  const priority = state.capacityPriorities[mode]?.[deviceId];
+  const priority = catalog.priorities[mode]?.[deviceId];
   if (typeof priority !== 'number' || priority >= 100) return 'Priority not set';
   return `Priority ${priority}`;
 };
 
-const getTargetInputValue = (mode: string, device: SettingsUiDeviceDetailItem) => {
+const getTargetInputValue = (
+  catalog: DetailModeCatalog,
+  mode: string,
+  device: SettingsUiDeviceDetailItem,
+) => {
   const target = getPrimaryTargetCapability(device.targets);
-  const currentTarget = state.modeTargets[mode]?.[device.id];
+  const currentTarget = catalog.targets[mode]?.[device.id];
   const defaultTarget = device.targets?.[0]?.value;
   if (typeof currentTarget === 'number') {
     return normalizeTargetCapabilityValue({ target, value: currentTarget }).toString();
@@ -60,6 +154,7 @@ const buildDeviceDetailModeInput = (
   mode: string,
   device: SettingsUiDeviceDetailItem,
   target: ReturnType<typeof getPrimaryTargetCapability>,
+  catalog: DetailModeCatalog,
 ): MdFilledTextFieldElement => {
   const tempInput = document.createElement('md-filled-text-field') as MdFilledTextFieldElement;
   tempInput.setAttribute('type', 'number');
@@ -72,16 +167,21 @@ const buildDeviceDetailModeInput = (
   tempInput.setAttribute('aria-label', `${mode} target temperature`);
   tempInput.classList.add('detail-mode-temp');
   tempInput.dataset.mode = mode;
-  tempInput.value = getTargetInputValue(mode, device);
+  tempInput.value = getTargetInputValue(catalog, mode, device);
   return tempInput;
 };
 
-const bindDeviceDetailModeInput = (
-  tempInput: MdFilledTextFieldElement,
-  mode: string,
-  device: SettingsUiDeviceDetailItem,
-  target: ReturnType<typeof getPrimaryTargetCapability>,
-) => {
+const bindDeviceDetailModeInput = (params: {
+  tempInput: MdFilledTextFieldElement;
+  mode: string;
+  device: SettingsUiDeviceDetailItem;
+  target: ReturnType<typeof getPrimaryTargetCapability>;
+  draft: DetailModeDraft;
+  homeId: string;
+}) => {
+  const {
+    tempInput, mode, device, target, draft, homeId,
+  } = params;
   const inputElement = tempInput;
   tempInput.addEventListener('change', async () => {
     const value = parseFloat(inputElement.value);
@@ -89,11 +189,26 @@ const bindDeviceDetailModeInput = (
 
     const normalizedValue = normalizeTargetCapabilityValue({ target, value });
     inputElement.value = normalizedValue.toString();
-    if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
-    state.modeTargets[mode][device.id] = normalizedValue;
+    const nextModeTargets = {
+      ...(draft.current.targets[mode] ?? {}),
+      [device.id]: normalizedValue,
+    };
+    draft.current = {
+      ...draft.current,
+      targets: { ...draft.current.targets, [mode]: nextModeTargets },
+    };
+    targetPatchRevision += 1;
+    const patches = pendingTargetPatches.get(homeId) ?? [];
+    patches.push({
+      mode,
+      deviceId: device.id,
+      value: normalizedValue,
+      revision: targetPatchRevision,
+    });
+    pendingTargetPatches.set(homeId, patches);
     try {
-      await debouncedSetSetting('mode_device_targets', () => state.modeTargets);
-      renderPriorities(state.latestDevices);
+      await persistPendingTargetPatches(homeId);
+      if (state.loadedModeHomeId === homeId) renderPriorities(state.latestDevices);
     } catch (error) {
       await logSettingsError('Failed to update device target', error, 'device detail');
       await showToastError(error, 'Failed to update device target.');
@@ -101,7 +216,13 @@ const bindDeviceDetailModeInput = (
   });
 };
 
-const buildDeviceDetailModeRow = (mode: string, device: SettingsUiDeviceDetailItem) => {
+const buildDeviceDetailModeRow = (
+  catalog: DetailModeCatalog,
+  mode: string,
+  device: SettingsUiDeviceDetailItem,
+  homeId: string,
+  draft: DetailModeDraft,
+) => {
   const row = document.createElement('div');
   row.className = 'device-row detail-mode-row';
   row.dataset.mode = mode;
@@ -117,7 +238,7 @@ const buildDeviceDetailModeRow = (mode: string, device: SettingsUiDeviceDetailIt
   nameSpan.textContent = mode;
   header.appendChild(nameSpan);
 
-  if (mode === state.activeMode) {
+  if (mode === catalog.activeMode) {
     // Visual-only status pill. Hidden from assistive tech because the same
     // information is already conveyed by the row representing the user's
     // active mode; exposing this chip as a button would add a phantom
@@ -133,15 +254,47 @@ const buildDeviceDetailModeRow = (mode: string, device: SettingsUiDeviceDetailIt
 
   const prioritySpan = document.createElement('div');
   prioritySpan.className = 'detail-mode-row__priority';
-  prioritySpan.textContent = getPriorityLabel(mode, device.id);
+  prioritySpan.textContent = getPriorityLabel(catalog, mode, device.id);
   nameWrap.appendChild(prioritySpan);
 
   const target = getPrimaryTargetCapability(device.targets);
-  const tempInput = buildDeviceDetailModeInput(mode, device, target);
-  bindDeviceDetailModeInput(tempInput, mode, device, target);
+  const tempInput = buildDeviceDetailModeInput(mode, device, target, catalog);
+  bindDeviceDetailModeInput({ tempInput, mode, device, target, draft, homeId });
 
   row.append(nameWrap, tempInput);
   return row;
+};
+
+let detailModeGeneration = 0;
+
+const loadDetailCatalog = async (homeId: string): Promise<DetailModeCatalog> => {
+  const [activeRaw, prioritiesRaw, targetsRaw] = await Promise.all([
+    getSetting(homeScopedSettingsKey(OPERATING_MODE_SETTING, homeId)),
+    getSetting(homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId)),
+    getSetting(homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId)),
+  ]);
+  const allowAbsent = homeId === MAIN_HOME_ID;
+  const priorities = parseModeNumberMap(prioritiesRaw, allowAbsent);
+  const targets = parseModeNumberMap(targetsRaw, allowAbsent);
+  if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
+  return {
+    activeMode: typeof activeRaw === 'string' && activeRaw.trim() ? activeRaw : 'Home',
+    priorities,
+    targets,
+  };
+};
+
+const paintDetailCatalog = (
+  catalog: DetailModeCatalog,
+  device: SettingsUiDeviceDetailItem,
+  homeId: string,
+): void => {
+  if (!deviceDetailModes) return;
+  deviceDetailModes.replaceChildren();
+  const draft: DetailModeDraft = { current: catalog };
+  getAllModes(catalog).forEach((mode) => {
+    deviceDetailModes.appendChild(buildDeviceDetailModeRow(catalog, mode, device, homeId, draft));
+  });
 };
 
 export const renderDeviceDetailModes = (device: SettingsUiDeviceDetailItem) => {
@@ -155,7 +308,21 @@ export const renderDeviceDetailModes = (device: SettingsUiDeviceDetailItem) => {
   if (deviceDetailModesSection) deviceDetailModesSection.hidden = !supports;
   if (!supports) return;
 
-  getAllModes().forEach((mode) => {
-    deviceDetailModes.appendChild(buildDeviceDetailModeRow(mode, device));
+  detailModeGeneration += 1;
+  const generation = detailModeGeneration;
+  const homeId = getHomeIdForUiDevice(device.id);
+  if (state.loadedModeHomeId === homeId) {
+    paintDetailCatalog({
+      activeMode: state.activeMode,
+      priorities: state.capacityPriorities,
+      targets: state.modeTargets,
+    }, device, homeId);
+    return;
+  }
+  void loadDetailCatalog(homeId).then((catalog) => {
+    if (generation !== detailModeGeneration || !deviceDetailModes) return;
+    paintDetailCatalog(catalog, device, homeId);
+  }).catch((error: unknown) => {
+    void logSettingsError('Failed to load device modes', error, 'device detail');
   });
 };

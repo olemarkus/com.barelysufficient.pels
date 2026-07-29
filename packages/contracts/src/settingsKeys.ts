@@ -13,6 +13,10 @@ export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
 // (the settings UI can't import lib); the runtime's HOME_SCOPABLE_BASE_KEYS is
 // the scoping source of truth.
 export const OPERATING_MODE_SETTING = 'operating_mode';
+export const MODE_ALIASES = 'mode_aliases';
+export const CAPACITY_PRIORITIES = 'capacity_priorities';
+export const MODE_DEVICE_TARGETS = 'mode_device_targets';
+export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';

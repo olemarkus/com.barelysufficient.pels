@@ -57,12 +57,21 @@ import { getLogger } from '../../lib/logging/logger';
 import { resolveModeName } from '../../lib/utils/capacityHelpers';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
+  CAPACITY_PRIORITIES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
+  MODE_ALIASES,
+  MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   POWER_SOURCE,
 } from '../../lib/utils/settingsKeys';
+import {
+  createHomeModeCatalog,
+  getPriorityFromHomeModeCatalog,
+  readPersistedHomeModeCatalog,
+  transferModeTargetsForOwnershipMoves,
+} from '../../setup/homeRuntime/homeModeCatalog';
 import { drainPending } from '../utils/asyncDrain';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
@@ -136,6 +145,189 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     logs.restore();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('initializes an area catalog once, filters it by ownership, and commits the marker last', () => {
+    rig.ctx.modeAliases = { cooler: 'Cooler' };
+    rig.ctx.capacityPriorities = {
+      Home: { 'dev-1': 1, 'dev-main': 2 },
+      Cooler: { 'dev-main': 1, 'dev-1': 2 },
+    };
+    rig.ctx.modeDeviceTargets = {
+      Home: { 'dev-1': 21, 'dev-main': 20 },
+      Cooler: { 'dev-1': 16, 'dev-main': 18 },
+    };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: (deviceId: string) => deviceId === 'dev-1' ? 'h_a' : 'main',
+    } as unknown as AppContext['homeMembership'];
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+
+    catalog.reload();
+
+    expect(catalog.isInitialized()).toBe(true);
+    expect(catalog.getSnapshot()).toEqual({
+      operatingMode: 'Home',
+      aliases: { cooler: 'Cooler' },
+      priorities: {
+        Home: { 'dev-1': 1 },
+        Cooler: { 'dev-1': 1 },
+      },
+      targets: {
+        Home: { 'dev-1': 21 },
+        Cooler: { 'dev-1': 16 },
+      },
+    });
+    expect(setSpy.mock.calls.at(-1)).toEqual(['mode_catalog_initialized:h_a', true]);
+    const writeCount = setSpy.mock.calls.length;
+    catalog.reload();
+    expect(setSpy).toHaveBeenCalledTimes(writeCount);
+  });
+
+  it('creates an independent Home mode instead of inheriting Main’s active mode', () => {
+    rig.ctx.operatingMode = 'Away';
+    rig.ctx.capacityPriorities = { Away: { 'dev-1': 1 } };
+    rig.ctx.modeDeviceTargets = { Away: { 'dev-1': 12 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => 'h_a',
+    } as unknown as AppContext['homeMembership'];
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+
+    catalog.reload();
+
+    expect(catalog.getSnapshot()).toMatchObject({
+      operatingMode: 'Home',
+      priorities: {
+        Away: { 'dev-1': 1 },
+        Home: {},
+      },
+      targets: {
+        Away: { 'dev-1': 12 },
+        Home: {},
+      },
+    });
+    expect(mockHomeyInstance.settings.get(`${OPERATING_MODE_SETTING}:h_a`)).toBe('Home');
+  });
+
+  it('keeps the new Home mode literal when Main previously renamed Home', () => {
+    rig.ctx.operatingMode = 'Work';
+    rig.ctx.modeAliases = { home: 'Work' };
+    rig.ctx.capacityPriorities = { Work: { 'dev-1': 1 } };
+    rig.ctx.modeDeviceTargets = { Work: { 'dev-1': 20 } };
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+
+    catalog.reload();
+
+    expect(catalog.getSnapshot()).toMatchObject({
+      operatingMode: 'Home',
+      aliases: {},
+      priorities: { Home: {} },
+      targets: { Home: {} },
+    });
+  });
+
+  it('rejects an active mode that has priorities but no target record', () => {
+    mockHomeyInstance.settings.set('mode_catalog_initialized:h_a', true);
+    mockHomeyInstance.settings.set('mode_aliases:h_a', {});
+    mockHomeyInstance.settings.set('capacity_priorities:h_a', {
+      Home: { 'dev-1': 1 },
+      Cooler: { 'dev-1': 2 },
+    });
+    mockHomeyInstance.settings.set('mode_device_targets:h_a', {
+      Home: { 'dev-1': 21 },
+    });
+    mockHomeyInstance.settings.set('operating_mode:h_a', 'Cooler');
+
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    catalog.reload();
+
+    expect(catalog.getSnapshot().operatingMode).toBe('Home');
+  });
+
+  it('initializes area catalogs before owner-aware mode resolution', () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.ctx.operatingMode = 'Away';
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => 'h_a',
+    } as unknown as AppContext['homeMembership'];
+
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+
+    expect(mockHomeyInstance.settings.get('mode_catalog_initialized:h_a')).toBe(true);
+    expect(resolveOperatingModeForDevice(rig.ctx, 'dev-1')).toMatchObject({
+      state: 'resolved',
+      mode: 'Home',
+      homeId: 'h_a',
+      catalogHomeId: 'h_a',
+    });
+  });
+
+  it('carries the configured target, not a lowered live setpoint, across an area move', () => {
+    mockHomeyInstance.settings.set('mode_catalog_initialized:h_a', true);
+    mockHomeyInstance.settings.set('mode_aliases:h_a', {});
+    mockHomeyInstance.settings.set('capacity_priorities:h_a', { Home: { 'dev-1': 1 } });
+    mockHomeyInstance.settings.set('mode_device_targets:h_a', { Home: { 'dev-1': 22 } });
+    mockHomeyInstance.settings.set('operating_mode:h_a', 'Home');
+    mockHomeyInstance.settings.set('mode_catalog_initialized:h_b', true);
+    mockHomeyInstance.settings.set('mode_aliases:h_b', {});
+    mockHomeyInstance.settings.set('capacity_priorities:h_b', { Home: {} });
+    mockHomeyInstance.settings.set('mode_device_targets:h_b', { Home: {} });
+    mockHomeyInstance.settings.set('operating_mode:h_b', 'Home');
+
+    const result = transferModeTargetsForOwnershipMoves(rig.ctx, [{
+      deviceId: 'dev-1',
+      fromHomeId: 'h_a',
+      toHomeId: 'h_b',
+    }]);
+
+    expect(result).toEqual({ completedDeviceIds: ['dev-1'], failedDeviceIds: [] });
+    expect(mockHomeyInstance.settings.get('mode_device_targets:h_b')).toEqual({
+      Home: { 'dev-1': 22 },
+    });
+  });
+
+  it('never recopies Main when the existing initialization marker read is ambiguous', () => {
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    catalog.reload();
+    mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
+    catalog.reload();
+    expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
+    const writeCount = vi.spyOn(mockHomeyInstance.settings, 'set').mock.calls.length;
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+      key === 'mode_catalog_initialized:h_a' ? undefined : originalGet(key)
+    ));
+
+    catalog.reload();
+
+    expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
+    expect(mockHomeyInstance.settings.set).toHaveBeenCalledTimes(writeCount);
+    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+  });
+
+  it('waits rather than overwriting a pre-migration area selection on an ambiguous read', () => {
+    const pinKey = `${OPERATING_MODE_SETTING}:h_a`;
+    mockHomeyInstance.settings.set(pinKey, 'Cooler');
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    const getSpy = vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+      key === pinKey ? undefined : originalGet(key)
+    ));
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+
+    catalog.reload();
+
+    expect(catalog.isInitialized()).toBe(false);
+    expect(setSpy).not.toHaveBeenCalled();
+    getSpy.mockRestore();
+    catalog.reload();
+    expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
   });
 
   // Mirror of the real `loadCapacitySettings` for the rename seam: reload
@@ -222,7 +414,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     }
   });
 
-  it('follows the global mode with a surfaced fault when the pinned mode has no targets record', async () => {
+  it('keeps an area on a configured local mode when an invalid active mode is written', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
@@ -233,14 +425,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const effectiveMode = diagnosticsFor(rig.registry, 'h_a').operatingMode;
     expect(effectiveMode).toBe('Home');
-    // The stuck-cold guard: the effective mode always indexes a REAL record in
-    // the global blob — never the pinned name whose record is missing.
-    expect(rig.ctx.modeDeviceTargets[effectiveMode]).toEqual({ 'dev-1': 21 });
-    expect(logs.findEvent('home_operating_mode_unconfigured')).toMatchObject({
-      homeId: 'h_a',
-      requestedMode: 'Ghost',
-      fallbackMode: 'Home',
-    });
+    const targets = mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:h_a`) as
+      Record<string, Record<string, number>>;
+    expect(targets[effectiveMode]).toEqual({ 'dev-1': 21 });
+    expect(logs.findEvents('home_operating_mode_unconfigured')).toHaveLength(0);
   });
 
   it('an additive mode rename never rebuilds a pinned area through the global fallback', async () => {
@@ -268,9 +456,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       const transitionsBefore = logs.findEvents('home_operating_mode_changed')
         .filter((event) => event.homeId === 'h_a').length;
 
-      // The rename flow first adds the new record ALONGSIDE the old one. The
-      // old pin therefore stays valid while this write rebuilds the bundle.
-      mockHomeyInstance.settings.set('mode_device_targets', {
+      // The rename flow mutates only this area's catalog and first adds the
+      // new record alongside the old one.
+      mockHomeyInstance.settings.set(`${MODE_DEVICE_TARGETS}:h_a`, {
         Home: { 'dev-1': 21 },
         Cooler: { 'dev-1': 16 },
         Chill: { 'dev-1': 16 },
@@ -282,13 +470,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
 
       // The alias commit switches the pin to the new, already-present record.
-      mockHomeyInstance.settings.set('mode_aliases', { cooler: 'Chill' });
+      mockHomeyInstance.settings.set(`${MODE_ALIASES}:h_a`, { cooler: 'Chill' });
       await drainPending();
       expect(countModeRebuilds()).toBeGreaterThan(additiveRebuilds);
 
       // Only after aliases resolve every old pin does the UI remove the old
       // record. That final targets write must keep the area on Chill.
-      mockHomeyInstance.settings.set('mode_device_targets', {
+      mockHomeyInstance.settings.set(`${MODE_DEVICE_TARGETS}:h_a`, {
         Home: { 'dev-1': 21 },
         Chill: { 'dev-1': 16 },
         Away: { 'dev-1': 12 },
@@ -310,18 +498,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     }
   });
 
-  it('a capacity_priorities reorder fans out to sub-home plans so a pinned area adopts the new order', async () => {
+  it('an area priority reorder rebuilds only that area with its new order', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
-
-    // Mirror the slice of the real `loadCapacitySettings` this seam needs:
-    // reload the priorities blob into the ctx state the accessor closures read.
-    vi.mocked(rig.ctx.loadCapacitySettings).mockImplementation(() => {
-      const priorities = mockHomeyInstance.settings.get('capacity_priorities') as
-        Record<string, Record<string, number>> | null;
-      if (priorities) rig.ctx.capacityPriorities = priorities;
-    });
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
@@ -340,24 +520,26 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       // a sub-home resolves them through its OWN effective mode, so this write
       // must re-run the pinned area's planner — an area whose meter is silent
       // gets no power-driven rebuild to pick the new order up later.
-      mockHomeyInstance.settings.set('capacity_priorities', {
+      mockHomeyInstance.settings.set(`${CAPACITY_PRIORITIES}:h_a`, {
         Home: { 'dev-1': 1 },
-        Cooler: { 'dev-1': 3 },
+        Cooler: { 'dev-2': 1, 'dev-1': 2 },
       });
       await drainPending();
 
       // Without the fan-out the pinned area keeps its previous shedding order
       // until an unrelated rebuild.
       expect(countBundleRebuilds()).toBeGreaterThan(0);
-      // The rebuilt plan ranks by the reloaded blob under the home's own mode.
-      const accessor = createHomeOperatingModeAccessor(rig.ctx, 'h_a');
-      expect(accessor.getPriorityForDevice('dev-1')).toBe(3);
+      const persisted = readPersistedHomeModeCatalog(rig.ctx, 'h_a');
+      expect(persisted.state).toBe('resolved');
+      if (persisted.state === 'resolved') {
+        expect(getPriorityFromHomeModeCatalog(persisted.snapshot, 'dev-1')).toBe(2);
+      }
     } finally {
       settingsHandler.stop();
     }
   });
 
-  it('fails a MALFORMED pin (non-string value) safe onto the global mode with its own surfaced fault', async () => {
+  it('fails a malformed area active-mode value safe onto Home', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
@@ -368,13 +550,11 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const effectiveMode = diagnosticsFor(rig.registry, 'h_a').operatingMode;
     expect(effectiveMode).toBe('Home');
-    // Corrupt persisted input is never read as an intentional unpin: it gets
-    // its own fault event, distinct from the unconfigured-pin one.
-    expect(logs.findEvent('home_operating_mode_pin_malformed')).toMatchObject({
-      homeId: 'h_a',
-      valueType: 'number',
-      fallbackMode: 'Home',
-    });
+    // Corrupt persisted input never becomes a planner lookup key.
+    const targets = mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:h_a`) as
+      Record<string, Record<string, number>>;
+    expect(targets[effectiveMode]).toBeDefined();
+    expect(logs.findEvents('home_operating_mode_pin_malformed')).toHaveLength(0);
     expect(logs.findEvents('home_operating_mode_unconfigured')).toHaveLength(0);
   });
 
@@ -402,37 +582,34 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     // The mode-change rebuild fan-out must complete despite the failing read:
     // an escaping exception fails the rebuild with NO retry, and a silent-meter
     // area gets no power-driven rebuild to self-heal from that miss.
-    rig.registry.onModeSettingsChanged();
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
     expect(logs.findEvents('home_mode_targets_rebuild_failed')).toHaveLength(0);
 
     // The persisted pin truth is unknown: hold the LAST-KNOWN effective mode
     // (never a flip to the global fallback), with its own surfaced fault.
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
-    expect(logs.findEvent('home_operating_mode_read_failed')).toMatchObject({
-      homeId: 'h_a',
-      fallbackMode: 'Cooler',
-    });
+    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
 
     // Edge-triggered: repeated failing resolves surface ONE fault, and holding
     // the last-known mode is never logged as a mode transition.
-    rig.registry.onModeSettingsChanged();
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
-    expect(logs.findEvents('home_operating_mode_read_failed')).toHaveLength(1);
+    expect(logs.findEvents('home_mode_catalog_unavailable')).toHaveLength(1);
     expect(logs.findEvents('home_operating_mode_changed')
       .filter((event) => event.homeId === 'h_a')).toHaveLength(transitionsBefore);
 
     // Recovery: the next successful read re-adopts the pin, no residue.
     readSpy.mockRestore();
-    rig.registry.onModeSettingsChanged();
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
   });
 
   it.each([
-    ['a fulfilled undefined for the existing key', false, 'missing_existing_key'],
-    ['a transient store-wide empty key list', true, 'empty_key_list'],
-  ])('holds an established pin across %s', async (_label, emptyKeys, reason) => {
+    ['a fulfilled undefined for the existing key', false],
+    ['a transient store-wide empty key list', true],
+  ])('holds an established pin across %s', async (_label, emptyKeys) => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
@@ -454,20 +631,16 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     // A fulfilled miss is not positive evidence that the user cleared the
     // pin. The one-shot fan-out must keep the established Cooler mode, never
     // rebuild against the warmer global Home targets.
-    rig.registry.onModeSettingsChanged();
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
     expect(logs.findEvents('home_operating_mode_changed')
       .filter((event) => event.homeId === 'h_a')).toHaveLength(transitionsBefore);
-    expect(logs.findEvent('home_operating_mode_read_suspect')).toMatchObject({
-      homeId: 'h_a',
-      reason,
-      fallbackMode: 'Cooler',
-    });
+    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
 
     getSpy.mockRestore();
     getKeysSpy.mockRestore();
-    rig.registry.onModeSettingsChanged();
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
   });
@@ -527,7 +700,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     });
   });
 
-  it('a global mode change reaches homes without a pinned mode; a pinned home keeps its own', async () => {
+  it('a global mode change leaves every initialized area catalog independent', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
@@ -541,16 +714,11 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     rig.registry.onModeSettingsChanged();
     await drainPending();
 
-    expect(diagnosticsFor(rig.registry, 'h_b').operatingMode).toBe('Away');
+    expect(diagnosticsFor(rig.registry, 'h_b').operatingMode).toBe('Home');
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
     const followerTransitions = logs.findEvents('home_operating_mode_changed')
       .filter((event) => event.homeId === 'h_b');
-    expect(followerTransitions.at(-1)).toMatchObject({
-      homeId: 'h_b',
-      mode: 'Away',
-      previousMode: 'Home',
-      source: 'global',
-    });
+    expect(followerTransitions).toHaveLength(0);
   });
 
   it('treats a pinned-mode write for an unknown homeId as transient (no throw, no teardown)', async () => {
@@ -661,6 +829,18 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('classifies a failed Main operating-mode read as unavailable', () => {
+    const passthroughGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    const readSpy = vi.spyOn(mockHomeyInstance.settings, 'get')
+      .mockImplementation((key: string) => {
+        if (key === OPERATING_MODE_SETTING) throw new Error('settings backend unavailable');
+        return passthroughGet(key);
+      });
+
+    expect(resolveOperatingModeForDevice(ctx, 'main-device')).toEqual({ state: 'unavailable' });
+    readSpy.mockRestore();
   });
 
   it('skips the overshoot seed while the pinned mode read throws, then seeds under the PIN once it recovers', () => {

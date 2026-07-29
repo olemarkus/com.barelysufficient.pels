@@ -62,13 +62,7 @@ const buildDom = () => {
       <button class="tab" data-tab="settings"></button>
     </div>
     <section class="panel hidden" id="settings-panel" data-panel="settings">
-      <section class="settings-form-card settings-current-mode">
-        <h3 class="field__label settings-current-mode__heading" id="settings-active-mode-summary">Current mode</h3>
-        <div class="field settings-current-mode__field">
-          <md-filled-select id="active-mode-select" aria-labelledby="settings-active-mode-summary"></md-filled-select>
-        </div>
-        <p class="muted settings-current-mode__hint">Priorities and temperatures stay in Modes.</p>
-      </section>
+      <div id="current-modes-root"></div>
       <button data-settings-target="limits"></button>
       <button data-settings-target="budget-adjust"></button>
       <button data-settings-target="devices"></button>
@@ -238,6 +232,9 @@ const loadSettingsScript = async () => {
     const emptyVisible = document.querySelector('#empty-state')?.hasAttribute('hidden') === false;
     return hasRows || emptyVisible;
   });
+  await waitFor(() => Boolean(
+    (document.querySelector('#active-mode-select') as HTMLSelectElement | null)?.value,
+  ));
 };
 
 const DEFAULT_SETTINGS_DEVICES = [
@@ -1164,6 +1161,7 @@ describe('settings script', () => {
       if (key === 'capacity_priorities') {
         return cb(null, { Home: { 'dev-2': 5, 'dev-1': 5, 'dev-3': 9 } });
       }
+      if (key === 'mode_device_targets') return cb(null, {});
       if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, []);
     });

@@ -49,6 +49,7 @@ import {
   DEVICE_LAST_CONTROLLED_MS,
   HOMES_CONFIG,
   MAIN_HOME_ID,
+  MODE_DEVICE_TARGETS,
   POWER_SOURCE,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
@@ -713,6 +714,45 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     expect(rebuild.mock.calls.filter(([reason]) => reason === 'home_membership_changed'))
       .toHaveLength(2);
+  });
+
+  it('carries a thermostat mode target through the real ownership-change path', async () => {
+    let ownerHomeId = HOME_A.homeId;
+    const thermostat = {
+      id: 'heater-move',
+      name: 'Moving heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    const binaryLoad = {
+      id: 'switch-move',
+      name: 'Moving switch',
+      deviceType: 'onoff',
+      capabilities: ['onoff'],
+      targets: [],
+    } as unknown as TargetDeviceSnapshot;
+    rig.ctx.latestTargetSnapshot.push(thermostat, binaryLoad);
+    rig.ctx.capacityPriorities = { Home: { 'heater-move': 1, 'switch-move': 2 } };
+    rig.ctx.modeDeviceTargets = { Home: { 'heater-move': 22 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => ownerHomeId,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_A.homeId}`))
+      .toMatchObject({ Home: { 'heater-move': 22 } });
+
+    ownerHomeId = HOME_B.homeId;
+    expect(rig.registry.onMembershipChanged()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
+      .toMatchObject({ Home: { 'heater-move': 22 } });
+    await drainPending();
   });
 
   it('publishes the EFFECTIVE (membership-gated) dry-run into the per-home status blob', async () => {

@@ -1,12 +1,17 @@
-import { setSetting } from './homey.ts';
+import { getSetting, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
+  CAPACITY_PRIORITIES,
+  MAIN_HOME_ID,
+  MODE_DEVICE_TARGETS,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
+  homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
+import { getHomeScope } from './homeScope.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -97,6 +102,36 @@ const removeDeviceIdsFromModeMap = (
   return updated;
 };
 
+const purgeModeCatalogDeviceIds = async (deviceIds: Set<string>): Promise<void> => {
+  const scope = getHomeScope();
+  const homeIds = [
+    MAIN_HOME_ID,
+    ...(scope.runtimeActive ? scope.areas.map((area) => area.homeId) : []),
+  ];
+  await Promise.all(homeIds.flatMap(async (homeId) => {
+    const prioritiesKey = homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId);
+    const targetsKey = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
+    const [prioritiesRaw, targetsRaw] = await Promise.all([
+      getSetting(prioritiesKey),
+      getSetting(targetsKey),
+    ]);
+    if (
+      !prioritiesRaw
+      || typeof prioritiesRaw !== 'object'
+      || Array.isArray(prioritiesRaw)
+      || !targetsRaw
+      || typeof targetsRaw !== 'object'
+      || Array.isArray(targetsRaw)
+    ) return;
+    const priorities = prioritiesRaw as Record<string, Record<string, number>>;
+    const targets = targetsRaw as Record<string, Record<string, number>>;
+    await Promise.all([
+      setSetting(prioritiesKey, removeDeviceIdsFromModeMap(priorities, deviceIds)),
+      setSetting(targetsKey, removeDeviceIdsFromModeMap(targets, deviceIds)),
+    ]);
+  }));
+};
+
 export const clearDeviceSettings = async (deviceId: string) => {
   const nextControllableMap = { ...state.controllableMap };
   const nextManagedMap = { ...state.managedMap };
@@ -126,8 +161,7 @@ export const clearDeviceSettings = async (deviceId: string) => {
     setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
     setSetting(EV_BOOST_SETTINGS, nextEvBoost),
     setSetting('price_optimization_settings', nextPriceOptimization),
-    setSetting('capacity_priorities', nextCapacityPriorities),
-    setSetting('mode_device_targets', nextModeTargets),
+    purgeModeCatalogDeviceIds(new Set([deviceId])),
   ]);
 
   state.controllableMap = nextControllableMap;
@@ -174,8 +208,7 @@ export const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
     setSetting(EV_BOOST_SETTINGS, nextEvBoost),
     setSetting('price_optimization_settings', nextPriceOptimization),
-    setSetting('capacity_priorities', nextCapacityPriorities),
-    setSetting('mode_device_targets', nextModeTargets),
+    purgeModeCatalogDeviceIds(ids),
   ]);
 
   state.controllableMap = nextControllableMap;

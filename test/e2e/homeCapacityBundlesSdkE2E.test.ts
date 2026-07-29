@@ -780,13 +780,11 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     );
   }, 30_000);
 
-  // Regression (review P2): the sub-home mode closures read live ctx state, but
-  // a global `operating_mode` write rebuilt only MAIN's plan. A silent-meter
-  // area gets no power-driven rebuilds and the freshness heartbeat fires at most
-  // once per stale period, so a cooler-mode LOWERING — the direction the
-  // unknown-power hold deliberately lets through — could stay unapplied
-  // indefinitely. The settings handler now fans the mode write out to every
-  // live bundle's planner.
+  // A silent-meter area gets no power-driven rebuilds and the freshness
+  // heartbeat fires at most once per stale period. Its own scoped mode switch
+  // must therefore rebuild that bundle immediately so a cooler-mode LOWERING —
+  // the direction the unknown-power hold deliberately lets through — is not
+  // left unapplied indefinitely.
   it('applies a cooler-mode lowering to an area heater while the area meter is silent', async () => {
     const heater = await buildHeaterDevice('device-sub-heat', 'z2', 22);
     const mainDevice = await buildOnOffDevice('device-main', 'z1');
@@ -799,8 +797,8 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
     mockHomeyInstance.settings.set('managed_devices', { 'device-main': true, 'device-sub-heat': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'device-main': true, 'device-sub-heat': true });
-    // Both modes are configured up front; only `operating_mode` changes later,
-    // so the write under test is the mode SWITCH, not a target edit.
+    // Both modes are configured up front and copied into the area's independent
+    // catalog; only its scoped active-mode setting changes later.
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'device-sub-heat': 22 },
@@ -830,7 +828,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
     const modeSwitchStart = putSpy.mock.calls.length;
-    mockHomeyInstance.settings.set('operating_mode', 'Away');
+    mockHomeyInstance.settings.set('operating_mode:h_sub', 'Away');
     await vi.advanceTimersByTimeAsync(5_000);
     await drainPending();
     expect(wasCalledWith(putSpy, TEMP_CAP('device-sub-heat'), 16, modeSwitchStart)).toBe(true);

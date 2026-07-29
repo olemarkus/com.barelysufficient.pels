@@ -36,7 +36,7 @@ export type WireHomeMembershipOptions = {
   ) => void;
   onZoneTreeCommitReady?: () => void;
   onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
-  onSubHomeMembershipChanged?: () => void;
+  onSubHomeMembershipChanged?: () => boolean;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
 };
 
@@ -531,7 +531,7 @@ export const wireHomeMembership = (
       // and reconcile. Do not enqueue duplicate stale-plan work from the
       // intermediate semantic recompute.
       if (service?.hasPendingOwnershipGeneration()) return;
-      onSubHomeMembershipChanged?.();
+      if (onSubHomeMembershipChanged?.() === false) return;
       const planService = ctx.planService;
       if (!planService) {
         // Honest skip, never silent: the change-gate cannot fire on the first

@@ -44,10 +44,22 @@ export const buildAppHomeMembershipOptions = (params: {
     allowPendingOwnershipGeneration: boolean,
   ) => void;
 }): WireHomeMembershipOptions => ({
-  onOwnershipReadyBeforePlanWork: params.retryDeferredOvershootSeed,
+  onOwnershipReadyBeforePlanWork: (membership, allowPendingOwnershipGeneration) => {
+    const registry = params.getRegistry();
+    if (
+      registry
+      && !registry.prepareModeCatalogsForOwnership(allowPendingOwnershipGeneration)
+    ) {
+      // The membership callback is contained and turns a throw into the owned
+      // bounded recovery path. A plain return would consume this readiness
+      // edge while leaving the pending ownership generation fenced forever.
+      throw new Error('Mode catalogs unavailable for ownership preparation');
+    }
+    params.retryDeferredOvershootSeed(membership, allowPendingOwnershipGeneration);
+  },
   onZoneTreeCommitReady: () => params.getRegistry()?.onMembershipReady(),
   onRuntimeActiveChanged: () => params.getRegistry()?.reconcile(),
-  onSubHomeMembershipChanged: () => params.getRegistry()?.onMembershipChanged(),
+  onSubHomeMembershipChanged: () => params.getRegistry()?.onMembershipChanged() ?? true,
   ownershipGenerationRuntime: {
     getMainStableSampleRevision: params.getMainStableSampleRevision,
     beginMainPreparedReconcile: params.beginMainPreparedReconcile,

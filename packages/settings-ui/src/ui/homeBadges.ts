@@ -12,18 +12,12 @@ import { logSettingsError } from './logging.ts';
 import { setTooltip } from './tooltips.ts';
 
 /**
- * Meter-area home badges for the Devices and Modes lists.
+ * Meter-area home badges for the Devices list and device-detail context.
  *
  * Neither list can carry the badge in its own payload: `SettingsUiDeviceListItem`
- * has no home field and both renders (`renderDevices`, `renderPriorities`) are
- * synchronous. So membership arrives OUT OF BAND — this module owns one
- * `ui_homes` read, keeps the resolved index in module state, and the two renders
- * read it synchronously.
- *
- * The badge LABELS, never FILTERS. `savePriorities` (`modes.ts`) assigns
- * `index + 1` over the rendered rows only, so hiding a home's rows from the
- * Modes list would silently rewrite the hidden home's priority ranks on the
- * next save. Grouping/labelling is the whole feature; filtering is a defect.
+ * has no home field and its render is synchronous. Membership therefore
+ * arrives out of band from `ui_homes` and is retained as a resolved index.
+ * Modes uses `homeScope.ts` instead because it intentionally filters by owner.
  *
  * Gated on `runtimeActive`: `ui_homes` diagnostics describe SAVED configuration
  * even while the control port is held all-main (a pre-GA config the owner has
