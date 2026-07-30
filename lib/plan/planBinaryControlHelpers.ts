@@ -7,8 +7,7 @@ import type {
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   isBinaryControlled,
-  getBinaryOn,
-  getObservedBinaryControlValue,
+  resolveBinaryCommandCurrentOn,
 } from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
@@ -158,35 +157,14 @@ export function shouldSkipAlreadyMatched(params: {
 }): boolean {
   const { deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore } = params;
   const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
-  // Only skip an already-matched command when the device's observed binary
-  // on-state faithfully mirrors its control state. Devices whose observation
-  // does not track the on/off control (chargers) report
-  // `observedStateComparable === false` and must not consult `binaryControl.on`
-  // here — a charger's on-state is activity-derived, not the switch.
-  if (!controlPlan.observedStateComparable) {
-    // The OFF direction has a faithful mirror of its own: the producer-resolved
-    // observed control value (raw-switch-provenance evidence only — see
-    // `getObservedBinaryControlValue`). A desired `false` against an
-    // observed-off switch is a no-op re-assert — skipping it is what breaks
-    // the charger re-shed loop (prod 2026-07-26: one redundant off-write per
-    // rebuild, 321 in an evening, each restamping the global shed cooldown and
-    // freezing every restore in the house). Two deliberate non-skips: the ON
-    // direction always writes (a `true` write over an already-true switch is
-    // how a paused charger gets kicked to resume), and an in-flight OPPOSITE
-    // command always writes — the dispatch must supersede a pending ON with
-    // this OFF (`recordPendingForDispatch` overwrites the entry), exactly as
-    // it did before the skip existed; otherwise a shed decided while a restore
-    // is still settling leaves the restore free to materialize.
-    if (desired !== false) return false;
-    if (hasOppositePendingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
-      return false;
-    }
-    return getObservedBinaryControlValue(latestObservedSnapshot, controlPlan.capabilityId) === false;
+  // An opposite pending command must be superseded even when the current
+  // observation already matches the new intent: the older command may still
+  // materialize after this decision.
+  if (hasOppositePendingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
+    return false;
   }
-  // A device with no binary control is the guard's else-branch (returns false) —
-  // so absent binary state never short-circuits (matches the prior explicit
-  // `binaryControl === undefined → return false`).
-  return isBinaryControlled(latestObservedSnapshot) && getBinaryOn(latestObservedSnapshot) === desired;
+  if (!isBinaryControlled(latestObservedSnapshot)) return false;
+  return resolveBinaryCommandCurrentOn(latestObservedSnapshot) === desired;
 }
 
 function hasOppositePendingBinaryCommand(params: {

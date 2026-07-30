@@ -55,12 +55,45 @@ const resolveCurrentOn = (
   snapshot?: ExecutorDeviceSnapshot,
 ): boolean | null => (snapshot ? isBinaryOnOrUnknown(snapshot) : action.current.on);
 
+const suppressRecentSteppedBinaryRestore = (
+  ctx: PlanExecutorSteppedContext,
+  params: {
+    action: ExecutableSteppedLoadDevice;
+    snapshot: ExecutorDeviceSnapshot | undefined;
+    mode: PlanActuationMode;
+    effectiveCurrentOn: boolean | null;
+  },
+): boolean => {
+  const {
+    action,
+    snapshot,
+    mode,
+    effectiveCurrentOn,
+  } = params;
+  if (
+    effectiveCurrentOn !== false
+    || !isBinaryObservedOff(snapshot)
+    || !ctx.state.hasRecentSteppedBinaryRestoreAttempt(action.id, Date.now())
+  ) return false;
+  logSteppedLoadRestoreSkip(ctx, {
+    action,
+    mode,
+    reasonCode: 'recent_binary_restore_attempt',
+  });
+  return true;
+};
+
 export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   mode: PlanActuationMode,
   snapshot?: ExecutorDeviceSnapshot,
-  options: { recordPlanActuation?: boolean } = {},
+  options: {
+    recordPlanActuation?: boolean;
+    force?: boolean;
+    preserveMaterializedConfirmation?: boolean;
+    commandPurpose?: 'post_activation_step';
+  } = {},
 ): Promise<boolean> => {
   // A plan built before an outside OFF can still carry a step-up command. Step
   // commands are real actuation too: suppress every one while the durable hold
@@ -80,7 +113,7 @@ export const applySteppedLoadCommand = async (
   const initializesUnknownStep = action.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
   if (currentOn === false && action.desired.on === false) return false;
   if (!commandStepId) return false;
-  if (isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
+  if (options.force !== true && isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
   const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, commandStepId);
   if (!desiredStep) {
     return logSteppedLoadCommandSkip(ctx, {
@@ -92,7 +125,10 @@ export const applySteppedLoadCommand = async (
       fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.desired.plannedStepId ?? null },
     });
   }
-  if (maybeLogSteppedLoadCommandPendingSkip(ctx, action, mode, commandStepId)) return false;
+  if (
+    options.force !== true
+    && maybeLogSteppedLoadCommandPendingSkip(ctx, action, mode, commandStepId)
+  ) return false;
   return executeSteppedLoadCommand(ctx, {
     action,
     mode,
@@ -109,7 +145,6 @@ export type ApplySteppedLoadRestoreParams = {
   snapshot: ExecutorDeviceSnapshot | undefined;
   mode: PlanActuationMode;
   hasShedDevices: boolean;
-  options?: { preRestoreStepIssued?: boolean };
 };
 
 export const applySteppedLoadRestore = async (
@@ -121,7 +156,6 @@ export const applySteppedLoadRestore = async (
     snapshot,
     mode,
     hasShedDevices,
-    options = {},
   } = params;
   const name = action.name;
   if (action.desired.on !== true) {
@@ -129,19 +163,17 @@ export const applySteppedLoadRestore = async (
     return NOT_RESTORED;
   }
   const {
-    stepActuation,
     matchingRestoreAttempt,
     stepNeedsAdjustment,
   } = action;
   const effectiveCurrentOn = action.current.on;
   const requestedStepId = action.desired.stepId;
-  // Defer a restore whose step command is still awaiting confirmation while the
-  // device already reports on — honouring an explicit `retry_backoff` so the
-  // restore cooldown is respected; the binary dispatch keeps its own pending
-  // dampener.
+  // Once the device reports on, keep the existing step-command attempt
+  // dampening. While it is still off, activation owns the ordering: dispatch
+  // binary ON first and immediately reassert the desired step even when an
+  // earlier step request was pending or in retry backoff.
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
-    && (effectiveCurrentOn === true
-      || matchingRestoreAttempt.status === 'retry_backoff');
+    && effectiveCurrentOn === true;
   if (shouldDeferRestoreForAttempt) {
     logSteppedLoadRestoreAttemptSkip(ctx, {
       action,
@@ -173,16 +205,17 @@ export const applySteppedLoadRestore = async (
   }
   if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return NOT_RESTORED;
   ctx.state.clearKeepInvariantShedBlock(action.id);
+  if (suppressRecentSteppedBinaryRestore(ctx, {
+    action,
+    snapshot,
+    mode,
+    effectiveCurrentOn,
+  })) return { ready: true, wroteBinary: false };
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
     action,
     snapshot,
     mode,
-    matchingRestoreAttempt,
-    stepActuation,
     stepNeedsAdjustment,
-    stepViolated,
-    desiredStepId: requestedStepId,
-    preRestoreStepIssued: options.preRestoreStepIssued,
   });
   if (binaryRestoreSkip === false) return NOT_RESTORED;
   // `maybeSkipSteppedLoadRestoreBinary` already returns `false` (handled above)

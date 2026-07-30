@@ -110,6 +110,20 @@ Post-release executor boundary rollout:
 - Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.
+- Binary command de-duplication compares intent with one strict command-equivalence bit
+  (`resolveBinaryCommandCurrentOn`). For ordinary binary devices this is the observed binary state.
+  For EV chargers it is observed charging activity OR the producer-resolved
+  `evCharging=true` control bit: a connected charger whose charge control is already enabled
+  does not need repeated ON commands merely because the car is not accepting charge, while
+  observed charging still counts as on if the raw control read lags. This projection does not
+  reinterpret `evcharger_charging_state`; transport/session/UI retain the separate plugged-in,
+  charging, and paused states. An opposite pending command always wins over the equality skip so a
+  newer intent can supersede work that may still materialize.
+- Restoring a binary-capable stepped load is one executor-owned ordered operation: issue binary ON,
+  then immediately reassert the planner's desired step in the same cycle. The executor does this
+  even when that step was already reported while off, because activation may reset a device-side
+  limit. A short executor-owned activation cursor suppresses duplicate binary ON writes from a
+  delayed OFF echo while still allowing a contradictory step report to be reconciled.
 - Realtime drift detection runs in the executor (`lib/executor/planExecutionDrift.ts`) using the
   executor-facing intent/observed split. Pending binary commands suppress drift only when their
   requested value matches the expected binary state. The transport-side `shouldReconcilePlan`

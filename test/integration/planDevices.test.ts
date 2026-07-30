@@ -1962,6 +1962,44 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(stepped.desiredStepId).toBe('low');
     });
 
+    it('preserves each admitted boost rung across rebuilds, then releases to the configured step', () => {
+      const state = createPlanEngineState();
+      const thermostat = buildBinary('thermostat');
+      const buildBoostCycle = (selectedStepId: string, currentTemperature: number) => {
+        const [stepped] = buildInitialPlanDevices({
+          context: buildContext([
+            buildStepped({
+              deviceType: 'temperature',
+              targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+              currentTemperature,
+              temperatureBoost: { enabled: true, boostBelowC: 55 },
+              selectedStepId,
+              desiredStepId: 'low',
+            }),
+            thermostat,
+          ]),
+          state,
+          shedSet: new Set(['thermostat']),
+          shedReasons: new Map(),
+          guardInShortfall: false,
+          deps: defaultDeps,
+        });
+        return stepped;
+      };
+
+      const atMedium = buildBoostCycle('medium', 50);
+      expect(atMedium.boostActive).toBe(true);
+      expect(atMedium.desiredStepId).toBe('medium');
+
+      const atMax = buildBoostCycle('max', 50);
+      expect(atMax.boostActive).toBe(true);
+      expect(atMax.desiredStepId).toBe('max');
+
+      const boostEnded = buildBoostCycle('max', 55);
+      expect(boostEnded.boostActive).toBe(false);
+      expect(boostEnded.desiredStepId).toBe('low');
+    });
+
     it('leaves a stepped keep device alone when shedSet is empty', () => {
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped(), buildBinary('thermostat')]),

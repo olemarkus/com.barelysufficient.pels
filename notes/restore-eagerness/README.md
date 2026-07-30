@@ -13,6 +13,10 @@ These earlier issues have already been addressed and should not be re-triaged as
 - stepped keep-invariant restores are blocked above the lowest non-zero step while any device is
   still shed — EXCEPT for a device with an active boost, which bypasses the invariant
   unconditionally (boost is the user's priority override; 2026-07-05)
+- an active stepped boost preserves the highest admitted or observed rung across plan rebuilds;
+  the restore lane may continue climbing one admitted rung at a time, but base-plan normalization
+  no longer resets the device to its configured low step between those admissions. Normal target
+  normalization resumes as soon as boost ends.
 - restore power estimation no longer treats zero/low configured values as authoritative when a
   higher measured or planning value is known
 

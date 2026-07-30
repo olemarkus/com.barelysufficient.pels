@@ -186,6 +186,31 @@ describe('planSteppedLoad', () => {
     }), { anyOtherDeviceLimited: true })).toBe('low');
   });
 
+  it('holds an admitted boosted step across rebuilds and releases it when boost ends', () => {
+    const boostedAtMedium = steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'low',
+    });
+    expect(resolveSteppedKeepDesiredStepId(
+      boostedAtMedium,
+      { anyOtherDeviceLimited: true, boostActive: true },
+    )).toBe('medium');
+
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+    }), { anyOtherDeviceLimited: true, boostActive: true })).toBe('max');
+
+    expect(resolveSteppedKeepDesiredStepId(
+      boostedAtMedium,
+      { anyOtherDeviceLimited: true },
+    )).toBe('low');
+  });
+
   it('leaves keep desired step unchanged when device is already at lowest non-zero step', () => {
     expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'on',

@@ -102,7 +102,11 @@ export const logSteppedLoadCommandSkip = (
 export type ExecuteSteppedLoadCommandParams = {
   action: ExecutableSteppedLoadDevice;
   mode: PlanActuationMode;
-  options: { recordPlanActuation?: boolean };
+  options: {
+    recordPlanActuation?: boolean;
+    preserveMaterializedConfirmation?: boolean;
+    commandPurpose?: 'post_activation_step';
+  };
   desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
   transition: ExecutableSteppedLoadTransition | null;
   previousStepId: string | undefined;
@@ -123,7 +127,12 @@ const markAcceptedSteppedLoadCommand = (
     previousStepId,
     now,
     transition,
+    options,
   } = params;
+  if (
+    options.preserveMaterializedConfirmation === true
+    && isRequestedStepMaterialized(action.commandStepActuation)
+  ) return;
   if (transition?.effectiveTransition === 'initialize_unknown_step_at_low') {
     ctx.markSteppedLoadDesiredStepIssued({
       deviceId: action.id,
@@ -144,7 +153,9 @@ const markAcceptedSteppedLoadCommand = (
 
 const resolveCommandPurpose = (
   transition: ExecutableSteppedLoadTransition | null | undefined,
-): 'step_initialization' | 'step_preparation' | 'step_adjustment' => {
+  override?: 'post_activation_step',
+): 'step_initialization' | 'step_preparation' | 'step_adjustment' | 'post_activation_step' => {
+  if (override) return override;
   if (transition?.stepPreparationPurpose === 'initialize_unknown_step') {
     return 'step_initialization';
   }
@@ -163,15 +174,17 @@ const logAcceptedSteppedLoadCommand = (
     transition,
     previousStepId,
     commandTransport,
+    options,
   } = params;
-  const commandPurpose = resolveCommandPurpose(transition);
+  const commandPurpose = resolveCommandPurpose(transition, options.commandPurpose);
+  const postActivation = commandPurpose === 'post_activation_step';
   const transitionFields = transition ? {
     plannedDesiredStepId: transition.plannedDesiredStepId ?? desiredStep.id,
     commandPurpose,
-    stepPreparationPurpose: transition.stepPreparationPurpose ?? null,
+    stepPreparationPurpose: postActivation ? null : (transition.stepPreparationPurpose ?? null),
     effectiveTransition: transition.effectiveTransition,
     binaryTarget: transition.binaryTarget ?? null,
-    transitionPhase: transition.transitionPhase,
+    transitionPhase: postActivation ? 'post_activation' : transition.transitionPhase,
   } : {
     plannedDesiredStepId: desiredStep.id,
     commandPurpose: 'step_adjustment',

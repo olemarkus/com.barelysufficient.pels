@@ -203,13 +203,13 @@ describe('plan binary control helpers', () => {
       name: 'Socket',
       controlCapabilityId: 'onoff',
       canSetControl: true,
-    }))).toEqual({ capabilityId: 'onoff', observedStateComparable: true, canSet: true });
+    }))).toEqual({ capabilityId: 'onoff', canSet: true });
     expect(getBinaryControlPlan(buildSnapshot({
       id: 'ev1',
       name: 'EV',
       capabilities: ['evcharger_charging'],
       canSetControl: false,
-    }))).toEqual({ capabilityId: 'evcharger_charging', observedStateComparable: false, canSet: false });
+    }))).toEqual({ capabilityId: 'evcharger_charging', canSet: false });
 
     // An unobserved plug-state no longer blocks: the un-narrowed `isEvObserved`
     // arm defers to the same switch, which treats absence as "nothing known
@@ -232,7 +232,13 @@ describe('plan binary control helpers', () => {
     const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([
-        { id: 'ev1', name: 'EV', binaryControl: { on: true }, evChargingState: 'plugged_in_charging', controlCapabilityId: 'evcharger_charging' },
+        {
+          id: 'ev1',
+          name: 'EV',
+          binaryControl: { on: false },
+          evChargingState: 'plugged_in_paused',
+          controlCapabilityId: 'evcharger_charging',
+        },
       ]),
     });
 
@@ -514,9 +520,10 @@ describe('plan binary control helpers', () => {
     });
   });
 
-  // Charger already-matched semantics (the 2026-07-26 re-shed loop): the
-  // activity-derived `binaryControl.on` stays non-comparable; only evidence
-  // whose provenance is the raw switch capability mirrors the OFF direction.
+  // Charger already-matched semantics (the 2026-07-26 re-shed loop): command
+  // equivalence is one non-nullable on/off bit. Charging activity OR a trusted
+  // raw `evcharger_charging=true` observation means on; otherwise the observed
+  // binary state is used. The planner never interprets the EV plug-state enum.
   describe('charger (evcharger_charging) already-matched skip', () => {
     const rawSwitchOff = () => binaryObservation('evcharger_charging', false, 1_000);
     const chargerCycle = (params: {
@@ -564,10 +571,7 @@ describe('plan binary control helpers', () => {
       });
     });
 
-    it('still writes a charger off-command on state-derived off evidence (paused-but-armed)', async () => {
-      // `plugged_in_paused` yields observedValue false with STATE provenance
-      // while the real switch may still be armed. The switch is what the write
-      // changes, so the command must go out.
+    it('skips a charger off-command when its resolved binary state is already off', async () => {
       const { run, deviceManager } = chargerCycle({
         desired: false,
         latest: {
@@ -577,31 +581,42 @@ describe('plan binary control helpers', () => {
           ),
         },
       });
-      await expect(run).resolves.toBe(true);
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', false);
+      await expect(run).resolves.toBe(false);
+      expect(deviceManager.setCapability).not.toHaveBeenCalled();
     });
 
-    it('does not skip a charger off-command without switch evidence', async () => {
+    it('skips a charger off-command without adding an optional trust state inside the planner', async () => {
       const { run, deviceManager } = chargerCycle({
         desired: false,
         latest: { binaryControl: { on: false } },
       });
-      await expect(run).resolves.toBe(true);
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', false);
+      await expect(run).resolves.toBe(false);
+      expect(deviceManager.setCapability).not.toHaveBeenCalled();
     });
 
-    it('never skips a charger ON command, even over an already-true switch', async () => {
-      // A `true` write over an already-true switch is how a paused charger is
-      // kicked to resume; the skip is deliberately off-direction only.
+    it('skips ON when charging is permitted but the car remains plugged in and idle', async () => {
       const { run, deviceManager } = chargerCycle({
         desired: true,
         latest: {
           binaryControl: { on: false },
+          evCharging: true,
           binaryControlObservation: binaryObservation('evcharger_charging', true, 1_000),
         },
       });
-      await expect(run).resolves.toBe(true);
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', true);
+      await expect(run).resolves.toBe(false);
+      expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    });
+
+    it('skips ON when charging activity is observed despite a lagging raw control bit', async () => {
+      const { run, deviceManager } = chargerCycle({
+        desired: true,
+        latest: {
+          binaryControl: { on: true },
+          binaryControlObservation: binaryObservation('evcharger_charging', false, 1_000),
+        },
+      });
+      await expect(run).resolves.toBe(false);
+      expect(deviceManager.setCapability).not.toHaveBeenCalled();
     });
 
     it('does not skip an off-command while an opposite ON command is pending — the OFF supersedes it', async () => {

@@ -131,50 +131,16 @@ export function hasStableSteppedLoadStepActuation(
 }
 
 /**
- * Phase 2 of a stepped load's restore-from-off: the step axis is already
- * prepared at the keep-desired step, so the only command left to issue is the
- * binary on.
+ * Keeps an observed-OFF binary stepper actionable even when its desired plan
+ * signature is unchanged. Restore is one ordered executor operation: binary ON
+ * first, then an immediate desired-step reassertion because activation may
+ * reset the device's step.
  *
- * `hasStableSteppedLoadStepActuation` deliberately returns false once desired
- * == selected (nothing left to do on the STEP axis) — which is exactly this
- * state. Without a companion predicate on the BINARY axis the plan-apply gate
- * (`maybeApplyPlanChanges`) sees an unchanged action signature — `buildPlanSignature`
- * carries desired state only, never the observation that just materialized the
- * step — and never invokes the executor at all, wedging the device at "step
- * prepared, still off" until some unrelated device happens to change the plan.
- * That is prod incident 2026-07-25 (Elbillader off for 6+ minutes with its
- * target already at 6 A).
- *
- * The transition phase is read off `resolveSteppedLoadTransition` rather than
- * re-derived here, so this gate and the executor's own dispatch decision agree
- * by construction. The reason allow-set ({keep, restore_need}) keeps every
- * cooldown / backoff / capacity hold blocking as before.
- *
- * Two traps this deliberately avoids — they reverted the first attempt at this
- * fix, and both underlying defects are still open in TODO.md
- * ("`isCommandableNow` is always false for an EV charger on the plan-device
- * path" and "Restore actuation re-stamps the GLOBAL `state.lastRestoreMs`"):
- *   - It does NOT gate on `isCommandableNow(dev)`. On a plan device that is
- *     always false for an EV charger: `withEvDiscriminant` (`lib/plan/planTypes.ts`)
- *     strips `evChargingState`, and `commandableNow` is never copied across, so
- *     the resolver lands on "charger state unknown". Gating on it would make this
- *     predicate dead for exactly the devices that hit the bug. Commandability is
- *     still enforced downstream, on the SNAPSHOT, by `canTurnOnDevice`.
- *   - It is bounded to at most one on-attempt per restore cooldown, but by the
- *     REASON allow-set rather than a hand-rolled timer. Writing the binary on
- *     calls `recordRestoreActuation`, which stamps `state.lastRestoreMs`; an
- *     observed-off stepped device reads that global stamp
- *     (`restore/steppedRestoreGates.ts` — the bypass is for active-step devices
- *     only), so the next cycle's reason is `cooldown_restore`, which is not in
- *     the allow-set. That matters because an unbounded per-cycle retry by one
- *     stuck device would hold every other device's restore gate open.
- *     Deliberately NOT a `lastDeviceRestoreMs` age check: the step-PREPARATION
- *     command stamps that same field (`steppedLoadExecutorCommand.ts` ~198), so
- *     such a check delays phase 2 by a full cooldown after phase 1 — and the
- *     plan routinely leaves `keep`/`restore_need` at the next 30 s cycle (a swap
- *     rejection flips it to `shed`), so the attempt window is missed entirely.
- *     Observed live 2026-07-25 20:04: step confirmed at 20:04:42, plan flipped
- *     to `shed` at 20:04:54, i.e. before an age gate would ever have opened.
+ * The plan signature carries desired state, not the fresh OFF observation, so
+ * the regular step-actuation predicate can be stable while the binary axis
+ * still needs work. This companion predicate makes sure the executor runs.
+ * Commandability remains enforced downstream against the live snapshot. The
+ * reason allow-set preserves planner-owned capacity and cooldown holds.
  */
 export function hasStableSteppedLoadBinaryRestoreActuation(
   dev: DevicePlan['devices'][number],

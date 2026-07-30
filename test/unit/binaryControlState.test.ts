@@ -3,7 +3,7 @@ import {
   isBinaryObservedOff,
   isBinaryControlled,
   getBinaryOn,
-  getObservedBinaryControlValue,
+  resolveBinaryCommandCurrentOn,
   isTrustedObservedBinaryOff,
 } from '../../packages/shared-domain/src/binaryControlState';
 
@@ -77,10 +77,9 @@ describe('binary observed-state predicates', () => {
 });
 
 // Producer readers behind the charger re-shed fix (prod 2026-07-26):
-// `getObservedBinaryControlValue` answers "what does observation say the
-// CONTROL capability reads" (a charger's raw switch, everyone else's latched
-// on-state); `isTrustedObservedBinaryOff` answers "does trusted evidence say
-// the control is off" (evidence record only — never the latched fallback).
+// `resolveBinaryCommandCurrentOn` folds observed charging activity and the
+// producer-resolved raw charge permission into a strict command-equivalence bit;
+// `isTrustedObservedBinaryOff` answers whether evidence says the control is off.
 describe('observed binary control-value readers', () => {
   const observation = (overrides: Partial<{
     capabilityId: string;
@@ -94,46 +93,31 @@ describe('observed binary control-value readers', () => {
     ...overrides,
   });
 
-  describe('getObservedBinaryControlValue', () => {
-    it('reads raw-switch-provenance evidence for a charger, not the activity-derived on-state', () => {
-      expect(getObservedBinaryControlValue(
-        { binaryControl: { on: false }, binaryControlObservation: observation({ observedValue: true }) },
-        'evcharger_charging',
+  describe('resolveBinaryCommandCurrentOn', () => {
+    it('is on for either charging activity or raw charge permission', () => {
+      expect(resolveBinaryCommandCurrentOn(
+        { binaryControl: { on: false }, evCharging: true },
       )).toBe(true);
-      expect(getObservedBinaryControlValue(
-        { binaryControl: { on: true }, binaryControlObservation: observation({ observedValue: false }) },
-        'evcharger_charging',
+      expect(resolveBinaryCommandCurrentOn(
+        { binaryControl: { on: true }, evCharging: false },
+      )).toBe(true);
+    });
+
+    it('is off when activity and the raw control are both off', () => {
+      expect(resolveBinaryCommandCurrentOn(
+        { binaryControl: { on: false }, evCharging: false },
       )).toBe(false);
     });
 
-    it('resolves undefined for state-derived provenance (paused-but-armed charger)', () => {
-      // `plugged_in_paused` produces observedValue false with state provenance
-      // while the real switch may still be true — it must never read as an
-      // observed-off switch.
-      expect(getObservedBinaryControlValue(
-        {
-          binaryControl: { on: false },
-          binaryControlObservation: observation({ observedCapabilityIds: ['evcharger_charging_state'] }),
-        },
-        'evcharger_charging',
-      )).toBeUndefined();
-    });
-
-    it('resolves undefined for a charger with no evidence record', () => {
-      expect(getObservedBinaryControlValue(
+    it('returns a strict off value when no EV charge-control field is present', () => {
+      expect(resolveBinaryCommandCurrentOn(
         { binaryControl: { on: false } },
-        'evcharger_charging',
-      )).toBeUndefined();
+      )).toBe(false);
     });
 
-    it('reads the latched on-state for a plain binary control', () => {
-      expect(getObservedBinaryControlValue({ binaryControl: { on: true } }, 'onoff')).toBe(true);
-      expect(getObservedBinaryControlValue({ binaryControl: { on: false } }, 'onoff')).toBe(false);
-      expect(getObservedBinaryControlValue({}, 'onoff')).toBeUndefined();
-    });
-
-    it('resolves undefined for an absent snapshot', () => {
-      expect(getObservedBinaryControlValue(undefined, 'onoff')).toBeUndefined();
+    it('reads the strict latched on-state for a narrowed plain binary control', () => {
+      expect(resolveBinaryCommandCurrentOn({ binaryControl: { on: true } })).toBe(true);
+      expect(resolveBinaryCommandCurrentOn({ binaryControl: { on: false } })).toBe(false);
     });
   });
 
