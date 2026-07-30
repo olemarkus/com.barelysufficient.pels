@@ -10,16 +10,20 @@ import {
 } from '../../../../shared-domain/src/planReasonFormatting.ts';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
-  PLAN_STATE_LABEL,
   PLAN_STATE_TONE,
   type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { formatStarvationReason } from '../../../../shared-domain/src/planStarvation.ts';
 import {
+  displayStateLabel,
+  displayStateTone,
+  isDimmedDisplayStateKind,
   resolveDisplayStateKind,
   resolveIntentStateKind,
   resolvePlanCardStatusChip,
   resolveRawPlanStateKind,
+  shouldDisplayExternalOffReason,
+  type PlanDisplayStateKind,
   type PlanCardStatusChip,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
 import {
@@ -289,7 +293,9 @@ const resolveStatePresentation = (dev: PlanDeviceSnapshot, dryRun: boolean) => {
     dryRun,
     currentState: dev.currentState,
   });
-  const tone = kind === rawKind ? (dev.stateTone ?? PLAN_STATE_TONE[kind]) : PLAN_STATE_TONE[kind];
+  const tone = kind === rawKind
+    ? (dev.stateTone ?? PLAN_STATE_TONE[rawKind])
+    : displayStateTone(kind);
   return {
     kind,
     // The plan-INTENT kind (raw + upgrades, no simulation collapse). Reason
@@ -297,7 +303,7 @@ const resolveStatePresentation = (dev: PlanDeviceSnapshot, dryRun: boolean) => {
     // meter says drawing") keys off this — the conflict is a fact about the
     // PLAN even when simulation renders the factual state word.
     intentKind: resolveIntentStateKind(grammarParams),
-    label: PLAN_STATE_LABEL[kind],
+    label: displayStateLabel(kind),
     tone,
     chipModifier: chipModifierForTone(tone),
   };
@@ -313,7 +319,7 @@ export const PlanCardStatusChipView = ({
   dryRun,
 }: {
   dev: PlanDeviceSnapshot;
-  displayKind: PlanStateKind;
+  displayKind: PlanDisplayStateKind;
   dryRun: boolean;
 }) => {
   const chip: PlanCardStatusChip | null = resolvePlanCardStatusChip({
@@ -484,7 +490,7 @@ export const PlanGenericCard = ({
 
   const cardClasses = [
     'pels-surface-card device-row plan-card clickable',
-    (presentation.kind === 'idle' || presentation.kind === 'manual') ? 'plan-card--dim' : '',
+    isDimmedDisplayStateKind(presentation.kind) ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
   const remainingSec = resolveCooldownRemainingSec(displayDev);
@@ -498,9 +504,16 @@ export const PlanGenericCard = ({
   const surplusActiveLine = reportedLoadConflict
     ? null
     : resolveBinarySurplusReasonLine(displayDev, presentation.kind);
-  const reasonText = reportedLoadConflict
-    ? resolveReportedLoadReason(displayDev, dryRun)
-    : surplusActiveLine ?? resolveReasonText(displayDev, dryRun);
+  const reasonCode = (displayDev.reason as { code?: string } | undefined)?.code;
+  const externalOffReasonHidden = reasonCode === PLAN_REASON_CODES.externalOffHold
+    && !shouldDisplayExternalOffReason(presentation.kind, reasonCode);
+  const reasonText = externalOffReasonHidden
+    ? ''
+    : (
+      reportedLoadConflict
+        ? resolveReportedLoadReason(displayDev, dryRun)
+        : surplusActiveLine ?? resolveReasonText(displayDev, dryRun)
+    );
 
   let powerReadout: PowerReadout | null = null;
   if (reportedLoadConflict) {
@@ -599,7 +612,7 @@ export const PlanTemperatureCard = ({
 
   const cardClasses = [
     'pels-surface-card device-row plan-card plan-card--temperature clickable',
-    (kind === 'idle' || kind === 'manual') ? 'plan-card--dim' : '',
+    isDimmedDisplayStateKind(kind) ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
   const temperatureLine = resolveTemperatureLine(displayDev);
@@ -640,9 +653,10 @@ export const PlanTemperatureCard = ({
         </div>
       </div>
 
-      {/* Same anatomy as the generic/stepped cards: the canonical state word
-          replaces the old bare "On"/"Off" output state, so a held thermostat
-          reads "Limited" here like every other held card. */}
+      {/* Same anatomy as the generic/stepped cards: the state word distinguishes
+          a quiet on-device (`Idle`) from affirmative binary-off evidence
+          (`Off`), while a held thermostat reads `Limited` like every other
+          held card. */}
       <div class="plan-card__state-row">
         <span class="plan-card__state-label">{presentation.label}</span>
         <span class="plan-card__state-power">{formatKw(displayDev.measuredPowerKw)} kW</span>

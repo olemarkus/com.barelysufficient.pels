@@ -1,9 +1,13 @@
 import {
+  displayStateLabel,
+  displayStateTone,
   isHoldReasonCode,
+  isDimmedDisplayStateKind,
   resolveDisplayStateKind,
   resolveIntentStateKind,
   resolvePlanCardStatusChip,
   resolveRawPlanStateKind,
+  shouldDisplayExternalOffReason,
 } from '../../shared-domain/src/planCardGrammar.ts';
 
 describe('resolveIntentStateKind', () => {
@@ -47,10 +51,10 @@ describe('resolveDisplayStateKind — simulation renders the factual state', () 
     })).toBe('active');
     expect(resolveDisplayStateKind({
       kind: 'held', dryRun: true, currentState: 'off', reasonCode: 'capacity', starved: false,
-    })).toBe('idle');
+    })).toBe('off');
     expect(resolveDisplayStateKind({
       kind: 'resuming', dryRun: true, currentState: 'off', reasonCode: 'none', starved: false,
-    })).toBe('idle');
+    })).toBe('off');
   });
 
   it('treats a target-only device (not_applicable) as factually active under simulation', () => {
@@ -62,7 +66,7 @@ describe('resolveDisplayStateKind — simulation renders the factual state', () 
   it('never fires the idle→held upgrade under simulation (nothing is held)', () => {
     expect(resolveDisplayStateKind({
       kind: 'idle', dryRun: true, currentState: 'off', reasonCode: 'insufficient_headroom', starved: true,
-    })).toBe('idle');
+    })).toBe('off');
   });
 
   it('passes non-acted kinds through untouched in both modes', () => {
@@ -74,6 +78,51 @@ describe('resolveDisplayStateKind — simulation renders the factual state', () 
         kind: 'manual', dryRun, currentState: 'on', reasonCode: 'none', starved: false,
       })).toBe('manual');
     }
+  });
+});
+
+describe('resolveDisplayStateKind — observed off is distinct from idle', () => {
+  it('keeps an available on-device idle but shows affirmative off evidence as Off', () => {
+    expect(resolveDisplayStateKind({
+      kind: 'idle', dryRun: false, currentState: 'on', reasonCode: 'none', starved: false,
+    })).toBe('idle');
+    expect(resolveDisplayStateKind({
+      kind: 'idle', dryRun: false, currentState: 'off', reasonCode: 'none', starved: false,
+    })).toBe('off');
+    expect(resolveDisplayStateKind({
+      kind: 'idle', dryRun: false, currentState: '  OFF ', reasonCode: 'none', starved: false,
+    })).toBe('off');
+  });
+
+  it('keeps higher-priority intent states above observed Off', () => {
+    for (const kind of ['held', 'resuming', 'manual', 'unavailable'] as const) {
+      expect(resolveDisplayStateKind({
+        kind, dryRun: false, currentState: 'off', reasonCode: 'none', starved: false,
+      })).toBe(kind);
+    }
+  });
+
+  it('does not infer Off from unknown or target-only state', () => {
+    expect(resolveDisplayStateKind({
+      kind: 'idle', dryRun: false, currentState: 'unknown', reasonCode: 'none', starved: false,
+    })).toBe('idle');
+    expect(resolveDisplayStateKind({
+      kind: 'idle', dryRun: false, currentState: 'not_applicable', reasonCode: 'none', starved: false,
+    })).toBe('idle');
+  });
+
+  it('uses the quiet idle presentation for Off', () => {
+    expect(displayStateLabel('off')).toBe('Off');
+    expect(displayStateTone('off')).toBe('idle');
+    expect(isDimmedDisplayStateKind('off')).toBe(true);
+  });
+
+  it('shows external-off guidance only beside the Off display state', () => {
+    expect(shouldDisplayExternalOffReason('off', 'external_off_hold')).toBe(true);
+    for (const kind of ['idle', 'held', 'resuming', 'manual', 'unavailable'] as const) {
+      expect(shouldDisplayExternalOffReason(kind, 'external_off_hold')).toBe(false);
+    }
+    expect(shouldDisplayExternalOffReason('off', 'none')).toBe(false);
   });
 });
 

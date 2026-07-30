@@ -22,6 +22,23 @@ const MOUNT_ID = 'current-modes-root';
 let generation = 0;
 let latestRows: readonly CurrentModeRow[] = [];
 const activeModeWriteTails = new Map<string, Promise<void>>();
+const persistedModes = new Map<string, string>();
+const activeModeWriteVersions = new Map<string, number>();
+let refreshAfterWritesScheduled = false;
+
+const advanceWriteVersion = (homeId: string): void => {
+  activeModeWriteVersions.set(homeId, (activeModeWriteVersions.get(homeId) ?? 0) + 1);
+};
+
+const scheduleRefreshAfterWrites = (): void => {
+  if (refreshAfterWritesScheduled) return;
+  refreshAfterWritesScheduled = true;
+  const tails = [...new Set(activeModeWriteTails.values())];
+  void Promise.allSettled(tails).then(() => {
+    refreshAfterWritesScheduled = false;
+    return refreshCurrentModes();
+  });
+};
 
 const persistActiveModeInOrder = (
   homeId: string,
@@ -95,7 +112,7 @@ const renderRows = (rows: readonly CurrentModeRow[]): void => {
   renderCurrentModesView(mount, {
     rows,
     onChange: (homeId, mode) => {
-      const previousMode = latestRows.find((row) => row.homeId === homeId)?.mode;
+      advanceWriteVersion(homeId);
       renderRows(latestRows.map((row) => (
         row.homeId === homeId ? { ...row, mode } : row
       )));
@@ -103,15 +120,19 @@ const renderRows = (rows: readonly CurrentModeRow[]): void => {
         try {
           await setSetting(homeScopedSettingsKey(OPERATING_MODE_SETTING, homeId), mode);
         } catch (error) {
+          advanceWriteVersion(homeId);
+          const persistedMode = persistedModes.get(homeId);
           renderRows(latestRows.map((row) => (
-            row.homeId === homeId && row.mode === mode && previousMode
-              ? { ...row, mode: previousMode }
+            row.homeId === homeId && row.mode === mode && persistedMode
+              ? { ...row, mode: persistedMode }
               : row
           )));
           await logSettingsError('Failed to set active mode', error, 'currentModes');
           void showToastError(error as Error, 'Failed to set active mode.');
           return;
         }
+        persistedModes.set(homeId, mode);
+        advanceWriteVersion(homeId);
         void showToast(`Active mode set to ${mode}`, 'ok');
       });
     },
@@ -123,6 +144,7 @@ export const applyCurrentModeRename = (
   oldName: string,
   newName: string,
 ): void => {
+  if (persistedModes.get(homeId) === oldName) persistedModes.set(homeId, newName);
   renderRows(latestRows.map((row) => {
     if (row.homeId !== homeId) return row;
     return {
@@ -146,8 +168,23 @@ export const refreshCurrentModes = async (): Promise<void> => {
       homeName: area.name,
     })) : []),
   ];
+  const writeVersions = new Map(homes.map(({ homeId }) => [
+    homeId,
+    activeModeWriteVersions.get(homeId) ?? 0,
+  ]));
   const rows = await Promise.all(homes.map((home) => readRow(home.homeId, home.homeName)));
   if (run !== generation) return;
+  const overlapsWrite = homes.some(({ homeId }) => (
+    activeModeWriteTails.has(homeId)
+    || (activeModeWriteVersions.get(homeId) ?? 0) !== writeVersions.get(homeId)
+  ));
+  if (overlapsWrite) {
+    scheduleRefreshAfterWrites();
+    return;
+  }
+  rows.forEach((row) => {
+    if (!row.unavailable) persistedModes.set(row.homeId, row.mode);
+  });
   renderRows(rows);
 };
 

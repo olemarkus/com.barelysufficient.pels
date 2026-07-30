@@ -37,7 +37,7 @@ export type {
 } from './pendingBinaryCommandTypes';
 
 const logger = getLogger('observer/pending-binary-commands');
-export const RECENT_BINARY_OFF_PROVENANCE_MS = 5 * 60 * 1000;
+export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;
 
 /**
  * Observer-owned facade over the pending-binary-command map. The backing
@@ -47,9 +47,9 @@ export const RECENT_BINARY_OFF_PROVENANCE_MS = 5 * 60 * 1000;
  * store is the single source of truth in both directions.
  */
 export class PendingBinaryCommandStore {
-  private readonly recentSuccessfulOffByDevice = new Map<string, {
+  private readonly recentConfirmedOffByDevice = new Map<string, {
     capabilityId: BinaryControlCapabilityId;
-    issuedAtMs: number;
+    confirmedAtMs: number;
   }>();
 
   constructor(private readonly backing: Record<string, PendingBinaryCommand>) {}
@@ -60,54 +60,60 @@ export class PendingBinaryCommandStore {
   }
 
   /**
-   * Preserve successful PELS actuation provenance beyond the convergence
-   * window. Cloud/Flow confirmations can arrive after pending expires; without
-   * this separate breadcrumb that late OFF is indistinguishable from an
-   * outside action and can fabricate an external-off hold.
+   * Preserve telemetry-confirmed PELS actuation provenance after pending is
+   * cleared. This covers later duplicate/reordered OFF observations. It is
+   * deliberately never created from request acceptance alone: after the
+   * pending window, an unconfirmed OFF is indistinguishable from a user's
+   * manual action and must remain eligible to start an external-off hold.
    */
-  recordSuccessfulBinaryCommand(params: {
+  recordConfirmedBinaryCommand(params: {
     deviceId: string;
     capabilityId: BinaryControlCapabilityId;
     desired: boolean;
-    issuedAtMs?: number;
+    confirmedAtMs?: number;
   }): void {
     const {
-      deviceId, capabilityId, desired, issuedAtMs = Date.now(),
+      deviceId, capabilityId, desired, confirmedAtMs = Date.now(),
     } = params;
+    const current = this.recentConfirmedOffByDevice.get(deviceId);
     if (desired) {
-      this.recentSuccessfulOffByDevice.delete(deviceId);
+      if (
+        current?.capabilityId === capabilityId
+        && confirmedAtMs > current.confirmedAtMs
+      ) {
+        this.recentConfirmedOffByDevice.delete(deviceId);
+      }
       return;
     }
-    const current = this.recentSuccessfulOffByDevice.get(deviceId);
-    if (current && current.issuedAtMs > issuedAtMs) return;
-    this.recentSuccessfulOffByDevice.set(deviceId, { capabilityId, issuedAtMs });
+    if (current && current.confirmedAtMs > confirmedAtMs) return;
+    this.recentConfirmedOffByDevice.set(deviceId, { capabilityId, confirmedAtMs });
   }
 
-  hasRecentSuccessfulOff(
+  hasRecentConfirmedOff(
     deviceId: string,
     capabilityId: BinaryControlCapabilityId,
     nowMs = Date.now(),
   ): boolean {
-    const recent = this.recentSuccessfulOffByDevice.get(deviceId);
+    const recent = this.recentConfirmedOffByDevice.get(deviceId);
     if (!recent) return false;
-    if ((nowMs - recent.issuedAtMs) >= RECENT_BINARY_OFF_PROVENANCE_MS) {
-      this.recentSuccessfulOffByDevice.delete(deviceId);
+    if ((nowMs - recent.confirmedAtMs) >= RECENT_CONFIRMED_BINARY_OFF_MS) {
+      this.recentConfirmedOffByDevice.delete(deviceId);
       return false;
     }
     return recent.capabilityId === capabilityId;
   }
 
-  clearRecentSuccessfulOff(
+  clearRecentConfirmedOff(
     deviceId: string,
     capabilityId: BinaryControlCapabilityId,
     observedOnAtMs?: number,
   ): void {
-    const recent = this.recentSuccessfulOffByDevice.get(deviceId);
+    const recent = this.recentConfirmedOffByDevice.get(deviceId);
     if (
       recent?.capabilityId === capabilityId
-      && (observedOnAtMs === undefined || observedOnAtMs > recent.issuedAtMs)
+      && (observedOnAtMs === undefined || observedOnAtMs > recent.confirmedAtMs)
     ) {
-      this.recentSuccessfulOffByDevice.delete(deviceId);
+      this.recentConfirmedOffByDevice.delete(deviceId);
     }
   }
 
@@ -116,7 +122,7 @@ export class PendingBinaryCommandStore {
     capabilityId: BinaryControlCapabilityId,
   ): boolean {
     return this.get(deviceId)?.capabilityId === capabilityId
-      || this.hasRecentSuccessfulOff(deviceId, capabilityId);
+      || this.hasRecentConfirmedOff(deviceId, capabilityId);
   }
 
   /** Clear the pending entry for a device, if any. */
@@ -264,6 +270,12 @@ function reconcilePendingEntry(params: {
   if (!observation) return false;
   const observedValue = observation.observedValue;
   if (observedValue === pending.desired) {
+    store.recordConfirmedBinaryCommand({
+      deviceId,
+      capabilityId: pending.capabilityId,
+      desired: pending.desired,
+      confirmedAtMs: observation.observedAtMs,
+    });
     onConfirmed?.({
       deviceId,
       liveDevice,

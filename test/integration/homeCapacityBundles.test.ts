@@ -50,6 +50,8 @@ import {
   HOMES_CONFIG,
   MAIN_HOME_ID,
   MODE_DEVICE_TARGETS,
+  MODE_TARGET_OWNERSHIP_STATE,
+  MODE_TARGET_OWNERSHIP_STATE_INITIALIZED,
   POWER_SOURCE,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
@@ -753,6 +755,272 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
       .toMatchObject({ Home: { 'heater-move': 22 } });
     await drainPending();
+  });
+
+  it('tracks a thermostat that appears after ownership tracking is already populated', async () => {
+    const owners = new Map<string, string>([['heater-existing', HOME_A.homeId]]);
+    const existingThermostat = {
+      id: 'heater-existing',
+      name: 'Existing heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    const lateThermostat = {
+      id: 'heater-late',
+      name: 'Late heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    rig.ctx.latestTargetSnapshot.push(existingThermostat);
+    rig.ctx.capacityPriorities = { Home: { 'heater-existing': 1, 'heater-late': 2 } };
+    rig.ctx.modeDeviceTargets = { Home: { 'heater-existing': 21, 'heater-late': 23 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: (deviceId: string) => owners.get(deviceId) ?? MAIN_HOME_ID,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+
+    rig.ctx.latestTargetSnapshot.push(lateThermostat);
+    owners.set('heater-late', HOME_A.homeId);
+    mockHomeyInstance.settings.set(`${MODE_DEVICE_TARGETS}:${HOME_A.homeId}`, {
+      Home: { 'heater-existing': 21, 'heater-late': 23 },
+    });
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+
+    owners.set('heater-late', HOME_B.homeId);
+    expect(rig.registry.onMembershipChanged()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
+      .toMatchObject({ Home: { 'heater-late': 23 } });
+  });
+
+  it('retains thermostat ownership across one temporarily absent snapshot', async () => {
+    let ownerHomeId = HOME_A.homeId;
+    const thermostat = {
+      id: 'heater-transient',
+      name: 'Transient heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    rig.ctx.latestTargetSnapshot.push(thermostat);
+    rig.ctx.capacityPriorities = { Home: { 'heater-transient': 1 } };
+    rig.ctx.modeDeviceTargets = { Home: { 'heater-transient': 22 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => ownerHomeId,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+
+    rig.ctx.latestTargetSnapshot.splice(0);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+
+    ownerHomeId = HOME_B.homeId;
+    rig.ctx.latestTargetSnapshot.push(thermostat);
+    expect(rig.registry.onMembershipChanged()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
+      .toMatchObject({ Home: { 'heater-transient': 22 } });
+  });
+
+  it('recovers a thermostat target after restart interrupts an ownership move', async () => {
+    let ownerHomeId = HOME_A.homeId;
+    const thermostat = {
+      id: 'heater-restart',
+      name: 'Restarted heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    const configureRig = (): void => {
+      rig.ctx.latestTargetSnapshot.push(thermostat);
+      rig.ctx.capacityPriorities = { Home: { 'heater-restart': 1 } };
+      rig.ctx.modeDeviceTargets = { Home: { 'heater-restart': 22 } };
+      rig.ctx.homeMembership = {
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        getHomeIdForDevice: () => ownerHomeId,
+      } as unknown as NonNullable<AppContext['homeMembership']>;
+    };
+    configureRig();
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_A.homeId}`))
+      .toMatchObject({ Home: { 'heater-restart': 22 } });
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toMatchObject({ 'heater-restart': HOME_A.homeId });
+
+    // The ownership write committed, then the process stopped before the old
+    // in-memory owner map could carry the source target to the destination.
+    ownerHomeId = HOME_B.homeId;
+    rig.registry.teardownAll();
+    await drainPending();
+    rig.ctx.timers.clearAll();
+    rig = buildRig();
+    configureRig();
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
+      .toMatchObject({ Home: { 'heater-restart': 22 } });
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toMatchObject({ 'heater-restart': HOME_B.homeId });
+  });
+
+  it('does not initialize target ownership from provisional membership', () => {
+    let ownershipReady = false;
+    const thermostat = {
+      id: 'heater-provisional',
+      name: 'Provisional heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    rig.ctx.latestTargetSnapshot.push(thermostat);
+    rig.ctx.capacityPriorities = { Home: { 'heater-provisional': 1 } };
+    rig.ctx.modeDeviceTargets = { Home: { 'heater-provisional': 22 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => ownershipReady,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => ownershipReady ? HOME_A.homeId : MAIN_HOME_ID,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE)).toBeUndefined();
+
+    ownershipReady = true;
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ 'heater-provisional': HOME_A.homeId });
+  });
+
+  it('reconciles an additive target transfer after prepared ownership is aborted', () => {
+    let ownerHomeId = HOME_A.homeId;
+    let generationPending = false;
+    const thermostat = {
+      id: 'heater-aborted-move',
+      name: 'Aborted move heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    rig.ctx.latestTargetSnapshot.push(thermostat);
+    rig.ctx.capacityPriorities = { Home: { 'heater-aborted-move': 1 } };
+    rig.ctx.modeDeviceTargets = { Home: { 'heater-aborted-move': 22 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => generationPending,
+      getHomeIdForDevice: () => ownerHomeId,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ 'heater-aborted-move': HOME_A.homeId });
+
+    generationPending = true;
+    ownerHomeId = HOME_B.homeId;
+    expect(rig.registry.prepareModeCatalogsForOwnership(true)).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
+      .toMatchObject({ Home: { 'heater-aborted-move': 22 } });
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ 'heater-aborted-move': HOME_B.homeId });
+
+    // Aborting reopens the previous committed owner. The transfer is additive,
+    // and the ledger mismatch is the recovery signal, so the next reconcile
+    // returns the ledger to A without losing either area's saved target.
+    generationPending = false;
+    ownerHomeId = HOME_A.homeId;
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_A.homeId}`))
+      .toMatchObject({ Home: { 'heater-aborted-move': 22 } });
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ 'heater-aborted-move': HOME_A.homeId });
+  });
+
+  it('retains the durable source owner when the ledger write fails after target copy', () => {
+    let ownerHomeId = HOME_A.homeId;
+    const thermostat = {
+      id: 'heater-ledger-retry',
+      name: 'Ledger retry heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot;
+    rig.ctx.latestTargetSnapshot.push(thermostat);
+    rig.ctx.capacityPriorities = { Home: { 'heater-ledger-retry': 1 } };
+    rig.ctx.modeDeviceTargets = { Home: { 'heater-ledger-retry': 22 } };
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => ownerHomeId,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    expect(rig.registry.reconcile()).toBe(true);
+    expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
+
+    const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
+    let failLedgerWrite = true;
+    vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
+      if (failLedgerWrite && key === MODE_TARGET_OWNERSHIP_STATE) {
+        throw new Error('ledger unavailable');
+      }
+      originalSet(key, value);
+    });
+    ownerHomeId = HOME_B.homeId;
+
+    expect(rig.registry.onMembershipChanged()).toBe(false);
+    expect(mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:${HOME_B.homeId}`))
+      .toMatchObject({ Home: { 'heater-ledger-retry': 22 } });
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ 'heater-ledger-retry': HOME_A.homeId });
+
+    failLedgerWrite = false;
+    expect(rig.registry.onMembershipChanged()).toBe(true);
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ 'heater-ledger-retry': HOME_B.homeId });
+  });
+
+  it('fails closed when persisted mode-target ownership is malformed', () => {
+    mockHomeyInstance.settings.set(MODE_TARGET_OWNERSHIP_STATE_INITIALIZED, true);
+    mockHomeyInstance.settings.set(MODE_TARGET_OWNERSHIP_STATE, { heater: 'invalid:home' });
+    rig.ctx.latestTargetSnapshot.push({
+      id: 'heater',
+      name: 'Heater',
+      deviceType: 'temperature',
+      deviceClass: 'heater',
+      capabilities: ['target_temperature'],
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+    } as unknown as TargetDeviceSnapshot);
+    rig.ctx.homeMembership = {
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      getHomeIdForDevice: () => HOME_A.homeId,
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+
+    expect(rig.registry.reconcile()).toBe(false);
+    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
+      .toEqual({ heater: 'invalid:home' });
   });
 
   it('publishes the EFFECTIVE (membership-gated) dry-run into the per-home status blob', async () => {

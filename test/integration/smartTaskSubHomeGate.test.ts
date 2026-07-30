@@ -52,7 +52,10 @@ import {
   withTemperatureDiscriminant,
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import {
+  createPendingBinaryCommandStore,
+  syncPendingBinaryCommands,
+} from '../../lib/observer/pendingBinaryCommands';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -557,6 +560,27 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     await Promise.resolve();
   };
 
+  const confirmTerminalOff = (
+    store: ReturnType<typeof buildLifecycleCtx>['pendingBinaryCommandStore'],
+  ): void => {
+    const pending = store.peek('d1');
+    if (!pending) throw new Error('terminal OFF is not pending');
+    syncPendingBinaryCommands({
+      store,
+      liveDevices: [{
+        id: 'd1',
+        name: 'Cabin heater',
+        binaryControlObservation: {
+          capabilityId: 'onoff',
+          observedValue: false,
+          observedAtMs: pending.startedMs + 1,
+          observedCapabilityIds: ['onoff'],
+        },
+      }],
+      source: 'snapshot_refresh',
+    });
+  };
+
   it('control: a main-home device DOES receive the terminal release command', async () => {
     const h = buildLifecycleCtx('main');
     handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
@@ -568,10 +592,12 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     await settleActuation();
     expect(h.setCapability).toHaveBeenCalled();
     expect(h.setCapability.mock.calls[0].slice(0, 3)).toEqual(['d1', 'onoff', false]);
-    expect(h.pendingBinaryCommandStore.hasRecentSuccessfulOff('d1', 'onoff')).toBe(true);
+    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(false);
+    confirmTerminalOff(h.pendingBinaryCommandStore);
+    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(true);
   });
 
-  it('attributes terminal OFF before the actuator promise resolves', async () => {
+  it('keeps terminal OFF pending until telemetry confirms it', async () => {
     const h = buildLifecycleCtx('main');
     let resolveWrite!: () => void;
     h.setCapability.mockImplementation(() => new Promise<void>((resolve) => {
@@ -581,12 +607,14 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
 
     expect(h.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('d1', 'onoff')).toBe(true);
-    expect(h.pendingBinaryCommandStore.hasRecentSuccessfulOff('d1', 'onoff')).toBe(false);
+    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(false);
 
     resolveWrite();
     await settleActuation();
 
-    expect(h.pendingBinaryCommandStore.hasRecentSuccessfulOff('d1', 'onoff')).toBe(true);
+    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(false);
+    confirmTerminalOff(h.pendingBinaryCommandStore);
+    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(true);
   });
 
   it('does not let an older failed attempt clear newer terminal OFF attribution', async () => {

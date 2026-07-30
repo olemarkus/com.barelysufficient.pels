@@ -435,7 +435,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       bundle.reloadModeCatalog(allowPendingOwnershipGeneration);
       ready = bundle.isModeCatalogInitialized() && ready;
     }
-    return ready && this.modeOwnershipTransfer.reconcile();
+    return ready && this.modeOwnershipTransfer.reconcile(allowPendingOwnershipGeneration);
   }
 
   /** Rebuild every live sub-home plan after the producer commits new ownership. */

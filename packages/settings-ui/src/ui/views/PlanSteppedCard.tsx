@@ -10,13 +10,14 @@ import {
 } from '../../../../shared-domain/src/planSteppedCardText.ts';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
-  PLAN_STATE_LABEL,
-  type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import {
+  displayStateLabel,
+  isDimmedDisplayStateKind,
   resolveDisplayStateKind,
   resolveIntentStateKind,
   resolveRawPlanStateKind,
+  type PlanDisplayStateKind,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
@@ -35,7 +36,7 @@ import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 // unplugged is not running — asserting `Running` beside a "Paused" reason
 // would contradict on one card. When an exceptional EV state exists, the
 // active word demotes to `Idle` (the reason slot names the specific state).
-const resolveStateKind = (dev: PlanDeviceSnapshot, dryRun: boolean): PlanStateKind => {
+const resolveStateKind = (dev: PlanDeviceSnapshot, dryRun: boolean): PlanDisplayStateKind => {
   const kind = resolveDisplayStateKind({
     kind: resolveRawPlanStateKind(dev),
     dryRun,
@@ -134,7 +135,9 @@ export const PlanSteppedCard = ({
   // carries the level position either way.
   const factText = resolveSteppedTemperatureText(displayDev)
     ?? resolveSteppedLevelFact(displayDev);
-  const resolvedStatusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
+  const resolvedStatusText = profile
+    ? resolveSteppedStatusLine(displayDev, profile, nowMs, dryRun)
+    : null;
   const factualStatusText = resolvedStatusText ?? (intentKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
   // One reason line: the status pipeline wins; an exceptional EV state
   // (Paused / Waiting for car / Discharging / Unplugged) fills the slot only
@@ -145,7 +148,7 @@ export const PlanSteppedCard = ({
 
   const cardClasses = [
     'pels-surface-card device-row plan-card plan-card--stepped clickable',
-    (stateKind === 'idle' || stateKind === 'manual') ? 'plan-card--dim' : '',
+    isDimmedDisplayStateKind(stateKind) ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
   const displayName = formatDisplayDeviceName(dev.name);
 
@@ -178,7 +181,7 @@ export const PlanSteppedCard = ({
             bold slot moved to the fact line / state word respectively; the
             former "Applying" chip is carried by the transit status line. */}
         <div class="plan-card__state-row">
-          <span class="plan-card__state-label">{PLAN_STATE_LABEL[stateKind]}</span>
+          <span class="plan-card__state-label">{displayStateLabel(stateKind)}</span>
           {powerText && <span class="plan-card__state-power">{powerText}</span>}
         </div>
 

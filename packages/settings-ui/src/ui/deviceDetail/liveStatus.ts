@@ -14,12 +14,14 @@ import {
   type SettingsUiPlanPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
 import {
+  displayStateLabel,
   resolveDisplayStateKind,
   resolveIntentStateKind,
   resolveRawPlanStateKind,
+  shouldDisplayExternalOffReason,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
 import { resolveSteppedEvExceptionLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
-import { PLAN_STATE_LABEL } from '../../../../shared-domain/src/planStateLabels.ts';
+import { PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS } from '../../../../shared-domain/src/planStateLabels.ts';
 import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { state } from '../state.ts';
@@ -63,12 +65,18 @@ const resolvePowerText = (dev: PlanDeviceSnapshot, intentHeld: boolean): string 
   return isFiniteKw(dev.measuredPowerKw) ? formatKw(dev.measuredPowerKw) : '';
 };
 
-const getRow = (): { row: HTMLElement; stateEl: HTMLElement; powerEl: HTMLElement } | null => {
+const getRow = (): {
+  row: HTMLElement;
+  stateEl: HTMLElement;
+  powerEl: HTMLElement;
+  reasonEl: HTMLElement;
+} | null => {
   const row = document.getElementById('device-detail-live-status');
   const stateEl = document.getElementById('device-detail-live-state');
   const powerEl = document.getElementById('device-detail-live-power');
-  if (!row || !stateEl || !powerEl) return null;
-  return { row, stateEl, powerEl };
+  const reasonEl = document.getElementById('device-detail-live-reason');
+  if (!row || !stateEl || !powerEl || !reasonEl) return null;
+  return { row, stateEl, powerEl, reasonEl };
 };
 
 // Overlapping renders are last-wins: a slow plan read must not overwrite the
@@ -130,9 +138,12 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   // keeps its `Reported` qualifier even under simulation's factual state word
   // — same split the Overview card makes.
   const intentHeld = resolveIntentStateKind(grammarParams) === 'held';
-  mounts.stateEl.textContent = PLAN_STATE_LABEL[kind];
+  mounts.stateEl.textContent = displayStateLabel(kind);
   mounts.row.dataset.stateKind = kind;
   mounts.powerEl.textContent = resolvePowerText(dev, intentHeld);
+  const externalOff = shouldDisplayExternalOffReason(kind, grammarParams.reasonCode);
+  mounts.reasonEl.textContent = externalOff ? PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS : '';
+  mounts.reasonEl.hidden = !externalOff;
   mounts.row.hidden = false;
 };
 

@@ -355,8 +355,8 @@ export class PlanEngine {
   /**
    * Whether an observed binary change is still attributable to PELS: either an
    * active command in either direction, or the longer-lived breadcrumb from a
-   * successfully dispatched OFF. The latter outlives convergence timeout so a
-   * delayed cloud/Flow confirmation cannot fabricate an outside-off hold.
+   * telemetry-confirmed OFF. The latter covers duplicate/reordered observations
+   * after convergence without treating request acceptance as observed truth.
    */
   public hasPendingBinaryCommandForCapability(deviceId: string, capabilityId: string): boolean {
     return this.pendingBinaryCommandStore.isBinaryChangeAttributableToPels(
@@ -370,7 +370,7 @@ export class PlanEngine {
     capabilityId: string,
     observedOnAtMs?: number,
   ): void {
-    this.pendingBinaryCommandStore.clearRecentSuccessfulOff(
+    this.pendingBinaryCommandStore.clearRecentConfirmedOff(
       deviceId,
       capabilityId,
       observedOnAtMs,

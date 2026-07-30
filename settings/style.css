@@ -1042,6 +1042,7 @@ md-primary-tab.tab[active] {
    `data-state-kind`, matching the card's role-toned text). */
 .device-detail-live-status {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--spacing-2);
@@ -1070,6 +1071,11 @@ md-primary-tab.tab[active] {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.device-detail-live-status__reason {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
 }
 
 .settings-detail-panel {
@@ -8599,11 +8605,12 @@ md-switch {
 }
 
 #modes-panel .mode-row {
-  /* Temperature column: 96–112 px. The 80 px minimum used to clip the
-   * spinner buttons of a Material number field so a two-digit value (`65°C`)
-   * rendered as `6` plus an arrow. 96 px keeps the digits + spinner visible
-   * at 480 px without forcing a wider total row. */
-  grid-template-columns: auto minmax(0, 1fr) minmax(96px, 112px) auto;
+  /* Temperature column: 116–132 px. Material's light fine-pointer number
+   * field reserves room for native spinner chrome plus the °C suffix; 112 px
+   * leaves only ~25 px for the input and clips the second digit. The extra
+   * token-sized step keeps two-digit targets visible at 480 px while the name
+   * column continues to wrap normally. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(116px, 132px) auto;
   gap: var(--spacing-3);
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);

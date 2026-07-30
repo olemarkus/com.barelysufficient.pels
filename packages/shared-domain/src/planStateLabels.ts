@@ -93,11 +93,11 @@ export const PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS = 'Waiting for solar surpl
 
 // Reason line for an opted-in device PELS is leaving off because it was turned
 // off outside PELS, independently of its current plan (reason code
-// `externalOffHold`). Pairs with the `Idle` state word, NOT
+// `externalOffHold`). Pairs with the display-only `Off` state word, NOT
 // `Limited`: PELS is not holding the device back, it is respecting an explicit
 // action — so this code is deliberately absent from `HOLD_REASON_CODES` in
 // `planCardGrammar.ts`. Registered in `notes/ui-terminology.md`.
-export const PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS = 'Staying off until turned on again';
+export const PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS = 'Turned off elsewhere — turn it on to resume';
 
 const normalize = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
 

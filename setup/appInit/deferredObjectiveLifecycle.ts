@@ -179,16 +179,7 @@ const beginTerminalBinaryOffProvenance = (
   };
   return {
     settle: (requested) => {
-      if (!requested) {
-        clearIfCurrent();
-        return;
-      }
-      store.recordSuccessfulBinaryCommand({
-        deviceId,
-        capabilityId: command.capabilityId,
-        desired: false,
-        issuedAtMs,
-      });
+      if (!requested) clearIfCurrent();
     },
     clear: clearIfCurrent,
   };
