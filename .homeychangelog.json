@@ -460,5 +460,8 @@
   },
   "2.19.1": {
     "en": "This test release adds independent operating modes for each meter area, including per-home mode selection, device priorities, and temperature targets.\n\nIt also improves how PELS responds when devices are turned off elsewhere, initializes stepped loads more safely, and explains how Safe pace now is calculated more clearly."
+  },
+  "2.19.2": {
+    "en": "Remove some churn around stepped devices, especially when using smart tasks. Overview should be more clear when a device is turned off externally."
   }
 }
