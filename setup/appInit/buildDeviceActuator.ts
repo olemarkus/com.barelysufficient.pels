@@ -1,7 +1,7 @@
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
-import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
+import type { ActuatorTransport, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import { resolveFlowBackedBinaryTriggerCardId } from '../../flowCards/flowBackedDeviceCards';
 
 // Single definition of the flow-backed binary trigger so production wiring and
@@ -19,6 +19,36 @@ export const makeFlowBackedBinaryTrigger = (
   const triggerCard = flow?.getTriggerCard?.(triggerCardId);
   if (!triggerCard?.trigger) throw new Error(`Flow trigger ${triggerCardId} is unavailable`);
   await triggerCard.trigger({}, { deviceId });
+};
+
+/**
+ * Live point-of-use authorization fence for "Disable temperature control".
+ * Binary capacity control remains available; every richer command is refused
+ * before it reaches transport, including stale retries and terminal release.
+ */
+export const createTemperatureControlFencedActuator = (
+  base: Actuator,
+  shouldFence: (command: DeviceCommand) => boolean,
+): Actuator => ({
+  apply: (command) => (
+    command.kind !== 'binary' && shouldFence(command)
+      ? Promise.resolve({ requested: false })
+      : base.apply(command)
+  ),
+});
+
+const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand): boolean => {
+  if (command.kind === 'binary') return false;
+  if (ctx.isTemperatureControlDisabled(command.deviceId)) return true;
+  // A queued target can outlive its source snapshot. While the cold-boot policy
+  // remains unavailable, its capability still identifies it as temperature
+  // control even if the device has disappeared from the current snapshot.
+  return ctx.temperatureControlPolicyState === 'unavailable'
+    && command.kind === 'target'
+    && (
+      command.targetKind === 'temperature'
+      || command.capabilityId?.startsWith('target_temperature') === true
+    );
 };
 
 // Compose the device actuator from app wiring: the device-manager writes plus a
@@ -44,5 +74,8 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
     ...(requestSteppedLoadStep === undefined ? {} : { requestSteppedLoadStep }),
     triggerFlowBackedBinaryControl: makeFlowBackedBinaryTrigger(ctx.homey.flow),
   };
-  return createDeviceActuator(actuatorTransport);
+  return createTemperatureControlFencedActuator(
+    createDeviceActuator(actuatorTransport),
+    (command) => shouldFenceTemperatureCommand(ctx, command),
+  );
 };

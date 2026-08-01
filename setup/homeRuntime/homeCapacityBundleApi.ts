@@ -180,11 +180,13 @@ const buildOwnershipGenerationOperations = (params: {
  * rebuild after a mode change. Also serves legacy Main-following areas until
  * marker-last migration completes.
  */
-const buildModeSettingsRebuild = (params: {
+const buildSettingsRebuild = (params: {
   homeId: HomeId;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   planService: PlanService;
   isTornDown: () => boolean;
+  reason: string;
+  failureEvent: string;
 }): (() => void) => () => {
   if (params.isTornDown()) return;
   // `rebuildPlanFromCache` CONTAINS planner errors and resolves `failed: true`
@@ -193,15 +195,15 @@ const buildModeSettingsRebuild = (params: {
   // above is the precedent. No retry here: the next mode/settings write or
   // power-sample rebuild re-runs the closures, and the log makes the miss
   // visible instead of silent.
-  void params.planService.rebuildPlanFromCache('settings:mode_targets').then((outcome) => {
+  void params.planService.rebuildPlanFromCache(params.reason).then((outcome) => {
     if (!outcome.failed || params.isTornDown()) return;
     params.logger()?.error({
-      event: 'home_mode_targets_rebuild_failed',
+      event: params.failureEvent,
       homeId: params.homeId,
     });
   }).catch((error: unknown) => {
     params.logger()?.error({
-      event: 'home_mode_targets_rebuild_failed',
+      event: params.failureEvent,
       homeId: params.homeId,
       err: normalizeError(error),
     });
@@ -411,7 +413,22 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     updateHomeConfig: (next) => {
       setHome(next);
     },
-    rebuildForModeSettingsChange: buildModeSettingsRebuild({ homeId, logger, planService, isTornDown }),
+    rebuildForModeSettingsChange: buildSettingsRebuild({
+      homeId,
+      logger,
+      planService,
+      isTornDown,
+      reason: 'settings:mode_targets',
+      failureEvent: 'home_mode_targets_rebuild_failed',
+    }),
+    rebuildForDeviceControlSettingsChange: buildSettingsRebuild({
+      homeId,
+      logger,
+      planService,
+      isTornDown,
+      reason: 'settings:temperature_control_disabled_devices',
+      failureEvent: 'home_device_control_settings_rebuild_failed',
+    }),
     reloadModeCatalog,
     isModeCatalogInitialized,
     applyMembershipReadyEdge,

@@ -16,6 +16,7 @@ import { deadlineLabels } from './deadlineLabels.js';
 export type SmartTaskDeviceLike = {
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
+  temperatureControlDisabled?: true;
   targets?: ReadonlyArray<{ value?: number; min?: number; max?: number; step?: number }>;
   currentTemperature?: number;
   stateOfCharge?: { percent?: number };
@@ -35,6 +36,7 @@ export const resolveSmartTaskDeviceKind = (
   device: SmartTaskDeviceLike,
 ): DeferredObjectiveSettingsKind | null => {
   if (isEvCharger(device)) return 'ev_soc';
+  if (device.temperatureControlDisabled === true) return null;
   if (supportsTemperatureGoal(device)) return 'temperature';
   return null;
 };

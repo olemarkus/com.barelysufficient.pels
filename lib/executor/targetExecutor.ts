@@ -362,6 +362,7 @@ const executeTargetCommandDispatch = async (
     const outcome = await ctx.actuator.apply({
       kind: 'target',
       deviceId,
+      ...(targetCap.startsWith('target_temperature') ? { targetKind: 'temperature' as const } : {}),
       capabilityId: targetCap,
       value: desired,
     });

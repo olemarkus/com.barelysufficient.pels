@@ -131,6 +131,7 @@ const applySetTemperatureShed = async (
   const outcome = await actuator.apply({
     kind: 'target',
     deviceId,
+    targetKind: 'temperature',
     value: command.targetValue,
     contextInfo: 'smart-task-terminal-release',
   });

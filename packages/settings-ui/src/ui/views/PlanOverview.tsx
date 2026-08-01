@@ -74,7 +74,8 @@ const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
 );
 
 const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
-  dev.controlModel === 'temperature_target'
+  dev.deviceType === 'temperature'
+  || dev.controlModel === 'temperature_target'
   || typeof dev.plannedTarget === 'number'
 );
 

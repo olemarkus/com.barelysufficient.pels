@@ -97,6 +97,10 @@ import {
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
 import { initRespectExternalOffHandler, syncRespectExternalOffRow } from './respectExternalOff.ts';
+import {
+  initTemperatureControlDisabledHandler,
+  syncTemperatureControlDisabledRow,
+} from './temperatureControlDisabled.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
 import {
   initDeviceDetailOverlayChrome,
@@ -174,12 +178,13 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     // this is a temperature device (the only kind that can self-consume by raising a
     // setpoint). On a non-solar home or a non-temperature device it is hidden outright
     // rather than shown disabled, so it never clutters a home that cannot export.
-    deviceDetailSurplusOptRow.hidden = !(resolveHomeExhibitsSolar() && controlState.supportsTemperature);
+    deviceDetailSurplusOptRow.hidden = !(resolveHomeExhibitsSolar() && controlState.canControlTemperature);
   }
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
   setDeviceDetailDumpLoadControl({ deviceId, getDeviceById });
   syncRespectExternalOffRow({ deviceId, getDeviceById });
+  syncTemperatureControlDisabledRow({ deviceId, getDeviceById });
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
@@ -188,7 +193,9 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
     syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
     deviceDetailControlModel.value = effectiveControlMode;
-    deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
+    deviceDetailControlModel.disabled = !controlState.canManageDevice
+      || nativeSteppedLoadLocked
+      || state.temperatureControlDisabledMap[deviceId] === true;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
   }
 };
@@ -418,6 +425,11 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
   });
   initRespectExternalOffHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
+  initTemperatureControlDisabledHandler({
+    getCurrentDetailDeviceId,
+    refreshSharedDeviceViews,
+    refreshOpenDeviceDetail,
+  });
   initDeviceDetailShedHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,

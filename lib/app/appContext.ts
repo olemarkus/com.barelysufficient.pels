@@ -95,6 +95,8 @@ export type AppContext = {
   notifyOperatingModeChanged: (mode: string) => void;
   loadPowerTracker: (options?: { skipDailyBudgetUpdate?: boolean }) => void;
   loadCapacitySettings: () => void;
+  /** Re-read only the validated live temperature-command authorization map. */
+  loadTemperatureControlPolicySettings: () => void;
   loadPriceOptimizationSettings: () => void;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
@@ -149,6 +151,7 @@ export type AppContext = {
   seedObservedStateFromSnapshot: () => void;
   getCommunicationModel: (deviceId: string) => 'local' | 'cloud';
   isCapacityControlEnabled: (deviceId: string) => boolean;
+  isTemperatureControlDisabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
@@ -197,6 +200,10 @@ export type AppContext = {
   set managedDevices(value: Record<string, boolean>);
   get budgetExemptDevices(): Record<string, boolean>;
   set budgetExemptDevices(value: Record<string, boolean>);
+  get temperatureControlDisabledDevices(): Record<string, boolean>;
+  set temperatureControlDisabledDevices(value: Record<string, boolean>);
+  get temperatureControlPolicyState(): 'unavailable' | 'resolved';
+  set temperatureControlPolicyState(value: 'unavailable' | 'resolved');
   get temperatureBoostSettings(): TemperatureBoostSettings;
   set temperatureBoostSettings(value: TemperatureBoostSettings);
   get evBoostSettings(): EvBoostSettings;

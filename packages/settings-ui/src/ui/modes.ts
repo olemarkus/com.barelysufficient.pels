@@ -44,11 +44,8 @@ import {
 import { applyCurrentModeRename } from './currentModes.ts';
 import { parseModeNumberMap, parseRequiredModeMaps } from './modeCatalogMaps.ts';
 import {
-  readBooleanSettingMap,
-  readModeAliases,
-  readModeSettings,
-  readStrictBooleanSettingMap,
-  type ModeSettingsRead,
+  readBooleanSettingMap, readModeAliases, readModeSettings,
+  readStrictBooleanSettingMap, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
 import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
 
@@ -118,6 +115,8 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   state.budgetExemptMap = readBooleanSettingMap(read.budgetExempt);
   state.respectExternalOffMap = readStrictBooleanSettingMap(read.respectExternalOff)
     ?? state.respectExternalOffMap;
+  state.temperatureControlDisabledMap = readStrictBooleanSettingMap(read.temperatureControlDisabled)
+    ?? state.temperatureControlDisabledMap;
   state.nativeWiringMap = readBooleanSettingMap(read.nativeWiring);
   state.modeAliases = readModeAliases(read.aliases);
   renderModeOptions();
@@ -146,7 +145,6 @@ export const renderModeOptions = () => {
   Object.keys(state.modeTargets || {}).forEach((m) => modes.add(m));
   if (modes.size === 0) modes.add(DEFAULT_MODE_NAME);
   const sortedModes = Array.from(modes).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-
   if (modeSelect) {
     modeSelect.replaceChildren(
       ...sortedModes.map((mode) => createModeOption(mode, mode === state.editingMode)),

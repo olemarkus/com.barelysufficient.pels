@@ -1,5 +1,6 @@
 import type { Mock } from 'vitest';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
+import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
@@ -18,6 +19,7 @@ import {
   MANAGED_DEVICES,
   OVERSHOOT_BEHAVIORS,
   POWER_TRACKER_STATE,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
 
@@ -134,6 +136,59 @@ describe('createSettingsHandler', () => {
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${OVERSHOOT_BEHAVIORS}`);
     expect(rebuildHomeRuntimePlansForModeChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes all plan views when temperature control is disabled for a device', async () => {
+    const rebuildAllHomeRuntimePlansForDeviceControlChange = vi.fn();
+    const deps = buildDeps({ rebuildAllHomeRuntimePlansForDeviceControlChange });
+    const handler = createSettingsHandler(deps);
+
+    await handler(TEMPERATURE_CONTROL_DISABLED_DEVICES);
+
+    expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(
+      `settings:${TEMPERATURE_CONTROL_DISABLED_DEVICES}`,
+    );
+    expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes the temperature command fence before a parked settings queue drains', async () => {
+    let releaseRefresh: (() => void) | undefined;
+    const parkedRefresh = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    let temperatureControlDisabled = false;
+    const deps = buildDeps({
+      refreshTargetDevicesSnapshot: vi.fn(() => parkedRefresh),
+      onTemperatureControlPolicyObserved: vi.fn(() => { temperatureControlDisabled = true; }),
+    });
+    const handler = createSettingsHandler(deps);
+    const parkedWrite = handler(DEVICE_DRIVER_OVERRIDES);
+    await flushMicrotasks();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+
+    const apply = vi.fn(async () => ({ requested: true as const }));
+    const actuator = createTemperatureControlFencedActuator(
+      { apply },
+      () => temperatureControlDisabled,
+    );
+    const temperatureToggle = handler(TEMPERATURE_CONTROL_DISABLED_DEVICES);
+
+    expect(deps.onTemperatureControlPolicyObserved).toHaveBeenCalledTimes(1);
+    await expect(actuator.apply({
+      kind: 'target', deviceId: 'thermostat', capabilityId: 'target_temperature', value: 18,
+    })).resolves.toEqual({ requested: false });
+    await expect(actuator.apply({
+      kind: 'step',
+      deviceId: 'thermostat',
+      profile: { model: 'stepped_load', steps: [{ id: 'off', planningPowerW: 0 }] },
+      desiredStepId: 'off',
+      planningPowerW: 0,
+      planningCurrentA: 0,
+    })).resolves.toEqual({ requested: false });
+    expect(apply).not.toHaveBeenCalled();
+
+    releaseRefresh?.();
+    await Promise.all([parkedWrite, temperatureToggle]);
   });
 
   it('logs and still rebuilds if mode target refresh fails', async () => {

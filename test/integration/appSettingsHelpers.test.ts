@@ -1,6 +1,8 @@
 import {
   buildCapacitySettingsSnapshot,
   initSettingsHandlerForApp,
+  isTemperatureControlDisabledForApp,
+  loadTemperatureControlPolicySettingsForApp,
   type CapacitySettingsSnapshot,
 } from '../../setup/appSettingsHelpers';
 import type { AppContext } from '../../lib/app/appContext';
@@ -15,6 +17,7 @@ import {
   DEVICE_TARGET_POWER_CONFIGS,
   POWER_SOURCE,
   POWER_TRACKER_STATE,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 
 const buildCapacitySnapshot = (
@@ -29,6 +32,8 @@ const buildCapacitySnapshot = (
   controllableDevices: {},
   managedDevices: {},
   budgetExemptDevices: {},
+  temperatureControlDisabledDevices: {},
+  temperatureControlPolicyState: 'unavailable',
   temperatureBoostSettings: {},
   evBoostSettings: {},
   nativeEvWiringDevices: {},
@@ -72,6 +77,7 @@ const buildContext = (): AppContext => {
     notifyOperatingModeChanged: vi.fn(),
     loadPowerTracker: vi.fn(),
     loadCapacitySettings: vi.fn(),
+    loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),
     updatePriceOptimizationEnabled: vi.fn(),
     updateDebugLoggingEnabled: vi.fn(),
@@ -127,6 +133,10 @@ const buildContext = (): AppContext => {
     set managedDevices(_value) {},
     get budgetExemptDevices() { return {}; },
     set budgetExemptDevices(_value) {},
+    get temperatureControlDisabledDevices() { return {}; },
+    set temperatureControlDisabledDevices(_value) {},
+    get temperatureControlPolicyState() { return 'resolved' as const; },
+    set temperatureControlPolicyState(_value) {},
     get temperatureBoostSettings() { return {}; },
     set temperatureBoostSettings(_value) {},
     get evBoostSettings() { return {}; },
@@ -180,6 +190,16 @@ const buildContext = (): AppContext => {
 };
 
 describe('initSettingsHandlerForApp', () => {
+  it('publishes the temperature-control policy at the synchronous settings edge', async () => {
+    const ctx = buildContext();
+    const { handle } = initSettingsHandlerForApp(ctx);
+
+    const handling = handle(TEMPERATURE_CONTROL_DISABLED_DEVICES);
+
+    expect(ctx.loadTemperatureControlPolicySettings).toHaveBeenCalledTimes(1);
+    await handling;
+  });
+
   it('routes daily budget updates through the app context callback', async () => {
     const ctx = buildContext();
 
@@ -267,6 +287,162 @@ describe('initSettingsHandlerForApp', () => {
 });
 
 describe('buildCapacitySettingsSnapshot', () => {
+  it('loads the temperature-control disabled device map', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === TEMPERATURE_CONTROL_DISABLED_DEVICES
+          ? { thermostat: true, heater: false }
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.temperatureControlDisabledDevices).toEqual({
+      thermostat: true,
+      heater: false,
+    });
+    expect(next.temperatureControlPolicyState).toBe('resolved');
+  });
+
+  it('resolves a genuinely absent fresh-install setting as an empty policy', () => {
+    const settings = {
+      get: vi.fn(() => undefined),
+      getKeys: vi.fn(() => ['some_other_setting']),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.temperatureControlDisabledDevices).toEqual({});
+    expect(next.temperatureControlPolicyState).toBe('resolved');
+  });
+
+  it('fails closed when the key is present but its value is unavailable', () => {
+    const settings = {
+      get: vi.fn(() => undefined),
+      getKeys: vi.fn(() => [TEMPERATURE_CONTROL_DISABLED_DEVICES]),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.temperatureControlDisabledDevices).toEqual({});
+    expect(next.temperatureControlPolicyState).toBe('unavailable');
+  });
+
+  it('fails closed when an empty key list cannot prove fresh-install absence', () => {
+    const settings = {
+      get: vi.fn(() => undefined),
+      getKeys: vi.fn(() => []),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.temperatureControlDisabledDevices).toEqual({});
+    expect(next.temperatureControlPolicyState).toBe('unavailable');
+  });
+
+  it('recovers an unavailable cold-boot policy after a later valid read', () => {
+    let raw: unknown = { thermostat: 'invalid' };
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === TEMPERATURE_CONTROL_DISABLED_DEVICES ? raw : undefined
+      )),
+      getKeys: vi.fn(() => [TEMPERATURE_CONTROL_DISABLED_DEVICES]),
+    };
+    const unavailable = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+    expect(unavailable.temperatureControlPolicyState).toBe('unavailable');
+
+    raw = { thermostat: true };
+    const recovered = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: unavailable,
+    });
+
+    expect(recovered.temperatureControlDisabledDevices).toEqual({ thermostat: true });
+    expect(recovered.temperatureControlPolicyState).toBe('resolved');
+  });
+
+  it('retries an unavailable policy at command-authority read time', () => {
+    let raw: unknown = { thermostat: 'invalid' };
+    let devices: Record<string, boolean> = {};
+    let policyState: 'unavailable' | 'resolved' = 'unavailable';
+    const ctx = {
+      homey: { settings: {
+        get: () => raw,
+        getKeys: () => [TEMPERATURE_CONTROL_DISABLED_DEVICES],
+      } },
+      get temperatureControlDisabledDevices() { return devices; },
+      set temperatureControlDisabledDevices(value) { devices = value; },
+      get temperatureControlPolicyState() { return policyState; },
+      set temperatureControlPolicyState(value) { policyState = value; },
+      deviceManager: { getSnapshotByDeviceId: () => ({ deviceType: 'temperature' }) },
+    } as unknown as AppContext;
+    ctx.loadTemperatureControlPolicySettings = () => loadTemperatureControlPolicySettingsForApp(ctx);
+
+    expect(isTemperatureControlDisabledForApp(ctx, 'thermostat')).toBe(true);
+    expect(ctx.temperatureControlPolicyState).toBe('unavailable');
+
+    raw = {};
+    expect(isTemperatureControlDisabledForApp(ctx, 'thermostat')).toBe(false);
+    expect(ctx.temperatureControlPolicyState).toBe('resolved');
+  });
+
+  it('keeps the last-good temperature-control map when persisted data is invalid', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === TEMPERATURE_CONTROL_DISABLED_DEVICES
+          ? { thermostat: 'yes' }
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        temperatureControlDisabledDevices: { thermostat: true },
+        temperatureControlPolicyState: 'resolved',
+      }),
+    });
+
+    expect(next.temperatureControlDisabledDevices).toEqual({ thermostat: true });
+    expect(next.temperatureControlPolicyState).toBe('resolved');
+  });
+
+  it('keeps the last-good temperature-control map when the settings read throws', () => {
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === TEMPERATURE_CONTROL_DISABLED_DEVICES) throw new Error('settings unavailable');
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        temperatureControlDisabledDevices: { thermostat: true },
+        temperatureControlPolicyState: 'resolved',
+      }),
+    });
+
+    expect(next.temperatureControlDisabledDevices).toEqual({ thermostat: true });
+    expect(next.temperatureControlPolicyState).toBe('resolved');
+  });
+
   it('resolves capacity scalars per field through the home-scoped store', () => {
     const settings = {
       get: vi.fn((key: string) => {

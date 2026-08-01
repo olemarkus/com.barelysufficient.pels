@@ -5,7 +5,10 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
 import { buildControlModelMap } from '../appDeviceControlHelpers';
-import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
+import {
+  readObservedEvChargingState,
+  readObservedTemperatureState,
+} from '../../lib/observer/observedDeviceStateProjection';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
@@ -40,6 +43,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // raw snapshot before the read model serializes, so a boot-present EV's real
     // plug-state is materialized for cycle 1.
     getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
+    getObservedTemperature: (deviceId) => readObservedTemperatureState(ctx.getObservedState(deviceId)),
     // Observation staleness for the settings-UI gray-state label and the idle
     // classifier, sourced from the observer projection — the same seam as
     // `getObservedEvChargingState`. The plan device no longer carries
@@ -78,7 +82,10 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // `'stepped_load' | undefined`, so a bare read would leave non-stepped devices
     // out of the map and a `temperature_target ↔ binary_power` flip would never
     // reach the signature.
-    getControlModelById: () => buildControlModelMap(ctx.deviceManager?.getSnapshot() ?? []),
+    getControlModelById: () => buildControlModelMap(
+      ctx.deviceManager?.getSnapshot() ?? [],
+      ctx.isTemperatureControlDisabled,
+    ),
     getCapacityDryRun: scope.getCapacityDryRun,
     // Sub-homes publish their EFFECTIVE (membership-gated) dry-run into
     // `pels_status:<id>` so the per-home Limits card shows honest posture. The

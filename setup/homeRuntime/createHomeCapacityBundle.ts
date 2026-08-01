@@ -182,6 +182,8 @@ export type HomeCapacityBundle = {
   updateHomeConfig: (home: SubHomeConfig) => void;
   /** Rebuild the plan after this area's mode catalog changes. */
   rebuildForModeSettingsChange: () => void;
+  /** Rebuild after a global per-device command-authority policy change. */
+  rebuildForDeviceControlSettingsChange: () => void;
   /** Re-read this area's coherent suffixed mode catalog. */
   reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
   isModeCatalogInitialized: () => boolean;

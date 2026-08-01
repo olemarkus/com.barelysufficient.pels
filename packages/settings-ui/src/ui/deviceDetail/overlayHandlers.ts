@@ -115,6 +115,9 @@ const initDeviceDetailDiagnosticsHandler = (ctx: DeviceDetailOverlayHandlerConte
 };
 
 const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext) => {
+  document.addEventListener('deferred-objectives-updated', () => {
+    if (ctx.getCurrentDetailDeviceId() !== null) ctx.refreshOpenDeviceDetail();
+  });
   document.addEventListener('devices-updated', () => {
     // Only consume the queued open request once its device is actually present:
     // a `devices-updated` can fire while the requested device is still absent

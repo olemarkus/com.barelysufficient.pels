@@ -718,6 +718,20 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       .toHaveLength(2);
   });
 
+  it('rebuilds every live sub-home plan after a global device-control policy change', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    rig.registry.reconcile();
+    await drainPending();
+    const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
+
+    rig.registry.onDeviceControlSettingsChanged();
+    await drainPending();
+
+    expect(rebuild.mock.calls.filter(
+      ([reason]) => reason === 'settings:temperature_control_disabled_devices',
+    )).toHaveLength(2);
+  });
+
   it('carries a thermostat mode target through the real ownership-change path', async () => {
     let ownerHomeId = HOME_A.homeId;
     const thermostat = {

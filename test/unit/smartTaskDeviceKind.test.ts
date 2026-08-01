@@ -23,6 +23,21 @@ describe('resolveSmartTaskDeviceKind', () => {
   it('returns null for an ineligible on/off device', () => {
     expect(resolveSmartTaskDeviceKind({ deviceType: 'onoff', targets: [] })).toBeNull();
   });
+
+  it('rejects temperature tasks when PELS temperature control is disabled', () => {
+    expect(resolveSmartTaskDeviceKind({
+      deviceType: 'temperature',
+      targets: [{ value: 20 }],
+      temperatureControlDisabled: true,
+    })).toBeNull();
+  });
+
+  it('keeps EV tasks eligible when an EV also carries the temperature marker', () => {
+    expect(resolveSmartTaskDeviceKind({
+      deviceClass: 'evcharger',
+      temperatureControlDisabled: true,
+    })).toBe('ev_soc');
+  });
 });
 
 describe('resolveSmartTaskGoalBounds', () => {

@@ -20,7 +20,7 @@ import {
 } from './deviceOverviewStrings';
 import { toSimulationReasonLine } from './simulationReasonMood';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
-import type { DeviceOverviewSnapshot } from './deviceOverview';
+import { resolveHeldStateActionLabel, type DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
@@ -82,15 +82,27 @@ const isLimitedReason = (code: string): boolean => (
 
 // ─── Temperature line ─────────────────────────────────────────────────────────
 
-export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
-  const { currentTemperature, currentTarget, plannedTarget } = device;
-  if (typeof plannedTarget !== 'number') return null;
-  const targetText = typeof currentTarget === 'number' && currentTarget !== plannedTarget
+const resolveTemperatureTargetText = (device: TemperatureDevice): string | null => {
+  const { currentTarget, plannedTarget } = device;
+  const hasCurrentTarget = typeof currentTarget === 'number' && Number.isFinite(currentTarget);
+  const hasPlannedTarget = typeof plannedTarget === 'number' && Number.isFinite(plannedTarget);
+  if (!hasPlannedTarget) {
+    return hasCurrentTarget ? `${currentTarget.toFixed(0)} °C` : null;
+  }
+  return hasCurrentTarget && currentTarget !== plannedTarget
     ? `${currentTarget.toFixed(0)} °C → ${plannedTarget.toFixed(0)} °C`
     : `${plannedTarget.toFixed(0)} °C`;
+};
+
+export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
+  const { currentTemperature } = device;
+  const targetText = resolveTemperatureTargetText(device);
+  if (targetText === null) return null;
   // Middle-dot separator for the data line — em-dash is reserved for status
   // copy (see notes/ui-terminology.md:9). Source: TODO #8.
-  if (typeof currentTemperature !== 'number') return `target ${targetText} · sensor unavailable`;
+  if (typeof currentTemperature !== 'number' || !Number.isFinite(currentTemperature)) {
+    return `target ${targetText} · sensor unavailable`;
+  }
   return `${currentTemperature.toFixed(1)} °C · target ${targetText}`;
 };
 
@@ -180,21 +192,39 @@ const resolveTemperatureIntentKind = (device: TemperatureDevice, reasonCode: str
   })
 );
 
+const resolveHeldBinaryTemperatureReason = (
+  device: TemperatureDevice,
+  kind: string,
+  reasonCode: string,
+  dryRun: boolean,
+): string | undefined => {
+  if (kind !== 'held' || device.shedAction !== 'turn_off') return undefined;
+  const budgetReason = resolveBudgetStarvationReason(device);
+  if (budgetReason !== null) return toSimulationReasonLine(budgetReason, dryRun);
+  if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
+  return resolveHeldStateActionLabel(device, dryRun);
+};
+
 const resolveTemperaturePlanReasonLine = (
   device: TemperatureDevice,
   dryRun = false,
 ): string | null => {
-  const { currentTemperature, plannedTarget } = device;
-  if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
-
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
   const kind = resolveTemperatureIntentKind(device, reasonCode);
+
+  // A temperature card can be binary-commanded while retaining observational
+  // temperature facts. It deliberately has no planned temperature, so resolve
+  // its held binary action before the temperature-intent evidence gate.
+  const heldBinaryReason = resolveHeldBinaryTemperatureReason(device, kind, reasonCode, dryRun);
+  if (heldBinaryReason !== undefined) return heldBinaryReason;
+
+  const { currentTemperature, plannedTarget } = device;
+  if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
 
   const surplusReason = resolveSurplusAbsorbReason(device, kind);
   if (surplusReason !== null) return surplusReason;
 
-  if (kind !== 'held' && kind !== 'idle' && kind !== 'resuming') return null;
-  if (kind === 'idle') return null;
+  if (kind !== 'held' && kind !== 'resuming') return null;
   // The card's bold state word already says "Resuming" (2026-07 card
   // grammar) — a reason line repeating it was pure duplication.
   if (kind === 'resuming') return null;
