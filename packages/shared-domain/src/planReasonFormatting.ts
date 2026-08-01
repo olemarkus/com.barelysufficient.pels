@@ -324,8 +324,12 @@ export function formatDeviceReason(reason: DeviceReason): string {
 // `formatDeviceReason` above is the diagnostic/log format. The helpers below
 // produce user-facing text per `notes/ui-terminology.md`. They never expose
 // internal planner terms (`shed`, `restore`, `headroom`, `shortfall`,
-// `backoff`, `invariant`, `soft limit`) and translate the `(need X kW,
-// headroom Y kW)` template to `needs X kW, Y kW available`.
+// `backoff`, `invariant`, `soft limit`). `restoreNeed` and `shortfall` reasons
+// translate the `(need X kW, headroom Y kW)` template to `needs X kW, Y kW
+// available`; `insufficientHeadroom` renders the admission-accurate
+// `needs N kW more` instead (see `resolveRestoreShortfallKw`) — for a blocked
+// restore, the need/available pair reads as if freeing the difference would
+// resume the device, which understates the real gate by the reserve stack.
 
 function normalizeDetailSentence(detail: string): string {
   return detail.length > 0 ? `${detail.charAt(0).toUpperCase()}${detail.slice(1)}` : detail;
@@ -342,6 +346,54 @@ function formatNeedAvailableSuffix(needKw: number, availableKw: number | null): 
   // negative values mean the system is already over the limit.
   const safeAvailable = Math.max(0, availableKw);
   return `needs ${needKw.toFixed(1)} kW, ${safeAvailable.toFixed(1)} kW available`;
+}
+
+const readFiniteNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+// The kW a blocked restore is actually short by — the number that, if it became
+// available, would admit the device. Admission passes at
+// `postReserveMarginKw >= minimumRequiredPostReserveMarginKw`
+// (`lib/plan/admission/reserve.ts` + `lib/plan/planReasonsRestoreGating.ts`), and
+// `postReserveMarginKw` already folds in the inflated need, the admission
+// reserve, and any swap reserve (via effective available). So the honest gap is
+// `minimumRequired − postReserveMargin` — NOT `need − available`, which
+// understates by the reserve stack (~0.5 kW, +0.3 kW on swap paths). Prod
+// 2026-08-01: cards read "0.5 kW more needed" for a device admission would only
+// pass with ~1.05 kW more. The `need − available` form remains as a fallback for
+// legacy prose-parsed reasons that carry no margin fields. `shortfall` reasons
+// keep `need − headroom`: that is a shed-side deficit with no admission reserves
+// in play. Accepts `unknown` because temperature-card callers hold the reason
+// untyped after the snapshot boundary.
+// Ceil to the 0.1 kW display resolution (with an epsilon guard against float
+// noise like 0.799999… → 0.8). Rounding DOWN would contradict the resolver's
+// contract: a true gap of 1.04 kW rendered as "1.0" invites freeing exactly
+// 1.0 kW and still being 0.04 kW short. Ceiling also kills the
+// "0.0 kW more needed" wart for gaps in (0.01, 0.05) — they now render 0.1.
+const ceilToDisplayKw = (gap: number): number | null => (
+  gap > 0.01 ? Math.ceil(gap * 10 - 1e-9) / 10 : null
+);
+
+export function resolveRestoreShortfallKw(reason: unknown): number | null {
+  if (typeof reason !== 'object' || reason === null) return null;
+  const r = reason as Record<string, unknown>;
+  if (r['code'] === PLAN_REASON_CODES.insufficientHeadroom) {
+    const postReserveMarginKw = readFiniteNumber(r['postReserveMarginKw']);
+    const minimumRequiredKw = readFiniteNumber(r['minimumRequiredPostReserveMarginKw']);
+    if (postReserveMarginKw !== null && minimumRequiredKw !== null) {
+      return ceilToDisplayKw(minimumRequiredKw - postReserveMarginKw);
+    }
+    // Legacy prose-parsed reason with headroom genuinely unknown: no number is
+    // honest — surface the bare sentence rather than fabricating a gap from 0.
+    const availableKw = readFiniteNumber(r['effectiveAvailableKw']) ?? readFiniteNumber(r['availableKw']);
+    if (availableKw === null) return null;
+    return ceilToDisplayKw((readFiniteNumber(r['needKw']) ?? 0) - availableKw);
+  }
+  if (r['code'] === PLAN_REASON_CODES.shortfall) {
+    return ceilToDisplayKw((readFiniteNumber(r['needKw']) ?? 0) - (readFiniteNumber(r['headroomKw']) ?? 0));
+  }
+  return null;
 }
 
 export function formatShortfallReason(opts: {
@@ -439,8 +491,13 @@ function formatRestoreNeedUserFacing(
 function formatInsufficientHeadroomUserFacing(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
 ): string {
-  const available = reason.effectiveAvailableKw ?? reason.availableKw;
-  const suffix = formatNeedAvailableSuffix(reason.needKw, available);
+  // The suffix names the admission-accurate shortfall ("1.1 kW more needed") —
+  // same grammar as the card lines — not the raw need/available pair, which
+  // reads as if freeing `need − available` would resume the device and
+  // understates the real gate by the reserve stack (see
+  // `resolveRestoreShortfallKw`).
+  const shortfallKw = resolveRestoreShortfallKw(reason);
+  const suffix = shortfallKw !== null ? `${shortfallKw.toFixed(1)} kW more needed` : null;
   if (reason.swapTargetName) {
     const base = `Not enough available power to make room for ${reason.swapTargetName}`;
     return suffix ? `${base} — ${suffix}` : base;

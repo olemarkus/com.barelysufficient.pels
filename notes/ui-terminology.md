@@ -190,6 +190,18 @@ freeing power cannot lift a budget hold); `Limited to stay within today's
 budget` is the starvation-surface phrasing of the same condition. Converging
 the two onto one sentence is open work; do not add a third variant.
 
+The kW figure on blocked-resume lines (and the sibling status
+`Not enough available power to resume — N kW more needed`) is the
+**admission-accurate shortfall** — the amount that, if it became available,
+would actually admit the device, with the restore buffer and admission
+reserves folded in, ceiled to the 0.1 kW display resolution
+(`resolveRestoreShortfallKw` in shared-domain). Never render raw
+`need − available` there: it understates the real gate by the reserve stack
+(prod 2026-08-01: a card said 0.5 kW when admission needed ~1.0 kW more). The
+`restoreNeed` keep-side line keeps its `needs X kW, Y kW available` pair: it
+describes a planned raise, carries no admission margins, and is not a promise
+that freeing the difference resumes anything.
+
 In **simulation mode** the state word stays FACTUAL — `held`/`resuming` are
 PELS-acted claims and PELS acts on nothing in simulation, so the bold word
 shows what the device is actually doing (Running/Idle/Off) and only the reason

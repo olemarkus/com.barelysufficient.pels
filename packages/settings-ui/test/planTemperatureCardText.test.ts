@@ -87,6 +87,28 @@ describe('resolveTemperatureReasonLine', () => {
     })).toBe('Waiting to resume — 0.8 kW more needed');
   });
 
+  // Production-shaped reason (margins present): the gap is the admission-accurate
+  // shortfall `minimumRequired − postReserveMargin`, not `need − available`.
+  it('shows the admission-accurate gap when reserve margins are present', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'off',
+      plannedState: 'shed',
+      currentTemperature: 20.2,
+      plannedTarget: 21,
+      reason: {
+        code: 'insufficient_headroom',
+        needKw: 1.25,
+        availableKw: 0.45,
+        effectiveAvailableKw: null,
+        postReserveMarginKw: -1.05,
+        minimumRequiredPostReserveMarginKw: 0.25,
+        penaltyExtraKw: null,
+        swapReserveKw: null,
+        swapTargetName: null,
+      },
+    })).toBe('Waiting to resume — 1.3 kW more needed');
+  });
+
   it('does not show idle as a reason line', () => {
     expect(resolveTemperatureReasonLine({
       currentState: 'off',

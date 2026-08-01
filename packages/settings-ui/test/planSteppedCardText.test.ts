@@ -463,6 +463,35 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Waiting to increase — 0.5 kW more needed');
     });
 
+    // Production-shaped reason (margins present): the gap is the
+    // admission-accurate shortfall `minimumRequired − postReserveMargin`
+    // (0.25 − (−0.75) = 1.0 kW), NOT the understated `need − available`
+    // (1.2 − 0.7 = 0.5 kW). Prod 2026-08-01: cards claimed "0.5 kW more
+    // needed" for a device admission would only pass with ~1.0 kW more.
+    it('renders the admission-accurate shortfall when reserve margins are present', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
+          reason: {
+            code: 'insufficient_headroom',
+            needKw: 1.2,
+            availableKw: 0.7,
+            effectiveAvailableKw: null,
+            postReserveMarginKw: -0.75,
+            minimumRequiredPostReserveMarginKw: 0.25,
+            penaltyExtraKw: null,
+            swapReserveKw: null,
+            swapTargetName: null,
+          },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Waiting to resume — 1.0 kW more needed');
+    });
+
     it('uses shortfall reason headroomKw to compute gap', () => {
       const result = resolveSteppedStatusLine(
         {

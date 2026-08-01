@@ -355,13 +355,15 @@ function buildRejectedSwapUpdate(params: {
     ...buildInsufficientHeadroomUpdate({
       neededKw: restoreNeed.needed,
       availableKw: shouldDescribeSwapReserve ? swap?.potentialHeadroom ?? availableHeadroom : availableHeadroom,
+      // Display margin from the UNCLAMPED swap headroom (see buildSwapCandidates):
+      // the clamped admission margin flattens the shortfall in deep over-pace.
       postReserveMarginKw: shouldDescribeSwapReserve
-        ? swap?.admission.postReserveMarginKw ?? directAdmission.postReserveMarginKw
+        ? swap?.displayPostReserveMarginKw ?? directAdmission.postReserveMarginKw
         : directAdmission.postReserveMarginKw,
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       penaltyExtraKw: restoreNeed.penaltyExtraKw,
       swapReserveKw: shouldDescribeSwapReserve ? swap?.reserveKw : undefined,
-      effectiveAvailableKw: shouldDescribeSwapReserve ? swap?.effectiveHeadroom : undefined,
+      effectiveAvailableKw: shouldDescribeSwapReserve ? swap?.displayEffectiveHeadroomKw : undefined,
     }),
     ...rejectedDeviceUpdate,
   };

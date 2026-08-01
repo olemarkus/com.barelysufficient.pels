@@ -8,6 +8,7 @@ import {
 } from './planCardGrammar';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
+import { resolveRestoreShortfallKw } from './planReasonFormatting';
 import { formatStarvationReason } from './planStarvation';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
@@ -167,20 +168,9 @@ const isHeadroomCheckSettlingReason = (code: string): boolean => (
 
 // ─── Status line ──────────────────────────────────────────────────────────────
 
-const resolveHeadroomGapKw = (reason: DeviceReason): number | null => {
-  if (reason.code === PLAN_REASON_CODES.insufficientHeadroom) {
-    const avail = reason.effectiveAvailableKw ?? reason.availableKw ?? 0;
-    const gap = reason.needKw - avail;
-    return gap > 0.01 ? gap : null;
-  }
-  if (reason.code === PLAN_REASON_CODES.shortfall) {
-    const avail = reason.headroomKw ?? 0;
-    const need = reason.needKw ?? 0;
-    const gap = need - avail;
-    return gap > 0.01 ? gap : null;
-  }
-  return null;
-};
+// Admission-accurate shortfall (reserves folded in) — shared resolver, see
+// `resolveRestoreShortfallKw` in `planReasonFormatting.ts`.
+const resolveHeadroomGapKw = (reason: DeviceReason): number | null => resolveRestoreShortfallKw(reason);
 
 const formatSec = (sec: number): string => `${Math.round(Math.max(0, sec))}s`;
 

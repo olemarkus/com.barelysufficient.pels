@@ -441,15 +441,6 @@ What remains open is below.*
       only as explicit restore-preparation evidence") was retired when flow reports became
       admissible on 2026-07-25. Source: adversarial review, 2026-07-25. [P2]
 
-- [ ] **"Not enough available power to resume" prints two numbers that say it should have resumed.**
-      The card read "needs 1.6 kW, 2.0 kW available" while the gate that actually failed was
-      `postReserveMarginKw 0.115 < minimumRequiredPostReserveMarginKw 0.250`.
-      `formatInsufficientHeadroomUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts`
-      ~392-402) renders `effectiveAvailableKw` against `needKw` and never mentions the reserve that
-      decided it, so the copy reads as a PELS bug. Persona: Homey owner watching a paused EV charger;
-      hypothesis: two numbers that contradict the verdict destroy trust in the whole card. Source:
-      prod log review 2026-07-25. [P1]
-
 - [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
       `capacity`.** `buildBaseReason` (`lib/plan/planReasons.ts` ~42) ends with
       `?? { code: capacity }` for a device that is planned `shed`, was not shed THIS cycle, and
@@ -471,8 +462,10 @@ What remains open is below.*
       `steppedRestoreAdmission.ts` hardcodes `headroomKw: null` on both `restoreNeed` reasons, so
       `formatRestoreNeedUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts` ~388-389)
       falls through to the bare "Waiting for available power", while binary/temperature devices —
-      which go through `planReasonStrings.ts` with a real headroom — get
-      "Waiting to resume — needs X kW, Y kW available". `availableHeadroom` is already in scope at
+      which go through `planReasonStrings.ts` with real admission margins — get
+      "Waiting to resume — X kW more needed" (the admission-accurate shortfall from
+      `resolveRestoreShortfallKw`; do NOT reintroduce the retired "needs X kW, Y kW available"
+      pair). `availableHeadroom` is already in scope at
       both sites, so this is a two-line fix. Persona: owner watching a paused EV charger and unable
       to tell how far off a resume is. Source: prod investigation 2026-07-25. [P2]
 
@@ -514,12 +507,6 @@ What remains open is below.*
       increases; it never pushes a device down). The reason struct already carries
       `fromStep`/`toStep`; render from those instead, e.g. "Holding at Medium — can't increase
       while 10 devices are limited". Source: overview correctness review (2026-07-05).
-- [ ] **"0.0 kW more needed" on a held card.** `resolveHeadroomGapKw` suppresses gaps ≤ 0.01 kW
-      but the formatters render with `toFixed(1)`, so gaps in (0.01, 0.05) print "Waiting to
-      resume — 0.0 kW more needed" (seen on a prod thermostat card 2026-07-05). Align the gate
-      with the display resolution (suppress < 0.05) or print "less than 0.1 kW" — same pattern in
-      `planTemperatureCardText.ts` ~99/112, `planSteppedCardText.ts` ~238/245/253, and
-      `planReasonFormatting.ts` ~389. Source: overview correctness review (2026-07-05).
 - [ ] **Hero limited-count disagrees with the stepped card's "N devices still limited".** The
       hero counts `stateKind === 'held' || plannedState === 'shed'` (11 on the 2026-07-05 screen,
       including a hold-reason EV that was never shed), while the stepped card's count comes from
@@ -992,6 +979,18 @@ program) remain deferred.*
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **The displayed restore shortfall omits live startup reservations.** When a
+      higher-priority startup reservation (`headroomReserve`) is active, non-swap stepped
+      rejections and binary batch continuations build their reason from the RAW headroom margin,
+      so `resolveRestoreShortfallKw` renders a gap that ignores the reserved power — freeing the
+      shown amount still leaves the device blocked until the reservation lapses. Bounded by the
+      reservation window, and the direction is the same understatement class the 2026-08-01
+      shortfall fix removed for the reserve stack. Fix: fold the live reservation into the
+      structured reason's margin at the producing gate (same resolution-in-producer pattern).
+      *Persona:* owner reading "X kW more needed" while a scheduled device holds its startup
+      reservation. *Hypothesis:* rare overlap (reservation + blocked non-swap restore), self-heals
+      within the window. Source: Codex review on PR #1954, 2026-08-02. [P2]
 
 - [ ] **A meter that jitters *and* lags still reads as evidence that a shed achieved nothing.**
       `resolveSameMeasurementSheddingDecision` now holds a shed from deepening while the whole-home
