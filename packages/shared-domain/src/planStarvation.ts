@@ -363,6 +363,27 @@ export const resolveStarvationRescueRejectCopy = (reason: string | undefined): s
   return STARVATION_RESCUE_WIDGET_COPY.rescueError;
 };
 
+// The armed-state consequence line on the overview device card, composed here
+// rather than in the view so the string the user actually reads is single-homed
+// with the constants it joins (`feedback_ui_text_shared_with_logs`,
+// `views/AGENTS.md` — shared display logic belongs in shared-domain).
+//
+// The money-action consequence is surfaced inline because Homey's touch WebView
+// has no reachable hover tooltip: the user must see what they are authorising
+// before the second tap. When the preview resolved the bounded window, the
+// "By {time}" anchor is appended (server-formatted in the Homey timezone — the
+// view does no Date math). With no preview the consequence already names its own
+// bound ("…until it reaches its normal target."), so it stands alone.
+//
+// Deliberately says nothing about the OTHER granted permissions: those are listed
+// verbatim from `formatGrantedRescuePermissionsLine`, so this surface never
+// invents a second phrasing for a permission that already has a canonical label.
+export const formatStarvationRescueArmedCaption = (deadlineLabel: string | undefined): string => {
+  const consequence = STARVATION_RESCUE_WIDGET_COPY.rescueConsequence;
+  if (deadlineLabel === undefined || deadlineLabel === '') return consequence;
+  return `${consequence} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} ${deadlineLabel}`;
+};
+
 export const summarizeStarvation = (
   devices: Array<Pick<SettingsUiPlanDeviceSnapshot, 'starvation'>> | null | undefined,
 ): string | null => {

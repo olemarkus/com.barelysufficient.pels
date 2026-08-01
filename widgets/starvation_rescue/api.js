@@ -187,11 +187,11 @@ var buildRescueCandidate = (targetTemperatureC, deadlineAtMs) => ({
   enforcement: "soft",
   targetTemperatureC,
   deadlineAtMs,
-  // The rescue requests BOTH permissions; the create engine's
-  // `gateCandidateExtraPermissions` keeps `exemptFromBudget` for any device and
-  // the `limitLowerPriorityDevices` grant only where it has effect (stepped-load
-  // + top priority), so the surfaces never need the device profile here.
-  rescue: { exemptFromBudget: "always", limitLowerPriorityDevices: "always" }
+  rescue: {
+    exemptFromBudget: "always",
+    limitLowerPriorityDevices: "always",
+    pauseLowerPriorityDevices: "always"
+  }
 });
 var mapAppRescueReason = (reason) => {
   if (reason === "device_not_found") return "device_not_found";

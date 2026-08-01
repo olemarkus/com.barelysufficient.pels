@@ -5542,13 +5542,14 @@ var buildDevice = (device) => {
     goalStep: bounds.step,
     defaultGoal: resolveSmartTaskDefaultGoal({ kind, bounds, currentValue }),
     currentValue,
-    // Gate-on-effect: the limit-lower-priority permission only changes the plan
-    // for a stepped-load device at top priority (the planner's `fullyReserved`
-    // floor is `priority === 1`). The stepped predicate mirrors
-    // `AppSmartTaskApi.deviceSupportsLimitLowerPriority`; the extra
-    // `priority === 1` keeps the compose toggle from ever being offered where
-    // it would be a no-op.
-    supportsLimitLowerPriority: device.controlModel === "stepped_load" && isSteppedLoadSnapshot(device) && device.priority === 1
+    // Gate-on-effect: the limit-lower-priority permission is inert on a binary
+    // device (no higher step to promote to), so the compose toggle is offered
+    // only for stepped-load devices. Mirrors
+    // `AppSmartTaskApi.deviceSupportsLimitLowerPriority` exactly so the client's
+    // visibility and the server's gate agree (preview ≡ persist). Deliberately
+    // NOT gated on `priority === 1`: limiting lower-priority devices helps at any
+    // priority, and swap selection already refuses anything not strictly lower.
+    supportsLimitLowerPriority: device.controlModel === "stepped_load" && isSteppedLoadSnapshot(device)
   };
 };
 var buildCreateSmartTaskDevicesPayload = (input) => {

@@ -46,15 +46,32 @@ export const isStarvationRescuable = (deviceId: string): boolean => (
   state.starvationRescuableDeviceIds.has(deviceId)
 );
 
-export const previewStarvationRescue = (
+// The preview resolves the bounded window AND the gated permission set the card
+// must disclose before the user can confirm, so a rejection is no longer a
+// silent best-effort miss — the chip drops back to idle, and the user needs to
+// know why. Toasting here rather than in the view keeps the network/toast seam
+// in the controller (`views/AGENTS.md`); the copy comes from the SHARED rescue
+// resolver so this surface can't drift from the rescue widget.
+export const previewStarvationRescue = async (
   deviceId: string,
-): Promise<SettingsUiStarvationRescuePreviewResponse> => (
-  callApi<SettingsUiStarvationRescuePreviewResponse>(
-    'POST',
-    SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
-    { deviceId },
-  )
-);
+): Promise<SettingsUiStarvationRescuePreviewResponse> => {
+  try {
+    const response = await callApi<SettingsUiStarvationRescuePreviewResponse>(
+      'POST',
+      SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
+      { deviceId },
+    );
+    if (!response.ok) {
+      const reason = 'reason' in response ? response.reason : undefined;
+      await showToast(resolveStarvationRescueRejectCopy(reason), 'warn');
+    }
+    return response;
+  } catch (error) {
+    await logSettingsError('Failed to preview budget-exempt rescue', error, 'previewStarvationRescue');
+    await showToast(STARVATION_RESCUE_WIDGET_COPY.rescueError, 'warn');
+    throw error;
+  }
+};
 
 export type StarvationRescueOutcome =
   | { ok: true; runsCurrentHour: boolean }
