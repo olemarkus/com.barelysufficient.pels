@@ -9,9 +9,8 @@
 //   forecast: forward hours → forecast irradiance × learned gain
 //
 // SDK-free: the irradiance provider is injected (the setup layer wires the
-// Open-Meteo-backed provider; tests mock it). The provider encapsulates location,
-// so the service needs no coordinates of its own — the fit is `generation /
-// irradiance`, which is location-agnostic.
+// Open-Meteo-backed provider; tests mock it). The service needs no coordinates
+// of its own — the fit is `generation / irradiance`, which is location-agnostic.
 
 import {
   emptyPvGenerationHistory,

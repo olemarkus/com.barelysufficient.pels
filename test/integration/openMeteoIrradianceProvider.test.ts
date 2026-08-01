@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { OpenMeteoIrradianceProvider, type GeoCoordinates } from '../../lib/solar/openMeteoIrradiance';
 
 const HOUR_MS = 3_600_000;
@@ -15,11 +15,10 @@ const okOnce = (body: unknown): FetchResult => ({ ok: true, json: async () => bo
 describe('OpenMeteoIrradianceProvider', () => {
   it('fetches and exposes hourly radiation, undefined for unknown hours', async () => {
     const provider = new OpenMeteoIrradianceProvider({
-      getCoordinates: () => OSLO,
       fetchImpl: stubFetch(async () => okOnce(RESPONSE)),
       userAgent: 'pels-test',
     });
-    expect(await provider.refresh()).toBe('ok');
+    expect(await provider.refresh(OSLO)).toBe('ok');
     expect(provider.getIrradiance(H0 - HOUR_MS)).toBe(420); // H0 stamp ⇒ H0−1h interval
     expect(provider.getIrradiance(H0)).toBe(350); // H1 stamp ⇒ H0 interval
     expect(provider.getIrradiance(H1)).toBeUndefined();
@@ -28,36 +27,21 @@ describe('OpenMeteoIrradianceProvider', () => {
   it('keeps the prior cache when a later refresh fails (HTTP not-ok)', async () => {
     let ok = true;
     const provider = new OpenMeteoIrradianceProvider({
-      getCoordinates: () => OSLO,
       fetchImpl: stubFetch(async () => (ok ? okOnce(RESPONSE) : { ok: false, json: async () => ({}) })),
       userAgent: 'pels-test',
     });
-    await provider.refresh();
+    await provider.refresh(OSLO);
     ok = false;
-    expect(await provider.refresh()).toBe('failed');
+    expect(await provider.refresh(OSLO)).toBe('failed');
     expect(provider.getIrradiance(H0 - HOUR_MS)).toBe(420); // unchanged
   });
 
   it('maps a network error to failed, leaving the cache empty', async () => {
     const provider = new OpenMeteoIrradianceProvider({
-      getCoordinates: () => OSLO,
       fetchImpl: stubFetch(async () => { throw new Error('network'); }),
       userAgent: 'pels-test',
     });
-    expect(await provider.refresh()).toBe('failed');
+    expect(await provider.refresh(OSLO)).toBe('failed');
     expect(provider.getIrradiance(H0 - HOUR_MS)).toBeUndefined();
-  });
-
-  it('never fetches without a usable location (null, undefined, or the 0,0 sentinel)', async () => {
-    const fetchImpl = vi.fn();
-    for (const coordinates of [null, undefined, { latitude: 0, longitude: 0 }]) {
-      const provider = new OpenMeteoIrradianceProvider({
-        getCoordinates: () => coordinates,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-        userAgent: 'pels-test',
-      });
-      expect(await provider.refresh()).toBe('no_location');
-    }
-    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

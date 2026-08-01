@@ -12,7 +12,12 @@
 // so the history is seeded (the SDK persisted-state seam) and the app learns the
 // device's gain on boot. The live power-pipeline sample proves the recording path.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDriver } from '../mocks/homey';
+import {
+  mockHomeyInstance,
+  setMockDrivers,
+  setMockGeolocation,
+  MockDriver,
+} from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { PV_FORECAST_STATE } from '../../lib/utils/settingsKeys';
 
@@ -74,8 +79,7 @@ describe('Learning a PV device through the app (SDK-boundary e2e, Open-Meteo moc
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.geolocation._latitude = OSLO.latitude;
-    mockHomeyInstance.geolocation._longitude = OSLO.longitude;
+    setMockGeolocation(OSLO.latitude, OSLO.longitude);
   });
 
   afterEach(async () => {

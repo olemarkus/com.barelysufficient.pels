@@ -17,7 +17,13 @@
 // test/unit/curtailmentSurplus.test.ts (producer math), and the
 // planner-prep integration in test/integration/solarSurplusAbsorb.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import {
+  mockHomeyInstance,
+  setMockDrivers,
+  setMockGeolocation,
+  MockDevice,
+  MockDriver,
+} from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -196,8 +202,7 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.geolocation._latitude = OSLO.latitude;
-    mockHomeyInstance.geolocation._longitude = OSLO.longitude;
+    setMockGeolocation(OSLO.latitude, OSLO.longitude);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => radiationResponse() })));
   });
 
