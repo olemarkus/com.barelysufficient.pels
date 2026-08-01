@@ -32,7 +32,7 @@ import { emitActivationTransitions } from '../../lib/plan/planHeadroomState';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
   desiredForMode: {},
   total: 0,
@@ -45,6 +45,8 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   dailySoftLimit: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   hourBucketKey: '2026-03-08T10',
   budgetKWh: 0,
   usedKWh: 0,
@@ -54,6 +56,19 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   restoreMarginPlanning: 0.2,
   ...overrides,
 });
+
+// Mirror the producer: unless a test pins the axes explicitly, the capacity
+// axis tracks the fixture's binding headroom (capacity-bound home, no daily
+// budget), so restore admissions see the same available power as before the
+// per-axis ledger.
+const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
+  const base = buildContextFields(overrides);
+  return {
+    ...base,
+    capacityHeadroomKw: overrides.capacityHeadroomKw ?? base.headroom,
+    budgetHeadroomKw: overrides.budgetHeadroomKw ?? null,
+  };
+};
 
 const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice =>
   baseBuildPlanDevice({ currentState: 'off', currentTarget: null, ...overrides });

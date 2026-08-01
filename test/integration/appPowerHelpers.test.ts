@@ -35,7 +35,7 @@ import type {
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuildScheduler/shortfallSuppression';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
 
 const createCapacityGuardMock = (params: {
@@ -2132,7 +2132,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2148,7 +2148,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2181,7 +2181,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2197,7 +2197,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2231,7 +2231,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2247,7 +2247,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2301,7 +2301,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2317,7 +2317,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2353,7 +2353,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2369,7 +2369,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2392,7 +2392,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot: () => [],
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2434,7 +2434,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2451,7 +2451,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {

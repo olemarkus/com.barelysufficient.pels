@@ -7,7 +7,7 @@ import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import { recordPowerSampleForApp } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
@@ -289,7 +289,7 @@ export class PowerSamplePipeline {
           ...params,
           devices: params.devices.map(withHeadroomCurrentOn),
         }),
-        sumBudgetExemptUsage: (devices) => sumBudgetExemptLiveUsageKw(devices.map(withHeadroomCurrentOn)),
+        sumBudgetExemptUsage: (devices) => sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn)),
         updateObjectiveProfiles: (params) => updateObjectiveProfilesFromSnapshot({
           ...params,
           debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),

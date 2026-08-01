@@ -47,6 +47,7 @@ function buildBaseReason(
   const reattributed = resolveDailyBindingReattribution({
     reasonCode: resolved.code,
     shedReasonFresh: shedReasons.has(dev.id),
+    budgetExempt: dev.budgetExempt === true,
     softLimitSource,
     capacityBreached,
     budgetReleasableHeadroomHold,
@@ -277,6 +278,7 @@ function normalizeDeviceReason(params: {
   const dailyReattribution = resolveDailyBindingReattribution({
     reasonCode: currentReason.code,
     shedReasonFresh: shedReasons.has(dev.id),
+    budgetExempt: dev.budgetExempt === true,
     softLimitSource,
     capacityBreached,
     budgetReleasableHeadroomHold,
@@ -306,12 +308,9 @@ function normalizeDeviceReason(params: {
 //   lever that can help. Prod 2026-07-25: a budget-exempt EV charger — shed only
 //   because a real breach overrode its exemption — read "Limited by today's daily
 //   budget" next to its own "Always on" chip, with a "Let it run now" release that
-//   could not create capacity headroom. The condition is deliberately NOT
-//   `budgetExempt`: exemption only blocks daily-budget SHEDDING
-//   (`shedding/candidates.ts`); restore admission gates on
-//   `min(capacitySoftLimit, dailySoftLimit)` with no exemption carve-out, so an
-//   off exempt device genuinely can be held by the daily budget, and saying so is
-//   correct.
+//   could not create capacity headroom. Budget-exempt devices are excluded
+//   below: since per-axis restore admission, an exempt candidate is evaluated
+//   on the capacity axis, so its holds are never budget holds.
 //
 // - `insufficientHeadroom` restore holds: a restore rejected on headroom while the
 //   DAILY pace is binding is a budget hold, not a power shortage — `availableKw`
@@ -336,12 +335,22 @@ function normalizeDeviceReason(params: {
 function resolveDailyBindingReattribution(params: {
   reasonCode: DeviceReason['code'];
   shedReasonFresh: boolean;
+  budgetExempt: boolean;
   softLimitSource: 'capacity' | 'daily' | null;
   capacityBreached: boolean;
   budgetReleasableHeadroomHold: boolean;
 }): DeviceReason | null {
-  const { reasonCode, shedReasonFresh, softLimitSource, capacityBreached, budgetReleasableHeadroomHold } = params;
+  const {
+    reasonCode, shedReasonFresh, budgetExempt, softLimitSource, capacityBreached, budgetReleasableHeadroomHold,
+  } = params;
   if (softLimitSource !== 'daily' || capacityBreached) return null;
+  // Never fold a budget-exempt device's hold to `dailyBudget`: per-axis restore
+  // admission evaluates exempt candidates on the CAPACITY axis, so their holds
+  // are capacity holds, and the budget rescue ("Let it run now") is a no-op for
+  // a device that is already exempt — the wrong-lever symptom class this fold
+  // exists to prevent. (This inverts the pre-per-axis comment that admission
+  // had "no exemption carve-out"; it does now.)
+  if (budgetExempt) return null;
   const reattribute = (reasonCode === PLAN_REASON_CODES.capacity && !shedReasonFresh)
     || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetReleasableHeadroomHold);
   return reattribute ? { code: PLAN_REASON_CODES.dailyBudget, detail: null } : null;

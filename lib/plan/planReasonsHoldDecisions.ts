@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PlanEngineState } from './planState';
+import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   PLAN_REASON_CODES,
@@ -57,6 +58,11 @@ export type ShedHoldParams = {
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
+  // Per-axis ledger carried over from the restore pass: a budget-exempt
+  // setpoint-shed device admits its raise against the CAPACITY axis, exactly
+  // like the binary/stepped lanes. Optional so scalar-only callers/tests keep
+  // the single-track behavior.
+  ledger?: RestoreHeadroomLedger;
   guardInShortfall?: boolean;
   debugStructured?: StructuredDebugEmitter;
   getShedBehavior: (deviceId: string) => {
@@ -87,6 +93,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    ledger,
     guardInShortfall = false,
     debugStructured,
     getShedBehavior,
@@ -99,6 +106,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
 
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
+    const availableForDevice = ledger ? ledger.availableFor(dev) : headroom;
     const result = applyHoldToDevice({
       dev,
       behavior,
@@ -107,7 +115,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       inShedWindow,
       inCooldown,
       activeOvershoot,
-      availableHeadroom: headroom,
+      availableHeadroom: availableForDevice,
       restoredOneThisCycle: restoredOne,
       restoredThisCycle,
       shedCooldownRemainingSec,
@@ -120,7 +128,12 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       guardInShortfall,
       debugStructured,
     });
-    headroom = result.availableHeadroom;
+    if (ledger) {
+      ledger.commit(dev, availableForDevice - result.availableHeadroom);
+      headroom = ledger.summaryAvailableKw();
+    } else {
+      headroom = result.availableHeadroom;
+    }
     restoredOne = result.restoredOneThisCycle;
     nextDevices.push(result.device);
   }

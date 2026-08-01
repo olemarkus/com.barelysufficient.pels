@@ -4,6 +4,7 @@ import type { PowerTrackerState } from '../power/tracker';
 import { getCurrentHourContext } from './planHourContext';
 import { resolvePowerSampleFreshness, type PowerFreshnessState } from './planPowerFreshness';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
+import { sumBudgetExemptMeasuredUsageKw } from './planUsage';
 import type { PlanInputDevice } from './planTypes';
 
 export type DailyBudgetContext = {
@@ -42,6 +43,21 @@ export type PlanContext = {
   // gating) and `normalizeShedReasons` (device reason re-attribution) must read
   // this same field or the card and the rescue widget disagree about the hold.
   budgetReleasableHeadroomHold: boolean;
+  // Per-axis restore-admission inputs (notes/safe-pace-two-constraints.md
+  // § "Proposed model", restore-admission-scoped). `headroom` above stays the
+  // BINDING (min) axis and keeps driving shedding and the should-plan-restores
+  // gate; these two let admission evaluate each candidate on the axis that
+  // actually constrains it: a budget-exempt candidate admits against capacity
+  // only (its own projection already sits in the daily add-back — gating it on
+  // the binding pace made its reservation unusable by construction, prod
+  // 2026-08-01), and a non-exempt candidate must also fit the budget pace with
+  // a MEASURED exempt sum, so it cannot spend headroom that exists only as an
+  // off exempt device's projection. Both carry the same stale-meter forcing as
+  // `headroom` (stale_hold → 0, stale_fail_closed → -1) and the exhausted-hour
+  // force, so fail-closed and exhausted hours still block every restore.
+  capacityHeadroomKw: number;
+  // null when no daily budget applies (sub-homes, budget disabled).
+  budgetHeadroomKw: number | null;
   hourBucketKey: string;
   budgetKWh: number;
   usedKWh: number;
@@ -94,19 +110,33 @@ export function buildPlanContext(params: {
   const usedKWh = hourContext.usedKWh;
   const minutesRemaining = hourContext.minutesRemaining;
 
-  let headroomRaw = 0;
-  if (powerKnown && total !== null) {
-    headroomRaw = softLimit - total;
-  } else if (freshness.powerFreshnessState === 'stale_fail_closed') {
-    headroomRaw = -1;
-  }
+  // One rule for every admission axis: fresh power reads the real difference,
+  // stale_hold synthesizes 0, stale_fail_closed forces -1.
+  const resolveAxisHeadroomKw = (limitKw: number): number => {
+    if (powerKnown && total !== null) return limitKw - total;
+    return freshness.powerFreshnessState === 'stale_fail_closed' ? -1 : 0;
+  };
+
+  const headroomRaw = resolveAxisHeadroomKw(softLimit);
   // headroom is the ACTUAL available capacity. Use this for shedding.
   let headroom = headroomRaw;
+
+  let capacityHeadroomKw = resolveAxisHeadroomKw(capacitySoftLimit);
+  // Budget axis with the MEASURED exempt sum (see the field doc): only exists
+  // when the daily pace resolved this cycle.
+  const hasBudgetAxis = dailySoftLimit !== null && typeof budgetPaceKw === 'number' && Number.isFinite(budgetPaceKw);
+  let budgetHeadroomKw = hasBudgetAxis
+    ? resolveAxisHeadroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKw(devices))
+    : null;
 
   // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
   // force a minimal negative headroom to proactively shed controllable devices.
   if (hourlyBudgetExhausted && softLimit <= 0 && total !== null && total <= 0.01) {
     headroom = -1; // triggers shedding logic with needed ~=1 kW (effectivePower fallback)
+    // An exhausted hour blocks every restore, including budget-exempt candidates
+    // on the capacity axis (the note's exhausted-hour carve-out).
+    capacityHeadroomKw = -1;
+    if (budgetHeadroomKw !== null) budgetHeadroomKw = -1;
   }
 
   return {
@@ -126,6 +156,8 @@ export function buildPlanContext(params: {
     budgetReleasableHeadroomHold: softLimitSource === 'daily'
       && powerKnown
       && !isCapacityBreached(total, capacitySoftLimit),
+    capacityHeadroomKw,
+    budgetHeadroomKw,
     hourBucketKey: hourContext.bucketKey,
     budgetKWh,
     usedKWh,

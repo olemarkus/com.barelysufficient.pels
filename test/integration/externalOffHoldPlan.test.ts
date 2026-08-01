@@ -146,6 +146,8 @@ describe('external-off hold — plan-device propagation', () => {
     dailySoftLimit: null,
     softLimitSource: 'capacity',
     budgetReleasableHeadroomHold: false,
+    capacityHeadroomKw: 1,
+    budgetHeadroomKw: null,
     budgetKWh: 0,
     usedKWh: 0,
     minutesRemaining: 60,

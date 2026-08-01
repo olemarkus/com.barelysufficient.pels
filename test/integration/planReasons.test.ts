@@ -1,4 +1,5 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
+import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
@@ -327,6 +328,35 @@ describe('normalizeShedReasons', () => {
     expect(reasonText(device?.reason)).toContain('insufficient headroom');
   });
 
+  // Per-axis admission evaluates a budget-exempt candidate on the CAPACITY
+  // axis, so its holds are capacity holds — folding them to dailyBudget would
+  // offer the budget rescue to a device that is already exempt (a no-op lever).
+  it('never folds a budget-exempt device\'s headroom hold to dailyBudget', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-exempt-hold',
+        plannedState: 'shed',
+        budgetExempt: true,
+        reason: buildRestoreHeadroomReason({
+          neededKw: 1.4,
+          availableKw: 1.7,
+          postReserveMarginKw: -0.28,
+          minimumRequiredPostReserveMarginKw: 0.25,
+        }),
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 1.7,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+      budgetReleasableHeadroomHold: true,
+    });
+
+    expect(reasonText(device?.reason)).toContain('insufficient headroom');
+  });
+
   it('keeps insufficientHeadroom holds numeric when softLimitSource is capacity', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
@@ -561,6 +591,53 @@ describe('applyShedTemperatureHold', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // Per-axis parity for the setpoint lane: a budget-exempt setpoint-shed device
+  // admits its raise against the CAPACITY axis, a non-exempt one stays held by
+  // the tight budget axis — same split the binary/stepped ledger lanes apply.
+  it('admits an exempt setpoint device on the capacity axis while a non-exempt one stays held', () => {
+    const run = (budgetExempt: boolean) => {
+      const state = createPlanEngineState();
+      state.lastPlannedShedIds.add('dev-temp');
+      return applyShedTemperatureHold({
+        planDevices: [withBinaryOn(buildPlanDevice({
+          id: 'dev-temp',
+          name: 'Water Heater',
+          currentState: 'keep',
+          plannedState: 'shed',
+          budgetExempt,
+          expectedPowerKw: 1.2,
+          currentTarget: 16,
+          plannedTarget: 16,
+          shedAction: 'set_temperature',
+          shedTemperature: 16,
+          reason: legacyDeviceReason('shed due to daily budget')!,
+        }), true)],
+        state,
+        shedReasons: new Map(),
+        inShedWindow: false,
+        inCooldown: false,
+        activeOvershoot: false,
+        availableHeadroom: 0.3,
+        ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 8, budgetAvailableKw: 0.3 }),
+        restoredOneThisCycle: false,
+        restoredThisCycle: new Set(),
+        shedCooldownRemainingSec: null,
+        holdDuringRestoreCooldown: false,
+        restoreCooldownSeconds: 60,
+        restoreCooldownRemainingSec: null,
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      });
+    };
+
+    // A 'restore' decision passes the device through for the later raise and
+    // flips restoredOneThisCycle; a blocked one stamps the headroom hold reason.
+    const exempt = run(true);
+    const nonExempt = run(false);
+    expect(exempt.restoredOneThisCycle).toBe(true);
+    expect(nonExempt.restoredOneThisCycle).toBe(false);
+    expect(reasonText(nonExempt.planDevices[0]?.reason)).toContain('insufficient headroom');
   });
 
   it('keeps existing special shed reasons while temperature hold is active', () => {

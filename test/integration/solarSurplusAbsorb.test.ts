@@ -64,6 +64,8 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
   dailySoftLimit: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   hourBucketKey: '2026-01-15T12',
   budgetKWh: 0,
   usedKWh: 0,

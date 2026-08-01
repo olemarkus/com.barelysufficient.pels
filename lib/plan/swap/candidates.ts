@@ -24,6 +24,16 @@ function isViableSwapCandidate(
   if (onDev.plannedState === 'shed') return false;
   if (swappedOutFor.has(onDev.id)) return false;
   if (restoredThisCycle.has(onDev.id)) return false;
+  // A NON-exempt target must not count freed draw from a budget-exempt source:
+  // its budget axis is `budgetPaceKw + measuredExemptKw − total`, and turning
+  // the exempt source off drops `measuredExemptKw` and `total` together — the
+  // target's admission axis never grows, so the swap pauses a running exempt
+  // device for a restore that is re-rejected every cycle until the swap times
+  // out (strand + churn of exactly the device class the exemption protects).
+  // Cost of the blanket rule: in a purely capacity-bound home a non-exempt
+  // target can no longer swap out a lower-priority exempt source — a rare,
+  // conservative narrowing that matches the exemption's intent.
+  if (onDev.budgetExempt === true && dev.budgetExempt !== true) return false;
   return true;
 }
 

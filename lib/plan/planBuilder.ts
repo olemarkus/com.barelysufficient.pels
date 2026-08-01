@@ -30,7 +30,7 @@ import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallTh
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
-import { sumBudgetExemptLiveUsageKw } from './planUsage';
+import { sumBudgetExemptProjectedUsageKw } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
@@ -356,7 +356,7 @@ export class PlanBuilder {
   ): DailySoftLimitResolution | null {
     const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker);
     if (!bucket) return null;
-    const projectedExemptKw = Math.max(0, sumBudgetExemptLiveUsageKw(devices) ?? 0);
+    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices) ?? 0);
     const budgetPaceKw = computeDailyUsageSoftLimit({
       ...bucket,
     });

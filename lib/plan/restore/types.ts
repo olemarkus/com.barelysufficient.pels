@@ -37,7 +37,14 @@ export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   stateUpdates: RestorePlanState;
   restoredThisCycle: Set<string>;
+  // Post-pass NON-EXEMPT view (min of capacity and measured-exempt budget axes
+  // from the per-axis ledger) — no longer the binding-axis scalar. Consumers:
+  // batch throttle sizing and shed-temperature hold decisions; both conservative.
   availableHeadroom: number;
+  // The underlying per-axis values (see headroomLedger.ts) — the hold lane
+  // rebuilds a ledger from these so setpoint-shed devices admit per axis too.
+  capacityAvailableKw: number;
+  budgetAvailableKw: number | null;
   restoredOneThisCycle: boolean;
   inCooldown: boolean;
   inRestoreCooldown: boolean;

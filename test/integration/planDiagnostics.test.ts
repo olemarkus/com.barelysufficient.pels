@@ -43,6 +43,8 @@ const buildContext = (
   // Mirrors the producer resolution in `buildPlanContext`: daily binding + fresh
   // power + no capacity breach (total 4 < capacitySoftLimit 5 in this fixture).
   budgetReleasableHeadroomHold: softLimitSource === 'daily' && powerFreshnessState === 'fresh',
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',
   budgetKWh: 4,
   usedKWh: 1,
@@ -59,6 +61,8 @@ const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): Restore
   },
   restoredThisCycle: new Set<string>(),
   availableHeadroom: 1,
+  capacityAvailableKw: 1,
+  budgetAvailableKw: null,
   restoredOneThisCycle: false,
   inCooldown: false,
   inRestoreCooldown: false,

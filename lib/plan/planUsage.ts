@@ -72,8 +72,26 @@ export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
   return hasUsage ? totalKw : null;
 };
 
-export const sumBudgetExemptLiveUsageKw = (devices: UsageDevice[]): number | null => {
+export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number | null => {
   return sumBudgetExemptUsageKwInternal(devices);
+};
+
+// Measured-only sibling of `sumBudgetExemptProjectedUsageKw`. The live sum PROJECTS an
+// observed-off exempt device's draw (via `getHighestKnownPowerKw`) — correct for
+// the daily-pace add-back, where the reservation must exist while the device is
+// off. This sum counts only actually-measured draw and is the budget-axis input
+// for restore admission (`notes/safe-pace-two-constraints.md` § "It needs to land
+// twice"): a non-exempt restore candidate must not spend headroom that exists
+// only as an off exempt device's projection. Missing/unknown measurements count
+// as 0 — an off exempt device reserves nothing on this axis.
+export const sumBudgetExemptMeasuredUsageKw = (devices: UsageDevice[]): number => {
+  let totalKw = 0;
+  for (const dev of devices) {
+    if (dev.budgetExempt !== true || dev.controllable === false) continue;
+    const measured = getMeasuredDrawKw(dev);
+    if (measured !== null && measured > 0) totalKw += measured;
+  }
+  return totalKw;
 };
 
 export function splitControlledUsageKw(params: {
