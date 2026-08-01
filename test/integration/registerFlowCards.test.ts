@@ -1549,4 +1549,58 @@ describe('registerFlowCards', () => {
     })).rejects.toThrow('Selected device is not supported for this card.');
     expect(deps.reportFlowBackedCapability).not.toHaveBeenCalled();
   });
+
+  describe('capacity_shortfall_sustained', () => {
+    const listener = () => {
+      const { deps, triggerListeners } = buildDeps();
+      registerFlowCards(deps);
+      return triggerListeners.capacity_shortfall_sustained;
+    };
+
+    it('fires only on the grid step that first reaches the chosen duration', async () => {
+      const run = listener();
+
+      await expect(run({ seconds: 30 }, {
+        sustainedSeconds: 20,
+        previousSustainedSeconds: 10,
+      })).resolves.toBe(false);
+      await expect(run({ seconds: 30 }, {
+        sustainedSeconds: 30,
+        previousSustainedSeconds: 20,
+      })).resolves.toBe(true);
+      // Later steps keep arriving for Flows with a longer threshold; this one
+      // has already alerted for the incident and must stay quiet.
+      await expect(run({ seconds: 30 }, {
+        sustainedSeconds: 40,
+        previousSustainedSeconds: 30,
+      })).resolves.toBe(false);
+    });
+
+    it('serves every configured duration off the same crossing', async () => {
+      const run = listener();
+      const crossing = { sustainedSeconds: 30, previousSustainedSeconds: 0 };
+
+      // A fenced step widens the window, so 10 s and 20 s Flows still fire.
+      await expect(run({ seconds: 10 }, crossing)).resolves.toBe(true);
+      await expect(run({ seconds: 20 }, crossing)).resolves.toBe(true);
+      await expect(run({ seconds: 600 }, crossing)).resolves.toBe(false);
+    });
+
+    it('refuses a crossing it cannot compare', async () => {
+      const run = listener();
+      const crossing = { sustainedSeconds: 30, previousSustainedSeconds: 20 };
+
+      await expect(run({}, crossing)).resolves.toBe(false);
+      await expect(run({ seconds: 'soon' }, crossing)).resolves.toBe(false);
+      await expect(run({ seconds: 30 }, undefined)).resolves.toBe(false);
+      await expect(run({ seconds: 30 }, { sustainedSeconds: 'lots' })).resolves.toBe(false);
+    });
+
+    it('refuses a crossing that lost its high-water mark rather than matching every step', async () => {
+      // The dispatcher always sends `previousSustainedSeconds`. If a drift ever
+      // dropped it, treating the crossing as a first crossing would fire the
+      // same Flow on all 60 grid steps of an incident, so it must refuse.
+      await expect(listener()({ seconds: 30 }, { sustainedSeconds: 30 })).resolves.toBe(false);
+    });
+  });
 });

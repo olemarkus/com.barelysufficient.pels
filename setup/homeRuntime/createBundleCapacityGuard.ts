@@ -6,15 +6,15 @@ import CapacityGuard from '../../lib/power/capacityGuard';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { HomeId } from '../../lib/utils/settingsKeys';
-import { createCapacityShortfallAlertHold } from '../capacityShortfallAlertHold';
+import { createCapacityShortfallAlertDispatch } from '../capacityShortfallAlertDispatch';
 import { createCapacityShortfallSideEffectGate } from '../capacityShortfallSideEffectGate';
 
 const SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 
 /**
- * Wires one sub-home's immediate shortfall state transition and independently
- * held user Flow alert. Lifecycle/source authority is checked at both final
- * setup-owned side-effect seams.
+ * Wires one sub-home's immediate shortfall state transition and its user Flow
+ * alerts. Lifecycle/source authority is checked at both final setup-owned
+ * side-effect seams.
  */
 export function createBundleCapacityGuard(params: {
   ctx: AppContext;
@@ -29,7 +29,8 @@ export function createBundleCapacityGuard(params: {
   isMeterSourceEpochDiscarded: () => boolean;
   isPreparedReconcileActive: () => boolean;
   shortfallRetryTimerKey: string;
-  shortfallAlertTimerKey: string;
+  shortfallAlertImmediateTimerKey: string;
+  shortfallAlertSustainedTimerKey: string;
 }): {
   guard: CapacityGuard;
   flushDeferredShortfallSideEffect: () => Promise<boolean>;
@@ -38,7 +39,8 @@ export function createBundleCapacityGuard(params: {
   const {
     ctx, homeId, scalars, planEngine, planService, getHomeDisplayName, isTornDown, isMembershipReady,
     isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
-    isPreparedReconcileActive, shortfallRetryTimerKey, shortfallAlertTimerKey,
+    isPreparedReconcileActive, shortfallRetryTimerKey,
+    shortfallAlertImmediateTimerKey, shortfallAlertSustainedTimerKey,
   } = params;
   const isDiscarded = (): boolean => isTornDown() || isMeterSourceEpochDiscarded();
   const isTemporarilyFenced = (): boolean => (
@@ -65,10 +67,11 @@ export function createBundleCapacityGuard(params: {
     applyShortfall: (deficitKw) => planService.handleShortfall(deficitKw),
     applyClear: () => planService.handleShortfallCleared(),
   });
-  const shortfallAlertHold = createCapacityShortfallAlertHold({
+  const shortfallAlertDispatch = createCapacityShortfallAlertDispatch({
     homeId,
     timers: ctx.timers,
-    timerKey: shortfallAlertTimerKey,
+    immediateTimerKey: shortfallAlertImmediateTimerKey,
+    sustainedTimerKey: shortfallAlertSustainedTimerKey,
     isDiscarded,
     isTemporarilyFenced,
     isConditionActive: () => guard.isShortfallAlertConditionActive(),
@@ -81,11 +84,11 @@ export function createBundleCapacityGuard(params: {
     softMarginKw: scalars.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
     onShortfallCleared: async () => {
-      shortfallAlertHold.onIncidentCleared();
+      shortfallAlertDispatch.onIncidentCleared();
       await shortfallSideEffectGate.onShortfallCleared();
     },
-    onShortfallAlertCandidate: shortfallAlertHold.onCandidate,
-    onShortfallAlertConditionCleared: shortfallAlertHold.onConditionCleared,
+    onShortfallAlertCandidate: shortfallAlertDispatch.onCandidate,
+    onShortfallAlertConditionCleared: shortfallAlertDispatch.onConditionCleared,
     structuredLog: ctx.getStructuredLogger('capacity'),
     capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
       planService.getLatestPlanSnapshot(),

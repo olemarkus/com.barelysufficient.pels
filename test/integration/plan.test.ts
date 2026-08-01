@@ -2013,7 +2013,7 @@ describe('Device plan snapshot', () => {
     expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
   });
 
-  it('holds capacity_shortfall alert after immediately shedding all controllables', async () => {
+  it('triggers capacity_shortfall when deficit remains after shedding all controllables', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     // Shortfall triggers when power exceeds the shortfall threshold AND no devices left to shed.
@@ -2059,8 +2059,10 @@ describe('Device plan snapshot', () => {
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
     await (app as any).powerSamplePipeline.recordPowerSample(600000); // 600kW definitely exceeds threshold
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
-    expect(triggerSpy).not.toHaveBeenCalled();
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(true);
+    // Shortfall is now detected by Plan calling checkShortfall() - no need for tick()
+    // The payload names the home: this app is the Main home, and every home
+    // fires the same global card.
+    expect(triggerSpy).toHaveBeenCalledWith({ home: 'Main home' });
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
     vi.useRealTimers();
@@ -2102,7 +2104,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
   });
 
-  it('keeps one pending capacity_shortfall alert while already in shortfall state', async () => {
+  it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
@@ -2138,23 +2140,20 @@ describe('Device plan snapshot', () => {
     ]);
 
     await (app as any).powerSamplePipeline.recordPowerSample(500000);
-    expect(triggerSpy).not.toHaveBeenCalled();
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(true);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     await (app as any).powerSamplePipeline.recordPowerSample(550000);
-    expect(triggerSpy).not.toHaveBeenCalled();
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(true);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     await (app as any).powerSamplePipeline.recordPowerSample(520000);
-    expect(triggerSpy).not.toHaveBeenCalled();
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(true);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
     vi.useRealTimers();
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   });
 
-  it('starts a fresh capacity_shortfall alert hold after recovery and re-entry', async () => {
+  it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
@@ -2195,8 +2194,7 @@ describe('Device plan snapshot', () => {
     ]);
 
     await (app as any).powerSamplePipeline.recordPowerSample(500000);
-    expect(triggerSpy).not.toHaveBeenCalled();
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(true);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     // The shed-everything plan is unactionable, so recovery rebuilds (which drive
@@ -2216,12 +2214,11 @@ describe('Device plan snapshot', () => {
     openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(false);
+    expect((app as any).timers.has('mainShortfallAlertSustained')).toBe(false);
 
     openMaxIntervalEscape();
     await (app as any).powerSamplePipeline.recordPowerSample(500000);
-    expect(triggerSpy).not.toHaveBeenCalled();
-    expect((app as any).timers.has('mainShortfallAlertHold')).toBe(true);
+    expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;

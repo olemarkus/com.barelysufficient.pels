@@ -305,8 +305,8 @@ function buildSubHomeScope(params: {
   };
   return {
     homeId,
-    // Names THIS area on the global `capacity_shortfall` Flow trigger, which
-    // every home shares — without it an area's alert reads as the Main home's.
+    // Names THIS area on the global hard-cap Flow triggers, which every home
+    // shares — without it an area's alert reads as the Main home's.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
     getCapacitySettings: () => ({ limitKw: getScalars().limitKw, marginKw: getScalars().marginKw }),
     // The canonical no-actuation switch (see `resolveEffectiveDryRun`). This is
@@ -492,7 +492,8 @@ function createBundlePlanningRuntime(params: {
     isMeterSourceEpochDiscarded: params.isMeterSourceEpochDiscarded,
     isPreparedReconcileActive: params.preparedSampleFence.isActive,
     shortfallRetryTimerKey: params.timerKey('shortfallSideEffectRetry'),
-    shortfallAlertTimerKey: params.timerKey('shortfallAlertHold'),
+    shortfallAlertImmediateTimerKey: params.timerKey('shortfallAlertImmediate'),
+    shortfallAlertSustainedTimerKey: params.timerKey('shortfallAlertSustained'),
   });
   const { pipeline, scheduler: planRebuildScheduler } = createBundleSamplePipeline({
     ctx: params.ctx,

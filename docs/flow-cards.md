@@ -27,7 +27,8 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 
 | Card | What it does |
 | --- | --- |
-| **Hard cap breach imminent — manual action needed** | Fires after PELS has projected for 10 seconds that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. A recovery during those 10 seconds cancels the trigger, while PELS still limits devices immediately. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
+| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
+| **Hard cap breach imminent for at least... — manual action needed** | The same situation, but only once it has lasted the time you choose (from 10 seconds up to 10 minutes, in 10-second steps). If the situation clears inside that time, nothing fires. Exposes the same `Home` tag. Use it when a brief spike is not worth a notification. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
@@ -40,9 +41,15 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
 | **Daily budget adjusted for the weather forecast** | Fires once a day when PELS sets your daily budget from the weather forecast (requires the weather insight's automatic apply to be turned on). Exposes a `budget_kwh` token (the new daily budget) and a `forecast_temperature` token (the forecast °C that set it). Manual and Flow budget changes do not fire it. |
 
-Use **Hard cap breach imminent — manual action needed** for urgent notifications, not for normal daily pacing.
-The 10-second confirmation keeps a brief recovery from starting your Flow after the need has passed; it does not
-delay PELS limiting managed devices.
+Use either hard cap card for urgent notifications, not for normal daily pacing. Pick
+**Hard cap breach imminent — manual action needed** when you want to know the moment PELS runs out of load it can
+turn down, and **Hard cap breach imminent for at least...** when you would rather wait out a short spike first.
+PELS limits managed devices immediately either way — this only decides when your Flow starts.
+
+The sustained card counts only time it can actually see: it needs fresh power readings throughout the window.
+On [Homey Energy](/homey-energy) those arrive every 10 seconds, so the whole 10-second to 10-minute range works.
+If your power comes in [from a Flow](/configuration) instead, the window restarts whenever more than a minute
+passes without a reading. To use the longer durations there, have your Flow report power at least once a minute.
 
 ## Conditions
 

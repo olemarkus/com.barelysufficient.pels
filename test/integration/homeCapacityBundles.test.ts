@@ -1425,15 +1425,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       persisted: mockHomeyInstance.settings.get('capacity_in_shortfall:h_a'),
       retryScheduled: rig.ctx.timers.has('home:h_a:shortfallSideEffectRetry'),
     }).toEqual({
-      triggerCount: 0,
+      triggerCount: 1,
       persisted: true,
       retryScheduled: false,
     });
-    expect(rig.ctx.timers.has('home:h_a:shortfallAlertHold')).toBe(true);
-
-    await vi.advanceTimersByTimeAsync(9_000);
-    await drainPending();
-
     // The global card is shared with the Main home, so the area has to name
     // itself in the payload or the alert is unattributable.
     expect(capacityShortfallTrigger).toHaveBeenCalledWith({ home: HOME_A.name });
@@ -1466,8 +1461,6 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
 
     rig.registry.routeMeterReadings({ 'm-a': 50_000 }, Date.now());
-    await drainPending();
-    await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
 
     expect(capacityShortfallTrigger).toHaveBeenCalledWith({ home: 'Loft' });
