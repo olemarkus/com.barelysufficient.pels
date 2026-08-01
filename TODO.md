@@ -268,12 +268,19 @@ What remains open is below.*
       must never promise it (`notes/ui-terminology.md`, "Hard cap is an hourly ceiling").
       That trade-off is deliberate (the reading really is unattributable). `HOMES_MAIN_METER_NOTICE`
       now names BOTH consequences, including that PELS may have stopped limiting Main entirely, so
-      the notice is no longer wrong — but `HomeMembershipService.getDiagnostics()` still does not
-      expose the fence, so `ui_homes` cannot tell the user WHICH of the two states they are in, and
-      an owner who is currently unprotected reads the same sentence as one who is merely
-      over-limited. Expose the fence state in diagnostics and render state-specific copy. Note PR 4
-      (require an explicit Main meter) removes the reachable configuration, so this may reduce to a
-      transitional state.
+      the notice is no longer wrong — and the EXPLICIT-selection clash is now surfaced outright:
+      `ui_homes` carries `mainMeterConflictAreaName` (resolved from the same classifiers the save
+      gate uses) and the Multiple meters panel leads with "PELS has stopped limiting your Main
+      home", naming the area. The remaining gap is every SAMPLED-clause fence state — this entry's
+      Automatic persona, but also an explicit selection inside the switchover window, where the
+      configured id is already clean (so `mainMeterConflictAreaName` is null) while the last
+      admitted sample still belongs to the area until the replacement poll lands
+      (`homeMainMeterAuthority`, the sampled clause). `HomeMembershipService.getDiagnostics()`
+      still does not expose that fence, so an owner who is currently unprotected reads the same
+      MIGHT-sentence as one who is merely over-limited. Expose the sampled-clause fence state in
+      diagnostics and render state-specific copy. Note PR 4 (require an explicit Main meter)
+      removes the reachable Automatic configuration, so that arm may reduce to a transitional
+      state; the switchover window remains.
       Source: pels-runtime-reality review of the multi-home finishing train PR 2.
 
 - [ ] **An id-less whole-home aggregate can be an area's meter, and the signal that detects it is discarded.**
