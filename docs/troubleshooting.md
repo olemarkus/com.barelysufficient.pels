@@ -46,9 +46,7 @@ the device's Energy settings in Homey. See [Configuration → Devices](/configur
 
 The **"Manual action needed"** notification (Flow trigger *Hard cap breach
 imminent — manual action needed*) fires only when PELS projects the **hourly hard cap**
-will be exceeded **and it has run out of managed load it is allowed to turn down** for
-10 continuous seconds. PELS still limits managed devices immediately; the short wait
-only keeps a recovered condition from starting your notification Flow.
+will be exceeded **and it has run out of managed load it is allowed to turn down**.
 It is the one urgent, safety-level alert in PELS — everything else is soft pacing.
 
 What to do, in order:
@@ -63,6 +61,11 @@ What to do, in order:
 - **Don't raise the hard cap.** It reflects the tariff step you're holding. If breaches are
   routine, the real fixes are bringing more big loads under management or pacing
   the day with a [daily budget](/daily-budget).
+
+Once you have worked through those causes, if brief spikes still make it fire more
+often than you want, swap the Flow to *Hard cap breach imminent for at least...* and
+choose how long the situation has to last first. PELS limits managed devices
+immediately either way — this only decides when your Flow starts.
 
 ## I went over my daily budget
 

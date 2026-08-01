@@ -587,7 +587,7 @@ program) remain deferred.*
 - [ ] **One concept, one name, one owner for the pace/limit family.** `softLimit` currently names
       four different quantities depending on call site and wiring, and the unwired fallbacks
       disagree with each other: `lib/power/capacityGuard.ts:124-129` falls back to the hourly
-      allowance, `lib/executor/planExecutor.ts:428` falls back to the **hard cap**,
+      allowance, `lib/executor/shortfallExecutor.ts:40-41` falls back to the **hard cap**,
       `lib/diagnostics/periodicStatus.ts:83` and `lib/plan/rebuildScheduler/signalDriven.ts:86-87`
       to the allowance. A caller cannot tell which quantity it got, so a wiring regression
       degrades to a quieter limit instead of failing loudly, which is the root `AGENTS.md`
@@ -1007,6 +1007,33 @@ program) remain deferred.*
       stepped loads are exactly what users notice. Fix needs the hold to carry the decided target
       step, not just membership. Persona: the owner who ranked an EV charger below their heating.
       Source: `pels-runtime-reality` on the unchanged-reading-hold PR. [P2]
+- [ ] **Check whether Homey substitutes `[[token]]` placeholders inside a Flow card's `hint`.**
+      Five trigger manifests write tag names as `[[home]]` / `[[outcome]]` / `[[hours_remaining]]`
+      inside `hint` (`capacity_shortfall`, `capacity_shortfall_sustained`, `deadline_ended`,
+      `deadline_status_changed`, `smart_task_hours_remaining`). Homey documents substitution for
+      `titleFormatted`; if it does NOT apply to `hint`, every one of those cards shows the user a
+      literal `[[home]]` in the Flow editor. *Persona:* anyone adding one of these cards.
+      *Hypothesis:* the bracket syntax reads as a template that failed to render. Verify against a
+      real Homey (or the Flow editor screenshot harness) and then fix all five together — a single
+      card diverging from the convention is worse than the convention being wrong.
+      Source: CodeRabbit review of PR #1948, 2026-08-01.
+- [ ] **The immediate hard-cap alert's authority-fence retry loops at 1 Hz with no bound.**
+      `setup/capacityShortfallAlertDispatch.ts` re-schedules `releaseDeferred` every second while
+      `isTemporarilyFenced()` holds, and for a sub-home that fence includes `!isMembershipReady()` —
+      an explicitly long-lived, operator-visible state ("pinned members are uncontrolled until the
+      zones API recovers", `setup/homeRuntime/homeCapacityBundleReadiness.ts:185-196`). Under a
+      degraded zones API the retry runs for the whole incident at 10× the sustained lane's cadence.
+      Pre-existing (the behaviour predates the sustained card; only the file name changed), and
+      cheap in absolute terms, but it should either back off or give up with a logged reason.
+      Source: `pels-runtime-reality` review of the sustained hard-cap card, 2026-08-01.
+- [ ] **`homeCapacityBundleApi.ts` justifies two placement decisions with a `max-dependencies`
+      ceiling that is not binding.** Its header comment and the block at ~`:220` both say code lives
+      there because "`createHomeCapacityBundle.ts` sits at its 20/20 `import-x/max-dependencies`
+      ceiling". Measured against the real rule (`eslint.config.mjs:689`, `max: 20`,
+      `ignoreTypeImports: true`) that file has 17 value dependencies — three slots of headroom.
+      Correct the number or state the real reason (teardown lives here), so the next author does not
+      launder code into the file on a constraint that does not exist.
+      Source: `pels-layering-guardian` review of the sustained hard-cap card, 2026-08-01.
 
 - [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
       car unobserved rather than mis-observed, so they cap what the probe can measure without
@@ -1179,10 +1206,11 @@ program) remain deferred.*
       optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
       jumping number is not. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
-- [ ] **The `capacity_shortfall` `home` tag is a display name, not a stable id, so Flows string-compare
-      a renameable label.** The trigger has `args: []`, so a Flow that wants only one home's alerts
-      has to string-compare the tag, and a rename propagates to the token immediately (the bundle is
-      adopted in place, not replaced). *Persona:* owner with a Flow filtering on the annex's alerts
+- [ ] **The hard-cap alerts' `home` tag is a display name, not a stable id, so Flows string-compare
+      a renameable label.** Neither `capacity_shortfall` (`args: []`) nor `capacity_shortfall_sustained`
+      (whose only arg is the sustain duration) can filter by home, so a Flow that wants only one home's
+      alerts has to string-compare the tag, and a rename propagates to the token immediately (the bundle
+      is adopted in place, not replaced). *Persona:* owner with a Flow filtering on the annex's alerts
       who renames the area. *Hypothesis:* the Flow silently stops matching. A second `home_id` token
       carrying `MAIN_HOME_ID` / the sub-home's `homeId` would let a Flow branch on something durable
       while `home` stays the human label. Additive, so it can land later; decide it with the

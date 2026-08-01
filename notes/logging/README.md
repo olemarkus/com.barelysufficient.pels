@@ -68,10 +68,14 @@ This note is for contributors changing runtime logging.
 - `overshoot_entered`
 - `overshoot_cleared`
 - `hard_cap_shortfall_detected`
-- `hard_cap_shortfall_alert_hold_started`
-- `hard_cap_shortfall_alert_hold_cancelled`
 - `hard_cap_shortfall_alert_triggered`
+- `hard_cap_shortfall_alert_deferred`
+- `hard_cap_shortfall_alert_dropped`
 - `hard_cap_shortfall_alert_failed`
+- `hard_cap_shortfall_sustained_alert_triggered`
+- `hard_cap_shortfall_sustained_alert_ended` (`reasonCode`: `condition_cleared` |
+  `incident_cleared` | `runtime_discarded` | `max_reached` | `evidence_stale`)
+- `hard_cap_shortfall_sustained_alert_failed`
 - `hard_cap_shortfall_recovery_started`
 - `hard_cap_shortfall_recovery_reset`
 - `hard_cap_shortfall_recovered`

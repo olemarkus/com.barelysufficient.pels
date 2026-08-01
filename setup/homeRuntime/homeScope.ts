@@ -60,9 +60,10 @@ import {
 export type HomeScope = {
   homeId: HomeId;
   /**
-   * This home's user-facing name, resolved by the producer. The executor uses
-   * it as the `home` token on the single global `capacity_shortfall` Flow
-   * trigger, so a Flow can tell which part of the home ran out of managed load
+   * This home's user-facing name, resolved by the producer. The alert
+   * dispatcher uses it as the `home` token on both global hard-cap Flow
+   * triggers (`capacity_shortfall` and `capacity_shortfall_sustained`), so a
+   * Flow can tell which part of the home ran out of managed load
    * instead of every home firing an indistinguishable empty payload. Main binds
    * the canonical "Main home" label; a sub-home binds its meter-area name.
    */

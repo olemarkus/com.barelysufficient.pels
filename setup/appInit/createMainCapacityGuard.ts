@@ -6,12 +6,13 @@ import {
   createCapacityShortfallSideEffectGate,
   type CapacityShortfallSideEffectGate,
 } from '../capacityShortfallSideEffectGate';
-import { createCapacityShortfallAlertHold } from '../capacityShortfallAlertHold';
+import { createCapacityShortfallAlertDispatch } from '../capacityShortfallAlertDispatch';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_TIMER = 'mainShortfallSideEffectRetry';
-const MAIN_SHORTFALL_ALERT_HOLD_TIMER = 'mainShortfallAlertHold';
+const MAIN_SHORTFALL_ALERT_IMMEDIATE_TIMER = 'mainShortfallAlertImmediate';
+const MAIN_SHORTFALL_ALERT_SUSTAINED_TIMER = 'mainShortfallAlertSustained';
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 
 export const createMainCapacityGuard = (params: {
@@ -45,10 +46,11 @@ export const createMainCapacityGuard = (params: {
     applyShortfall: async (deficitKw) => ctx.planService?.handleShortfall(deficitKw),
     applyClear: async () => ctx.planService?.handleShortfallCleared(),
   });
-  const shortfallAlertHold = createCapacityShortfallAlertHold({
+  const shortfallAlertDispatch = createCapacityShortfallAlertDispatch({
     homeId: MAIN_HOME_ID,
     timers: ctx.timers,
-    timerKey: MAIN_SHORTFALL_ALERT_HOLD_TIMER,
+    immediateTimerKey: MAIN_SHORTFALL_ALERT_IMMEDIATE_TIMER,
+    sustainedTimerKey: MAIN_SHORTFALL_ALERT_SUSTAINED_TIMER,
     isDiscarded: params.isDiscarded,
     isTemporarilyFenced: params.isTemporarilyFenced,
     isConditionActive: () => guard.isShortfallAlertConditionActive(),
@@ -61,11 +63,11 @@ export const createMainCapacityGuard = (params: {
     softMarginKw: ctx.capacitySettings.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
     onShortfallCleared: async () => {
-      shortfallAlertHold.onIncidentCleared();
+      shortfallAlertDispatch.onIncidentCleared();
       await shortfallSideEffectGate.onShortfallCleared();
     },
-    onShortfallAlertCandidate: shortfallAlertHold.onCandidate,
-    onShortfallAlertConditionCleared: shortfallAlertHold.onConditionCleared,
+    onShortfallAlertCandidate: shortfallAlertDispatch.onCandidate,
+    onShortfallAlertConditionCleared: shortfallAlertDispatch.onConditionCleared,
     structuredLog: ctx.getStructuredLogger('capacity'),
     capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
       ctx.planService?.getLatestPlanSnapshot(),

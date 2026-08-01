@@ -1,0 +1,35 @@
+{
+  "title": {
+    "en": "Hard cap breach imminent for at least... — manual action needed"
+  },
+  "titleFormatted": {
+    "en": "Hard cap breach imminent for at least [[seconds]] seconds — no managed devices left to limit"
+  },
+  "args": [
+    {
+      "name": "seconds",
+      "type": "range",
+      "title": {
+        "en": "Must last at least (seconds)"
+      },
+      "min": 10,
+      "max": 600,
+      "step": 10
+    }
+  ],
+  "hint": {
+    "en": "Fires once when PELS has expected one part of your home to exceed its hard cap this hour, without a break, for the time you choose, with every managed device there already turned off or at its lowest step. If the situation clears inside that time, nothing fires. PELS limits managed devices immediately either way — this only decides when your Flow starts. Use it instead of Hard cap breach imminent — manual action needed when a brief spike is not worth a notification. The [[home]] tag names the part of the home: the Main home, or a meter area by name. Daily budget overruns do not fire this trigger."
+  },
+  "tokens": [
+    {
+      "name": "home",
+      "type": "string",
+      "title": {
+        "en": "Home"
+      },
+      "example": {
+        "en": "Main home"
+      }
+    }
+  ]
+}

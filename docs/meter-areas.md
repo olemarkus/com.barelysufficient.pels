@@ -225,9 +225,10 @@ did. The cards that read or write a **capacity number** work from the Main home:
 **Is there enough available power?**, **Is there available power for device?**
 and **Set capacity limit**, even if the device you pick lives in a meter area.
 
-One trigger is area-aware. **Hard cap breach imminent — manual action needed**
-carries a `Home` tag naming the part of the home with no managed devices left to
-limit, so a single Flow can tell you *where* to go and switch something off.
+Two triggers are area-aware. **Hard cap breach imminent — manual action needed**
+and **Hard cap breach imminent for at least...** each carry a `Home` tag naming the
+part of the home with no managed devices left to limit, so a single Flow can tell
+you *where* to go and switch something off.
 
 ## Tips and troubleshooting
 

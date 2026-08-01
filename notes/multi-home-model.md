@@ -304,11 +304,12 @@ wherever that device lives, including inside a meter area; cards about modes,
 prices, and the daily budget are app-global settings and behave as before;
 cards that read or write a **capacity number** (`Is there enough available
 power?`, `Is there available power for device?`, `Set capacity limit`) work
-from the Main home. One trigger is area-aware: the `capacity_shortfall`
-trigger ("Hard cap breach imminent — manual action needed") carries a `Home`
-token whose value is the home's display *name* (`resolveHomeAreaDisplayName`
-— `Main home`, the area's own name, or `Meter area` for a blank name), fired
-by every home's plan executor. Widgets remain whole-home. The home device
+from the Main home. Two triggers are area-aware: `capacity_shortfall` ("Hard
+cap breach imminent — manual action needed") and `capacity_shortfall_sustained`
+("Hard cap breach imminent for at least… — manual action needed") each carry a
+`Home` token whose value is the home's display *name*
+(`resolveHomeAreaDisplayName` — `Main home`, the area's own name, or
+`Meter area` for a blank name), fired by every home's alert dispatcher. Widgets remain whole-home. The home device
 driver + device-scoped flow cards are a deferred follow-up train.
 
 **Flow power source and meter areas are mutually exclusive, both directions**,

@@ -19,6 +19,7 @@ import {
   registerDeviceCapacityControlCards,
   registerManagedDeviceCondition,
 } from './deviceSettingsCards';
+import { registerCapacityShortfallSustainedTrigger } from './capacityShortfallCards';
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import { registerAllowSmartTaskRescueCard } from './smartTaskRescueCard';
@@ -172,6 +173,9 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerLowestPriceCards(deps);
     registerDeadlineObjectiveCards(deps);
     registerAllowSmartTaskRescueCard(deps);
+    // Last on purpose: this block is unguarded, so a registration that throws
+    // takes out every card after it. The newest one goes at the end.
+    registerCapacityShortfallSustainedTrigger(deps);
   } finally {
     stopSpan();
   }

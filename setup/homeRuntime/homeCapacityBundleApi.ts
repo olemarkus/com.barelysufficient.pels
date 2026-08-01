@@ -497,7 +497,9 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       ctx.timers.clear(timerKey('freshnessHeartbeat'));
       ctx.timers.clear(timerKey('membershipReadyApplyRetry'));
       ctx.timers.clear(timerKey('shortfallSideEffectRetry'));
-      ctx.timers.clear(timerKey('shortfallAlertHold'));
+      // One key per alert lane, named here and in `createHomeCapacityBundle`.
+      ctx.timers.clear(timerKey('shortfallAlertImmediate'));
+      ctx.timers.clear(timerKey('shortfallAlertSustained'));
       ctx.timers.clear(timerKey('sourceActuationRetry'));
       tracker.stopAndFlush();
       // Flush the final accepted old-identity sample first, then overwrite only
