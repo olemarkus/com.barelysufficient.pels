@@ -13,10 +13,13 @@ const radiationOk = { ok: true, json: async () => ({ hourly: { time: [], shortwa
 const makeCtx = (overrides: Partial<PvForecastControllerCtx> = {}): PvForecastControllerCtx => ({
   homey: {
     settings: { get: () => undefined, set: () => {} },
-    geolocation: { getLatitude: () => 59.91, getLongitude: () => 10.75 },
   },
   userAgent: 'pels-test',
   getNowMs: () => 0,
+  readCoordinates: async () => ({
+    kind: 'resolved',
+    coordinates: { latitude: 59.91, longitude: 10.75 },
+  }),
   logger: { info: vi.fn(), warn: vi.fn() },
   ...overrides,
 });
@@ -140,7 +143,6 @@ describe('PvForecastController', () => {
     const controller = new PvForecastController(makeCtx({
       homey: {
         settings: { get: (key) => stored.get(key), set: (key, value) => { stored.set(key, value); } },
-        geolocation: {},
       },
       getNowMs: () => now,
     }));
@@ -173,7 +175,7 @@ describe('PvForecastController', () => {
     const seeded = { history: { lastSampleMs: startMs + 40 * HOUR_MS, hourly }, irradianceByHour };
     const info = vi.fn();
     const controller = new PvForecastController(makeCtx({
-      homey: { settings: { get: () => seeded, set: () => {} }, geolocation: {} },
+      homey: { settings: { get: () => seeded, set: () => {} } },
       logger: { info, warn: vi.fn() },
     }));
     await controller.refresh();
@@ -190,7 +192,6 @@ describe('PvForecastController', () => {
     const controller = new PvForecastController(makeCtx({
       homey: {
         settings: { get: () => undefined, set: () => { throw new Error('quota exceeded'); } },
-        geolocation: {},
       },
       getNowMs: () => now,
       logger: { info: vi.fn(), warn },
@@ -224,7 +225,6 @@ describe('PvForecastController', () => {
           },
           set: (_key, value) => { lastWritten = value; },
         },
-        geolocation: {},
       },
       logger: { info, warn: vi.fn() },
     }));
@@ -254,7 +254,6 @@ describe('PvForecastController', () => {
           },
           set: () => {},
         },
-        geolocation: {},
       },
       logger: { info: vi.fn(), warn },
     }));

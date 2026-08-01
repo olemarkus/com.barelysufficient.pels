@@ -8,7 +8,7 @@
 import { OpenMeteoIrradianceProvider } from '../../lib/solar/openMeteoIrradiance';
 import { PvForecastService } from '../../lib/solar/pvForecastService';
 import { createPvForecastStore, type PvForecastStore } from '../pvForecastStateAdapter';
-import { readHubCoordinates } from './createWeatherCollector';
+import { readHubCoordinates, type HubCoordinatesResult } from '../homeyLocationAdapter';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
@@ -28,7 +28,6 @@ const LOAD_GRACE_MS = 15 * 60 * 1000;
 
 export type PvForecastControllerHomey = {
   settings: { get: (key: string) => unknown; set: (key: string, value: unknown) => void };
-  geolocation?: unknown;
 };
 
 /** Minimal structured-log surface (satisfied by the pino logger). */
@@ -42,6 +41,7 @@ export type PvForecastControllerCtx = {
   /** Identifies this app to Open-Meteo (attribution / contact). */
   userAgent: string;
   getNowMs: () => number;
+  readCoordinates: () => Promise<HubCoordinatesResult>;
   logger: PvForecastLogger;
 };
 
@@ -50,6 +50,7 @@ export class PvForecastController {
   private readonly provider: OpenMeteoIrradianceProvider;
   private readonly store: PvForecastStore;
   private readonly getNowMs: () => number;
+  private readonly readCoordinates: () => Promise<HubCoordinatesResult>;
   private readonly logger: PvForecastLogger;
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private dirty = false;
@@ -75,10 +76,10 @@ export class PvForecastController {
 
   constructor(ctx: PvForecastControllerCtx) {
     this.getNowMs = ctx.getNowMs;
+    this.readCoordinates = ctx.readCoordinates;
     this.logger = ctx.logger;
     this.store = createPvForecastStore(ctx.homey);
     this.provider = new OpenMeteoIrradianceProvider({
-      getCoordinates: () => readHubCoordinates(ctx.homey.geolocation),
       userAgent: ctx.userAgent,
     });
     // Capture the boot read once: an absent/implausible read (a transient SDK
@@ -146,7 +147,7 @@ export class PvForecastController {
    *  (a non-solar home never reaches the network); failures are logged, not thrown. */
   async refresh(): Promise<void> {
     if (!this.active || this.stopped) return;
-    const outcome = await this.provider.refresh().catch((error: unknown) => {
+    const outcome = await this.refreshProvider().catch((error: unknown) => {
       this.logger.warn({ event: 'pv_forecast_refresh_failed', err: normalizeError(error) });
       return 'failed' as const;
     });
@@ -156,6 +157,13 @@ export class PvForecastController {
     // Only a real forecast update completes the hook — a failed/location-less
     // refresh changed nothing, so nothing downstream needs recomputing.
     if (outcome === 'ok') this.onRefreshed?.();
+  }
+
+  private async refreshProvider(): Promise<'ok' | 'no_location' | 'failed'> {
+    const location = await this.readCoordinates();
+    if (this.stopped) return 'failed';
+    if (location.kind === 'unavailable') return location.outcome;
+    return this.provider.refresh(location.coordinates);
   }
 
   start(): void {
@@ -233,6 +241,7 @@ export function createPvForecastController(ctx: AppContext): PvForecastControlle
     homey: ctx.homey,
     userAgent: PV_FORECAST_USER_AGENT,
     getNowMs: () => Date.now(),
+    readCoordinates: readHubCoordinates,
     logger: getLogger('solar'),
   });
   controller.start();

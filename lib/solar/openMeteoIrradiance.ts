@@ -57,23 +57,13 @@ export function parseOpenMeteoRadiation(raw: unknown): Record<string, number> {
 }
 
 export type OpenMeteoIrradianceDeps = {
-  getCoordinates: () => GeoCoordinates | null | undefined;
   /** Injected HTTP boundary (the real `fetch`); kept injectable for unit tests. */
   fetchImpl?: typeof fetch;
   /** App identifier for the request (attribution / contact), e.g. "<app-id>/<ver> (<contact>)". */
   userAgent: string;
 };
 
-export type OpenMeteoRefreshOutcome = 'ok' | 'no_location' | 'failed';
-
-/** Coordinates of (0, 0) are the Homey "unset location" sentinel — never fetch them. */
-const hasUsableLocation = (
-  coordinates: GeoCoordinates | null | undefined,
-): coordinates is GeoCoordinates => (
-  coordinates != null // handles both null and undefined (Homey may return either)
-  && Number.isFinite(coordinates.latitude) && Number.isFinite(coordinates.longitude)
-  && !(coordinates.latitude === 0 && coordinates.longitude === 0)
-);
+export type OpenMeteoRefreshOutcome = 'ok' | 'failed';
 
 export class OpenMeteoIrradianceProvider implements PvIrradianceProvider {
   private byHour: Record<string, number> = {};
@@ -81,9 +71,7 @@ export class OpenMeteoIrradianceProvider implements PvIrradianceProvider {
   constructor(private readonly deps: OpenMeteoIrradianceDeps) {}
 
   /** Refetch the radiation forecast. On any failure the prior cache is kept untouched. */
-  async refresh(): Promise<OpenMeteoRefreshOutcome> {
-    const coordinates = this.deps.getCoordinates();
-    if (!hasUsableLocation(coordinates)) return 'no_location';
+  async refresh(coordinates: GeoCoordinates): Promise<OpenMeteoRefreshOutcome> {
     const fetchImpl = this.deps.fetchImpl ?? fetch;
     try {
       const response = await fetchImpl(

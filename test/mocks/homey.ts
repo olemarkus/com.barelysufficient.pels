@@ -443,25 +443,11 @@ export const mockHomeyInstance = {
     getTimezone: () => 'Europe/Oslo',
     getTimezoneOffset: () => -60, // CET in winter
   },
-  // ManagerGeolocation mirror. Defaults to an Oslo-ish location; mutate via
-  // setMockGeolocation in tests that need a specific (or absent) location.
-  geolocation: {
+  // Raw location served by the owner-authenticated Homey Web API route.
+  // Defaults to Oslo-ish coordinates; mutate via setMockGeolocation.
+  location: {
     _latitude: 59.91,
     _longitude: 10.75,
-    getLatitude(): number {
-      return mockHomeyInstance.geolocation._latitude;
-    },
-    getLongitude(): number {
-      return mockHomeyInstance.geolocation._longitude;
-    },
-    getAccuracy: () => 10,
-    getMode: () => 'manual',
-    on() {
-      return mockHomeyInstance.geolocation;
-    },
-    off() {
-      return mockHomeyInstance.geolocation;
-    },
   },
   images: {
     createImage: async () => ({
@@ -533,6 +519,15 @@ export const mockHomeyInstance = {
       }
       if (path === 'manager/energy/live') {
         return { items: [] };
+      }
+      if (path === 'manager/geolocation/option/location') {
+        return {
+          value: {
+            latitude: mockHomeyInstance.location._latitude,
+            longitude: mockHomeyInstance.location._longitude,
+            accuracy: 10,
+          },
+        };
       }
       if (path === 'manager/zones/zone') {
         const zones = mockHomeyInstance.zones._zones;
@@ -650,16 +645,15 @@ export const mockHomeyInstance = {
 };
 
 /**
- * Configure (or clear) the mock hub location for the weather MET fetcher. Pass
- * `null`/`undefined` for either coordinate to clear it (normalized to NaN), which
- * drives the fetcher's `no_location` fallback the same way an unset hub does.
+ * Configure (or clear) the location returned by the mock Homey Web API. Pass
+ * `null`/`undefined` for either coordinate to clear it (normalized to NaN).
  */
 export const setMockGeolocation = (
   latitude: number | null | undefined,
   longitude: number | null | undefined,
 ): void => {
-  mockHomeyInstance.geolocation._latitude = latitude ?? Number.NaN;
-  mockHomeyInstance.geolocation._longitude = longitude ?? Number.NaN;
+  mockHomeyInstance.location._latitude = latitude ?? Number.NaN;
+  mockHomeyInstance.location._longitude = longitude ?? Number.NaN;
 };
 
 /**
