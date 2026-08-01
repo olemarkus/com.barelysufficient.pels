@@ -754,7 +754,8 @@ section above):
 The Settings → Multiple meters surface manages parts of the home with their
 own electricity meter. Canonical labels (source:
 `packages/shared-domain/src/homesManagementCopy.ts`, plus
-`homeAreaConfigRulesCopy.ts` for the save-refusal lines; the nav-card/panel
+`homeAreaConfigRulesCopy.ts` for the save-refusal lines and the home names
+themselves in the `homeNames.ts` leaf beside them; the nav-card/panel
 chrome lives in the static settings markup):
 
 | Concept | Label |
@@ -895,7 +896,7 @@ needed` trigger carries a `Home` tag naming the part of the home that fired it:
 
 The tag is the home's *name*, not its id, so a Flow names a home the way the
 owner does. A saved name is untrusted, so the blank case has ONE answer for
-every surface: `resolveHomeAreaDisplayName` in `homesManagementCopy.ts`, called
+every surface: `resolveHomeAreaDisplayName` in `homeNames.ts`, called
 by both the Multiple meters list and the runtime that fills the tag. Constants:
 `HOMES_MAIN_HOME_NAME` and `HOMES_UNNAMED_AREA_NAME`, same module.
 

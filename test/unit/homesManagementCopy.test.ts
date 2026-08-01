@@ -4,12 +4,14 @@
 // token, so a blank saved name cannot render two different ways.
 import { describe, expect, it } from 'vitest';
 import {
-  HOMES_MAIN_HOME_NAME,
-  HOMES_UNNAMED_AREA_NAME,
   composeDeleteConfirmBody,
   composeDraftErrorLine,
-  resolveHomeAreaDisplayName,
 } from '../../packages/shared-domain/src/homesManagementCopy';
+import {
+  HOMES_MAIN_HOME_NAME,
+  HOMES_UNNAMED_AREA_NAME,
+  resolveHomeAreaDisplayName,
+} from '../../packages/shared-domain/src/homeNames';
 import {
   composeHomeLimitsInactiveNotice,
   composeHomeLimitsSimulationNotice,

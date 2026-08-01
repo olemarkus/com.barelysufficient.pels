@@ -8,11 +8,11 @@
  */
 import { normalizeError } from '../../lib/utils/errorUtils';
 // Re-exported, not re-implemented: the blank-name rule belongs in shared-domain
-// next to its constant so the settings UI answers it identically (it cannot
+// next to the home names so the settings UI answers it identically (it cannot
 // import `setup/**`). It travels through this module only because
 // `createHomeCapacityBundle.ts` sits at its 20/20 `import-x/max-dependencies`
 // ceiling and already depends on this one.
-export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homesManagementCopy';
+export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homeNames';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeConfig } from '../../lib/home/homeConfig';
 import type { HomeId } from '../../lib/utils/settingsKeys';

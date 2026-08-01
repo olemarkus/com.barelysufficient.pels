@@ -24,7 +24,7 @@ export const HOME_SCOPE_BAR_LABEL = 'Showing';
  * for the Limits switcher, the meter-clash refusal and the `capacity_shortfall`
  * Flow token), so the scope bar cannot drift to a second spelling of one home.
  */
-export { HOMES_MAIN_HOME_NAME as MAIN_HOME_NAME } from './homesManagementCopy';
+export { HOMES_MAIN_HOME_NAME as MAIN_HOME_NAME } from './homeNames';
 
 /**
  * Appends the home to a title that would otherwise read as whole-home, e.g.
