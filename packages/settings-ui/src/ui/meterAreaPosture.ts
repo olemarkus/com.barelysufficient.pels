@@ -118,13 +118,39 @@ export type ActiveMeterAreasRead = {
 const UNAVAILABLE_ROSTER: ActiveMeterAreasRead = { status: 'unavailable' };
 
 /**
+ * The roster entries, or `null` when the saved list is unclassifiable
+ * WHOLESALE: one implausible entry, a duplicate area id, or one meter routed
+ * into two areas (the runtime's `hasUniqueSubHomeMeters`). Split out of
+ * `resolveActiveMeterAreas` to keep that classifier under its complexity
+ * budget; it carries no policy of its own.
+ */
+const resolveRosterEntries = (subHomes: readonly unknown[]): ActiveMeterArea[] | null => {
+  const resolved: ActiveMeterArea[] = [];
+  const seenHomeIds = new Set<string>();
+  const assignedMeterIds = new Set<string>();
+  for (const entry of subHomes) {
+    const area = asPlausibleAreaEntry(entry);
+    if (area === null || seenHomeIds.has(area.homeId)) return null;
+    seenHomeIds.add(area.homeId);
+    if (area.meterDeviceId !== null) {
+      if (assignedMeterIds.has(area.meterDeviceId)) return null;
+      assignedMeterIds.add(area.meterDeviceId);
+    }
+    resolved.push({ homeId: area.homeId, name: area.name });
+  }
+  return resolved;
+};
+
+/**
  * The GA-activated meter areas in the saved roster. A held pre-GA config
  * (plausible, but no `activationVersion`) RESOLVES to none: its devices still
  * belong to the Main home, so its per-area flags must not enter the
- * simulation posture. An absent config (never written) resolves to none the
- * same way. Suspect state is `unavailable` instead — one implausible entry,
- * a duplicate area id, or a meter shared across areas marks the roster
- * unclassifiable WHOLESALE, matching the runtime's
+ * simulation posture. A config absent with NO written-before marker resolves
+ * to none the same way — a fresh install that never had a roster. Suspect
+ * state is `unavailable` instead — a marker-backed absence (written before,
+ * but the blob read back missing: the runtime store's own `'suspect'`), one
+ * implausible entry, a duplicate area id, or a meter shared across areas
+ * marks the roster unclassifiable WHOLESALE, matching the runtime's
  * `isPlausibleHomesConfigBlob` (which enforces `hasUniqueSubHomeMeters` too):
  * a partially corrupt roster must never resolve to a quietly smaller one that
  * drops an area from the simulation posture, nor wipe the last-good snapshot
@@ -132,25 +158,22 @@ const UNAVAILABLE_ROSTER: ActiveMeterAreasRead = { status: 'unavailable' };
  */
 export const resolveActiveMeterAreas = (read: HomesConfigScopeRead): ActiveMeterAreasRead => {
   if (read.status === 'unavailable') return UNAVAILABLE_ROSTER;
-  const { config } = read;
-  if (config === null || config === undefined) return { status: 'resolved', areas: [] };
+  const { config, initializedMarker } = read;
+  if (config === null || config === undefined) {
+    // A set marker contradicts the absent blob — the store WAS written, so a
+    // transient fulfilled miss (or an unset event racing the read) is the only
+    // way to see this. `resolveHasMeterAreas` holds the same line for the scope
+    // claim; resolving an empty roster here would wipe the caller's snapshot
+    // and drop the one banner naming a still-simulating area.
+    const markerAbsent = initializedMarker === null || initializedMarker === undefined;
+    return markerAbsent ? { status: 'resolved', areas: [] } : UNAVAILABLE_ROSTER;
+  }
   if (typeof config !== 'object' || Array.isArray(config)) return UNAVAILABLE_ROSTER;
   const { activationVersion, subHomes } = config as { activationVersion?: unknown; subHomes?: unknown };
   if (activationVersion !== undefined && activationVersion !== 1) return UNAVAILABLE_ROSTER;
   if (!Array.isArray(subHomes)) return UNAVAILABLE_ROSTER;
-  const resolved: ActiveMeterArea[] = [];
-  const assignedMeterIds = new Set<string>();
-  for (const entry of subHomes) {
-    const area = asPlausibleAreaEntry(entry);
-    if (area === null || resolved.some((prior) => prior.homeId === area.homeId)) {
-      return UNAVAILABLE_ROSTER;
-    }
-    if (area.meterDeviceId !== null) {
-      if (assignedMeterIds.has(area.meterDeviceId)) return UNAVAILABLE_ROSTER;
-      assignedMeterIds.add(area.meterDeviceId);
-    }
-    resolved.push({ homeId: area.homeId, name: area.name });
-  }
+  const resolved = resolveRosterEntries(subHomes);
+  if (resolved === null) return UNAVAILABLE_ROSTER;
   return { status: 'resolved', areas: activationVersion === 1 ? resolved : [] };
 };
 

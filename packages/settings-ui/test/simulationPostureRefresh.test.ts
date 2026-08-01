@@ -283,10 +283,27 @@ describe('meter-area simulation posture refresh', () => {
     ]);
   });
 
-  it('drops a removed roster from the posture on a homes_config unset', async () => {
+  it('keeps the snapshot when a homes_config unset still carries the marker', async () => {
     // The unset route has no capacity-panel loader behind it — the posture
-    // refresh is its only path to narrowing the stale snapshot.
+    // refresh is its only path to re-reading the roster. But a SET
+    // written-before marker contradicts the missing blob (the runtime store's
+    // own `'suspect'`), so this must not read as a vouched empty roster and
+    // wipe the entry naming the simulating area.
     setup({ [HOMES_CONFIG_INITIALIZED]: true });
+    state.meterAreaSimulation = [{ homeId: AREA_ID, name: 'Rental unit', simulating: true }];
+
+    createSettingsUnsetHandler()(HOMES_CONFIG);
+    await flushAsync();
+
+    expect(state.meterAreaSimulation).toEqual([
+      { homeId: AREA_ID, name: 'Rental unit', simulating: true },
+    ]);
+  });
+
+  it('drops a removed roster from the posture when the marker is gone too', async () => {
+    // Blob and marker both absent is the vouched never-written state, so the
+    // refresh legitimately narrows the stale snapshot to no areas.
+    setup({});
     state.meterAreaSimulation = [{ homeId: AREA_ID, name: 'Rental unit', simulating: true }];
 
     createSettingsUnsetHandler()(HOMES_CONFIG);
