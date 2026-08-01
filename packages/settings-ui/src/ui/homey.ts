@@ -199,6 +199,33 @@ const isApiCacheWriteStillValid = (uri: string, generationAtFetch: number): bool
   (apiCachePathGenerations.get(apiCachePathOf(uri)) ?? 0) === generationAtFetch
 );
 
+/**
+ * Whether a response is a scoped read the runtime could NOT serve
+ * (`homeScope: { state: 'unavailable' }`).
+ *
+ * Such a payload is a refusal, not data: the runtime returns it while a home's
+ * membership is still provisional, while its bundle is unwired, or when a
+ * settings read behind the payload transiently failed. Every one of those
+ * clears on its own without necessarily bumping this path's invalidation
+ * generation — a home committing its first status writes only
+ * `pels_status:<id>`, which `settingsChangeRouter` deliberately excludes from
+ * the DEVICES sweep — so caching the refusal would pin an empty, badge-less
+ * sub-home view for the rest of the WebView session. Skipping the write costs
+ * one refetch per read while unavailable and self-heals the moment the runtime
+ * can answer; the generation gate below stays untouched and still applies to
+ * every resolved payload.
+ *
+ * Shape-checked rather than typed: `getApiReadModel` is generic over the three
+ * home-scopable read models, and only a scoped response carries `homeScope` at
+ * all (a whole-home payload omits it, so it can never match here).
+ */
+const isUnavailableScopedPayload = (value: unknown): boolean => {
+  if (typeof value !== 'object' || value === null) return false;
+  const scope = (value as { homeScope?: unknown }).homeScope;
+  if (typeof scope !== 'object' || scope === null) return false;
+  return (scope as { state?: unknown }).state === 'unavailable';
+};
+
 export const getHomeyTimezone = () => {
   const clockTz = homeyClient?.clock?.getTimezone?.();
   if (typeof clockTz === 'string' && clockTz.trim()) return clockTz;
@@ -353,7 +380,8 @@ export const getApiReadModel = async <T>(uri: string): Promise<T> => {
   // The caller still gets the response; it just must not OUTLIVE an
   // invalidation that swept this path while the GET was in flight — the next
   // read refetches instead of resolving a pre-sweep payload from the cache.
-  if (isApiCacheWriteStillValid(uri, generationAtFetch)) {
+  // A scoped refusal is never cached at all (see `isUnavailableScopedPayload`).
+  if (!isUnavailableScopedPayload(value) && isApiCacheWriteStillValid(uri, generationAtFetch)) {
     apiCache.set(uri, value);
   }
   return value;
