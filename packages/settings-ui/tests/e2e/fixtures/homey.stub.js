@@ -1593,8 +1593,13 @@
       tracker: settings[`power_tracker_state:${scope.homeId}`] ?? null,
       status: settings[`pels_status:${scope.homeId}`] ?? null,
       heartbeat: null,
-      hasManagedSolarDevice: devicesForHome(scope.homeId)
-        .some((device) => device.deviceClass === 'solarpanel'),
+      // Same source gate as `buildPowerPayload` above, because the scoped
+      // producer (`powerPayloadForHome`) applies it too: `readPowerSource()`
+      // reads the GLOBAL `power_source` key, and only `homey_energy` yields
+      // the flag. Ungated, a Flow-source scenario with a `solarpanel` member
+      // would let a scoped Usage spec validate a Solar card production hides.
+      hasManagedSolarDevice: settings.power_source === 'homey_energy'
+        && devicesForHome(scope.homeId).some((device) => device.deviceClass === 'solarpanel'),
       homeScope: { state: 'resolved', homeId: scope.homeId },
     };
   };
