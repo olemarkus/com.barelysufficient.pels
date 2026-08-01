@@ -244,6 +244,60 @@ export class PlanEngineState {
 
   lastShedPlanMeasurementTs: number | null = null;
 
+  /**
+   * Whole-home watts the last shed plan was decided on, latched beside
+   * `lastShedPlanMeasurementTs`. A repeat of this exact value on a LATER sample
+   * is a re-delivery of the reading we already acted on, not evidence the shed
+   * achieved nothing, so `resolveSameMeasurementSheddingDecision` refuses to
+   * deepen on it for a short hold. In-memory like its sibling: after a restart
+   * the latch is absent and the hold is simply inert.
+   */
+  lastShedPlanPowerW: number | null = null;
+
+  /**
+   * The shedding pass's OWN selection from that same plan — the decision the
+   * latched reading produced, re-asserted while the hold is active. Deliberately
+   * NOT `lastPlannedShedIds`: that is the FINAL plan's shed set, which
+   * `planBuilderSurplus` has already merged the solar dump-load hold and the
+   * decoration seam's deferred force-sheds into. Re-asserting from it would hand a solar-held dump
+   * load a capacity shed reason, which mislabels it for the user and makes
+   * `isAnyOtherDeviceLimited` clamp unrelated stepped loads. Copied at stamp
+   * time because the pass's `shedSet` is mutated downstream by those same merges.
+   */
+  lastShedPlanShedIds: Set<string> = new Set<string>();
+
+  /**
+   * When that shed was decided — the hold window's own anchor. Deliberately NOT
+   * `lastOvershootMitigationMs`: `PlanBuilder` runs the shedding pass BEFORE
+   * `OvershootTracker.updateOvershootState`, whose overshoot-ENTRY branch nulls
+   * that field, so the very first shed of an incident would lose its anchor in
+   * the same build and the hold would never engage on the cycle that needs it
+   * most. Cleared only when the overshoot ends (`clearShedPlanLatch`).
+   */
+  lastShedPlanAtMs: number | null = null;
+
+  /**
+   * The deficit that shed was sized against. A repeated reading only means "no
+   * new evidence" while the question is unchanged; if the soft limit tightens
+   * (hour rollover, daily-budget recompute) the SAME watts now demand a deeper
+   * shed, and that is real new information the reading itself cannot carry. The
+   * hold releases when the deficit grows past this.
+   */
+  lastShedPlanNeededKw: number | null = null;
+
+  /**
+   * Drop the shed-plan latch when the overshoot it belongs to is over. The
+   * latched reading described a decision taken under pressure that no longer
+   * exists; carrying it into the next incident could hold that incident's first
+   * shed if the meter happens to report the same watts again.
+   */
+  clearShedPlanLatch(): void {
+    this.lastShedPlanPowerW = null;
+    this.lastShedPlanShedIds = new Set<string>();
+    this.lastShedPlanAtMs = null;
+    this.lastShedPlanNeededKw = null;
+  }
+
   swapByDevice: Record<string, SwapEntry> = {};
 
   inShortfall: boolean = false;

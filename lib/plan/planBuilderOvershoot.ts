@@ -123,6 +123,11 @@ export class OvershootTracker {
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
+      // The unchanged-reading hold's latch belongs to the incident that just
+      // ended. Cleared HERE and not on entry: entry runs after this build's
+      // shedding pass, so clearing it there would strip the anchor off the very
+      // first shed of every incident.
+      this.state.clearShedPlanLatch();
       this.deps.structuredLog?.info({
         event: 'overshoot_cleared',
         reasonCode: 'overshoot_cleared',

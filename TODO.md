@@ -974,6 +974,33 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **A meter that jitters *and* lags still reads as evidence that a shed achieved nothing.**
+      `resolveSameMeasurementSheddingDecision` now holds a shed from deepening while the whole-home
+      reading is byte-identical to the one the last shed was decided on
+      (`UNCHANGED_READING_SHED_HOLD_MS`). Exact equality is deliberate — it is the signature of a
+      re-delivered aggregate — but it means a meter that moves a watt or two while still not
+      reflecting the shed (4351 → 4348 with the ~1.08 kW relief unaccounted) slips through and the
+      planner cuts deeper than the real deficit needs. The complete fix compares the realised drop
+      against the relief actually credited for the devices shed last cycle, and only escalates when
+      the drop falls short — bigger than this hold because it needs per-device credited relief
+      carried across cycles. Field case: 2026-08-01, hard cap 3.0 kW, total 4.351 kW; #4 shed at
+      11:03:44 credited ≥1.81 kW but realised ~1.08 kW; the 11:03:54 repeat then took both #2 and
+      the user's #1. Persona: the owner who ranked their priority list and expects #1 to survive;
+      hypothesis: "PELS ignores my priorities" when it is really over-cutting on a stale total. [P2]
+
+- [ ] **The unchanged-reading shed hold freezes shed membership, not shed depth, so a stepped device
+      still deepens one notch per held cycle.** `holdSheddingAtLastDecision` re-asserts the decided
+      devices into `shedSet`, but materialization recomputes a stepped device's target from its
+      CURRENT confirmed step (`planSteppedShedResolution.ts`), so membership means "one step below
+      wherever you are now" every cycle. An EV charger on `set_step` shed behaviour at 16 A therefore
+      walks 10 A → 6 A → lowest active step across a 30 s hold, on readings the module itself has
+      declared to be non-evidence. Bounded (it leaves the candidate set at the lowest active step)
+      and not a regression versus the pre-hold behaviour, which stepped it down on those same cycles
+      — but it means the incident class is only closed for binary devices, and priority-ranked
+      stepped loads are exactly what users notice. Fix needs the hold to carry the decided target
+      step, not just membership. Persona: the owner who ranked an EV charger below their heating.
+      Source: `pels-runtime-reality` on the unchanged-reading-hold PR. [P2]
+
 - [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
       car unobserved rather than mis-observed, so they cap what the probe can measure without
       corrupting anything. (a) *Initially-unavailable cars are never retained.* A class `car` device

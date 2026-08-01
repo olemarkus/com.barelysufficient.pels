@@ -3309,6 +3309,244 @@ describe('buildSheddingPlan', () => {
     expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
+  // Field incident 2026-08-01: after the lowest-priority device was shed, the
+  // next 10s poll re-delivered the pre-shed watts unchanged, the planner read
+  // that as "the shed achieved nothing", and deepened into the user's #1 device
+  // for a deficit the first shed had already covered.
+  describe('unchanged whole-home reading after a shed', () => {
+    const UNCHANGED_READING_W = 4_351;
+
+    const incidentDevices = (options: { vvbShed?: boolean } = {}) => [
+      buildDevice({
+        id: 'bad-2etg',
+        name: 'Bad 2. etg',
+        measuredPowerKw: 0.53,
+        binaryControl: { on: true },
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'kontor-vk',
+        name: 'Kontoret VK',
+        measuredPowerKw: 1.3,
+        binaryControl: { on: true },
+        controllable: true,
+      }),
+      // On but idle (over target), so it draws nothing and offers no relief.
+      buildDevice({
+        id: 'entre',
+        name: 'Entre',
+        measuredPowerKw: 0,
+        binaryControl: { on: true },
+        controllable: true,
+      }),
+      // Unmetered water heater: relief is credited from its configured demand.
+      buildDevice({
+        id: 'vvb',
+        name: 'Kontoret VVB',
+        expectedPowerKw: 2,
+        ...(options.vvbShed ? { measuredPowerKw: 0 } : {}),
+        binaryControl: { on: options.vvbShed !== true },
+        controllable: true,
+      }),
+    ];
+
+    const incidentPriorities: Record<string, number> = {
+      'bad-2etg': 1,
+      'kontor-vk': 2,
+      entre: 3,
+      vvb: 4,
+    };
+
+    const incidentContext = (params: { devices: PlanInputDevice[]; total: number }) => buildContext({
+      devices: params.devices,
+      total: params.total,
+      softLimit: 2.538,
+      capacitySoftLimit: 2.538,
+      headroomRaw: 2.538 - params.total,
+      headroom: 2.538 - params.total,
+      softLimitSource: 'capacity',
+    });
+
+    const incidentDeps = (): Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> => ({
+      capacityGuard: {
+        isSheddingActive: vi.fn().mockReturnValue(true),
+        setSheddingActive: vi.fn().mockResolvedValue(undefined),
+        checkShortfall: vi.fn().mockResolvedValue(undefined),
+        isInShortfall: vi.fn().mockReturnValue(false),
+        getShortfallThreshold: vi.fn().mockReturnValue(3.073),
+        getRestoreMargin: vi.fn().mockReturnValue(0.2),
+        getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
+      } as unknown as CapacityGuard,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getPriorityForDevice: (deviceId: string) => incidentPriorities[deviceId] ?? 100,
+      log: vi.fn(),
+      debugStructured: vi.fn(),
+    });
+
+    // Cycle 1 of the incident: the sub-cap overshoot sheds the lowest-priority
+    // device and nothing else. Returns the engine state carrying that decision.
+    const shedLowestPriorityFirst = async (
+      deps: Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'>,
+    ) => {
+      const state = createPlanEngineState();
+      state.overshootStartedMs = Date.now();
+      const result = await buildSheddingPlan(
+        incidentContext({ devices: incidentDevices(), total: 4.351 }),
+        state,
+        {
+          ...deps,
+          powerTracker: { lastTimestamp: 1_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+      expect([...result.shedSet]).toEqual(['vvb']);
+      // The pass latches its own selection alongside the reading it acted on.
+      expect([...(result.updates.lastShedPlanShedIds ?? [])]).toEqual(['vvb']);
+      Object.assign(state, result.updates);
+      return state;
+    };
+
+    it('does not deepen into a higher-priority device while the reading repeats', async () => {
+      const deps = incidentDeps();
+      const state = await shedLowestPriorityFirst(deps);
+
+      vi.setSystemTime(new Date(Date.now() + 10_000));
+
+      // The water heater is confirmed off; only the two metered devices are left
+      // to give, and together they are exactly the deficit the stale reading
+      // still claims — so without the hold both go, including the user's #1.
+      const repeatResult = await buildSheddingPlan(
+        incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
+        state,
+        {
+          ...deps,
+          // New sample, byte-identical watts: the meter has not caught up yet.
+          powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+
+      expect(repeatResult.shedSet.size).toBe(0);
+      expect(repeatResult.shedSet.has('bad-2etg')).toBe(false);
+      // Nothing was mitigated, so the hold window must keep running from the
+      // real shed rather than restarting on every held cycle.
+      expect(repeatResult.updates).toEqual({});
+      expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'plan_shed_held_unchanged_reading',
+        unchangedPowerW: UNCHANGED_READING_W,
+      }));
+    });
+
+    it('re-asserts the decided shed instead of dropping it while the reading repeats', async () => {
+      const deps = incidentDeps();
+      const state = await shedLowestPriorityFirst(deps);
+
+      vi.setSystemTime(new Date(Date.now() + 10_000));
+
+      // The decided device is still on — dry-run, a failed write, or someone
+      // switching it back. The hold must freeze that decision, not drop it.
+      const repeatResult = await buildSheddingPlan(
+        incidentContext({ devices: incidentDevices(), total: 4.351 }),
+        state,
+        {
+          ...deps,
+          powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+
+      expect([...repeatResult.shedSet]).toEqual(['vvb']);
+    });
+
+    it('re-asserts only its own selection, never a hold merged in after the shedding pass', async () => {
+      const deps = incidentDeps();
+      const state = await shedLowestPriorityFirst(deps);
+      // The FINAL plan's shed set also carries holds merged in after this module
+      // ran — a solar-surplus dump load, a deferred force-shed. Re-asserting from
+      // that set would hand them a capacity shed reason, which mislabels them and
+      // makes `isAnyOtherDeviceLimited` clamp unrelated stepped loads.
+      state.lastPlannedShedIds = new Set(['vvb', 'kontor-vk']);
+
+      vi.setSystemTime(new Date(Date.now() + 10_000));
+
+      const repeatResult = await buildSheddingPlan(
+        incidentContext({ devices: incidentDevices(), total: 4.351 }),
+        state,
+        {
+          ...deps,
+          powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+
+      expect([...repeatResult.shedSet]).toEqual(['vvb']);
+      expect(repeatResult.shedReasons.has('kontor-vk')).toBe(false);
+    });
+
+    it('sheds only what the corrected reading needs, sparing the top-priority device', async () => {
+      const deps = incidentDeps();
+      const state = await shedLowestPriorityFirst(deps);
+
+      vi.setSystemTime(new Date(Date.now() + 20_000));
+
+      // The meter has now caught up with the shed water heater (~1.08kW).
+      const correctedResult = await buildSheddingPlan(
+        incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 3.271 }),
+        state,
+        {
+          ...deps,
+          powerTracker: { lastTimestamp: 3_000, lastPowerW: 3_271 } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+
+      expect([...correctedResult.shedSet]).toEqual(['kontor-vk']);
+      expect(correctedResult.shedSet.has('bad-2etg')).toBe(false);
+    });
+
+    it('deepens once the reading has stayed unchanged past the hold', async () => {
+      const deps = incidentDeps();
+      const state = await shedLowestPriorityFirst(deps);
+      const shedAtMs = Date.now();
+
+      // Poll through the hold first: if a held cycle restarted the window, the
+      // release below would never come.
+      const pollWithUnchangedReading = async (atMs: number, lastTimestamp: number) => {
+        vi.setSystemTime(new Date(shedAtMs + atMs));
+        const heldResult = await buildSheddingPlan(
+          incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
+          state,
+          {
+            ...deps,
+            powerTracker: { lastTimestamp, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
+            pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          },
+        );
+        expect(heldResult.shedSet.size).toBe(0);
+        Object.assign(state, heldResult.updates);
+      };
+      await pollWithUnchangedReading(10_000, 2_000);
+      await pollWithUnchangedReading(20_000, 3_000);
+
+      vi.setSystemTime(new Date(shedAtMs + 30_000));
+
+      // The water heater is confirmed off and the reading still has not moved,
+      // so the shed really did achieve nothing and deepening is warranted.
+      const sustainedResult = await buildSheddingPlan(
+        incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
+        state,
+        {
+          ...deps,
+          powerTracker: { lastTimestamp: 4_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+
+      expect(sustainedResult.shedSet.has('kontor-vk')).toBe(true);
+      expect(sustainedResult.shedSet.has('bad-2etg')).toBe(true);
+    });
+  });
+
   it('does not escalate same-sample overshoot before the escalation interval elapses', async () => {
     const state = createPlanEngineState();
     state.overshootStartedMs = Date.now() - 10_000;
