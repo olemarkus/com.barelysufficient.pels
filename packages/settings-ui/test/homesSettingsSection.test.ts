@@ -6,6 +6,7 @@ import {
 } from '../src/ui/views/HomesSettingsSection.tsx';
 import {
   composeDeleteConfirmBody,
+  composeHomesMainMeterConflictNotice,
   HOMES_ADD_BUTTON,
   HOMES_CONFIG_DEGRADED,
   HOMES_EMPTY_EXPLAINER,
@@ -36,6 +37,7 @@ const baseProps = (): HomesSettingsSectionProps => ({
   mutationsLocked: false,
   showMainMeterNotice: false,
   showFlowSourceNotice: false,
+  mainMeterConflictAreaName: null,
   editor: null,
   confirmingDeleteHomeId: null,
   deleteBusy: false,
@@ -119,6 +121,48 @@ describe('flow power-source notice', () => {
     const surface = mountWith({ ...baseProps(), showFlowSourceNotice: false });
     expect(surface.querySelector('#homes-flow-source-notice')).toBeNull();
     expect(surface.textContent).not.toContain(HOMES_FLOW_SOURCE_NOTICE);
+  });
+});
+
+// While Main's whole-home meter is also an area's meter, the runtime fences
+// every Main-home write. Nothing else on any surface says so, so this notice is
+// the owner's only way to learn their Main home stopped being limited.
+describe('main meter ownership conflict notice', () => {
+  it('names the area holding the meter and links to the control that fixes it', () => {
+    const surface = mountWith({
+      ...baseProps(),
+      homes: [rentalRow],
+      mainMeterConflictAreaName: 'Rental unit',
+    });
+    expect(surface.querySelector('#homes-main-meter-conflict')).not.toBeNull();
+    expect(surface.textContent).toContain(composeHomesMainMeterConflictNotice('Rental unit'));
+    expect(surface.textContent).toContain(HOMES_MAIN_METER_NOTICE_LINK);
+  });
+
+  it('warns in the editor too, so the clash is not hidden behind an open form', () => {
+    const surface = mountWith({
+      ...baseProps(),
+      editor: baseEditor(),
+      mainMeterConflictAreaName: 'Rental unit',
+    });
+    expect(surface.querySelector('#homes-main-meter-conflict')).not.toBeNull();
+  });
+
+  it('stays silent when there is no clash', () => {
+    const surface = mountWith({ ...baseProps(), homes: [rentalRow] });
+    expect(surface.querySelector('#homes-main-meter-conflict')).toBeNull();
+  });
+
+  it('renders a blank persisted name as the canonical stand-in, never an empty quote', () => {
+    // Upgrade-only conflicts can coexist with legacy blank names; the shared
+    // blank-name rule must apply here like every other area-name surface.
+    const surface = mountWith({
+      ...baseProps(),
+      homes: [rentalRow],
+      mainMeterConflictAreaName: '   ',
+    });
+    expect(surface.textContent).toContain('“Meter area”');
+    expect(surface.textContent).not.toContain('“”');
   });
 });
 

@@ -5,6 +5,7 @@ import type {
   SettingsUiHomesSaveResponse,
 } from '../packages/contracts/src/settingsUiHomes';
 import {
+  findMainMeterCollision,
   generateHomeId,
   isValidSubHomeId,
   resolveExplicitMainMeterDeviceId,
@@ -12,6 +13,8 @@ import {
   type SubHomeConfig,
 } from '../lib/home/homeConfig';
 import { normalizeHomeAreaName } from '../packages/shared-domain/src/homeAreaConfigRules';
+import { readMainMeterSelection } from './mainMeterSettings';
+import { readConfiguredPowerSource } from './powerSourceSettings';
 import { createHomesStore } from './homeRegistryAdapter';
 import type { HomeMembershipDiagnostics, HomeMembershipService } from './homeMembership';
 import {
@@ -79,6 +82,34 @@ const readMultiHomeActivation = (homey: Homey.App['homey']): MultiHomeActivation
   return { state: 'resolved', runtimeActive: diagnostics.runtimeActive };
 };
 
+/**
+ * Display-side mirror of the runtime's Main-meter ownership check (the
+ * configured-selection clause of `homeMainMeterAuthority`). Reports a clash
+ * ONLY in the states that actually fence Main-home actuation, so the UI never
+ * warns about a selection that is lying dormant: the Homey Energy source (a
+ * Flow reading carries no meter identity), a resolved selection, and a live
+ * area roster. A degraded snapshot claims no clash either — its `subHomes` is
+ * a retained cache of an unknown persisted truth, and naming an obsolete
+ * area's collision would be a false alarm — as does an unavailable settings
+ * read: an unprovable conflict must not become an assertion. Both reads are
+ * the same pure classifiers the save gate in `homeMeterOwnership.ts` uses
+ * (not the authority owner's side-effecting wrappers), so composing the
+ * payload latches nothing.
+ */
+const resolveMainMeterConflictAreaName = (
+  homey: Homey.App['homey'],
+  subHomes: readonly SubHomeConfig[],
+  runtimeActive: boolean,
+  configDegraded: boolean,
+): string | null => {
+  if (configDegraded || !runtimeActive || subHomes.length === 0) return null;
+  const powerSource = readConfiguredPowerSource(homey.settings);
+  if (powerSource.state !== 'resolved' || powerSource.value !== 'homey_energy') return null;
+  const selection = readMainMeterSelection(homey.settings);
+  if (selection.state === 'unavailable') return null;
+  return findMainMeterCollision(selection.meterDeviceId, subHomes)?.name ?? null;
+};
+
 // Read-only multi-home view: the membership cache's diagnostics composed into
 // the contracts mirror (`SettingsUiHomesPayload`). Before `initHomeMembership`
 // runs (boot window) the payload is the honest empty single-home shape. Writes
@@ -93,6 +124,9 @@ export const getSettingsUiHomesPayload = ({ homey }: HomesApiContext): SettingsU
       // compose a whole-value homes_config write from this view.
       homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, runtimeActive: false,
       configDegraded: true,
+      // Nothing can vouch for the config in the boot window, so claim no clash
+      // rather than assert one from an empty view.
+      mainMeterConflictAreaName: null,
     };
   }
   // Uniform copy discipline: shallow-copy ALL collection members so the
@@ -105,6 +139,12 @@ export const getSettingsUiHomesPayload = ({ homey }: HomesApiContext): SettingsU
     hasSubHomes: diagnostics.hasSubHomes,
     runtimeActive: diagnostics.runtimeActive,
     configDegraded: isHomesConfigDegraded(diagnostics),
+    mainMeterConflictAreaName: resolveMainMeterConflictAreaName(
+      homey,
+      diagnostics.subHomes,
+      diagnostics.runtimeActive,
+      isHomesConfigDegraded(diagnostics),
+    ),
   };
 };
 

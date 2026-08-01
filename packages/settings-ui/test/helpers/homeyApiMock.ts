@@ -362,6 +362,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
       hasSubHomes: false,
       runtimeActive: true,
       configDegraded: false,
+      mainMeterConflictAreaName: null,
     }
   ),
   [buildRouteKey('POST', SETTINGS_UI_HOMES_SAVE_PATH)]: (homey) => async ({ body }) => {

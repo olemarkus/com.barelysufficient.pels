@@ -758,6 +758,7 @@ describe('ui_homes payload', () => {
       hasSubHomes: true,
       runtimeActive: true,
       configDegraded: false,
+      mainMeterConflictAreaName: null,
     };
     expect(getSettingsUiHomesPayload({ homey: homeyWithApp })).toEqual(expectedPayload);
     // And the api.ts endpoint serves the same composition.
@@ -777,7 +778,50 @@ describe('ui_homes payload', () => {
       // Nothing can vouch for the persisted config in the boot window: the
       // settings UI must refuse whole-value homes_config writes.
       configDegraded: true,
+      mainMeterConflictAreaName: null,
     });
+  });
+
+  // One meter may not own two homes: the runtime fences EVERY Main-home write
+  // while it does, and no other surface reports that. 2.17 had no cross-store
+  // guard, so an upgraded config can arrive in exactly this state.
+  it('reports the area holding Main\u2019s meter so the silent Main-home fence is visible', () => {
+    createHomesStore(homeyLike).write({
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'shared_meter' }],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'shared_meter');
+    const service = makeStaticService({ getZoneTree: () => ZONES, devices: [] });
+    service.recompute();
+    const homeyWithApp = {
+      app: { homeMembership: service }, settings: mockHomeyInstance.settings,
+    } as unknown as Homey.App['homey'];
+
+    expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).mainMeterConflictAreaName)
+      .toBe('Upstairs');
+
+    // Main on its own meter is the healthy configuration.
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'main_meter');
+    expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).mainMeterConflictAreaName)
+      .toBeNull();
+
+    // The Flow source carries no meter identity, so the selection lies dormant
+    // and the runtime does not fence: claiming a clash there would be a false
+    // alarm on a config that is doing nothing.
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'shared_meter');
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).mainMeterConflictAreaName)
+      .toBeNull();
+
+    // A degraded snapshot serves a RETAINED subHomes cache of an unknown
+    // persisted truth; combining it with live meter settings could name an
+    // obsolete area. No clash may be claimed from an unvouched-for roster.
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, 'not-a-pins-blob');
+    service.recompute();
+    expect(service.getDiagnostics().configDegraded).toBe(true);
+    expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).mainMeterConflictAreaName)
+      .toBeNull();
   });
 
   it('applies intent ops through the classified store: create allocates the id, edit and delete round-trip', async () => {

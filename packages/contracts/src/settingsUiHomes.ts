@@ -147,4 +147,17 @@ export type SettingsUiHomesPayload = {
    * persisted areas.
    */
   configDegraded: boolean;
+  /**
+   * Name of the meter area that also claims the Main home's explicitly selected
+   * whole-home meter, or `null` when there is no such clash. One meter may never
+   * own two homes: the same sample would drive two controllers over disjoint
+   * device sets, so the runtime fences ALL Main-home actuation while it holds.
+   *
+   * The fence is re-read live at each write, so fixing either selection clears
+   * it without a restart — but nothing else tells the owner their Main home has
+   * silently stopped being limited. This field is what the UI needs to say so.
+   * Only reachable by upgrade: 2.17 had no cross-store guard, and `ui_homes_save`
+   * refuses to create the clash from 2.18 on.
+   */
+  mainMeterConflictAreaName: string | null;
 };
