@@ -65,6 +65,7 @@ const emptyPayload = (): SettingsUiHomesPayload => ({
   hasSubHomes: false,
   runtimeActive: false,
   configDegraded: false,
+  mainMeterConflictAreaName: null,
 });
 
 const flushAsync = async (): Promise<void> => {

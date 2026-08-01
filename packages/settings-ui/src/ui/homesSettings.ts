@@ -275,6 +275,10 @@ const renderSection = (): void => {
     // stay silent (no flash, no false alarm) while a genuinely-unset install
     // (which the runtime runs as Flow) still gets warned.
     showFlowSourceNotice: powerSourceResolved && powerSource !== 'homey_energy',
+    // Producer-resolved: the runtime already mirrored its own actuation fence
+    // when it composed the payload, so this view neither re-derives the clash
+    // nor branches on which selection caused it. Degraded reads serve null.
+    mainMeterConflictAreaName: latestPayload?.mainMeterConflictAreaName ?? null,
     editor: editor === null ? null : buildEditorView(editor),
     confirmingDeleteHomeId,
     deleteBusy: writeBusy,

@@ -61,6 +61,7 @@ const readyPayload = (): SettingsUiHomesPayload => ({
   hasSubHomes: true,
   runtimeActive: true,
   configDegraded: false,
+  mainMeterConflictAreaName: null,
 });
 
 const addButtonDisabled = (mount: HTMLElement): boolean => (

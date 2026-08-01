@@ -18,6 +18,7 @@ import {
   HOMES_MAIN_HOME_NOTE,
   HOMES_MAIN_METER_NOTICE,
   HOMES_MAIN_METER_NOTICE_LINK,
+  composeHomesMainMeterConflictNotice,
   HOMES_METER_HINT,
   HOMES_METER_LABEL,
   HOMES_METER_LOADING_OPTION,
@@ -108,6 +109,12 @@ export type HomesSettingsSectionProps = {
   showMainMeterNotice: boolean;
   /** Power source is Flow: meter areas can't be measured, so warn before setup. */
   showFlowSourceNotice: boolean;
+  /**
+   * Name of the meter area that also owns Main's explicit whole-home meter, or
+   * null when there is no clash. While set, PELS limits nothing in the Main
+   * home, and no other surface says so.
+   */
+  mainMeterConflictAreaName: string | null;
   editor: HomesEditorView | null;
   confirmingDeleteHomeId: string | null;
   deleteBusy: boolean;
@@ -370,6 +377,20 @@ const BetaNotice = () => (
   </section>
 );
 
+// Leads every state: while it shows, the Main home is not being limited at all.
+// That is the most consequential thing on this panel, so it outranks the
+// combined-total nudge and the Flow-source warning.
+const MainMeterConflictNotice = ({ areaName }: { areaName: string }) => (
+  <section class="pels-notice-warning homes-settings__notice" id="homes-main-meter-conflict">
+    <p class="homes-settings__notice-body">
+      {composeHomesMainMeterConflictNotice(areaName)}
+    </p>
+    <MdTextButton class="homes-settings__notice-link" data-settings-target="limits">
+      {HOMES_MAIN_METER_NOTICE_LINK}
+    </MdTextButton>
+  </section>
+);
+
 const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   if (props.status === 'loading') {
     return (
@@ -384,6 +405,8 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   if (props.editor !== null) {
     return (
       <div class="homes-settings">
+        {props.mainMeterConflictAreaName !== null
+          && <MainMeterConflictNotice areaName={props.mainMeterConflictAreaName} />}
         {props.showFlowSourceNotice && <FlowSourceNotice />}
         <EditorForm
           editor={props.editor}
@@ -416,6 +439,8 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   }
   return (
     <div class="homes-settings">
+      {props.mainMeterConflictAreaName !== null
+        && <MainMeterConflictNotice areaName={props.mainMeterConflictAreaName} />}
       {props.showFlowSourceNotice && <FlowSourceNotice />}
       {props.configDegraded && <DegradedNotice />}
       <BetaNotice />

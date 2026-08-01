@@ -256,6 +256,20 @@ export const HOMES_MAIN_METER_NOTICE = 'Right now PELS can’t tell which meter 
   + 'devices at all, so nothing keeps the Main home under its hard cap. '
   + 'Pick the Main home’s own meter — “Whole-home meter”, under Limits & safety.';
 export const HOMES_MAIN_METER_NOTICE_LINK = 'Open Limits & safety';
+
+/**
+ * Shown while Main's explicitly selected whole-home meter is ALSO a meter
+ * area's meter. One meter can't drive two controllers over disjoint device
+ * sets, so PELS stops limiting Main-home devices entirely until one of the two
+ * selections changes. The stop is silent everywhere else, which is what makes
+ * this notice load-bearing: consequence first, then the two controls that
+ * resolve it. Only reachable by upgrading a config saved before 2.18, which is
+ * why it names the clash rather than blaming the owner's last action.
+ */
+export const composeHomesMainMeterConflictNotice = (areaName: string): string => (
+  `PELS has stopped limiting your Main home: its “Whole-home meter” is also the meter for `
+  + `“${resolveHomeAreaDisplayName(areaName)}”. Give one of the two its own meter to start again.`
+);
 export const HOMES_MAIN_METER_SAVE_DEGRADED = 'PELS can’t safely change the Whole-home meter '
   + 'right now — your meter-area settings couldn’t be read. Try again in a few minutes.';
 
