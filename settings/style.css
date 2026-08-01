@@ -5631,10 +5631,20 @@ details[open] > summary .disclosure-chevron {
 }
 
 /* The Main-scoped multi-meter wording is deliberately more explicit than the
-   single-home banner. At 320 px its fixed-width action would otherwise squeeze
-   the message into a word-per-line tower. Keep the single-home banner slim,
-   but give the scoped variant a readable text column with its action below. */
-@media (max-width: 360px) {
+   single-home banner, and the banner's action is fixed-width, so in a flex row
+   that longer message gets squeezed into a word-per-line tower. Give the scoped
+   variant a full-width text column with its action below.
+
+   The bound was 360 px, which inverted the cliff: the row came back at 361 px
+   but the wording still did not fit it, so the banner towered from 361 px to
+   ~430 px (6-7 lines, TALLER at 361 px than at 320 px) across exactly the
+   widths most phones use. It fits the row again from ~440 px, which is where
+   this stops. The single-home banner keeps its slim single row at every width
+   (layout-regressions.spec.ts pins that); only the wider wording stacks.
+
+   Playwright projects only run 320 and 480, so the failing band was never
+   asserted -- dry-run-banner.spec.ts walks 361/393/412 as the guard. */
+@media (max-width: 440px) {
   #dry-run-banner[data-home-scope="main"]:not([hidden]) {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);

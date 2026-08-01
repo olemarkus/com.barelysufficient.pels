@@ -28,8 +28,14 @@ lowered, paused, or turned off, three things must all be true:
 
 1. **Managed by PELS** is on for the device (Settings → Devices).
 2. **Power-limit control** is on (Settings → Devices → the device → Setup).
-3. **Simulation mode** is off (Settings → Simulation mode) — in simulation PELS
-   calculates what it *would* do but never switches anything.
+3. The device's home isn't simulating. For a Main-home device that means
+   **Simulation mode** is off (Settings → Simulation mode) — in simulation PELS
+   calculates what it *would* do but never switches anything. For a device in a
+   [meter area](/meter-areas) it means that area's **Control devices in this
+   area** switch is on (Settings → Limits & safety → pick the area); new areas
+   start with it off, so they only simulate until you turn it on. The two are
+   independent: an area can be actively limiting while Simulation mode is on,
+   and it can be simulating while Simulation mode is off.
 
 A device with **Power-limit control** turned off stays under PELS's planning but
 is never limited to protect the hard cap. If a device also has no usable power

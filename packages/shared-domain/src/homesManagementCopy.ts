@@ -137,9 +137,16 @@ export const HOMES_EDITOR_TITLE_EDIT = 'Edit meter area';
 export const HOMES_METER_LABEL = 'Meter';
 export const HOMES_METER_PLACEHOLDER = 'Choose a meter';
 export const HOMES_METER_HINT = 'The device that measures this area’s power use.';
-/** Shown when no Homey device reports power at all. */
-export const HOMES_NO_METER_DEVICES = 'PELS found no power-reporting devices in Homey. '
-  + 'Add this area’s meter to Homey first, then pick it here.';
+/**
+ * Shown when the picker's option list is empty. The list is NOT "everything that
+ * reports power": it offers whole-home (cumulative) meters from the Homey Energy
+ * report plus sensor-class devices, so a house full of metering plugs and
+ * chargers still lands here. Claiming Homey has no power-reporting devices is
+ * false for that owner and sends them hunting; name what is actually missing.
+ */
+export const HOMES_NO_METER_DEVICES = 'PELS found no electricity meters in Homey Energy. '
+  + 'A metering plug or appliance doesn’t count — add this area’s own meter to Homey '
+  + 'first, then pick it here.';
 
 /** A previously-selected meter no longer in Homey (kept selectable so the setting isn't lost). */
 export const HOMES_METER_MISSING_OPTION = 'Previously selected meter (not found in Homey)';
@@ -276,16 +283,18 @@ export const HOMES_MAIN_METER_SAVE_DEGRADED = 'PELS can’t safely change the Wh
 // ── Flow power-source notice ───────────────────────────────────────────────
 
 /**
- * Shown while the power source is Flow (not Homey Energy). Meter areas read each
- * meter's own live power from the Homey Energy report; a Flow power reading
- * carries no meter identity, so an area under Flow would receive no samples
- * and never be limited — which is why saving one is refused on this source
- * (`homey_energy_required`, both directions). Consequence-first, names the
- * requirement and the control; removal stays available as the way out for a
- * config that predates the exclusion.
+ * Shown while the power source is Flow. Meter areas read each meter's own live
+ * power from the Homey Energy report; a Flow power reading carries no meter
+ * identity, so an area under Flow would receive no samples and never be
+ * limited — which is why saving one is refused on this source
+ * (`homey_energy_required`, both directions). Consequence-first, and it must
+ * name the options the owner will actually see: the picker's two labels are
+ * "Flow card" and "Power meter", so an instruction to select "Homey Energy"
+ * points at a control that does not exist. Removal stays available as the way
+ * out for a config that predates the exclusion.
  */
-export const HOMES_FLOW_SOURCE_NOTICE = 'Meter areas need the Homey Energy power source. On the '
-  + 'Flow power source PELS can’t tell which meter a reading belongs to, so meter areas can’t be '
+export const HOMES_FLOW_SOURCE_NOTICE = 'Meter areas need the “Power meter” power source. With '
+  + '“Flow card”, PELS can’t tell which meter a reading belongs to, so meter areas can’t be '
   + 'saved here. Set “Power source” under Limits & safety first. Removing an area still works.';
 
 // ── Load / save states ─────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ The PELS settings UI is organized around five top-level destinations:
 | **Smart tasks** | Current and past ready-by tasks. |
 | **Settings** | Limits, devices, modes, prices, simulation, and advanced tools. |
 
-Most configuration starts in **Settings**. The Settings landing page links to **Limits & safety**, **Devices**, **Modes**, **Electricity prices**, **Price-aware devices**, **Simulation mode**, and **Advanced**.
+Most configuration starts in **Settings**. The Settings landing page links to **Limits & safety**, **Devices**, **Modes**, **Electricity prices**, **Price-aware devices**, **Multiple meters**, **Simulation mode**, and **Advanced**.
 
 ## Overview
 
@@ -222,9 +222,11 @@ Simulation mode lets you test behavior without switching devices.
 
 | Setting | What it does |
 | --- | --- |
-| **Simulation mode** | PELS shows what it would do, but devices are not switched automatically. |
+| **Simulation mode** | PELS shows what it would do, but Main home devices are not switched automatically. |
 
 Use this while you are tuning priorities, power estimates, and limits. Turn it off when you are ready for PELS to control devices.
+
+Simulation mode covers your Main home. Each [meter area](/meter-areas) has its own **Control devices in this area** switch under **Limits & safety**, so an area can keep limiting its devices while Simulation mode is on.
 
 ## Settings > Advanced
 
