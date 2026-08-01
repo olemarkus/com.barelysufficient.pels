@@ -79,12 +79,19 @@ describe('resolveRescuableDeviceFromList', () => {
 });
 
 describe('buildRescueCandidate', () => {
-  it('builds a soft temperature objective carrying both rescue permissions', () => {
+  it('builds a soft temperature objective carrying all three rescue permissions', () => {
     const candidate = buildRescueCandidate(65, 123_456);
     expect(candidate.kind).toBe('temperature');
     expect(candidate.enforcement).toBe('soft');
     expect(candidate).toMatchObject({ targetTemperatureC: 65, deadlineAtMs: 123_456 });
-    expect(candidate.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+    // A starved device can be held by budget OR by capacity and these surfaces
+    // cannot see which, so the rescue requests every permission and lets the
+    // server-side gate drop whichever would be inert on this device.
+    expect(candidate.rescue).toEqual({
+      exemptFromBudget: 'always',
+      limitLowerPriorityDevices: 'always',
+      pauseLowerPriorityDevices: 'always',
+    });
   });
 });
 

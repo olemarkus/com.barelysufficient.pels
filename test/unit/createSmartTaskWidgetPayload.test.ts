@@ -164,12 +164,17 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       expect(firstDevice(steppedHeater({ priority: 1 }))).toBe(true);
     });
 
-    it('is false for a stepped-load device below top priority (inert there)', () => {
-      expect(firstDevice(steppedHeater({ priority: 100 }))).toBe(false);
+    // Limiting lower-priority devices helps at ANY priority — a priority-2 device
+    // can still displace priority 3+, and swap selection refuses anything not
+    // strictly lower. Gating the toggle on `priority === 1` withheld a working
+    // permission from every non-top device; that conjunct belongs to the
+    // planner's `fullyReserved` floor promotion, not to this offer.
+    it('is true for a stepped-load device below top priority', () => {
+      expect(firstDevice(steppedHeater({ priority: 100 }))).toBe(true);
     });
 
-    it('is false for a stepped-load device with no priority set', () => {
-      expect(firstDevice(steppedHeater({ priority: undefined }))).toBe(false);
+    it('is true for a stepped-load device with no priority set', () => {
+      expect(firstDevice(steppedHeater({ priority: undefined }))).toBe(true);
     });
 
     it('is false for a non-stepped (binary) device even at top priority', () => {

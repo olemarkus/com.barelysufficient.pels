@@ -200,17 +200,41 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('STRIPS limit-lower-priority on a stepped device below top priority (inert at the planner)', async () => {
-      // Matches the planner's fullyReserved === 1 floor: a stepped device that is
-      // not priority 1 can never honour the grant, so a tampered/stale client that
-      // sends it must not get it persisted (gate ≡ widget gate-on-effect).
+    it('KEEPS limit-lower-priority on a stepped device below top priority', async () => {
+      // The gate is NOT the planner's `fullyReserved === 1` floor. Limiting
+      // lower-priority devices works at any priority — swap selection already
+      // refuses any candidate that is not strictly lower priority, so a boosted
+      // priority-100 device can only displace something below it. Withholding the
+      // grant here silently left every non-top device without the one permission
+      // that clears capacity for it.
       const app = await initApp();
       app.setSnapshotForTests([steppedHeater(100)]);
       const result = app.createDeferredObjective(
         'heater-1', withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
       );
       expect(result).toEqual({ ok: true });
-      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+      await app.onUninit?.();
+    });
+
+    it('persists the pause permission ungated, alongside the others', async () => {
+      // `pauseLowerPriorityDevices` is priority-relative by construction and is
+      // never touched by the gate — the rescue relies on that to reserve startup
+      // power for a device the budget exemption alone cannot unblock.
+      const app = await initApp();
+      app.setSnapshotForTests([steppedHeater(100)]);
+      const result = app.createDeferredObjective('heater-1', withRescue({
+        exemptFromBudget: 'always',
+        limitLowerPriorityDevices: 'always',
+        pauseLowerPriorityDevices: 'always',
+      }));
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({
+        exemptFromBudget: 'always',
+        limitLowerPriorityDevices: 'always',
+        pauseLowerPriorityDevices: 'always',
+      });
       await app.onUninit?.();
     });
 

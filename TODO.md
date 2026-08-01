@@ -2146,6 +2146,28 @@ CI failure, so future field-move slices can't silently grow the debt.*
       oscillating across the epsilon boundary still alternate `capacity`/`both`/`daily`. This
       item needs retained state or separate enter/exit thresholds either way.
 
+- [ ] **A starved episode keeps its ORIGINAL cause, so a now-capacity-blocked device stays badged
+      "budget limited" — and keeps being offered the budget remedy.** A starved episode carries its
+      counting cause across pauses by design (`notes/starvation/README.md:25-29`), but the rescue
+      affordance is gated on `cause === 'budget'` (`starvationRowIsRescuable`), so PELS offers a
+      budget remedy to a device whose LIVE block is capacity.
+      *Persona:* Failing-scenario (acute) owner who taps the remedy PELS itself offered and sees
+      nothing happen.
+      *Hypothesis:* re-evaluating the cause on resume (or gating the affordance on the live
+      `reasonCode` rather than the episode cause) would stop offering a remedy that cannot help,
+      and stop the badge contradicting the row's own status line.
+      *Prod evidence, 2026-08-01 (`/tmp/pels`, prod suffix `0a4464c3`):* "Connected 300" at
+      17:25:22Z emitted `device_starvation_resumed { cause: "daily_budget" }` while every plan cycle
+      in the same window reported `reasonCode: "insufficient_headroom"` /
+      `"Not enough available power to resume — needs 1.4 kW, 1.1 kW available"`, and
+      `restore_rejected` fired continuously ("insufficient headroom to swap … effective 1.22kW after
+      0.30kW swap reserve"). The episode had begun budget-caused ~2.3 h earlier.
+      *Why it's needed:* this is the surface half of the "Let it run now did nothing" report — the
+      permission half is fixed, but the affordance is still offered on the wrong signal.
+      Files: `lib/diagnostics/**` (starvation cause retention), `packages/shared-domain/src/planStarvation.ts`
+      (`starvationRowIsRescuable`), `lib/plan/settingsOverviewReadModel.ts`. Adjacent to the
+      `resolveSoftLimitSource` hysteresis item above. Source: prod investigation, 2026-08-01. [P2]
+
 - [ ] **Busy-gate the Budget header toggle (inherited apply race).** `onToggleClick` ignores
       `adjust.busy`: confirming a discard while an apply is in flight yields a post-navigation
       "Daily budget updated." toast and a lingering dirty status (workingDraft = pre-apply values vs
@@ -2852,11 +2874,17 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
       subtracts higher-priority controlled load (`hardCap − uncontrolled − higherPriorityControlled`)
       would let the gate broaden to "highest priority present on this Homey", so a default-priority
       committed device's rescue stops being budget-exemption-only and can claim a guaranteed floor.
-      *Why it's needed:* today a non-top committed device can still `cannot_meet` while its rescue
-      grant sits inert; the Optimiser with a mixed-priority home is the one who hits it. *Validate
+      *Why it's needed:* today a non-top committed device plans at the un-promoted floor and can
+      still `cannot_meet`; the Optimiser with a mixed-priority home is the one who hits it. *Validate
       first:* pick up only if post-Slice-2 prod logs show a long-tail `cannot_meet` rate on
       non-top-priority tasks (user-confirmed the design is safe — it only sheds strictly
       lower-priority devices than the rescued one; the success flash stays honest meanwhile).
+      *Scope narrowed 2026-08-01:* this is now ONLY about floor promotion. The permission half is
+      done — `gateCandidateExtraPermissions` no longer withholds `limitLowerPriorityDevices` from
+      non-top devices, so the grant is live (boost engages) even where `fullyReserved` stays false.
+      Do not re-conflate the two: swap selection already refuses any candidate that is not strictly
+      lower priority, which is why persisting the permission is safe at any priority; the
+      reserved-headroom forecast is what still needs `priority === 1`.
       Files: `lib/objectives/deferredObjectives/policyHorizon.ts`, `.../rescueReplan.ts`,
       `lib/dailyBudget/dailyBudgetBreakdown.ts`. Source: pels-runtime-reality on PR #983 / #1373.
 

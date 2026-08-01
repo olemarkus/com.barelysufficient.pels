@@ -1836,6 +1836,22 @@ md-filled-button.is-busy {
   z-index: 1;
 }
 
+/* The permissions this rescue actually grants, listed verbatim under the
+   caption. Deliberately muted rather than amber: the caption carries the
+   money-action warning, while this is the factual "what you are allowing"
+   detail — two amber blocks would flatten that hierarchy on a card that already
+   has a chip row and a reason line. */
+.plan-card__rescue-perms {
+  flex: 1 0 100%;
+  margin: var(--spacing-1) 0 0;
+  text-align: left;
+  font-size: var(--font-size-xs);
+  line-height: var(--font-line-height-cozy);
+  color: var(--color-semantic-text-secondary);
+  position: relative;
+  z-index: 1;
+}
+
 .plan-chip__icon {
   flex-shrink: 0;
   /* Slightly larger than the xs chip label so the glyph stays legible at the

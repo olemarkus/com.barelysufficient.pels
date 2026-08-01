@@ -2808,6 +2808,44 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
     });
 
+    it('grants a below-top-priority task the limit permission without promoting its floor', () => {
+      // Guards the split the permission gate now relies on. The two questions are
+      // separate: PERSISTING `limitLowerPriorityDevices` is useful at any priority
+      // (swap selection only ever displaces strictly lower-priority devices), but
+      // `fullyReserved` FLOOR PROMOTION stays priority-1-only, because the
+      // reserved-headroom forecast (`hardCap − uncontrolled`) assumes every
+      // controlled watt is displaceable — true only at the top.
+      //
+      // So a priority-2 task with both permissions must report the grant as
+      // applied while planning at the un-promoted floor: `min` (1 kW) × 4 h = 4 kWh
+      // against a 6 kWh need, versus the priority-1 control above which promotes to
+      // `top` (3 kW) and reaches `on_track`.
+      const belowTop = { ...buildPromotableDevice('ev-1'), priority: 2 };
+      const [diagnostic] = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [belowTop],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        hardCapKw: HARDCAP_KW,
+      });
+      // The permission is live for the planner's boost lane...
+      expect(diagnostic.limitLowerPriorityApplied).toBe(true);
+      // ...but the floor was NOT promoted, so the task cannot claim the top step.
+      expect(diagnostic.status).not.toBe('on_track');
+    });
+
     it('divides the reserved headroom across two concurrent fully-reserved tasks so neither can over-book the slot', () => {
       // The bug: both tasks see the full 3 kW reserved headroom and both
       // promote to `top` (3 kW), reporting `on_track` for *both* even though

@@ -93,13 +93,21 @@ export const resolveRescuableDeviceFromList = (
 };
 
 // Build the rescue candidate: a soft temperature objective aimed at the device's
-// intended normal target, carrying `exemptFromBudget: 'always'` to bypass
-// daily-budget admission while it's scheduled. The OTHER rescue permission —
-// `limitLowerPriorityDevices` (the boost) — is added SERVER-SIDE only for
-// stepped-eligible devices (see `AppSmartTaskApi.deviceSupportsLimitLowerPriority`); the
-// surfaces can't see the device profile, so they never grant it here. 'always'
-// (not 'at_risk') because the user is explicitly asking for power NOW on an
-// already-starved device — there is no "wait until at risk" to defer to.
+// intended normal target, carrying every "Extra permission" the rescue can offer.
+// 'always' (not 'at_risk') because the user is explicitly asking for power NOW on
+// an already-starved device — there is no "wait until at risk" to defer to.
+//
+// All THREE are requested, because a starved device can be held by either
+// constraint and these surfaces can't see which:
+//   - `exemptFromBudget` lifts the soft daily budget (the budget-held case).
+//   - `limitLowerPriorityDevices` engages the boost, so the device can displace
+//     strictly lower-priority load that is ALREADY RUNNING — the capacity-held
+//     case, where a swap is otherwise rejected for headroom.
+//   - `pauseLowerPriorityDevices` holds the power the device needs to start out
+//     of lower-priority devices' admission, so cycling loads can't nibble the
+//     block away before it starts.
+// The create engine's `gateCandidateExtraPermissions` drops any grant that would
+// be inert on this device, so these surfaces never need the device profile here.
 export const buildRescueCandidate = (
   targetTemperatureC: number,
   deadlineAtMs: number,
@@ -108,11 +116,11 @@ export const buildRescueCandidate = (
   enforcement: 'soft',
   targetTemperatureC,
   deadlineAtMs,
-  // The rescue requests BOTH permissions; the create engine's
-  // `gateCandidateExtraPermissions` keeps `exemptFromBudget` for any device and
-  // the `limitLowerPriorityDevices` grant only where it has effect (stepped-load
-  // + top priority), so the surfaces never need the device profile here.
-  rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+  rescue: {
+    exemptFromBudget: 'always',
+    limitLowerPriorityDevices: 'always',
+    pauseLowerPriorityDevices: 'always',
+  },
 });
 
 // Map a `rescueDeviceWithBudgetExemption` rejection reason onto the surfaces'

@@ -10,8 +10,8 @@ import {
 import {
   formatEnergyEstimateKWh,
   formatDeadlineCostMetaLine,
+  resolveGrantedRescuePermissionLabels,
   resolveSmartTaskPreviewStatusCopy,
-  SMART_TASK_EXTRA_PERMISSION_LABELS,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
   composeSmartTaskScheduledLine,
@@ -250,23 +250,14 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
 
 // Read-only "Extra permissions" summary: the standing permissions the rescue
 // grants, shown so the user sees exactly what confirming will allow. The rescue
-// requests both `exemptFromBudget` + `limitLowerPriorityDevices`, but the backend
-// GATES `limitLowerPriorityDevices` (`AppSmartTaskApi.gateCandidateExtraPermissions`): it is
-// dropped unless the device is stepped-load eligible AND at top priority — a
-// permission the planner would otherwise ignore. So the summary is derived from
-// the already-gated `estimate.grantedRescuePermissions` (only the SURVIVING
-// permissions), never a fixed both-listed assumption, or it would claim a grant
-// the rescue won't make. Copy is the canonical SMART_TASK_EXTRA_PERMISSION_LABELS
-// the create widget's toggles and runtime log breadcrumbs use — never re-worded.
-const resolveGrantedPermissionLabels = (
-  granted: NonNullable<OkPreview['estimate']['grantedRescuePermissions']>,
-): string[] => {
-  const labels: string[] = [];
-  if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
-  if (granted.limitLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
-  if (granted.pauseLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
-  return labels;
-};
+// requests all three, but the backend GATES `limitLowerPriorityDevices`
+// (`AppSmartTaskApi.gateCandidateExtraPermissions`): it is dropped when it would be
+// inert — a binary device (no higher step to promote to), or no budget exemption
+// to pair with. So the summary is derived from the already-gated
+// `estimate.grantedRescuePermissions` (only the SURVIVING permissions), never a
+// fixed all-listed assumption, or it would claim a grant the rescue won't make.
+// The label list is single-homed in shared-domain so this sheet and the
+// settings-UI overview card can't drift.
 
 const renderExtraPermissionsSummary = (targets: RenderTargets, labels: string[]): void => {
   setLine(targets.confirmPermsTitleEl, C.extraPermissionsTitle);
@@ -310,7 +301,7 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   // backend reported surviving granted permissions; derive the listed labels
   // from the gated set so it never claims a permission the rescue won't grant.
   const granted = response.estimate.grantedRescuePermissions;
-  const permissionLabels = projectable && granted ? resolveGrantedPermissionLabels(granted) : [];
+  const permissionLabels = projectable ? resolveGrantedRescuePermissionLabels(granted) : [];
   if (permissionLabels.length > 0) renderExtraPermissionsSummary(targets, permissionLabels);
   else hide(targets.confirmPermsEl);
 };

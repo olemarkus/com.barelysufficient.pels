@@ -6,6 +6,7 @@ import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
 import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../../shared-domain/src/planStarvation.ts';
+import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../shared-domain/src/deadlineLabels.ts';
 
 // The chip calls the rescue controller, which talks to the API over `callApi`
 // and surfaces toasts. Mock the network/toast seam so the REAL chip → REAL
@@ -114,8 +115,10 @@ describe('BudgetExemptChip', () => {
     const mount = renderChip(buildDevice());
     const button = mount.querySelector('button') as HTMLButtonElement;
 
-    // First tap arms — no create yet, label flips to the confirm verb.
+    // First tap arms — no create yet, label flips to the confirm verb once the
+    // preview has landed (Confirm is not committable before the disclosure).
     await act(async () => { button.click(); });
+    await act(async () => { await Promise.resolve(); });
     expect(button.classList.contains('confirming')).toBe(true);
     expect(button.textContent).toContain('Confirm');
     const createCallsAfterArm = callApi.mock.calls.filter((c) => String(c[1]).includes('create'));
@@ -152,10 +155,12 @@ describe('BudgetExemptChip', () => {
     expect(caption?.textContent).toContain(`${STARVATION_RESCUE_WIDGET_COPY.byLabel} Today 17:00`);
   });
 
-  it('falls back to the consequence-only caption when the preview is unavailable', async () => {
-    // No preview window resolves (failed/unavailable) → the caption still names
-    // the consequence, which already states the bound ("…until it reaches its
-    // normal target."). No "By {time}" segment without a real deadline.
+  it('drops back to idle — never to a committable confirm — when the preview is rejected', async () => {
+    // The preview is what resolves the GATED permission set the card must
+    // disclose. Without it the rescue would persist grants (including the
+    // startup reservation that holds other devices back) the user never saw, so
+    // a rejected preview must not leave a committable Confirm behind. The chip
+    // returns to idle and the rescue stays re-armable.
     callApi.mockImplementation((method: string, uri: string) => {
       if (uri.includes('preview')) return Promise.resolve({ ok: false, reason: 'previewUnavailable' });
       return Promise.resolve({});
@@ -165,16 +170,95 @@ describe('BudgetExemptChip', () => {
     await act(async () => { button.click(); });
     await act(async () => { await Promise.resolve(); });
 
-    const caption = mount.querySelector('.plan-card__rescue-caption');
-    expect(caption).not.toBeNull();
-    expect(caption?.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueConsequence);
-    // No bound segment when the preview yielded no deadline.
-    expect(caption?.textContent).not.toContain(STARVATION_RESCUE_WIDGET_COPY.byLabel);
+    expect(button.classList.contains('confirming')).toBe(false);
+    expect(mount.querySelector('.plan-card__rescue-caption')).toBeNull();
+    expect(mount.querySelector('.plan-card__rescue-perms')).toBeNull();
+
+    // A second tap re-arms; it must never fall through to a create.
+    await act(async () => { button.click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(callApi.mock.calls.filter((c) => String(c[1]).includes('create'))).toHaveLength(0);
+  });
+
+  it('does not commit while the preview is still in flight', async () => {
+    // Between the first tap and the preview landing the disclosure has not
+    // rendered, so Confirm must be inert — a fast double-tap cannot authorise an
+    // undisclosed grant.
+    let resolvePreview: (value: unknown) => void = () => undefined;
+    callApi.mockImplementation((method: string, uri: string) => {
+      if (uri.includes('preview')) return new Promise((resolve) => { resolvePreview = resolve; });
+      return Promise.resolve({});
+    });
+    const mount = renderChip(buildDevice());
+    const button = mount.querySelector('button') as HTMLButtonElement;
+    await act(async () => { button.click(); });
+    await act(async () => { button.click(); });
+    expect(callApi.mock.calls.filter((c) => String(c[1]).includes('create'))).toHaveLength(0);
+
+    await act(async () => {
+      resolvePreview({ ok: true, deadlineAtMs: 1_000, deadlineLabel: 'Today 17:00', estimate: { scheduledHours: [] } });
+      await Promise.resolve();
+    });
+    expect(button.classList.contains('confirming')).toBe(true);
   });
 
   it('renders no consequence caption while idle (only once armed)', () => {
     const mount = renderChip(buildDevice());
     expect(mount.querySelector('.plan-card__rescue-caption')).toBeNull();
+  });
+
+  it('lists ONLY the permissions the gate actually granted', async () => {
+    // The rescue requests all three, but the server drops any that would be
+    // inert on this device. The card must list the GATED set: claiming a
+    // permission the write won't persist is a false promise, and hiding one it
+    // WILL persist (pause holds other devices off) is an undisclosed grant the
+    // user is being asked to authorise.
+    callApi.mockImplementation((method: string, uri: string) => {
+      if (uri.includes('preview')) {
+        return Promise.resolve({
+          ok: true,
+          deadlineAtMs: 1_000,
+          deadlineLabel: 'Today 17:00',
+          estimate: {
+            scheduledHours: [],
+            grantedRescuePermissions: {
+              exemptFromBudget: true,
+              limitLowerPriorityDevices: false,
+              pauseLowerPriorityDevices: true,
+            },
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+    const mount = renderChip(buildDevice());
+    const button = mount.querySelector('button') as HTMLButtonElement;
+    await act(async () => { button.click(); });
+    await act(async () => { await Promise.resolve(); });
+
+    const perms = mount.querySelector('.plan-card__rescue-perms');
+    expect(perms).not.toBeNull();
+    expect(perms?.textContent).toContain(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
+    expect(perms?.textContent).toContain(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
+    // Withheld by the gate → must not be claimed.
+    expect(perms?.textContent).not.toContain(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+  });
+
+  it('renders no permissions line when the preview reports no granted permissions', async () => {
+    callApi.mockImplementation((method: string, uri: string) => {
+      if (uri.includes('preview')) {
+        return Promise.resolve({
+          ok: true, deadlineAtMs: 1_000, deadlineLabel: 'Today 17:00', estimate: { scheduledHours: [] },
+        });
+      }
+      return Promise.resolve({});
+    });
+    const mount = renderChip(buildDevice());
+    const button = mount.querySelector('button') as HTMLButtonElement;
+    await act(async () => { button.click(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(mount.querySelector('.plan-card__rescue-perms')).toBeNull();
   });
 
   it('echoes the previewed deadline into the create call', async () => {
@@ -185,6 +269,8 @@ describe('BudgetExemptChip', () => {
     });
     const button = renderChip(buildDevice()).querySelector('button') as HTMLButtonElement;
     await act(async () => { button.click(); });
+    // Settle the preview so the chip reaches the committable armed state.
+    await act(async () => { await Promise.resolve(); });
     await act(async () => { button.click(); });
     const createCall = callApi.mock.calls.find((c) => String(c[1]).includes('create'));
     expect((createCall?.[2] as { deadlineAtMs?: number })?.deadlineAtMs).toBe(42_000);

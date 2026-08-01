@@ -30,6 +30,9 @@ import {
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
 import { mapObjectiveWriteRefusalReason, resolveSmartTaskHomeScope } from './appInit/smartTaskHomeScope';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
+import { getLogger } from '../lib/logging/logger';
+
+const logger = getLogger('setup/smart-task-api');
 
 /**
  * Outcome of a smart-task write (create, or the budget-exempt rescue that
@@ -116,19 +119,53 @@ export class AppSmartTaskApi {
     return device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device);
   }
 
+  // Which conjunct of the limit-lower-priority gate failed, for the withheld-grant
+  // log below. Only reached when the grant was requested and dropped.
+  private resolveLimitWithheldReason(
+    device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
+  ): 'device_unknown' | 'not_stepped_load' | 'budget_exemption_absent' {
+    if (device === undefined) return 'device_unknown';
+    if (!this.deviceSupportsLimitLowerPriority(device)) return 'not_stepped_load';
+    return 'budget_exemption_absent';
+  }
+
   // Gate a create-smart-task candidate's opt-in "Extra permissions" against the
   // device BEFORE it is previewed or persisted — defence-in-depth, since the
   // widget's toggle visibility is client-side and not trusted. Only
-  // `limitLowerPriorityDevices` is gated; `exemptFromBudget` is ungated (any
-  // device can exceed the soft daily budget). The limit grant is dropped unless
-  // it would ACTUALLY change the plan — i.e. it matches every conjunct of the
-  // planner's `fullyReserved` floor (`rescueReplan.ts`): the device is
-  // stepped-load eligible (a binary device has no higher step to promote to) AND
-  // at top priority (`priority === 1`) AND `exemptFromBudget` is granted as
-  // `'always'`. Anything weaker is inert at the planner, so we never persist it.
-  // This matches the widget's gate-on-effect visibility exactly, and runs on BOTH
-  // lanes so preview ≡ persist. Returns the candidate unchanged when it carries
-  // no limit-lower-priority grant.
+  // `limitLowerPriorityDevices` is gated; `exemptFromBudget` and
+  // `pauseLowerPriorityDevices` are ungated (any device can exceed the soft daily
+  // budget, and the startup reservation is priority-relative by construction).
+  // The limit grant is dropped only when it would be INERT: the device is not
+  // stepped-load eligible (a binary device has no higher step to promote to, and
+  // the boost resolvers gate on `hasSteppedLoadProfile`), or `exemptFromBudget`
+  // is not granted as `'always'` (the limit is inert without it).
+  //
+  // NOT gated on `priority === 1`. That conjunct belongs to the planner's
+  // `fullyReserved` FLOOR PROMOTION (`rescueReplan.ts`), where it is load-bearing
+  // because the reserved-headroom forecast (`hardCap − uncontrolled`) assumes
+  // every controlled watt is displaceable — true only at the top. Persisting the
+  // permission is a different question: limiting lower-priority devices helps at
+  // any priority, because the two paths that actually take load off another
+  // device both compare priority STRICTLY, against the same priority source
+  // (`lib/plan/planDevices.ts`):
+  //   - swap selection — `lib/plan/swap/candidates.ts` refuses any candidate with
+  //     `onDevPriority <= devPriority`;
+  //   - startup-reserve admission — `lib/plan/admission/headroomReserve.ts` only
+  //     withholds power from devices with `reserve.priority < devPriority`.
+  // So a boosted priority-2 device can never command a priority-1 device or a
+  // peer off. (Narrower than "the planner is priority-safe": the boost bypasses
+  // in `lib/plan/restore/steppedRestoreAdmission.ts` and `planSteppedLoad.ts` are
+  // priority-BLIND, so a boosted low-priority device can out-compete a shed
+  // higher-priority one for headroom. That is pre-existing and equally reachable
+  // via any user-configured device boost — but do not read this comment as
+  // claiming otherwise.)
+  //
+  // Copying the floor's conjuncts here silently withheld the permission from
+  // every non-top device — while the `allow_smart_task_rescue` Flow card, which
+  // bypasses this gate, granted it on the same devices.
+  //
+  // Runs on BOTH lanes so preview ≡ persist. Returns the candidate unchanged when
+  // it carries no limit-lower-priority grant.
   private gateCandidateExtraPermissions(
     device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -137,9 +174,23 @@ export class AppSmartTaskApi {
     if (!rescue?.limitLowerPriorityDevices) return candidate;
     const eligible = device !== undefined
       && this.deviceSupportsLimitLowerPriority(device)
-      && device.priority === 1
       && rescue.exemptFromBudget === 'always';
     if (eligible) return candidate;
+    // A withheld grant is otherwise invisible: the write succeeds, the task looks
+    // created, and the device simply never gets the priority it was promised.
+    // Name the failing conjunct so a log review can tell "binary device" from
+    // "no budget exemption to pair with" without re-deriving the gate.
+    //
+    // `debug`, not `info`: the rescue requests the grant for EVERY device, so on
+    // the binary devices that dominate the starved set this is the normal path,
+    // and it fires on both the preview and the persist lane (twice per tap).
+    logger.debug({
+      event: 'smart_task_permission_withheld',
+      permission: 'limitLowerPriorityDevices',
+      reason: this.resolveLimitWithheldReason(device),
+      deviceId: device?.id ?? null,
+      deviceName: device?.name ?? null,
+    });
     const { limitLowerPriorityDevices: _dropped, ...keptRescue } = rescue;
     return {
       ...candidate,
@@ -366,16 +417,22 @@ export class AppSmartTaskApi {
   // A rescue is always a FRESH task: `getStarvedRescueDevices` only offers a
   // device that has no smart task yet (and this method re-asserts it), so there
   // is no merge — the rescue REUSES the create engine (`createDeferredObjective`).
-  // The candidate carries the rescue permissions (`exemptFromBudget` always, plus
-  // `limitLowerPriorityDevices`); `createDeferredObjective`'s
-  // `gateCandidateExtraPermissions` then keeps the budget exemption for any device
-  // and the limit-lower-priority grant only where it has effect (stepped + top
-  // priority). This lifts the DAILY BUDGET and (where effective) grants priority
-  // over lower-priority devices, but NEVER raises the capacity cap (the hard
-  // cap holds the tariff step; never a remedy): the priority permission only displaces lower-priority
-  // load WITHIN the cap. The budget-exemption assertion is defence-in-depth so it
-  // can't be smuggled through a generic create — it doesn't rest solely on the
-  // widget API being the only caller.
+  // The candidate carries ALL THREE extra permissions (`buildRescueCandidate`):
+  // `exemptFromBudget`, `limitLowerPriorityDevices` and `pauseLowerPriorityDevices`.
+  // `createDeferredObjective`'s `gateCandidateExtraPermissions` keeps the budget
+  // exemption and the startup reservation for any device — both are ungated — and
+  // the limit-lower-priority grant wherever it has effect (stepped-load, paired
+  // with the exemption; NOT gated on priority). So a rescue can persist any
+  // subset, and the surfaces derive what they show from the preview's
+  // `grantedRescuePermissions` rather than from the request.
+  //
+  // This lifts the DAILY BUDGET, grants priority over lower-priority devices
+  // where effective, and reserves the device's startup power from lower-priority
+  // admission — but NEVER raises the capacity cap (the hard cap holds the tariff
+  // step; never a remedy): every one of those only redistributes load WITHIN the
+  // cap. The budget-exemption assertion below is defence-in-depth so the
+  // exemption can't be smuggled through a generic create — it doesn't rest solely
+  // on the widget API being the only caller.
   public rescueDeviceWithBudgetExemption(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,

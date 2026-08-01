@@ -39,11 +39,15 @@ import { toSimulationReasonLine } from '../../../../shared-domain/src/simulation
 import {
   BUDGET_EXEMPT_CARD_ACTION_COPY,
   budgetExemptCardActionAriaLabel,
+  formatStarvationRescueArmedCaption,
   shouldOfferBudgetExemptCardAction,
   STARVATION_RESCUE_WIDGET_COPY,
 } from '../../../../shared-domain/src/planStarvation.ts';
 import { BoltIcon } from './icons.tsx';
-import { resolveEvCardStateLine } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  formatGrantedRescuePermissionsLine,
+  resolveEvCardStateLine,
+} from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatIdleClassificationCopy } from '../../../../shared-domain/src/idleClassificationCopy.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
@@ -155,23 +159,10 @@ export const DeadlineChip = (
 // `getStarvedRescueDevices`). A device with its own smart task, a capacity hold,
 // or no known target never renders the chip — so the create call can't be
 // rejected for a shown chip.
-type RescueChipState = 'idle' | 'armed' | 'busy';
-
-// Compose the armed-state consequence caption shown BEFORE the second tap. The
-// money-action consequence ("…uses power beyond today's budget until it reaches
-// its normal target.") is surfaced inline — on Homey's touch WebView a hover
-// tooltip is unreachable, so the consequence must be visible at the card before
-// the user authorizes the over-budget spend. When the preview resolved a bounded
-// window, the shared "By {time}" anchor (`byLabel` + the server-formatted local
-// deadline label — the SAME pairing the rescue widget's confirm sheet uses, no
-// browser Date math) is appended so the user also sees the action is
-// time-bounded. With no preview, the consequence already names the bound
-// ("…until it reaches its normal target."), so the caption stands alone.
-const formatArmedRescueCaption = (deadlineLabel: string | undefined): string => {
-  const consequence = STARVATION_RESCUE_WIDGET_COPY.rescueConsequence;
-  if (deadlineLabel === undefined || deadlineLabel === '') return consequence;
-  return `${consequence} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} ${deadlineLabel}`;
-};
+// `arming` is the window between the first tap and the preview landing. It is a
+// distinct state (not `armed`) because Confirm must not be committable until the
+// granted-permission disclosure has rendered.
+type RescueChipState = 'idle' | 'arming' | 'armed' | 'busy';
 
 export const BudgetExemptChip = ({
   dev,
@@ -187,6 +178,14 @@ export const BudgetExemptChip = ({
   // the same preview response as `deadlineAtMs` — the producer formats it in the
   // Homey timezone so the view does no Date math (mirrors the rescue widget).
   const [deadlineLabel, setDeadlineLabel] = useState<string | undefined>(undefined);
+  // The permissions the per-device gate ACTUALLY granted, listed verbatim under
+  // the caption. The rescue requests all three, but
+  // `AppSmartTaskApi.gateCandidateExtraPermissions` drops any that would be inert
+  // on this device — so this is read from the preview's already-gated
+  // `grantedRescuePermissions`, never the request, and it can neither claim a
+  // permission the write will drop nor hide one it will persist (the pause grant
+  // holds other devices off, which the user must see before authorising).
+  const [permissionsLine, setPermissionsLine] = useState<string | null>(null);
 
   if (!shouldOfferBudgetExemptCardAction(dev.starvation, dev.budgetExempt)) return null;
   if (!isStarvationRescuable(dev.id)) return null;
@@ -195,16 +194,28 @@ export const BudgetExemptChip = ({
   const ariaLabel = budgetExemptCardActionAriaLabel(displayName);
 
   const arm = (): void => {
-    setChipState('armed');
-    // Best-effort: enrich the armed state with the bounded window. A failed /
-    // unavailable preview leaves a plain confirm — the create still works, and
-    // the caption falls back to the target-only consequence phrasing.
+    setChipState('arming');
+    // The preview is what resolves BOTH the bounded window and the gated
+    // permission set. Confirm stays disabled until it lands, because the rescue
+    // requests permissions that hold other devices back: committing before the
+    // disclosure has rendered would persist a grant the user never saw. A
+    // successful preview always carries `grantedRescuePermissions` — the producer
+    // attaches it on the `unavailable` path too — so this cannot deadlock on a
+    // house that simply has no price data yet.
+    //
+    // A rejected preview drops back to idle (the controller surfaces why): the
+    // rescue is re-armable, and losing one tap is the right trade against
+    // authorising an undisclosed grant.
     void previewStarvationRescue(dev.id).then((response) => {
-      if (response.ok) {
-        setDeadlineAtMs(response.deadlineAtMs);
-        setDeadlineLabel(response.deadlineLabel);
+      if (!response.ok) {
+        setChipState('idle');
+        return;
       }
-    }).catch(() => undefined);
+      setDeadlineAtMs(response.deadlineAtMs);
+      setDeadlineLabel(response.deadlineLabel);
+      setPermissionsLine(formatGrantedRescuePermissionsLine(response.estimate.grantedRescuePermissions));
+      setChipState('armed');
+    }).catch(() => setChipState('idle'));
   };
 
   const commit = (): void => {
@@ -215,19 +226,24 @@ export const BudgetExemptChip = ({
       setChipState('idle');
       setDeadlineAtMs(undefined);
       setDeadlineLabel(undefined);
+      setPermissionsLine(null);
     });
   };
 
   const activate = (event: Event): void => {
     event.stopPropagation();
-    if (chipState === 'busy') return;
+    // `arming` and `busy` are both non-committable: the former because the
+    // permission disclosure has not rendered yet, the latter because a create is
+    // already in flight.
+    if (chipState === 'busy' || chipState === 'arming') return;
     if (chipState === 'idle') arm();
     else commit();
   };
 
   const armed = chipState === 'armed';
+  const arming = chipState === 'arming';
   const busy = chipState === 'busy';
-  const label = busy
+  const label = busy || arming
     ? STARVATION_RESCUE_WIDGET_COPY.rescuePending
     : armed
       ? BUDGET_EXEMPT_CARD_ACTION_COPY.confirmLabel
@@ -241,7 +257,7 @@ export const BudgetExemptChip = ({
         onClick={activate}
         onKeyDown={stopActivation}
         onKeyUp={stopActivation}
-        disabled={busy}
+        disabled={busy || arming}
         aria-label={ariaLabel}
         data-tooltip={BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip}
       >
@@ -250,7 +266,12 @@ export const BudgetExemptChip = ({
       </button>
       {armed && (
         <p class="plan-card__rescue-caption" onClick={stopActivation}>
-          {formatArmedRescueCaption(deadlineLabel)}
+          {formatStarvationRescueArmedCaption(deadlineLabel)}
+        </p>
+      )}
+      {armed && permissionsLine !== null && (
+        <p class="plan-card__rescue-perms" onClick={stopActivation}>
+          {permissionsLine}
         </p>
       )}
     </span>

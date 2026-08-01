@@ -507,6 +507,18 @@
     limitLowerPriorityDevices: "May limit lower-priority devices",
     pauseLowerPriorityDevices: "May pause lower-priority devices"
   };
+  var resolveGrantedRescuePermissionLabels = (granted) => {
+    if (!granted) return [];
+    const labels = [];
+    if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
+    if (granted.limitLowerPriorityDevices) {
+      labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+    }
+    if (granted.pauseLowerPriorityDevices) {
+      labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
+    }
+    return labels;
+  };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
     starts: "Starts",
@@ -1023,13 +1035,6 @@
       costUnit: estimate.costUnit
     });
   };
-  var resolveGrantedPermissionLabels = (granted) => {
-    const labels = [];
-    if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
-    if (granted.limitLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
-    if (granted.pauseLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
-    return labels;
-  };
   var renderExtraPermissionsSummary = (targets, labels) => {
     setLine(targets.confirmPermsTitleEl, C.extraPermissionsTitle);
     clearChildren(targets.confirmPermsListEl);
@@ -1060,7 +1065,7 @@
     );
     setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
     const granted = response.estimate.grantedRescuePermissions;
-    const permissionLabels = projectable && granted ? resolveGrantedPermissionLabels(granted) : [];
+    const permissionLabels = projectable ? resolveGrantedRescuePermissionLabels(granted) : [];
     if (permissionLabels.length > 0) renderExtraPermissionsSummary(targets, permissionLabels);
     else hide(targets.confirmPermsEl);
   };

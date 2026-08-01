@@ -4,6 +4,7 @@
    copy across files; `feedback_ui_text_shared_with_logs` keeps runtime
    logging and the UI reading the same strings, which requires colocation. */
 import type {
+  DeferredObjectivePlanPreviewEstimate,
   DeferredObjectivePlanPreviewStatus,
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../contracts/src/deferredObjectivePlanPreview';
@@ -811,6 +812,49 @@ export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveR
 const SMART_TASK_RESCUE_MODE_SUFFIX: Record<DeferredObjectiveRescueMode, string> = {
   always: '',
   at_risk: ' if at risk',
+};
+
+// Aliased from the contract rather than redeclared: a permission added to (or
+// removed from) `grantedRescuePermissions` must break these helpers at compile
+// time instead of silently compiling against a stale local copy.
+export type GrantedRescuePermissions =
+  NonNullable<DeferredObjectivePlanPreviewEstimate['grantedRescuePermissions']>;
+
+// The canonical labels for the permissions that SURVIVED the per-device gate
+// (`DeferredObjectivePlanPreviewEstimate.grantedRescuePermissions`), in the fixed
+// budget → limit → pause order every surface lists them in. Derived from the
+// GATED grant, never the pre-gate request, so a summary can't claim a permission
+// the write won't persist — and never re-worded per surface: these are the SAME
+// `SMART_TASK_EXTRA_PERMISSION_LABELS` the create widget's toggles and the
+// smart-task detail row use. Single-homed here so the rescue widget's confirm
+// sheet (which renders them as a list) and the settings-UI overview card (which
+// renders the joined line below) cannot drift apart.
+export const resolveGrantedRescuePermissionLabels = (
+  granted: GrantedRescuePermissions | undefined,
+): string[] => {
+  if (!granted) return [];
+  const labels: string[] = [];
+  if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
+  if (granted.limitLowerPriorityDevices) {
+    labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+  }
+  if (granted.pauseLowerPriorityDevices) {
+    labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
+  }
+  return labels;
+};
+
+// The one-line form for surfaces too compact for a list — the overview device
+// card's armed rescue state. Same ` · ` separator and same order as
+// `formatSmartTaskExtraPermissionsValue`, so what the user authorises on the card
+// reads identically to the smart-task detail row they see afterwards. `null` when
+// nothing was granted, so the line is suppressed cleanly instead of rendering an
+// empty label.
+export const formatGrantedRescuePermissionsLine = (
+  granted: GrantedRescuePermissions | undefined,
+): string | null => {
+  const labels = resolveGrantedRescuePermissionLabels(granted);
+  return labels.length > 0 ? labels.join(' · ') : null;
 };
 
 export const formatSmartTaskExtraPermissionsValue = (

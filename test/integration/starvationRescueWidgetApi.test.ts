@@ -184,13 +184,18 @@ describe('previewStarvationRescue', () => {
     expect(received).not.toBeNull();
     expect(received!.deviceId).toBe('heater-1');
     // The widget hands the app a FRESH now+3h candidate at the intended target,
-    // requesting BOTH rescue permissions (the create engine gates the limit one).
+    // requesting ALL THREE rescue permissions (the create engine gates the limit
+    // one; budget and pause pass through).
     expect(received!.candidate).toEqual({
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC: 65,
       deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS,
-      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+      rescue: {
+        exemptFromBudget: 'always',
+        limitLowerPriorityDevices: 'always',
+        pauseLowerPriorityDevices: 'always',
+      },
     });
   });
 
@@ -246,16 +251,21 @@ describe('createStarvationRescue', () => {
     // No previewStarvationRescuePlan stub in this context → the create can't
     // re-derive the post-persist plan, so the honest-conservative flash is queued.
     expect(result).toEqual({ ok: true, runsCurrentHour: false });
+    const allThree = {
+      exemptFromBudget: 'always',
+      limitLowerPriorityDevices: 'always',
+      pauseLowerPriorityDevices: 'always',
+    };
     expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledWith('heater-1', {
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC: 65,
       deadlineAtMs,
-      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+      rescue: allThree,
     });
-    // The widget requests both permissions; the create engine keeps the budget
-    // exemption for any device and gates the limit-lower-priority grant.
-    expect(received!.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+    // The widget requests all three permissions; the create engine keeps budget
+    // and pause for any device and gates only the limit-lower-priority grant.
+    expect(received!.rescue).toEqual(allThree);
   });
 
   it('maps a refused write to the retryable write_conflict reason (no false success)', async () => {
