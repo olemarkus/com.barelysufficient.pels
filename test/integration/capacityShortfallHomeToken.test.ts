@@ -8,7 +8,7 @@
 // the second assertion catches a compose edit that was never regenerated.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 
 type FlowToken = {
   name: string;

@@ -43,7 +43,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
-import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import {
   CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,

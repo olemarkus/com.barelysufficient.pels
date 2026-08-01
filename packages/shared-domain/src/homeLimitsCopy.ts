@@ -19,7 +19,7 @@
  * Import this module directly — there is no shared-domain barrel.
  */
 
-import { resolveHomeAreaDisplayName } from './homesManagementCopy';
+import { resolveHomeAreaDisplayName } from './homeNames';
 
 // ── Cap + margin fields (units in the label per the style rules) ─────────────
 

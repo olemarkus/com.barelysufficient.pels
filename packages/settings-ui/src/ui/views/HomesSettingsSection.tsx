@@ -32,8 +32,8 @@ import {
   HOMES_ZONE_LABEL,
   HOMES_ZONE_PLACEHOLDER,
   HOMES_ZONES_UNAVAILABLE,
-  resolveHomeAreaDisplayName,
 } from '../../../../shared-domain/src/homesManagementCopy.ts';
+import { resolveHomeAreaDisplayName } from '../../../../shared-domain/src/homeNames.ts';
 import { MdFilledButton, MdTextButton } from './materialWebJSX.tsx';
 
 // "Multiple meters" sub-page body: progressive disclosure (explainer + Add

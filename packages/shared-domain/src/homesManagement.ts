@@ -13,7 +13,7 @@
  * the two sides behaviourally aligned when either changes.
  */
 
-import { HOMES_MAIN_HOME_NAME } from './homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME } from './homeNames';
 import { foldHomeAreaName } from './homeAreaConfigRules';
 
 /** One Homey zone as the `ui_homes` payload serves it. */
