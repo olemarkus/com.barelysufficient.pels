@@ -1,4 +1,5 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
+import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -260,6 +261,95 @@ describe('normalizeShedReasons', () => {
     });
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
+  });
+
+  // Regression: prod 2026-08-01. With the daily budget binding (softLimitSource
+  // 'daily', capacity pace 10–19 kW, house at 0.6 kW) every restore-blocked device
+  // carried `insufficientHeadroom`, so the cards read "Waiting to resume — X kW
+  // more needed" while nothing else was running and the freeable power was zero.
+  // The hold is budget pacing; say so. `budgetReleasableHeadroomHold` is the
+  // producer-resolved flat semantic from `PlanContext` (daily binding + fresh
+  // power + no capacity breach); a stale-hold / fail-closed meter or a genuine
+  // capacity breach resolves it false upstream, keeping the headroom framing.
+  it('re-attributes a budget-bound insufficientHeadroom restore hold to dailyBudget', () => {
+    const build = (budgetReleasableHeadroomHold: boolean) => normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-budget-hold',
+        plannedState: 'shed',
+        reason: buildRestoreHeadroomReason({
+          neededKw: 1.2,
+          availableKw: 0.7,
+          postReserveMarginKw: -0.75,
+          minimumRequiredPostReserveMarginKw: 0.25,
+        }),
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0.7,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+      budgetReleasableHeadroomHold,
+    })[0];
+
+    expect(reasonText(build(true)?.reason)).toBe('shed due to daily budget');
+    expect(reasonText(build(false)?.reason)).toContain('insufficient headroom');
+  });
+
+  // The breach carve-out sits inside the shared helper, ahead of the flat-field
+  // gate: even a stale `budgetReleasableHeadroomHold: true` (impossible from the
+  // producer, which folds the breach in — belt and suspenders here) must not
+  // re-attribute while capacity is breached.
+  it('keeps insufficientHeadroom holds numeric while capacity is breached', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-breach-hold',
+        plannedState: 'shed',
+        reason: buildRestoreHeadroomReason({
+          neededKw: 1.2,
+          availableKw: 0.7,
+          postReserveMarginKw: -0.75,
+          minimumRequiredPostReserveMarginKw: 0.25,
+        }),
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0.7,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+      capacityBreached: true,
+      budgetReleasableHeadroomHold: true,
+    });
+
+    expect(reasonText(device?.reason)).toContain('insufficient headroom');
+  });
+
+  it('keeps insufficientHeadroom holds numeric when softLimitSource is capacity', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-capacity-hold',
+        plannedState: 'shed',
+        reason: buildRestoreHeadroomReason({
+          neededKw: 1.2,
+          availableKw: 0.7,
+          postReserveMarginKw: -0.75,
+          minimumRequiredPostReserveMarginKw: 0.25,
+        }),
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0.7,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'capacity',
+      budgetReleasableHeadroomHold: false,
+    });
+
+    expect(reasonText(device?.reason)).toContain('insufficient headroom');
   });
 
   it('overrides capacity with deferredObjectiveAvoid when the device is in an avoid bucket', () => {

@@ -51,6 +51,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
     capacitySoftLimit: 0,
     dailySoftLimit: null,
     softLimitSource: 'capacity',
+    budgetReleasableHeadroomHold: false,
     hourBucketKey: '2024-01-01T00',
     budgetKWh: 0,
     usedKWh: 0,
