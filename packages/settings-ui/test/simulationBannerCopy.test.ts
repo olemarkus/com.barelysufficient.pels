@@ -340,6 +340,34 @@ describe('meter-area roster classification', () => {
       config: undefined,
       initializedMarker: undefined,
     })).toEqual({ status: 'resolved', areas: [] });
+    expect(resolveActiveMeterAreas({
+      status: 'resolved',
+      config: null,
+      initializedMarker: null,
+    })).toEqual({ status: 'resolved', areas: [] });
+  });
+
+  it('classifies a marker-backed missing roster unavailable, not an empty one', () => {
+    // The store was written before (marker set) but the blob read back absent
+    // — a transient fulfilled miss or an unset event racing the read. The
+    // runtime store calls exactly this combination `'suspect'`, so the mirror
+    // must not hand the caller a vouched empty roster that wipes the snapshot
+    // naming a still-simulating area.
+    for (const initializedMarker of [true, false, 'invalid', 1]) {
+      for (const config of [null, undefined]) {
+        expect(resolveActiveMeterAreas({
+          status: 'resolved',
+          config,
+          initializedMarker,
+        })).toEqual({ status: 'unavailable' });
+      }
+    }
+    // The scope claim is held on the same terms, so the two cannot contradict.
+    expect(resolveHasMeterAreas({
+      status: 'resolved',
+      config: undefined,
+      initializedMarker: true,
+    })).toBeNull();
   });
 
   it('classifies the whole roster unavailable when any entry is implausible', () => {
