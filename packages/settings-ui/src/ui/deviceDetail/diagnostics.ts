@@ -11,6 +11,7 @@ import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/s
 import {
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  PLAN_STATE_RESERVED_FOR_START_STATUS,
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { STARVATION_WAITING_FOR_POWER_COPY } from '../../../../shared-domain/src/planStarvation.ts';
 import { HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED } from '../../../../shared-domain/src/homeScopeCopy.ts';
@@ -133,6 +134,7 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   sample_gap: 'Fresh observation missing',
   deferred_objective_avoid: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   awaiting_solar_surplus: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  reserved_for_start: PLAN_STATE_RESERVED_FOR_START_STATUS,
   unknown_suppression_reason: 'Service reason unknown',
 };
 

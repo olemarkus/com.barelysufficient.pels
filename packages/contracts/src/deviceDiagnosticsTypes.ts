@@ -23,6 +23,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
   | 'sample_gap'
   | 'deferred_objective_avoid'
   | 'awaiting_solar_surplus'
+  | 'reserved_for_start'
   | 'unknown_suppression_reason';
 
 export type DeviceDiagnosticsWindowSummary = {

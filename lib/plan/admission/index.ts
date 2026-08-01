@@ -42,6 +42,14 @@ export {
 export type { RestoreAdmissionMetrics } from './reserve';
 
 export {
+  buildReservedForStartReason,
+  resolveClaimedReserveKw,
+  resolveHeadroomReserves,
+  resolveReserveAdmission,
+} from './headroomReserve';
+export type { HeadroomReserve, ReserveAdmission } from './headroomReserve';
+
+export {
   resolvePlanningTotalPower,
   updateGuardState,
 } from './sheddingGuard';

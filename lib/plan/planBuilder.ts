@@ -10,11 +10,10 @@
  * belongs to the executor.
  *
  * Shed-selection invariant (`lib/plan/shedding/AGENTS.md`): the shed set is
- * fixed once `buildSheddingPlan` returns, plus three post-shedding merges here
- * before materialization — the decoration seam's `forceShedSet`, the
- * pause-lower-priority hold (`resolvePauseHold`, `lib/plan/shedding/pauseHold.ts`),
- * and the solar dump-load hold (`resolveSurplusHold`,
- * `lib/plan/shedding/surplusHold.ts`). Every later stage — materialization,
+ * fixed once `buildSheddingPlan` returns, plus two post-shedding merges here
+ * before materialization — the decoration seam's `forceShedSet` and the solar
+ * dump-load hold (`resolveSurplusHold`, `lib/plan/shedding/surplusHold.ts`).
+ * Every later stage — materialization,
  * restore, hold, reason normalization — only copies `shedSet` membership into
  * per-device `plannedState`/shed actions, or declines to lift an existing shed;
  * none of them may add a device to the shed set.
@@ -197,11 +196,10 @@ export class PlanBuilder {
       sheddingPlan,
       overshootDecision,
     } = await this.buildContextAndShedding(admittedDevices, nowTs, dailyBudgetSnapshot);
-    // Surplus pass: hoisted eligibility allocator + the "Run on solar surplus"
-    // hold, merged into the shed set below like pauseHold (`planBuilderSurplus.ts`).
-    // Surplus allocator + dump-load hold + the three post-shedding hold merges,
-    // all in `runSurplusPass` (hoisted so eligibility exists as the shed set is
-    // assembled); returns the dump-load reason map for reason normalization.
+    // Surplus allocator + the "Run on solar surplus" dump-load hold + the
+    // post-shedding hold merges, all in `runSurplusPass` (hoisted so eligibility
+    // exists as the shed set is assembled); returns the dump-load reason map for
+    // reason normalization.
     const surplusHoldReasonById = trackPlanStage('plan_surplus_eligibility_ms', () => runSurplusPass({
       context,
       state: this.state,
@@ -210,7 +208,6 @@ export class PlanBuilder {
       decoration: { forceShedSet, deferredAvoidDeviceIds, deferredReleaseIntentByDeviceId, admittedDeviceIds },
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
       getPriority: (deviceId) => this.deps.getPriorityForDevice(deviceId),
-      capacitySettings: this.capacitySettings,
       getInferredSurplusKw: this.deps.getInferredSurplusKw,
       debugStructured: this.deps.debugStructured,
       nowTs,

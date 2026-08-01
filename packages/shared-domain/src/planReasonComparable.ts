@@ -127,6 +127,7 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
   switch (reason.code) {
     case PLAN_REASON_CODES.swapPending:
     case PLAN_REASON_CODES.swappedOut:
+    case PLAN_REASON_CODES.reservedForStart:
       return { code: reason.code, targetName: reason.targetName };
     case PLAN_REASON_CODES.headroomCooldown:
       return { code: reason.code, kind: reason.kind };

@@ -30,6 +30,11 @@ export const RESTORE_BATCH_MAX_DEVICES = 3;
 export const RESTORE_BATCH_HEADROOM_FRACTION = 0.5;
 // Swaps cannot rely on shed capacity becoming fully effective immediately; reserve some headroom.
 export const SWAP_RESTORE_RESERVE_KW = 0.3;
+// How long a device may hold a startup reservation before it lapses. Bounds the case where the
+// reserve can never be satisfied — a priority-2 device waiting behind an immovable priority-1 load
+// — so lower-priority devices are not held out of admission indefinitely for a start that will not
+// happen. Long enough for a genuine block to assemble as cycling loads finish their duty cycle.
+export const HEADROOM_RESERVE_MAX_MS = 15 * 60 * 1000;
 // `BINARY_COMMAND_PENDING_MS` moved to
 // `lib/observer/pendingBinaryCommandTypes.ts` in PR #4 of the
 // observer/transport split (see

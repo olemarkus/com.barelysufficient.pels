@@ -11,9 +11,10 @@ export type DeferredAdmissionDecision =
       kind: 'planned';
       budgetExempt: boolean;
       engageBoost: boolean;
-      // Boost-free proactive hold: the plan layer should hold lower-priority managed devices
-      // off (up to the hard cap) so this device can start. Distinct from engageBoost.
-      holdLowerPriority: boolean;
+      // Boost-free startup reservation: the plan layer may hold this device's lowest-active-step
+      // power back from lower-priority devices' admission until it starts. Distinct from
+      // engageBoost — it reserves power, it does not escalate this device or shed anyone.
+      reservesStartupPower: boolean;
       expectedStepId: string | null;
       releaseIntent?: 'binary_restore';
     }
@@ -93,11 +94,12 @@ const resolveDecision = (
   // is in its planned hours (the 'planned' decision below) — so it claims capacity from
   // lower-priority devices only when it is actually scheduled to run.
   const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
-  // Boost-free sibling of engageBoost: the pause-lower-priority permission asks the plan layer
-  // to proactively hold lower-priority managed devices off so this device can start. The plan
-  // layer (lib/plan/shedding/pauseHold.ts) owns the release-on-active and mathematical
-  // feasibility-lift decisions — here we only surface the granted intent for planned hours.
-  const holdLowerPriority = diagnostic.pauseLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
+  // Boost-free sibling of engageBoost: the pause-lower-priority permission entitles the device to
+  // reserve the power it needs to start, so cycling loads cannot nibble the block away. The plan
+  // layer (lib/plan/admission/headroomReserve.ts) owns the amount, the release, and the bound —
+  // here we only surface the granted intent for planned hours.
+  const reservesStartupPower = diagnostic.pauseLowerPriorityApplied === true
+    && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
     if (!shouldEmitTerminalRelease(diagnostic, device)) return { kind: 'inactive', budgetExempt: false };
     const releaseIntent = resolveReleaseIntentForCapOff(device);
@@ -135,7 +137,7 @@ const resolveDecision = (
     kind: 'planned',
     budgetExempt,
     engageBoost,
-    holdLowerPriority,
+    reservesStartupPower,
     expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
     ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
   };
@@ -156,13 +158,13 @@ export const applyDeferredObjectiveAdmission = (
 /**
  * "Leave off until turned on again": the hold guarantees this device will not
  * start, so every rescue decoration is spent on a device that cannot use it —
- * and each one costs OTHER devices. `holdLowerPriority` sheds every eligible
- * lower-priority managed device, `engageBoost` escalates past the shed
- * invariant, the cap-off `override` hands the planner a controllable device to
- * resume, and `budgetExempt` spends daily budget. All of that would be pure
- * collateral damage on unrelated loads, potentially for the whole planned
- * window. An explicit off action beats the task; the task reports the deadline
- * risk instead (`objective_device_left_off`).
+ * and each one costs OTHER devices. `reservesStartupPower` holds available
+ * power out of every lower-priority device's reach, `engageBoost` escalates
+ * past the shed invariant, the cap-off `override` hands the planner a
+ * controllable device to resume, and `budgetExempt` spends daily budget. All of
+ * that would be pure collateral damage on unrelated loads, potentially for the
+ * whole planned window. An explicit off action beats the task; the task reports
+ * the deadline risk instead (`objective_device_left_off`).
  */
 const rescueBlockedByExternalOffHold = (device: PlanInputDevice): boolean => (
   device.externalOffHoldActive === true
@@ -195,14 +197,14 @@ const buildAdmissionDecoration = (params: {
   override: boolean;
   budgetExempt: boolean;
   engageBoost: boolean;
-  holdLowerPriority: boolean;
+  reservesStartupPower: boolean;
   hasDeadlineFloor: boolean;
   deadlineFloorTargetC: number;
 }): Partial<PlanInputDevice> => ({
   ...(params.override ? { controllable: true } : {}),
   ...(params.budgetExempt ? { budgetExempt: true } : {}),
   ...resolveBoostFields(params.engageBoost),
-  ...(params.holdLowerPriority ? { holdLowerPriority: true } : {}),
+  ...(params.reservesStartupPower ? { reservesStartupPower: true } : {}),
   ...(params.hasDeadlineFloor ? { deadlineFloorTargetC: params.deadlineFloorTargetC } : {}),
 });
 
@@ -237,22 +239,22 @@ export const applyDeferredAdmissionToInput = (
     // from lower-priority devices — the deferred target override already commands the task's
     // target. Physical capacity stays enforced by the capacity guard.
     const engageBoost = !heldOff && decision.kind === 'planned' && decision.engageBoost;
-    // Boost-free proactive hold: flag the device so the plan layer holds lower-priority
-    // managed devices off. Only during planned hours (same gate as engageBoost); it never
-    // sets forceBoostActive.
-    const holdLowerPriority = !heldOff && decision.kind === 'planned' && decision.holdLowerPriority;
+    // Boost-free startup reservation: entitle the device to hold its lowest-active-step power
+    // back from lower-priority admission until it starts. Only during planned hours (same gate
+    // as engageBoost); it never sets forceBoostActive and never sheds anyone.
+    const reservesStartupPower = !heldOff && decision.kind === 'planned' && decision.reservesStartupPower;
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
     // device's standing budget-exemption setting.
     const budgetExempt = !heldOff && decision.budgetExempt;
-    if (!override && !budgetExempt && !engageBoost && !holdLowerPriority && !hasDeadlineFloor) return device;
+    if (!override && !budgetExempt && !engageBoost && !reservesStartupPower && !hasDeadlineFloor) return device;
     return {
       ...device,
       ...buildAdmissionDecoration({
         override,
         budgetExempt,
         engageBoost,
-        holdLowerPriority,
+        reservesStartupPower,
         hasDeadlineFloor,
         deadlineFloorTargetC,
       }),

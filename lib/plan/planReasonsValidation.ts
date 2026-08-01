@@ -32,6 +32,7 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.restorePending, label: 'restore pending' },
   { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
   { code: PLAN_REASON_CODES.shedInvariant, label: 'shed invariant' },
+  { code: PLAN_REASON_CODES.reservedForStart, label: 'startup power reserved' },
   { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
   { code: PLAN_REASON_CODES.headroomCooldown, label: 'headroom cooldown' },
   { code: PLAN_REASON_CODES.capacityControlOff, label: 'capacity control off' },
@@ -55,6 +56,7 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.insufficientHeadroom, label: 'insufficient headroom' },
   { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
   { code: PLAN_REASON_CODES.swappedOut, label: 'swapped out' },
+  { code: PLAN_REASON_CODES.reservedForStart, label: 'startup power reserved' },
   { code: PLAN_REASON_CODES.sheddingActive, label: 'shedding active' },
   { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
 ] as const;

@@ -86,8 +86,8 @@ By default a Smart task stays polite: it keeps to the daily budget and never tak
 | Permission | What it allows |
 | --- | --- |
 | **go over today's budget** | The device may keep running during its planned hours even when the daily budget would normally pace it down. The daily budget is a soft, price-shaped target, so this lets the task run past it. |
-| **limit lower-priority devices** | The task may limit lower-priority devices that are currently drawing power — pausing or turning them down — so it gets the power it needs. Devices at the same or higher priority are never touched. |
-| **pause lower-priority devices** | The task may have lower-priority managed devices held off up front — including ones sitting idle — so a device that needs a clear block of power to start (like an EV or water heater) can begin. Devices at the same or higher priority are never touched. |
+| **limit lower-priority devices** | The task may limit lower-priority devices that are **currently drawing power** — turning them down or off — so it gets the power it needs. Devices at the same or higher priority are never touched. |
+| **pause lower-priority devices** | PELS reserves the power the task needs to start, so it can start sooner. A device that needs a clear block of power to begin — an EV charger, a water heater — cannot start on scraps, so lower-priority devices wait their turn to resume until it has started. Nothing is switched off to make room, and devices at the same or higher priority are never affected. |
 
 For each permission you choose when it applies:
 
@@ -107,7 +107,7 @@ A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked
 
 - **go over today's budget** so the heater can reheat during its planned hours even if the day's budget is tight.
 - **limit lower-priority devices** so it can claim power from loads you care about less.
-- **pause lower-priority devices** so lower-priority loads (including idle ones) are held off up front, clearing the block of power the heater needs to start.
+- **pause lower-priority devices** so PELS reserves the power the heater needs to start, instead of letting smaller loads take it a slice at a time.
 
 You can grant the leeway as a standing setting once the task exists, or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
 

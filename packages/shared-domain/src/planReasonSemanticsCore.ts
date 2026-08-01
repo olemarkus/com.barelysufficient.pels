@@ -37,6 +37,12 @@ export const PLAN_REASON_CODES = {
   startupStabilization: 'startup_stabilization',
   capacityControlOff: 'capacity_control_off',
   shedInvariant: 'shed_invariant',
+  // A more important device has reserved the power it needs to start
+  // (`lib/plan/admission/headroomReserve.ts`), so this device stands down. Distinct from
+  // `capacity`: there is no hard-cap pressure, the available power is simply spoken for, and
+  // nothing was turned off to create the reservation. Lands on a device that is off and waiting to
+  // resume, and on an active stepped device denied a step-up.
+  reservedForStart: 'reserved_for_start',
   other: 'other',
 } as const;
 
@@ -104,6 +110,7 @@ export type DeviceReason =
     shedDeviceCount: number;
     maxStep: string;
   }
+  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string | null }
   | { code: typeof PLAN_REASON_CODES.other; text: string };
 
 const REASON_LABELS = {
@@ -135,6 +142,7 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
   [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',
   [PLAN_REASON_CODES.shedInvariant]: 'shed invariant',
+  [PLAN_REASON_CODES.reservedForStart]: 'reserved for start',
   [PLAN_REASON_CODES.other]: 'other',
 } as const satisfies Record<PlanReasonCode, string>;
 

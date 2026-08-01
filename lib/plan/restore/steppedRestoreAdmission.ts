@@ -13,8 +13,10 @@ import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { isBoostActive } from '../../device/deviceActionProjection';
 import { countShedDevices } from './coordination';
 import {
+  buildReservedForStartReason,
   buildRestoreAdmissionLogFields,
-  buildRestoreAdmissionMetrics,
+  resolveReserveAdmission,
+  type HeadroomReserve,
   type RestoreAdmissionMetrics,
 } from '../admission';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
@@ -45,21 +47,44 @@ export function admitSteppedRestore(params: {
   debugStructured?: StructuredDebugEmitter;
   restoreDebugKey: string;
   swapExecutor?: SteppedSwapExecutor;
+  headroomReserves: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
-    deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor } = params;
+    deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor,
+    headroomReserves } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
-  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
+  // See the binary twin in `gating.ts`: admit against the power this device may actually claim
+  // (raw minus any higher-priority startup reservation), while the running headroom total keeps
+  // tracking the raw figure.
+  const reserved = resolveReserveAdmission({
+    dev, availableHeadroom, neededKw: needed, reserves: headroomReserves,
+  });
+  const { admission, effectiveHeadroomKw } = reserved;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
-  if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
+  if (reserved.kind !== 'admitted') {
+    // Only the reservation is in the way — there is enough raw power, it is just promised to a
+    // higher-priority device. Stand down with an honest reason instead of swapping into a block
+    // that is already spoken for. Mirror the binary twin's posture (`rejectBinaryRestore`) so an
+    // off stepped candidate is recorded as not-resumed rather than left targeting an active step.
+    if (reserved.kind === 'blocked_by_reserve') {
+      setRestorePlanDevice(deviceMap, dev.id, {
+        ...(isOffSteppedRestoreCandidate(dev) ? buildOffSteppedRestoreShedUpdate(dev) : {}),
+        reason: buildReservedForStartReason({ dev, reserves: headroomReserves }),
+      });
+      return { availableHeadroom, restoredOneThisCycle: false };
+    }
     if (swapExecutor
         && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
-      return swapExecutor({
+      // Hand the swap the RESERVED figure for the same reason as the binary twin in `gating.ts`:
+      // it may only proceed by freeing enough to cover this step on top of a block already
+      // promised to a higher-priority device. The raw total is restored on the way out.
+      const reservedHeadroomKw = reserved.reservedKw;
+      const swapResult = swapExecutor({
         dev,
         needed,
         devPower: nextStep.planningPowerW / 1000,
-        availableHeadroom,
+        availableHeadroom: effectiveHeadroomKw,
         admittedDeviceUpdate: {
           desiredStepId: nextStep.id,
           targetStepId: nextStep.id,
@@ -74,6 +99,7 @@ export function admitSteppedRestore(params: {
         },
         rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
       });
+      return { ...swapResult, availableHeadroom: swapResult.availableHeadroom + reservedHeadroomKw };
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
@@ -106,7 +132,7 @@ export function admitSteppedRestore(params: {
       shedDeviceCount,
       deltaKw,
       neededKw: needed,
-      availableKw: availableHeadroom,
+      availableKw: effectiveHeadroomKw,
       ...buildRestoreAdmissionLogFields(admission),
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'admitted',

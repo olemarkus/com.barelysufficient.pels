@@ -484,6 +484,10 @@ type DevicePlanDeviceBase = {
   // from `PlanInputDevice.externalOffHoldActive` (see its doc block). The planner
   // makes the device inactive and never asks why it is off.
   externalOffHoldActive?: true;
+  // Forwarded flat from `PlanInputDevice.reservesStartupPower` (see its doc block): this device
+  // may hold back its lowest-active-step power from lower-priority devices' admission until it
+  // has started. Read only by `lib/plan/admission/headroomReserve.ts`.
+  reservesStartupPower?: true;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
