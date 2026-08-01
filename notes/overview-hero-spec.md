@@ -335,7 +335,14 @@ Priority order (first matching condition wins):
    acted.
 4. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
    The safe-pace clause is dropped when the value is unavailable
-   (`Holding back 2 devices.`).
+   (`Holding back 2 devices.`). Two more-specific variants win over the
+   safe-pace clause when they describe the whole limited set: all limited
+   devices smart-task waiting → `Waiting for cheaper hours before running
+   2 devices.` (blended comma-join when only some are); all limited devices
+   budget-paced (reason code `dailyBudget`) → `Holding back 2 devices to stay
+   within today's budget.` — the budget variant names the constraint instead
+   of a kW number, because under budget pacing the kW tick is not the thing
+   holding devices back.
 5. Restoring: `Bringing 1 device back online. Power has stayed under the safe pace.`
 6. Projected over budget: `On pace to overshoot this hour’s energy budget.`
    Fires when no devices are being limited or resumed but the projected hour

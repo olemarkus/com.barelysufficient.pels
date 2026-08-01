@@ -170,6 +170,7 @@ export class PlanMaterializationStages {
       ...holds,
       softLimitSource: context.softLimitSource,
       capacityBreached: isCapacityBreached(context.total, context.capacitySoftLimit),
+      budgetReleasableHeadroomHold: context.budgetReleasableHeadroomHold,
     }));
   }
 

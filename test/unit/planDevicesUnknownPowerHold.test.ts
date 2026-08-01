@@ -36,6 +36,7 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   capacitySoftLimit: 2,
   dailySoftLimit: null,
   softLimitSource: 'capacity',
+  budgetReleasableHeadroomHold: false,
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,

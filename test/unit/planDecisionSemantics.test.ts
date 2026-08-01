@@ -48,6 +48,22 @@ describe('plan decision semantics', () => {
     expect(isShedInvariantBlockedReason(reason(PLAN_REASON_CODES.keep))).toBe(false);
   });
 
+  // Pins the classifier the `insufficientHeadroom` → `dailyBudget` re-attribution
+  // in `normalizeShedReasons` changes exposure to: budget reason codes are absent
+  // from DEFERRED_RESTORE_BLOCK_REASON_CODES while capacity/headroom stay blocked.
+  // The coupling is LATENT today — `buildExecutableReleaseIntent` requires
+  // `plannedState === 'keep'` before consulting the reason, and every
+  // re-attributed hold is a shed device, so no binary_restore actually lifts a
+  // budget hold through the fold. If budget holds ever ride keep-state devices,
+  // this membership becomes load-bearing; change it deliberately, not by
+  // accident.
+  it('classifies budget holds as non-blocking for deferred restores (latent — keep-gate applies)', () => {
+    expect(isDeferredRestoreBlockedReason(reason(PLAN_REASON_CODES.dailyBudget))).toBe(false);
+    expect(isDeferredRestoreBlockedReason(reason(PLAN_REASON_CODES.hourlyBudget))).toBe(false);
+    expect(isDeferredRestoreBlockedReason(reason(PLAN_REASON_CODES.capacity))).toBe(true);
+    expect(isDeferredRestoreBlockedReason(reason(PLAN_REASON_CODES.insufficientHeadroom))).toBe(true);
+  });
+
   it('maps reason codes to starvation suppression semantics', () => {
     expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.capacity))).toEqual({
       state: 'counting',

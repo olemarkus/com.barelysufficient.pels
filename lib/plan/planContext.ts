@@ -3,6 +3,7 @@ import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import { getCurrentHourContext } from './planHourContext';
 import { resolvePowerSampleFreshness, type PowerFreshnessState } from './planPowerFreshness';
+import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
 
 export type DailyBudgetContext = {
@@ -30,6 +31,17 @@ export type PlanContext = {
   budgetPaceKw?: number | null;
   projectedExemptKw?: number | null;
   softLimitSource: SoftLimitSource;
+  // A headroom-blocked restore hold is releasable by the daily budget ONLY when the
+  // daily pace is the binding limit, the power sample is fresh, and capacity is not
+  // ALSO breached. Fresh power: `stale_hold` synthesizes headroom 0 and
+  // `stale_fail_closed` forces -1, so a stale meter blocks restores for reasons the
+  // budget cannot lift. No breach: when total is over the capacity limit too,
+  // capacity is the constraint doing the work and a budget release cannot help
+  // (prod 2026-07-25). Resolved to one flat boolean HERE so no consumer recomposes
+  // it from ingredients — `planDiagnostics` (starvation counting cause, rescue
+  // gating) and `normalizeShedReasons` (device reason re-attribution) must read
+  // this same field or the card and the rescue widget disagree about the hold.
+  budgetReleasableHeadroomHold: boolean;
   hourBucketKey: string;
   budgetKWh: number;
   usedKWh: number;
@@ -111,6 +123,9 @@ export function buildPlanContext(params: {
     budgetPaceKw,
     projectedExemptKw,
     softLimitSource,
+    budgetReleasableHeadroomHold: softLimitSource === 'daily'
+      && powerKnown
+      && !isCapacityBreached(total, capacitySoftLimit),
     hourBucketKey: hourContext.bucketKey,
     budgetKWh,
     usedKWh,

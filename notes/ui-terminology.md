@@ -182,8 +182,13 @@ retired.
 
 The reason line under a Limited card names the action or the binding
 constraint: **Turned off by PELS**, **Lowered by PELS**, **Charging paused**,
-`Limited to stay within today's budget`, `Waiting to resume — 0.2 kW more
-needed`, and so on.
+`Limited to stay within today's budget`, `Limited by today's daily budget`,
+`Waiting to resume — 0.2 kW more needed`, and so on. `Limited by today's
+daily budget` is the default reason line for a budget-bound hold (including a
+restore blocked by the daily pace — those must NOT read as a kW gap, because
+freeing power cannot lift a budget hold); `Limited to stay within today's
+budget` is the starvation-surface phrasing of the same condition. Converging
+the two onto one sentence is open work; do not add a third variant.
 
 In **simulation mode** the state word stays FACTUAL — `held`/`resuming` are
 PELS-acted claims and PELS acts on nothing in simulation, so the bold word
