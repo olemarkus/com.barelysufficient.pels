@@ -719,6 +719,29 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
     expect(h.forgetDevice).toHaveBeenCalledWith('d1');
   });
+
+  it('gives up on a fence that outlives the grace window instead of retrying forever', async () => {
+    const h = buildLifecycleCtx('main', true);
+
+    // Inside the 5 min grace the fence is assumed transient: keep the task.
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    await settleActuation();
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(h.forgetDevice).not.toHaveBeenCalled();
+
+    // But a fence can also persist: a Main whole-home meter that is also a
+    // meter area's meter holds it until the owner changes one of the two
+    // selections. Without a grace bail the objective would stay enabled past
+    // its deadline forever, never filing the run — unlike every sibling arm,
+    // which gives up after the same grace. No actuation either way: the fence
+    // exists precisely because a Main write cannot be trusted.
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 6 * 60_000);
+    await settleActuation();
+    expect(h.setCapability).not.toHaveBeenCalled();
+    expect(h.applyDeviceTargets).not.toHaveBeenCalled();
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
 });
 
 // ─── Concurrent-eligible denominator: relocated tasks stop diluting ──────────

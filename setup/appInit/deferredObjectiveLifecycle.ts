@@ -1,4 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
+import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
   hasMainHomeSmartTaskAuthority,
@@ -269,6 +270,29 @@ export const planTerminalEnding = (
   return { actuate: true, disarm: graceElapsed };
 };
 
+/**
+ * The home-scope gate for a deadline tick, pure like `planTerminalEnding` above.
+ * Durable scope exclusions (a device relocated to a separate-meter sub-home, or
+ * one newly selected as an active meter source) have no terminal command:
+ * `disarm` immediately, so a stale task cannot retry forever against a device
+ * PELS must not control. A global/provisional Main fence is normally transient
+ * (a zone tree that has not committed, a suspect settings read) — `retry` on
+ * the next lifecycle tick. But a fence can also persist — a Main whole-home
+ * meter that is also a meter area's meter holds it until the owner fixes one of
+ * the two selections — and without a grace bail the objective would stay
+ * enabled past its deadline forever, never filing the run. Give up after the
+ * same grace the absent-device and unavailable-device arms use, with no
+ * actuation: the fence exists precisely because a Main write cannot be trusted.
+ */
+const planScopeGateAction = (
+  homeScope: SmartTaskHomeScope,
+  graceElapsed: boolean,
+): 'disarm' | 'retry' | 'proceed' => {
+  if (homeScope === 'sub_home' || homeScope === 'source_device') return 'disarm';
+  if (homeScope === 'unavailable') return graceElapsed ? 'disarm' : 'retry';
+  return 'proceed';
+};
+
 // Clock-driven END of a task: return the cap-off device it was driving to its
 // configured fallback posture directly via the transport, AND disarm the task —
 // but disarm only once the release is SETTLED (device observed in the shed
@@ -287,17 +311,9 @@ export const handleDeferredDeadlineReached = (
 ): void => {
   const disarm = () => disableDeferredObjectiveInSettings(ctx, deviceId);
   const graceElapsed = nowMs - deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS;
-  // Durable scope exclusions (a device relocated to a separate-meter sub-home,
-  // or one newly selected as an active meter source) have no terminal command:
-  // immediately disarm the stale task so it cannot retry forever against a
-  // device PELS must not control. A global/provisional Main fence is transient,
-  // so keep the objective enabled and retry on the next lifecycle tick.
-  const homeScope = resolveSmartTaskHomeScope(ctx, deviceId);
-  if (homeScope === 'sub_home' || homeScope === 'source_device') {
-    disarm();
-    return;
-  }
-  if (homeScope === 'unavailable') return;
+  const scopeGate = planScopeGateAction(resolveSmartTaskHomeScope(ctx, deviceId), graceElapsed);
+  if (scopeGate === 'disarm') { disarm(); return; }
+  if (scopeGate === 'retry') return;
   // Cap-on → the planner owns the device on its normal lane; just disarm (no
   // terminal release, no actuation needed, device presence irrelevant).
   if (ctx.isCapacityControlEnabled(deviceId)) { disarm(); return; }
