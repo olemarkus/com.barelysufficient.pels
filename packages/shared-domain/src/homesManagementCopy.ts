@@ -11,6 +11,7 @@
  * Import this module directly — there is no shared-domain barrel.
  */
 
+import { resolveHomeAreaDisplayName } from './homeNames';
 import type { SubHomeDraftError, SubHomeDraftWarning } from './homesManagement';
 
 // The hub nav card + panel title strings ("Multiple meters" / "Parts of your
@@ -35,34 +36,10 @@ export const HOMES_EMPTY_EXPLAINER = 'If a part of your home has its own electri
   + 'of the Main home.';
 export const HOMES_ADD_BUTTON = 'Add meter area';
 
-// ── Home names ─────────────────────────────────────────────────────────────
-
-/**
- * The implicit complement's display name (notes/ui-terminology.md). Canonical
- * for every surface that names a home, including runtime Flow tokens, so a
- * Flow tag reads exactly like the settings label.
- */
-export const HOMES_MAIN_HOME_NAME = 'Main home';
-
-/**
- * Stand-in when a saved meter area carries an empty name. Persisted names are
- * untrusted (any string), and a blank Flow tag or status line would tell the
- * owner nothing about which part of the home it came from.
- */
-export const HOMES_UNNAMED_AREA_NAME = 'Meter area';
-
-/**
- * The name to SHOW for a meter area. Persisted names are untrusted: the config
- * store accepts any string and the save path does not check the name either, so
- * a blank one is reachable. One rule for every surface that renders an area
- * name (the Multiple meters list, the shortfall Flow tag, the runtime logs) so
- * a blank area is not an empty row on one screen and `Meter area` on the next.
- * Takes the raw name rather than a config object so both the settings UI and
- * the runtime can call it.
- */
-export const resolveHomeAreaDisplayName = (name: string): string => (
-  name.trim() || HOMES_UNNAMED_AREA_NAME
-);
+// The home names themselves (`HOMES_MAIN_HOME_NAME`, `HOMES_UNNAMED_AREA_NAME`,
+// `resolveHomeAreaDisplayName`) live in the dependency-neutral `homeNames.ts`
+// leaf: `homesManagement.ts` needs them too, and it is what this module imports
+// its error/warning types FROM — keeping them here made the pair circular.
 
 // ── List ───────────────────────────────────────────────────────────────────
 

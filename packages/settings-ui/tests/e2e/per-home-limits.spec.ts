@@ -512,3 +512,55 @@ test('a device pin overrides zone membership in a scoped devices read', async ({
 
   expect(await readScopedDeviceIds()).toEqual(['dev_waterheater']);
 });
+
+test('a scoped power read gates the area solar flag on the power source', async ({ page }) => {
+  // Pins the other half of the scoped-read stub seam against its producer
+  // (`powerPayloadForHome`, setup/settingsUiApi.ts): the ui_power solar flag
+  // needs BOTH a solarpanel member AND the homey_energy source, because the
+  // flow power boundary rejects negative watts, so the solar buckets can never
+  // fill and the Usage Solar card must not promise data. An ungated stub would
+  // let a scoped Usage spec render and validate a card production hides.
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+  await page.evaluate(() => {
+    const stub = (window as unknown as {
+      Homey: { __stub: { getSetting: (k: string) => unknown; setSetting: (k: string, v: unknown) => void } };
+    }).Homey.__stub;
+    const snapshot = stub.getSetting('target_devices_snapshot') as Array<Record<string, unknown>>;
+    stub.setSetting('target_devices_snapshot', [...snapshot, {
+      id: 'dev_rental_pv',
+      name: 'Rental solar',
+      deviceClass: 'solarpanel',
+      zone: 'Rental living room',
+      zoneId: 'z_rental_living',
+    }]);
+  });
+
+  const readScopedSolarFlag = (): Promise<boolean | undefined> => page.evaluate(async (areaId) => {
+    const { Homey } = window as unknown as {
+      Homey: {
+        api: (
+          method: string,
+          uri: string,
+          cb: (err: Error | null, result?: { hasManagedSolarDevice?: boolean }) => void,
+        ) => void;
+      };
+    };
+    return new Promise<boolean | undefined>((resolve, reject) => {
+      Homey.api('GET', `/ui_power?homeId=${areaId}`, (err, result) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(result?.hasManagedSolarDevice);
+      });
+    });
+  }, AREA_ID);
+
+  // `gotoApp` seeds the homey_energy source these fixtures model.
+  expect(await readScopedSolarFlag()).toBe(true);
+
+  await seedStubSetting(page, 'power_source', 'flow');
+  expect(await readScopedSolarFlag()).toBe(false);
+});

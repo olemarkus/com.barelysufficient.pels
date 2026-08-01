@@ -8,7 +8,7 @@ import {
 } from '../capacityShortfallSideEffectGate';
 import { createCapacityShortfallAlertHold } from '../capacityShortfallAlertHold';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
-import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 
 const MAIN_SHORTFALL_SIDE_EFFECT_RETRY_TIMER = 'mainShortfallSideEffectRetry';
 const MAIN_SHORTFALL_ALERT_HOLD_TIMER = 'mainShortfallAlertHold';

@@ -16,7 +16,7 @@
  * belong to the Main home, so their flags must not be passed in at all.
  */
 
-import { HOMES_MAIN_HOME_NAME, resolveHomeAreaDisplayName } from './homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME, resolveHomeAreaDisplayName } from './homeNames';
 
 /**
  * `mixed` covers every posture that is honestly neither absolute: homes KNOWN

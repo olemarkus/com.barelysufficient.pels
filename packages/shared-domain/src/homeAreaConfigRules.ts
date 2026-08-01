@@ -17,7 +17,7 @@
 
 // The Limits switcher (and its `HOME_LIMITS_MAIN_HOME_OPTION` alias) was retired
 // by the global scope bar; reserve the canonical spelling directly.
-import { HOMES_MAIN_HOME_NAME } from './homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME } from './homeNames';
 
 /**
  * How many meter areas one Homey may configure through the save seam. Each

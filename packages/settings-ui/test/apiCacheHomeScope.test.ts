@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_HOME_ID_QUERY_PARAM,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
@@ -198,5 +199,72 @@ describe('invalidations during an in-flight read', () => {
     await inFlight;
     expect(await getApiReadModel(uri)).toBe(`fetched:${uri}`);
     expect(deferredClient.api).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('unavailable scoped responses', () => {
+  // `homeScope: unavailable` is a REFUSAL, not data: the runtime answers it
+  // while a home's membership is provisional, while its bundle is unwired, or
+  // when a settings read behind the payload transiently fails. Each of those
+  // clears without necessarily sweeping this path — a home committing its first
+  // status writes `pels_status:<id>`, which the change router deliberately
+  // excludes from the devices sweep — so a cached refusal would pin an empty
+  // sub-home view for the rest of the WebView session.
+  const responses: unknown[] = [];
+  const client: HomeySettingsClient = {
+    ready: () => Promise.resolve(),
+    get: (_key: string, cb: HomeyCallback<unknown>) => cb(null, null),
+    set: (_key: string, _value: unknown, cb: HomeyCallback<void>) => cb(null),
+    api: vi.fn((_method, _uri, bodyOrCallback, cb) => {
+      const callback = (typeof bodyOrCallback === 'function' ? bodyOrCallback : cb) as HomeyCallback<unknown>;
+      callback(null, responses.shift() ?? null);
+    }),
+  };
+
+  beforeEach(() => {
+    setHomeyClient(null);
+    setHomeyClient(client);
+    vi.mocked(client.api!).mockClear();
+    responses.length = 0;
+  });
+
+  it('refetches after a refusal, then caches the payload that resolves', async () => {
+    const uri = scoped(SETTINGS_UI_DEVICES_PATH, AREA);
+    const unavailable = { devices: [], homeScope: { state: 'unavailable' } };
+    const resolved = { devices: [{ id: 'dev_1' }], homeScope: { state: 'resolved', homeId: AREA } };
+    responses.push(unavailable, resolved);
+
+    // The caller still gets the refusal it asked for…
+    expect(await getApiReadModel(uri)).toEqual(unavailable);
+    // …and the next read goes back to the runtime with NO invalidation in
+    // between, so readiness that commits silently is picked up.
+    expect(await getApiReadModel(uri)).toEqual(resolved);
+    expect(client.api).toHaveBeenCalledTimes(2);
+
+    // The resolved payload caches normally — this must not degrade into an
+    // uncached read model.
+    expect(await getApiReadModel(uri)).toEqual(resolved);
+    expect(client.api).toHaveBeenCalledTimes(2);
+  });
+
+  it('caches a resolved scoped payload on the first read', async () => {
+    const uri = scoped(SETTINGS_UI_POWER_PATH, AREA);
+    const resolved = { tracker: null, status: null, homeScope: { state: 'resolved', homeId: AREA } };
+    responses.push(resolved);
+
+    expect(await getApiReadModel(uri)).toEqual(resolved);
+    expect(await getApiReadModel(uri)).toEqual(resolved);
+    expect(client.api).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches a whole-home payload, which carries no homeScope at all', async () => {
+    // The bare read models are byte-identical to the pre-multi-home ones, so
+    // nothing here may make them refetch.
+    const uri = SETTINGS_UI_DEVICES_PATH;
+    responses.push({ devices: [{ id: 'dev_1' }] });
+
+    expect(await getApiReadModel(uri)).toEqual({ devices: [{ id: 'dev_1' }] });
+    expect(await getApiReadModel(uri)).toEqual({ devices: [{ id: 'dev_1' }] });
+    expect(client.api).toHaveBeenCalledTimes(1);
   });
 });

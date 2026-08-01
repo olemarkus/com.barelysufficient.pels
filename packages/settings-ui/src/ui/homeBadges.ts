@@ -5,8 +5,8 @@ import {
 import {
   composeHomeBadgeLabel,
   composeHomeBadgeTooltip,
-  resolveHomeAreaDisplayName,
 } from '../../../shared-domain/src/homesManagementCopy.ts';
+import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { setTooltip } from './tooltips.ts';

@@ -19,7 +19,7 @@ import {
   HOMES_POWER_SOURCE_NEEDED_BY_AREAS,
   HOMES_POWER_SOURCE_SAVE_FAILED,
 } from '../../packages/shared-domain/src/homeAreaConfigRulesCopy';
-import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 
 describe('normalizeHomeAreaName', () => {
   it('strips surrounding whitespace and leaves the inside of the name alone', () => {
@@ -120,13 +120,14 @@ describe('findHomeAreaNameRejection', () => {
     vi.resetModules();
     // Partial mocks of BOTH candidate sources: the reserved list reads the
     // canonical Main-home label, whose home module moved during the train
-    // (homeLimitsCopy's switcher alias retired into homesManagementCopy).
-    // Spreading the originals keeps every other export intact either way.
+    // (homeLimitsCopy's switcher alias retired; the name itself now lives in
+    // the dependency-neutral homeNames leaf). Spreading the originals keeps
+    // every other export intact either way.
     vi.doMock('../../packages/shared-domain/src/homeLimitsCopy', async (importOriginal) => ({
       ...(await importOriginal<Record<string, unknown>>()),
       HOME_LIMITS_MAIN_HOME_OPTION: 'Hovedm\u00e5ler',
     }));
-    vi.doMock('../../packages/shared-domain/src/homesManagementCopy', async (importOriginal) => ({
+    vi.doMock('../../packages/shared-domain/src/homeNames', async (importOriginal) => ({
       ...(await importOriginal<Record<string, unknown>>()),
       HOMES_MAIN_HOME_NAME: 'Hovedm\u00e5ler',
     }));
@@ -136,7 +137,7 @@ describe('findHomeAreaNameRejection', () => {
         .toEqual({ reason: 'name_reserved', reservedName: 'Hovedm\u00e5ler' });
     } finally {
       vi.doUnmock('../../packages/shared-domain/src/homeLimitsCopy');
-      vi.doUnmock('../../packages/shared-domain/src/homesManagementCopy');
+      vi.doUnmock('../../packages/shared-domain/src/homeNames');
       vi.resetModules();
     }
   });
