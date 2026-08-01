@@ -52,7 +52,7 @@ const buildBinarySteppedPlanDevice = (
   return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as DevicePlanDevice;
 };
 
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
   desiredForMode: {},
   total: 0,
@@ -65,6 +65,8 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   dailySoftLimit: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   hourBucketKey: '1970-01-01T00',
   budgetKWh: 0,
   usedKWh: 0,
@@ -74,6 +76,19 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   restoreMarginPlanning: 0.2,
   ...overrides,
 });
+
+// Mirror the producer: unless a test pins the axes explicitly, the capacity
+// axis tracks the fixture's binding headroom (capacity-bound home, no daily
+// budget), so restore admissions see the same available power as before the
+// per-axis ledger.
+const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
+  const base = buildContextFields(overrides);
+  return {
+    ...base,
+    capacityHeadroomKw: overrides.capacityHeadroomKw ?? base.headroom,
+    budgetHeadroomKw: overrides.budgetHeadroomKw ?? null,
+  };
+};
 
 describe('restore cooldown backoff', () => {
   beforeEach(() => {

@@ -30,6 +30,8 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext
   dailySoftLimit: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',
   budgetKWh: 0,
   usedKWh: 0,

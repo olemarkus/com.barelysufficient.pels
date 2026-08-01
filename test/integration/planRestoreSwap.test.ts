@@ -47,6 +47,37 @@ describe('buildSwapCandidates', () => {
     expect(result.toShed).toHaveLength(0);
   });
 
+  // Per-axis admission: a NON-exempt target's budget axis is invariant to an
+  // exempt source turning off (measured exempt sum and total drop together), so
+  // counting the exempt source's freed draw would pause a running exempt device
+  // for a swap target that is re-rejected every cycle (strand + churn). An
+  // exempt TARGET admits on the capacity axis, where freed draw is real.
+  it('never counts a budget-exempt source toward a non-exempt target, but does for an exempt target', () => {
+    const onDevices = [
+      buildPlanDevice({ id: 'exempt-src', name: 'Exempt Heater', priority: 120, budgetExempt: true, powerKw: 2 }),
+    ];
+    const forNonExempt = buildSwapCandidates({
+      dev: buildPlanDevice({ id: 'target', priority: 50 }),
+      onDevices,
+      swappedOutFor: new Map(),
+      availableHeadroom: 0.3,
+      needed: 1.2,
+      restoredThisCycle: new Set(),
+    });
+    expect(forNonExempt.ready).toBe(false);
+    expect(forNonExempt.toShed).toHaveLength(0);
+
+    const forExempt = buildSwapCandidates({
+      dev: buildPlanDevice({ id: 'target-exempt', priority: 50, budgetExempt: true }),
+      onDevices,
+      swappedOutFor: new Map(),
+      availableHeadroom: 0.3,
+      needed: 1.2,
+      restoredThisCycle: new Set(),
+    });
+    expect(forExempt.toShed.map((device) => device.id)).toEqual(['exempt-src']);
+  });
+
   it('defaults missing priorities to 100 when evaluating swap candidates', () => {
     const result = buildSwapCandidates({
       dev: buildPlanDevice({ priority: undefined }),

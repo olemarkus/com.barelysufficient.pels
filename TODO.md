@@ -41,6 +41,21 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **A smart task loses its budget exemption mid-planned-bucket when the learned rate flaps
+      to `objective_missing_charge_rate`.** Prod 2026-08-01 18:40:45: the water heater's objective
+      flipped `on_track` → `unknown` (`reasonCode: objective_missing_charge_rate`) while its
+      current bucket had 1.183 kWh planned; `unknown` is not plannable, so the per-cycle admission
+      decision resolved `budgetExempt: false` (`lib/objectives/deferredObjectives/admission.ts`
+      ~91/101), the exempt add-back vanished, and the hero's safe pace collapsed 2.2 → 1.3 kW in
+      one cycle — the horizon log kept printing `budgetExemptApplied: true` (the config flag) the
+      whole time, which is why the drop looked inexplicable. 398 `deferred_objective_unknown`
+      events for this one device in a single day's log: the rate-confidence lane flaps, and every
+      flap strips the exemption and yanks the pace. The task's protections should degrade
+      gracefully through a transient rate gap (grace window on the last plannable status, like the
+      SDK-read abandon-grace convention), and the horizon log should carry the per-cycle applied
+      exemption, not only the config flag. Found in the 2026-08-01 per-axis-admission
+      investigation. [P1]
+
 - [ ] **A smart task reports `on_track` while its current planned bucket goes undelivered.**
       Prod 2026-08-01, water heater "Connected 300": the frozen horizon booked 1.183 kWh into the
       current bucket, the device was restore-blocked the whole hour (shed, 0 W, tank temperature
@@ -1056,6 +1071,33 @@ program) remain deferred.*
       Correct the number or state the real reason (teardown lives here), so the next author does not
       launder code into the file on a constraint that does not exist.
       Source: `pels-layering-guardian` review of the sustained hard-cap card, 2026-08-01.
+
+- [ ] **A budget-axis restore rejection is attributed as capacity pressure when
+      `softLimitSource` is 'capacity'.** With an off exempt device projecting, the binding source
+      can read 'capacity' (`budgetPaceKw + projectedExempt > capacityPace`) while the per-axis
+      ledger rejects a non-exempt candidate on the MEASURED budget axis
+      (`budgetPaceKw + measuredExempt < capacityPace`). `budgetReleasableHeadroomHold` derives
+      from the binding source, so the hold keeps the numeric headroom framing and the budget
+      rescue is not offered even though the budget is the axis doing the work. Fix direction:
+      re-key hold attribution per axis at the rejection site (the ledger knows which axis bound),
+      not off the collapsed binding source — the same catch-up the reason fold got for exempt
+      candidates. *Persona:* daily-budget home with an off exempt charger and held thermostats.
+      *Hypothesis:* needs projected>measured AND the projection large enough to flip the argmin;
+      display-only harm (wrong framing, missing rescue offer). Source: Codex review on PR #1956 +
+      pels-layering-guardian corner (b), 2026-08-02. [P2]
+
+- [ ] **Budget-exempt restores are still blocked by the global restore gate while the house is
+      over the budget-derived pace.** Per-axis admission (2026-08-01) lets an exempt candidate
+      admit against capacity once the restore pass RUNS, but `shouldPlanRestores` still keys on
+      the BINDING headroom: with unmanaged load pushing the house over a daily-bound pace
+      (prod 2026-08-01 evening: 4.1 kW against a 0.5 kW pace, capacity pace ~19 kW), no restore
+      pass runs at all and the exempt EV/heater stays held even though capacity has room and its
+      draw would not count toward the budget. Extending the gate needs care: `activeOvershoot`
+      keys the shed window, restores-during-overshoot interact with the 60 s shed cooldown, and
+      the exempt-only pass must not resurrect churn. *Persona:* daily-budget home cooking dinner
+      while the exempt EV waits with a deadline. *Hypothesis:* the deadline-reserve/rescue lanes
+      mostly paper over this today; fix deliberately, not as a rider. Source: per-axis-admission
+      review 2026-08-01. [P2]
 
 - [ ] **A budget-bound "Waiting to increase" step-up hold still speaks the headroom axis.** The
       `insufficientHeadroom` → `dailyBudget` re-attribution in `normalizeShedReasons` only touches
@@ -2609,6 +2651,17 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       canon in `notes/ui-terminology.md` (§ date grammar, cross-refs the "Thu 4 Jun" line at :439):
       either accept English months as the one pinned grammar, or move the pin to a locale that
       still guarantees day-first. Source: PR #1826 copy-sweep review gates (2026-07-02).
+
+- [ ] **A meterless ON exempt device loses its exemption on the restore budget axis.**
+      `sumBudgetExemptMeasuredUsageKw` counts only measured draw, so an ON exempt device without
+      `measure_power` contributes 0 while its real draw sits in `total` — the budget axis is
+      over-tight by its full draw and non-exempt restores are held while it runs. Shedding still
+      credits it via the projected add-back, so shed and restore use different credits for the
+      same device. *Persona:* budget-exempt smart task on an unmetered relay heater plus other
+      managed thermostats. *Hypothesis:* conservative-only (holds restores, never sheds), bounded
+      by the exempt device's runtime; most exempt devices (EVs, connected water heaters) meter.
+      Candidate fix: fall back to expected power for an OBSERVED-ON meterless exempt device on
+      this axis only. Source: adversarial review of PR #1956, 2026-08-02. [P3]
 
 ## P3 Future and Exploratory Work
 

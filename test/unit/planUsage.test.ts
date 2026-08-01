@@ -1,8 +1,8 @@
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 
 describe('plan usage budget exemption helpers', () => {
   it('prefers measured power over expected power when both are available', () => {
-    expect(sumBudgetExemptLiveUsageKw([
+    expect(sumBudgetExemptProjectedUsageKw([
       {
         budgetExempt: true,
         measuredPowerKw: 1.2,
@@ -16,7 +16,7 @@ describe('plan usage budget exemption helpers', () => {
   });
 
   it('allows expected power as a live fallback for exempt soft-limit control', () => {
-    expect(sumBudgetExemptLiveUsageKw([
+    expect(sumBudgetExemptProjectedUsageKw([
       {
         budgetExempt: true,
         expectedPowerKw: 1.5,
@@ -34,7 +34,7 @@ describe('plan usage budget exemption helpers', () => {
   });
 
   it('ignores budget-exempt devices with capacity control disabled', () => {
-    expect(sumBudgetExemptLiveUsageKw([
+    expect(sumBudgetExemptProjectedUsageKw([
       {
         budgetExempt: true,
         controllable: false,

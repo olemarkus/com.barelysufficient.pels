@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
-import { sumControlledUsageKw, splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../../lib/plan/planUsage';
+import { sumControlledUsageKw, splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
@@ -75,6 +75,8 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   dailySoftLimit: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
@@ -89,6 +91,8 @@ const emptyRestoreResult: RestorePlanResult = {
   stateUpdates: { swapByDevice: {} },
   restoredThisCycle: new Set<string>(),
   availableHeadroom: 1,
+  capacityAvailableKw: 1,
+  budgetAvailableKw: null,
   restoredOneThisCycle: false,
   inCooldown: false,
   inRestoreCooldown: false,
@@ -245,7 +249,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         getLatestTargetSnapshot: () => getLatestTargetSnapshot(nowMs) as never,
         powerTracker: tracker,
         splitControlledUsage: splitControlledUsageKw,
-        sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+        sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
         saveState: (next) => { tracker = next; },

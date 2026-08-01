@@ -75,7 +75,7 @@ Two axes, named so no expression silently mixes them:
   renders.
 
 There are two exempt sums and therefore two non-exempt quantities, and they must
-carry distinct names down to the contract field. `sumBudgetExemptLiveUsageKw`
+carry distinct names down to the contract field. `sumBudgetExemptProjectedUsageKw`
 (`lib/plan/planUsage.ts:75`) returns the **projected** value: for an observed-off
 device `resolveUsageKw` falls through to `getHighestKnownPowerKw`, so a parked
 charger contributes its configured power. That projection is correct for the
@@ -272,7 +272,7 @@ Exempt netting happens at `lib/plan/planDailyBudgetWindow.ts:80-84`: the bucket'
 performs the same subtraction for the daily-budget state and UI view; that is a
 parallel path, not the one the planner paces on.)
 
-The exempt device set is the same on both axes: `sumBudgetExemptLiveUsageKw`
+The exempt device set is the same on both axes: `sumBudgetExemptProjectedUsageKw`
 (`lib/plan/planUsage.ts:75`) gates the energy accrual at `lib/power/sampleIngest.ts:167`
 and the power term at `lib/plan/planBuilder.ts:534`.
 
@@ -327,7 +327,7 @@ no budget change behind it. Against the 60 s shed cooldown that is a control
 question, not only a display one.
 
 **3. Unresolved exempt draw silently becomes zero exempt draw.**
-`sumBudgetExemptLiveUsageKw` returns `null` when exempt devices exist but none
+`sumBudgetExemptProjectedUsageKw` returns `null` when exempt devices exist but none
 report power, and `planBuilder.ts:534` coerces that with `?? 0`. With two exempt
 devices and one reporting it returns a *partial* sum with no signal at all.
 `budgetPaceImportKw` then collapses to `budgetPaceKw` while `P_import` still
@@ -546,10 +546,13 @@ Two supporting changes:
   projected reservation is measured load. The plan payload carries both values;
   `meta.dailySoftLimitKw` remains their rebased sum.
 - **Do not present "available power" as capacity-only for an exempt device.** The
-  exemption buys immunity from daily-budget *shedding* (`shedding/candidates.ts`)
-  and nothing more. Restore admission still gates on `bindingPaceKw` with no
-  exemption carve-out (`lib/plan/planReasons.ts:63-68`), so an exempt device can be
-  held by the daily budget.
+  exemption buys immunity from daily-budget *shedding* (`shedding/candidates.ts`),
+  and — since the per-axis restore-admission change (2026-08-01,
+  `lib/plan/restore/headroomLedger.ts`) — an exempt restore candidate is admitted
+  against the CAPACITY axis, so it is no longer held by the budget-derived
+  binding pace. Non-exempt candidates must additionally fit the budget pace with
+  a MEASURED exempt sum, so they cannot spend headroom that exists only as an off
+  exempt device's projection.
 
   **But do not repeat that comment's stated reason.** It says the add-back is the
   exempt device's live draw, "zero while it is off". That is not what the code
@@ -591,9 +594,12 @@ quantity on `PlanContext` and `plan.meta`:
 - The negative case (solar more than covering the non-exempt load) is invisible
   everywhere, despite being a good thing to tell someone.
 
-It needs to land twice, with different exempt sums: the control value uses the
-projected `sumBudgetExemptLiveUsageKw`, and a display value uses a measured-only
-sum, for the reason in § "Overview hero".
+It needs to land twice, with different exempt sums: the daily-pace add-back uses
+the projected `sumBudgetExemptProjectedUsageKw`, while the measured-only
+`sumBudgetExemptMeasuredUsageKw` now feeds BOTH the restore-admission budget axis
+(`PlanContext.budgetHeadroomKw` — a control input, so a non-exempt restore cannot
+spend an off exempt device's projection) and, eventually, the hero's display
+value (§ "Overview hero").
 
 The alternative policy, allocating solar pro-rata across exempt and non-exempt
 load instead of to non-exempt first, was considered and rejected: it would let an

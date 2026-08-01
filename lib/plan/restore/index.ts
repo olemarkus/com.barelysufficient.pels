@@ -36,6 +36,7 @@ import {
   type HeadroomReserve,
 } from '../admission';
 import { reserveHeadroomForPendingRestores } from './support';
+import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import { buildRestoreBatchState } from './batch';
 import { planRestoreForDevice } from './gating';
@@ -70,21 +71,12 @@ export function applyRestorePlan(params: {
   cleanupCompletedSwaps(swapState, deviceMap);
 
   const restoredThisCycle = new Set<string>();
-  let availableHeadroom = guardInShortfall
-    ? context.headroomRaw
-    : reserveHeadroomForPendingRestores({
-      rawHeadroom: context.headroomRaw,
-      planDevices,
-      lastDeviceRestoreMs: state.lastDeviceRestoreMs,
-      measurementTs: deps.powerTracker.lastTimestamp ?? null,
-      debugStructured: deps.debugStructured,
-      deviceNameById: deps.deviceNameById,
-    });
+  const ledger = buildCycleHeadroomLedger({ context, planDevices, state, deps, guardInShortfall });
   let restoredOneThisCycle = false;
   const batchState = buildRestoreBatchState({
     context,
     timing: effectiveTiming,
-    availableHeadroom,
+    availableHeadroom: ledger.summaryAvailableKw(),
   });
 
   if (guardInShortfall) {
@@ -106,14 +98,14 @@ export function applyRestorePlan(params: {
       restoredThisCycle,
       deps,
     });
-    ({ availableHeadroom, restoredOneThisCycle } = applyRestoreCandidates({
+    ({ restoredOneThisCycle } = applyRestoreCandidates({
       restoreCandidates,
       deviceMap,
       onDevices,
       swapState,
       state,
       timing: effectiveTiming,
-      availableHeadroom,
+      ledger,
       restoredThisCycle,
       restoredOneThisCycle,
       batchState,
@@ -121,12 +113,12 @@ export function applyRestorePlan(params: {
       steppedSwapExecutor,
       headroomReserves,
     }));
-    ({ availableHeadroom, restoredOneThisCycle } = applyActiveSteppedRestoreCandidates({
+    ({ restoredOneThisCycle } = applyActiveSteppedRestoreCandidates({
       deviceMap,
       swapState,
       state,
       timing: effectiveTiming,
-      availableHeadroom,
+      ledger,
       restoredOneThisCycle,
       debugStructured: deps.debugStructured,
       steppedSwapExecutor,
@@ -149,9 +141,9 @@ export function applyRestorePlan(params: {
       getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
   } else if (effectiveTiming.inRestoreCooldown) {
-    ({ availableHeadroom, restoredOneThisCycle } = applyRestorePlanInCooldown({
+    ({ restoredOneThisCycle } = applyRestorePlanInCooldown({
       deviceMap, swapState, state, effectiveTiming, deps,
-      availableHeadroom, restoredOneThisCycle, restoredThisCycle, headroomReserves,
+      ledger, restoredOneThisCycle, restoredThisCycle, headroomReserves,
     }));
   }
 
@@ -159,10 +151,40 @@ export function applyRestorePlan(params: {
     planDevices: Array.from(deviceMap.values()),
     stateUpdates: exportSwapState(swapState),
     restoredThisCycle,
-    availableHeadroom,
+    availableHeadroom: ledger.summaryAvailableKw(),
+    ...ledger.axes(),
     restoredOneThisCycle,
     ...effectiveTiming,
   };
+}
+
+// Per-axis available-power ledger for this cycle. Pending-restore reservations
+// represent physical draw about to arrive, so they debit every admission axis
+// equally (the shortfall guard skips the reservation exactly as it skipped the
+// old binding-scalar path).
+function buildCycleHeadroomLedger(params: {
+  context: PlanContext;
+  planDevices: DevicePlanDevice[];
+  state: PlanEngineState;
+  deps: RestoreDeps;
+  guardInShortfall: boolean;
+}): RestoreHeadroomLedger {
+  const { context, planDevices, state, deps, guardInShortfall } = params;
+  const reservedBindingHeadroom = guardInShortfall
+    ? context.headroomRaw
+    : reserveHeadroomForPendingRestores({
+      rawHeadroom: context.headroomRaw,
+      planDevices,
+      lastDeviceRestoreMs: state.lastDeviceRestoreMs,
+      measurementTs: deps.powerTracker.lastTimestamp ?? null,
+      debugStructured: deps.debugStructured,
+      deviceNameById: deps.deviceNameById,
+    });
+  const pendingReserveKw = Math.max(0, context.headroomRaw - reservedBindingHeadroom);
+  return buildRestoreHeadroomLedger({
+    capacityAvailableKw: context.capacityHeadroomKw - pendingReserveKw,
+    budgetAvailableKw: context.budgetHeadroomKw === null ? null : context.budgetHeadroomKw - pendingReserveKw,
+  });
 }
 
 // Startup reservations for this cycle: power a higher-priority device is holding back until it
@@ -188,16 +210,20 @@ function applyRestoreCandidates(params: {
   swapState: SwapState;
   state: PlanEngineState;
   timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
-  availableHeadroom: number;
+  ledger: RestoreHeadroomLedger;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
   batchState: RestoreBatchState;
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
-}): RestoreLoopState {
-  let { availableHeadroom, restoredOneThisCycle } = params;
+}): { restoredOneThisCycle: boolean } {
+  let { restoredOneThisCycle } = params;
   for (const candidate of params.restoreCandidates) {
+    // Ledger translation: the inner gates keep their single availableKw scalar;
+    // the axis choice (exempt → capacity, else min with the measured-exempt
+    // budget axis) and the per-axis debit live here.
+    const availableForCandidate = params.ledger.availableFor(candidate.device);
     const result = applyRestoreCandidate({
       candidate,
       deviceMap: params.deviceMap,
@@ -205,7 +231,7 @@ function applyRestoreCandidates(params: {
       swapState: params.swapState,
       state: params.state,
       timing: params.timing,
-      availableHeadroom,
+      availableHeadroom: availableForCandidate,
       restoredThisCycle: params.restoredThisCycle,
       restoredOneThisCycle,
       batchState: params.batchState,
@@ -213,10 +239,10 @@ function applyRestoreCandidates(params: {
       steppedSwapExecutor: params.steppedSwapExecutor,
       headroomReserves: params.headroomReserves,
     });
-    availableHeadroom = result.availableHeadroom;
+    params.ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
     restoredOneThisCycle = result.restoredOneThisCycle;
   }
-  return { availableHeadroom, restoredOneThisCycle };
+  return { restoredOneThisCycle };
 }
 
 // Single shared entry for every stepped-restore path. It applies the pending-swap source-off
@@ -258,30 +284,33 @@ function applyActiveSteppedRestoreCandidates(params: {
   swapState: SwapState;
   state: PlanEngineState;
   timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
-  availableHeadroom: number;
+  ledger: RestoreHeadroomLedger;
   restoredOneThisCycle: boolean;
   debugStructured: RestoreDeps['debugStructured'];
   steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
-}): RestoreLoopState {
-  let { availableHeadroom, restoredOneThisCycle } = params;
+}): { restoredOneThisCycle: boolean } {
+  let { restoredOneThisCycle } = params;
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
     .filter((dev) => isActiveSteppedRestoreCandidate(dev));
   for (const dev of activeSteppedDevices) {
-    ({ availableHeadroom, restoredOneThisCycle } = planSteppedRestoreThroughSourceHold({
+    const availableForCandidate = params.ledger.availableFor(dev);
+    const result = planSteppedRestoreThroughSourceHold({
       dev,
       deviceMap: params.deviceMap,
       swapState: params.swapState,
       state: params.state,
       timing: params.timing,
-      availableHeadroom,
+      availableHeadroom: availableForCandidate,
       restoredOneThisCycle,
       debugStructured: params.debugStructured,
       steppedSwapExecutor: params.steppedSwapExecutor,
       headroomReserves: params.headroomReserves,
-    }));
+    });
+    params.ledger.commit(dev, availableForCandidate - result.availableHeadroom);
+    restoredOneThisCycle = result.restoredOneThisCycle;
   }
-  return { availableHeadroom, restoredOneThisCycle };
+  return { restoredOneThisCycle };
 }
 
 function applyRestoreCandidate(params: {
@@ -379,13 +408,13 @@ function applyRestorePlanInCooldown(params: {
   state: PlanEngineState;
   effectiveTiming: RestoreTiming;
   deps: RestoreDeps;
-  availableHeadroom: number;
+  ledger: RestoreHeadroomLedger;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   headroomReserves: readonly HeadroomReserve[];
-}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { deviceMap, swapState, state, effectiveTiming, deps, restoredThisCycle } = params;
-  let { availableHeadroom, restoredOneThisCycle } = params;
+}): { restoredOneThisCycle: boolean } {
+  const { deviceMap, swapState, state, effectiveTiming, deps, restoredThisCycle, ledger } = params;
+  let { restoredOneThisCycle } = params;
   const steppedSwapExecutor = buildSteppedSwapExecutor({
     deviceMap,
     onDevices: getOnDevices(Array.from(deviceMap.values()), deps.getShedBehavior),
@@ -423,18 +452,21 @@ function applyRestorePlanInCooldown(params: {
     ? steppedCandidates.filter((dev) => isActiveSteppedRestoreCandidate(dev))
     : steppedCandidates;
   for (const dev of eligibleStepped) {
-    ({ availableHeadroom, restoredOneThisCycle } = planSteppedRestoreThroughSourceHold({
+    const availableForCandidate = ledger.availableFor(dev);
+    const result = planSteppedRestoreThroughSourceHold({
       dev,
       deviceMap,
       swapState,
       state,
       timing: effectiveTiming,
-      availableHeadroom,
+      availableHeadroom: availableForCandidate,
       restoredOneThisCycle,
       debugStructured: deps.debugStructured,
       steppedSwapExecutor,
       headroomReserves: params.headroomReserves,
-    }));
+    });
+    ledger.commit(dev, availableForCandidate - result.availableHeadroom);
+    restoredOneThisCycle = result.restoredOneThisCycle;
   }
-  return { availableHeadroom, restoredOneThisCycle };
+  return { restoredOneThisCycle };
 }

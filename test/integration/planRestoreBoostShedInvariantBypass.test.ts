@@ -23,7 +23,7 @@ import {
 } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../../lib/plan/planState';
 
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
   desiredForMode: {},
   total: 0,
@@ -39,6 +39,19 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   restoreMarginPlanning: 0.2,
   ...overrides,
 } as PlanContext);
+
+// Mirror the producer: unless a test pins the axes explicitly, the capacity
+// axis tracks the fixture's binding headroom (capacity-bound home, no daily
+// budget), so per-axis restore admission sees the same available power the
+// binding scalar used to provide.
+const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
+  const base = buildContextFields(overrides);
+  return {
+    ...base,
+    capacityHeadroomKw: overrides.capacityHeadroomKw ?? base.headroom,
+    budgetHeadroomKw: overrides.budgetHeadroomKw ?? null,
+  };
+};
 
 describe('boost bypasses the shed invariant unconditionally', () => {
   beforeEach(() => {

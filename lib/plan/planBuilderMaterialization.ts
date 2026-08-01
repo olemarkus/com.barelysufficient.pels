@@ -36,6 +36,7 @@ import {
 import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
+import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { trackPlanStage } from './planStageTiming';
 
 /**
@@ -129,6 +130,10 @@ export class PlanMaterializationStages {
     sheddingPlan: SheddingPlan,
   ): HoldPlanResult {
     return trackPlanStage('plan_hold_ms', () => applyShedTemperatureHold({
+      ledger: buildRestoreHeadroomLedger({
+        capacityAvailableKw: restoreResult.capacityAvailableKw,
+        budgetAvailableKw: restoreResult.budgetAvailableKw,
+      }),
       planDevices,
       state: this.state,
       shedReasons: sheddingPlan.shedReasons,

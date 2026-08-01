@@ -11,7 +11,7 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 import {
   buildPlanDevice,
   steppedInputDevice,
@@ -34,6 +34,8 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   dailySoftLimit: null,
   softLimitSource: 'capacity' as const,
   budgetReleasableHeadroomHold: false,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
@@ -283,7 +285,7 @@ describe('P1 bug proofs', () => {
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
       splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
