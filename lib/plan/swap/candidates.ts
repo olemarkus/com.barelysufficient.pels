@@ -41,6 +41,10 @@ export function buildSwapCandidates(params: {
   shedPower: string;
   potentialHeadroom: number;
   effectiveHeadroom: number;
+  // Reason-payload display values from the UNCLAMPED effective headroom —
+  // `effectiveHeadroom`/`admission` stay clamped for the admission arithmetic.
+  displayEffectiveHeadroomKw: number;
+  displayPostReserveMarginKw: number;
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
   reason: DeviceReason;
@@ -74,13 +78,25 @@ export function buildSwapCandidates(params: {
 
   const ready = admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW;
   const names = toShed.map((d) => d.name).join(', ');
+  // Display values from the UNCLAMPED effective headroom. The `Math.max(0, …)`
+  // clamp above protects the admission arithmetic, but a margin computed off
+  // the clamped value flattens the displayed shortfall to `needed + reserves`
+  // whenever `currentPotential < SWAP_RESTORE_RESERVE_KW` (deep over-pace),
+  // understating the honest gap by however far potential sits below the
+  // reserve — unbounded as overshoot grows. Admission keeps the clamped value;
+  // both reject in that region, so control behavior is unchanged.
+  const displayEffectiveHeadroomKw = currentPotential - SWAP_RESTORE_RESERVE_KW;
+  const displayAdmission = buildRestoreAdmissionMetrics({
+    availableKw: displayEffectiveHeadroomKw,
+    neededKw: needed,
+  });
   const reason = buildSwapCandidateReason({
     ready,
     targetName: dev.name,
     neededKw: needed,
     availableKw: currentPotential,
-    effectiveAvailableKw: effectiveHeadroom,
-    postReserveMarginKw: admission.postReserveMarginKw,
+    effectiveAvailableKw: displayEffectiveHeadroomKw,
+    postReserveMarginKw: displayAdmission.postReserveMarginKw,
     shedNames: names,
   });
 
@@ -91,6 +107,8 @@ export function buildSwapCandidates(params: {
     shedPower: (currentPotential - availableHeadroom).toFixed(2),
     potentialHeadroom: currentPotential,
     effectiveHeadroom,
+    displayEffectiveHeadroomKw,
+    displayPostReserveMarginKw: displayAdmission.postReserveMarginKw,
     admission,
     reserveKw: SWAP_RESTORE_RESERVE_KW,
     reason,

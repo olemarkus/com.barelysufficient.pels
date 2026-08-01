@@ -148,6 +148,8 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Blocked by safety rule',
     },
     {
+      // Legacy reason without margin fields: the shortfall falls back to
+      // `need − (effective ?? available)`.
       label: 'insufficient headroom for restore maps to the not-enough-power label',
       reason: {
         code: PLAN_REASON_CODES.insufficientHeadroom,
@@ -160,7 +162,25 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         effectiveAvailableKw: null,
         swapTargetName: null,
       },
-      expected: 'Not enough available power to resume — needs 2.0 kW, 1.0 kW available',
+      expected: 'Not enough available power to resume — 1.0 kW more needed',
+    },
+    {
+      // Production-shaped reason: the shortfall is admission-accurate,
+      // `minimumRequired − postReserveMargin` (0.25 − (−0.75) = 1.0), NOT the
+      // understated `need − available` (2.0 − 1.5 = 0.5). Prod 2026-08-01.
+      label: 'insufficient headroom renders the admission-accurate shortfall when margins are present',
+      reason: {
+        code: PLAN_REASON_CODES.insufficientHeadroom,
+        needKw: 2,
+        availableKw: 1.5,
+        postReserveMarginKw: -0.75,
+        minimumRequiredPostReserveMarginKw: 0.25,
+        penaltyExtraKw: null,
+        swapReserveKw: null,
+        effectiveAvailableKw: null,
+        swapTargetName: null,
+      },
+      expected: 'Not enough available power to resume — 1.0 kW more needed',
     },
     {
       label: 'insufficient headroom for swap names the target',
@@ -175,7 +195,7 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         effectiveAvailableKw: null,
         swapTargetName: 'Water Heater',
       },
-      expected: 'Not enough available power to make room for Water Heater — needs 2.0 kW, 1.0 kW available',
+      expected: 'Not enough available power to make room for Water Heater — 1.0 kW more needed',
     },
     {
       label: 'startup stabilization maps to the waiting-after-startup label',

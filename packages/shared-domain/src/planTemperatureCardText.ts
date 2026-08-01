@@ -1,4 +1,5 @@
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
+import { resolveRestoreShortfallKw } from './planReasonFormatting';
 import {
   resolveDisplayStateKind,
   resolveIntentStateKind,
@@ -108,24 +109,9 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
 
 // ─── Reason line ─────────────────────────────────────────────────────────────
 
-const resolveHeadroomGapKw = (reason: unknown): number | null => {
-  if (!reason || typeof reason !== 'object') return null;
-  const r = reason as Record<string, unknown>;
-  const code = r['code'];
-  if (code === PLAN_REASON_CODES.insufficientHeadroom) {
-    const avail = (r['effectiveAvailableKw'] ?? r['availableKw'] ?? 0) as number;
-    const need = (r['needKw'] ?? 0) as number;
-    const gap = need - avail;
-    return gap > 0.01 ? gap : null;
-  }
-  if (code === PLAN_REASON_CODES.shortfall) {
-    const need = (r['needKw'] ?? 0) as number;
-    const avail = (r['headroomKw'] ?? 0) as number;
-    const gap = need - avail;
-    return gap > 0.01 ? gap : null;
-  }
-  return null;
-};
+// Admission-accurate shortfall (reserves folded in) — shared resolver, see
+// `resolveRestoreShortfallKw` in `planReasonFormatting.ts`.
+const resolveHeadroomGapKw = (reason: unknown): number | null => resolveRestoreShortfallKw(reason);
 
 const resolveWaitingText = (reason: unknown): string => {
   const gap = resolveHeadroomGapKw(reason);
