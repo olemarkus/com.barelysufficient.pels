@@ -709,6 +709,7 @@
     budget_exempt_devices: {
       dev_waterheater: true,
     },
+    temperature_control_disabled_devices: {},
     controllable_devices: {
       dev_heatpump: true,
       dev_floorheat: false,

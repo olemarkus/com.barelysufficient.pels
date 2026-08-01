@@ -400,6 +400,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
       homey: {
         flow: { getTriggerCard: vi.fn() },
       },
+      isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
 
     const actuator = buildShedActuator(ctx);
@@ -438,6 +439,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
       homey: {
         flow: { getTriggerCard: vi.fn() },
       },
+      isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
     const actuator = buildShedActuator(ctx) as Actuator;
     currentHomeId = 'h_a';
@@ -523,6 +525,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
       homey: {
         flow: { getTriggerCard: vi.fn() },
       },
+      isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
 
     const actuator = buildShedActuator(ctx) as Actuator;

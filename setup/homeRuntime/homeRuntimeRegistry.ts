@@ -457,6 +457,13 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     }
   }
 
+  /** Rebuild every live sub-home after a global per-device control policy change. */
+  onDeviceControlSettingsChanged(): void {
+    for (const bundle of this.getLiveBundles()) {
+      bundle.rebuildForDeviceControlSettingsChange();
+    }
+  }
+
   /** Route one poll's per-meter readings to the owning bundles' pipelines. */
   routeMeterReadings(readings: Record<string, number>, nowMs: number): void {
     // Poll-discard parity (R7b): the transport fans these readings out from INSIDE

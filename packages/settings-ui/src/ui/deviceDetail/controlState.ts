@@ -2,6 +2,7 @@ import {
   requiresNativeWiringForActivation,
   supportsManagedDevice,
   supportsPowerDevice,
+  supportsTemperatureControlDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -12,12 +13,14 @@ export const resolveDeviceDetailControlState = (
   deviceId: string,
 ) => {
   const supportsTemperature = supportsTemperatureDevice(device);
+  const canControlTemperature = supportsTemperatureControlDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
   const canManageDevice = supportsManage && !nativeWiringRequired;
   return {
     supportsTemperature,
+    canControlTemperature,
     supportsPower,
     canManageDevice,
     isManaged: canManageDevice && resolveManagedState(deviceId),
@@ -29,11 +32,11 @@ export const resolveDeviceDetailControlState = (
 export const setTemperatureGatedSwitch = (
   switchEl: { selected: boolean; disabled: boolean } | null,
   active: boolean | undefined,
-  controlState: { supportsTemperature: boolean; isManaged: boolean },
+  controlState: { supportsTemperature: boolean; canControlTemperature: boolean; isManaged: boolean },
 ): void => {
   if (!switchEl) return;
   /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
   switchEl.selected = controlState.supportsTemperature && controlState.isManaged && active === true;
-  switchEl.disabled = !controlState.supportsTemperature || !controlState.isManaged;
+  switchEl.disabled = !controlState.canControlTemperature || !controlState.isManaged;
   /* eslint-enable no-param-reassign */
 };

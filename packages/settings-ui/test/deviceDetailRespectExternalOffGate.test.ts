@@ -29,6 +29,10 @@ const buildDom = () => {
         <md-switch id="device-detail-native-wiring-confirm"></md-switch>
         <md-switch id="device-detail-managed"></md-switch>
         <md-switch id="device-detail-controllable"></md-switch>
+        <div class="md-switch-row" id="device-detail-temperature-control-disabled-row" hidden>
+          <md-switch id="device-detail-temperature-control-disabled"></md-switch>
+          <small id="device-detail-temperature-control-disabled-smart-task-hint" hidden></small>
+        </div>
         <div class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
           <md-switch id="device-detail-respect-external-off"></md-switch>
           <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
@@ -48,7 +52,10 @@ const buildDom = () => {
         <div id="device-detail-control-model-row">
           <select id="device-detail-control-model"></select>
         </div>
-        <div id="device-detail-modes"></div>
+        <section id="device-detail-modes-section">
+          <p id="device-detail-modes-help"></p>
+          <div id="device-detail-modes"></div>
+        </section>
         <div id="device-detail-delta-section"></div>
         <input id="device-detail-cheap-delta">
         <input id="device-detail-expensive-delta">
@@ -110,13 +117,20 @@ type OpenPanelParams = {
   optedIn?: boolean;
   activeSmartTask?: boolean;
   storedOptInMap?: Record<string, unknown>;
+  temperatureControlDisabled?: boolean;
+  storedTemperatureControlDisabledMap?: Record<string, unknown>;
+  modeTarget?: number;
+  priceEnabled?: boolean;
 };
 
 const openPanel = async (params: OpenPanelParams) => {
   const homeyModule = await import('../src/ui/homey.ts');
-  const homey = createHomeyMock(params.storedOptInMap
-    ? { settings: { respect_external_off_devices: params.storedOptInMap } }
-    : {});
+  const homey = createHomeyMock({ settings: {
+    ...(params.storedOptInMap ? { respect_external_off_devices: params.storedOptInMap } : {}),
+    ...(params.storedTemperatureControlDisabledMap
+      ? { temperature_control_disabled_devices: params.storedTemperatureControlDisabledMap }
+      : {}),
+  } });
   homeyModule.setHomeyClient(homey);
   const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
   const { state } = await import('../src/ui/state.ts');
@@ -127,11 +141,15 @@ const openPanel = async (params: OpenPanelParams) => {
   state.controllableMap = { [deviceId]: params.controllable ?? true };
   state.budgetExemptMap = {};
   state.respectExternalOffMap = params.optedIn ? { [deviceId]: true } : {};
-  state.priceOptimizationSettings = {};
+  state.temperatureControlDisabledMap = params.temperatureControlDisabled ? { [deviceId]: true } : {};
+  state.priceOptimizationSettings = params.priceEnabled
+    ? { [deviceId]: { enabled: true, cheapDelta: 3, expensiveDelta: -2 } }
+    : {};
   state.capacityPriorities = { Home: { [deviceId]: 1 } };
-  state.modeTargets = { Home: {} };
+  state.modeTargets = { Home: params.modeTarget === undefined ? {} : { [deviceId]: params.modeTarget } };
   state.activeMode = 'Home';
   state.editingMode = 'Home';
+  state.loadedModeHomeId = 'main';
   if (params.activeSmartTask) {
     state.deferredObjectiveSettings = {
       version: 1,
@@ -150,7 +168,7 @@ const openPanel = async (params: OpenPanelParams) => {
   initDeviceDetailHandlers();
   openDeviceDetail(deviceId);
   await flushPromises();
-  return { state, homey };
+  return { state, homey, openDeviceDetail };
 };
 
 type MdSwitchLike = HTMLElement & { selected?: boolean; disabled?: boolean };
@@ -158,6 +176,25 @@ const row = () => document.querySelector('#device-detail-respect-external-off-ro
 const toggle = () => document.querySelector('#device-detail-respect-external-off') as MdSwitchLike | null;
 const powerLimitHint = () => document.querySelector('#device-detail-respect-external-off-power-limit-hint') as HTMLElement | null;
 const smartTaskHint = () => document.querySelector('#device-detail-respect-external-off-smart-task-hint') as HTMLElement | null;
+const temperatureControlRow = () => document.querySelector(
+  '#device-detail-temperature-control-disabled-row',
+) as HTMLElement | null;
+const temperatureControlToggle = () => document.querySelector(
+  '#device-detail-temperature-control-disabled',
+) as MdSwitchLike | null;
+const temperatureControlSmartTaskHint = () => document.querySelector(
+  '#device-detail-temperature-control-disabled-smart-task-hint',
+) as HTMLElement | null;
+
+const buildTemperatureBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (
+  buildBinaryDevice({
+    deviceType: 'temperature',
+    deviceClass: 'thermostat',
+    targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+    capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
+    ...overrides,
+  })
+);
 
 describe('device detail "Leave off until turned on again" gating', () => {
   beforeEach(() => {
@@ -332,5 +369,176 @@ describe('device detail "Leave off until turned on again" write', () => {
     });
     await flip(false);
     expect(homey.__settingsStore.respect_external_off_devices).toEqual({ 'other-1': true });
+  });
+});
+
+describe('device detail "Disable temperature control"', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    buildDom();
+    mockSiblings();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('offers the switch only to a temperature device with binary control', async () => {
+    await openPanel({ device: buildTemperatureBinaryDevice() });
+    expect(temperatureControlRow()?.hidden).toBe(false);
+
+    vi.resetModules();
+    buildDom();
+    mockSiblings();
+    await openPanel({ device: buildTemperatureBinaryDevice({ controlCapabilityId: undefined, capabilities: ['target_temperature'] }) });
+    expect(temperatureControlRow()?.hidden).toBe(true);
+  });
+
+  it('blocks opt-in during an active Smart task but keeps opt-out reachable', async () => {
+    await openPanel({ device: buildTemperatureBinaryDevice(), activeSmartTask: true });
+    expect(temperatureControlToggle()?.disabled).toBe(true);
+    expect(temperatureControlSmartTaskHint()?.hidden).toBe(false);
+
+    vi.resetModules();
+    buildDom();
+    mockSiblings();
+    await openPanel({
+      device: buildTemperatureBinaryDevice({ controlCapabilityId: undefined, capabilities: ['target_temperature'] }),
+      activeSmartTask: true,
+      temperatureControlDisabled: true,
+    });
+    expect(temperatureControlRow()?.hidden).toBe(false);
+    expect(temperatureControlToggle()?.selected).toBe(true);
+    expect(temperatureControlToggle()?.disabled).toBe(false);
+  });
+
+  it('refreshes the blocker when a Smart task is created and cleared while open', async () => {
+    const { state } = await openPanel({ device: buildTemperatureBinaryDevice() });
+    expect(temperatureControlToggle()?.disabled).toBe(false);
+
+    state.deferredObjectiveSettings = {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineAtMs: Date.now() + 60 * 60_000,
+        },
+      },
+    } as typeof state.deferredObjectiveSettings;
+    document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
+    expect(temperatureControlToggle()?.disabled).toBe(true);
+
+    state.deferredObjectiveSettings = { version: 1, objectivesByDeviceId: {} };
+    document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
+    expect(temperatureControlToggle()?.disabled).toBe(false);
+  });
+
+  it('persists a strict sparse map without deleting another device', async () => {
+    const { homey } = await openPanel({
+      device: buildTemperatureBinaryDevice(),
+      storedTemperatureControlDisabledMap: { 'other-1': true, stale: false },
+    });
+    const sw = temperatureControlToggle();
+    if (!sw) throw new Error('temperature-control switch missing');
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({
+      'other-1': true,
+      'heater-1': true,
+    });
+  });
+
+  it('rejects a persisted map with an empty device id', async () => {
+    const { homey } = await openPanel({
+      device: buildTemperatureBinaryDevice(),
+      storedTemperatureControlDisabledMap: { '': true, 'other-1': true },
+    });
+    const sw = temperatureControlToggle();
+    if (!sw) throw new Error('temperature-control switch missing');
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({
+      'heater-1': true,
+    });
+  });
+
+  it('makes target-changing controls unavailable without deleting their settings', async () => {
+    const { state } = await openPanel({
+      device: buildTemperatureBinaryDevice(),
+      temperatureControlDisabled: true,
+      modeTarget: 22,
+      priceEnabled: true,
+    });
+
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(true);
+    expect(document.querySelector<HTMLElement>('#device-detail-modes-section')?.hidden).toBe(false);
+    expect((document.querySelector('.detail-mode-temp') as MdSwitchLike | null)?.disabled).toBe(true);
+    expect((document.querySelector('.detail-mode-temp') as HTMLElement & { value?: string })?.value).toBe('22');
+    expect(document.querySelector('#device-detail-modes-help')?.textContent).toContain('won’t apply');
+    expect(state.modeTargets.Home?.['heater-1']).toBe(22);
+    expect(state.priceOptimizationSettings['heater-1']?.enabled).toBe(true);
+  });
+
+  it('applies pending authority immediately and rolls it back on a failed save', async () => {
+    const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
+    homey.set.mockImplementationOnce((_key, _value, callback) => callback?.(new Error('save failed')));
+    const sw = temperatureControlToggle();
+    if (!sw) throw new Error('temperature-control switch missing');
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(state.temperatureControlDisabledMap['heater-1']).toBe(true);
+    expect(sw.disabled).toBe(true);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
+    await flushPromises();
+    expect(state.temperatureControlDisabledMap['heater-1']).toBeUndefined();
+    expect(temperatureControlToggle()?.selected).toBe(false);
+    expect(temperatureControlToggle()?.disabled).toBe(false);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(false);
+    expect(document.querySelector('#device-detail-modes-help')?.textContent).toContain('PELS will set');
+  });
+
+  it('keeps another device disabled while its serialized save is pending', async () => {
+    const { state, homey, openDeviceDetail } = await openPanel({
+      device: buildTemperatureBinaryDevice(),
+      priceEnabled: true,
+    });
+    const callbacks: Array<(error: Error | null) => void> = [];
+    homey.set.mockImplementation((key, value, callback) => {
+      homey.__settingsStore[key] = value;
+      if (callback) callbacks.push(callback);
+    });
+
+    const first = temperatureControlToggle();
+    if (!first) throw new Error('temperature-control switch missing');
+    first.selected = true;
+    first.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    const secondDevice = buildTemperatureBinaryDevice({ id: 'heater-2', name: 'Second heater' });
+    state.latestDevices = [...state.latestDevices, secondDevice];
+    state.managedMap['heater-2'] = true;
+    state.controllableMap['heater-2'] = true;
+    state.priceOptimizationSettings['heater-2'] = { enabled: true, cheapDelta: 3, expensiveDelta: -2 };
+    openDeviceDetail('heater-2');
+    const second = temperatureControlToggle();
+    if (!second) throw new Error('second temperature-control switch missing');
+    second.selected = true;
+    second.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(state.temperatureControlDisabledMap).toMatchObject({ 'heater-1': true, 'heater-2': true });
+    callbacks[0]?.(null);
+    await flushPromises();
+
+    expect(state.temperatureControlDisabledMap).toMatchObject({ 'heater-1': true, 'heater-2': true });
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
+    callbacks[1]?.(null);
+    await flushPromises();
   });
 });

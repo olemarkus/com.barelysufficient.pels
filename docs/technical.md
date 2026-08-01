@@ -13,7 +13,7 @@ PELS requires the `homey:manager:api` permission to function. This permission gr
 
 1. **Discover devices** – List all devices in your home to find thermostats, water heaters, and other eligible devices
 2. **Read device state** – Get current temperatures, power consumption, on/off states, and official EV charging state where available
-3. **Control devices** – Set thermostat target temperatures, turn generic devices on/off, and pause/resume official EV chargers through `evcharger_charging`
+3. **Control devices** – Set thermostat target temperatures when allowed for that device, turn devices on/off, and pause/resume official EV chargers through `evcharger_charging`
 
 This permission is what lets PELS act on Homey's full device graph the moment a measurement changes — every managed device, every capability, every state. Homey flags it because it is powerful; PELS uses it because that is exactly what whole-home capacity control requires.
 
@@ -294,6 +294,8 @@ PELS manages any Homey device that exposes the capabilities the planner needs:
 - **On/off devices**: `onoff` plus a usable power-estimate path.
 
 Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey or a `settings.load` value, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
+
+For a temperature device that another app or Flow controls, enable **Disable temperature control**. PELS continues reading and displaying its measured temperature and target, but does not change the target for modes, prices, Smart tasks, boosts, or power limiting. If the device also exposes on/off control, PELS can still turn it off and on to manage capacity.
 
 ### Available-Power Check For Devices With Power-Limit Control
 

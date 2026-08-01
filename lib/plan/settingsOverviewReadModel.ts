@@ -28,6 +28,10 @@ export type SettingsOverviewReadModelDeps = {
   // read model surfaces the raw string for display, so it reads it from the
   // observer here rather than off the plan device (which no longer carries it).
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  getObservedTemperature?: (deviceId: string) => {
+    currentTarget: number | null;
+    currentTemperature?: number;
+  } | undefined;
   // Observation staleness is observer-owned freshness state — the plan device no
   // longer carries it (the plan has no right to distrust observer data). The
   // gray-state UI label is a display concern, so the read model sources staleness
@@ -41,6 +45,7 @@ export type SettingsOverviewReadModelDeps = {
   // the raw, undecorated snapshot so there is no re-decoration side effect). This
   // is a UI display concern at the planner→UI seam, NOT a planning evaluation.
   getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
+  getControlModelById?: () => Map<string, 'stepped_load' | 'temperature_target' | 'binary_power'>;
 };
 
 function resolveFiniteKWh(value: number | undefined): number | undefined {
@@ -101,25 +106,45 @@ function buildSteppedLoadReadState(
 function resolveDisplayControlModel(
   device: DevicePlan['devices'][number],
   producerDeviceType?: 'temperature' | 'onoff',
+  producerControlModel?: 'stepped_load' | 'temperature_target' | 'binary_power',
 ): 'stepped_load' | 'temperature_target' | 'binary_power' {
+  if (producerControlModel !== undefined) return producerControlModel;
   if (isSteppedLoadDevice(device)) return 'stepped_load';
   return producerDeviceType === 'temperature' ? 'temperature_target' : 'binary_power';
+}
+
+function resolveOverviewTemperatureState(
+  device: DevicePlan['devices'][number],
+  deps: SettingsOverviewReadModelDeps,
+): { currentTarget: number | null; plannedTarget?: number; currentTemperature?: number } {
+  const observed = deps.getObservedTemperature?.(device.id);
+  const planned = isTemperaturePlanDevice(device) ? device : null;
+  if (observed !== undefined) {
+    return {
+      currentTarget: observed.currentTarget,
+      plannedTarget: planned?.plannedTarget,
+      currentTemperature: observed.currentTemperature,
+    };
+  }
+  return {
+    currentTarget: planned?.currentTarget ?? null,
+    plannedTarget: planned?.plannedTarget,
+    currentTemperature: planned?.currentTemperature,
+  };
 }
 
 export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps = {},
   producerDeviceType?: 'temperature' | 'onoff',
+  producerControlModel?: 'stepped_load' | 'temperature_target' | 'binary_power',
 ): SettingsUiPlanDeviceSnapshot {
   // EV boost fields live on the orthogonal `EvKind` cluster (off the base);
   // narrow once so the snapshot can surface them. Non-EV devices have them
   // undefined. The raw `evChargingState` comes from the observer (its canonical
   // owner), NOT the plan device — see `getObservedEvChargingState`.
   const ev = isEvPlanDevice(device) ? device : null;
-  // The temperature cluster (`currentTarget` / `currentTemperature`) lives on the
-  // orthogonal `TemperatureKind` (off the base); narrow once so the snapshot can
-  // surface it. Non-temperature devices leave both undefined.
-  const temperature = isTemperaturePlanDevice(device) ? device : null;
+  const temperature = resolveOverviewTemperatureState(device, deps);
   return {
     id: device.id,
     name: device.name,
@@ -133,12 +158,13 @@ export function buildSettingsOverviewDeviceReadModel(
     // `controlModel` is a producer-only setting no longer carried on the plan
     // device; reproduce the decorated value for the UI card (see
     // `resolveDisplayControlModel`).
-    controlModel: resolveDisplayControlModel(device, producerDeviceType),
+    deviceType: producerDeviceType,
+    controlModel: resolveDisplayControlModel(device, producerDeviceType, producerControlModel),
     controlCapabilityId: device.controlCapabilityId,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
-    currentTarget: temperature ? temperature.currentTarget : null,
-    plannedTarget: temperature?.plannedTarget,
-    currentTemperature: temperature?.currentTemperature,
+    currentTarget: temperature.currentTarget,
+    plannedTarget: temperature.plannedTarget,
+    currentTemperature: temperature.currentTemperature,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
@@ -174,6 +200,8 @@ export function buildSettingsOverviewReadModel(
   if (!plan) return null;
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).
   const deviceTypeById = deps.getDeviceTypeById?.() ?? new Map<string, 'temperature' | 'onoff'>();
+  const controlModelById = deps.getControlModelById?.()
+    ?? new Map<string, 'stepped_load' | 'temperature_target' | 'binary_power'>();
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
@@ -189,6 +217,7 @@ export function buildSettingsOverviewReadModel(
         device,
         deps,
         deviceTypeById.get(device.id),
+        controlModelById.get(device.id),
       )),
   };
 }

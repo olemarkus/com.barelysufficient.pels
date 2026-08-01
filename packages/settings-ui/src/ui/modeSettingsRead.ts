@@ -6,6 +6,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
   RESPECT_EXTERNAL_OFF_DEVICES,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getSetting } from './homey.ts';
@@ -18,6 +19,7 @@ export type ModeSettingsRead = {
   managed: unknown;
   budgetExempt: unknown;
   respectExternalOff: unknown;
+  temperatureControlDisabled: unknown;
   nativeWiring: unknown;
   aliases: unknown;
 };
@@ -57,15 +59,16 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting('managed_devices'),
     getSetting(BUDGET_EXEMPT_DEVICES),
     getSetting(RESPECT_EXTERNAL_OFF_DEVICES),
+    getSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES),
     getSetting(NATIVE_EV_WIRING_DEVICES),
     getSetting(homeScopedSettingsKey(MODE_ALIASES, homeId)),
   ]);
   const [
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, nativeWiring, aliases,
+    budgetExempt, respectExternalOff, temperatureControlDisabled, nativeWiring, aliases,
   ] = values;
   return {
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, nativeWiring, aliases,
+    budgetExempt, respectExternalOff, temperatureControlDisabled, nativeWiring, aliases,
   };
 };

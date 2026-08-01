@@ -5,7 +5,11 @@ import {
 } from '../../../../contracts/src/deviceControlProfiles.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import { formatStepDisplayLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
-import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import {
+  supportsTemperatureControlDevice,
+  supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
+} from '../deviceUtils.ts';
 import {
   deviceDetailShedAction,
   deviceDetailSteppedAddStep,
@@ -241,7 +245,9 @@ export const updateSetStepOptionLabel = (
 export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
 
-  const showStepEditor = isSteppedLoadControlModel(device);
+  const temperatureControlAvailable = !supportsTemperatureDevice(device)
+    || supportsTemperatureControlDevice(device);
+  const showStepEditor = temperatureControlAvailable && isSteppedLoadControlModel(device);
   const showBoostOnlySection = supportsEvBoostDevice(device);
   const setEditorVisibility = (hidden: boolean) => {
     deviceDetailSteppedSteps.hidden = hidden;

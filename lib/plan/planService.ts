@@ -86,8 +86,10 @@ const serializePlanForUi = (
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
     getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
+    getObservedTemperature: (deviceId) => deps.getObservedTemperature?.(deviceId),
     getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
     getDeviceTypeById: deps.getDeviceTypeById,
+    getControlModelById: deps.getControlModelById,
   });
 };
 

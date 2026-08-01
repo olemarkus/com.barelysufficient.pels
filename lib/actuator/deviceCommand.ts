@@ -28,6 +28,8 @@ export type DeviceCommand =
   | {
     kind: 'target';
     deviceId: string;
+    /** Producer-resolved target family used by policy fences before transport routing. */
+    targetKind?: 'temperature';
     /**
      * Present → write the single addressed capability via `setCapability`
      * (propagates failures so the caller's retry/pending path fires). Absent →

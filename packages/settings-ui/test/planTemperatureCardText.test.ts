@@ -34,6 +34,36 @@ describe('resolveTemperatureLine', () => {
       reason: { code: 'none' },
     })).toBe('target 21 °C · sensor unavailable');
   });
+
+  it('shows the external target when PELS has no planned temperature', () => {
+    expect(resolveTemperatureLine({
+      currentTemperature: 20.3,
+      currentTarget: 22,
+      reason: { code: 'none' },
+    })).toBe('20.3 °C · target 22 °C');
+  });
+
+  it('reports the sensor unavailable when only the external target is known', () => {
+    expect(resolveTemperatureLine({
+      currentTarget: 22,
+      reason: { code: 'none' },
+    })).toBe('target 22 °C · sensor unavailable');
+  });
+
+  it('does not format non-finite temperature observations or targets', () => {
+    expect(resolveTemperatureLine({
+      currentTemperature: Number.NaN,
+      currentTarget: 22,
+      plannedTarget: undefined,
+      reason: { code: 'none' },
+    })).toBe('target 22 °C · sensor unavailable');
+    expect(resolveTemperatureLine({
+      currentTemperature: 20,
+      currentTarget: Number.POSITIVE_INFINITY,
+      plannedTarget: Number.NaN,
+      reason: { code: 'none' },
+    })).toBeNull();
+  });
 });
 
 describe('resolveTemperatureReasonLine', () => {
@@ -122,6 +152,17 @@ describe('resolveTemperatureReasonLine', () => {
       plannedTarget: 20,
       reason: { code: 'none' },
     }, true)).toBe('Would be lowered (simulation)');
+  });
+
+  it('states the binary action on an observational temperature card without a planned target', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'on',
+      plannedState: 'shed',
+      currentTemperature: 20.3,
+      currentTarget: 22,
+      shedAction: 'turn_off',
+      reason: { code: 'capacity', detail: null },
+    })).toBe('Turned off by PELS');
   });
 
   const heldThermostat = (code: 'capacity' | 'hourly_budget' | 'daily_budget') => ({

@@ -62,6 +62,14 @@ export type PlanServiceDeps = {
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  // Temperature readings for the settings-UI overview are observational truth,
+  // not planner command state. In particular, a temperature-control-disabled
+  // device is projected to the planner as binary but still shows the external
+  // target and measured temperature through this observer-owned seam.
+  getObservedTemperature?: (deviceId: string) => {
+    currentTarget: number | null;
+    currentTemperature?: number;
+  } | undefined;
   // Observation staleness for the settings-UI gray-state label AND the idle
   // classifier's "unresponsive" detection, sourced from the observer (its
   // canonical owner — `ObservedDeviceState` freshness), not the plan device. The

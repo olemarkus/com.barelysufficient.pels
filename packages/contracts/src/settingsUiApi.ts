@@ -108,6 +108,7 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'device_target_power_configs',
   'budget_exempt_devices',
   'respect_external_off_devices',
+  'temperature_control_disabled_devices',
   'temperature_boost_settings',
   'native_ev_wiring_devices',
   'device_driver_overrides',
@@ -220,6 +221,10 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
   name: string;
   deviceClass?: string;
+  // Observational device kind. This remains `temperature` when PELS target
+  // control is disabled and the effective `controlModel` is `binary_power`, so
+  // the overview can keep showing the device's observed temperature and target.
+  deviceType?: 'temperature' | 'onoff';
   plannedTarget?: number;
   priority?: number;
   zone?: string;

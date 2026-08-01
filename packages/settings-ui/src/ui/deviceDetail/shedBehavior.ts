@@ -10,6 +10,7 @@ import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import {
   supportsPowerDevice,
+  supportsTemperatureControlDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -241,7 +242,7 @@ const resolveVisibleShedAction = (params: {
   }
   if (
     deviceDetailShedAction.value === 'set_temperature'
-    && supportsTemperatureDevice(device)
+    && supportsTemperatureControlDevice(device)
     && isShedActionOptionVisible('set_temperature')
   ) {
     return 'set_temperature';
@@ -254,10 +255,14 @@ const resolveShedControlCapabilities = (params: {
   isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
 }) => {
   const { device } = params;
-  const supportsTemperature = supportsTemperatureDevice(device);
+  const supportsTemperature = supportsTemperatureControlDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const forceTurnOffOnly = hasEvTargetPowerPreset(device);
-  const supportsStep = params.isSteppedLoadControlModel(device) && !forceTurnOffOnly;
+  const temperatureControlAvailable = !supportsTemperatureDevice(device)
+    || supportsTemperatureControlDevice(device);
+  const supportsStep = temperatureControlAvailable
+    && params.isSteppedLoadControlModel(device)
+    && !forceTurnOffOnly;
   const canConfigure = supportsPower && (forceTurnOffOnly || supportsTemperature || supportsStep);
   const forceTemperatureOnly = canConfigure && !supportsStep && isTemperatureDeviceWithoutOnOff(device);
   const hasBinaryControl = device?.capabilities?.includes('onoff') === true
@@ -374,11 +379,12 @@ const saveShedBehavior = async (params: {
   if (supportsPowerDevice(device)) {
     if (
       params.isSteppedLoadControlModel(device)
+      && (!supportsTemperatureDevice(device) || supportsTemperatureControlDevice(device))
       && !hasEvTargetPowerPreset(device)
       && deviceDetailShedAction?.value === 'set_step'
     ) {
       nextBehavior = { action: 'set_step' };
-    } else if (supportsTemperatureDevice(device)) {
+    } else if (supportsTemperatureControlDevice(device)) {
       const { behavior, updateTempInput } = resolveTemperatureShedBehavior({
         deviceId,
         getDeviceById: params.getDeviceById,

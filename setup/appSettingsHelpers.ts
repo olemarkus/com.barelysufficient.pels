@@ -47,11 +47,13 @@ import {
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   parseHomeScopedSettingsKey,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_BOOST_SETTINGS,
 } from '../lib/utils/settingsKeys';
 import type { PriceCoordinator } from '../lib/price/priceCoordinator';
 import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
+import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -63,6 +65,8 @@ export type CapacitySettingsSnapshot = {
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
+  temperatureControlDisabledDevices: Record<string, boolean>;
+  temperatureControlPolicyState: 'unavailable' | 'resolved';
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
   nativeEvWiringDevices: Record<string, boolean>;
@@ -72,6 +76,69 @@ export type CapacitySettingsSnapshot = {
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   shedBehaviors: Record<string, ShedBehavior>;
 };
+
+/**
+ * Resolve the persisted temperature-command policy at the settings boundary.
+ * A malformed transient read retains the last-good in-memory policy.
+ */
+export function readTemperatureControlDisabledDevicesSetting(params: {
+  settings: Homey.App['homey']['settings'];
+  current: {
+    devices: Record<string, boolean>;
+    state: 'unavailable' | 'resolved';
+  };
+}): {
+  devices: Record<string, boolean>;
+  state: 'unavailable' | 'resolved';
+} {
+  try {
+    const raw = params.settings.get(TEMPERATURE_CONTROL_DISABLED_DEVICES) as unknown;
+    if (isBooleanMap(raw)) return { devices: raw, state: 'resolved' };
+    if (raw === undefined) {
+      const keys = params.settings.getKeys() as unknown;
+      if (
+        Array.isArray(keys)
+        && keys.length > 0
+        && keys.every((key): key is string => typeof key === 'string')
+        && !keys.includes(TEMPERATURE_CONTROL_DISABLED_DEVICES)
+      ) {
+        return { devices: {}, state: 'resolved' };
+      }
+    }
+  } catch {
+    // The semantic unavailable state below retains a previously resolved value.
+  }
+  return params.current.state === 'resolved'
+    ? params.current
+    : { devices: {}, state: 'unavailable' };
+}
+
+export function loadTemperatureControlPolicySettingsForApp(ctx: AppContext): void {
+  const policy = readTemperatureControlDisabledDevicesSetting({
+    settings: ctx.homey.settings,
+    current: {
+      devices: ctx.temperatureControlDisabledDevices,
+      state: ctx.temperatureControlPolicyState,
+    },
+  });
+  // Wiring owns the mutable AppContext cache; consumers only read its resolved state.
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.temperatureControlDisabledDevices = policy.devices;
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.temperatureControlPolicyState = policy.state;
+}
+
+export function isTemperatureControlDisabledForApp(ctx: AppContext, deviceId: string): boolean {
+  if (ctx.temperatureControlPolicyState === 'unavailable') {
+    ctx.loadTemperatureControlPolicySettings();
+  }
+  return resolveTemperatureControlDisabled({
+    policyState: ctx.temperatureControlPolicyState,
+    disabledDevices: ctx.temperatureControlDisabledDevices,
+    deviceId,
+    device: ctx.deviceManager?.getSnapshotByDeviceId(deviceId),
+  });
+}
 
 export function buildCapacitySettingsSnapshot(params: {
   settings: Homey.App['homey']['settings'];
@@ -138,6 +205,8 @@ export function buildCapacitySettingsSnapshot(params: {
     controllableDevices: deviceFlags.controllableDevices,
     managedDevices: deviceFlags.managedDevices,
     budgetExemptDevices: deviceFlags.budgetExemptDevices,
+    temperatureControlDisabledDevices: deviceFlags.temperatureControlDisabledDevices,
+    temperatureControlPolicyState: deviceFlags.temperatureControlPolicyState,
     temperatureBoostSettings: normalizeTemperatureBoostSettings(rawTemperatureBoostSettings),
     evBoostSettings: normalizeEvBoostSettings(rawEvBoostSettings),
     nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
@@ -154,16 +223,29 @@ function readDeviceFlagSettings(params: {
   current: CapacitySettingsSnapshot;
 }): Pick<
   CapacitySettingsSnapshot,
-  'controllableDevices' | 'managedDevices' | 'budgetExemptDevices'
+  | 'controllableDevices'
+  | 'managedDevices'
+  | 'budgetExemptDevices'
+  | 'temperatureControlDisabledDevices'
+  | 'temperatureControlPolicyState'
 > {
   const { settings, current } = params;
   const controllables = settings.get(CONTROLLABLE_DEVICES) as unknown;
   const managed = settings.get(MANAGED_DEVICES) as unknown;
   const budgetExempt = settings.get(BUDGET_EXEMPT_DEVICES) as unknown;
+  const temperatureControlPolicy = readTemperatureControlDisabledDevicesSetting({
+    settings,
+    current: {
+      devices: current.temperatureControlDisabledDevices,
+      state: current.temperatureControlPolicyState,
+    },
+  });
   return {
     controllableDevices: isBooleanMap(controllables) ? controllables : current.controllableDevices,
     managedDevices: isBooleanMap(managed) ? managed : current.managedDevices,
     budgetExemptDevices: isBooleanMap(budgetExempt) ? budgetExempt : current.budgetExemptDevices,
+    temperatureControlDisabledDevices: temperatureControlPolicy.devices,
+    temperatureControlPolicyState: temperatureControlPolicy.state,
   };
 }
 
@@ -297,6 +379,8 @@ export function initSettingsHandlerForApp(
     reconcileHomeRuntimes?: () => void;
     /** Rebuild pre-migration area followers after a Main catalog write. */
     rebuildHomeRuntimePlansForModeChange?: () => void;
+    /** Rebuild every live sub-home after a global per-device control policy changes. */
+    rebuildAllHomeRuntimePlansForDeviceControlChange?: () => void;
     /** Synchronously fence per-home runtimes for a newly observed source epoch. */
     onHomeRuntimePowerSourceObserved?: () => void;
     /** Replace per-home meter runtimes for the latest observed source epoch. */
@@ -318,8 +402,11 @@ export function initSettingsHandlerForApp(
     onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
     reconcileHomeRuntimes: options?.reconcileHomeRuntimes,
     rebuildHomeRuntimePlansForModeChange: options?.rebuildHomeRuntimePlansForModeChange,
+    rebuildAllHomeRuntimePlansForDeviceControlChange:
+      options?.rebuildAllHomeRuntimePlansForDeviceControlChange,
     onHomeRuntimePowerSourceObserved: options?.onHomeRuntimePowerSourceObserved,
     onHomeRuntimePowerSourceChanged: options?.onHomeRuntimePowerSourceChanged,
+    onTemperatureControlPolicyObserved: ctx.loadTemperatureControlPolicySettings,
     onHomeyEnergyMeterObserved: options?.onHomeyEnergyMeterObserved,
     onMainMeterSelectionObserved: options?.onMainMeterSelectionObserved,
     onHomeOwnershipConfigurationObserved: options?.onHomeOwnershipConfigurationObserved,

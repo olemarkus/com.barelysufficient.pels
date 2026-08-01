@@ -133,6 +133,7 @@ function resolveSurplusPostureForDevice(params: {
   const {
     ctx, device, opts, plainBinaryControlModel, controllable, managed,
   } = params;
+  if (device.temperatureControlDisabled === true) return false;
   if (opts?.surplusPostureEnabled === false) return false;
   // Resolve source-independent candidacy first. Most plan devices cannot use
   // this posture and must not acquire an unrelated dependency on settings-store
@@ -152,6 +153,55 @@ function resolveSurplusPostureForDevice(params: {
   return requireConfiguredPowerSource(ctx.homey.settings) === 'homey_energy';
 }
 
+/**
+ * Project the app-layer command-authority override into the planner's input
+ * vocabulary. Observation remains on the decorated snapshot served to the UI;
+ * the plan sees only the commands PELS is currently allowed to issue.
+ */
+function projectEffectiveControlDevice(
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+): DecoratedDeviceSnapshot & EvObservedProbe {
+  if (device.temperatureControlDisabled !== true) return device;
+  return {
+    ...device,
+    targets: [],
+    deviceType: 'onoff',
+    controlModel: 'binary_power',
+    steppedLoadProfile: undefined,
+    targetPowerConfig: undefined,
+    controlAdapter: undefined,
+    reportedStepId: undefined,
+    selectedStepId: undefined,
+    planningPowerKw: undefined,
+    targetStepId: undefined,
+    desiredStepId: undefined,
+    previousStepId: undefined,
+    lastStepCommandIssuedAt: undefined,
+    stepCommandRetryCount: undefined,
+    nextStepCommandRetryAtMs: undefined,
+    stepCommandPending: undefined,
+    stepCommandStatus: undefined,
+  };
+}
+
+function resolveEffectiveShedBehavior(
+  ctx: AppContext,
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+) {
+  if (device.temperatureControlDisabled === true) {
+    return { action: 'turn_off' as const, temperature: null, stepId: null };
+  }
+  return ctx.getShedBehavior(device.id);
+}
+
+function resolveEffectiveTemperatureBoost(
+  ctx: AppContext,
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+) {
+  if (device.temperatureControlDisabled === true) return undefined;
+  return ctx.getTemperatureBoostConfig?.(device.id);
+}
+
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
 // it resolves the flat EV sub-fields below and strips the raw field off the
@@ -159,7 +209,7 @@ function resolveSurplusPostureForDevice(params: {
 // (transport writes it); the base type omits it for consumers.
 export function toPlanDevice(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe,
   opts?: ToPlanDeviceOptions,
 ): PlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -172,6 +222,7 @@ export function toPlanDevice(
   // staleness, and the plan device carries no staleness flag. Freshness reporting
   // (overview gray-state, idle classifier, diagnostics) is sourced from the
   // observer projection at its own wiring seams (`getObservationStale`).
+  const device = projectEffectiveControlDevice(rawDevice);
   const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
   const hasRecentObservedDraw = resolveHasRecentObservedDraw(
@@ -192,7 +243,7 @@ export function toPlanDevice(
     canSetControl: device.canSetControl,
     canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
   });
-  const shedBehavior = ctx.getShedBehavior(device.id);
+  const shedBehavior = resolveEffectiveShedBehavior(ctx, device);
   // A home battery or solar device is managed observe-only. Read its
   // `managed`/`controllable` from the STRUCTURAL snapshot stamp
   // (`resolveParsedDeviceSettings` set them from the device object at parse, on every
@@ -240,7 +291,11 @@ export function toPlanDevice(
   // rides onto the plan device; the resolved flat EV sub-fields
   // (`evBlockReason` / `evSessionInactive` / `evChargerNotResumable`, set below
   // from `commandable`) replace it.
-  const { evChargingState: _evChargingState, ...deviceFields } = device;
+  const {
+    evChargingState: _evChargingState,
+    temperatureControlDisabled: _temperatureControlDisabled,
+    ...deviceFields
+  } = device;
   return withSteppedDiscriminant({
     ...deviceFields,
     // The step-command/planning cluster used to ride in on the `...device`
@@ -278,7 +333,7 @@ export function toPlanDevice(
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
     ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
     budgetExempt: ctx.isBudgetExempt(device.id),
-    temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
+    temperatureBoost: resolveEffectiveTemperatureBoost(ctx, device),
     evBoost: ctx.getEvBoostConfig?.(device.id),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,

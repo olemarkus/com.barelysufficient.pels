@@ -429,6 +429,7 @@ describe('PlanExecutor declined actuator requests', () => {
     expect(apply).toHaveBeenCalledWith({
       kind: 'target',
       deviceId: 'dev-1',
+      targetKind: 'temperature',
       capabilityId: 'target_temperature',
       value: 23,
     });

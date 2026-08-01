@@ -106,6 +106,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let deviceControlProfiles: DeviceControlProfiles = {};
   let deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
   let temperatureBoostSettings: TemperatureBoostSettings = {};
+  let temperatureControlDisabledDevices: Record<string, boolean> = {};
+  let temperatureControlPolicyState: 'unavailable' | 'resolved' = 'resolved';
   let evBoostSettings: EvBoostSettings = {};
   let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   let shedBehaviors: Record<string, ShedBehavior> = {};
@@ -167,6 +169,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     notifyOperatingModeChanged: vi.fn(),
     loadPowerTracker: vi.fn(),
     loadCapacitySettings: vi.fn(),
+    loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),
     updatePriceOptimizationEnabled: vi.fn(),
     updateDebugLoggingEnabled: vi.fn(),
@@ -200,6 +203,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     seedObservedStateFromSnapshot: vi.fn(),
     getCommunicationModel: vi.fn((): 'local' | 'cloud' => 'local'),
     isCapacityControlEnabled: vi.fn(() => false),
+    isTemperatureControlDisabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
     getTemperatureBoostConfig: vi.fn(() => undefined),
     getEvBoostConfig: vi.fn(() => undefined),
@@ -231,6 +235,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set managedDevices(value) { managedDevices = value; },
     get budgetExemptDevices() { return budgetExemptDevices; },
     set budgetExemptDevices(value) { budgetExemptDevices = value; },
+    get temperatureControlDisabledDevices() { return temperatureControlDisabledDevices; },
+    set temperatureControlDisabledDevices(value) { temperatureControlDisabledDevices = value; },
+    get temperatureControlPolicyState() { return temperatureControlPolicyState; },
+    set temperatureControlPolicyState(value) { temperatureControlPolicyState = value; },
     get deviceDriverOverrides() { return deviceDriverOverrides; },
     set deviceDriverOverrides(value) { deviceDriverOverrides = value; },
     get deviceControlProfiles() { return deviceControlProfiles; },

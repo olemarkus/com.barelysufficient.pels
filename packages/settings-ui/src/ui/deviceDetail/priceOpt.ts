@@ -5,7 +5,7 @@ import {
   deviceDetailPriceOpt,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
-import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { supportsTemperatureControlDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { logSettingsError } from '../logging.ts';
 import {
   renderPriceOptimization,
@@ -56,7 +56,7 @@ export const updateDeltaSectionVisibility = (params: {
   if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
 
   const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
-  if (!supportsTemperatureDevice(device)) {
+  if (!supportsTemperatureControlDevice(device)) {
     deviceDetailDeltaSection.style.display = 'none';
     return;
   }
@@ -83,7 +83,7 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     if (!deviceId) return;
 
     const device = params.getDeviceById(deviceId);
-    if (!supportsTemperatureDevice(device)) return;
+    if (!supportsTemperatureControlDevice(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
     // Snapshot only this device's three fields before the optimistic mutation

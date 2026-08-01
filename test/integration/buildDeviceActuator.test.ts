@@ -25,6 +25,7 @@ describe('buildDeviceActuator', () => {
         requestSteppedLoadStep,
       },
       homey: { flow: { getTriggerCard: vi.fn() } },
+      isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
 
     const actuator = buildDeviceActuator(ctx);
@@ -50,7 +51,33 @@ describe('buildDeviceActuator', () => {
   });
 
   it('returns null when the device manager is absent', () => {
-    const ctx = { deviceManager: undefined, homey: { flow: {} } } as unknown as AppContext;
+    const ctx = {
+      deviceManager: undefined,
+      homey: { flow: {} },
+      isTemperatureControlDisabled: vi.fn(() => false),
+    } as unknown as AppContext;
     expect(buildDeviceActuator(ctx)).toBeNull();
+  });
+
+  it('fences a snapshotless terminal temperature target while the policy is unavailable', async () => {
+    const applyDeviceTargets = vi.fn(async () => undefined);
+    const ctx = {
+      deviceManager: {
+        setCapability: vi.fn(async () => undefined),
+        applyDeviceTargets,
+      },
+      homey: { flow: { getTriggerCard: vi.fn() } },
+      temperatureControlPolicyState: 'unavailable',
+      isTemperatureControlDisabled: vi.fn(() => false),
+    } as unknown as AppContext;
+    const actuator = buildDeviceActuator(ctx);
+
+    await expect(actuator!.apply({
+      kind: 'target',
+      deviceId: 'missing-thermostat',
+      targetKind: 'temperature',
+      value: 5,
+    })).resolves.toEqual({ requested: false });
+    expect(applyDeviceTargets).not.toHaveBeenCalled();
   });
 });

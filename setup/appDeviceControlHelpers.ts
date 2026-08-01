@@ -23,6 +23,7 @@ import {
   resolveSteppedLoadCurrentOn,
 } from './appDeviceControlSteppedState';
 import {
+  clearSteppedLoadCommandAxisForDevice,
   confirmSteppedLoadDesiredStep,
   expireConfirmedDesiredStepOnBinaryOff,
   markSteppedLoadDesiredStepIssued,
@@ -42,6 +43,7 @@ import { emitSteppedFeedbackLog } from './appDeviceControlFeedback';
 // module is the wiring surface app code and tests import from.
 export {
   STEPPED_LOAD_COMMAND_STALE_MS,
+  clearSteppedLoadCommandAxisForDevice,
   createDeviceControlRuntimeState,
   markSteppedLoadDesiredStepIssued,
   pruneStaleSteppedLoadCommandStates,
@@ -59,6 +61,18 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
+/** Resolve command authority without treating an unrelated device as temperature-controlled. */
+export const resolveTemperatureControlDisabled = (params: {
+  policyState: 'unavailable' | 'resolved';
+  disabledDevices: Readonly<Record<string, boolean>>;
+  deviceId: string;
+  device: TargetDeviceSnapshot | undefined;
+}): boolean => (
+  params.policyState === 'resolved'
+    ? params.disabledDevices[params.deviceId] === true
+    : params.device?.deviceType === 'temperature'
+);
+
 /**
  * Pure deviceId → control-model map for the device-overview transition signature.
  *
@@ -73,9 +87,15 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
  */
 export const buildControlModelMap = (
   devices: readonly TargetDeviceSnapshot[],
+  isTemperatureControlDisabled: (deviceId: string) => boolean = () => false,
 ): Map<string, DeviceControlModel> => {
   const map = new Map<string, DeviceControlModel>();
-  for (const device of devices) map.set(device.id, resolveDefaultControlModel(device));
+  for (const device of devices) {
+    map.set(
+      device.id,
+      isTemperatureControlDisabled(device.id) ? 'binary_power' : resolveDefaultControlModel(device),
+    );
+  }
   return map;
 };
 
@@ -125,7 +145,7 @@ export const resolveEffectiveSteppedLoadProfile = (params: {
   return resolveSuggestedSteppedLoadProfile(snapshot);
 };
 
-/* eslint-disable complexity --
+/* eslint-disable complexity, max-statements --
  * Decoration resolves reported step state plus legacy planner fallback in one place.
  */
 export const decorateSnapshotWithDeviceControl = (params: {
@@ -135,9 +155,32 @@ export const decorateSnapshotWithDeviceControl = (params: {
   snapshot: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
   profiles: DeviceControlProfiles;
   runtimeState: DeviceControlRuntimeState;
+  temperatureControlDisabled?: boolean;
   nowMs?: number;
 }): DecoratedDeviceSnapshot => {
-  const { snapshot, profiles, runtimeState, nowMs = Date.now() } = params;
+  const {
+    snapshot, profiles, runtimeState, temperatureControlDisabled = false, nowMs = Date.now(),
+  } = params;
+  if (temperatureControlDisabled) {
+    clearSteppedLoadCommandAxisForDevice({ runtimeState, deviceId: snapshot.id });
+    return {
+      ...snapshot,
+      controlModel: 'binary_power',
+      steppedLoadProfile: undefined,
+      reportedStepId: undefined,
+      selectedStepId: undefined,
+      planningPowerKw: undefined,
+      targetStepId: undefined,
+      desiredStepId: undefined,
+      previousStepId: undefined,
+      lastStepCommandIssuedAt: undefined,
+      stepCommandRetryCount: undefined,
+      nextStepCommandRetryAtMs: undefined,
+      stepCommandPending: undefined,
+      stepCommandStatus: undefined,
+      temperatureControlDisabled: true,
+    };
+  }
   const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
   const profile = resolveEffectiveSteppedLoadProfile({
     snapshot,
@@ -224,6 +267,7 @@ export class AppDeviceControlHelpers {
 
   constructor(private readonly deps: {
     getProfiles: () => DeviceControlProfiles;
+    isTemperatureControlDisabled?: (deviceId: string) => boolean;
     getDeviceSnapshots: () => TargetDeviceSnapshot[];
     getLatestPlanSnapshot?: () => DevicePlan | null;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
@@ -231,6 +275,7 @@ export class AppDeviceControlHelpers {
   }) {}
 
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
+    if (this.deps.isTemperatureControlDisabled?.(deviceId) === true) return null;
     const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
     return resolveEffectiveSteppedLoadProfile({
       snapshot,
@@ -279,6 +324,7 @@ export class AppDeviceControlHelpers {
       snapshot: device,
       profiles,
       runtimeState: this.runtimeState,
+      temperatureControlDisabled: this.deps.isTemperatureControlDisabled?.(device.id) === true,
       nowMs,
     }));
   }
@@ -375,6 +421,7 @@ export class AppDeviceControlHelpers {
     snapshot: TargetDeviceSnapshot | undefined,
     storedProfiles: DeviceControlProfiles,
   ): SteppedLoadProfile | null {
+    if (this.deps.isTemperatureControlDisabled?.(deviceId) === true) return null;
     return resolveEffectiveSteppedLoadProfile({
       snapshot,
       profiles: storedProfiles,

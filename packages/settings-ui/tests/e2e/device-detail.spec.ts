@@ -55,6 +55,12 @@ const collectConsoleErrors = (page: Page): string[] => {
   return errors;
 };
 
+const readMaterialDisabled = async (page: Page, selector: string): Promise<boolean> => (
+  page.locator(selector).first().evaluate((element) => (
+    (element as HTMLElement & { disabled?: boolean }).disabled === true
+  ))
+);
+
 test.describe('Device detail panel', () => {
   test('opens only from the explicit device settings button', async ({ page }) => {
     await openDevices(page);
@@ -317,6 +323,56 @@ test.describe('Device detail panel', () => {
     }, { timeout: 3000 }).toMatchObject({ enabled: true });
 
     expect(consoleErrors).toEqual([]);
+  });
+
+  test('Disable temperature control preserves configuration and uses on/off-only controls', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    await page.locator('#device-detail-setup-section summary').click();
+
+    const row = page.locator('#device-detail-temperature-control-disabled-row');
+    const toggleSelector = '#device-detail-temperature-control-disabled';
+    await expect(row).toBeVisible();
+    await expect(row).toContainText('Disable temperature control');
+    await expect(row).toContainText('won’t change the target');
+
+    const before = await readHomeySetting<Record<string, unknown>>(page, 'price_optimization_settings');
+    const modeTargetsBefore = await readHomeySetting<Record<string, unknown>>(page, 'mode_device_targets');
+    const shedBefore = await readHomeySetting<Record<string, unknown>>(page, 'overshoot_behaviors');
+
+    await setMdSwitch(page, toggleSelector, true);
+    await expect.poll(async () => {
+      const map = await readHomeySetting<Record<string, boolean>>(
+        page,
+        'temperature_control_disabled_devices',
+      );
+      return map?.dev_heatpump;
+    }, { timeout: 3000 }).toBe(true);
+
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(true);
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(true);
+    await expect(page.locator('#device-detail-modes-section')).toBeVisible();
+    await expect.poll(() => readMaterialDisabled(
+      page,
+      '#device-detail-modes-section .detail-mode-temp',
+    )).toBe(true);
+    await expect(page.locator('#device-detail-modes-help')).toContainText('won’t apply them');
+    await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(true);
+    await expect(page.locator('#device-detail-overshoot-segmented .segmented__option', {
+      hasText: 'Set to temperature',
+    })).toBeHidden();
+    expect(await readHomeySetting(page, 'price_optimization_settings')).toEqual(before);
+    expect(await readHomeySetting(page, 'mode_device_targets')).toEqual(modeTargetsBefore);
+    expect(await readHomeySetting(page, 'overshoot_behaviors')).toEqual(shedBefore);
+
+    await setMdSwitch(page, toggleSelector, false);
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(false);
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(false);
+    await expect(page.locator('#device-detail-modes-section')).toBeVisible();
+    await expect.poll(() => readMaterialDisabled(
+      page,
+      '#device-detail-modes-section .detail-mode-temp',
+    )).toBe(false);
+    await expect(page.locator('#device-detail-modes-help')).toContainText('PELS will set this');
   });
 
   test('Switch row label is clickable to toggle the switch', async ({ page }) => {

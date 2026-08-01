@@ -192,6 +192,32 @@ describe('settingsOverviewReadModel', () => {
     expect(readModel?.devices?.[0]?.controlModel).toBe('temperature_target');
   });
 
+  it('keeps observed temperature presentation when effective control is binary', () => {
+    const device = buildPlanDevice({
+      id: 'externally-controlled-thermostat',
+      deviceType: 'onoff',
+      controlCapabilityId: 'onoff',
+      shedAction: 'turn_off',
+    });
+    const readModel = buildSettingsOverviewReadModel(
+      { generatedAtMs: 0, meta: {}, devices: [device] } as never,
+      {
+        getDeviceTypeById: () => new Map([['externally-controlled-thermostat', 'temperature']]),
+        getControlModelById: () => new Map([['externally-controlled-thermostat', 'binary_power']]),
+        getObservedTemperature: () => ({ currentTarget: 22, currentTemperature: 20.3 }),
+      },
+    );
+
+    expect(readModel?.devices?.[0]).toMatchObject({
+      deviceType: 'temperature',
+      controlModel: 'binary_power',
+      currentTarget: 22,
+      currentTemperature: 20.3,
+      shedAction: 'turn_off',
+    });
+    expect(readModel?.devices?.[0]?.plannedTarget).toBeUndefined();
+  });
+
   it('keeps planner cooldown reasons available as structured read-model data', () => {
     const device = buildPlanDevice({
       reason: {

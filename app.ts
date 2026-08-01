@@ -107,7 +107,11 @@ import {
   type DeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
 import { buildDebugLoggingTopics } from './lib/utils/debugLoggingSettings';
-import { loadCapacitySettingsFromHomey } from './setup/appSettingsHelpers';
+import {
+  isTemperatureControlDisabledForApp,
+  loadTemperatureControlPolicySettingsForApp,
+  loadCapacitySettingsFromHomey,
+} from './setup/appSettingsHelpers';
 import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
   seedMissingModeTargets as seedMissingModeTargetsHelper,
@@ -211,6 +215,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public controllableDevices: Record<string, boolean> = {};
   public managedDevices: Record<string, boolean> = {};
   public budgetExemptDevices: Record<string, boolean> = {};
+  public temperatureControlDisabledDevices: Record<string, boolean> = {};
+  public temperatureControlPolicyState: 'unavailable' | 'resolved' = 'unavailable';
   public temperatureBoostSettings: import('./packages/contracts/src/types').TemperatureBoostSettings = {};
   public evBoostSettings: import('./packages/contracts/src/types').EvBoostSettings = {};
   private nativeEvWiringDevices: Record<string, boolean> = {};
@@ -397,6 +403,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   });
   public readonly deviceControlHelpers = new AppDeviceControlHelpers({
     getProfiles: () => this.deviceControlProfiles,
+    isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),
     getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
     getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
@@ -759,6 +766,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
         controllableDevices: this.controllableDevices,
         managedDevices: this.managedDevices,
         budgetExemptDevices: this.budgetExemptDevices,
+        temperatureControlDisabledDevices: this.temperatureControlDisabledDevices,
+        temperatureControlPolicyState: this.temperatureControlPolicyState,
         temperatureBoostSettings: this.temperatureBoostSettings,
         evBoostSettings: this.evBoostSettings,
         nativeEvWiringDevices: this.nativeEvWiringDevices,
@@ -769,26 +778,13 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
         shedBehaviors: this.shedBehaviors,
       },
     });
-    this.capacitySettings = next.capacitySettings;
-    this.modeAliases = next.modeAliases;
-    this.operatingMode = next.operatingMode;
-    this.capacityPriorities = next.capacityPriorities;
-    this.modeDeviceTargets = next.modeDeviceTargets;
-    this.capacityDryRun = next.capacityDryRun;
-    this.controllableDevices = next.controllableDevices;
-    this.managedDevices = next.managedDevices;
-    this.budgetExemptDevices = next.budgetExemptDevices;
-    this.temperatureBoostSettings = next.temperatureBoostSettings;
-    this.evBoostSettings = next.evBoostSettings;
-    this.nativeEvWiringDevices = next.nativeEvWiringDevices;
-    this.deviceDriverOverrides = next.deviceDriverOverrides;
-    this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
-    this.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
-    this.deviceCommunicationModels = next.deviceCommunicationModels;
-    this.shedBehaviors = next.shedBehaviors;
+    Object.assign(this, next, {
+      deviceControlProfiles: normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {},
+    });
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   };
+  public loadTemperatureControlPolicySettings = (): void => loadTemperatureControlPolicySettingsForApp(this.ctx);
   public loadPriceOptimizationSettings = (): void => { this.priceCoordinator.loadPriceOptimizationSettings(); };
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
   public recomputeDailyBudgetToday(): DailyBudgetUiPayload | null {
@@ -1007,16 +1003,16 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     return override || undefined;
   };
   public isCapacityControlEnabled = (deviceId: string) => (
-    // A home battery or solar device is managed observe-only: NEVER capacity-controlled,
-    // regardless of the settings maps. `controllable: false` is what keeps it out of
-    // shed/restore/boost/starvation; combined with its non-temperature class (no
-    // `resolvePlannedTarget`) the device is tracked but inert. Secondary (deviceId-only)
-    // agreement with the structural parse stamp — see `resolveManagedState` above.
+    // Observe-only devices are never capacity-controlled, regardless of settings maps.
+    // This mirrors the structural parse stamp used by `resolveManagedState` above.
     !this.isObserveOnlyRoleDevice(deviceId)
     && this.managedDevices[deviceId] === true
     && this.controllableDevices[deviceId] === true
   );
   public isBudgetExempt = (deviceId: string) => this.budgetExemptDevices[deviceId] === true;
+  public isTemperatureControlDisabled = (deviceId: string): boolean => (
+    isTemperatureControlDisabledForApp(this.ctx, deviceId)
+  );
   public getTemperatureBoostConfig = (deviceId: string) => this.temperatureBoostSettings[deviceId];
   public getEvBoostConfig = (deviceId: string) => this.evBoostSettings[deviceId];
   public getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);

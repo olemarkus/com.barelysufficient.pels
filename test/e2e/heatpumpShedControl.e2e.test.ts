@@ -11,7 +11,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
+import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
+} from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 
 const cap = (deviceId: string, capability: string) =>
@@ -33,7 +38,8 @@ const buildHeatpumpDevice = async (targetTemperature: number, powerW: number) =>
 
 // Drive total home power through the real Homey Energy poll: stub the SDK wire path
 // (`manager/energy/live`), not the transport helper, so the real query path runs.
-const reportHomePower = (totalW: number) => {
+const reportHomePower = (initialTotalW: number): ((totalW: number) => void) => {
+  let totalW = initialTotalW;
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
@@ -41,6 +47,9 @@ const reportHomePower = (totalW: number) => {
     }
     return originalGet(path);
   });
+  return (nextTotalW) => {
+    totalW = nextTotalW;
+  };
 };
 
 const enableCapacity = (limitKw: number) => {
@@ -115,5 +124,56 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 20 });
 
     expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 20 });
+  });
+
+  it('uses only on/off capacity control when temperature control is disabled', async () => {
+    const device = await buildHeatpumpDevice(22, 2000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    enableCapacity(1);
+    mockHomeyInstance.settings.set(TEMPERATURE_CONTROL_DISABLED_DEVICES, { 'heatpump-a': true });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 20 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'heatpump-a': { action: 'set_temperature', temperature: 15 },
+    });
+    reportHomePower(5000);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), { value: false });
+
+    const targetWrites = putSpy.mock.calls.filter(
+      ([path]) => typeof path === 'string' && path.includes('/capability/target_temperature'),
+    );
+    expect(targetWrites).toEqual([]);
+    await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(22);
+  });
+
+  it('revokes temperature writes immediately when disabled while the app is running', async () => {
+    const device = await buildHeatpumpDevice(22, 2000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    enableCapacity(1);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 20 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'heatpump-a': { action: 'set_temperature', temperature: 15 },
+    });
+    const setHomePower = reportHomePower(0);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 20 });
+    putSpy.mockClear();
+
+    mockHomeyInstance.settings.set(TEMPERATURE_CONTROL_DISABLED_DEVICES, { 'heatpump-a': true });
+    setHomePower(5000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), { value: false });
+
+    expect(putSpy.mock.calls.some(
+      ([path]) => typeof path === 'string' && path.includes('/capability/target_temperature'),
+    )).toBe(false);
+    await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(20);
   });
 });

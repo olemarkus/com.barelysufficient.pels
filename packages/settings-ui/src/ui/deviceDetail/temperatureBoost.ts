@@ -15,6 +15,7 @@ import { logSettingsError } from '../logging.ts';
 import { state, type SettingsUiDeviceView } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { isSteppedLoadControlModel } from './steppedLoadDraft.ts';
+import { supportsTemperatureControlDevice } from '../deviceUtils.ts';
 
 const runSerializedTemperatureBoostWrite = createSerializedAsyncRunner();
 const DEFAULT_BOOST_BELOW_C = 55;
@@ -39,6 +40,7 @@ export const renderTemperatureBoostSettings = (device: SettingsUiDeviceView | nu
     return;
   }
   const visible = device !== null
+    && supportsTemperatureControlDevice(device)
     && isSteppedLoadControlModel(device)
     && hasTemperatureBoostTarget(device.targets);
   deviceDetailTemperatureBoost.hidden = !visible;

@@ -87,6 +87,10 @@ export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
 // packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
 // can't import lib).
 export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
+// Per-device opt-out from every non-binary PELS command. The raw device
+// snapshot remains temperature-capable for observation/UI; setup projects an
+// enabled entry as binary-only for planning and actuation.
+export const TEMPERATURE_CONTROL_DISABLED_DEVICES = 'temperature_control_disabled_devices';
 // Runtime state for the above — which devices PELS is currently leaving off
 // because they were turned off outside PELS. Deliberately a separate key from
 // the config: clearing the opt-in must not lose the config, and vice versa.

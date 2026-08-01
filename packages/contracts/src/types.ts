@@ -536,6 +536,12 @@ export type ReportedStepObservedProbe = {
  * carries no decoration the transport pipeline never writes.
  */
 export type SteppedLoadDecoration = {
+    /**
+     * Producer-resolved command-authority override. Raw temperature targets
+     * remain on the snapshot for observation, but PELS may issue binary
+     * commands only while this marker is present.
+     */
+    temperatureControlDisabled?: true;
     selectedStepId?: string;
     planningPowerKw?: number;
     targetStepId?: string;

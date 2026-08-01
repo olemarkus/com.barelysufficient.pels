@@ -13,7 +13,11 @@ import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
-import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  DecoratedDeviceSnapshot,
+  EvObservedProbe,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 
 // A plain binary managed+controllable device that WOULD be stamped
 // `surplusOnly` on the metered power source when `surplusWilling` — the exact
@@ -43,6 +47,28 @@ const buildSurplusCtx = (): AppContext => {
 };
 
 describe('toPlanDevice — R7b per-home options', () => {
+  it('keeps a disabled temperature-only device fail-closed without inventing binary control', () => {
+    const ctx = createAppContextMock();
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    const temperatureOnly = {
+      id: 'temperature-only',
+      name: 'Temperature-only thermostat',
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      capabilities: ['target_temperature', 'measure_temperature'],
+      controlModel: 'binary_power',
+      temperatureControlDisabled: true,
+    } satisfies DecoratedDeviceSnapshot;
+
+    const result = toPlanDevice(ctx, temperatureOnly);
+
+    expect(result.targets).toEqual([]);
+    expect(result.controlCapabilityId).toBeUndefined();
+    expect(result.canSetControlResolved).toBe(false);
+    expect('currentOn' in result).toBe(false);
+  });
+
   it('DEFAULT stamps surplusOnly for a surplusWilling metered dump load (main-home behavior)', () => {
     const ctx = buildSurplusCtx();
     const result = toPlanDevice(ctx, buildSurplusWillingSnapshot());

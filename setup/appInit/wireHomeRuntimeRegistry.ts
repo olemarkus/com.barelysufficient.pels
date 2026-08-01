@@ -69,10 +69,14 @@ export const buildHomeRuntimeSettingsHooks = (
   onHomeRuntimePowerSourceObserved: () => void;
   onHomeRuntimePowerSourceChanged: () => void;
   rebuildHomeRuntimePlansForModeChange: () => void;
+  rebuildAllHomeRuntimePlansForDeviceControlChange: () => void;
 } => ({
   onHomeScopedSettingChanged: (baseKey, homeId) => getRegistry()?.onHomeScopedSettingChanged(baseKey, homeId),
   reconcileHomeRuntimes: () => getRegistry()?.reconcile(),
   onHomeRuntimePowerSourceObserved: () => getRegistry()?.observePowerSourceChange(),
   onHomeRuntimePowerSourceChanged: () => getRegistry()?.onPowerSourceChanged(),
   rebuildHomeRuntimePlansForModeChange: () => getRegistry()?.onModeSettingsChanged(),
+  rebuildAllHomeRuntimePlansForDeviceControlChange: () => (
+    getRegistry()?.onDeviceControlSettingsChanged()
+  ),
 });

@@ -502,6 +502,7 @@ var isEvCharger = (device) => device.deviceClass === "evcharger";
 var supportsTemperatureGoal = (device) => device.deviceType === "temperature" || (device.targets?.length ?? 0) > 0;
 var resolveSmartTaskDeviceKind = (device) => {
   if (isEvCharger(device)) return "ev_soc";
+  if (device.temperatureControlDisabled === true) return null;
   if (supportsTemperatureGoal(device)) return "temperature";
   return null;
 };

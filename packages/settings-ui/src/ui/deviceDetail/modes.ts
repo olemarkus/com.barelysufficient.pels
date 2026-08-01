@@ -7,7 +7,11 @@ import { deviceDetailModes, deviceDetailModesSection, type MdFilledTextFieldElem
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
-import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import {
+  supportsTemperatureControlDevice,
+  supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
+} from '../deviceUtils.ts';
 import { debouncedSetSetting } from '../utils.ts';
 import { renderPriorities } from '../modes.ts';
 import {
@@ -21,6 +25,10 @@ import { getSetting } from '../homey.ts';
 import { getHomeIdForUiDevice } from '../homeScope.ts';
 import { parseModeNumberMap } from '../modeCatalogMaps.ts';
 import { serializeModeCatalogWrite } from '../modeRename.ts';
+
+const modesHelpEl = document.querySelector<HTMLElement>('#device-detail-modes-help');
+const MODES_HELP_ACTIVE = 'Set the target temperature for each mode. PELS will set this when the mode is active.';
+const MODES_HELP_DISABLED = 'Saved target temperatures. PELS won’t apply them while temperature control is disabled.';
 
 type DetailModeCatalog = {
   activeMode: string;
@@ -168,6 +176,7 @@ const buildDeviceDetailModeInput = (
   tempInput.classList.add('detail-mode-temp');
   tempInput.dataset.mode = mode;
   tempInput.value = getTargetInputValue(catalog, mode, device);
+  tempInput.disabled = !supportsTemperatureControlDevice(device);
   return tempInput;
 };
 
@@ -184,6 +193,7 @@ const bindDeviceDetailModeInput = (params: {
   } = params;
   const inputElement = tempInput;
   tempInput.addEventListener('change', async () => {
+    if (!supportsTemperatureControlDevice(device)) return;
     const value = parseFloat(inputElement.value);
     if (isNaN(value)) return;
 
@@ -307,6 +317,11 @@ export const renderDeviceDetailModes = (device: SettingsUiDeviceDetailItem) => {
   const supports = supportsTemperatureDevice(device);
   if (deviceDetailModesSection) deviceDetailModesSection.hidden = !supports;
   if (!supports) return;
+  if (modesHelpEl) {
+    modesHelpEl.textContent = supportsTemperatureControlDevice(device)
+      ? MODES_HELP_ACTIVE
+      : MODES_HELP_DISABLED;
+  }
 
   detailModeGeneration += 1;
   const generation = detailModeGeneration;

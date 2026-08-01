@@ -109,7 +109,7 @@ Device detail sections:
 | **Power limiting** | What PELS does when power needs to be lowered: turn off, set temperature, or set stepped-load level. |
 | **Stepped load profile** | Step names, planning power values, target-power range, temperature boost, and charge boost where supported. |
 | **Solar surplus** (prosumer) | For homes with solar: **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. Appears when PELS detects a solar signal, or when a device already has one of these settings enabled (so you can turn it off). See [Solar and Self-Consumption](/solar). |
-| **Setup** | Managed by PELS, power-limit control, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and battery level. |
+| **Setup** | Managed by PELS, power-limit control, disable temperature control, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and battery level. |
 | **Advanced diagnostics** | Read-only blocked time, activation instability, and penalty history. |
 
 ![PELS device detail page for a heat pump showing Temperature per mode, Price response, Power limiting, and the Setup toggles including Managed by PELS and Power-limit control](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
@@ -118,6 +118,7 @@ Notes:
 
 - Devices without a usable power estimate cannot use power-limit control.
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
+- Turn on **Disable temperature control** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, but only turns the device off or on when managing capacity. Saved temperature settings remain available when temperature control is enabled again.
 - **Built-in device control** lets PELS adjust a supported device (such as a compatible water heater) directly, without you wiring up Homey Flows, and is on by default for those devices. For compatible water heaters where PELS can choose between Flow wiring and built-in control, PELS leaves built-in device control off and shows a notice if one of your own Homey Flows already sets that device's power level or turns it on or off — remove that Flow to let PELS take over, or turn the switch on under the device's **Setup** section to override. EV chargers controlled through their native `target_power` capability do not have a separate built-in-control switch; avoid adding another Flow that writes the same current or power setting. A Flow that only reads the device, or only adjusts its temperature, is not a conflict.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
 - If expected usage looks wrong, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.

@@ -3,7 +3,9 @@ import type {
   EvObservedProbe,
   ObservedDeviceState,
   StateOfChargeObservedProbe,
+  TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
@@ -25,6 +27,23 @@ export function readObservedEvChargingState(
     state: (ObservedDeviceState & EvObservedProbe) | undefined,
 ): EvChargingState | undefined {
     return state?.evChargingState;
+}
+
+/**
+ * Owner projection of the observed temperature cluster for producer wiring.
+ * The plan-facing device may intentionally omit target capabilities when PELS
+ * temperature control is disabled; this read keeps the settings overview tied
+ * to observer truth instead of re-introducing command data into the planner.
+ */
+export function readObservedTemperatureState(
+    state: (ObservedDeviceState & TemperatureObservedProbe) | undefined,
+): { currentTarget: number | null; currentTemperature?: number } | undefined {
+    if (state === undefined) return undefined;
+    const currentTemperature = state.currentTemperature;
+    return {
+        currentTarget: getPrimaryTargetCapability(state.targets)?.value ?? null,
+        ...(currentTemperature !== undefined ? { currentTemperature } : {}),
+    };
 }
 
 type ProjectionEntry = {

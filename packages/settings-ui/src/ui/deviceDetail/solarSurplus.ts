@@ -7,7 +7,11 @@ import {
   deviceDetailSurplusOpt,
   deviceDetailSurplusSection,
 } from '../dom.ts';
-import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import {
+  supportsTemperatureControlDevice,
+  supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
+} from '../deviceUtils.ts';
 import { isEvDevice } from '../../../../shared-domain/src/commandableNow.ts';
 import { logSettingsError } from '../logging.ts';
 import { savePriceOptimizationSettings } from '../priceOptimization.ts';
@@ -62,7 +66,10 @@ export const updateSurplusSectionVisibility = (params: {
   // home that does not export; and only on a managed temperature device (the only
   // kind that self-consumes by raising a setpoint).
   deviceDetailSurplusSection.style.display
-    = resolveHomeExhibitsSolar() && supportsTemperatureDevice(device) && isManaged && deviceDetailSurplusOpt.selected
+    = resolveHomeExhibitsSolar()
+      && supportsTemperatureControlDevice(device)
+      && isManaged
+      && deviceDetailSurplusOpt.selected
       ? 'block' : 'none';
 };
 
@@ -74,7 +81,7 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
     const device = params.getDeviceById(deviceId);
-    if (!supportsTemperatureDevice(device)) return;
+    if (!supportsTemperatureControlDevice(device)) return;
 
     const { surplusWilling, surplusDelta } = readSurplusInputs();
     // Snapshot only this device's surplus fields before the optimistic mutation so
@@ -145,7 +152,9 @@ const isDumpLoadDeviceShape = (
 ): boolean => {
   if (!device) return false;
   if (!controlState.canManageDevice || !controlState.isManaged) return false;
-  if (controlState.supportsTemperature) return false;
+  // A thermostat whose temperature control is disabled is still a temperature
+  // device, not a solar dump load: the opt-in only authorizes capacity on/off.
+  if (supportsTemperatureDevice(device)) return false;
   // Binary modality mirrors the runtime discriminant: capability presence.
   if (device.controlCapabilityId === undefined) return false;
   if (isEvDevice(device)) return false;

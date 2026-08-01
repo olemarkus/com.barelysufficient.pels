@@ -39,6 +39,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
   OPERATING_MODE_SETTING,
   HOMEY_ENERGY_METER_DEVICE_ID,
   parseHomeScopedSettingsKey,
@@ -110,6 +111,8 @@ export type SettingsHandlerDeps = {
    * source generation. Runs before the Homey Energy poll is restarted.
    */
   onHomeRuntimePowerSourceChanged?: () => void;
+  /** Synchronously publish the latest validated temperature-command policy before queueing. */
+  onTemperatureControlPolicyObserved?: () => void;
   /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
@@ -147,6 +150,8 @@ export type SettingsHandlerDeps = {
   reconcileHomeRuntimes?: () => void;
   /** Rebuild pre-migration area followers after a Main catalog write. */
   rebuildHomeRuntimePlansForModeChange?: () => void;
+  /** Rebuild every live sub-home after a global per-device control policy changes. */
+  rebuildAllHomeRuntimePlansForDeviceControlChange?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -243,6 +248,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
     // collapse back to the original value before the registry observes them.
     if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved?.();
+    if (key === TEMPERATURE_CONTROL_DISABLED_DEVICES) {
+      deps.onTemperatureControlPolicyObserved?.();
+    }
     if (key === HOMEY_ENERGY_METER_DEVICE_ID) {
       deps.onHomeyEnergyMeterObserved?.();
       deps.onMainMeterSelectionObserved?.();
@@ -360,6 +368,17 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'device_communication_model_change');
       await rebuildPlanFromSettings(deps, DEVICE_COMMUNICATION_MODELS);
+    },
+    [TEMPERATURE_CONTROL_DISABLED_DEVICES]: async () => {
+      // Load synchronously before the first await: every actuator reads this
+      // live map at its final setup-layer fence, so an already-queued target or
+      // step continuation loses authority immediately when this handler starts.
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'temperature_control_disabled_change');
+      await rebuildPlanFromSettings(deps, TEMPERATURE_CONTROL_DISABLED_DEVICES);
+      // The setting is global and applies to every initialized meter-area
+      // runtime, not only legacy areas that still follow Main's mode catalog.
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange?.();
     },
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();

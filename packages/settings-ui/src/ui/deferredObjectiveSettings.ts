@@ -18,5 +18,6 @@ export const loadDeferredObjectiveSettings = async (): Promise<void> => {
     ? await getSetting(DEFERRED_OBJECTIVES_SETTINGS)
     : await callApi<unknown>('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
   state.deferredObjectiveSettings = normalizeDeferredObjectiveSettings(raw);
+  document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
   bumpPlanSurface();
 };

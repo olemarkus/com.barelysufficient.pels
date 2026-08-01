@@ -7,6 +7,7 @@ import type {
   SteppedLoadDescriptorProbe,
   TemperatureBoostConfig,
 } from '../../../contracts/src/types.ts';
+import { state } from './state.ts';
 
 export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredicates.ts';
 
@@ -65,6 +66,16 @@ export const supportsTemperatureDevice = (device?: SettingsUiDeviceListItem | nu
   if (device.deviceType) return device.deviceType === 'temperature';
   return (device.targets?.length ?? 0) > 0;
 };
+
+/** Temperature capability PELS is currently allowed to command. */
+export const supportsTemperatureControlDevice = (
+  device?: SettingsUiDeviceListItem | null,
+): boolean => (
+  supportsTemperatureDevice(device)
+  && device !== undefined
+  && device !== null
+  && state.temperatureControlDisabledMap[device.id] !== true
+);
 
 export const supportsManagedDevice = (supportsPower: boolean, supportsTemperature: boolean): boolean => (
   supportsPower || supportsTemperature

@@ -2989,19 +2989,6 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       *Why it's needed:* the next contributor to touch any of these has to do someone else's refactor
       first. Relieve them when next touched.
       Source: PR-3b census, 2026-07-26.
-- [ ] **`clearMultipleDeviceSettings` subsumes `clearDeviceSettings` — collapse the near-duplicate purge pair.**
-      *Persona:* Contributor (`notes/personas.md`) adding an eleventh per-device settings map and having to
-      remember to edit both copies.
-      *Hypothesis:* `packages/settings-ui/src/ui/advancedDeviceDataPurge.ts` holds two functions that write the
-      same ten `setSetting` keys and mirror the same ten `state` assignments; the only real difference is
-      `removeDeviceFromModeMap` vs `removeDeviceIdsFromModeMap`, and the plural version subsumes the singular
-      one (same falsy guard, same resulting JSON — it only differs by returning a fresh object where the
-      singular could return the same reference, which no consumer observes). Deleting `clearDeviceSettings` +
-      `removeDeviceFromModeMap` and calling `clearMultipleDeviceSettings([deviceId])` from `advanced.ts` drops
-      ~50 lines. *Why it's needed:* a per-device settings map that gets added to one copy and not the other
-      leaves stale config behind on exactly the path whose job is to remove it. Pre-existing duplication that
-      PR 3b relocated verbatim (behaviour-free pass, so it was not collapsed there).
-      Source: PR-3b adversarial review, 2026-07-26.
 - [ ] **`realtime.ts` is now a re-export facade for tab navigation it no longer owns.**
       *Persona:* Contributor (`notes/personas.md`) looking for `showTab` and finding it re-exported from a file
       named "realtime".

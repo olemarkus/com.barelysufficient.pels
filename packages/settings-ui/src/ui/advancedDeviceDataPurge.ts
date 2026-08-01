@@ -1,5 +1,6 @@
-import { getSetting, setSetting } from './homey.ts';
+import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
+import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
 import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -9,6 +10,7 @@ import {
   MODE_DEVICE_TARGETS,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
@@ -19,7 +21,7 @@ import { getHomeScope } from './homeScope.ts';
  * remove one or many of them from every per-device settings map.
  *
  * Split out of `advanced.ts` so that file stays the page's DOM/handler
- * controller. The ten maps are enumerated explicitly rather than derived: a new
+ * controller. The maps are enumerated explicitly rather than derived: a new
  * per-device setting must be added here deliberately, or clearing a device
  * would silently leave its config behind.
  */
@@ -27,6 +29,32 @@ import { getHomeScope } from './homeScope.ts';
 export type PurgeableDeviceOption = {
   id: string;
   name: string;
+};
+
+const runSerializedPurge = createSerializedAsyncRunner();
+let reconciliationRequiredForHomeIds: readonly string[] | null = null;
+
+const readRecordSetting = <T>(value: unknown): Record<string, T> => {
+  if (value === null || value === undefined) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return { ...(value as Record<string, T>) };
+  }
+  throw new Error('Persisted device settings map is malformed');
+};
+
+const readReconciledRecordSetting = <T>(
+  value: unknown,
+  fallback: Record<string, T>,
+): Record<string, T> => (
+  value === null || value === undefined ? { ...fallback } : readRecordSetting<T>(value)
+);
+
+const getPurgeHomeIds = (): string[] => {
+  const scope = getHomeScope();
+  return [
+    MAIN_HOME_ID,
+    ...(scope.runtimeActive ? scope.areas.map((area) => area.homeId) : []),
+  ];
 };
 
 const collectDeviceIdsFromSettings = (): Set<string> => {
@@ -39,6 +67,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
     ...Object.keys(state.priceOptimizationSettings),
+    ...Object.keys(state.temperatureControlDisabledMap),
   ];
 
   const modeMapIds = (modeMap: Record<string, Record<string, number>>) => (
@@ -68,22 +97,6 @@ export const resolveUnknownDeviceIdsFromSettings = (): string[] => {
   return Array.from(collectDeviceIdsFromSettings()).filter((id) => !knownIds.has(id));
 };
 
-const removeDeviceFromModeMap = (
-  map: Record<string, Record<string, number>>,
-  deviceId: string,
-): Record<string, Record<string, number>> => {
-  const updated: Record<string, Record<string, number>> = {};
-  Object.entries(map).forEach(([mode, devices]) => {
-    if (!devices || devices[deviceId] === undefined) {
-      updated[mode] = devices;
-      return;
-    }
-    const { [deviceId]: _removed, ...rest } = devices;
-    updated[mode] = rest;
-  });
-  return updated;
-};
-
 const removeDeviceIdsFromModeMap = (
   map: Record<string, Record<string, number>>,
   deviceIds: Set<string>,
@@ -102,13 +115,46 @@ const removeDeviceIdsFromModeMap = (
   return updated;
 };
 
-const purgeModeCatalogDeviceIds = async (deviceIds: Set<string>): Promise<void> => {
-  const scope = getHomeScope();
-  const homeIds = [
-    MAIN_HOME_ID,
-    ...(scope.runtimeActive ? scope.areas.map((area) => area.homeId) : []),
-  ];
-  await Promise.all(homeIds.flatMap(async (homeId) => {
+const removeDeviceIdsFromRecord = <T>(
+  map: Record<string, T>,
+  deviceIds: Set<string>,
+): Record<string, T> => Object.fromEntries(
+  Object.entries(map).filter(([deviceId]) => !deviceIds.has(deviceId)),
+);
+
+const buildPurgedState = (deviceIds: Set<string>) => ({
+  controllableMap: removeDeviceIdsFromRecord(state.controllableMap, deviceIds),
+  managedMap: removeDeviceIdsFromRecord(state.managedMap, deviceIds),
+  deviceControlProfiles: removeDeviceIdsFromRecord(state.deviceControlProfiles, deviceIds),
+  deviceTargetPowerConfigs: removeDeviceIdsFromRecord(state.deviceTargetPowerConfigs, deviceIds),
+  shedBehaviors: removeDeviceIdsFromRecord(state.shedBehaviors, deviceIds),
+  temperatureBoostSettings: removeDeviceIdsFromRecord(state.temperatureBoostSettings, deviceIds),
+  evBoostSettings: removeDeviceIdsFromRecord(state.evBoostSettings, deviceIds),
+  priceOptimizationSettings: removeDeviceIdsFromRecord(state.priceOptimizationSettings, deviceIds),
+  temperatureControlDisabledMap: removeDeviceIdsFromRecord(state.temperatureControlDisabledMap, deviceIds),
+  capacityPriorities: removeDeviceIdsFromModeMap(state.capacityPriorities, deviceIds),
+  modeTargets: removeDeviceIdsFromModeMap(state.modeTargets, deviceIds),
+});
+
+const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
+  state.controllableMap = next.controllableMap;
+  state.managedMap = next.managedMap;
+  state.deviceControlProfiles = next.deviceControlProfiles;
+  state.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
+  state.shedBehaviors = next.shedBehaviors;
+  state.temperatureBoostSettings = next.temperatureBoostSettings;
+  state.evBoostSettings = next.evBoostSettings;
+  state.priceOptimizationSettings = next.priceOptimizationSettings;
+  state.temperatureControlDisabledMap = next.temperatureControlDisabledMap;
+  state.capacityPriorities = next.capacityPriorities;
+  state.modeTargets = next.modeTargets;
+};
+
+const purgeModeCatalogDeviceIds = async (
+  deviceIds: Set<string>,
+  homeIds: readonly string[],
+): Promise<void> => {
+  const catalogs = await Promise.all(homeIds.map(async (homeId) => {
     const prioritiesKey = homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId);
     const targetsKey = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
     const [prioritiesRaw, targetsRaw] = await Promise.all([
@@ -122,103 +168,132 @@ const purgeModeCatalogDeviceIds = async (deviceIds: Set<string>): Promise<void> 
       || !targetsRaw
       || typeof targetsRaw !== 'object'
       || Array.isArray(targetsRaw)
-    ) return;
-    const priorities = prioritiesRaw as Record<string, Record<string, number>>;
-    const targets = targetsRaw as Record<string, Record<string, number>>;
-    await Promise.all([
-      setSetting(prioritiesKey, removeDeviceIdsFromModeMap(priorities, deviceIds)),
-      setSetting(targetsKey, removeDeviceIdsFromModeMap(targets, deviceIds)),
-    ]);
+    ) return null;
+    return {
+      prioritiesKey,
+      targetsKey,
+      priorities: prioritiesRaw as Record<string, Record<string, number>>,
+      targets: targetsRaw as Record<string, Record<string, number>>,
+    };
   }));
+  const writes = catalogs.flatMap((catalog) => (catalog === null ? [] : [
+    setSetting(catalog.prioritiesKey, removeDeviceIdsFromModeMap(catalog.priorities, deviceIds)),
+    setSetting(catalog.targetsKey, removeDeviceIdsFromModeMap(catalog.targets, deviceIds)),
+  ]));
+  const results = await Promise.allSettled(writes);
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+};
+
+const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> => {
+  const simpleBindings: Array<{
+    key: string;
+    fallback: Record<string, unknown>;
+    apply: (value: unknown) => void;
+  }> = [
+    {
+      key: 'controllable_devices', fallback: state.controllableMap,
+      apply: (value) => { state.controllableMap = readRecordSetting(value); },
+    },
+    {
+      key: 'managed_devices', fallback: state.managedMap,
+      apply: (value) => { state.managedMap = readRecordSetting(value); },
+    },
+    {
+      key: DEVICE_CONTROL_PROFILES, fallback: state.deviceControlProfiles,
+      apply: (value) => { state.deviceControlProfiles = readRecordSetting(value); },
+    },
+    {
+      key: DEVICE_TARGET_POWER_CONFIGS,
+      fallback: state.deviceTargetPowerConfigs,
+      apply: (value) => { state.deviceTargetPowerConfigs = readRecordSetting(value); },
+    },
+    {
+      key: OVERSHOOT_BEHAVIORS, fallback: state.shedBehaviors,
+      apply: (value) => { state.shedBehaviors = readRecordSetting(value); },
+    },
+    {
+      key: TEMPERATURE_BOOST_SETTINGS,
+      fallback: state.temperatureBoostSettings,
+      apply: (value) => { state.temperatureBoostSettings = readRecordSetting(value); },
+    },
+    {
+      key: EV_BOOST_SETTINGS, fallback: state.evBoostSettings,
+      apply: (value) => { state.evBoostSettings = readRecordSetting(value); },
+    },
+    {
+      key: 'price_optimization_settings',
+      fallback: state.priceOptimizationSettings,
+      apply: (value) => { state.priceOptimizationSettings = readRecordSetting(value); },
+    },
+    {
+      key: TEMPERATURE_CONTROL_DISABLED_DEVICES,
+      fallback: state.temperatureControlDisabledMap,
+      apply: (value) => { state.temperatureControlDisabledMap = readRecordSetting(value); },
+    },
+  ];
+  const [simpleReads, modeReads] = await Promise.all([
+    Promise.all(simpleBindings.map(async (binding) => ({
+      binding,
+      value: readReconciledRecordSetting(await getSettingFresh(binding.key), binding.fallback),
+    }))),
+    Promise.all(homeIds.map(async (homeId) => ({
+      homeId,
+      priorities: readReconciledRecordSetting(
+        await getSettingFresh(homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId)),
+        homeId === state.loadedModeHomeId ? state.capacityPriorities : {},
+      ),
+      targets: readReconciledRecordSetting(
+        await getSettingFresh(homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId)),
+        homeId === state.loadedModeHomeId ? state.modeTargets : {},
+      ),
+    }))),
+  ]);
+  simpleReads.forEach(({ binding, value }) => binding.apply(value));
+  const loadedModes = modeReads.find(({ homeId }) => homeId === state.loadedModeHomeId);
+  if (loadedModes) {
+    state.capacityPriorities = loadedModes.priorities;
+    state.modeTargets = loadedModes.targets;
+  }
 };
 
 export const clearDeviceSettings = async (deviceId: string) => {
-  const nextControllableMap = { ...state.controllableMap };
-  const nextManagedMap = { ...state.managedMap };
-  const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
-  const nextDeviceTargetPowerConfigs = { ...state.deviceTargetPowerConfigs };
-  const nextShedBehaviors = { ...state.shedBehaviors };
-  const nextTemperatureBoost = { ...state.temperatureBoostSettings };
-  const nextEvBoost = { ...state.evBoostSettings };
-  const nextPriceOptimization = { ...state.priceOptimizationSettings };
-  delete nextControllableMap[deviceId];
-  delete nextManagedMap[deviceId];
-  delete nextDeviceControlProfiles[deviceId];
-  delete nextDeviceTargetPowerConfigs[deviceId];
-  delete nextShedBehaviors[deviceId];
-  delete nextTemperatureBoost[deviceId];
-  delete nextEvBoost[deviceId];
-  delete nextPriceOptimization[deviceId];
-  const nextCapacityPriorities = removeDeviceFromModeMap(state.capacityPriorities, deviceId);
-  const nextModeTargets = removeDeviceFromModeMap(state.modeTargets, deviceId);
-
-  await Promise.all([
-    setSetting('controllable_devices', nextControllableMap),
-    setSetting('managed_devices', nextManagedMap),
-    setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
-    setSetting(DEVICE_TARGET_POWER_CONFIGS, nextDeviceTargetPowerConfigs),
-    setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
-    setSetting(EV_BOOST_SETTINGS, nextEvBoost),
-    setSetting('price_optimization_settings', nextPriceOptimization),
-    purgeModeCatalogDeviceIds(new Set([deviceId])),
-  ]);
-
-  state.controllableMap = nextControllableMap;
-  state.managedMap = nextManagedMap;
-  state.deviceControlProfiles = nextDeviceControlProfiles;
-  state.deviceTargetPowerConfigs = nextDeviceTargetPowerConfigs;
-  state.shedBehaviors = nextShedBehaviors;
-  state.temperatureBoostSettings = nextTemperatureBoost;
-  state.evBoostSettings = nextEvBoost;
-  state.priceOptimizationSettings = nextPriceOptimization;
-  state.capacityPriorities = nextCapacityPriorities;
-  state.modeTargets = nextModeTargets;
+  await clearMultipleDeviceSettings([deviceId]);
 };
 
-export const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
+const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
+  if (reconciliationRequiredForHomeIds !== null) {
+    const pendingHomeIds = reconciliationRequiredForHomeIds;
+    await reconcilePurgeState(pendingHomeIds);
+    reconciliationRequiredForHomeIds = null;
+  }
   const ids = new Set(deviceIds);
-  const nextControllableMap = { ...state.controllableMap };
-  const nextManagedMap = { ...state.managedMap };
-  const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
-  const nextDeviceTargetPowerConfigs = { ...state.deviceTargetPowerConfigs };
-  const nextShedBehaviors = { ...state.shedBehaviors };
-  const nextTemperatureBoost = { ...state.temperatureBoostSettings };
-  const nextEvBoost = { ...state.evBoostSettings };
-  const nextPriceOptimization = { ...state.priceOptimizationSettings };
-  deviceIds.forEach((deviceId) => {
-    delete nextControllableMap[deviceId];
-    delete nextManagedMap[deviceId];
-    delete nextDeviceControlProfiles[deviceId];
-    delete nextDeviceTargetPowerConfigs[deviceId];
-    delete nextShedBehaviors[deviceId];
-    delete nextTemperatureBoost[deviceId];
-    delete nextEvBoost[deviceId];
-    delete nextPriceOptimization[deviceId];
-  });
-  const nextCapacityPriorities = removeDeviceIdsFromModeMap(state.capacityPriorities, ids);
-  const nextModeTargets = removeDeviceIdsFromModeMap(state.modeTargets, ids);
+  const homeIds = getPurgeHomeIds();
+  const next = buildPurgedState(ids);
 
-  await Promise.all([
-    setSetting('controllable_devices', nextControllableMap),
-    setSetting('managed_devices', nextManagedMap),
-    setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
-    setSetting(DEVICE_TARGET_POWER_CONFIGS, nextDeviceTargetPowerConfigs),
-    setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
-    setSetting(EV_BOOST_SETTINGS, nextEvBoost),
-    setSetting('price_optimization_settings', nextPriceOptimization),
-    purgeModeCatalogDeviceIds(ids),
+  const writeResults = await Promise.allSettled([
+    setSetting('controllable_devices', next.controllableMap),
+    setSetting('managed_devices', next.managedMap),
+    setSetting(DEVICE_CONTROL_PROFILES, next.deviceControlProfiles),
+    setSetting(DEVICE_TARGET_POWER_CONFIGS, next.deviceTargetPowerConfigs),
+    setSetting(OVERSHOOT_BEHAVIORS, next.shedBehaviors),
+    setSetting(TEMPERATURE_BOOST_SETTINGS, next.temperatureBoostSettings),
+    setSetting(EV_BOOST_SETTINGS, next.evBoostSettings),
+    setSetting('price_optimization_settings', next.priceOptimizationSettings),
+    setSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES, next.temperatureControlDisabledMap),
+    purgeModeCatalogDeviceIds(ids, homeIds),
   ]);
+  const failure = writeResults.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') {
+    reconciliationRequiredForHomeIds = homeIds;
+    await reconcilePurgeState(homeIds);
+    reconciliationRequiredForHomeIds = null;
+    throw failure.reason;
+  }
 
-  state.controllableMap = nextControllableMap;
-  state.managedMap = nextManagedMap;
-  state.deviceControlProfiles = nextDeviceControlProfiles;
-  state.deviceTargetPowerConfigs = nextDeviceTargetPowerConfigs;
-  state.shedBehaviors = nextShedBehaviors;
-  state.temperatureBoostSettings = nextTemperatureBoost;
-  state.evBoostSettings = nextEvBoost;
-  state.priceOptimizationSettings = nextPriceOptimization;
-  state.capacityPriorities = nextCapacityPriorities;
-  state.modeTargets = nextModeTargets;
+  applyPurgedState(next);
 };
+
+export const clearMultipleDeviceSettings = (deviceIds: string[]) => (
+  runSerializedPurge(() => performClearMultipleDeviceSettings(deviceIds))
+);
