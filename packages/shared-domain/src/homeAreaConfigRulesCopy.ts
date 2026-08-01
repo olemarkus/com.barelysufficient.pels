@@ -51,7 +51,7 @@ export const HOMES_METER_UNNAMEABLE = 'Your whole-home meter doesn’t report a 
  * `HOMES_AREA_NEEDS_MAIN_METER`. Fires from the editor, where
  * `HOMES_FLOW_SOURCE_NOTICE` has already explained the why in full.
  */
-export const HOMES_AREA_NEEDS_HOMEY_ENERGY = 'Meter areas need the Homey Energy power source, '
+export const HOMES_AREA_NEEDS_HOMEY_ENERGY = 'Meter areas need the “Power meter” power source, '
   + 'or PELS can’t tell which meter a reading belongs to. Set “Power source” under '
   + 'Limits & safety, then save this area.';
 
@@ -61,7 +61,7 @@ export const HOMES_AREA_NEEDS_HOMEY_ENERGY = 'Meter areas need the Homey Energy 
  * the remedy this names is never itself blocked.
  */
 export const HOMES_POWER_SOURCE_NEEDED_BY_AREAS = 'While meter areas exist, PELS needs the '
-  + 'Homey Energy power source. Remove your meter areas under Multiple meters first.';
+  + '“Power meter” power source. Remove your meter areas under Multiple meters first.';
 
 /** Power-source save refused while the meter-area config cannot be read safely. */
 export const HOMES_POWER_SOURCE_SAVE_DEGRADED = 'PELS can’t safely change the power source '

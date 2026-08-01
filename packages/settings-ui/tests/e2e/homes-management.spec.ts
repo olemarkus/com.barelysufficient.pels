@@ -34,13 +34,19 @@ test('empty state shows only the explainer and the Add affordance', async ({ pag
   await expect(page.locator('#homes-add-button')).toBeVisible();
 });
 
-test('flow power source warns that meter areas need Homey Energy', async ({ page }) => {
+test('flow power source warns that meter areas need the Power meter source', async ({ page }) => {
   await gotoApp(page);
   // The runtime treats a non-Homey-Energy source (including unset) as Flow.
   await seedStubSetting(page, 'power_source', 'flow');
   await openHomesPanel(page);
-  await expect(page.locator('#homes-flow-source-notice')).toBeVisible();
-  await expect(page.locator('#homes-flow-source-notice')).toContainText('Homey Energy power source');
+  const notice = page.locator('#homes-flow-source-notice');
+  await expect(notice).toBeVisible();
+  // The remedy must name the option labels the picker actually shows. "Homey
+  // Energy" is the internal source name and appears nowhere in the UI, so a
+  // notice pointing at it would send the owner looking for a control that
+  // does not exist.
+  await expect(notice).toContainText('Power meter');
+  await expect(notice).toContainText('Flow card');
 });
 
 test('flow power source warning survives an unrelated whole-home meter read failure', async ({ page }) => {
