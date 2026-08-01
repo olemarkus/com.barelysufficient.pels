@@ -2184,39 +2184,111 @@ CI failure, so future field-move slices can't silently grow the debt.*
 
 - [ ] **Add the "pause lower-priority devices" toggle to the create-smart-task widget.** The
       `pauseLowerPriorityDevices` rescue permission ships with a Flow entry (`allow_smart_task_rescue`)
-      and full runtime behaviour (`lib/plan/shedding/pauseHold.ts`), but the create-smart-task widget
+      and full runtime behaviour (`lib/plan/admission/headroomReserve.ts` — it reserves power so the
+      task can start sooner), but the create-smart-task widget
       (`widgets/create_smart_task/src/public/render.ts` + `src/api.ts`) still offers only the budget +
       limit toggles, so it can't be set at creation time from the widget. Add the third (ungated)
-      toggle for parity, mapping to `'always'` like the others. Persona: Orchestrator. Needs
+      toggle for parity, mapping to `'always'` like the others. Copy must not say anything is turned
+      off — see `notes/ui-terminology.md`. Persona: Orchestrator. Needs
       pels-ux-fit + pels-m3-critic + a Playwright screenshot pass (mobile 480 px). Source:
       pause-lower-priority feature, 2026-07-01.
 
-- [ ] **Damp the pause-hold re-shed with a recent-restore / hysteresis guard.** `resolvePauseHold`
-      (`lib/plan/shedding/pauseHold.ts`) unions held ids straight into `sheddingPlan.shedSet` after
-      `buildSheddingPlan`, so a re-shed skips the normal `recentlyRestored` /
-      `RECENT_RESTORE_SHED_GRACE_MS` grace (`lib/plan/shedding/candidates.ts`). The shipped
-      release-threshold (observed draw ≥ ~lowest step) removes the main flap driver, but a reserved
-      device whose measured draw genuinely oscillates around the threshold could still churn ON→OFF
-      on a just-restored lower-priority device (relay/compressor wear). Add a shed-side recent-restore
-      guard so the hold honors the same grace the normal shed path applies. Source:
-      pels-runtime-reality on the pause-lower-priority feature, 2026-07-01.
+- [ ] **Bound the startup reservation on time spent HOLDING, not wall-clock since first sighting.**
+      `resolveCycleHeadroomReserves` runs at the top of `applyRestorePlan` (`lib/plan/restore/index.ts`),
+      so `HEADROOM_RESERVE_MAX_MS` burns during every window in which the reserve enforces nothing:
+      `powerKnown === false`, `guardInShortfall`, active overshoot, shed cooldown (60 s), restore
+      cooldown (60–300 s), startup stabilization. *Hypothesis:* a capacity-tight hour with three
+      shed/restore cycles can consume most of the 15 minutes without the reserve ever holding a
+      device back; the home then calms, a real contiguous block appears, and the reserve has already
+      lapsed — the exact out-competition the feature exists to stop. Worse in `power_source = flow`,
+      where a 20-minute sample gap can consume the entire window in one go. Fix: advance the clock
+      only on the `armed` outcome, or record held-cycles rather than a start timestamp. *Persona:*
+      owner with an EV charger on a smart task in a busy home. Source: pels-runtime-reality on
+      preemptive-power-reservation, 2026-08-01. *P2*
 
-- [ ] **"Pause lower-priority devices" holds surface a misleading reason (hard cap / daily budget).**
-      `resolvePauseHold` (`lib/plan/shedding/pauseHold.ts`) unions each held lower-priority device into
-      `shedSet` WITHOUT a reason, so `normalizeShedReasons` (`lib/plan/planReasons.ts`) falls through to the
-      `capacity` default (or `dailyBudget` when `softLimitSource==='daily'`) and the device card reads
-      "Limited by the hard cap" even though the real cause is a smart task pausing it — while the hero shows
-      available power under the cap, so the two disagree. Control is correct (the device is rightly held);
-      only the surfaced reason is wrong. Fix (mirror the surplus-hold pattern, resolution-in-producer): add
-      a `pausedForPriority` reason code + a canonical "Paused so a higher-priority device can start" label in
-      `planReasonSemanticsCore.ts`, return a `reasonById` map from `resolvePauseHold`, thread it through
-      `planBuilderSurplus` → `planBuilder` → `normalizeShedReasons`, and add a `resolvePauseHoldReasonAdoption`
-      that loses to a fresh `shedReasons`/swap/shortfall entry (mirror `resolveSurplusHoldReasonAdoption`);
-      add card-text mappings + an integration assertion on the held device's `reason.code`. *Persona:* owner
-      with a smart task pausing a lower-priority device. *Hypothesis:* narrow (reserved device idle + a
-      lower-priority managed device present + no genuine capacity pressure), cosmetic, and the feature is
-      Flow-only + merged-but-unpublished (zero prod users today) — hence P2 not P1. ~9 files. *P2
-      (release-review adversarial verify, 2026-07-03).*
+- [ ] **Let a lapsed startup reservation re-arm when conditions change.**
+      `resolveReserveForDevice` (`lib/plan/admission/headroomReserve.ts`) deliberately keeps the
+      arming stamp on expiry so the lapse sticks rather than flapping — but that means a reserve
+      that lapsed at minute 15 can never re-arm, even if the blocking load disappears at minute 40
+      and the device could now start with a short hold. Only a genuine start clears the stamp.
+      *Hypothesis:* on a multi-hour booked window this makes the permission a one-shot. Fix: allow
+      re-arm after a cool-off, or key the lapse to the planned bucket. Pairs with the bound-accounting
+      item above; do them together. *Persona:* owner with a long overnight reheat. Source:
+      pels-runtime-reality on preemptive-power-reservation, 2026-08-01. *P2*
+
+- [ ] **A stepped device with no reported step and no metering holds its reservation for the full bound.**
+      `isReportedAtOrAboveLowestActiveStep` (`lib/plan/admission/headroomReserve.ts`) needs
+      `reportedStepId`, which only the native-EV path populates, and the draw fallback needs
+      `measure_power`. *Hypothesis:* a stepped water heater on a non-native profile with no power
+      metering starts, draws its full lowest step, and the reserve keeps withholding that same
+      amount from everyone else for 15 minutes — roughly double-booking the load. The docblock calls
+      the unconfirmed case "the fail-safe direction"; for an unmetered stepped device it is the
+      opposite. Fix: treat "no evidence channel at all" differently from "evidence says not started".
+      *Persona:* owner with an unmetered stepped water heater. Source: pels-runtime-reality on
+      preemptive-power-reservation, 2026-08-01. *P2*
+
+- [ ] **Stepped reservation stand-down leaves `plannedState: 'keep'`, so `countShedDevices` under-counts.**
+      `admitSteppedRestore` (`lib/plan/restore/steppedRestoreAdmission.ts`) sets only `{ reason }` on
+      the reserved-for-start path, while its sibling `rejectSteppedRestoreForInsufficientHeadroom`
+      applies `buildOffSteppedRestoreShedUpdate` and the binary twin sets `plannedState: 'shed'`.
+      *Hypothesis:* a different stepped device may therefore climb above its lowest active step while
+      devices are standing down for a reservation, because the stepped shed invariant counts nothing.
+      Actuation is still safe (`shouldHoldCurrentState` covers it), so this is posture/invariant
+      divergence rather than a stray write — hence P2. *Persona:* owner with two stepped devices.
+      Source: pels-runtime-reality on preemptive-power-reservation, 2026-08-01. *P2*
+
+- [ ] **Stepped and simulation cards drop the reservation's target name.**
+      `reserved_for_start` has no branch in `resolveOffStatusLine`
+      (`packages/shared-domain/src/planSteppedCardText.ts`) — it is in neither `isWaitingReason` nor
+      `isLimitedReason` — so a stepped device standing down falls back to the generic
+      `PLAN_STATE_HELD_FALLBACK_STATUS` and the device name (the entire payload of the reason) never
+      reaches the card. `packages/shared-domain/src/simulationReasonMood.ts` likewise has no override,
+      so a dry-run card asserts "Waiting so X can start" for a hold PELS is not performing.
+      `awaiting_solar_surplus` has the same stepped-card gap, so this follows an existing pattern
+      rather than inventing one — but the loss is total here where that code carries no payload.
+      *Persona:* owner with a stepped device held back by a smart task. Source:
+      pels-layering-guardian on preemptive-power-reservation, 2026-08-01. *P2*
+
+- [ ] **Rename the smart-task extra-permission clause away from "pause".**
+      `SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices`
+      (`packages/shared-domain/src/deadlineLabels.ts`) still reads `May pause lower-priority devices`
+      while the permission now reserves power and pauses nothing. The Flow dropdown label was already
+      changed to `reserve power so this task can start sooner`; this clause was deferred because it is
+      baked into the committed `widgets/starvation_rescue` and `widgets/create_smart_task` bundles and
+      is a shared-domain string, so renaming shifts log breadcrumbs too. Rename to
+      `May reserve power to start sooner`, rebuild + commit both widget bundles, and note the log
+      change in the PR body. *Persona:* Orchestrator reading the task page. Source:
+      pels-copy-and-terminology on preemptive-power-reservation, 2026-08-01. *P2*
+
+- [ ] **Cover the two startup-reservation safety branches that currently have no test.**
+      Both are load-bearing and both would fail silently if deleted.
+      (a) *Swap suppression.* `lib/plan/restore/gating.ts` and `lib/plan/restore/steppedRestoreAdmission.ts`
+      return early on `reserved.kind === 'blocked_by_reserve'` instead of falling through to the
+      swap path. Delete either branch and PELS sheds a **running third device** to serve a candidate
+      that is itself standing down for a reservation — a real write, and exactly the class of
+      failure the redesign exists to prevent. `test/integration/planHeadroomReserve.test.ts` has no
+      running third device, so it cannot reach the swap path.
+      (b) *Stepped path.* Every fixture in that file is binary (`controlCapabilityId: 'onoff'`), and
+      no test calls `admitSteppedRestore` with reserves. Uncovered: the stepped stand-down (which
+      now also applies `buildOffSteppedRestoreShedUpdate`, added 2026-08-01) and the reserve
+      round-trip arithmetic on both gates (`availableHeadroom - reservedKw` in, `+ reservedKw` out).
+      A sign error there leaks the reservation into the caller's running headroom total and
+      mis-admits every later device in the cycle.
+      *Persona:* Contributor changing the restore gates. Source: adversarial-review on
+      preemptive-power-reservation, 2026-08-01. *P2*
+
+- [ ] **Measure how much of the contiguous-block problem the startup reservation actually recovers.**
+      The reservation (`lib/plan/admission/headroomReserve.ts`) stops PELS from resuming devices into
+      the block a scheduled device needs to start, but it cannot stop a managed thermostat sitting in
+      `plannedState: 'keep'` from switching itself on under its own thermostatic control — that would
+      require shedding it, which is exactly the behaviour removed on 2026-08-01. The original
+      ~2:1 out-competition (commit `18296a370`) was attributed partly to that autonomous cycling.
+      *Hypothesis:* the PELS-driven share dominates and the reactive swap path covers the rest (a
+      device that has switched itself on is drawing, so displacing it yields genuine relief); if prod
+      logs show reserving devices still waiting many minutes with power available, the remedy needs
+      rethinking — but NOT by reinstating a proactive shed lane. Watch `headroom_reserve_decision`
+      (topic `plan`) for `expired` outcomes. *Persona:* owner with an EV charger or water heater on a
+      smart task. Source: preemptive-power-reservation, 2026-08-01. *P2*
 
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
@@ -2588,17 +2660,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       inference enhancer for the PV gain/curtailment model. *Why it's needed:* only as an input to the
       solar inference lane — record it there when that lane next evolves. From the PR-7 ladder ruling,
       2026-07-01. *Persona:* prosumer with a Homey-integrated inverter.
-
-- [ ] **Give pause-held devices their own shed reason instead of defaulting to `capacity`.**
-      *Hypothesis:* a lower-priority device held off for a smart task surfaces on Overview / in logs as
-      capacity-limited ("Above safe pace") because `resolvePauseHold` adds it to `shedSet` with no
-      `shedReasons` entry, and `normalizeShedReasons` (`lib/plan/planReasons.ts`) defaults a
-      reason-less shed to `{ code: capacity }`. *Why it's needed:* the cause is user-initiated (a
-      paused-for-task hold), not raw capacity pressure, so the current label misattributes intent and
-      confuses "why is this device off?". Add a producer-side pause reason code and route the copy
-      through pels-copy-and-terminology (no "shed" / no "held back" — that's reserved for the budget
-      widget). *Persona:* Set-and-forget owner / Orchestrator. Source: pels-runtime-reality on the
-      pause-lower-priority feature, 2026-07-01.
 
 - [ ] **Observe-only device wiring: extract it out of the recurring-ceiling god-files (`app.ts`, `deviceTransport.ts`).**
       *Persona:* Contributor (`notes/personas.md`) extending the observe-only-device family (battery, solar,

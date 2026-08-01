@@ -84,7 +84,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
 | **Clear smart task** | Removes any active Smart task for a device. |
-| **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **pause lower-priority devices** (held off up front, including idle ones, to clear a block of power). Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
+| **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **pause lower-priority devices** (reserves power so the task can start sooner). Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
 
 ## Common Automation Patterns
 
@@ -136,7 +136,7 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 
 Use **Smart task status changed** for notifications after the task status has settled, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.
 
-To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget, limit lower-priority devices, or pause lower-priority devices while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
+To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget, limit lower-priority devices, or reserve power so it can start sooner, while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
 
 See [Smart Tasks](/smart-tasks) for setup examples.
 

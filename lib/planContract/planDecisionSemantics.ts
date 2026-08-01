@@ -23,7 +23,8 @@ export type PlanStarvationPauseReason =
   | 'keep'
   | 'inactive'
   | 'deferred_objective_avoid'
-  | 'awaiting_solar_surplus';
+  | 'awaiting_solar_surplus'
+  | 'reserved_for_start';
 
 export type PlanStarvationSuppressionSemantics =
   | { state: 'none'; countingCause: null; pauseReason: null }
@@ -33,6 +34,11 @@ export type PlanStarvationSuppressionSemantics =
 const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.meterSettling,
   PLAN_REASON_CODES.cooldownRestore,
+  // Same class: the planner declined to resume this cycle, it did not decide to switch anything
+  // off. Listing it here is what makes "a startup reservation issues no writes" structurally true
+  // rather than merely true-in-practice — without it the reject path's `plannedState: 'shed'`
+  // builds a shed intent that only the executor's already-off precheck swallows.
+  PLAN_REASON_CODES.reservedForStart,
 ]);
 
 // Reasons under which a producer-resolved deferred-objective resume (binary_restore)
@@ -63,6 +69,10 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // instead of quietly overriding the off. Without this a deferred binary_restore
   // would lift a hold the user set by hand.
   PLAN_REASON_CODES.externalOffHold,
+  // One smart task's binary_restore must not lift another task's startup reservation: the
+  // reserving device is higher priority by construction, so resuming here would take exactly
+  // the block the reservation exists to protect.
+  PLAN_REASON_CODES.reservedForStart,
 ]);
 
 const STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES = new Set<PlanReasonCode>([
@@ -171,6 +181,13 @@ export function resolveStarvationSuppressionSemantics(reason: DeviceReason): Pla
   // (baseline off, waiting for export) — a deliberate pause, never starvation.
   if (reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
     return { state: 'paused', countingCause: null, pauseReason: 'awaiting_solar_surplus' };
+  }
+  // A device waiting on another device's startup reservation is held by a deliberate,
+  // user-granted, time-bounded policy (`HEADROOM_RESERVE_MAX_MS`) — the same class as
+  // `deferredObjectiveAvoid`, not capacity starvation. Pause with an attributed reason so it
+  // does not fall through to the `unknown_suppression_reason` catch-all in planDiagnostics.
+  if (reason.code === PLAN_REASON_CODES.reservedForStart) {
+    return { state: 'paused', countingCause: null, pauseReason: 'reserved_for_start' };
   }
   const countingCause = COUNTING_SUPPRESSION_CAUSES[reason.code];
   if (countingCause) {

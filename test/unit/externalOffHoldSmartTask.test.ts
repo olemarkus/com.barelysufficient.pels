@@ -168,7 +168,7 @@ describe('external-off hold — no rescue claims for a device that will not star
     expectedStepId: 'low',
     budgetExempt: true,
     engageBoost: true,
-    holdLowerPriority: true,
+    reservesStartupPower: true,
   };
 
   const admit = (device: PlanInputDevice): PlanInputDevice => (
@@ -177,9 +177,9 @@ describe('external-off hold — no rescue claims for a device that will not star
 
   it('drops every claim while the hold is active', () => {
     const device = admit(buildDevice({ externalOffHoldActive: true }));
-    // `holdLowerPriority` is the damaging one: it sheds every eligible
-    // lower-priority managed device to make room for a device that will not run.
-    expect(device.holdLowerPriority).toBeUndefined();
+    // `reservesStartupPower` is the costly one: it holds available power out of every
+    // lower-priority device's reach on behalf of a device that will not run.
+    expect(device.reservesStartupPower).toBeUndefined();
     expect(device.forceBoostActive).toBeUndefined();
     expect(device.budgetExempt).toBeUndefined();
     expect(device.controllable).toBe(false);
@@ -187,7 +187,7 @@ describe('external-off hold — no rescue claims for a device that will not star
 
   it('control case: the same task still claims what it needs when nothing is held', () => {
     const device = admit(buildDevice());
-    expect(device.holdLowerPriority).toBe(true);
+    expect(device.reservesStartupPower).toBe(true);
     expect(device.forceBoostActive).toBe(true);
     expect(device.budgetExempt).toBe(true);
     expect(device.controllable).toBe(true);

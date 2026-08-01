@@ -4,7 +4,7 @@
  * from `buildInitialPlanDevices` so eligibility exists when the shed set is
  * assembled; `planDevices` only READS the resulting state), (2) resolves the
  * standing "Run on solar surplus" dump-load hold (`resolveSurplusHold`) with the
- * smart-task precedence exclusions, and (3) merges the three post-shedding holds
+ * smart-task precedence exclusions, and (3) merges the post-shedding holds
  * into the shed set and clears stale posture bookkeeping. Extracted from
  * `planBuilder.ts` so the builder keeps a single statement for the whole pass.
  *
@@ -20,15 +20,14 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { resolveSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { resolveSurplusHold } from './shedding/surplusHold';
-import { resolvePauseHold } from './shedding/pauseHold';
 
 // Re-exported so the builder's deps typing needs no extra planSurplusAbsorb import.
 export type { PriceOptDeviceConfig };
 
 /**
- * Merge the post-shedding hold id-sets (decoration force-shed, pause-lower-priority,
- * solar dump-load) into the plan's shed set. Nested `for` (no spread allocation
- * inside a loop) per the hot-path perf rule.
+ * Merge the post-shedding hold id-sets (decoration force-shed, solar dump-load)
+ * into the plan's shed set. Nested `for` (no spread allocation inside a loop)
+ * per the hot-path perf rule.
  */
 export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray<Iterable<string>>): void {
   for (const hold of holds) {
@@ -40,7 +39,7 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  * Whole surplus + post-shedding-hold pass for the plan builder: resolve the
  * priority-greedy surplus allocator (hoisted here so eligibility exists when the
  * shed set is assembled), resolve the standing dump-load hold with smart-task
- * precedence, then merge the three post-shedding holds into `shedSet` and clear
+ * precedence, then merge the post-shedding holds into `shedSet` and clear
  * the stale posture bookkeeping. Returns the dump-load `reasonById` for the
  * downstream reason normalization. `shedSet` is mutated in place.
  */
@@ -55,7 +54,6 @@ export function runSurplusPass(params: {
   >;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
   getPriority: (deviceId: string) => number;
-  capacitySettings: { limitKw: number; marginKw: number };
   // Zero-export inferred curtailed-surplus term (producer:
   // `lib/solar/curtailmentSurplus.ts`), injected flat through the plan deps and
   // enlarging the same pool as measured export. Absent ⇒ measured export only.
@@ -96,20 +94,21 @@ export function runSurplusPass(params: {
     surplusHoldIds: surplusHold.holdIds,
     admittedDevices,
     state,
-    context,
-    capacitySettings: params.capacitySettings,
-    getPriorityForDevice: params.getPriority,
   });
   return surplusHold.reasonById;
 }
 
 /**
- * Assemble the three post-shedding holds into the plan's shed set and then clear
- * the stale posture bookkeeping. (1) Proactive pause-lower-priority hold: a smart
- * task with the permission holds lower-priority managed devices off (up to — never
- * above — the hard cap) so the reserved device can start; the helper owns
- * release-on-active + the feasibility-lift. (2) Merge force-shed + pause + solar
- * dump-load holds. (3) Release a device that left the dump-load posture.
+ * Merge the post-shedding holds into the plan's shed set and then clear the stale
+ * posture bookkeeping. (1) Merge the decoration force-shed and solar dump-load
+ * holds. (2) Release a device that left the dump-load posture.
+ *
+ * Note there is deliberately no lane here that sheds devices on another device's
+ * behalf. The smart-task "pause lower-priority devices" permission used to add one
+ * (`resolvePauseHold`), which selected every lower-priority managed device — idle
+ * ones included, for zero relief. It is now an admission term instead:
+ * `lib/plan/admission/headroomReserve.ts` holds power back from lower-priority
+ * devices' admission without shedding anyone.
  */
 export function applyPostSheddingHolds(params: {
   shedSet: Set<string>;
@@ -117,19 +116,8 @@ export function applyPostSheddingHolds(params: {
   surplusHoldIds: Iterable<string>;
   admittedDevices: PlanInputDevice[];
   state: Pick<PlanEngineState, 'surplusOnlyShedByDevice' | 'clearShedDecision'>;
-  context: Pick<PlanContext, 'total' | 'powerKnown'>;
-  capacitySettings: { limitKw: number; marginKw: number };
-  getPriorityForDevice: (deviceId: string) => number;
 }): void {
-  const pauseHoldIds = resolvePauseHold({
-    devices: params.admittedDevices,
-    total: params.context.total,
-    powerKnown: params.context.powerKnown,
-    hardCapKw: params.capacitySettings.limitKw,
-    marginKw: params.capacitySettings.marginKw,
-    getPriorityForDevice: params.getPriorityForDevice,
-  }).holdIds;
-  mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, pauseHoldIds, params.surplusHoldIds]);
+  mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, params.surplusHoldIds]);
   releaseAbandonedSurplusPosture({
     state: params.state, admittedDevices: params.admittedDevices, shedSet: params.shedSet,
   });

@@ -18,7 +18,7 @@ The redesigned Overview uses a compact state word on each device card:
 | **Running** | The device is on, charging, heating, or otherwise active. |
 | **Idle** | The device is available and on (or has no binary switch), but currently has nothing to do. |
 | **Off** | Homey explicitly reports the device off, and PELS is not currently limiting or resuming it. |
-| **Limited** | PELS is currently lowering, pausing, or turning off the device to stay within the hard cap or daily budget pace. |
+| **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the hard cap or daily budget pace, or because a scheduled smart task has power reserved. |
 | **Resuming** | PELS is trying to bring the device back when there is available power. |
 | **Manual** | The device is managed, but PELS cannot use power-limit control for it right now. |
 | **Unavailable** | PELS cannot currently trust the device state enough to plan with it. |
@@ -46,6 +46,7 @@ Chips stay short. The status line below a chip explains why a device is waiting,
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
 | **Making room for higher-priority device** | PELS is limiting a lower-priority device so a higher-priority one can run. |
+| **Waiting so … can start** | A scheduled smart task needs a clear block of power to begin, so this device waits its turn to resume. The card names the device being waited for when PELS knows it. Nothing was switched off — it was already off. |
 
 ## Raw Planner Fields
 

@@ -30,7 +30,11 @@ import {
   shouldPlanRestores,
   type RestoreTiming,
 } from './timing';
-import { resolveRestoreDecisionPhase } from '../admission';
+import {
+  resolveHeadroomReserves,
+  resolveRestoreDecisionPhase,
+  type HeadroomReserve,
+} from '../admission';
 import { reserveHeadroomForPendingRestores } from './support';
 import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import { buildRestoreBatchState } from './batch';
@@ -51,6 +55,7 @@ export function applyRestorePlan(params: {
   const { planDevices, context, state, sheddingActive, guardInShortfall = false, deps } = params;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
+  const headroomReserves = resolveCycleHeadroomReserves(planDevices, context, state);
   const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
   const capacityStartupStabilization = timing.inStartupStabilization && context.softLimitSource === 'capacity';
   const effectiveTiming = capacityStartupStabilization
@@ -114,6 +119,7 @@ export function applyRestorePlan(params: {
       batchState,
       deps,
       steppedSwapExecutor,
+      headroomReserves,
     }));
     ({ availableHeadroom, restoredOneThisCycle } = applyActiveSteppedRestoreCandidates({
       deviceMap,
@@ -124,6 +130,7 @@ export function applyRestorePlan(params: {
       restoredOneThisCycle,
       debugStructured: deps.debugStructured,
       steppedSwapExecutor,
+      headroomReserves,
     }));
   } else if (
     sheddingActive
@@ -144,7 +151,7 @@ export function applyRestorePlan(params: {
   } else if (effectiveTiming.inRestoreCooldown) {
     ({ availableHeadroom, restoredOneThisCycle } = applyRestorePlanInCooldown({
       deviceMap, swapState, state, effectiveTiming, deps,
-      availableHeadroom, restoredOneThisCycle, restoredThisCycle,
+      availableHeadroom, restoredOneThisCycle, restoredThisCycle, headroomReserves,
     }));
   }
 
@@ -156,6 +163,22 @@ export function applyRestorePlan(params: {
     restoredOneThisCycle,
     ...effectiveTiming,
   };
+}
+
+// Startup reservations for this cycle: power a higher-priority device is holding back until it
+// reaches its lowest active step. Resolved once per restore pass (the call also re-stamps the
+// arming clock) and handed to the admission gates, which subtract it per candidate by priority.
+function resolveCycleHeadroomReserves(
+  planDevices: DevicePlanDevice[],
+  context: PlanContext,
+  state: PlanEngineState,
+): HeadroomReserve[] {
+  return resolveHeadroomReserves({
+    devices: planDevices,
+    powerKnown: context.powerKnown,
+    state,
+    nowTs: Date.now(),
+  });
 }
 
 function applyRestoreCandidates(params: {
@@ -171,6 +194,7 @@ function applyRestoreCandidates(params: {
   batchState: RestoreBatchState;
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
+  headroomReserves: readonly HeadroomReserve[];
 }): RestoreLoopState {
   let { availableHeadroom, restoredOneThisCycle } = params;
   for (const candidate of params.restoreCandidates) {
@@ -187,6 +211,7 @@ function applyRestoreCandidates(params: {
       batchState: params.batchState,
       deps: params.deps,
       steppedSwapExecutor: params.steppedSwapExecutor,
+      headroomReserves: params.headroomReserves,
     });
     availableHeadroom = result.availableHeadroom;
     restoredOneThisCycle = result.restoredOneThisCycle;
@@ -209,6 +234,7 @@ function planSteppedRestoreThroughSourceHold(params: {
   restoredOneThisCycle: boolean;
   debugStructured: RestoreDeps['debugStructured'];
   steppedSwapExecutor: SteppedSwapExecutor;
+  headroomReserves: readonly HeadroomReserve[];
 }): RestoreLoopState {
   const { dev, deviceMap, swapState, availableHeadroom, restoredOneThisCycle } = params;
   if (holdPendingSwapTargetUntilSourcesAreOff({ swapState, targetDevice: dev, deviceMap })) {
@@ -223,6 +249,7 @@ function planSteppedRestoreThroughSourceHold(params: {
     restoredOneThisCycle,
     debugStructured: params.debugStructured,
     swapExecutor: params.steppedSwapExecutor,
+    headroomReserves: params.headroomReserves,
   });
 }
 
@@ -235,6 +262,7 @@ function applyActiveSteppedRestoreCandidates(params: {
   restoredOneThisCycle: boolean;
   debugStructured: RestoreDeps['debugStructured'];
   steppedSwapExecutor: SteppedSwapExecutor;
+  headroomReserves: readonly HeadroomReserve[];
 }): RestoreLoopState {
   let { availableHeadroom, restoredOneThisCycle } = params;
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
@@ -250,6 +278,7 @@ function applyActiveSteppedRestoreCandidates(params: {
       restoredOneThisCycle,
       debugStructured: params.debugStructured,
       steppedSwapExecutor: params.steppedSwapExecutor,
+      headroomReserves: params.headroomReserves,
     }));
   }
   return { availableHeadroom, restoredOneThisCycle };
@@ -268,6 +297,7 @@ function applyRestoreCandidate(params: {
   batchState: RestoreBatchState;
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
+  headroomReserves: readonly HeadroomReserve[];
 }): RestoreLoopState {
   const dev = params.deviceMap.get(params.candidate.device.id);
   const currentState = {
@@ -293,6 +323,7 @@ function applyRestoreCandidate(params: {
       restoredOneThisCycle: params.restoredOneThisCycle,
       batchState: params.batchState,
       deps: params.deps,
+      headroomReserves: params.headroomReserves,
     });
   }
   if (params.candidate.kind === 'stepped' && isOffSteppedRestoreCandidate(dev)) {
@@ -306,6 +337,7 @@ function applyRestoreCandidate(params: {
       restoredOneThisCycle: params.restoredOneThisCycle,
       debugStructured: params.deps.debugStructured,
       steppedSwapExecutor: params.steppedSwapExecutor,
+      headroomReserves: params.headroomReserves,
     });
   }
   return currentState;
@@ -350,6 +382,7 @@ function applyRestorePlanInCooldown(params: {
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
+  headroomReserves: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { deviceMap, swapState, state, effectiveTiming, deps, restoredThisCycle } = params;
   let { availableHeadroom, restoredOneThisCycle } = params;
@@ -400,6 +433,7 @@ function applyRestorePlanInCooldown(params: {
       restoredOneThisCycle,
       debugStructured: deps.debugStructured,
       steppedSwapExecutor,
+      headroomReserves: params.headroomReserves,
     }));
   }
   return { availableHeadroom, restoredOneThisCycle };

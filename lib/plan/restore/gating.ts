@@ -18,9 +18,12 @@ import {
   type RestoreTiming,
 } from './timing';
 import {
+  buildReservedForStartReason,
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
+  resolveReserveAdmission,
   resolveRestoreDecisionPhase,
+  type HeadroomReserve,
 } from '../admission';
 import { getRestoreNeed } from './support';
 import { buildMeterSettlingReason } from '../planReasonStrings';
@@ -57,6 +60,7 @@ export function planRestoreForDevice(params: {
   restoredOneThisCycle: boolean;
   batchState: RestoreBatchState;
   deps: RestoreDeps;
+  headroomReserves: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -70,6 +74,7 @@ export function planRestoreForDevice(params: {
     restoredOneThisCycle,
     batchState,
     deps,
+    headroomReserves,
   } = params;
 
   const inactiveReason = getInactiveReason(dev);
@@ -174,9 +179,19 @@ export function planRestoreForDevice(params: {
       debugStructured: deps.debugStructured,
     });
   }
-  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  // Admit against the power this device may actually claim: raw available power minus any startup
+  // reservation held by a strictly higher-priority device that has not started yet. The running
+  // `availableHeadroom` total is still decremented by the raw need on admission — the reserve
+  // shapes who may take the power, not how much taking it costs.
+  const reserved = resolveReserveAdmission({
+    dev, availableHeadroom, neededKw: restoreNeed.needed, reserves: headroomReserves,
+  });
+  const { admission, effectiveHeadroomKw } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
-  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
+  if (reserved.kind === 'admitted') {
+    const penaltyFields = restoreNeed.penaltyLevel > 0
+      ? { penaltyLevel: restoreNeed.penaltyLevel, penaltyExtraKw: restoreNeed.penaltyExtraKw }
+      : {};
     emitRestoreDebugEventOnChange({
       state,
       key: restoreDebugKey,
@@ -189,18 +204,35 @@ export function planRestoreForDevice(params: {
         estimatedPowerKw: restoreNeed.devPower,
         powerSource,
         neededKw: restoreNeed.needed,
-        availableKw: availableHeadroom,
+        availableKw: effectiveHeadroomKw,
         ...buildRestoreAdmissionLogFields(admission),
         minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
         decision: 'admitted',
-        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+        ...penaltyFields,
       },
       debugStructured: deps.debugStructured,
     });
     restoredThisCycle.add(dev.id);
     recordBatchAdmission(batchState, restoreNeed.needed);
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+  }
+
+  // The reservation is the ONLY thing standing in the way: there is enough raw power, it is just
+  // spoken for. Say so on the card, and stop here rather than falling through to the swap path —
+  // pausing a running device to take a block that is already promised to someone else would
+  // defeat the reservation.
+  if (reserved.kind === 'blocked_by_reserve') {
+    return rejectBinaryRestore({
+      state,
+      deviceMap,
+      dev,
+      phase,
+      reason: buildReservedForStartReason({ dev, reserves: headroomReserves }),
+      availableHeadroom,
+      restoreDebugKey,
+      restoredOneThisCycle,
+      debugStructured: deps.debugStructured,
+    });
   }
 
   return handleInsufficientBinaryRestoreHeadroom({
@@ -212,6 +244,7 @@ export function planRestoreForDevice(params: {
     phase,
     powerSource,
     availableHeadroom,
+    reservedHeadroomKw: reserved.reservedKw,
     restoreNeed,
     admission,
     measurementTs: timing.measurementTs,
@@ -412,6 +445,10 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
   phase: ReturnType<typeof resolveRestoreDecisionPhase>;
   powerSource: ReturnType<typeof resolveRestorePowerSource>;
   availableHeadroom: number;
+  // Power a higher-priority device has reserved for its own start. Withheld from the swap
+  // decision as well as from direct admission: shedding a running device to take a block that is
+  // already promised would defeat the reservation AND issue the very write it exists to avoid.
+  reservedHeadroomKw: number;
   restoreNeed: ReturnType<typeof getRestoreNeed>;
   admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
   measurementTs: number | null;
@@ -430,6 +467,7 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
     phase,
     powerSource,
     availableHeadroom,
+    reservedHeadroomKw,
     restoreNeed,
     admission,
     measurementTs,
@@ -476,16 +514,21 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
     debugStructured: deps.debugStructured,
   });
 
-  return attemptSwapRestore({
+  // The swap decides against the RESERVED figure, so a swap can only proceed by freeing enough to
+  // cover this device's need on top of the block already promised elsewhere. `attemptSwapRestore`
+  // returns the headroom it was handed unchanged on every path, so the caller's running total is
+  // restored here rather than leaking the reservation into it.
+  const swap = attemptSwapRestore({
     dev,
     deviceMap,
     onDevices,
     swapState,
     phase,
-    availableHeadroom,
+    availableHeadroom: availableHeadroom - reservedHeadroomKw,
     restoreNeed,
     measurementTs,
     restoredThisCycle,
     deps,
   });
+  return { ...swap, availableHeadroom: swap.availableHeadroom + reservedHeadroomKw };
 }

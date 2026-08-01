@@ -425,7 +425,9 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 ### Smart-task Flow permissions
 
-The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, limit lower-priority devices, or pause lower-priority devices entirely until the task starts, so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (raising the hard cap is never a remedy — see § "Hard cap is an hourly ceiling"; every smart-task surface doesn't need to repeat the disclaimer).
+The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, limit lower-priority devices, or reserve power so the task can start sooner. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (raising the hard cap is never a remedy — see § "Hard cap is an hourly ceiling"; every smart-task surface doesn't need to repeat the disclaimer).
+
+**Never say the pause permission turns anything off.** It reserves power; it does not switch devices off, and a device that is already off just waits a little longer before resuming. Copy that promises devices are "held off up front" or "paused, including idle ones" describes the retired implementation and is now untrue — see `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 
 The smart-task detail and list surfaces render the granted permissions on a
 single row whose canonical label is **`Extra permissions (set via Flow)`**
@@ -435,9 +437,26 @@ Flow)` onto the row owner — what kind of setting this is — so it doesn't rea
 as a qualifier on the last joined permission clause. Value clauses are
 `May go over daily budget`, `May limit lower-priority devices`, and
 `May pause lower-priority devices`, optionally suffixed with ` if at risk` when
-the mode is `at_risk`. `pause` is the stronger, boost-free sibling of `limit` (it
-holds lower-priority devices fully off until the task starts, rather than boosting
-past them) — say "pause", and never conflate it with boost.
+the mode is `at_risk`. `pause` is the **milder**, boost-free sibling of `limit`: it reserves
+power so the task can start sooner, where `limit` boosts the device past the
+fairness rules. Never conflate it with boost.
+
+The canonical verb for this is **reserve**, matching shipped copy elsewhere
+(`Safe pace reserves 7.0 kW…`, `Background usage reserve`). Do **not** invent
+`keep power free`, `hold power`, or `set power aside`.
+
+A lower-priority device waiting on a reservation renders the reason line
+`Waiting so <Device> can start` (`reserved_for_start`, source
+`packages/shared-domain/src/planReasonFormatting.ts`). The card's state word is still
+**Limited** — `reserved_for_start` is in `HOLD_REASON_CODES`, and § "Device state words"
+covers a device made to wait for power. Only the reason line differs: it avoids the
+`Limited so … can run` form used by `swappedOut`, because nothing was switched off to
+build the reservation. Do not reuse `Held back`, which belongs to the budget widget.
+
+Note the deliberate split, same as `awaiting_solar_surplus`: `reserved_for_start` is a
+starvation *pause* reason (`packages/contracts/src/deviceDiagnosticsTypes.ts`), so
+device-detail diagnostics reads `Not held back — …` while the Overview card reads
+`Limited`. That is not a regression; do not re-flag it.
 
 In user-facing copy this scope is `Extra permissions`. It is **not**
 `Allowances`, `Overrides`, `Rescue`, `Rescue scope`, `Rescue permissions`, or

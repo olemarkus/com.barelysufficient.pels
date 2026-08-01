@@ -112,6 +112,10 @@ function maybeApplyCooldownReason(params: {
     && !activeOvershoot
     && !isSwapReason(currentReason)
     && currentReason.code !== PLAN_REASON_CODES.neutralStartupHold
+    // A startup reservation is why this device is not resuming; the shed cooldown is incidental
+    // (it fires whenever ANY device was shed in the last 60 s). Same precedent as the surplus
+    // hold above — without this the card flips to "will try to resume in Ns" and hides the cause.
+    && currentReason.code !== PLAN_REASON_CODES.reservedForStart
   ) {
     return {
       code: 'cooldown_shedding',

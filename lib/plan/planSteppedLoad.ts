@@ -503,7 +503,7 @@ function resolveRestoreFromContribution(params: {
 // calibrated value to samples inside the configured step's power band. The
 // plan layer trusts the view; helpers here only fall back to nameplate when
 // no view entry is present.
-function resolveStepAdmissionKw(
+export function resolveStepAdmissionKw(
   device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
   stepId: string | undefined,
 ): number {

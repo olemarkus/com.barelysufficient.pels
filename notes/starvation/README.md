@@ -58,11 +58,16 @@ The detection feature is detection only:
 - no budget adjustment (the v2 widget rescue is user-initiated, not an automatic
   budget adjustment by the planner)
 
-The one sanctioned exception to "no shed-order changes" is user-initiated and
-objective-scoped: the smart-task `pause lower-priority devices` permission
-(`lib/plan/shedding/pauseHold.ts`) proactively holds lower-priority managed devices
-off, so a reserved task can start. It is opt-in per task, never an automatic planner
-decision from starvation detection, and stays within the hard cap.
+There is no exception to that list. There used to be one: the smart-task
+`pause lower-priority devices` permission was implemented as a proactive shed lane
+(`lib/plan/shedding/pauseHold.ts`) and this note carried a carve-out sanctioning it.
+That was the wrong call twice over — it shed idle devices for zero relief, and a
+carve-out written into a note is the tell that a design has crossed a boundary rather
+than a reason it may. The permission is now an *admission* term
+(`lib/plan/admission/headroomReserve.ts`, design of record in
+`notes/deferred-load-objectives/preemptive-power-reservation.md`): it reserves
+available power against lower-priority devices' resumes and sheds nobody, so the
+shed order is untouched and the carve-out is void.
 
 The **solar surplus-absorb** lift ("Use solar surplus") only ever *raises* a
 target, so it sits outside this note's below-target model entirely and is

@@ -24,6 +24,29 @@ keep per device). Execution is `lib/executor`; reconciliation is `lib/device/dev
   fails on ANY `lib/plan` → objectives edge, value or type (`no-plan-to-smarttasks` additionally
   covers `deferredObjectives/` in dep-cruiser). Deferred decoration arrives only through the
   injected `decorateDeferredObjectives` seam as a flat `DeferredDecorationBundle`.
+- **Decorations may only move numbers, never select devices** (convention — dep-cruiser cannot see
+  this, since the seam passes flat bits rather than imports). A decoration flag may **subtract from
+  a figure admission already consumes**. It must never **add a device to `shedSet`** and must never
+  **produce an actuation intent**.
+
+  Those two clauses are the whole rule, and both are greppable. Note what is deliberately NOT in
+  it: a restore reject setting `plannedState: 'shed'` on a device that is *already off* is ordinary
+  shared machinery (`rejectBinaryRestore` does it for every reject reason) and records "not
+  resumed", not "selected for shedding". Do not write the rule as "must not set another device's
+  `plannedState`" — the reference implementation does exactly that, through that shared path.
+
+  Equally, do **not** state it as "a decoration must not affect other devices". A headroom reserve
+  plainly does affect them: they are not resumed, they classify as `HOLD_REASON_CODES`, and they
+  pause the starvation clock. That version is unfalsifiable and would wave through the next lane
+  exactly as `lib/plan/shedding/pauseHold.ts` was waved through — it passed every import check and
+  still put a smart-task-shaped shed lane in the planner.
+
+  Reference: `headroomReserve.ts`, and the shipped `reserveHeadroomForPendingRestores`. The
+  no-actuation half is enforced by membership in `RESTORE_ADMISSION_HOLD_REASON_CODES` and pinned
+  by `test/unit/planDecisionSemantics.test.ts` — if you add a reason here, pin it there. If your
+  design needs an exemption clause written into an AGENTS.md or a note, that is evidence to
+  redesign it, not permission to write the clause. See
+  `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
 
 ## Not in this module

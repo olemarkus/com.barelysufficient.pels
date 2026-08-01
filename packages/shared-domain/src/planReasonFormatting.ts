@@ -245,20 +245,62 @@ function formatInsufficientHeadroom(
   return `${prefix} after reserves (${needSummary}, ${availableSummary}, ${reserveSummary}${postReserveMarginSummary})`;
 }
 
+// The three reasons whose whole payload is "who is this for": swap source, swap target, and a
+// startup reservation. Grouped so each formatter handles them in one branch instead of three
+// switch cases — same shape as the isStaticReason / isDetailReason / isTimedReason groups above.
+type TargetNameReason = Extract<DeviceReason, { targetName: string | null }>;
+
+const TARGET_NAME_REASON_CODES = new Set<string>([
+  PLAN_REASON_CODES.swapPending,
+  PLAN_REASON_CODES.swappedOut,
+  PLAN_REASON_CODES.reservedForStart,
+]);
+
+const isTargetNameReason = (reason: DeviceReason): reason is TargetNameReason => (
+  TARGET_NAME_REASON_CODES.has(reason.code)
+);
+
+function formatTargetNameReason(reason: TargetNameReason): string {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.swapPending:
+      return reason.targetName ? `swap pending (${reason.targetName})` : 'swap pending';
+    case PLAN_REASON_CODES.reservedForStart:
+      return `startup power reserved for ${reason.targetName ?? 'unknown'}`;
+    default:
+      return `swapped out for ${reason.targetName ?? 'unknown'}`;
+  }
+}
+
+function formatTargetNameReasonUserFacing(reason: TargetNameReason): string {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.swapPending:
+      return reason.targetName
+        ? `Making room for higher-priority device (${reason.targetName})`
+        : 'Making room for higher-priority device';
+    case PLAN_REASON_CODES.reservedForStart:
+      // Not "Limited": nothing was switched off to build this reservation. The device is already
+      // off and PELS is simply keeping the power free until the scheduled device has started.
+      return reason.targetName
+        ? `Waiting so ${reason.targetName} can start`
+        : 'Waiting so a scheduled device can start';
+    default:
+      return reason.targetName
+        ? `Limited so ${reason.targetName} can run`
+        : 'Limited so another device can run';
+  }
+}
+
 export function formatDeviceReason(reason: DeviceReason): string {
   if (isStaticReason(reason)) return formatStaticReason(reason);
   if (isDetailReason(reason)) return formatDetailReason(reason);
   if (isTimedReason(reason)) return formatTimedReason(reason);
+  if (isTargetNameReason(reason)) return formatTargetNameReason(reason);
 
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreNeed:
       return formatRestoreNeed(reason);
     case PLAN_REASON_CODES.setTarget:
       return `set to ${reason.targetText}`;
-    case PLAN_REASON_CODES.swapPending:
-      return reason.targetName ? `swap pending (${reason.targetName})` : 'swap pending';
-    case PLAN_REASON_CODES.swappedOut:
-      return `swapped out for ${reason.targetName ?? 'unknown'}`;
     case PLAN_REASON_CODES.shortfall:
       return formatShortfall(reason);
     case PLAN_REASON_CODES.headroomCooldown:
@@ -470,20 +512,13 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
   if (isStaticReason(reason)) return formatStaticReasonUserFacing(reason);
   if (isDetailReason(reason)) return formatDetailReasonUserFacing(reason);
   if (isTimedReason(reason)) return formatTimedReasonUserFacing(reason);
+  if (isTargetNameReason(reason)) return formatTargetNameReasonUserFacing(reason);
 
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreNeed:
       return formatRestoreNeedUserFacing(reason);
     case PLAN_REASON_CODES.setTarget:
       return `Changing target to ${reason.targetText}`;
-    case PLAN_REASON_CODES.swapPending:
-      return reason.targetName
-        ? `Making room for higher-priority device (${reason.targetName})`
-        : 'Making room for higher-priority device';
-    case PLAN_REASON_CODES.swappedOut:
-      return reason.targetName
-        ? `Limited so ${reason.targetName} can run`
-        : 'Limited so another device can run';
     case PLAN_REASON_CODES.shortfall:
       return formatShortfallReason({ needKw: reason.needKw, headroomKw: reason.headroomKw });
     case PLAN_REASON_CODES.headroomCooldown:

@@ -37,6 +37,7 @@ import {
   blockSteppedRestoreForShedInvariant,
   type SteppedSwapExecutor,
 } from './steppedRestoreAdmission';
+import type { HeadroomReserve } from '../admission';
 
 // Re-export the public restore-helper surface so existing importers
 // (lib/plan/restore/index.ts, lib/plan/swap/blocking.ts, tests) are unchanged
@@ -184,9 +185,11 @@ export function planRestoreForSteppedDevice(params: {
   restoredOneThisCycle: boolean;
   debugStructured?: StructuredDebugEmitter;
   swapExecutor?: SteppedSwapExecutor;
+  headroomReserves?: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured, swapExecutor,
+    headroomReserves = [],
   } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
   if (keepInactiveSteppedDeviceInactive({
@@ -285,6 +288,7 @@ export function planRestoreForSteppedDevice(params: {
     debugStructured,
     restoreDebugKey,
     swapExecutor,
+    headroomReserves,
   });
 }
 

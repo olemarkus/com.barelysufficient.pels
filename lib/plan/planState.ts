@@ -182,6 +182,16 @@ export class PlanEngineState {
    */
   isExternalOffHeld?: (deviceId: string) => boolean;
 
+  /**
+   * Arming clock for startup power reservations (`lib/plan/admission/headroomReserve.ts`): when a
+   * device carrying `reservesStartupPower` first began holding a block back from lower-priority
+   * admission. Rebuilt wholesale each resolve — a device that leaves the snapshot, stops
+   * requesting, or reaches its lowest active step drops its stamp, while an expired reserve keeps
+   * its stamp so it stays expired instead of re-arming every cycle. In-memory only: a restart
+   * simply gives a still-waiting device a fresh window.
+   */
+  headroomReserveArmedMs: Record<string, number> = {};
+
   lastDeviceRestoreMs: Record<string, number> = {};
 
   /**

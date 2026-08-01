@@ -838,15 +838,17 @@ device settings:
   make room from lower-priority devices when the planned task is allowed to
   run. It does not guarantee the target can be reached and never raises the
   hard cap.
-- `pause lower-priority devices` is the stronger, BOOST-FREE sibling. While the
-  reserved device is in a planned hour and not yet running, the plan layer holds
-  every lower-priority MANAGED device off (up to — never above — the hard cap) so
-  it can start at its own/lowest step. Distinct from `limit lower-priority devices`
-  (which boosts the device): pause only clears room. It RELEASES once the device is
-  drawing at ≥ its lowest step, and LIFTS entirely when it is mathematically
-  impossible to admit the device even with all lower-priority devices off
-  (`lib/plan/shedding/pauseHold.ts`). An independent permission — not gated on the
-  other two.
+- `pause lower-priority devices` is the MILDER, boost-free sibling. While the
+  reserved device is in a planned hour and has not started, the plan layer holds the
+  power it needs to reach its LOWEST ACTIVE STEP back from lower-priority devices'
+  admission, so cycling loads cannot nibble away the contiguous block it needs to
+  start. It sheds nobody and issues no writes: a device that is already off simply is
+  not resumed yet. The reserve is exactly step 1's power, dies the instant the device
+  is confirmed at or above that step, and lapses after `HEADROOM_RESERVE_MAX_MS` if it
+  can never be satisfied (`lib/plan/admission/headroomReserve.ts`). An independent
+  permission — not gated on the other two. Full design of record, including why the
+  feature exists and why the original proactive-shed implementation was wrong:
+  `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 
 Changing a rescue permission changes the authority of the active objective.
 Treat it like an objective input change for commitment/history purposes:

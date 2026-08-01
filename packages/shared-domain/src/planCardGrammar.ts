@@ -87,6 +87,7 @@ const HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.shedInvariant,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
+  PLAN_REASON_CODES.reservedForStart,
   // Countdown holds that gate a resume on available power ("will try to
   // resume in Ns if power is available") — limited, not idle.
   PLAN_REASON_CODES.headroomCooldown,
