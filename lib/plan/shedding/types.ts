@@ -15,6 +15,10 @@ export type SheddingPlan = {
     lastInstabilityMs?: number;
     lastRecoveryMs?: number;
     lastShedPlanMeasurementTs?: number;
+    lastShedPlanPowerW?: number;
+    lastShedPlanShedIds?: Set<string>;
+    lastShedPlanAtMs?: number;
+    lastShedPlanNeededKw?: number;
     lastOvershootEscalationMs?: number;
     lastOvershootMitigationMs?: number;
   };

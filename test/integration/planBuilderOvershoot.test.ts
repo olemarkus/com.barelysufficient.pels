@@ -1585,4 +1585,73 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.useRealTimers();
     }
   });
+
+  // Field incident 2026-08-01, through the REAL builder lifecycle: the shedding
+  // pass runs before `updateOvershootState`, so the hold's anchor has to survive
+  // the overshoot-entry branch that nulls the mitigation clock. Driving
+  // `buildSheddingPlan` directly cannot see this ordering.
+  it('does not deepen past the first shed when the next poll repeats the same watts', async () => {
+    vi.useFakeTimers();
+    try {
+      const start = new Date('2026-04-15T11:03:44.000Z').getTime();
+      vi.setSystemTime(start);
+      const state = createPlanEngineState();
+      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 3, softMarginKw: 0 });
+      // Priority 1 is the most protected device; 4 sheds first.
+      const priorities: Record<string, number> = { protected: 1, mid: 2, heater: 4 };
+      const powerTracker = { lastTimestamp: start, lastPowerW: 4_351 };
+
+      const builder = new PlanBuilder({
+        setCapacityInShortfall: vi.fn(),
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 3, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => powerTracker,
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: (deviceId: string) => priorities[deviceId] ?? 100,
+        getDynamicSoftLimitOverride: () => 2.538,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: { info: vi.fn() } as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      const devices = (heaterOn: boolean) => [
+        buildDevice({ id: 'protected', name: 'Protected', measuredPowerKw: 0.53 }),
+        buildDevice({ id: 'mid', name: 'Mid', measuredPowerKw: 1.3 }),
+        // Unmetered water heater: relief is credited from its configured demand.
+        buildDevice({
+          id: 'heater',
+          name: 'Heater',
+          expectedPowerKw: 2,
+          binaryControl: { on: heaterOn },
+          ...(heaterOn ? {} : { measuredPowerKw: 0 }),
+        }),
+      ];
+
+      capacityGuard.reportTotalPower(4.351);
+      const first = await builder.buildDevicePlanSnapshot(devices(true));
+      expect(first.devices.filter((d) => d.plannedState === 'shed').map((d) => d.id)).toEqual(['heater']);
+
+      // 10 s later the meter re-delivers the identical reading: the heater is off
+      // but its relief has not surfaced yet. Deepening here is what took the
+      // user's #1 device in the field.
+      vi.setSystemTime(start + 10_000);
+      powerTracker.lastTimestamp = start + 10_000;
+      capacityGuard.reportTotalPower(4.351);
+      const second = await builder.buildDevicePlanSnapshot(devices(false));
+
+      const shedIds = second.devices.filter((d) => d.plannedState === 'shed').map((d) => d.id);
+      expect(shedIds).not.toContain('protected');
+      expect(shedIds).not.toContain('mid');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

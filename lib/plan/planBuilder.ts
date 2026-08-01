@@ -380,6 +380,18 @@ export class PlanBuilder {
     if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
       this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;
     }
+    if (sheddingPlan.updates.lastShedPlanPowerW !== undefined) {
+      this.state.lastShedPlanPowerW = sheddingPlan.updates.lastShedPlanPowerW;
+    }
+    if (sheddingPlan.updates.lastShedPlanShedIds !== undefined) {
+      this.state.lastShedPlanShedIds = sheddingPlan.updates.lastShedPlanShedIds;
+    }
+    if (sheddingPlan.updates.lastShedPlanAtMs !== undefined) {
+      this.state.lastShedPlanAtMs = sheddingPlan.updates.lastShedPlanAtMs;
+    }
+    if (sheddingPlan.updates.lastShedPlanNeededKw !== undefined) {
+      this.state.lastShedPlanNeededKw = sheddingPlan.updates.lastShedPlanNeededKw;
+    }
     if (sheddingPlan.updates.lastOvershootEscalationMs !== undefined) {
       this.state.lastOvershootEscalationMs = sheddingPlan.updates.lastOvershootEscalationMs;
     }
