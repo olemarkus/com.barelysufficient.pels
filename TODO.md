@@ -41,6 +41,18 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **A smart task reports `on_track` while its current planned bucket goes undelivered.**
+      Prod 2026-08-01, water heater "Connected 300": the frozen horizon booked 1.183 kWh into the
+      current bucket, the device was restore-blocked the whole hour (shed, 0 W, tank temperature
+      falling 22.2 → 18.8 °C against a 65 °C / 06:00 deadline), and every
+      `deferred_objective_horizon_planned` log still read `status: "on_track",
+      reasonCode: "planned_with_margin"` with `energyExpectedKWh < energyNeededKWh`. The status
+      derives from the planned horizon, not from delivery against it, so an execution stall is
+      invisible until the deadline math finally tips into `Cannot finish`. Surface bucket
+      non-delivery (planned useful energy vs delivered) in the status/reason so the widget alert
+      fires while there is still time to act — this is the "trajectory visible for the skeptic"
+      gap on the smart-task lane. Found during the 2026-08-01 budget-hold copy investigation.
+
 - [ ] **An EV SoC reading goes stale the instant a long pause ends.** `resolveStateOfChargeStatus`
       (`lib/device/transport/stateOfCharge.ts` ~360) stops ageing a reading out while the charger is
       idle — that is the fix in PR #1897 — but once `chargeInMotion` becomes true again it compares
@@ -1034,6 +1046,51 @@ program) remain deferred.*
       Correct the number or state the real reason (teardown lives here), so the next author does not
       launder code into the file on a constraint that does not exist.
       Source: `pels-layering-guardian` review of the sustained hard-cap card, 2026-08-01.
+
+- [ ] **A budget-bound "Waiting to increase" step-up hold still speaks the headroom axis.** The
+      `insufficientHeadroom` → `dailyBudget` re-attribution in `normalizeShedReasons` only touches
+      `plannedState === 'shed'` devices, but a stepped device running at a reduced step with a
+      blocked step-up carries the same reason on a `keep` device (`KEEP_REASON_RULES` allows it;
+      `dailyBudget` is not an allowed keep reason today). Under a daily-bound pace its card reads
+      "Waiting to increase — X kW more needed" when the truth is budget pacing. Fix needs a
+      keep+`dailyBudget` validation pair plus a card line for "running at a reduced step because of
+      today's budget". *Persona:* daily-budget user with a stepped water heater/EV mid-hour.
+      *Hypothesis:* rarer than the shed case and the number becomes honest once the shortfall fix
+      lands, so the wrong axis label is the remaining harm. Source: 2026-08-01 budget-hold copy
+      investigation. [P2]
+
+- [ ] **`budgetReleasableHeadroomHold` does not check that lifting the budget would actually admit
+      the candidate.** The flag is plan-wide (daily pace binding + fresh power + no capacity
+      breach), so in the band where capacity sits between the budget pace and the candidate's
+      restore need (e.g. capacity pace 5 kW, draw 4 kW, daily pace 4.5 kW, need 1.2 kW), the
+      held-back widget offers "Let it run now" but the release still leaves the restore blocked on
+      the capacity axis — a dead lever in exactly the shape the 2026-07-25 breach carve-out fixed
+      for the breached case. A per-candidate variant needs the device's restore need against the
+      capacity axis (available since the per-axis admission change). *Persona:* daily-budget home
+      near its capacity pace tapping the rescue. *Hypothesis:* narrow band, self-heals as pace
+      moves; the rescue is inert rather than harmful. Source: Codex review on PR #1953,
+      2026-08-02. [P2]
+
+- [ ] **A carried-forward `dailyBudget` hold keeps its budget-releasable framing through a
+      stale-meter window.** `dailyBudget` is a sticky reason (`shouldNormalizeReason` never
+      normalizes it back, and the diagnostics fold maps `insufficient_headroom → daily_budget`
+      but never the reverse), so in cycles where the restore pass does not run (restore cooldown,
+      `sheddingActive`, startup stabilization) while the meter is `stale_hold`/`stale_fail_closed`,
+      a device labeled `dailyBudget` in the previous fresh cycle keeps the label and the widget's
+      "Let it run now" offer — the exact state the `budgetReleasableHeadroomHold` doc says must
+      stay capacity-bucketed. Bounded (≤300 s restore cooldown per episode; longer under
+      `power_source=flow` sparse events) and the rescue action is inert until power is fresh, so
+      P2 not P1. Candidate fix: normalize a carried `dailyBudget` hold back to the headroom
+      framing when `powerKnown` is false. Source: pels-runtime-reality on the 2026-08-01
+      budget-hold re-attribution. [P2]
+
+- [ ] **Retire the legacy prose reason parsers.** Plan reasons are structured objects end to end
+      (`buildRestoreHeadroomReason` et al.), but `packages/shared-domain/src/planReasonParsing.ts`
+      still round-trips a dozen prose regexes (`insufficient headroom (…)`, `shed due to …`) for
+      legacy string reasons, and test utils lean on `legacyDeviceReason`. Every copy change to a
+      reason template risks a silent parse miss instead of a type error. Migrate the remaining
+      producers/consumers of prose reasons onto the structured contract and delete the regex layer.
+      Source: 2026-08-01 budget-hold copy investigation. [P2]
 
 - [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
       car unobserved rather than mis-observed, so they cap what the probe can measure without

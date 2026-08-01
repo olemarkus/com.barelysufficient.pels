@@ -36,45 +36,22 @@ function buildBaseReason(
   shedReasons: Map<string, DeviceReason>,
   softLimitSource: 'capacity' | 'daily' | null,
   capacityBreached: boolean,
+  budgetReleasableHeadroomHold: boolean,
 ): DeviceReason {
   const classifiedReason = classifyPlanReason(dev.reason);
   const keepReason = shouldNormalizeReason(classifiedReason) ? null : classifiedReason.reason;
   const resolved = shedReasons.get(dev.id) ?? keepReason ?? { code: PLAN_REASON_CODES.capacity, detail: null };
-  // Re-attribute a carry-forward `capacity` reason to `dailyBudget` whenever
-  // the binding constraint is currently the daily-budget pacing. The shedding
-  // selector (`lib/plan/shedding/selection.ts:resolveShedReason`) already does
-  // this at shed-time, but devices that were shed in earlier cycles keep their
-  // stale `capacity` reason after `softLimitSource` flips to `daily` — without
-  // this guard the device-card label reads "Limited by the hard cap" while
-  // the hero hovers well under the hard cap and the daily budget is the only
-  // constraint actually doing work. The shedReasons map is the fresh-this-
-  // cycle decision and is left alone (it was set by the selector with the
-  // already-correct source).
-  //
-  // Only while capacity is not ALSO breached. `softLimitSource` names the
-  // BINDING (lower) soft limit, not the one the draw has actually crossed; when
-  // total is over the capacity limit too, capacity is the constraint doing the
-  // work and the daily budget is not a lever that can help. Prod 2026-07-25: a
-  // budget-exempt EV charger — shed only because a real breach (6.60 kW over a
-  // 5.12 kW capacity soft limit) overrode its exemption — read "Limited by today's
-  // daily budget" next to its own "Always on" chip, and was offered a
-  // "Let it run now" release that could not create capacity headroom.
-  //
-  // The condition is deliberately NOT `budgetExempt`: an exempt device is only
-  // immune to daily-budget SHEDDING (`shedding/candidates.ts`). Restore admission
-  // gates on `min(capacitySoftLimit, dailySoftLimit)` with no exemption carve-out,
-  // and the daily limit adds back only an exempt device's LIVE draw — zero while
-  // it is off — so an off exempt device genuinely can be held by the daily budget,
-  // and saying so is correct.
-  if (
-    !shedReasons.has(dev.id)
-    && resolved.code === PLAN_REASON_CODES.capacity
-    && softLimitSource === 'daily'
-    && !capacityBreached
-  ) {
-    return { code: PLAN_REASON_CODES.dailyBudget, detail: null };
-  }
-  return resolved;
+  // Shared fold with `normalizeDeviceReason` — the full rationale (carry-forward
+  // capacity, budget-bound restore holds, the prod-2026-07-25 breach carve-out)
+  // lives on `resolveDailyBindingReattribution`.
+  const reattributed = resolveDailyBindingReattribution({
+    reasonCode: resolved.code,
+    shedReasonFresh: shedReasons.has(dev.id),
+    softLimitSource,
+    capacityBreached,
+    budgetReleasableHeadroomHold,
+  });
+  return reattributed ?? resolved;
 }
 
 function maybeApplyShortfallReason(params: {
@@ -163,8 +140,15 @@ export function normalizeShedReasons(params: {
   softLimitSource?: 'capacity' | 'daily' | null;
   // True when the draw is over the CAPACITY soft limit, regardless of which limit
   // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
-  // re-derive it; see the re-attribution guards in `buildBaseReason`.
+  // re-derive it; see the re-attribution guards in `resolveDailyBindingReattribution`.
   capacityBreached?: boolean;
+  // Producer-resolved on `PlanContext` (see the field doc there): daily pace
+  // binding AND fresh power AND capacity not also breached. Gates the
+  // `insufficientHeadroom` → `dailyBudget` re-attribution, and is the SAME flat
+  // field `planDiagnostics` reads for the starvation counting cause and rescue
+  // gating, so the card label and the rescue widget cannot disagree about
+  // whether a hold is budget-releasable.
+  budgetReleasableHeadroomHold?: boolean;
 }): DevicePlanDevice[] {
   const {
     planDevices,
@@ -180,6 +164,7 @@ export function normalizeShedReasons(params: {
     surplusHoldReasonById,
     softLimitSource = null,
     capacityBreached = false,
+    budgetReleasableHeadroomHold = false,
   } = params;
 
   return planDevices.map((dev) => normalizeDeviceReason({
@@ -196,6 +181,7 @@ export function normalizeShedReasons(params: {
     surplusHoldReasonById,
     softLimitSource,
     capacityBreached,
+    budgetReleasableHeadroomHold,
   }));
 }
 
@@ -214,8 +200,10 @@ function normalizeDeviceReason(params: {
   softLimitSource?: 'capacity' | 'daily' | null;
   // True when the draw is over the CAPACITY soft limit, regardless of which limit
   // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
-  // re-derive it; see the re-attribution guards in `buildBaseReason`.
+  // re-derive it; see the re-attribution guards in `resolveDailyBindingReattribution`.
   capacityBreached?: boolean;
+  // Producer-resolved flat semantic — see `normalizeShedReasons` param doc.
+  budgetReleasableHeadroomHold?: boolean;
 }): DevicePlanDevice {
   const {
     dev,
@@ -231,12 +219,13 @@ function normalizeDeviceReason(params: {
     surplusHoldReasonById,
     softLimitSource = null,
     capacityBreached = false,
+    budgetReleasableHeadroomHold = false,
   } = params;
 
   if (dev.plannedState !== 'shed') return dev;
 
   const currentReason = classifyPlanReason(dev.reason);
-  const baseReason = buildBaseReason(dev, shedReasons, softLimitSource, capacityBreached);
+  const baseReason = buildBaseReason(dev, shedReasons, softLimitSource, capacityBreached, budgetReleasableHeadroomHold);
 
   const shortfallReason = maybeApplyShortfallReason({
     dev,
@@ -285,30 +274,77 @@ function normalizeDeviceReason(params: {
     return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null } };
   }
 
-  // Carry-forward `capacity` reasons re-attribute to `dailyBudget` whenever
-  // the binding constraint is currently the daily-budget pacing. Without
-  // this, a device shed in an earlier cycle (capacity binding) keeps a
-  // stale capacity reason after softLimitSource flips to daily — the
-  // device card then reads "Limited by the hard cap" while the hero
-  // safe-pace number is the daily-budget pacing. The fresh-this-cycle
-  // entry in `shedReasons` is left alone — the shedding selector set it
-  // with the already-correct source.
-  if (
-    softLimitSource === 'daily'
-    && currentReason.code === PLAN_REASON_CODES.capacity
-    && !shedReasons.has(dev.id)
-    // Same breach carve-out as `buildBaseReason` — without it this sibling path
-    // undoes that guard on the very next cycle, once the device drops out of
-    // `shedReasons` and is re-labelled while capacity is still breached.
-    && !capacityBreached
-  ) {
-    return { ...dev, reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null } };
-  }
+  const dailyReattribution = resolveDailyBindingReattribution({
+    reasonCode: currentReason.code,
+    shedReasonFresh: shedReasons.has(dev.id),
+    softLimitSource,
+    capacityBreached,
+    budgetReleasableHeadroomHold,
+  });
+  if (dailyReattribution) return { ...dev, reason: dailyReattribution };
 
   if (shouldNormalizeReason(currentReason)) {
     return { ...dev, reason: baseReason };
   }
   return dev;
+}
+
+// Re-attribution to `dailyBudget` while the daily-budget pacing is the binding
+// constraint. Shared by `buildBaseReason` (carry-forward path) and
+// `normalizeDeviceReason` (explicit-reason path) so the two sites cannot drift —
+// the removed inline copies had already needed one guard-mirroring fix each.
+// Two shapes:
+//
+// - Carry-forward `capacity` reasons: a device shed in an earlier cycle (capacity
+//   binding) keeps a stale capacity reason after `softLimitSource` flips to daily —
+//   without this the card reads "Limited by the hard cap" while the hero safe-pace
+//   number is the daily-budget pacing. A fresh-this-cycle `shedReasons` entry is
+//   left alone — the shedding selector set it with the already-correct source.
+//   Guarded by `!capacityBreached`: `softLimitSource` names the BINDING (lower)
+//   limit, not the one the draw has crossed; when total is over the capacity limit
+//   too, capacity is the constraint doing the work and the daily budget is not a
+//   lever that can help. Prod 2026-07-25: a budget-exempt EV charger — shed only
+//   because a real breach overrode its exemption — read "Limited by today's daily
+//   budget" next to its own "Always on" chip, with a "Let it run now" release that
+//   could not create capacity headroom. The condition is deliberately NOT
+//   `budgetExempt`: exemption only blocks daily-budget SHEDDING
+//   (`shedding/candidates.ts`); restore admission gates on
+//   `min(capacitySoftLimit, dailySoftLimit)` with no exemption carve-out, so an
+//   off exempt device genuinely can be held by the daily budget, and saying so is
+//   correct.
+//
+// - `insufficientHeadroom` restore holds: a restore rejected on headroom while the
+//   DAILY pace is binding is a budget hold, not a power shortage — `availableKw`
+//   was derived from the budget-derived pace, so no amount of freed power changes
+//   the decision; only budget pacing (or time) does. Without this fold every
+//   budget-bound hold surfaces as `insufficientHeadroom`, the card reads "Waiting
+//   to resume — X kW more needed" while nothing else is running (prod 2026-08-01:
+//   12 devices, house at 0.6 kW, gaps up to 5.2 kW against a 5.0 kW hard cap), and
+//   the hero's "to stay within today's budget" sentence can never fire. Gated on
+//   `budgetReleasableHeadroomHold`, the producer-resolved flat semantic on
+//   `PlanContext` that `planDiagnostics` also reads, so the card label and the
+//   rescue widget agree by construction. The numeric admission detail stays in
+//   the `restore_rejected` debug log.
+//
+// Note on `DEFERRED_RESTORE_BLOCK_REASON_CODES`
+// (`lib/planContract/planDecisionSemantics.ts`): `dailyBudget` is absent from that
+// set, but the coupling is LATENT today — `buildExecutableReleaseIntent` requires
+// `plannedState === 'keep'` before it consults the reason, and every re-attributed
+// hold is a shed device, so a smart-task binary_restore cannot lift these holds
+// through this fold. Pinned in `test/unit/planDecisionSemantics.test.ts`; if
+// budget holds ever ride keep-state devices, revisit that set deliberately.
+function resolveDailyBindingReattribution(params: {
+  reasonCode: DeviceReason['code'];
+  shedReasonFresh: boolean;
+  softLimitSource: 'capacity' | 'daily' | null;
+  capacityBreached: boolean;
+  budgetReleasableHeadroomHold: boolean;
+}): DeviceReason | null {
+  const { reasonCode, shedReasonFresh, softLimitSource, capacityBreached, budgetReleasableHeadroomHold } = params;
+  if (softLimitSource !== 'daily' || capacityBreached) return null;
+  const reattribute = (reasonCode === PLAN_REASON_CODES.capacity && !shedReasonFresh)
+    || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetReleasableHeadroomHold);
+  return reattribute ? { code: PLAN_REASON_CODES.dailyBudget, detail: null } : null;
 }
 
 // Surplus dump-load framing: a device the standing "Run on solar surplus" hold

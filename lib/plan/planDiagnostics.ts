@@ -58,15 +58,14 @@ export const buildDeviceDiagnosticsObservations = (
     inputDevice: inputDeviceById.get(device.id),
     device,
     restoreResult: params.restoreResult,
-    // A headroom-blocked restore hold is releasable by the budget rescue ONLY when the
-    // daily budget is the binding limit AND the power sample is fresh (`powerKnown`).
-    // Hourly-cap exhaustion forces `softLimitSource` to 'capacity' (capacitySoftLimit → 0),
-    // and any non-fresh meter (`stale_hold` uses a synthetic 0 headroom, `stale_fail_closed`
-    // forces -1) blocks the restore for reasons the daily budget can't lift — the rescue
-    // never raises the physical hard cap and can't make restoring safe until power is fresh.
-    // Those stay in the capacity bucket. Resolved to a flat boolean HERE so no consumer re-derives it.
-    budgetReleasableHeadroomHold:
-      params.context.softLimitSource === 'daily' && params.context.powerKnown,
+    // Producer-resolved on `PlanContext` (see the field doc there): daily pace binding
+    // AND fresh power AND capacity not also breached. Hourly-cap exhaustion forces
+    // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
+    // in the capacity bucket too. Reading the shared field keeps this fold and the
+    // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach
+    // term is what stops the rescue widget offering "Let it run now" during a genuine
+    // capacity breach while the card correctly keeps the headroom framing.
+    budgetReleasableHeadroomHold: params.context.budgetReleasableHeadroomHold,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     priceOptimizationSettings: params.priceOptimizationSettings,
     isCurrentHourCheap: params.isCurrentHourCheap,

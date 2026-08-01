@@ -33,6 +33,7 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   capacitySoftLimit: 5,
   dailySoftLimit: null,
   softLimitSource: 'capacity' as const,
+  budgetReleasableHeadroomHold: false,
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
