@@ -174,7 +174,7 @@ export class DailyBudgetManager {
       usedNowKWh: context.budgetControlUsedNowKWh,
     }).deviationKWh;
     this.maybeFreezeFromDeviation(enabled, budgetControlDeviationKWh);
-    this.maybeUnfreezeFromDeviation(enabled, budgetControlDeviationKWh);
+    this.maybeUnfreezeFromDeviation(context, enabled, budgetControlDeviationKWh);
     const snapshot = buildSnapshotAndLogDebug({
       deps: this.deps,
       debugStructured: (payload) => this.emitDebug(payload),
@@ -459,10 +459,20 @@ export class DailyBudgetManager {
     this.emitDebug({ event: 'daily_budget_plan_frozen', deviationKWh });
   }
 
-  private maybeUnfreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
+  private maybeUnfreezeFromDeviation(context: DayContext, enabled: boolean, deviationKWh: number): void {
     if (!enabled || deviationKWh > 0 || !this.state.frozen) return;
     this.state.frozen = false;
-    this.state.lastPlanBucketStartUtcMs = null;
+    // Re-establish the current-hour lock (mirrors `clearFrozenPlanForRecompute`)
+    // and reset the rebuild clock: the next update then re-spreads only FUTURE
+    // hours. Nulling the lock here used to make that rebuild reallocate the hour
+    // in progress from `remaining = budget - used` — collapsing it right after an
+    // overrun, and (via the lock going stale across frozen hour transitions) on
+    // the first rebuild after a restart. The clock reset is needed because
+    // per-sample usage deltas stay below the usage-change rebuild trigger, so the
+    // stale frozen plan would otherwise ride until the hourly interval.
+    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
+    if (Number.isFinite(currentBucketStartUtcMs)) this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
+    this.lastPlanRebuildMs = 0;
     this.markDirty('frozen');
     this.emitDebug({ event: 'daily_budget_plan_unfrozen', deviationKWh });
   }
