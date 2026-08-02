@@ -887,7 +887,7 @@ describe('MyApp initialization', () => {
     const result = await enableListener({ device: 'dev-1' });
     expect(result).toBe(true);
     expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
-    expect(mockHomeyInstance.settings.get('managed_devices')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('managed_devices');
   });
 
   it('disable_device_capacity_control flow card disables capacity control', async () => {
@@ -2607,7 +2607,7 @@ describe('computeDynamicSoftLimit', () => {
     await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
-    expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('controllable_devices');
   });
 
   it('backfills capacity control when managed is true and no settings exist', async () => {
@@ -2640,7 +2640,7 @@ describe('computeDynamicSoftLimit', () => {
     await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
-    expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('controllable_devices');
   });
 
   it('does not override explicit unmanaged devices during migration', async () => {
@@ -2658,7 +2658,7 @@ describe('computeDynamicSoftLimit', () => {
     await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': false });
-    expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('controllable_devices');
   });
 
   it('migration is idempotent - running twice produces same result', async () => {

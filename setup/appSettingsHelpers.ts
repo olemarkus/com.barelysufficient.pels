@@ -78,11 +78,32 @@ export type CapacitySettingsSnapshot = {
 };
 
 /**
+ * The two reads this classification needs, typed as the untrusted boundary they
+ * are. `ManagerSettings` is assignable; so is a plain object double, so specs
+ * pin the branches without an `as unknown as` cast that would let a
+ * structurally wrong double throw into the `catch` and assert nothing.
+ */
+type TemperatureControlSettingsPort = {
+  get(key: string): unknown;
+  getKeys(): unknown;
+};
+
+/**
  * Resolve the persisted temperature-command policy at the settings boundary.
  * A malformed transient read retains the last-good in-memory policy.
+ *
+ * `ManagerSettings.get` answers an unset key with `null`, not `undefined`, so
+ * absence must be classified on BOTH — gating only on `undefined` left the
+ * key-list cross-check unreachable on a real Homey and pinned the policy at
+ * `unavailable`, which fails closed over every temperature device (an install
+ * that never touched the toggle lost all setpoint control). The cross-check
+ * still separates a genuinely absent key from a transient miss: a listed key
+ * that reads empty, an empty key list, a malformed value, or a throw all stay
+ * `unavailable`. `undefined` stays in the disjunction for object doubles and
+ * any runtime that answers that way; the SDK itself only produces `null`.
  */
 export function readTemperatureControlDisabledDevicesSetting(params: {
-  settings: Homey.App['homey']['settings'];
+  settings: TemperatureControlSettingsPort;
   current: {
     devices: Record<string, boolean>;
     state: 'unavailable' | 'resolved';
@@ -92,10 +113,10 @@ export function readTemperatureControlDisabledDevicesSetting(params: {
   state: 'unavailable' | 'resolved';
 } {
   try {
-    const raw = params.settings.get(TEMPERATURE_CONTROL_DISABLED_DEVICES) as unknown;
+    const raw = params.settings.get(TEMPERATURE_CONTROL_DISABLED_DEVICES);
     if (isBooleanMap(raw)) return { devices: raw, state: 'resolved' };
-    if (raw === undefined) {
-      const keys = params.settings.getKeys() as unknown;
+    if (raw === undefined || raw === null) {
+      const keys = params.settings.getKeys();
       if (
         Array.isArray(keys)
         && keys.length > 0

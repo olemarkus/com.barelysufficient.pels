@@ -85,7 +85,7 @@ describe('weather history persistence through homey.settings', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     collector.stop();
     expect(vi.getTimerCount()).toBe(0);
-    expect(homey.settings.get(WEATHER_HISTORY_STATE)).toBeUndefined();
+    expect(homey.settings.getKeys()).not.toContain(WEATHER_HISTORY_STATE);
   });
 
   it('re-forgets recovered old-scope state before persisting it', async () => {

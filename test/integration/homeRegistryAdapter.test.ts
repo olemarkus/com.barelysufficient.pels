@@ -189,8 +189,8 @@ describe('createHomesStore', () => {
       subHomes: [{ homeId: 'main', name: 'Reserved', rootZoneId: 'annex', meterDeviceId: null }],
     };
     expect(() => store.write(invalid)).toThrow(HomeStoreWriteRefusedError);
-    expect(mockHomeyInstance.settings.get(HOMES_CONFIG)).toBeUndefined();
-    expect(mockHomeyInstance.settings.get(HOMES_CONFIG_INITIALIZED)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMES_CONFIG);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMES_CONFIG_INITIALIZED);
   });
 });
 
@@ -242,7 +242,7 @@ describe('createDeviceHomeAssignmentsStore', () => {
   it('write refuses an implausible pin record (typed throw) and persists nothing', () => {
     const store = createDeviceHomeAssignmentsStore(homey);
     expect(() => store.write({ 'dev-1': 'bad:id' })).toThrow(HomeStoreWriteRefusedError);
-    expect(mockHomeyInstance.settings.get(DEVICE_HOME_ASSIGNMENTS)).toBeUndefined();
-    expect(mockHomeyInstance.settings.get(DEVICE_HOME_ASSIGNMENTS_INITIALIZED)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(DEVICE_HOME_ASSIGNMENTS);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(DEVICE_HOME_ASSIGNMENTS_INITIALIZED);
   });
 });

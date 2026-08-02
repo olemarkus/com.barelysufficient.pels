@@ -134,8 +134,9 @@ const readOptionalSetting = (
     return { state: 'unavailable' };
   }
   if (!keys.includes(key)) return { state: 'resolved', value: undefined };
-  // Homey Self-Hosted Server returns null for an unwritten setting while the
-  // mock SDK and some Homey runtimes return undefined. The key list is the
+  // The SDK answers an unwritten setting with null (observed on Homey Pro and
+  // Self-Hosted Server); object doubles in specs may answer undefined, so both
+  // are classified as absence — see setup/AGENTS.md. The key list is the
   // authority for absence: a present null remains an explicit value for
   // optional pins (and invalid for the boolean initialization marker), while a
   // fulfilled undefined for a present key stays suspect.

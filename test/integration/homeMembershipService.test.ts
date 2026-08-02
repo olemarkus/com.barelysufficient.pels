@@ -155,14 +155,18 @@ const makeWiredHealthyHomey = (legacyMultiHomeEnabled = true): WiredHealthyHomey
   // Setting it also keeps the key list non-empty, which positively proves an
   // absent optional Main meter setting is truly unwritten, not a store-wide
   // transient miss. Flow-source scenarios seed 'flow' before calling this.
-  if (mockHomeyInstance.settings.get(POWER_SOURCE) === undefined) {
+  // Gate on key presence, not on the read value: an unset key reads back as
+  // `null`, and so does the Main meter's explicit "Automatic" — seeding on the
+  // value would overwrite the selection scenarios below deliberately set.
+  // `getKeys()` is the same authority the production readers cross-check on.
+  if (!mockHomeyInstance.settings.getKeys().includes(POWER_SOURCE)) {
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
   }
   // The healthy path now includes the Main home naming its own meter: on the
   // Homey Energy source an area upsert is refused while Main is on Automatic
   // (it would read every area's meter as its own). Tests that pin a specific
   // Main meter set it before calling this.
-  if (mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID) === undefined) {
+  if (!mockHomeyInstance.settings.getKeys().includes(HOMEY_ENERGY_METER_DEVICE_ID)) {
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
   }
   const service = makeStaticService({

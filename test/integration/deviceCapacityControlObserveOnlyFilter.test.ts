@@ -59,7 +59,7 @@ describe('capacity-control cards exclude observe-only devices (FIX 2)', () => {
 
     // No controllable_devices write happened, and a skip was logged.
     expect(setSpy).not.toHaveBeenCalledWith(CONTROLLABLE_DEVICES, expect.anything());
-    expect(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(CONTROLLABLE_DEVICES);
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_setting_toggle_skipped',
       deviceId: SOLAR_ID,

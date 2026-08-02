@@ -67,7 +67,7 @@ describe('budget-exemption cards exclude observe-only devices', () => {
     const runListener = mockHomeyInstance.flow._actionCardListeners.add_budget_exemption;
     await runListener({ device: { id: BATTERY_ID } });
     expect(setSpy).not.toHaveBeenCalledWith(BUDGET_EXEMPT_DEVICES, expect.anything());
-    expect(mockHomeyInstance.settings.get(BUDGET_EXEMPT_DEVICES)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(BUDGET_EXEMPT_DEVICES);
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_setting_toggle_skipped',
       deviceId: BATTERY_ID,

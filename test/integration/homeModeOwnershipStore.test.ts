@@ -111,7 +111,7 @@ describe('HomeModeOwnershipStore', () => {
 
     expect(store.write(new Map([['heater', 'h_area']]))).toBe(false);
     expect(settings.get(MODE_TARGET_OWNERSHIP_STATE_INITIALIZED)).toEqual({ heater: 'h_area' });
-    expect(settings.get(MODE_TARGET_OWNERSHIP_STATE)).toBeUndefined();
+    expect(settings.getKeys()).not.toContain(MODE_TARGET_OWNERSHIP_STATE);
     failValueWrite = false;
     expect(store.read()).toEqual({
       state: 'present',
