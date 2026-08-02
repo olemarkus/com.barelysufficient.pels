@@ -19,6 +19,7 @@ import {
   readObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
+  type DeferredObjectiveRescueMode,
   type DeferredObjectiveSettingsEntry,
   type SmartTaskWriteOrigin,
 } from '../lib/objectives/deferredObjectives';
@@ -131,16 +132,44 @@ export class AppSmartTaskApi {
     return 'budget_exemption_absent';
   }
 
+  // A grant we can't rule out counts as established: an unreadable store is
+  // the same class of transient as a half-warmed device snapshot, so treating
+  // its silence as "nothing stands" would reintroduce the revocation this
+  // check exists to stop (`objectiveAbsenceIsTrustworthy` is the same guard
+  // the write ops use before acting on an absence). An established grant
+  // survives every request except the one that revokes the stored `'always'`
+  // exemption it was paired with at grant time (e2e-pinned). A standing grant
+  // with NO stored pairing — the Flow card writes limit-only verbatim, and the
+  // runtime honours it — has no pairing to revoke, so it survives a goal-only
+  // edit that names all three permissions.
+  private establishedLimitGrantSurvives(
+    deviceId: string,
+    requestedExemptFromBudget: DeferredObjectiveRescueMode | undefined,
+  ): boolean {
+    const stored = readObjectiveForDevice(this.ctx.homey.settings, deviceId);
+    const standsOrUnknown = stored === undefined
+      ? !objectiveAbsenceIsTrustworthy(this.ctx.homey.settings, deviceId)
+      : stored.rescue?.limitLowerPriorityDevices !== undefined;
+    if (!standsOrUnknown) return false;
+    const revokesStoredPairing = stored?.rescue?.exemptFromBudget === 'always'
+      && requestedExemptFromBudget !== 'always';
+    return !revokesStoredPairing;
+  }
+
   // Gate a create-smart-task candidate's opt-in "Extra permissions" against the
   // device BEFORE it is previewed or persisted — defence-in-depth, since the
   // widget's toggle visibility is client-side and not trusted. Only
   // `limitLowerPriorityDevices` is gated; `exemptFromBudget` and
   // `pauseLowerPriorityDevices` are ungated (any device can exceed the soft daily
   // budget, and the startup reservation is priority-relative by construction).
-  // The limit grant is dropped only when it would be INERT: the device is not
-  // stepped-load eligible (a binary device has no higher step to promote to, and
-  // the boost resolvers gate on `hasSteppedLoadProfile`), or `exemptFromBudget`
-  // is not granted as `'always'` (the limit is inert without it).
+  // A NEW limit grant is dropped when the device is not stepped-load eligible
+  // (a binary device has no higher step to promote to, and the boost resolvers
+  // gate on `hasSteppedLoadProfile`), or when `exemptFromBudget` is not granted
+  // as `'always'` — the pairing every PELS-owned grant surface requires. The
+  // pairing is a contract rule for new grants, NOT an inertness fact: the Flow
+  // card writes limit-only grants verbatim (it is the authority on rescue), and
+  // the runtime honours them — `limitLowerPriorityApplied` keys on the grant
+  // alone (`lib/objectives/deferredObjectives/freshDiagnostic.ts`).
   //
   // NOT gated on `priority === 1`. That conjunct belongs to the planner's
   // `fullyReserved` FLOOR PROMOTION (`rescueReplan.ts`), where it is load-bearing
@@ -184,11 +213,14 @@ export class AppSmartTaskApi {
   // the same verdict by construction (preview ≡ persist) and no future caller
   // can forget to pass it.
   //
-  // Only the DEVICE conjunct gets that protection. The budget-exemption conjunct
-  // is re-checked even for an established grant, because it is read off the
-  // candidate itself and so can never be a flaky read — skipping it would let a
-  // request that revokes `exemptFromBudget` while keeping the limit grant persist
-  // the inert `{ limitLowerPriorityDevices }` the contract promises is gated.
+  // For an ESTABLISHED grant, the budget-exemption conjunct is enforced only as
+  // a revocation TRANSITION: a stored `'always'` pairing revoked by this request
+  // still strips the limit grant (e2e-pinned — revoking the exemption while
+  // keeping the limit toggle must not persist the pair-gated `{ limit }` this
+  // surface promises). A standing grant with NO stored pairing — the Flow card
+  // writes limit-only verbatim, and the runtime honours it — must survive: the
+  // editor names all three permissions on every save, so re-requiring the
+  // pairing here made any goal-only edit silently revoke a working grant.
   private gateCandidateExtraPermissions(
     deviceId: string,
     device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
@@ -196,16 +228,7 @@ export class AppSmartTaskApi {
   ): DeferredObjectivePlanPreviewCandidate {
     const rescue = candidate.rescue;
     if (!rescue?.limitLowerPriorityDevices) return candidate;
-    // A grant we can't rule out counts as established: an unreadable store is
-    // the same class of transient as a half-warmed device snapshot, so treating
-    // its silence as "nothing stands" would reintroduce the revocation this
-    // check exists to stop (`objectiveAbsenceIsTrustworthy` is the same guard
-    // the write ops use before acting on an absence).
-    const stored = readObjectiveForDevice(this.ctx.homey.settings, deviceId);
-    const standsOrUnknown = stored === undefined
-      ? !objectiveAbsenceIsTrustworthy(this.ctx.homey.settings, deviceId)
-      : stored.rescue?.limitLowerPriorityDevices !== undefined;
-    if (standsOrUnknown && rescue.exemptFromBudget === 'always') return candidate;
+    if (this.establishedLimitGrantSurvives(deviceId, rescue.exemptFromBudget)) return candidate;
     const eligible = device !== undefined
       && this.deviceSupportsLimitLowerPriority(device)
       && rescue.exemptFromBudget === 'always';

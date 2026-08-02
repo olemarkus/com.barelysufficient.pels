@@ -223,12 +223,11 @@ describe('createDeferredObjective (app)', () => {
     });
 
     it('STRIPS an established limit grant once its budget exemption is revoked', async () => {
-      // The standing-grant protection covers only the DEVICE conjunct, which is
-      // re-derived from flaky live reads. The budget-exemption conjunct comes off
-      // the candidate itself and can never be flaky, so it stays enforced even
-      // for an already-persisted grant — otherwise revoking the exemption while
-      // keeping the limit toggle would persist the inert `{ limit }` the
-      // contract promises is gated.
+      // For an established grant, the exemption conjunct is enforced only as a
+      // revocation TRANSITION: this request takes the stored 'always' pairing
+      // away while keeping the limit toggle, so the pair-gated grant goes with
+      // it. A standing grant with no stored pairing is the different case the
+      // Flow-granted limit-only test below pins — it survives.
       const app = await initApp();
       app.setSnapshotForTests([steppedHeater()]);
       app.createDeferredObjective(
@@ -248,6 +247,38 @@ describe('createDeferredObjective (app)', () => {
       );
       expect(result).toEqual({ ok: true });
       expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      await app.onUninit?.();
+    });
+
+    it('KEEPS a standing Flow-granted limit-only grant across a goal-only edit', async () => {
+      // The Flow card is the authority on rescue and writes limit-only grants
+      // verbatim; the runtime honours them (`limitLowerPriorityApplied` keys on
+      // the grant alone). The editor names all three permissions on every save,
+      // so the gate must treat this as an established grant with no stored
+      // exemption pairing to revoke — not as a new pair-gated request. Pre-fix,
+      // any goal-only edit silently erased the working grant.
+      const app = await initApp();
+      app.setSnapshotForTests([steppedHeater()]);
+      app.createDeferredObjective('heater-1', tempCandidate(60));
+      const grantViaFlow = mockHomeyInstance.flow._actionCardListeners['allow_smart_task_rescue'];
+      await grantViaFlow({
+        device: { id: 'heater-1' },
+        property: { id: 'limit_lower_priority' },
+        when: { id: 'always' },
+      });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ limitLowerPriorityDevices: 'always' });
+
+      const result = app.createDeferredObjective(
+        'heater-1',
+        { ...tempCandidate(62), rescue: { limitLowerPriorityDevices: 'always' } },
+        'settings_ui:smart_task_update',
+        'replace',
+      );
+      expect(result).toEqual({ ok: true });
+      const entry = readStored().objectivesByDeviceId['heater-1'];
+      expect(entry).toMatchObject({ targetTemperatureC: 62 });
+      expect(entry.rescue).toEqual({ limitLowerPriorityDevices: 'always' });
       await app.onUninit?.();
     });
 
