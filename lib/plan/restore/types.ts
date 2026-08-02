@@ -1,4 +1,5 @@
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
+import type { HeadroomReserve } from '../admission';
 import type { DevicePlanDevice } from '../planTypes';
 import type { SwapStateSnapshot } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
@@ -33,6 +34,19 @@ export type RestoreLoopState = {
   restoredOneThisCycle: boolean;
 };
 
+/**
+ * Result contract of the restore pass (`applyRestorePlan`), owned by
+ * `lib/plan/restore`. Callers can rely on: `planDevices` carries every input
+ * device with this cycle's restore/hold decisions applied; the per-axis
+ * figures and `headroomReserves` are resolved exactly once per cycle by this
+ * pass, and the downstream hold stage consumes them rather than re-resolving
+ * (the reserve resolver advances arming state, so a second resolution is a
+ * correctness bug, not just waste); the timing fields mirror this cycle's
+ * `RestoreTiming`. Governing docs:
+ * `notes/deferred-load-objectives/preemptive-power-reservation.md` (startup
+ * reservations) and `notes/safe-pace-two-constraints.md` (the two admission
+ * axes).
+ */
 export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   stateUpdates: RestorePlanState;
@@ -45,6 +59,12 @@ export type RestorePlanResult = {
   // rebuilds a ledger from these so setpoint-shed devices admit per axis too.
   capacityAvailableKw: number;
   budgetAvailableKw: number | null;
+  // This cycle's startup reservations, resolved ONCE by the restore pass (the
+  // resolver advances arming state, so it must not run twice per cycle). The
+  // hold lane admits setpoint-shed restores against the same reservations the
+  // binary/stepped lanes honour — without this, the hold lane gave the promised
+  // block away to any set_temperature restore.
+  headroomReserves: readonly HeadroomReserve[];
   restoredOneThisCycle: boolean;
   inCooldown: boolean;
   inRestoreCooldown: boolean;

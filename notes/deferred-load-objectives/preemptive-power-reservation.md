@@ -121,7 +121,10 @@ What is actually different is the mechanism, and it is checkable:
 
 The stand-down does set `plannedState: 'shed'` on the device, through the shared
 `rejectBinaryRestore` path every restore reject uses. That records "not resumed" for a device that
-is already off; it is not a selection decision, and no intent follows it.
+is already off; it is not a selection decision, and no intent follows it. The shed-temperature
+hold lane (`resolveRestoreDecision` in `lib/plan/planReasonsRestoreGating.ts`) runs the same
+reserve admission for a setpoint-shed device that is observed ON: the hold re-asserts the shed
+floor the device already sits at, so in the steady state no new write follows there either.
 
 So the rule to carry forward is: **a decoration may subtract from a figure admission already
 consumes; it may never add a device to `shedSet`, and never produce an actuation intent.**

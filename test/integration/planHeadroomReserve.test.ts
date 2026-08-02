@@ -41,6 +41,7 @@ const makeBuilder = (params: {
   totalKw: number;
   priorities?: Record<string, number>;
   softLimitKw?: number;
+  shedBehaviors?: Record<string, { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null }>;
 }): {
   builder: PlanBuilder;
   reportTotalPower: (kw: number) => void;
@@ -66,7 +67,8 @@ const makeBuilder = (params: {
     getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).
     getPriorityForDevice: (deviceId: string) => params.priorities?.[deviceId] ?? (deviceId === 'heater' ? 1 : 10),
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
+      ?? { action: 'turn_off', temperature: null, stepId: null },
     getDynamicSoftLimitOverride: () => softLimitKw,
     log: vi.fn(),
     logDebug: vi.fn(),
@@ -224,5 +226,100 @@ describe('PlanBuilder startup power reservation', () => {
     expect(deviceOf(lapsed, 'thermostat')?.reason?.code).not.toBe(PLAN_REASON_CODES.reservedForStart);
     // Positive assertion: the device actually gets to resume once the reservation lapses.
     expect(stateOf(lapsed, 'thermostat')).toBe('keep');
+  });
+
+  // The hold-lane twin of the resume cases above. A thermostat shed by LOWERING ITS SETPOINT
+  // stays observed-on, so it never enters the binary/stepped resume lanes — its raise goes
+  // through `resolveRestoreDecision` in the shed-temperature hold lane. That lane was the one
+  // restore path that ignored startup reservations: the raise took the promised block, so the
+  // permission silently stopped working against exactly the cycling-load class the reservation
+  // note was written for.
+  describe('setpoint-shed (hold lane) admission', () => {
+    const SHED_FLOOR_C = 12;
+    const setpointBehaviors = {
+      thermostat: { action: 'set_temperature' as const, temperature: SHED_FLOOR_C, stepId: null },
+    };
+
+    const setpointThermostat = (over?: DeviceOverride) => buildInputDevice({
+      id: 'thermostat',
+      name: 'Termostat',
+      // `deviceType` is what routes the resume through the shed-temperature hold
+      // lane (`isTemperaturePlanDevice`); without it the hold lane skips the
+      // device and the case would pass vacuously against the binary lane.
+      deviceType: 'temperature',
+      binaryControl: { on: true },
+      targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
+      measuredPowerKw: 0.6,
+      expectedPowerKw: 0.6,
+      ...over,
+    });
+
+    // Same honest route as `shedThenEase`: pressure sheds the thermostat to its floor, the
+    // setpoint is then observed AT the floor with the device idling at 0 W but still on
+    // (or, for the unconfirmed-shed case, still reporting its normal target and drawing),
+    // pressure eases, and the question becomes whether the raise may take the freed power.
+    const shedThenEaseSetpoint = async (params: { heater: PlanInputDevice; settledTargetC?: number }) => {
+      const settledTargetC = params.settledTargetC ?? SHED_FLOOR_C;
+      const harness = makeBuilder({
+        limitKw: 10, totalKw: 3.0, softLimitKw: 2.6, shedBehaviors: setpointBehaviors,
+      });
+      const pressured = await harness.builder.buildDevicePlanSnapshot([params.heater, setpointThermostat()]);
+      // Premise checks: the shed happened, and it was a setpoint shed, not a turn-off.
+      expect(stateOf(pressured, 'thermostat')).toBe('shed');
+      expect(deviceOf(pressured, 'thermostat')?.shedAction).toBe('set_temperature');
+
+      harness.setSoftLimitKw(4.6);
+      vi.advanceTimersByTime(2 * 60_000);
+      const settled = [
+        params.heater,
+        setpointThermostat({
+          targets: [{ id: 'target_temperature', value: settledTargetC, unit: 'C' }],
+          measuredPowerKw: settledTargetC === SHED_FLOOR_C ? 0 : 0.6,
+        }),
+      ];
+      await harness.builder.buildDevicePlanSnapshot(settled);
+      vi.advanceTimersByTime(90_000);
+      return { builder: harness.builder, settled };
+    };
+
+    it('keeps a setpoint-shed device from raising into the reserved block, and says why', async () => {
+      const { builder, settled } = await shedThenEaseSetpoint({ heater: reservingHeater() });
+      const plan = await builder.buildDevicePlanSnapshot(settled);
+
+      expect(stateOf(plan, 'thermostat')).toBe('shed');
+      expect(deviceOf(plan, 'thermostat')?.reason).toEqual({
+        code: PLAN_REASON_CODES.reservedForStart,
+        targetName: 'Connected 300',
+      });
+    });
+
+    it('keeps asserting the floor while the shed has not materialized', async () => {
+      // The thermostat was commanded to the floor but still reports its normal
+      // target. The reserve must NOT swap in the no-actuation reservedForStart
+      // hold yet — that reason builds no intent, so the pending floor command
+      // would stop being retried while the device keeps drawing inside the
+      // reserved block. The hold must carry an actuating shed reason instead.
+      const { builder, settled } = await shedThenEaseSetpoint({
+        heater: reservingHeater(),
+        settledTargetC: 21,
+      });
+      const plan = await builder.buildDevicePlanSnapshot(settled);
+
+      expect(stateOf(plan, 'thermostat')).toBe('shed');
+      expect(deviceOf(plan, 'thermostat')?.shedTemperature).toBe(SHED_FLOOR_C);
+      expect(deviceOf(plan, 'thermostat')?.reason?.code).not.toBe(PLAN_REASON_CODES.reservedForStart);
+    });
+
+    it('lets the setpoint raise through once the reserving device has started', async () => {
+      const { builder, settled } = await shedThenEaseSetpoint({
+        heater: reservingHeater({ binaryControl: { on: true }, measuredPowerKw: 1.19 }),
+      });
+      const plan = await builder.buildDevicePlanSnapshot(settled);
+
+      expect(deviceOf(plan, 'thermostat')?.reason?.code).not.toBe(PLAN_REASON_CODES.reservedForStart);
+      // Positive assertion: the raise actually goes through, so the hold lane's reserve check
+      // cannot over-block once the reservation is satisfied and released.
+      expect(stateOf(plan, 'thermostat')).toBe('keep');
+    });
   });
 });

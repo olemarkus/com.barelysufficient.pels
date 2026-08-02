@@ -153,6 +153,7 @@ export function applyRestorePlan(params: {
     restoredThisCycle,
     availableHeadroom: ledger.summaryAvailableKw(),
     ...ledger.axes(),
+    headroomReserves,
     restoredOneThisCycle,
     ...effectiveTiming,
   };
