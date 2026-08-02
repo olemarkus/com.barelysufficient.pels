@@ -207,6 +207,11 @@ type BarScale = {
   total: number;
   controlled: number;
   uncontrolled: number;
+  // Whether the runtime actually resolved a managed/background split this
+  // cycle. A known 0 (all managed devices idle) still renders the legend;
+  // only a genuinely unknown split hides it — printing "Managed 0.0 kW"
+  // when no managed draw could be resolved would present a guess as a fact.
+  splitKnown: boolean;
   safePaceKw: number;
   hardCapKw: number | null;
   scaleKw: number;
@@ -253,6 +258,7 @@ const computePowerBarScale = (
     total,
     controlled,
     uncontrolled,
+    splitKnown: headline.controlledKw !== null,
     safePaceKw,
     hardCapKw,
     scaleKw,
@@ -548,11 +554,13 @@ const PowerSection = ({
   meta,
   isLimiting,
   solarNowText,
+  hasControllableDevice,
 }: {
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>;
   meta: PlanMetaSnapshot;
   isLimiting: boolean;
   solarNowText: string | null;
+  hasControllableDevice: boolean;
 }) => {
   const scale = computePowerBarScale(headline, meta);
   const safePaceComposition = scale === null ? null : formatSafePaceComposition(
@@ -582,7 +590,11 @@ const PowerSection = ({
       {scale && (
         <div class="plan-hero__bar-group">
           <PowerMeter scale={scale} isLimiting={isLimiting} />
-          {scale.controlled > 0 && (
+          {/* A known-zero split renders ("managed is idle"), but only when the
+              house actually has a device PELS can control — for background-only
+              households `sumControlledUsageKw` answers a known 0 forever, and a
+              permanent "Managed 0.0 kW" line is noise, not reassurance. */}
+          {scale.splitKnown && hasControllableDevice && (
             <div class="plan-hero__energy-support">
               Managed {scale.controlled.toFixed(1)} kW · Background {scale.uncontrolled.toFixed(1)} kW
             </div>
@@ -853,7 +865,13 @@ export const PlanHero = ({
         freshnessState={freshnessState}
         ageText={headline.ageText}
       />
-      <PowerSection headline={headline} meta={meta} isLimiting={isLimiting} solarNowText={solarNowText} />
+      <PowerSection
+        headline={headline}
+        meta={meta}
+        isLimiting={isLimiting}
+        solarNowText={solarNowText}
+        hasControllableDevice={devices.some((d) => d.controllable !== false)}
+      />
       <EnergySection meta={meta} cheapestUpcomingText={cheapestUpcomingText} />
       <p class="plan-hero__decision" data-positive={decision.positive ? '' : undefined}>
         {decision.text}

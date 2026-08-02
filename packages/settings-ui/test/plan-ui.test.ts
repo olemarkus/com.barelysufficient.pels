@@ -123,6 +123,83 @@ describe('Redesign plan UI', () => {
       expect(deviceNames).toEqual(['First', 'Second']);
     });
 
+    it('keeps the managed/background legend visible when managed draw is a known zero', async () => {
+      // All managed devices idle (thermostats at setpoint report 0 W) is a
+      // known split, not a missing one. Hiding the legend here reads as "the
+      // split is broken" (owner feedback 2026-08-02) — a known 0 renders.
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.2,
+          softLimitKw: 11,
+          headroomKw: 5.8,
+          controlledKw: 0,
+          uncontrolledKw: 5.2,
+          powerFreshnessState: 'fresh',
+          usedKWh: 4.2,
+          hourBudgetKWh: 11,
+          minutesRemaining: 8,
+        },
+        devices: [
+          { id: 'dev-1', name: 'First', priority: 1, currentState: 'off', plannedState: 'keep' },
+        ],
+      });
+
+      const supportLines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__energy-support'))
+        .map((el) => el.textContent?.trim());
+      expect(supportLines[0]).toContain('Managed 0.0 kW');
+      expect(supportLines[0]).toContain('Background 5.2 kW');
+    });
+
+    it('omits the managed/background legend for a background-only household', async () => {
+      // No controllable device exists, so `sumControlledUsageKw` answers a
+      // known 0 forever — a permanent "Managed 0.0 kW" line is noise for a
+      // household PELS only observes (spec: notes/overview-hero-spec.md).
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.2,
+          softLimitKw: 11,
+          headroomKw: 5.8,
+          controlledKw: 0,
+          uncontrolledKw: 5.2,
+          powerFreshnessState: 'fresh',
+          usedKWh: 4.2,
+          hourBudgetKWh: 11,
+          minutesRemaining: 8,
+        },
+        devices: [
+          { id: 'dev-1', name: 'Battery', priority: 1, controllable: false, currentState: 'on', plannedState: 'keep' },
+        ],
+      });
+
+      const supportLines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__energy-support'))
+        .map((el) => el.textContent?.trim());
+      expect(supportLines.some((line) => line?.includes('Managed'))).toBe(false);
+    });
+
+    it('omits the managed/background legend when the split is unknown', async () => {
+      // No controlledKw in the plan meta means the runtime could not resolve
+      // any managed device's draw — printing "Managed 0.0 kW" would present a
+      // guess as a fact, so only this case hides the legend.
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.2,
+          softLimitKw: 11,
+          headroomKw: 5.8,
+          powerFreshnessState: 'fresh',
+          usedKWh: 4.2,
+          hourBudgetKWh: 11,
+          minutesRemaining: 8,
+        },
+        devices: [
+          { id: 'dev-1', name: 'First', priority: 1, currentState: 'on', plannedState: 'keep' },
+        ],
+      });
+
+      const supportLines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__energy-support'))
+        .map((el) => el.textContent?.trim());
+      expect(supportLines.some((line) => line?.includes('Managed'))).toBe(false);
+    });
+
     it('floors the projected-energy subline at zero during a net-export hour', async () => {
       // Net export: totalKw < 0 drives `used + totalKw*minutesRemaining/60`
       // negative (0.3 + (-2.0 * 46/60) ≈ -1.23). It must render as

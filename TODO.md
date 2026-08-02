@@ -1082,6 +1082,14 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Net-export hours render "Managed 0.0 kW · Background 0.0 kW" under the hero power bar.**
+      `computePowerBarScale` (`packages/settings-ui/src/ui/views/PlanHero.tsx`) clamps total draw
+      to 0, so an exporting solar home with a known split shows a double-zero legend line that the
+      pre-#1970 rule hid. Honest but odd next to an export story; consider hiding the line when
+      total is 0, or fold into the solar export-display work
+      (`notes/` solar direction) when it touches this surface.
+      Source: 2026-08-02 pels-ux-fit review of PR #1970. [P2]
+
 - [ ] **The same settings-absence classification is hand-rolled in four readers, and the bug
       shipped in the duplication rather than in any one policy.** `readOptionalSetting`
       (`setup/homeRuntime/homeModeCatalog.ts:126-146`),
