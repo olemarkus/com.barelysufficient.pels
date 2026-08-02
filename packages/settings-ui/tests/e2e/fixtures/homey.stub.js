@@ -193,8 +193,12 @@
         budgetKWh: 4.5,
         hourBudgetKWh: 4.5,
         minutesRemaining: 48,
-        controlledKw: 0.0,
-        uncontrolledKw: 1.5,
+        // Keep the split consistent with the device list below: the heat pump
+        // is managed and measured at 1.2 kW of the 1.5 kW total. A 0.0 here
+        // renders "Managed 0.0 kW" above a visibly running managed device on
+        // every default-fixture screenshot (pels-ux-fit, PR #1970).
+        controlledKw: 1.2,
+        uncontrolledKw: 0.3,
         hourControlledKWh: 0.0,
         hourUncontrolledKWh: 0.11,
         hardCapHeadroomKw: 6.5,

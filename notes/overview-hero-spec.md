@@ -191,10 +191,17 @@ Supporting text:
 Managed 3.2 kW · Background 3.8 kW
 ```
 
-The supporting line is hidden entirely when PELS controls no load
-(`controlledKw === 0`) — printing "No managed load active" reads as
-stage-direction copy and adds noise on the happy path. Background-only
-households see the gauge segments without an underline.
+The supporting line renders whenever the runtime resolved a split — a known
+zero included (`Managed 0.0 kW · Background 5.2 kW`). It was originally hidden
+when managed draw was 0, but that made the line come and go as managed devices
+idled, which owners read as breakage rather than "managed is currently 0"
+(owner decision 2026-08-02, PR #1970). The line is omitted only when the split
+is genuinely unknown (`controlledKw` absent from the plan meta — no managed
+device's draw could be resolved), where printing `Managed 0.0 kW` would
+present a guess as a fact — and for background-only households (no
+controllable device at all, e.g. observe-only battery/PV), where the known 0
+is permanent and the line would be noise rather than reassurance. Those homes
+see the gauge segments without an underline, as before.
 
 Motion (v2.7.3): the managed segment of the power bar carries a single live
 moment while PELS is actively limiting — a 3.5s opacity oscillation
