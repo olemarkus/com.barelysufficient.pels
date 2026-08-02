@@ -17,7 +17,7 @@ const baseFit: EnergySignatureFit = {
   driftSuspected: false,
   suppressedDaysExcluded: 0,
   suppressionFilterRelaxed: false,
-  recentColdSuppressionSuspected: false,
+  recentSuppressionSuspected: false,
   residualQ10: -4,
   residualQ50: 0,
   residualQ80: 5,
@@ -37,9 +37,9 @@ describe('suggestDailyBudgetKwh', () => {
     expect(result.budgetMayBeLimiting).toBe(false);
   });
 
-  it('leans the suggestion UP (q80→q90) when recent cold days were limited and tomorrow is cold', () => {
-    const limitedFit = { ...baseFit, recentColdSuppressionSuspected: true };
-    // 0 °C is below the 15 °C balance point ⇒ cold ⇒ headroom uses q90 (8): 50 + 8.
+  it('leans the suggestion UP (q80→q90) when the budget has recently been limiting', () => {
+    const limitedFit = { ...baseFit, recentSuppressionSuspected: true };
+    // 0 °C: predicted 50, headroom uses q90 (8) instead of q80 (5).
     const result = suggestDailyBudgetKwh({ fit: limitedFit, forecastMeanTempC: 0 });
     expect(result.budgetMayBeLimiting).toBe(true);
     expect(result.suggestedBudgetKwh).toBe(58);
@@ -48,11 +48,43 @@ describe('suggestDailyBudgetKwh', () => {
     expect(result.suggestedBudgetKwh).toBeGreaterThanOrEqual(baseline.suggestedBudgetKwh);
   });
 
-  it('does not lean when tomorrow is warm even if recent cold days were limited', () => {
-    const limitedFit = { ...baseFit, recentColdSuppressionSuspected: true };
-    // 18 °C is above the 15 °C balance point ⇒ not cold ⇒ no lean.
+  it('leans on a WARM forecast too — being limited is evidence whatever the weather', () => {
+    // Regression: the lean used to require a forecast below the balance point,
+    // which left it dead all summer. 18 °C is above the 15 °C balance point, so
+    // the prediction is the flat base load (20) — exactly the regime where the
+    // base load is extrapolated rather than observed, and least trustworthy.
+    const limitedFit = { ...baseFit, recentSuppressionSuspected: true };
     const result = suggestDailyBudgetKwh({ fit: limitedFit, forecastMeanTempC: 18 });
-    expect(result.budgetMayBeLimiting).toBe(false);
+    expect(result.budgetMayBeLimiting).toBe(true);
+    expect(result.suggestedBudgetKwh).toBe(28); // 20 + q90 8, not 20 + q80 5
+  });
+
+  it('adds the budget-pressure term on top of the headroom, bounded to half the prediction', () => {
+    const state = { kwh: 7, throughDateKey: '2026-07-31' };
+    const result = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: 0, budgetPressure: state });
+    expect(result.budgetPressureKwh).toBe(7);
+    expect(result.suggestedBudgetKwh).toBe(62); // 50 predicted + 5 q80 + 7 pressure
+
+    // The ceiling is half the prediction (25 here), so a runaway term is clamped.
+    const runaway = suggestDailyBudgetKwh({
+      fit: baseFit, forecastMeanTempC: 0, budgetPressure: { kwh: 90, throughDateKey: '2026-07-31' },
+    });
+    expect(runaway.budgetPressureKwh).toBe(25);
+    expect(runaway.suggestedBudgetKwh).toBe(80);
+  });
+
+  it('keeps the capacity ceiling above the pressure term, and reports what it really added', () => {
+    const result = suggestDailyBudgetKwh({
+      fit: baseFit,
+      forecastMeanTempC: 0,
+      capacityLimitKw: 2,
+      budgetPressure: { kwh: 40, throughDateKey: '2026-07-31' },
+    });
+    expect(result.suggestedBudgetKwh).toBe(48); // 2 kW × 24 h still wins
+    // Without the term the suggestion would already be 48 (55 clamped to the
+    // cap), so the term contributed nothing — and the reason line must not
+    // claim it did.
+    expect(result.budgetPressureKwh).toBe(0);
   });
 
   it('refuses to extrapolate below observed temperatures and flags it', () => {

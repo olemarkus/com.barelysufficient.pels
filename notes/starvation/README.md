@@ -55,8 +55,86 @@ The detection feature is detection only:
 - no shed-order changes
 - no fairness logic
 - no automatic mitigation
-- no budget adjustment (the v2 widget rescue is user-initiated, not an automatic
-  budget adjustment by the planner)
+- no budget adjustment **except** through the bounded weather-advisor loop
+  described below (the v2 widget rescue is the other, user-initiated, exception)
+
+## The weather-advisor lane: a bounded loop, not an exemption
+
+Be honest about what this is. Censoring evidence — how long devices sat held
+below target, and with which counting cause — flows one way out of diagnostics
+and *does* end up changing `daily_budget_kwh`, which is a planner input. That
+closes a loop: planner counting cause → diagnostics → weather → suggestion →
+budget → planner. It runs unattended once a day after a one-time opt-in, which
+is a weaker gate than the rescue widget's per-incident user action.
+
+So the rule is not "never, unless it isn't the planner". The rule is the set of
+bounds that make the loop safe, and **every one of them is load-bearing — a
+change to this lane that breaks one is a regression, not a tuning choice**:
+
+1. **Raise-only.** Neither correction can lower a budget. Auto-apply additionally
+   refuses to lower one the home has demonstrably been running past — gated on
+   the pressure ACCUMULATOR, not on `budgetMayBeLimiting` (devices being held
+   back is the ordinary state of a working budget, so gating there would make
+   auto-apply a one-way ratchet) and not on the suggestion's displayed
+   `budgetPressureKwh` (that is a post-clamp contribution and reads 0 whenever a
+   floor or the cap set the number). `lib/weather/weatherAutoApply.ts`.
+2. **Opt-in gated.** Nothing is written unless the owner enabled
+   `autoApplyDailyBudget`. With it off the loop is display-only.
+3. **Fed only by the day-level censoring totals** the diagnostics layer already
+   records (`targetDeficitMs` / `blockedByHeadroomMs`), at the same one-hour bar
+   the shipped raise-lean used. An earlier draft added a budget-attributed
+   counter so capacity-caused holds could be filtered out; it was dropped.
+   Instantaneous attribution is the wrong granularity for a daily decision — a
+   device blocked by capacity in one hour can still run in another if the DAY
+   had more budget — so the filter under-counted real evidence, and on the home
+   this was built from capacity was the binding source in 0–8% of rebuilds.
+4. **Bounded per day and in total.** ≤ 10 kWh added per day, ≤ 40 kWh
+   accumulated, ≤ 50% of the day's prediction when applied, and the whole
+   suggestion is still clamped by `capacityLimitKw × 24` and the [20, 360] setting
+   bounds. The hard cap always wins; it is physical and is never a remedy.
+5. **Leaky.** The *pressure term* decays 0.75/day on any day that did not
+   overshoot its budget, so it cannot ratchet — it must be able to discover that
+   the budget it pushed up is now more than the home needs. Note this bound
+   covers the integral term only: the raise-lean is a binary flag that stays on
+   while any day in the trailing 14 carried material budget suppression, so it
+   does not decay and must not be treated as if it did.
+6. **Once per day, idempotently.** `throughDateKey` makes repeat rollups and boot
+   catch-ups no-ops; an unmeasurable day holds rather than growing or decaying.
+
+The planner itself is still not a party to any of it: it reads
+`daily_budget_kwh` exactly as before and knows nothing about starvation.
+
+The path:
+
+```
+diagnostics day aggregates  (targetDeficitMs / blockedByHeadroomMs)
+  → DeviceDiagnosticsService.getDaySuppressionTotals
+  → setup/appInit/createWeatherCollector.ts  getDaySuppression
+  → WeatherDailyRecord.suppression            (lib/weather/weatherCollector.ts)
+  → packages/shared-domain/src/energySignature/  fit + suggestion
+  → lib/weather/weatherAutoApply.ts → DailyBudgetService.applyAutoSuggestedBudget
+```
+
+Two consumers of the evidence:
+
+- **The raise-lean** (`suggestDailyBudget.ts`): recent suppression widens the
+  residual headroom q80→q90. It used to also require a forecast below the heating
+  knee, which made the correction hostage to the weather rather than to the
+  evidence. Measured on a real incident: the home starved for 3 days and 36
+  episodes, and the budget only rose when the forecast happened to cross below
+  the knee — +9 kWh in one step, after which starvation stopped.
+- **The budget-pressure loop** (`budgetPressure.ts`): a leaky integral term that
+  grows by the measured overshoot on days that were budget-suppressed *and* ran
+  past their budget, and leaks on every day that did not. It exists because the
+  raise-lean is a single fixed nudge and cannot track a mismatch bigger than
+  itself. The overshoot condition is the windup guard: short holds are routine,
+  so "a device was blocked for an hour" alone would ratchet the budget upward
+  forever.
+
+Both consumers read the same evidence and the same one-hour bar, so they cannot
+disagree about whether a day was suppressed. Note what the evidence does NOT
+say: it records that PELS held devices below target, not which constraint caused
+it. That is deliberate — see bound 3.
 
 There is no exception to that list. There used to be one: the smart-task
 `pause lower-priority devices` permission was implemented as a proactive shed lane

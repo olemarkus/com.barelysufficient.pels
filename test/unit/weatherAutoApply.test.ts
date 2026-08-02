@@ -48,6 +48,72 @@ describe('performBudgetAutoApply', () => {
     expect(budgetOff.onDailyBudgetAutoApplied).not.toHaveBeenCalled();
   });
 
+  it('refuses to LOWER a budget the home has demonstrably been running past', () => {
+    // Auto-apply is asymmetric: tightening a budget recent days already blew
+    // through compounds the harm instead of correcting it.
+    const d = deps({ getAppliedDailyBudgetKwh: () => 55 });
+    const state = baseState({
+      latestSuggestion: {
+        targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 0,
+      } as WeatherHistoryState['latestSuggestion'],
+      budgetPressure: { kwh: 4, throughDateKey: '2026-01-10' },
+    });
+    const next = performBudgetAutoApply(state, d);
+    expect(d.applySuggestedDailyBudget).not.toHaveBeenCalled();
+    expect(next.lastAutoApply).toBeUndefined();
+  });
+
+  it('still RAISES freely under pressure, and still lowers when nothing ran past its budget', () => {
+    const raising = deps({ getAppliedDailyBudgetKwh: () => 40 });
+    performBudgetAutoApply(baseState({
+      latestSuggestion: {
+        targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 4,
+      } as WeatherHistoryState['latestSuggestion'],
+      budgetPressure: { kwh: 4, throughDateKey: '2026-01-10' },
+    }), raising);
+    expect(raising.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
+
+    const noPressure = deps({ getAppliedDailyBudgetKwh: () => 55 });
+    performBudgetAutoApply(baseState({
+      latestSuggestion: {
+        targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 0,
+      } as WeatherHistoryState['latestSuggestion'],
+    }), noPressure);
+    expect(noPressure.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
+  });
+
+  it('blocks lowering off the ACCUMULATOR even when the displayed contribution is 0', () => {
+    // Regression: the guard used to read `suggestion.budgetPressureKwh`, which
+    // is the post-clamp contribution and reads 0 whenever a floor or the hard
+    // cap set the suggestion — disarming the guard for exactly the home whose
+    // loop was most active.
+    const d = deps({ getAppliedDailyBudgetKwh: () => 55 });
+    performBudgetAutoApply(baseState({
+      latestSuggestion: {
+        targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 0,
+      } as WeatherHistoryState['latestSuggestion'],
+      budgetPressure: { kwh: 13.9, throughDateKey: '2026-01-10' },
+    }), d);
+    expect(d.applySuggestedDailyBudget).not.toHaveBeenCalled();
+  });
+
+  it('does NOT block lowering merely because devices were held back', () => {
+    // The one-way-ratchet guard. `budgetMayBeLimiting` is the ordinary state of
+    // a home whose daily budget is doing its job; gating on it would mean
+    // auto-apply could only ever raise, overriding a deliberately tight budget.
+    const d = deps({ getAppliedDailyBudgetKwh: () => 55 });
+    performBudgetAutoApply(baseState({
+      latestSuggestion: {
+        targetDateKey: '2026-01-11',
+        suggestedBudgetKwh: 48,
+        forecastMeanTempC: -4,
+        budgetMayBeLimiting: true,
+        budgetPressureKwh: 0,
+      } as WeatherHistoryState['latestSuggestion'],
+    }), d);
+    expect(d.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
+  });
+
   it('is idempotent — skips a target day already applied (boot catch-up safety)', () => {
     const d = deps();
     const prior = { dateKey: '2026-01-11', kwh: 40, appliedAtMs: 1 };

@@ -423,6 +423,18 @@ export class DailyBudgetService {
   }
 
   /**
+   * The daily budget (kWh) currently in force, or `undefined` when the feature
+   * is off or the value is unusable. Read by the weather collector at day close
+   * so the budget-pressure loop can measure how far under the budget was set;
+   * `undefined` is a genuine "no budget applied", not a zero.
+   */
+  getAppliedBudgetKwh(): number | undefined {
+    if (!this.settings.enabled) return undefined;
+    const budgetKwh = this.settings.dailyBudgetKWh;
+    return Number.isFinite(budgetKwh) && budgetKwh > 0 ? budgetKwh : undefined;
+  }
+
+  /**
    * Weather-insight auto-apply entry point: set the daily budget kWh to the
    * suggested value, keeping all other settings. Leave-off semantics — a no-op
    * returning `false` when the daily budget feature is disabled (the UI shows a

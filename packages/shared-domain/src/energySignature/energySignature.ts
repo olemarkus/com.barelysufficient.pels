@@ -4,6 +4,10 @@ import type {
   EnergySignatureModel,
   WeatherDailyRecord,
 } from '../../../contracts/src/weatherAdvisorTypes';
+// One predicate, one threshold, shared with the integral half of the same
+// correction: the raise-lean and the pressure loop must never disagree about
+// whether a day was held back by the daily budget.
+import { dayWasBudgetSuppressed } from './budgetPressure';
 
 /**
  * Robust "energy signature" fit: daily kWh against daily mean outdoor
@@ -54,24 +58,15 @@ type RobustLine = { slope: number; intercept: number; slopes: number[] };
 /**
  * A day whose measured kWh is a censored lower bound on demand strong enough to
  * exclude from the fit. v1 trusts ONLY the unambiguous signal: a deadline-bound
- * smart task that missed BECAUSE the daily budget ran out. Comfort/capacity
- * deficits are recorded too but only drive the suggestion's upward lean
- * (`hasComfortOrCapacitySuppression`) — excluding cold comfort-deficit days is
- * itself slope-flattening and waits for thresholds calibrated on real data.
+ * smart task that missed BECAUSE the daily budget ran out. Daily-budget
+ * censoring is recorded too but only drives the suggestion's upward corrections
+ * (`dayWasBudgetSuppressed`) — excluding those days from the fit is itself
+ * slope-flattening, and on real data it moves the suggestion the WRONG way,
+ * because the days a home is held back on are its high-demand days.
  */
 const isMateriallySuppressed = (record: WeatherDailyRecord): boolean => (
   record.suppression?.deadlineMissedToBudget === true
 );
-
-/** A day's comfort/capacity censoring is "material" for the upward suggestion lean past ~1 h. */
-const RAISE_LEAN_MIN_SUPPRESSION_MS = 60 * 60 * 1000;
-
-const hasComfortOrCapacitySuppression = (record: WeatherDailyRecord): boolean => {
-  const suppression = record.suppression;
-  if (!suppression) return false;
-  return (suppression.targetDeficitMs ?? 0) >= RAISE_LEAN_MIN_SUPPRESSION_MS
-    || (suppression.blockedByHeadroomMs ?? 0) >= RAISE_LEAN_MIN_SUPPRESSION_MS;
-};
 
 type FitSelection = {
   records: WeatherDailyRecord[];
@@ -102,15 +97,20 @@ function selectFitRecords(records: WeatherDailyRecord[]): FitSelection {
   };
 }
 
-/** Recent cold days that PELS limited (comfort/capacity) — the suggestion leans up on a cold forecast. */
-function detectRecentColdSuppression(
-  records: WeatherDailyRecord[],
-  coldThresholdC: number,
-): boolean {
+/**
+ * Recent days the DAILY BUDGET limited — the suggestion then leans up.
+ *
+ * Deliberately NOT gated on temperature. It used to require the day to be below
+ * the heating knee, which made the whole correction dead above it: a home whose
+ * budget was throttling it every afternoon in mild weather produced no lean at
+ * all, precisely when the model's warm-regime base load is least trustworthy.
+ * Being held back is evidence about demand whatever the outdoor temperature is.
+ */
+function detectRecentSuppression(records: WeatherDailyRecord[]): boolean {
   return records
     .filter((record) => isUsableSignatureDay(record))
     .slice(-DRIFT_RECENT_DAYS)
-    .some((record) => record.tempMeanC < coldThresholdC && hasComfortOrCapacitySuppression(record));
+    .some(dayWasBudgetSuppressed);
 }
 
 export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number): EnergySignatureFit | null {
@@ -136,10 +136,7 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   const confidence = resolveConfidence({
     model, usableDays: usable.length, temps, pseudoR2, slope: line.slope, ci, driftSuspected,
   });
-  // Same "cold" definition the suggestion's raise-lean uses (suggestDailyBudget:
-  // balancePointC ?? observedTempMaxC) so detection and firing never diverge for
-  // a no-balance-point (winter-only) fit.
-  const recentColdSuppressionSuspected = detectRecentColdSuppression(records, balancePointC ?? observedTempMaxC);
+  const recentSuppressionSuspected = detectRecentSuppression(records);
 
   return {
     model,
@@ -159,7 +156,7 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
     driftSuspected,
     suppressedDaysExcluded: selection.suppressedDaysExcluded,
     suppressionFilterRelaxed: selection.suppressionFilterRelaxed,
-    recentColdSuppressionSuspected,
+    recentSuppressionSuspected,
     residualQ10: quantile(residuals, 0.1),
     residualQ50: quantile(residuals, 0.5),
     residualQ80: quantile(residuals, 0.8),

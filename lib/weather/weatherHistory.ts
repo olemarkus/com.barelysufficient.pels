@@ -6,13 +6,16 @@ import type {
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isUnknownRecord } from '../utils/types';
-import { isFiniteNumber } from '../utils/appTypeGuards';
 import { getZonedParts, shiftDateKey } from '../utils/dateUtils';
 import {
   defaultStoredFit,
   defaultStoredSuggestion,
+  isPositiveFinite,
+  normalizeBudgetPressure,
   normalizeLastAutoApply,
   normalizeMetForecast,
+  normalizeSuppression,
+  sanitizeRecordOptionalFields,
 } from './weatherHistoryNormalize';
 import { normalizeMeterScopeMarkers } from './weatherMeterScope';
 
@@ -104,16 +107,19 @@ export function rollupDay(
     kwhUncontrolled?: number;
     unreliablePower: boolean;
     suppression?: WeatherDaySuppression;
+    appliedBudgetKwh?: number;
   },
 ): WeatherHistoryState {
   const {
     dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression,
+    appliedBudgetKwh,
   } = params;
   const accumulator = (state.accumulators ?? {})[dateKey];
 
   const records = accumulator
     ? upsertRecord(state.records, buildRollupRecord({
-      dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression, accumulator,
+      dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression,
+      appliedBudgetKwh, accumulator,
     }), { overwriteLive: false })
     : state.records;
 
@@ -136,10 +142,12 @@ function buildRollupRecord(params: {
   kwhUncontrolled?: number;
   unreliablePower: boolean;
   suppression?: WeatherDaySuppression;
+  appliedBudgetKwh?: number;
   accumulator: WeatherDayAccumulator;
 }): WeatherDailyRecord {
   const {
-    dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression, accumulator,
+    dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression,
+    appliedBudgetKwh, accumulator,
   } = params;
   // A fully-observed day has one sample per local hour; allow a 6-hour
   // shortfall (boot gaps, transient device reads) before flagging partial.
@@ -160,6 +168,7 @@ function buildRollupRecord(params: {
       unreliablePower,
       backfilled: false,
     },
+    ...(isPositiveFinite(appliedBudgetKwh) ? { appliedBudgetKwh } : {}),
     ...(cleanSuppression !== undefined ? { suppression: cleanSuppression } : {}),
   };
 }
@@ -216,6 +225,12 @@ export function stripMeterScopeDerivedState(state: WeatherHistoryState): Weather
     controlledBackfillVersion: _split,
     latestFit: _fit,
     latestSuggestion: _suggestion,
+    // The budget-pressure term is a function of `kwhTotal − appliedBudgetKwh`,
+    // so it is scope-derived exactly like the fit and must go with it. Keeping
+    // it would let a term accumulated under the OLD metering arrangement keep
+    // raising the budget on top of a fit rebuilt from nothing, and it would take
+    // a week of leak to clear.
+    budgetPressure: _pressure,
     meterScopeSignature: _scope,
     meterScopeSinceDateKey: _scopeSince,
     ...kept
@@ -266,6 +281,20 @@ export function mergeRecoveredState(
   const latestSuggestion = inMemory.latestSuggestion ?? recovered.latestSuggestion;
   // Live audit wins, falling back to recovered.
   const lastAutoApply = inMemory.lastAutoApply ?? recovered.lastAutoApply;
+  // The pressure term is an ACCUMULATOR, not a recomputation, so "live wins"
+  // would be wrong here: this function only runs after a failed boot read, which
+  // means the in-memory state started EMPTY and its term is a restart-from-zero
+  // produced by a single fold. Select by how many closed days each has folded.
+  const budgetPressure = [inMemory.budgetPressure, recovered.budgetPressure]
+    .filter((term) => term !== undefined)
+    // Later `throughDateKey` wins; on a TIE the larger term wins. The tie is the
+    // case that matters: both sides folded the same days, but the in-memory one
+    // restarted from zero after the failed read, so an arbitrary pick would
+    // discard the recovered evidence this selection exists to keep.
+    .sort((a, b) => {
+      if (a.throughDateKey !== b.throughDateKey) return a.throughDateKey < b.throughDateKey ? 1 : -1;
+      return b.kwh - a.kwh;
+    })[0];
   return {
     records,
     accumulators: { ...(inMemory.accumulators ?? {}), ...(recovered.accumulators ?? {}) },
@@ -274,6 +303,7 @@ export function mergeRecoveredState(
     ...(latestFit ? { latestFit } : {}),
     ...(latestSuggestion ? { latestSuggestion } : {}),
     ...(lastAutoApply ? { lastAutoApply } : {}),
+    ...(budgetPressure ? { budgetPressure } : {}),
   };
 }
 
@@ -518,6 +548,7 @@ export function normalizeWeatherHistoryState(raw: unknown, currentDateKey?: stri
     ? normalizeForecastHourly(raw.forecastHourly)
     : {};
   const lastAutoApply = normalizeLastAutoApply(raw.lastAutoApply);
+  const budgetPressure = normalizeBudgetPressure(raw.budgetPressure);
   const metForecast = normalizeMetForecast(raw.metForecast);
   return {
     // Core fields gate via isPlausibleRecord (reject-and-drop); the optional
@@ -539,6 +570,7 @@ export function normalizeWeatherHistoryState(raw: unknown, currentDateKey?: stri
       ? { latestSuggestion: defaultStoredSuggestion(raw.latestSuggestion) }
       : {}),
     ...(lastAutoApply ? { lastAutoApply } : {}),
+    ...(budgetPressure ? { budgetPressure } : {}),
   };
 }
 
@@ -652,44 +684,6 @@ const isOptionalFiniteNumber = (value: unknown): boolean => (
   value === undefined || (typeof value === 'number' && Number.isFinite(value))
 );
 
-const isPositiveFinite = (value: unknown): value is number => isFiniteNumber(value) && value > 0;
-
-/**
- * Strips invalid AND zero sub-fields; returns undefined when nothing
- * trustworthy remains. Zero is dropped on purpose: a diagnostics aggregate
- * exists for any shed/activation, so a no-deficit day would otherwise persist
- * an all-zero object on essentially every record — bloat that also breaks the
- * "present = a real censoring signal" invariant the fit relies on.
- */
-function normalizeSuppression(raw: unknown): WeatherDaySuppression | undefined {
-  if (!isUnknownRecord(raw)) return undefined;
-  const targetDeficitMs = isPositiveFinite(raw.targetDeficitMs) ? raw.targetDeficitMs : undefined;
-  const blockedByHeadroomMs = isPositiveFinite(raw.blockedByHeadroomMs) ? raw.blockedByHeadroomMs : undefined;
-  const deadlineMissedToBudget = raw.deadlineMissedToBudget === true ? true : undefined;
-  if (targetDeficitMs === undefined && blockedByHeadroomMs === undefined && deadlineMissedToBudget === undefined) {
-    return undefined;
-  }
-  return {
-    ...(targetDeficitMs !== undefined ? { targetDeficitMs } : {}),
-    ...(blockedByHeadroomMs !== undefined ? { blockedByHeadroomMs } : {}),
-    ...(deadlineMissedToBudget !== undefined ? { deadlineMissedToBudget } : {}),
-  };
-}
-
-/**
- * Cleans the optional suppression/kwhUncontrolled layer on an already-core-valid
- * record: a malformed value is dropped, the record (and its temperature) kept.
- */
-function sanitizeRecordOptionalFields(record: WeatherDailyRecord): WeatherDailyRecord {
-  const suppression = normalizeSuppression(record.suppression);
-  const kwhUncontrolled = isFiniteNumber(record.kwhUncontrolled) ? record.kwhUncontrolled : undefined;
-  const { suppression: _suppression, kwhUncontrolled: _kwhUncontrolled, ...rest } = record;
-  return {
-    ...rest,
-    ...(kwhUncontrolled !== undefined ? { kwhUncontrolled } : {}),
-    ...(suppression !== undefined ? { suppression } : {}),
-  };
-}
 
 function isPlausibleAccumulator(value: unknown): value is WeatherDayAccumulator {
   if (!isUnknownRecord(value)) return false;

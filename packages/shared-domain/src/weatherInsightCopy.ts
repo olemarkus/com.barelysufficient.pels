@@ -123,8 +123,33 @@ export const WEATHER_BUTTON_DETAILS = 'Weather details';
 export const WEATHER_REASON_COLDER_THAN_OBSERVED = 'Tomorrow looks colder than any day PELS has '
   + 'measured — the range is wider than usual.';
 export const WEATHER_REASON_DRIFT_WIDER = 'Recent days ran higher than usual, so the range is wider.';
-export const WEATHER_REASON_BUDGET_LIMITING = 'Recent cold days were limited by your budget — '
+// Says "your devices", not "recent cold days". Two fixes over the old wording:
+// the trigger is no longer gated on a cold forecast (a home is limited by its
+// budget in mild weather just as easily — the case the cold-only wording
+// described wrongly), and a budget limits DEVICES, not days. "recently" carries
+// the time anchor once, so the follow-on clause does not have to restate it with
+// a different span in mind.
+export const WEATHER_REASON_BUDGET_LIMITING = 'Your budget has recently been limiting your devices — '
   + 'the suggestion is raised to match.';
+
+/**
+ * The reason line under a raised suggestion. Names the part of the raise that
+ * came from days which actually ran past their budget, because "raised to match"
+ * with no number leaves the owner unable to tell a small nudge from a large
+ * correction.
+ *
+ * "of that covers" is deliberate: the raise also includes a widened headroom, so
+ * this number is a COMPONENT, not the whole delta — an owner who subtracts it
+ * from the suggestion must not end up with a figure that fails to reconcile.
+ * Callers pass the contribution that survived the clamp ladder, so the sentence
+ * never claims a raise the suggestion did not receive; under 1 kWh it is dropped
+ * as too small to act on.
+ */
+export const composeBudgetLimitingReason = (budgetPressureKwh: number): string => {
+  if (!Number.isFinite(budgetPressureKwh) || budgetPressureKwh < 1) return WEATHER_REASON_BUDGET_LIMITING;
+  return `${WEATHER_REASON_BUDGET_LIMITING} ${formatDailyKwh(budgetPressureKwh)} of that `
+    + 'covers days that ran past your budget.';
+};
 
 // Over-hard-cap warning: tomorrow's expected usage is more than the hard cap can
 // physically deliver in a day, so the suggestion was capped at the cap. The cap

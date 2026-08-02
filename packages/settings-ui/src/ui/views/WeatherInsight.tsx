@@ -7,6 +7,7 @@ import type {
 } from '../../../../contracts/src/weatherAdvisorTypes.ts';
 import {
   composeBasedOnDays,
+  composeBudgetLimitingReason,
   composeDeviceFooter,
   composeDriftNotice,
   composeForecastSourceLine,
@@ -48,7 +49,6 @@ import {
   WEATHER_LEGEND_TOMORROW,
   WEATHER_MORE_DETAIL,
   WEATHER_NUMBERS_TITLE,
-  WEATHER_REASON_BUDGET_LIMITING,
   WEATHER_REASON_COLDER_THAN_OBSERVED,
   WEATHER_REASON_DRIFT_WIDER,
   WEATHER_ROW_EXPECTED_USAGE,
@@ -198,8 +198,16 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       {verdict !== null && (
         <p class={`weather-card__verdict weather-card__verdict--${verdict.tone}`}>{verdict.text}</p>
       )}
-      {suggestion?.budgetMayBeLimiting === true && (
-        <p class="pels-card-supporting weather-card__reason">{WEATHER_REASON_BUDGET_LIMITING}</p>
+      {/* Also shown when only the pressure term is live: it decays over more days
+          than the 14-day suppression detector looks back, so gating on
+          `budgetMayBeLimiting` alone would leave a raised suggestion unexplained.
+          Gated on dailyBudgetEnabled because "your budget has been limiting your
+          devices" is false when there is no budget in force. */}
+      {readout.dailyBudgetEnabled
+        && (suggestion?.budgetMayBeLimiting === true || (suggestion?.budgetPressureKwh ?? 0) >= 1) && (
+        <p class="pels-card-supporting weather-card__reason">
+          {composeBudgetLimitingReason(suggestion?.budgetPressureKwh ?? 0)}
+        </p>
       )}
       {/* Explains why the budget tracks the suggestion when auto-apply is on.
           Gated on dailyBudgetEnabled too: with the budget off, auto-apply is inert,

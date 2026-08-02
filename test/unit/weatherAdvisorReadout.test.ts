@@ -43,7 +43,7 @@ const fit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureFit =>
   driftSuspected: false,
   suppressedDaysExcluded: 0,
   suppressionFilterRelaxed: false,
-  recentColdSuppressionSuspected: false,
+  recentSuppressionSuspected: false,
   residualQ10: -4,
   residualQ50: 0,
   residualQ80: 4,
@@ -177,6 +177,7 @@ describe('buildWeatherAdvisorReadout', () => {
         beyondObservedCold: false,
         beyondObservedWarm: false,
         budgetMayBeLimiting: false,
+      budgetPressureKwh: 0,
         computedAtMs: NOW_MS,
       },
     }, { settings: SETTINGS_OUTDOOR_ONLY }));
@@ -204,6 +205,7 @@ describe('buildWeatherAdvisorReadout', () => {
         beyondObservedCold: false,
         beyondObservedWarm: false,
         budgetMayBeLimiting: false,
+      budgetPressureKwh: 0,
         computedAtMs: NOW_MS,
       },
     }));
@@ -251,6 +253,7 @@ describe('buildWeatherAdvisorReadout', () => {
         beyondObservedCold: false,
         beyondObservedWarm: false,
         budgetMayBeLimiting: false,
+      budgetPressureKwh: 0,
         tempMinC: null as unknown as number,
         tempMaxC: null as unknown as number,
         coldEveningSuspected: null as unknown as boolean,
@@ -317,6 +320,7 @@ describe('buildWeatherAdvisorReadout', () => {
         forecastSource: 'forecast_device' as unknown as 'recent_days',
         predictedKwh: 50, predictedLowKwh: 44, predictedHighKwh: 58, suggestedBudgetKwh: 55,
         beyondObservedCold: false, beyondObservedWarm: false, budgetMayBeLimiting: false,
+      budgetPressureKwh: 0,
         computedAtMs: NOW_MS,
       },
     }));

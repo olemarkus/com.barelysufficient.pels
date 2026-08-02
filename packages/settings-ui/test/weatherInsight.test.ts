@@ -63,7 +63,7 @@ const buildFit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureF
   driftSuspected: false,
   suppressedDaysExcluded: 0,
   suppressionFilterRelaxed: false,
-  recentColdSuppressionSuspected: false,
+  recentSuppressionSuspected: false,
   residualQ10: -5,
   residualQ50: 0,
   residualQ80: 5,
@@ -104,7 +104,10 @@ const buildReadout = (
     beyondObservedCold: false,
     beyondObservedWarm: false,
   },
-  suggestion: { kwh: 48, currentDailyBudgetKwh: 50, cappedByCapacity: false, budgetMayBeLimiting: false },
+  suggestion: {
+    kwh: 48, currentDailyBudgetKwh: 50, cappedByCapacity: false, budgetMayBeLimiting: false,
+    budgetPressureKwh: 0,
+  },
   scatter: [{ tempBinC: 2, kwhMedian: 42, kwhQ1: 39, kwhQ3: 45, count: 12 }],
   recentDays: [{
     dateKey: '2026-06-10',
@@ -316,7 +319,10 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
   it('shows the over-hard-cap warning banner only when the suggestion is capped by capacity', () => {
     const mount = mountIntoBody();
     const capped = buildReadout({
-      suggestion: { kwh: 290, currentDailyBudgetKwh: 50, cappedByCapacity: true, budgetMayBeLimiting: false },
+      suggestion: {
+        kwh: 290, currentDailyBudgetKwh: 50, cappedByCapacity: true, budgetMayBeLimiting: false,
+        budgetPressureKwh: 0,
+      },
     });
     renderBudgetOverview(mount, buildProps({ weatherInsight: { readout: capped, fetchFailed: false } }));
     const banner = mount.querySelector('#weather-overcap-banner');

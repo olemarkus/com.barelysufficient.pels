@@ -489,6 +489,42 @@ describe('stripMeterScopeDerivedState record-level strip', () => {
     expect(stripped.meterScopeSinceDateKey).toBeUndefined();
   });
 
+  it('keeps the larger term when both sides folded the same day', () => {
+    // The comparator must be consistent: on an equal throughDateKey an
+    // arbitrary pick would take the in-memory side, which restarted from zero
+    // after the failed read that made this merge run in the first place.
+    const merged = mergeRecoveredState(
+      { records: [], budgetPressure: { kwh: 0, throughDateKey: '2026-01-05' } },
+      { records: [], budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' } },
+    );
+    expect(merged.budgetPressure).toEqual({ kwh: 12, throughDateKey: '2026-01-05' });
+  });
+
+  it('keeps whichever side folded the later day', () => {
+    const liveAhead = mergeRecoveredState(
+      { records: [], budgetPressure: { kwh: 3, throughDateKey: '2026-01-06' } },
+      { records: [], budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' } },
+    );
+    expect(liveAhead.budgetPressure?.throughDateKey).toBe('2026-01-06');
+    const recoveredAhead = mergeRecoveredState(
+      { records: [], budgetPressure: { kwh: 3, throughDateKey: '2026-01-04' } },
+      { records: [], budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' } },
+    );
+    expect(recoveredAhead.budgetPressure?.throughDateKey).toBe('2026-01-05');
+  });
+
+  it('drops the budget-pressure term — it is scope-derived exactly like the fit', () => {
+    // The term is a function of kwhTotal − appliedBudgetKwh, so a term earned
+    // under the OLD metering arrangement would keep raising the budget on top of
+    // a fit rebuilt from nothing, and would take a week of leak to clear.
+    const stripped = stripMeterScopeDerivedState({
+      records: [liveRecord('2026-01-05', { appliedBudgetKwh: 44 })],
+      meterScopeSignature: 'source:flow',
+      budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' },
+    });
+    expect(stripped.budgetPressure).toBeUndefined();
+  });
+
   it('returns a record with no kWh evidence by reference', () => {
     const { kwhTotal: _withoutKwh, ...clean } = liveRecord('2026-01-05', {
       quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: false },

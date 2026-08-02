@@ -1,5 +1,6 @@
-import type { EnergySignatureFit } from '../../../contracts/src/weatherAdvisorTypes';
+import type { BudgetPressureState, EnergySignatureFit } from '../../../contracts/src/weatherAdvisorTypes';
 import { predictDailyKwh } from './energySignature';
+import { PRESSURE_CEILING_FRACTION, resolveBudgetPressureKwh } from './budgetPressure';
 
 // Mirrors lib/dailyBudget/dailyBudgetConstants.ts and packages/contracts/src/
 // dailyBudgetConstants.ts (all three must stay in sync). Deliberate copy:
@@ -17,10 +18,14 @@ const MAX_DAILY_BUDGET_KWH = 360;
  *    observed day and flag it (linear extrapolation is downward-biased
  *    exactly during cold snaps, when a too-tight budget hurts most).
  * 2. Add q80 residual headroom (right-skewed residuals: guests/laundry days
- *    inflate the upper tail; ~4 of 5 typical days fit inside the suggestion).
- * 3. Floor at the 5th percentile of observed days — never suggest below what
- *    the home has demonstrably used.
- * 4. Clamp to the daily-budget setting bounds and (when known) the capacity
+ *    inflate the upper tail; ~4 of 5 typical days fit inside the suggestion),
+ *    leaning to q90 when the daily budget has recently been limiting.
+ * 3. Add the budget-pressure term — the integral half of the loop, which keeps
+ *    escalating while the budget is demonstrably holding devices back. See
+ *    `budgetPressure.ts` for why the model alone cannot be trusted here.
+ * 4. Floor at the 5th percentile of observed days — never suggest below what the
+ *    home has demonstrably used.
+ * 5. Clamp to the daily-budget setting bounds and (when known) the capacity
  *    ceiling × 24 h — suggesting an unreachable number misleads.
  */
 export type DailyBudgetSuggestionInput = {
@@ -28,6 +33,8 @@ export type DailyBudgetSuggestionInput = {
   forecastMeanTempC: number;
   /** Hard capacity cap (kW); the suggestion never exceeds cap × 24 h. */
   capacityLimitKw?: number;
+  /** Accumulated budget-pressure term; absent when the loop has nothing to add. */
+  budgetPressure?: BudgetPressureState;
 };
 
 export type DailyBudgetSuggestionResult = {
@@ -37,15 +44,17 @@ export type DailyBudgetSuggestionResult = {
   suggestedBudgetKwh: number;
   beyondObservedCold: boolean;
   beyondObservedWarm: boolean;
-  /** Recent cold days were PELS-limited and tomorrow is cold — headroom leaned q80→q90. */
+  /** The daily budget has recently been limiting — headroom leaned q80→q90. */
   budgetMayBeLimiting: boolean;
+  /** kWh the budget-pressure loop contributed, after its ceiling. 0 when idle. */
+  budgetPressureKwh: number;
 };
 
 const MIN_RELATIVE_HEADROOM = 0.05;
 const OBSERVED_RANGE_SLACK_C = 2;
 
 export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyBudgetSuggestionResult {
-  const { fit, forecastMeanTempC, capacityLimitKw } = input;
+  const { fit, forecastMeanTempC, capacityLimitKw, budgetPressure } = input;
   // Never extrapolate OUTSIDE the observed range in either direction: the
   // cold side underestimates exactly during cold snaps, and the warm side of
   // a winter-only linear fit descends without bound (negative predictions on
@@ -58,29 +67,45 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
   );
   const predictedKwh = predictDailyKwh(fit, evaluationTempC) ?? fit.medianDayKwh;
 
-  // Raise-lean: when recent cold days were PELS-limited and tomorrow is cold,
-  // the fit already reads true-demand (deadline-miss days are excluded), but
-  // the comfort/capacity censoring that v1 does NOT exclude still drags the
-  // slope a little low. Widen the headroom q80→q90 so a starved home is nudged
-  // UP, never lower — the suggestion may only ever over-cover here, so a rough
-  // detection threshold is safe. A cold forecast is one below the heating knee
-  // (or below the warmest observed when no balance point is identified).
-  const coldKneeC = fit.balancePointC ?? fit.observedTempMaxC;
-  const budgetMayBeLimiting = fit.recentColdSuppressionSuspected && forecastMeanTempC < coldKneeC;
+  // Raise-lean: when the daily budget has recently been limiting the home, the
+  // measured days it was limiting are censored lower bounds on demand, so the
+  // fit reads low. Widen the headroom q80→q90 so a held-back home is nudged UP,
+  // never lower — the suggestion may only ever over-cover here, so a rough
+  // detection threshold is safe.
+  //
+  // This used to also require a forecast below the heating knee. That made the
+  // correction dead above the knee, which is exactly where the base load is an
+  // extrapolated value rather than an observed one, and where a mild-weather
+  // home can be throttled all day without a single cold hour to trigger it.
+  const budgetMayBeLimiting = fit.recentSuppressionSuspected;
   const headroomQuantile = budgetMayBeLimiting ? fit.residualQ90 : fit.residualQ80;
   const headroom = Math.max(headroomQuantile, MIN_RELATIVE_HEADROOM * predictedKwh);
-  const floored = Math.max(predictedKwh + headroom, fit.lowObservedDayKwh);
+  // Integral term on top of that proportional one. It is measured against the
+  // budget that was actually applied — which already carried the headroom — so
+  // the two compose rather than double-count.
+  const pressureKwh = resolveBudgetPressureKwh({
+    state: budgetPressure,
+    predictedKwh,
+    ceilingFraction: PRESSURE_CEILING_FRACTION,
+  });
   const capacityCapKwh = capacityLimitKw !== undefined && capacityLimitKw > 0
     ? capacityLimitKw * 24
     : Number.POSITIVE_INFINITY;
-  // The capacity ceiling is physical, so it outranks the setting's 20 kWh
-  // minimum: with a sub-minimum hard cap the suggestion must stay under the
-  // cap rather than be raised back to an impossible number.
-  const suggestedBudgetKwh = Math.min(
+  const clamp = (modelledKwh: number): number => Math.min(
     MAX_DAILY_BUDGET_KWH,
     capacityCapKwh,
-    Math.max(MIN_DAILY_BUDGET_KWH, floored),
+    // The capacity ceiling is physical, so it outranks the setting's 20 kWh
+    // minimum: with a sub-minimum hard cap the suggestion must stay under the
+    // cap rather than be raised back to an impossible number.
+    Math.max(MIN_DAILY_BUDGET_KWH, modelledKwh),
   );
+  const floorKwh = fit.lowObservedDayKwh;
+  const suggestedBudgetKwh = clamp(Math.max(predictedKwh + headroom + pressureKwh, floorKwh));
+  // Report what the term actually CONTRIBUTED, not what it had accumulated: a
+  // floor or the hard cap can absorb some or all of it, and the reason line
+  // names this number to the owner ("so N kWh was added"). Claiming a raise the
+  // suggestion did not receive would be a lie in the one place they check.
+  const budgetPressureKwh = Math.max(0, suggestedBudgetKwh - clamp(Math.max(predictedKwh + headroom, floorKwh)));
 
   const predictedLowKwh = Math.max(0, predictedKwh + fit.residualQ10);
   return {
@@ -91,5 +116,6 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
     beyondObservedCold,
     beyondObservedWarm,
     budgetMayBeLimiting,
+    budgetPressureKwh,
   };
 }

@@ -98,6 +98,30 @@ card → `Choose temperature device` → Settings, Weather insight section.
   prediction) and the forecast half of the detail footer.
 - `Suggested daily budget` is the q80-headroom figure, clamped [20, 360],
   capped by capacity. Display-only unless the user opted into auto-apply.
+  Two corrections sit on top of the model, both upward-only:
+  - **raise-lean** — recent suppression widens the headroom q80→q90. Not gated on
+    a cold forecast (it used to be, which made the correction wait for the weather
+    to cross the heating knee instead of acting on the evidence).
+  - **budget pressure** — a leaky integral term that grows by the measured
+    overshoot on days that were budget-suppressed *and* ran past their budget,
+    and leaks on days that did not. Bounded to half the prediction, and named in
+    the reason line when it is ≥ 1 kWh so the owner can see how big the
+    correction is. Design of record: `notes/starvation/README.md`.
+    It accumulates whether or not auto-apply is on, so an owner who opts in after
+    a stretch of suppression gets the whole (bounded) term on the first write.
+  Auto-apply is **asymmetric**: it may raise freely, but may only lower the
+  budget when the pressure term is idle — i.e. no recent day actually ran past
+  its budget while being held back (`weather_advisor_budget_auto_apply_skipped`
+  with `reason: would_lower_while_limiting`). Deliberately NOT gated on
+  `budgetMayBeLimiting`: devices being held back is the ordinary state of a home
+  whose daily budget is doing its job, and gating there would make auto-apply a
+  one-way ratchet that overrides a deliberately tight budget.
+- The reason line under a raised suggestion (`composeBudgetLimitingReason`):
+  `Your budget has recently been limiting your devices — the suggestion is raised
+  to match.` plus, when the pressure term contributed ≥ 1 kWh after clamping,
+  ` N kWh of that covers days that ran past your budget.` — "of that" because the
+  raise also includes the widened headroom, so the number is a component and not
+  the whole delta.
 - When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
   over-cap banner (`.banner banner--warning banner--stacked`) renders before the
   verdict: `Tomorrow may need more than your hard cap allows`. The cap is the tariff step —
