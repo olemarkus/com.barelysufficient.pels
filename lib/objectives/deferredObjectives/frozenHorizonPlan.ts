@@ -14,10 +14,13 @@ import type {
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
-// Representative `statusDetail` for a frozen status. Mid-hour the diagnostic's
-// `reasonCode` (derived from this) is NOT persisted (the recorder only writes at
-// the `:58` settle, recomputing the authoritative detail) and admission gates on
-// the status, not the detail — so a status-aligned neutral detail is sufficient.
+// Representative `statusDetail` for a frozen status. This placeholder is never
+// persisted: the recorder refuses to settle a replan revision from a
+// frozen-served diagnostic (`isFrozenServedDiagnostic`, keyed on the plan's
+// `frozenRead` marker — a settle can coincide with a frozen serve on a
+// transient price-horizon gap or throughout a live step-ladder gap), and
+// admission gates on the status, not the detail — so a status-aligned neutral
+// detail is sufficient.
 const FROZEN_STATUS_DETAIL: Record<DeferredObjectiveHorizonStatus, DeferredObjectiveHorizonStatusDetail> = {
   on_track: 'planned_with_margin',
   at_risk: 'planned_using_deadline_reserve',
@@ -178,5 +181,8 @@ export const buildFrozenHorizonPlan = (params: {
     // Cold-start is the allocator's `:58` booking decision (current hour booked 0 ⇒
     // deferred); the frozen read never asserts it mid-hour.
     coldStartReleaseEligible: false,
+    // Declares "no new allocation here" to the recorder — see the field doc on
+    // `DeferredObjectiveHorizonPlan`.
+    frozenRead: true,
   };
 };

@@ -41,20 +41,62 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
-- [ ] **A smart task loses its budget exemption mid-planned-bucket when the learned rate flaps
-      to `objective_missing_charge_rate`.** Prod 2026-08-01 18:40:45: the water heater's objective
-      flipped `on_track` → `unknown` (`reasonCode: objective_missing_charge_rate`) while its
-      current bucket had 1.183 kWh planned; `unknown` is not plannable, so the per-cycle admission
-      decision resolved `budgetExempt: false` (`lib/objectives/deferredObjectives/admission.ts`
-      ~91/101), the exempt add-back vanished, and the hero's safe pace collapsed 2.2 → 1.3 kW in
-      one cycle — the horizon log kept printing `budgetExemptApplied: true` (the config flag) the
-      whole time, which is why the drop looked inexplicable. 398 `deferred_objective_unknown`
-      events for this one device in a single day's log: the rate-confidence lane flaps, and every
-      flap strips the exemption and yanks the pace. The task's protections should degrade
-      gracefully through a transient rate gap (grace window on the last plannable status, like the
-      SDK-read abandon-grace convention), and the horizon log should carry the per-cycle applied
-      exemption, not only the config flag. Found in the 2026-08-01 per-axis-admission
+- [ ] **Why did the water heater's step ladder stay unresolvable for 9.5 h after the 2026-08-01
+      restart?** Log re-read of the 18:40:45 `objective_missing_charge_rate` incident: there was
+      NO rate-confidence flap — the learned kWh/°C stayed `medium`/`learned` in every one of the
+      635 `deferred_objective_unknown` events (each a 30 s lifecycle re-emission of ONE steady
+      state, not a flip), and the single `on_track → unknown` transition in the whole 3-day log
+      coincides with the 18:40:14 app restart. Post-restart `resolveObjectiveSteps` returned `[]`
+      until the 06:00 deadline: no `steppedLoadProfile` on the objective input, no
+      `planningPowerKw`, and the thermal fallback found no usable measured/expected power — while
+      the overview lane showed `expectedPowerKw: 1` (configured) and the device's flow step
+      reports were being discarded as `native_wiring_enabled`. The committed-plan consequence
+      (protections stripped to `unknown`) is fixed — a committed task now serves its frozen plan
+      through the gap (`liveStepsUnavailable`) — but actuation still degrades to binary+setpoint
+      (`expectedStepId: null`) for as long as the gap lasts. Establish why the ladder/planning
+      power never re-resolved (native-wiring rebuild after restart? objective-input lane missing
+      the calibrated/configured estimate the overview lane had?) and close that re-establishment
+      gap. Source: 2026-08-02 task-6 regrounding of the 2026-08-01 per-axis-admission
       investigation. [P1]
+
+- [ ] **Limit/pause-lower-priority rescue is silently ineffective during a step-ladder gap.**
+      While a committed task is served frozen through a missing step ladder, the decoration still
+      grants `forceBoostActive`/`reservesStartupPower`, but `resolveTemperatureBoostActive` /
+      `resolveEvBoostActive` reject a device without a stepped profile BEFORE consulting
+      `forceBoostActive`, and the startup reservation cannot resolve a positive power amount — so
+      under cap contention the task cannot actually claim power from lower-priority devices while
+      the structured log's `limitLowerPriorityApplied`/`pauseLowerPriorityApplied` read true
+      (those flags were config echoes before the gap-serve too). Strictly better than pre-fix
+      (where the whole decision collapsed to `inactive`), but the honest fix is either a
+      persisted capacity claim (carry the commitment's expected step power into the boost/reserve
+      lanes) or reporting the two permissions as unavailable during the gap. Ties into the ladder
+      re-establishment P1 above — with the ladder back, both permissions work again. Source:
+      Codex review thread on PR #1962, 2026-08-02. [P2]
+
+- [ ] **Bootstrap step gap reports `objective_missing_charge_rate` even when the rate is present.**
+      The steps-empty branch in `buildDiagnosticWithPolicyHorizon` reuses the rate code for a
+      ladder problem, which is exactly the ambiguity that delayed the 2026-08-01 diagnosis (the
+      logged unknown carried a healthy `kWhPerDegreeC` while claiming a missing charge rate).
+      Persona: the maintainer (or log-reading owner) triaging a "Waiting" smart-task hero.
+      Hypothesis: a distinct code (e.g. `objective_missing_step_ladder`) makes the two lanes
+      distinguishable in one log line and lets the pending-hero copy say "waiting for the device's
+      power steps" instead of the misleading learning-state copy; `resolvePendingReason`'s
+      thermal mapping (`activePlanRevisionBuild.ts`) must be updated in the same change so the
+      hero copy stays correct. Source: adversarial review of fix/committed-task-survives-step-gap,
+      2026-08-02. [P3]
+
+- [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
+      Same shape as the fixed step-ladder gap one short-circuit earlier: in
+      `buildDiagnosticWithPolicyHorizon`, a `profileEnergy.reasonCode` (e.g. a real
+      `objective_missing_charge_rate` from a lost/unconfident learned rate) returns `unknown`
+      before the frozen fallback is consulted, so a committed task would lose its budget
+      exemption/boost/floor exactly like the 2026-08-01 incident — via the rate lane instead of
+      the step lane. Not yet observed in prod (the 2026-08-01 rate never degraded). Serving frozen
+      here needs `energyNeededKWh` handling in `buildFrozenHorizonPlan` (shortfall display and the
+      legacy milestone fallback consume it); the unit-milestone comparison itself is rate-free, so
+      commitments with stamped `plannedUnitMilestone` could be served with a degraded/absent
+      energy estimate. Do it as its own change with its own SDK-boundary e2e. Source: 2026-08-02
+      task-6 fix review. [P2]
 
 - [ ] **A smart task reports `on_track` while its current planned bucket goes undelivered.**
       Prod 2026-08-01, water heater "Connected 300": the frozen horizon booked 1.183 kWh into the
