@@ -1385,6 +1385,139 @@ describe('daily budget exceeded state', () => {
     expect(underUpdate.snapshot.state.frozen).toBe(false);
   });
 
+  it('keeps the current-hour allocation across an unfreeze that spanned an hour transition', () => {
+    // Regression: unfreezing used to null the current-hour lock, so the next
+    // rebuild re-spread `budget - used` across ALL remaining hours including the
+    // one in progress, collapsing it to `used + a marginal share` right after an
+    // overrun (and, via a stale lock persisted during the freeze, on the first
+    // rebuild after an app restart).
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const hour = 60 * 60 * 1000;
+    const bucketKey = (index: number) => new Date(dayStart + index * hour).toISOString();
+
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.4, 0.4, 0.2, ...Array.from({ length: 21 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
+
+    // 00:05 — plan builds: h0=4, h1=4, h2=2; lock = hour 0.
+    manager.update({
+      nowMs: dayStart + 5 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    // 00:30 — usage runs ahead of the allowance: freeze (no rebuilds from here).
+    const frozenUpdate = manager.update({
+      nowMs: dayStart + 30 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 5 } },
+      priceOptimizationEnabled: false,
+    });
+    expect(frozenUpdate.snapshot.state.frozen).toBe(true);
+    const frozenPlan = frozenUpdate.snapshot.buckets.plannedKWh;
+    expect(frozenPlan[1]).toBeCloseTo(4, 6);
+
+    // 01:30 — hour transition happened WHILE frozen (lock stale at hour 0);
+    // the allowance ramp has caught up, so this update unfreezes.
+    const unfreezeUpdate = manager.update({
+      nowMs: dayStart + 90 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 5, [bucketKey(1)]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    expect(unfreezeUpdate.snapshot.state.frozen).toBe(false);
+
+    // 01:36 — first rebuild after the unfreeze: the hour in progress keeps its
+    // planned allocation; only future hours re-spread the remaining budget.
+    const rebuildUpdate = manager.update({
+      nowMs: dayStart + 96 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 5, [bucketKey(1)]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    const rebuiltPlan = rebuildUpdate.snapshot.buckets.plannedKWh;
+    expect(rebuildUpdate.snapshot.state.frozen).toBe(false);
+    expect(rebuiltPlan[1]).toBeCloseTo(frozenPlan[1], 6);
+    expect(rebuiltPlan[2]).toBeCloseTo(1, 6);
+    expect(manager.exportState().lastPlanBucketStartUtcMs).toBe(dayStart + hour);
+  });
+
+  it('re-spreads future hours on the first update after an unfreeze even when the last rebuild is fresh', () => {
+    // Regression for the trigger gap: per-sample usage deltas stay below the
+    // usage-change rebuild threshold, so with the current-hour lock kept an
+    // unfreeze less than an hour after the last rebuild would leave the stale
+    // frozen plan's future hours in place until the hourly interval. The
+    // unfreeze resets the rebuild clock so the very next update re-spreads.
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const hour = 60 * 60 * 1000;
+    const bucketKey = (index: number) => new Date(dayStart + index * hour).toISOString();
+
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.4, 0.4, 0.2, ...Array.from({ length: 21 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
+
+    // 00:55 — plan builds (h0=4, h1=4, h2=2); the rebuild clock is FRESH.
+    manager.update({
+      nowMs: dayStart + 55 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    // 01:05 — overshoot: freeze before any hour-1 rebuild ran.
+    const frozenUpdate = manager.update({
+      nowMs: dayStart + 65 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 6 } },
+      priceOptimizationEnabled: false,
+    });
+    expect(frozenUpdate.snapshot.state.frozen).toBe(true);
+
+    // 01:40 — the allowance ramp caught up: unfreeze (no rebuild this update).
+    const unfreezeUpdate = manager.update({
+      nowMs: dayStart + 100 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 6, [bucketKey(1)]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    expect(unfreezeUpdate.snapshot.state.frozen).toBe(false);
+
+    // 01:44 — 49 min after the last rebuild, no usage movement: the interval
+    // and usage triggers are both silent, so only the unfreeze's rebuild-clock
+    // reset makes this update rebuild. Current hour locked, future re-spread.
+    const rebuildUpdate = manager.update({
+      nowMs: dayStart + 104 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey(0)]: 6, [bucketKey(1)]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    const rebuiltPlan = rebuildUpdate.snapshot.buckets.plannedKWh;
+    expect(rebuiltPlan[1]).toBeCloseTo(4, 6);
+    // remaining = 10 - 6 used, fully reserved by the locked current hour:
+    // the stale h2=2 must have been re-spread down, not left in place.
+    expect(rebuiltPlan[2]).toBeCloseTo(0, 6);
+    expect(manager.exportState().lastPlanBucketStartUtcMs).toBe(dayStart + hour);
+  });
+
   it('recomputes future buckets from a frozen plan while keeping the current bucket locked', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 12 });
