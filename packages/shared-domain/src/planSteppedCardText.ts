@@ -309,16 +309,23 @@ export const resolveSteppedPowerText = (device: {
 const EV_CHARGING_STATE_LABELS: Record<string, string> = {
   plugged_in_charging: 'Charging',
   plugged_in_paused: 'Paused',
-  plugged_in: 'Waiting for car',
+  plugged_in: 'Not charging',
   plugged_in_discharging: 'Discharging',
   plugged_out: 'Unplugged',
 };
+
+// The plugged-in-idle state (`plugged_in`) upgrades to a car-attributed label
+// only when the plan proves the car is the holdout (see
+// `resolveSteppedEvExceptionLabel`).
+const EV_IDLE_STATE = 'plugged_in';
+const EV_IDLE_COMMANDED_LABEL = 'Waiting for car';
 
 // ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────
 
 // EV charging states that are the routine "it's doing its thing" case — they
 // fold into the fact line beside the level. Every other EV state (Paused /
-// Waiting for car / Discharging / Unplugged) is an exception and renders in
+// Not charging / Waiting for car / Discharging / Unplugged) is an exception
+// and renders in
 // the reason slot instead (`resolveSteppedEvExceptionLabel`).
 const EV_ROUTINE_STATE = 'plugged_in_charging';
 
@@ -346,15 +353,40 @@ export const resolveSteppedLevelFact = (device: {
   return `${capitalize(levelText)}`;
 };
 
+type EvExceptionSteppedLoad = SteppedLoadCardState & { profile?: SteppedLoadProfile };
+
+// "Waiting for car" is honest only when PELS has commanded a powered step —
+// then the plugged-in-idle charger really is waiting on the car to draw. With
+// no powered target the charger idles because PELS left it idle, and the car
+// (which cannot initiate charging past an idle setpoint) must not be blamed.
+const isCommandedToPoweredStep = (steppedLoad: EvExceptionSteppedLoad | undefined): boolean => {
+  const targetId = steppedLoad?.targetStepId ?? null;
+  if (targetId === null || isOffLikeId(targetId)) return false;
+  const profile = steppedLoad?.profile;
+  // No profile → the powered-vs-0W distinction is unknowable; a non-off
+  // target id is the best available evidence of a charge command.
+  if (!profile) return true;
+  return isPoweredStep(profile, targetId);
+};
+
 // Exceptional EV states for the reason slot — null for the routine charging
-// state (carried by the fact line) and for non-EV devices.
+// state (carried by the fact line) and for non-EV devices. The idle state
+// (`plugged_in`) states the plain fact ("Not charging") unless the plan
+// proves the car is the holdout, in which case it names it ("Waiting for
+// car"). In simulation (`dryRun`) the powered target is hypothetical intent —
+// PELS never sent the command — so the car cannot be the holdout and the
+// label stays the neutral fact.
 export const resolveSteppedEvExceptionLabel = (device: {
   evChargingState?: EvChargingState;
   controlCapabilityId?: string;
-}): string | null => {
+  steppedLoad?: EvExceptionSteppedLoad;
+}, dryRun = false): string | null => {
   if (device.controlCapabilityId !== 'evcharger_charging') return null;
   const state = (device.evChargingState ?? '').trim().toLowerCase();
   if (state === EV_ROUTINE_STATE) return null;
+  if (state === EV_IDLE_STATE && !dryRun && isCommandedToPoweredStep(device.steppedLoad)) {
+    return EV_IDLE_COMMANDED_LABEL;
+  }
   return EV_CHARGING_STATE_LABELS[state] ?? null;
 };
 

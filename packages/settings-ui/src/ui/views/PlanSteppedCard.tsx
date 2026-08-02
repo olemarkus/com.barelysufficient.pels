@@ -32,10 +32,11 @@ import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 // device state (see `planCardGrammar.ts`).
 //
 // Target-only EV nuance: a `not_applicable` currentState resolves `active`
-// under a keep plan, but an EV that is paused / waiting for the car /
-// unplugged is not running — asserting `Running` beside a "Paused" reason
-// would contradict on one card. When an exceptional EV state exists, the
-// active word demotes to `Idle` (the reason slot names the specific state).
+// under a keep plan, but an EV in any exceptional charging state (paused /
+// not charging / discharging / unplugged) is not delivering the planned
+// charge — asserting `Running` beside a "Paused" reason would contradict on
+// one card. When an exceptional EV state exists, the active word demotes to
+// `Idle` (the reason slot names the specific state).
 const resolveStateKind = (dev: PlanDeviceSnapshot, dryRun: boolean): PlanDisplayStateKind => {
   const kind = resolveDisplayStateKind({
     kind: resolveRawPlanStateKind(dev),
@@ -140,10 +141,11 @@ export const PlanSteppedCard = ({
     : null;
   const factualStatusText = resolvedStatusText ?? (intentKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
   // One reason line: the status pipeline wins; an exceptional EV state
-  // (Paused / Waiting for car / Discharging / Unplugged) fills the slot only
+  // (Paused / Not charging / Waiting for car / Discharging / Unplugged)
+  // fills the slot only
   // when no status renders. In simulation the held/limited status reads
   // hypothetically (no-op outside simulation / for non-acted lines).
-  const singleReason = factualStatusText ?? resolveSteppedEvExceptionLabel(displayDev);
+  const singleReason = factualStatusText ?? resolveSteppedEvExceptionLabel(displayDev, dryRun);
   const statusText = singleReason === null ? null : toSimulationReasonLine(singleReason, dryRun);
 
   const cardClasses = [
