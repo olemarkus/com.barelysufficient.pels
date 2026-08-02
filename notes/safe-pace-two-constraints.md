@@ -27,10 +27,64 @@ code, one owner of the data point.** Everything below is written in these terms.
 | `budgetPaceKw` re-expressed on the import axis by adding exempt draw | `budgetPaceImportKw` | import | `lib/plan/planBuilder.ts` | **main only** |
 | `min(capacityPaceKw, budgetPaceImportKw)`: the threshold the planner acts on | `bindingPaceKw` | import | `lib/plan/planBuilder.ts` | per home |
 
+### Arriving here from a code comment
+
+This note is the definition of record for the names above, and the producers point
+at it. Most of them still use a local name, so find your row here before reading
+the table above — otherwise a reader landing from `allowedKw` has to guess which
+quantity they are holding.
+
+This table is **transitional and is the convergence checklist**. A row loses its
+"name in code" entry when that rename lands; when the column is empty, the
+canonical names are the names in the code and this subsection can be deleted. Do
+not coin a new local name for a quantity that already has a canonical one — rename
+toward the table instead, and where a rename is too large for the change in hand,
+leave the local name and add the pointer.
+
+Rows are anchored on **symbol names, not line numbers**, deliberately: this file's
+line-number citations went stale twice in one week, so anything meant to stay
+followable is keyed to something `grep` can still find after the next refactor.
+
+| Canonical name | Name in code today | Producer |
+|---|---|---|
+| `hardCapKw` | `limitKw`, `capacitySettings.limitKw`, `CapacityGuard.limitKw` | capacity settings |
+| `safetyMarginKw` | `marginKw`, `CapacityGuard.softMarginKw` | capacity settings |
+| `hourlyAllowanceKWh` | `netBudgetKWh`, `hourBudgetKWh`, `budgetKWh` | `resolveUsableCapacityKw` |
+| `sustainableRateKw` | same value as the row above, read as a rate; the canonical identifier exists only as a local inside `computeDynamicSoftLimit` | `resolveUsableCapacityKw` |
+| `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`, `softLimit` (guard) | `computeDynamicSoftLimit` |
+| `projectedExemptKw` | *(landed)* | `sumBudgetExemptProjectedUsageKw` |
+| `measuredExemptKw` | *(landed as a sum, not yet as a published scalar)* | `sumBudgetExemptMeasuredUsageKw` |
+| `budgetPaceKw` | *(landed)* | `computeDailyUsageSoftLimit` |
+| `budgetPaceImportKw` | `dailySoftLimitKw`, `dailySoftLimit` | `PlanBuilder.computeDailySoftLimit` |
+| `bindingPaceKw` | `softLimit` (context), `softLimitKw` (meta/contract) | `PlanBuilder` |
+
+Note what the middle column shows in one glance: **`softLimit` appears twice**,
+meaning `capacityPaceKw` at `capacityGuard.getSoftLimit()` and `bindingPaceKw` on
+`PlanContext`. That is the first defect in § "Why the table is a change" seen from
+the code side, and it is why a pointer to this note earns more on those two sites
+than anywhere else.
+
+One qualification on the table above, since the admission-scoped slice of § "Proposed
+model" has now shipped: `bindingPaceKw` is described there as "the threshold the
+planner acts on", which is no longer the whole story. It still drives shedding, the
+display tick, and the should-plan-restores gate, but **restore admission is per-axis**
+— an exempt candidate reads `capacityHeadroomKw`, a non-exempt one reads
+`min(capacityHeadroomKw, budgetHeadroomKw)`, where the budget axis is built from the
+measured exempt sum so an off exempt device reserves nothing on it.
+
+`hardCapKw` is a partial exception: the name is already in wide use across
+`lib/objectives/deferredObjectives/**`, the settings UI, and
+`homeScope.getHardCapKw()`, so adopting it in the capacity and plan paths is a
+rename onto a name the codebase already carries rather than a new coinage.
+`safetyMarginKw` is **not** in the same position — it appears only in the settings
+UI, so that half is a genuinely new name everywhere else.
+
+### The rest of the model
+
 `hourlyAllowanceKWh` and `sustainableRateKw` are the same number with different
 dimensions: kWh over the hour, and the kW that spends it evenly. One owner, two
-named readings, because `planBudget.ts:25` subtracts it as energy
-(`remainingKWh = allowance - usedKWh`) while line 44 multiplies it as a rate
+named readings, because `computeDynamicSoftLimit` subtracts it as energy
+(`remainingKWh = allowance - usedKWh`) while it multiplies the same value as a rate
 (`drainCeilingKw = sustainableRateKw * exp(...)`). A single `...KWh` name that gets
 multiplied as kW is exactly the ambiguity this table exists to remove. Note that
 `notes/units.md` prefers integer watts internally with kW only at the UI boundary;
@@ -40,17 +94,17 @@ pre-empting that migration.
 
 `hourlyAllowanceKWh` is settings all the way down: a pure function of two settings
 values with no runtime state. It belongs to whoever owns `capacitySettings` and
-should be handed out as a resolved value, exactly like `homeScope.ts:153` already
-does for `getHardCapKw`. No consumer should ever perform the subtraction, including
+should be handed out as a resolved value, exactly like `homeScope.getHardCapKw()`
+already does for the cap itself. No consumer should ever perform the subtraction, including
 the settings UI, which should receive it through the contract rather than
 recomputing it in the browser.
 
 **"One owner" means one per scope, not one process-wide.** Every home bundle
 constructs its own `planEngine` and wires its own soft-limit provider
-(`setup/homeRuntime/createHomeCapacityBundle.ts:406`), so the per-home rows above
+(`setup/homeRuntime/createBundleCapacityGuard.ts`), so the per-home rows above
 have one owner *within a home scope* and N instances across a multi-home install.
 The budget rows are different: sub-home bundles are constructed with
-`getDailyBudgetSnapshot: () => null` (`createHomeCapacityBundle.ts:291`), matching
+`getDailyBudgetSnapshot: () => null` (`createHomeCapacityBundle.ts`), matching
 `notes/multi-home-model.md:129`, which makes the daily budget deliberately
 main-only. So a sub-home has no `budgetPaceKw` at all.
 
@@ -88,7 +142,7 @@ the statement holds for both.
 
 **`P_nonExempt` is signed, for the same reason `P_import` is.** `P_import` is not
 floored anywhere on the power path (`capacityGuard.reportTotalPower`,
-`lib/power/capacityGuard.ts:102-105`, stores whatever finite value arrives), so it
+`capacityGuard.reportTotalPower`, stores whatever finite value arrives), so it
 goes negative while exporting and `headroom = bindingPaceKw - P_import` correctly
 grows. `P_nonExempt` is the exact analogue on the budget axis and gets the same
 treatment. Substituting `P_import = grossConsumption - solar` and
@@ -136,12 +190,21 @@ The names above are the target. Today the code violates all three legs of the ru
 elsewhere it means `capacityPaceKw` with a fallback to a *different quantity*, and
 the fallback is not even consistent:
 
-| Site | Wired | Unwired fallback |
-|---|---|---|
-| `lib/power/capacityGuard.ts:124-129` | `capacityPaceKw` | `hourlyAllowanceKWh` |
-| `lib/executor/planExecutor.ts:428` | `capacityPaceKw` | **`hardCapKw`** |
-| `lib/diagnostics/periodicStatus.ts:83` | `capacityPaceKw` | `hourlyAllowanceKWh` |
-| `lib/plan/rebuildScheduler/signalDriven.ts:86-87` | `capacityPaceKw` | `hourlyAllowanceKWh` |
+There are **two different unwired conditions**, and they do not degrade the same way.
+Keep them apart: "provider unwired" means the guard exists but no soft-limit provider
+is set, and "no guard" means the caller could not obtain a `CapacityGuard` at all.
+
+| Site | Wired | Provider unwired | No guard |
+|---|---|---|---|
+| `capacityGuard.getSoftLimit()` | `capacityPaceKw` | `hourlyAllowanceKWh` | n/a |
+| `lib/executor/shortfallExecutor.ts` | `capacityPaceKw` | `hourlyAllowanceKWh` | **`hardCapKw`** |
+| `lib/diagnostics/periodicStatus.ts` | `capacityPaceKw` | `hourlyAllowanceKWh` | `hourlyAllowanceKWh` |
+| `lib/plan/rebuildScheduler/signalDriven.ts` | `capacityPaceKw` | `hourlyAllowanceKWh` | `hourlyAllowanceKWh` |
+
+Only `shortfallExecutor` reaches `hardCapKw`, and only on the no-guard branch
+(`capacityGuard ? capacityGuard.getSoftLimit() : capacitySettings.limitKw`) — the
+loosest of the candidates, on the path that panics. Every other cell routes through
+`getSoftLimit()` and so lands on the allowance.
 
 A caller cannot tell which quantity it received. An unwired provider silently
 substituting a different threshold is the same failure the root `AGENTS.md`
@@ -151,7 +214,7 @@ consequence is that a wiring regression degrades to a *quieter* limit rather tha
 failing loudly.
 
 Surfacing the unresolved state is only half the fix; the callers need a contract
-for it. `lib/executor/planExecutor.ts:428` needs a number to act on, so "return
+for it. `lib/executor/shortfallExecutor.ts` needs a number to act on, so "return
 unresolved" has to come with a decision about what the executor does when it gets
 one. The defensible answer is fail-closed, the same posture
 `resolvePowerSampleFreshness` already takes for a stale meter, rather than
@@ -159,25 +222,41 @@ falling back to `hardCapKw` as it does today, which is the *loosest* of the
 candidates. Specify that before changing the return type, otherwise the change
 just moves the ambiguity from the producer to every call site.
 
-**One concept, five implementations.** `hardCapKw - safetyMarginKw` is recomputed
-inline at `lib/power/capacityGuard.ts:129`, `lib/plan/rebuildScheduler/signalDriven.ts:87`,
-`lib/power/sampleIngest.ts:159`, and `packages/settings-ui/src/ui/capacity.ts:219`,
-alongside the nominal owner at `lib/power/capacityModel.ts:7`. The owner is the
-capacity-settings owner, per the table above: it resolves the value once and hands
-it out, and the settings UI receives it through the contract as data. That is why
-the settings-UI copy at `capacity.ts:219` is a duplicate to delete rather than a
-boundary problem to work around; nothing needs to live in `packages/shared-domain`
-for both sides to read, because only one side computes.
+**One concept, seven implementations.** `hardCapKw - safetyMarginKw` is recomputed
+inline at six sites besides the nominal owner (`resolveUsableCapacityKw` in
+`lib/power/capacityModel.ts`):
 
-**One concept, two names.** `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts:10`)
+| Site | What it feeds |
+|---|---|
+| `lib/power/capacityGuard.ts` | the `getSoftLimit()` unwired fallback |
+| `lib/plan/rebuildScheduler/signalDriven.ts` | unwired fallback |
+| `lib/power/sampleIngest.ts` | `hourBudgetKWh` |
+| `packages/settings-ui/src/ui/capacity.ts` | "safe pace starts each hour at" |
+| `packages/settings-ui/src/ui/homeLimits.ts` | per-home limits row |
+| `packages/settings-ui/src/ui/views/BudgetOverview.tsx` | daily-budget ceiling |
+
+The owner is the capacity-settings owner, per the table above: it resolves the
+value once and hands it out, and the settings UI receives it through the contract
+as data. That is why the three settings-UI copies are duplicates to delete rather
+than a boundary problem to work around; nothing needs to live in
+`packages/shared-domain` for both sides to read, because only one side computes.
+
+`BudgetOverview.tsx` is the sharpest of the three: it already spells its operands
+`hardCapKw` and `safetyMarginKw` — the canonical names from the table above — and
+still recomputes them in the browser. A name landing without its ownership landing
+is exactly the failure this section is about.
+
+**One concept, two names.** `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts`)
 is an alias of `resolveUsableCapacityKw`, so it returns `hourlyAllowanceKWh` while
 its name promises `capacityPaceKw`. Anything reaching for "the capacity soft limit"
 gets the wrong quantity.
 
-**No name at all.** `budgetPaceKw` is an unnamed intermediate inside
-`computeDailySoftLimit`. What reaches `PlanContext` and `plan.meta` as
-`dailySoftLimitKw` is `budgetPaceImportKw`, the *rebased* value. Nothing downstream
-can obtain the pace that applies to the non-exempt house.
+**No name at all — resolved.** `budgetPaceKw` used to be an unnamed intermediate
+inside `computeDailySoftLimit`, with only the rebased `budgetPaceImportKw` reaching
+`PlanContext` and `plan.meta` as `dailySoftLimitKw`, so nothing downstream could
+obtain the pace that applies to the non-exempt house. It is now returned by name
+alongside `projectedExemptKw` and published on both `PlanContext` and `plan.meta`.
+This leg of the rule is done; the other three below are not.
 
 ## Two constraints with different subjects
 
@@ -185,17 +264,17 @@ PELS paces against two independent things, and they do not measure the same load
 
 | Constraint | Subject (what counts) | Window | End-of-hour drain | Computed by |
 |---|---|---|---|---|
-| `capacityPaceKw` | All of `P_import`, with no per-device carve-out: managed devices, budget-exempt devices, and background usage all count, but only to the extent they are drawn from the grid | the current clock hour | **yes** | `computeDynamicSoftLimit` (`lib/plan/planBudget.ts:20`), off `powerTracker.buckets[key]` |
-| `budgetPaceKw` | `P_nonExempt`: everything *except* budget-exempt devices | the current bucket of the daily plan, not the whole day | **no**, deliberately | `computeDailyUsageSoftLimit` (`lib/plan/planBudget.ts:51`), off `resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts:70-88`) |
+| `capacityPaceKw` | All of `P_import`, with no per-device carve-out: managed devices, budget-exempt devices, and background usage all count, but only to the extent they are drawn from the grid | the current clock hour | **yes** | `computeDynamicSoftLimit` (`lib/plan/planBudget.ts`), off `powerTracker.buckets[key]` |
+| `budgetPaceKw` | `P_nonExempt`: everything *except* budget-exempt devices | the current bucket of the daily plan, not the whole day | **no**, deliberately | `computeDailyUsageSoftLimit` (`lib/plan/planBudget.ts`), off `resolveDailySoftLimitBucket` (`resolveDailySoftLimitBucket`) |
 
 ### Only one of the two paces drains at the hour boundary
 
 `capacityPaceKw` is `min(burstRate, sustainableRateKw * e^(minutesRemaining / TAU))`
-(`lib/plan/planBudget.ts:44-46`, TAU 4 min), so it collapses toward
+(`computeDynamicSoftLimit`, TAU 4 min), so it collapses toward
 `sustainableRateKw` over the last minutes of the hour. `budgetPaceKw` applies no
 such ceiling, on purpose: "Daily budget is a soft constraint, never apply
 end-of-hour capping. Only the hourly hard cap needs EOH protection"
-(`planBudget.ts:73-75`). See `notes/end-of-hour-mode.md` for why the drain exists.
+(`computeDailyUsageSoftLimit`). See `notes/end-of-hour-mode.md` for why the drain exists.
 
 **"Safe pace now" does account for the drain**, because `bindingPaceKw` is a
 `min()` and the drained `capacityPaceKw` is one of its operands. The budget side
@@ -215,9 +294,9 @@ obvious:
   the starvation cause attribution, and the startup stabilization gate at
   `lib/plan/restore/index.ts:55`), and unlike the open hysteresis item it is a real
   transition rather than epsilon jitter.
-- **None of the unwired fallbacks carry the drain.** `capacityGuard.ts:129`,
-  `signalDriven.ts:87` and `periodicStatus.ts:83` fall back to `sustainableRateKw`;
-  `planExecutor.ts:428` falls back to `hardCapKw`. Neither decays. So an unwired
+- **None of the unwired fallbacks carry the drain.** `capacityGuard.ts`,
+  `signalDriven.ts` and `periodicStatus.ts` fall back to `sustainableRateKw`;
+  `shortfallExecutor.ts` falls back to `hardCapKw`. Neither decays. So an unwired
   provider does not merely substitute a different quantity, it substitutes one that
   can never wind down at the boundary, defeating exactly what the drain is for.
   This is the sharpest reason the fallbacks in § "Canonical names" are worth
@@ -385,6 +464,14 @@ overCapacityPace = P_import     > capacityPaceKw
 overBudgetPace   = P_nonExempt  > budgetPaceKw
 deficitKw        = max(P_import - capacityPaceKw, P_nonExempt - budgetPaceKw)
 ```
+
+**`deficitKw` is not an available name.** It already means the shortfall deficit
+across `lib/executor` and `lib/plan/rebuildScheduler` (`handleShortfall(deficitKw)`,
+`onTightNoopHardCapBreach`), so introducing a second meaning in the same layer would
+recreate the exact `softLimit` failure this note exists to remove. Pick a distinct
+name for the two-predicate quantity — or rename the shortfall one first — before
+writing the identifier anywhere. The admission-scoped slice that shipped avoided
+this by naming its axes `capacityHeadroomKw` and `budgetHeadroomKw`.
 
 `deficitKw` is algebraically identical to today's `P_import - bindingPaceKw`: the
 subtraction distributes over `min`, and neither form clamps. It is a re-expression,

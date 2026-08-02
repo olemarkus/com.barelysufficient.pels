@@ -24,6 +24,8 @@
 ## Doc comments
 
 - Exported boundary types and module entry/hub files carry a docblock stating ownership, the invariants callers can rely on, and the governing note or doc. Pure internal helpers don't need one. House-style references: `lib/device/deviceObservation.ts`, `lib/price/combinedPricesReader.ts`.
+- **When a governing note defines a canonical name for a quantity and the local identifier differs, say so where the quantity is produced** — name the canonical term, name the note, and let the note carry the definition. The pointer is what keeps a rename convergent instead of forking yet another local name, so add it even (especially) when you are not doing the rename in the change at hand. Do not paraphrase the definition into the comment; a copy drifts from the note exactly the way the names drifted in the first place. Reference: the safe-pace family (`notes/safe-pace-two-constraints.md`), pointed at from `lib/power/capacityModel.ts`, `lib/power/capacityGuard.ts`, `lib/plan/planBudget.ts`, `lib/plan/planUsage.ts`, and `lib/plan/planContext.ts`.
+- Anchor cross-references on **symbol names, not line numbers**. A `file.ts:NN` citation in a note or comment is stale the next time anything above it moves — the safe-pace note's citations rotted twice in one week — and a stale pointer is worse than none, because it sends the reader somewhere confidently wrong.
 
 ## Logging
 

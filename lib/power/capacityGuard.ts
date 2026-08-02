@@ -151,6 +151,32 @@ export default class CapacityGuard {
 
   // --- Limit calculations ---
 
+  /**
+   * Returns **two different quantities** depending on wiring, which is why the
+   * name is `softLimit` and not one of the canonical ones. With a provider wired
+   * it is `capacityPaceKw`, the dynamic hourly threshold. Otherwise it silently
+   * substitutes `hourlyAllowanceKWh`, a different quantity that never decays at
+   * the hour boundary. The accept test is `typeof === 'number' && >= 0`, which is
+   * deliberately *not* a finiteness gate — `Infinity` passes and is returned
+   * verbatim, contrary to the boundary rule in the root `AGENTS.md`.
+   *
+   * A caller cannot tell which quantity it received, and the substitution is not
+   * uniformly safer: the static allowance is *stricter* than the pace mid-hour
+   * (the pace can sit at several times the allowance while the hour is under-used)
+   * and *looser* at the end of it (no drain, and it never reaches 0 on an
+   * exhausted hour, where `computeDynamicSoftLimit` returns 0). So a wiring
+   * regression silently shifts the limit in both directions, rather than failing
+   * loudly.
+   *
+   * `notes/safe-pace-two-constraints.md` § "Canonical names" is the definition of
+   * record and tracks the fix: surface the unresolved state explicitly, and settle
+   * the caller contract (fail-closed, matching the stale-meter posture) in the same
+   * change. Until then, treat this as unresolved-or-a-pace, never as a known pace.
+   *
+   * The note's revisit trigger fires on any new caller — add one only deliberately,
+   * and note that `flowCards/headroomAndEvSocCards.ts` already consumes it with no
+   * fallback of its own and publishes it to a structured log.
+   */
   getSoftLimit(): number {
     if (this.softLimitProvider) {
       const dynamic = this.softLimitProvider();

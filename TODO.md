@@ -565,7 +565,7 @@ What remains open is below.*
       item. Source: safe-pace model review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
 - [ ] **A tight-capacity hour hands `softLimitSource` over to `'capacity'` near `:00`.**
       `capacityPaceKw` decays toward `sustainableRateKw` as the hour ends
-      (`lib/plan/planBudget.ts:44-46`) while `budgetPaceImportKw` holds level, so a hand-over
+      (`computeDynamicSoftLimit`) while `budgetPaceImportKw` holds level, so a hand-over
       fires exactly when the rebased daily pace sits above the decaying capacity pace near the
       boundary. It does not fire when the daily pace is well below the sustainable rate (a 2 kW
       daily pace against an 8 kW sustainable rate stays daily-bound through `:00`), so this is a
@@ -583,7 +583,7 @@ What remains open is below.*
       `docs/glossary.md` ("Safe pace") and `docs/how-pels-decides.md` (~line 55) both state the
       safe pace *is* the cap minus the margin. It is not: the capacity pace is a burst rate,
       `remainingKWh / remainingHours` capped by the end-of-hour drain ceiling
-      (`lib/plan/planBudget.ts:20`), which legitimately sits *above* cap-minus-margin for most of
+      (`computeDynamicSoftLimit`, `lib/plan/planBudget.ts`), which legitimately sits *above* cap-minus-margin for most of
       an under-used hour. `notes/ui-terminology.md` § "Safe pace, hard cap, and safety margin"
       and `docs/technical.md` already say this correctly, and the glossary entry contradicts its
       own next sentence ("a moving target, not a fixed limit"). Cap-minus-margin is the
@@ -600,9 +600,9 @@ program) remain deferred.*
 
 - [ ] **One concept, one name, one owner for the pace/limit family.** `softLimit` currently names
       four different quantities depending on call site and wiring, and the unwired fallbacks
-      disagree with each other: `lib/power/capacityGuard.ts:124-129` falls back to the hourly
+      disagree with each other: `capacityGuard.getSoftLimit()` falls back to the hourly
       allowance, `lib/executor/shortfallExecutor.ts:40-41` falls back to the **hard cap**,
-      `lib/diagnostics/periodicStatus.ts:83` and `lib/plan/rebuildScheduler/signalDriven.ts:86-87`
+      `lib/diagnostics/periodicStatus.ts` and `lib/plan/rebuildScheduler/signalDriven.ts`
       to the allowance. A caller cannot tell which quantity it got, so a wiring regression
       degrades to a quieter limit instead of failing loudly, which is the root `AGENTS.md`
       "unavailable must not become a default" rule applied to a control threshold. Adopt the
@@ -610,25 +610,29 @@ program) remain deferred.*
       (`hardCapKw`, `safetyMarginKw`, `hourlyAllowanceKWh`, `sustainableRateKw`, `capacityPaceKw`,
       `budgetPaceKw`, `budgetPaceImportKw`, `bindingPaceKw`) and give each exactly one producer.
       `hourlyAllowanceKWh` and `sustainableRateKw` are one owner with two named readings, since
-      `planBudget.ts:25` subtracts it as energy and line 44 multiplies it as a rate. "One owner"
+      `computeDynamicSoftLimit` subtracts it as energy and line 44 multiplies it as a rate. "One owner"
       means one per scope: the capacity rows are per home (each bundle wires its own provider,
       `setup/homeRuntime/createHomeCapacityBundle.ts:406`), the budget rows are main-only
       (sub-homes get `getDailyBudgetSnapshot: () => null`, `createHomeCapacityBundle.ts:291`), so
       a sub-home has no `budgetPaceKw` and its `softLimitSource` can never be `'daily'`. Concrete work:
-      (a) collapse the five independent `hardCapKw - safetyMarginKw` computations
-      (`lib/power/capacityModel.ts:7`, `lib/power/capacityGuard.ts:129`,
-      `lib/plan/rebuildScheduler/signalDriven.ts:87`, `lib/power/sampleIngest.ts:159`,
-      `packages/settings-ui/src/ui/capacity.ts:219`) onto one owner. It is a pure function of two
+      (a) collapse the seven independent `hardCapKw - safetyMarginKw` computations onto one
+      owner — the nominal owner `resolveUsableCapacityKw` (`lib/power/capacityModel.ts`) plus
+      six recomputations in `lib/power/capacityGuard.ts`,
+      `lib/plan/rebuildScheduler/signalDriven.ts`, `lib/power/sampleIngest.ts`,
+      `packages/settings-ui/src/ui/capacity.ts`, `packages/settings-ui/src/ui/homeLimits.ts`,
+      and `packages/settings-ui/src/ui/views/BudgetOverview.tsx` (inventory kept in
+      `notes/safe-pace-two-constraints.md` § "One concept, seven implementations"; the last two
+      were missing from the earlier count of five). It is a pure function of two
       settings values with no runtime state, so the owner is the capacity-settings owner, and it
       should be handed out already resolved next to the existing `getHardCapKw` accessor
-      (`setup/homeRuntime/homeScope.ts:153`). The settings UI then receives it through the
+      (`setup/homeRuntime/homeScope.ts`). The settings UI then receives it through the
       contract as data rather than recomputing it, which also sidesteps that it cannot import
       `lib/**`;
-      (b) delete `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts:10`), an alias of
+      (b) delete `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts`), an alias of
       `resolveUsableCapacityKw` whose name promises the capacity pace but returns the allowance;
       (c) make `capacityGuard.getSoftLimit()` return one quantity, surfacing an unwired provider
       as an explicit unresolved state rather than a substituted threshold, and decide the caller
-      contract at the same time: `lib/executor/planExecutor.ts:428` needs a number, so specify
+      contract at the same time: `lib/executor/shortfallExecutor.ts` needs a number, so specify
       fail-closed (matching the stale-meter posture) rather than today's fall back to
       `hardCapKw`, which is the loosest candidate. Without that the ambiguity just moves from the
       producer to every call site;
