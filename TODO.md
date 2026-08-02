@@ -41,6 +41,53 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **The editor client still revokes a standing limit-only grant on any permission toggle.**
+      `applyPermissionGate` (`packages/settings-ui/src/ui/smartTaskEdit.ts:342-348`) forces
+      `limitLowerPriorityDevices: false` whenever `exemptFromBudget` is unchecked, on ANY
+      permission toggle — so with a Flow-granted limit-only task, toggling e.g. pause on flips
+      the limit toggle off (disabled, so it can't be re-checked), and Save sends an explicit
+      revoke that `buildCandidateRescue` applies before the server's standing-grant protection
+      (the 2026-08-02 P0 fix) can see it. Same user promise, adjacent journey (permission-edit
+      instead of goal-edit). The client gate's justification comment ("the server drops that
+      grant when it isn't paired") is no longer true for standing grants; fix together with the
+      pairing-story P2 below, and update the checked-but-disabled
+      `SMART_TASK_LIMIT_NEEDS_BUDGET_HINT` copy (`DeadlinePlan.tsx:1379-1388`) that tells the
+      user a working grant is unusable. Source: 2026-08-02 release review, Fix-A adversarial
+      pass. [P1]
+- [ ] **The weather budget-correction sentence can contradict the numbers on its own card.**
+      `composeBudgetLimitingReason` (`packages/shared-domain/src/weatherInsightCopy.ts:148`)
+      appends "N kWh of that covers days that ran past your budget", anchoring "that" to the raw
+      raise — a number the card never shows. With Suggested 48 / Your budget 45, the only visible
+      raise is 3 kWh, so a 6.4 kWh component reads as bigger than the whole; production hits this
+      whenever accumulated pressure exceeds suggested − current. Anchor the sentence to a number
+      on the card ("N kWh of the suggestion covers days that ran past your budget"). Source:
+      2026-08-02 release review (v2.19.3..origin/main), pels-ux-fit rendered walk. [P1]
+- [ ] **Simulation banner still towers: Main-scoped above 440 px, single-home at every narrow
+      width.** The stacked-banner fix (`packages/settings-ui/public/style.css:5719`) bounds at
+      `max-width: 440px` and matches only `#dry-run-banner[data-home-scope="main"]`, so at 480 px
+      — the platform's flagship width — the Main-scoped banner reverts to the flex row and towers
+      3 short lines, and the base single-home banner still towers 4 word-per-line rows at 320 px.
+      It is the first element on every tab whenever simulation is on. Extend the stacked grid to
+      the base banner and through 480 px (or shorten the copy), and tighten the
+      layout-regressions/dry-run guard caps that currently admit the towers. Source: 2026-08-02
+      release review, pels-m3-critic + pels-ux-fit rendered walks. [P1]
+- [ ] **The "no electricity meters" empty state never renders — a meter-less home gets a silent
+      empty picker.** `refreshMeterDevices` (`packages/settings-ui/src/ui/homesSettings.ts:337`)
+      assigns `meterDevices` only when `meters.length > 0`, so `metersLoaded` stays false for a
+      genuinely meter-less home and the rewritten `HOMES_NO_METER_DEVICES` copy is unreachable in
+      exactly the state it was written for. Distinguish "loaded empty" from "fetch failed": assign
+      `[]` on a successful read, keep last-good only on error. Source: 2026-08-02 release review,
+      pels-ux-fit rendered walk (rendered proof captured). [P1]
+- [ ] **Disabling temperature control on a currently-limited thermostat strands the shed
+      setpoint.** The command fence (`setup/appInit/buildDeviceActuator.ts:24-52`) refuses every
+      non-binary write once the toggle is on — including the restore/terminal-release write-back —
+      and `toPlanDevice` strips the target axis, so a thermostat shed to its floor (e.g. 12 °C)
+      stays there indefinitely with nothing warning the owner; the UI blocks the flip only for an
+      active smart task (`temperatureControlDisabled.ts:83-90`), not for an active setpoint shed.
+      Either write the mode target back once before fencing, or show a warning line on the toggle
+      while the device is limited via setpoint. docs/technical.md documents "does not change the
+      target", so this is a UX/safety follow-up, not a contract break. Source: 2026-08-02 release
+      review, settings-UI logic pass. [P1]
 - [ ] **Why did the water heater's step ladder stay unresolvable for 9.5 h after the 2026-08-01
       restart?** Log re-read of the 18:40:45 `objective_missing_charge_rate` incident: there was
       NO rate-confidence flap — the learned kWh/°C stayed `medium`/`learned` in every one of the
@@ -1041,6 +1088,95 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **One failed boot read of the temperature-control policy flips every thermostat to on/off
+      control.** `resolveTemperatureControlDisabled` (`setup/appDeviceControlHelpers.ts:64-74`)
+      classifies every temperature device target-control-disabled while the policy read is
+      `unavailable` with no prior resolved value, so a capacity shed in that window turns
+      thermostats OFF instead of lowering setpoints, and boost is stripped. Fail-safe direction
+      and self-healing (retry per query), but it is one transient read driving a behavior flip.
+      Count 2–3 consecutive unavailable resolutions before applying the all-temperature fallback,
+      or at least emit a dedicated `temperature_control_policy_unavailable` event so the flip is
+      diagnosable. Source: 2026-08-02 release review, pels-runtime-reality. [P2]
+- [ ] **The sustained hard-cap card's in-app hint omits the flow-source reporting requirement.**
+      With `power_source = flow` and samples arriving less often than once a minute, every
+      sustained run ends `evidence_stale` (`setup/capacityShortfallAlertDispatch.ts:366`, 60 s
+      freshness bound), so thresholds of 120–600 s silently never fire during a genuine breach.
+      docs/flow-cards.md documents the once-a-minute requirement; the card hint does not. Either
+      add the caveat to the compose hint, or have the guard republish a heartbeat candidate while
+      the condition stays evidenced with a fresh-by-flow-standards sample. Source: 2026-08-02
+      release review, pels-runtime-reality + budget/alerts adversarial pass. [P2]
+- [ ] **The immediate hard-cap alert burns its once-per-incident shot on a rejected delivery.**
+      `setup/capacityShortfallAlertDispatch.ts:240-242,270-280` latches `deliveredIncidentId`
+      before `fire()` resolves, so an SDK-rejected trigger is never retried for that incident even
+      though candidates keep republishing; the sustained lane already re-serves on rejection.
+      Pre-existing parity with the retired hold, not a regression. Don't latch when `fire()`
+      resolves `rejected`. Source: 2026-08-02 release review, pels-runtime-reality. [P2]
+- [ ] **Fold the shortfall-alert staleness watchdog into `CapacityGuard`.**
+      `setup/capacityShortfallAlertDispatch.ts:360-369` re-derives evidence staleness against
+      `POWER_SAMPLE_STALE_THRESHOLD_MS` because `isConditionActive` reads the last sample the
+      guard ever saw with no freshness bound — consumer-side resolution the next consumer will
+      have to copy. Expose a freshness-resolved predicate (e.g. `isConditionEvidencedAt(nowMs)`)
+      on the guard and delete the lane-local branch. Source: 2026-08-02 release review,
+      pels-layering-guardian. [P2]
+- [ ] **Decide the limit-lower-priority pairing story: the runtime honours limit-only, the
+      surfaces claim it is inert.** `lib/objectives/deferredObjectives/admission.ts:96` engages
+      boost from the grant alone (`limitLowerPriorityApplied` keys on the grant, not the
+      exemption), while the editor's locked-row hint, the gate's new-grant pairing rule, and the
+      e2e title "(inert alone)" all assume limit-without-exemption does nothing. Either make the
+      pairing real in admission (a behavior change for standing Flow-granted limit-only tasks) or
+      drop the pairing claim from the surfaces (editor hint, e2e title, gate comment). The
+      2026-08-02 release fix stopped the edit lane erasing standing limit-only grants; this
+      settles which story is true. Source: 2026-08-02 release review, smart-tasks adversarial
+      pass. [P2]
+- [ ] **Smart-task permission presentation: locked row hides its description; read-only row sits
+      in "What PELS has learned".** While "May limit lower-priority devices" is gated off, its
+      description is replaced by "Turn on 'May go over daily budget' to use this." so the owner
+      can't learn what it does before granting the prerequisite (show both lines). On the task
+      detail, the granted-permissions row renders inside the learned-inputs card; a permission is
+      a setting, not something learned — move it beside the task inputs. Source: 2026-08-02
+      release review, pels-ux-fit. [P2]
+- [ ] **Temperature-control-disabled device detail: one-option segmented control and three
+      different suppressed-control treatments.** With the toggle on, "What PELS does when limiting
+      this device" renders a single-option segmented control ("Turn off") that looks tappable;
+      render a static statement when only one action remains. Suppressed controls mix three
+      treatments (solar surplus and Price response vanish; Price-based control stays disabled;
+      modes card gets a "kept, not applied" hint) — pick the visible-but-disabled + hint
+      treatment. Source: 2026-08-02 release review, pels-ux-fit. [P2]
+- [ ] **`formatHoursBeforeDeadline` rounds the safety margin in the flattering direction.**
+      `packages/shared-domain/src/deadlineLabels.ts:2421`: "projected ready ≈ 18:00, 2 hours
+      before the deadline" against a 19:40 deadline overstates a 1 h 40 min margin via
+      `Math.round`; this release's shortfall resolver ceils for exactly the opposite reason.
+      Floor the hours or render "1 h 40 min". Source: 2026-08-02 release review, pels-ux-fit. [P2]
+- [ ] **Two different sentences for the same blocked-resume state can appear on one screen.**
+      On/off cards say "Not enough available power to resume — N kW more needed"
+      (`packages/shared-domain/src/planReasonFormatting.ts:505`) while temperature/stepped cards
+      say "Waiting to resume — N kW more needed" (`planTemperatureCardText.ts:118`). Converge on
+      one sentence. Source: 2026-08-02 release review, pels-ux-fit. [P2]
+- [ ] **Two disabled-dim languages in the stylesheet: raw `opacity: 0.38` beside
+      `--opacity-disabled: 0.5`.** `packages/settings-ui/public/style.css:8367` (gated switch-row
+      label) and the older 3049 use raw 0.38 while four other sites use the token. Promote 0.38 to
+      a token or reconcile with `--opacity-disabled`, and use it in both spots; opacity is not in
+      the stylelint gate, which is why CI admits it. Source: 2026-08-02 release review,
+      pels-m3-critic. [P2]
+- [ ] **Three new UI states have no screenshot-harness coverage.** The Main-meter conflict banner
+      (`HomesSettingsSection.tsx:384`), the smart-task editor-open permissions disclosure, and the
+      armed rescue chip with its granted-permissions line could only be reviewed by primitive
+      analogy. Add a `conflict` state to `homes-management-screenshots.spec.ts` and an editor-open
+      state to the smart-tasks capture harness. Source: 2026-08-02 release review,
+      pels-m3-critic. [P2]
+- [ ] **Copy nits from the v2.19.3→next release review.** (a) "Clear this device's active Smart
+      task…" (`packages/settings-ui/public/index.html:1079`, sibling at 1089) capitalizes
+      mid-sentence "Smart task"; canonical form is lowercase. (b) The `allow_smart_task_rescue`
+      dropdown option `at no time` composes to "Allow … to go over today's budget at no time" —
+      an Allow-sentence whose payload is a revocation; consider `at no time (turns this off)`.
+      (c) `deadlineLabels.ts:1799` "a useful capacity, or a recent observation" leaks
+      profile/observer vocabulary into heater help text (verify the line is in-range before
+      editing). Source: 2026-08-02 release review, pels-copy-and-terminology. [P2]
+- [ ] **docs/weather-insight.md still says auto-apply "replaces" the budget each day.** Since
+      8ec444cd8 auto-apply is asymmetric: it skips `would_lower_while_limiting`, so it will not
+      lower a budget the home has been running past. Add the one-line caveat to the
+      "Auto-applying the suggested budget" section. Source: 2026-08-02 release review, docs
+      freshness pass. [P2]
 - [ ] **The displayed restore shortfall omits live startup reservations.** When a
       higher-priority startup reservation (`headroomReserve`) is active, non-swap stepped
       rejections and binary batch continuations build their reason from the RAW headroom margin,
@@ -1350,11 +1486,13 @@ program) remain deferred.*
       (`lib/power/sampleIngest.ts:113-123` keeps the cap path and the kWh bucket on net) while
       per-device `exemptKw` is gross appliance draw, so on a solar home the slab can exceed the
       bar; decide whether the hero axis is net (slab needs a clamp with a visible treatment) or
-      gross (cap tick no longer sits on the axis the cap meters). Do NOT present "available
-      power" as cap-only for an exempt device: `lib/plan/planReasons.ts:63-68` documents that
-      the exemption covers daily-budget shedding only, restore admission still gates on
-      `min(capacitySoftLimit, dailySoftLimit)`, and an off exempt device can genuinely be held
-      by the daily budget, though not for the reason that comment gives (see below). Depends on
+      gross (cap tick no longer sits on the axis the cap meters). Since per-axis restore
+      admission (432737799), an exempt candidate is evaluated against the capacity axis only —
+      the old `min(capacitySoftLimit, dailySoftLimit)` gate no longer applies to it, and the
+      rewritten `lib/plan/planReasons.ts` comment says so — so presenting "available power" as
+      cap-scoped is now admission-accurate for an exempt device. The one residual budget
+      influence on an off exempt device is the global `shouldPlanRestores` gate, which has its
+      own P2 entry; don't re-derive a per-device budget hold from the hero. Depends on
       the P1 reason-line copy fix and on `plan.meta` carrying the un-rebased pace + exempt kW.
       Rejected alternative: two permanently visible pace ticks (three ticks at 320 px, with the
       cap tick already mandatory, for a state most homes never enter). Persona: skeptical
@@ -2711,6 +2849,15 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 
 ## P3 Future and Exploratory Work
 
+- [ ] **An ON-but-unmetered exempt device zeroes the budget axis for everyone else.**
+      `sumBudgetExemptMeasuredUsageKw` (`lib/plan/planUsage.ts:87-95`) counts only
+      `measuredPowerKw`, so a running exempt device with no measurement contributes to the meter
+      total but 0 to the exempt credit — `budgetHeadroomKw` goes deeply negative and every
+      non-exempt restore is budget-held for the duration. Conservative (never over-budget) and
+      bounded to planned hours. Direction: a measured-or-observed-on-projection hybrid for the
+      axis. Persona: boost user with an unmetered water heater during planned hours. *Hypothesis:*
+      the hybrid removes hour-long phantom budget holds without ever over-crediting the exempt
+      slab. Source: 2026-08-02 release review, planner-core adversarial pass. [P3]
 - [ ] **The eight-area cap is not enforced where the memory is consumed.**
       `HOME_AREA_MAX_COUNT` is checked only at the `ui_homes_save` seam; neither `HomeRuntimeRegistry`
       nor `normalizeHomesConfig` bounds anything, so a `homes_config` written outside the UI still
