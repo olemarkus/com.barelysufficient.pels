@@ -101,8 +101,12 @@ describe('Redesign plan UI', () => {
       expect(supportLines[0]).toContain('Managed 3.1 kW');
       expect(supportLines[0]).toContain('Background 2.1 kW');
       expect(supportLines).toHaveLength(1);
+      // The subline names the binding ceiling: from 2026-08-02 the hero owns
+      // that fact and the device cards stopped repeating it once per card, so
+      // this is where the owner reads it (a hover tooltip is unreachable in the
+      // touch WebView).
       expect((document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)') as HTMLElement | null)
-        ?.textContent?.trim()).toBe('Safe pace now 11.0 kW');
+        ?.textContent?.trim()).toBe("Safe pace now 11.0 kW · set by today's budget");
       // Energy section shows the explicit backend-provided hour budget, not legacy budget fields.
       expect(headlines.some((h) => h?.includes('4.2 of 11.0 kWh used'))).toBe(true);
       expect(document.querySelectorAll('.plan-hero .pels-meter-track')).toHaveLength(2);

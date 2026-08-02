@@ -1,5 +1,3 @@
-import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
-import { resolveRestoreShortfallKw } from './planReasonFormatting';
 import {
   resolveDisplayStateKind,
   resolveIntentStateKind,
@@ -7,21 +5,12 @@ import {
   shouldDisplayExternalOffReason,
 } from './planCardGrammar';
 import {
-  PLAN_STATE_DAILY_BUDGET_STATUS,
-  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
-  PLAN_STATE_HOURLY_BUDGET_STATUS,
   type PlanStateKind,
 } from './planStateLabels';
-import { formatStarvationReason } from './planStarvation';
-import {
-  DEVICE_OVERVIEW_LOWERED_BY_PELS,
-  DEVICE_OVERVIEW_WOULD_LOWER,
-} from './deviceOverviewStrings';
-import { toSimulationReasonLine } from './simulationReasonMood';
+import { resolveHeldCardReasonLine } from './planCardReasonLine';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
-import { resolveHeldStateActionLabel, type DeviceOverviewSnapshot } from './deviceOverview';
+import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
@@ -59,28 +48,6 @@ export const resolveBinarySurplusReasonLine = (
     : null
 );
 
-const isWaitingReason = (code: string): boolean => (
-  code === PLAN_REASON_CODES.insufficientHeadroom
-  || code === PLAN_REASON_CODES.shortfall
-  || code === PLAN_REASON_CODES.headroomCooldown
-  || code === PLAN_REASON_CODES.cooldownRestore
-  || code === PLAN_REASON_CODES.cooldownShedding
-  || code === PLAN_REASON_CODES.meterSettling
-  || code === PLAN_REASON_CODES.activationBackoff
-  || code === PLAN_REASON_CODES.restorePending
-  || code === PLAN_REASON_CODES.waitingForOtherDevices
-  || code === PLAN_REASON_CODES.neutralStartupHold
-  || code === PLAN_REASON_CODES.startupStabilization
-);
-
-const isLimitedReason = (code: string): boolean => (
-  code === PLAN_REASON_CODES.capacity
-  || code === PLAN_REASON_CODES.hourlyBudget
-  || code === PLAN_REASON_CODES.dailyBudget
-  || code === PLAN_REASON_CODES.swappedOut
-  || code === PLAN_REASON_CODES.swapPending
-);
-
 // ─── Temperature line ─────────────────────────────────────────────────────────
 
 const resolveTemperatureTargetText = (device: TemperatureDevice): string | null => {
@@ -108,39 +75,10 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
 };
 
 // ─── Reason line ─────────────────────────────────────────────────────────────
-
-// Admission-accurate shortfall (reserves folded in) — shared resolver, see
-// `resolveRestoreShortfallKw` in `planReasonFormatting.ts`.
-const resolveHeadroomGapKw = (reason: unknown): number | null => resolveRestoreShortfallKw(reason);
-
-const resolveWaitingText = (reason: unknown): string => {
-  const gap = resolveHeadroomGapKw(reason);
-  return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
-};
-
-// Map a reason code to its limited-status label. Extracted so the parent
-// resolver stays under the SonarJS / ESLint complexity caps after the
-// deferred-objective avoid branch was added.
-const resolveLimitedReasonLabel = (reasonCode: string): string | null => {
-  if (reasonCode === PLAN_REASON_CODES.deferredObjectiveAvoid) return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
-  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
-  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
-  if (isLimitedReason(reasonCode)) return PLAN_STATE_CAPACITY_STATUS;
-  return null;
-};
-
-// The producer-resolved budget starvation cause wins over any reason.code
-// framing: a budget-held device reads "Limited to stay within today's budget",
-// never the insufficient-headroom waiting copy or the hard-cap fallback —
-// mirrors `resolveReasonText` on the generic card. Capacity-cause starvation
-// returns null here so the reason.code paths produce the correct "Waiting for
-// available power" copy (the hard cap is not a remedy — feedback_hard_cap_is_physical).
-// Extracted so the parent resolver stays under the complexity caps.
-const resolveBudgetStarvationReason = (device: TemperatureDevice): string | null => (
-  device.starvation?.isStarved && device.starvation.cause === 'budget'
-    ? formatStarvationReason(device.starvation)
-    : null
-);
+//
+// The held-card line itself lives in `planCardReasonLine.ts`, shared with the
+// stepped and generic cards. This module only decides WHEN a temperature card
+// shows one (the intent-kind and temperature-evidence gates below).
 
 // A surplus-absorb raise is a benign, user-opted-in boost — surface it ONLY while the device
 // is actively running (`kind === 'active'`), the one state where "PELS is running this hotter
@@ -152,14 +90,6 @@ const resolveSurplusAbsorbReason = (device: TemperatureDevice, kind: string): st
   device.surplusAbsorbActive === true && kind === 'active'
     ? TEMPERATURE_SURPLUS_REASON
     : null
-);
-
-// `dryRun` (simulation mode) switches the held device's fact-stated action
-// ("Lowered by PELS") to its hypothetical variant so the card never claims PELS
-// acted when it did not (notes/overview-hero-spec.md § "Simulation mode is
-// hypothetical").
-const resolveHeldTemperatureActionLabel = (dryRun: boolean): string => (
-  dryRun ? DEVICE_OVERVIEW_WOULD_LOWER : DEVICE_OVERVIEW_LOWERED_BY_PELS
 );
 
 // Plan-INTENT kind (raw + the idle→held upgrade): a hold/wait reason means
@@ -178,31 +108,18 @@ const resolveTemperatureIntentKind = (device: TemperatureDevice, reasonCode: str
   })
 );
 
-const resolveHeldBinaryTemperatureReason = (
+const resolveHeldLine = (
   device: TemperatureDevice,
-  kind: string,
-  reasonCode: string,
-  dryRun: boolean,
-): string | undefined => {
-  if (kind !== 'held' || device.shedAction !== 'turn_off') return undefined;
-  const budgetReason = resolveBudgetStarvationReason(device);
-  if (budgetReason !== null) return toSimulationReasonLine(budgetReason, dryRun);
-  if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
-  return resolveHeldStateActionLabel(device, dryRun);
-};
+): string => resolveHeldCardReasonLine({ reason: device.reason, starvation: device.starvation });
 
-const resolveTemperaturePlanReasonLine = (
-  device: TemperatureDevice,
-  dryRun = false,
-): string | null => {
+const resolveTemperaturePlanReasonLine = (device: TemperatureDevice): string | null => {
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
   const kind = resolveTemperatureIntentKind(device, reasonCode);
 
   // A temperature card can be binary-commanded while retaining observational
-  // temperature facts. It deliberately has no planned temperature, so resolve
-  // its held binary action before the temperature-intent evidence gate.
-  const heldBinaryReason = resolveHeldBinaryTemperatureReason(device, kind, reasonCode, dryRun);
-  if (heldBinaryReason !== undefined) return heldBinaryReason;
+  // temperature facts. It deliberately has no planned temperature, so answer
+  // before the temperature-evidence gate below.
+  if (kind === 'held' && device.shedAction === 'turn_off') return resolveHeldLine(device);
 
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
@@ -214,14 +131,7 @@ const resolveTemperaturePlanReasonLine = (
   // The card's bold state word already says "Resuming" (2026-07 card
   // grammar) — a reason line repeating it was pure duplication.
   if (kind === 'resuming') return null;
-  const budgetReason = resolveBudgetStarvationReason(device);
-  if (budgetReason !== null) return toSimulationReasonLine(budgetReason, dryRun);
-  if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
-  const limitedLabel = resolveLimitedReasonLabel(reasonCode);
-  if (limitedLabel !== null) return toSimulationReasonLine(limitedLabel, dryRun);
-  // `kind` is necessarily 'held' here (idle/resuming/other returned above), so
-  // the held device's action reads hypothetically in simulation mode.
-  return resolveHeldTemperatureActionLabel(dryRun);
+  return resolveHeldLine(device);
 };
 
 // This reason explains a binary OFF fact rather than a temperature decision,
@@ -242,5 +152,5 @@ export const resolveTemperatureReasonLine = (
   });
   return shouldDisplayExternalOffReason(displayKind, reasonCode)
     ? PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS
-    : resolveTemperaturePlanReasonLine(device, dryRun);
+    : resolveTemperaturePlanReasonLine(device);
 };

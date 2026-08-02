@@ -6,6 +6,7 @@ import {
   resolveReserveAdmission,
 } from '../../lib/plan/admission/headroomReserve';
 import { HEADROOM_RESERVE_MAX_MS, RESTORE_ADMISSION_FLOOR_KW } from '../../lib/plan/planConstants';
+import { resolveRestoreShortfallKw } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedProfile } from '../utils/planTestUtils';
@@ -376,5 +377,18 @@ describe('buildReservedForStartReason', () => {
       dev: { id: 'heater', priority: 1 },
       reserves: [reserve('thermostat', 10, 1.25)],
     })).toEqual({ code: PLAN_REASON_CODES.reservedForStart, targetName: null });
+  });
+
+  // Carries the holder's name and NOTHING numeric, on purpose. A gap that would
+  // admit this device through the reservation is dominated by the holder's
+  // reserved block, so surfacing one states another device's quantity as this
+  // one's — the error the swap reasons avoid the same way.
+  it('carries no kW figure, so the card cannot state another device’s reserve as this one’s need', () => {
+    const reason = buildReservedForStartReason({
+      dev: { id: 'heater', priority: 1 },
+      reserves: [reserve('thermostat', 10, 1.25)],
+    });
+    expect(Object.keys(reason).sort()).toEqual(['code', 'targetName']);
+    expect(resolveRestoreShortfallKw(reason)).toBeNull();
   });
 });

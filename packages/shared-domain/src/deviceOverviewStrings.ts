@@ -52,21 +52,13 @@ export const DEVICE_OVERVIEW_UNAVAILABLE = 'Unavailable';
 export const DEVICE_OVERVIEW_STATE_UNKNOWN = 'State unknown';
 export const DEVICE_OVERVIEW_UNKNOWN = 'Unknown';
 
-// --- Secondary text under a Limited chip (`resolveHeldStateActionLabel`) ---
-// Names the action PELS took. Source: notes/ui-terminology.md §"Device state
-// chips": "Turned off by PELS", "Lowered by PELS", or "Charging paused".
-export const DEVICE_OVERVIEW_TURNED_OFF_BY_PELS = 'Turned off by PELS';
-export const DEVICE_OVERVIEW_LOWERED_BY_PELS = 'Lowered by PELS';
-
-// Simulation-mode variants: PELS shows what it WOULD do without switching the
-// device, so the secondary line must not state the action as fact (spec
-// principle "Simulation mode is hypothetical", notes/overview-hero-spec.md).
-// The `(simulation)` tag keeps each card honest in isolation — the banner + hero
-// chip carry the mode, but a card scrolled away from them must still read as
-// hypothetical.
-export const DEVICE_OVERVIEW_WOULD_TURN_OFF = 'Would be turned off (simulation)';
-export const DEVICE_OVERVIEW_WOULD_LOWER = 'Would be lowered (simulation)';
-export const DEVICE_OVERVIEW_WOULD_PAUSE_CHARGING = 'Charging would pause (simulation)';
+// Deleted 2026-08-02: `Turned off by PELS` / `Lowered by PELS` and their three
+// `Would be …(simulation)` variants, along with `resolveHeldStateActionLabel`
+// which produced them. They named the ACTION on a card whose bold state word
+// already said `Limited`, so they answered nothing the reader could not see; the
+// card now states what the device needs instead (`planCardReasonLine.ts`), and
+// the hero names the ceiling limiting the house. Do not reintroduce — see
+// notes/ui-terminology.md § "Device cards say what a device needs".
 
 // --- Status line (`statusMsg`) ---
 // Sentinel: the planner emits this when the device is waiting on power becoming

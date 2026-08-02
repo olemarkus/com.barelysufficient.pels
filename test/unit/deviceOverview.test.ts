@@ -3,7 +3,6 @@ import {
   formatDeviceOverview,
   getDeviceOverviewReportedStepId,
   isDeviceOverviewSteppedModeTransition,
-  resolveHeldStateActionLabel,
 } from '../../packages/shared-domain/src/deviceOverview';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_STATE_CAPACITY_STATUS } from '../../packages/shared-domain/src/planStateLabels';
@@ -526,55 +525,4 @@ describe('device overview transition signatures', () => {
     }));
   });
 
-  describe('resolveHeldStateActionLabel', () => {
-    it('labels EV chargers as paused regardless of shedAction', () => {
-      expect(resolveHeldStateActionLabel({
-        controlCapabilityId: 'evcharger_charging',
-        shedAction: 'turn_off',
-        reason: r('capacity'),
-      })).toBe('Charging paused');
-    });
-
-    it('labels turn-off shed actions for non-EV devices as turned off by PELS', () => {
-      expect(resolveHeldStateActionLabel({
-        controlCapabilityId: 'onoff',
-        shedAction: 'turn_off',
-        reason: r('capacity'),
-      })).toBe('Turned off by PELS');
-    });
-
-    it('labels temperature and step shed actions as lowered by PELS', () => {
-      expect(resolveHeldStateActionLabel({
-        shedAction: 'set_temperature',
-        reason: r('capacity'),
-      })).toBe('Lowered by PELS');
-      expect(resolveHeldStateActionLabel({
-        shedAction: 'set_step',
-        reason: r('capacity'),
-      })).toBe('Lowered by PELS');
-    });
-
-    it('defaults to lowered by PELS when shedAction is missing', () => {
-      expect(resolveHeldStateActionLabel({
-        reason: r('capacity'),
-      })).toBe('Lowered by PELS');
-    });
-
-    it('states the action hypothetically in simulation mode (dryRun)', () => {
-      expect(resolveHeldStateActionLabel({
-        controlCapabilityId: 'onoff',
-        shedAction: 'turn_off',
-        reason: r('capacity'),
-      }, true)).toBe('Would be turned off (simulation)');
-      expect(resolveHeldStateActionLabel({
-        shedAction: 'set_temperature',
-        reason: r('capacity'),
-      }, true)).toBe('Would be lowered (simulation)');
-      expect(resolveHeldStateActionLabel({
-        controlCapabilityId: 'evcharger_charging',
-        shedAction: 'turn_off',
-        reason: r('capacity'),
-      }, true)).toBe('Charging would pause (simulation)');
-    });
-  });
 });

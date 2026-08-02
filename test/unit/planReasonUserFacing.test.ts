@@ -137,15 +137,44 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Power-limit control off',
     },
     {
-      label: 'shed invariant maps to the safety-rule label',
+      // The stepped fairness rule names where the device IS and what would lift
+      // the hold. It read "Blocked by safety rule" until 2026-08-02: jargon, not
+      // a safety rule, and "blocked" overstates a rule that only refuses
+      // increases.
+      label: 'shed invariant names the device step, not the invariant cap',
       reason: {
         code: PLAN_REASON_CODES.shedInvariant,
         fromStep: 'low',
-        toStep: 'off',
+        toStep: 'high',
         shedDeviceCount: 1,
+        // `maxStep` is the invariant's cap, NOT where the device is — prod
+        // 2026-07-05 rendered it and claimed "Limited to Low" for a device
+        // running at Medium. It must not appear in the sentence.
         maxStep: 'mid',
       },
-      expected: 'Blocked by safety rule',
+      expected: 'Holding at Low — cannot increase while 1 device is limited',
+    },
+    {
+      label: 'shed invariant pluralises the device count and formats ampere steps',
+      reason: {
+        code: PLAN_REASON_CODES.shedInvariant,
+        fromStep: '6a',
+        toStep: '16a',
+        shedDeviceCount: 2,
+        maxStep: '6a',
+      },
+      expected: 'Holding at 6 A — cannot increase while 2 devices are limited',
+    },
+    {
+      label: 'shed invariant drops the step clause when the observed step is unknown',
+      reason: {
+        code: PLAN_REASON_CODES.shedInvariant,
+        fromStep: 'unknown',
+        toStep: '16a',
+        shedDeviceCount: 3,
+        maxStep: '6a',
+      },
+      expected: 'Holding — cannot increase while 3 devices are limited',
     },
     {
       // Legacy reason without margin fields: the shortfall falls back to

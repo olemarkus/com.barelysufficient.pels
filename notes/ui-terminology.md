@@ -6,8 +6,8 @@ Canonical user-facing vocabulary for PELS. Follow it in UI labels, help text, st
 
 > User-facing UI should say **what happens**. Advanced docs may explain why the planner does it.
 
-Prefer: `Limited by the hard cap`
-Avoid: `Shed due to capacity`
+Prefer: `Waiting to resume — 0.8 kW more needed`
+Avoid: `restore blocked: insufficient headroom`
 
 Concrete words over jargon: `limited`, not `shed`; `resume`, not `restore`; `available power`, not `headroom`; `safety margin`, not `soft margin`. The migration to this vocabulary is complete in the settings UI — the older terms only survive in internal code identifiers, legacy Homey flow card names (see [`docs/flow-cards.md`](../docs/flow-cards.md)), and raw planner reason strings documented in [`docs/plan-states.md`](../docs/plan-states.md).
 
@@ -47,7 +47,30 @@ surfaces cannot drift.
 
 ### "Safe pace now" — one label, two possible sources
 
-The dynamic tick on the power bar shows where PELS starts reacting. It can come from two constraints, but the user doesn't see the distinction in the primary label. The tooltip explains the source.
+The dynamic tick on the power bar shows where PELS starts reacting. It can come
+from two constraints, and **the hero names which one, visibly** — on the
+Power-now subline, not only in the marker tooltip:
+
+| Source (`meta.softLimitSource`) | Subline clause (`SAFE_PACE_SOURCE_BY_SOURCE`, appended after ` · `) |
+|---|---|
+| `capacity` | set by this hour's pace |
+| `daily` | set by today's budget |
+| `both` | this hour's pace and today's budget meet here |
+
+So the on-track subline reads `Safe pace now 1.9 kW · set by today's budget`,
+and the over-pace subline folds the same clause into its existing parenthetical:
+`1.5 kW above safe pace (12.0 kW · set by today's budget)`.
+
+This became load-bearing on 2026-08-02, when device cards stopped naming the
+binding ceiling (see § "Device cards say what a device needs"). WHICH ceiling
+binds is one house-level fact, so the hero states it once and the cards spend
+their single line on what each device needs. The hero is therefore the only
+place the owner can read it — and a hover tooltip is not a place: the settings
+UI runs in a touch WebView where nothing hovers. Unknown source renders no
+clause; guessing one would risk naming the hard cap when it is not binding
+(see § "Hard cap is an hourly ceiling").
+
+The marker tooltip below keeps the longer explanation for pointer devices.
 
 | Source (`meta.softLimitSource`) | Tooltip (appended after the `Safe pace now N kW —` stem plus a space, so the body separates with a semicolon, not a second em-dash) |
 |---|---|
@@ -143,8 +166,8 @@ that device's Power-limit control back on, **not** raising the hard cap (see
 § "Hard cap is an hourly ceiling"). **`eased off`** / **`ease off`** is the sanctioned verb for
 the hard-cap shed cascade in this decision sentence (it pairs with the default
 `Easing devices off.`); reuse it here rather than reaching for a synonym, and
-keep the chip/secondary-text language (`Limited`, `Turned off by PELS`) for the
-per-device surfaces below.
+keep the chip/secondary-text language (`Limited`, and the per-device reason
+ladder) for the per-device surfaces below.
 
 ## Device state words (Overview cards)
 
@@ -180,15 +203,53 @@ one of the shared state words; the older modality-specific bare `On`/`Off`
 output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.
 
-The reason line under a Limited card names the action or the binding
-constraint: **Turned off by PELS**, **Lowered by PELS**, **Charging paused**,
-`Limited to stay within today's budget`, `Limited by today's daily budget`,
-`Waiting to resume — 0.2 kW more needed`, and so on. `Limited by today's
-daily budget` is the default reason line for a budget-bound hold (including a
-restore blocked by the daily pace — those must NOT read as a kW gap, because
-freeing power cannot lift a budget hold); `Limited to stay within today's
-budget` is the starvation-surface phrasing of the same condition. Converging
-the two onto one sentence is open work; do not add a third variant.
+### Device cards say what a device needs; the hero says what limits the house
+
+The reason line under a Limited card states **what this device needs**. It does
+NOT name the binding ceiling: which ceiling binds — the hard cap, this hour's
+pace, today's budget — is one house-level fact, identical for every device, and
+the hero states it once on the Power-now subline (§ "Safe pace now"). Repeating
+it per card printed the same sentence N times while the reader's actual question
+went unanswered.
+
+Ladder (source of truth: `resolveHeldCardReasonLine` in `planCardReasonLine.ts`,
+shared by all three card variants):
+
+| Situation | Line |
+|---|---|
+| Budget-releasable hold (the `Let it run now` case) | `Limited to stay within today's budget` |
+| Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
+| Held on power, no shortfall resolved | `Waiting to resume` |
+| Long-held on capacity, no shortfall | `Waiting for available power` |
+| Hold that is NOT about power | its own cause (below) |
+
+The shortfall is the kW that would actually admit the device — reserves folded
+in (`resolveRestoreShortfallKw`), not `need − available`, which understates the
+real gate by ~0.5 kW.
+
+Holds where power is not the blocker keep naming their cause, because freeing
+power would not start them and a kW figure would be a lie: `Waiting for cheaper
+hours` (smart task), `Waiting for solar surplus`, `Turned off elsewhere — turn
+it on to resume`, `Waiting so {device} can start` (startup reservation),
+`Holding at 6 A — cannot increase while 2 devices are limited` (stepped fairness),
+and the countdown lines (`Waiting before resuming (50s)`).
+
+**Retired 2026-08-02 — do not reintroduce on a card:** `Turned off by PELS`,
+`Lowered by PELS`, `Limited by the hard cap`, `Limited by today's daily budget`,
+`Limited — this hour is near the hard cap`, `Making room for higher-priority
+device`, `Blocked by safety rule`. The first two restated the bold `Limited`
+state word and named no cause at all; the rest are house-level.
+
+Where they survive, precisely: the six ceiling/swap strings stay in
+`formatDeviceReasonUserFacing`, which feeds the runtime logs and the device
+**activity log** (`lib/plan/deviceOverviewLog.ts` → the `ui_device_log` list
+inside device detail). They do NOT appear on the device-detail live-status row,
+which renders no plan reason except the external-off guidance. `Turned off by
+PELS` / `Lowered by PELS` are not in that formatter at all — they lived in
+`resolveHeldStateActionLabel`, which now has no production caller.
+
+**Charging paused** survives as an EV *state* word (state row), not as a reason
+line.
 
 The kW figure on blocked-resume lines (and the sibling status
 `Not enough available power to resume — N kW more needed`) is the

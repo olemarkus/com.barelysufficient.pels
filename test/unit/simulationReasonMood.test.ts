@@ -31,8 +31,8 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
     expect(toSimulationReasonLine('Limited so another device can run', true))
       .toBe('Would be limited so another device can run (simulation)');
     // Stepped card status line.
-    expect(toSimulationReasonLine('Limited to 6 A — 2 devices still limited', true))
-      .toBe('Would be limited to 6 A — 2 devices still limited (simulation)');
+    expect(toSimulationReasonLine('Limited — will try to resume in 30s if power is available', true))
+      .toBe('Would be limited — will try to resume in 30s if power is available (simulation)');
   });
 
   it('flips the swap "Making room …" line for both bare and named-target variants', () => {
@@ -57,10 +57,8 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
     // Physical capacity constraint — true in simulation or not.
     expect(toSimulationReasonLine('Waiting for available power', true))
       .toBe('Waiting for available power');
-    // Resuming / waiting-to-resume / normal operation.
+    // Resuming / normal operation.
     expect(toSimulationReasonLine('Resuming', true)).toBe('Resuming');
-    expect(toSimulationReasonLine('Waiting to resume — 0.8 kW more needed', true))
-      .toBe('Waiting to resume — 0.8 kW more needed');
     expect(toSimulationReasonLine('Maintaining level', true)).toBe('Maintaining level');
     // The already-hypothetical held state-action label is not double-tagged.
     expect(toSimulationReasonLine('Would be lowered (simulation)', true))
@@ -80,5 +78,18 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
       .toBe('Making room for higher-priority device');
     expect(toSimulationReasonLine('Waiting for cheaper hours', false))
       .toBe('Waiting for cheaper hours');
+  });
+
+  // Same rule, one rung down: the NUMBERED waiting line is the bare fallback with
+  // a kW attached, so it cannot be classified differently. Until 2026-08-02 the
+  // bare form was rewritten and the numbered form was not — the split this file
+  // asserted, and the reason a simulated card could state a hold as fact.
+  it('rewrites the numbered waiting line exactly as it rewrites the bare one', () => {
+    expect(toSimulationReasonLine('Waiting to resume — 0.8 kW more needed', true))
+      .toBe('Would be waiting to resume — 0.8 kW more needed (simulation)');
+    expect(toSimulationReasonLine('Waiting to increase — 0.3 kW more needed', true))
+      .toBe('Would be waiting to increase — 0.3 kW more needed (simulation)');
+    expect(toSimulationReasonLine('Waiting to resume — 0.8 kW more needed', false))
+      .toBe('Waiting to resume — 0.8 kW more needed');
   });
 });

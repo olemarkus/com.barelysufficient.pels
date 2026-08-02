@@ -24,7 +24,8 @@ One elevated Material 3 card with tonal background that shifts with state.
 │                                              │
 │ Power now                                    │
 │ 7.0 kW                                      │
-│ Safe pace now 12.0 kW                       │
+│ Safe pace now 12.0 kW · set by this hour's   │
+│ pace                                         │
 │                                              │
 │ [managed][other][free.................]      │
 │                  ↑ pace            ↑ cap    │
@@ -103,15 +104,28 @@ Normal / on track:
 ```
 Power now
 7.0 kW
-Safe pace now 12.0 kW
+Safe pace now 12.0 kW · set by this hour's pace
 ```
 
 Above safe pace:
 ```
 Power now
 13.5 kW
-1.5 kW above safe pace (12.0 kW)
+1.5 kW above safe pace (12.0 kW · set by today's budget)
 ```
+
+The trailing clause names the binding ceiling (`SAFE_PACE_SOURCE_BY_SOURCE` in
+`planHeroTooltips.ts`; `capacity` → `set by this hour's pace`, `daily` → `set by
+today's budget`, `both` → `this hour's pace and today's budget meet here`). It
+is omitted when `meta.softLimitSource` is unknown — guessing risks naming the
+hard cap when it is not binding.
+
+This clause is load-bearing as of 2026-08-02: device cards no longer name the
+ceiling (`notes/ui-terminology.md` § "Device cards say what a device needs"), so
+this is the only place the owner reads it. It is visible text and not the marker
+tooltip for the same reason the legend row exists — tooltips are unreachable on
+touch. Above safe pace it rides inside the existing parenthetical rather than
+adding a second separator, which pushed the line to three rows at 320 px.
 
 These are the only two sublines. There is deliberately NO above-hard-cap
 subline: instantaneous kW above the cap is not a breach, so the subline only
@@ -403,6 +417,8 @@ One anatomy for all three card variants (`PlanTemperatureCard`, `PlanSteppedCard
    - **Simulation renders the factual device state**: `held`/`resuming` are PELS-acted claims, so under simulation the bold word shows what the device is actually doing and the hypothetical action lives only in the reason line ("Would be limited …"). The rescue action chip is suppressed under simulation (nothing to release).
 3. **One modality fact line**: temperature `20.3 °C · target 22 °C` (arrow `→` reserved for a target *change*, e.g. a solar/boost lift); stepped `Charging · level 6 A` or `Level 6 A` plus the step rail; generic none.
 4. **At most ONE reason line**, exception-only: plan reason → EV smart-task state line (generic) / exceptional EV state (stepped) / idle-classification status (temperature). Quiet states (Running normally, Idle) render no reason — the old "Maintaining level" filler and the duplicated unresponsive chip+line are gone.
+   - **The line says what THIS device needs, never which ceiling limits the house** (2026-08-02). The binding ceiling is one house-level fact; the hero states it once on the Power-now subline, and repeating it per card printed the same sentence N times while answering nobody. Held-on-power cards read `Waiting to resume — 0.8 kW more needed` (the admission-accurate gap, reserves folded in); holds that power cannot lift — smart task, solar surplus, external off, stepped fairness, countdowns — keep their own cause. One resolver for all three variants: `resolveHeldCardReasonLine` in `planCardReasonLine.ts`. Retired-string list in `notes/ui-terminology.md`.
+   - Simulation still applies to it, via `toSimulationReasonLine`. A hold is a PELS action even when the line describes what the device is waiting for — the device only waits because PELS put it there — so `Waiting to resume — 0.8 kW more needed` reads `Would be waiting to resume — 0.8 kW more needed (simulation)`, and `Holding at 6 A — …` reads `Would be holding at 6 A — … (simulation)`. All three card variants pass the ladder's output through the mood transform; a variant that skips it renders one of three cards asserting a hold that never happened.
 
 ### Device card state styling (plain neutral surface)
 

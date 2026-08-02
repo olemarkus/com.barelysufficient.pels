@@ -49,5 +49,20 @@ export const toSimulationReasonLine = (label: string, dryRun: boolean): string =
   // or a card scrolled away from the banner reads as a factual hold PELS is not
   // performing.
   if (label === PLAN_STATE_HELD_FALLBACK_STATUS) return `Would be held back${SIMULATION_TAG}`;
+  // The 2026-08-02 held-card ladder (`planCardReasonLine.ts`). Both forms describe
+  // a hold PELS is performing — the device only waits, or sits at a capped step,
+  // because PELS put it there — so both must read hypothetically in simulation.
+  // Without these they fall through unchanged and a simulated card states a hold
+  // as fact, which is the one thing this module exists to prevent.
+  //
+  // MUST stay below the exact-match rule above: `PLAN_STATE_HELD_FALLBACK_STATUS`
+  // is itself "Waiting to resume", and it has its own shorter rendering.
+  if (label.startsWith('Waiting to resume ')
+    || label.startsWith('Waiting to increase ')
+    || label.startsWith('Waiting so ')
+    || label.startsWith('Holding at ')
+    || label.startsWith('Holding —')) {
+    return `Would be ${label.charAt(0).toLowerCase()}${label.slice(1)}${SIMULATION_TAG}`;
+  }
   return label;
 };

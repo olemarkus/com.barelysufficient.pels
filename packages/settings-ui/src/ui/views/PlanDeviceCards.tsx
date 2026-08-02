@@ -10,11 +10,10 @@ import {
 } from '../../../../shared-domain/src/planReasonFormatting.ts';
 import {
   isSatisfiedTargetOnlyDevice,
-  PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_TONE,
   type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
-import { formatStarvationReason } from '../../../../shared-domain/src/planStarvation.ts';
+import { resolveHeldCardReasonLine } from '../../../../shared-domain/src/planCardReasonLine.ts';
 import {
   displayStateLabel,
   displayStateTone,
@@ -389,33 +388,30 @@ const resolveReasonText = (dev: PlanDeviceSnapshot, dryRun: boolean): string =>
   toSimulationReasonLine(resolveReasonTextFactual(dev), dryRun);
 
 const resolveReasonTextFactual = (dev: PlanDeviceSnapshot): string => {
-  // A held card's reason line must name the actual binding constraint. For ANY
-  // starved device, the producer-resolved cause already determines the copy:
-  // budget → "Limited to stay within today's budget"; capacity → "Waiting for
-  // available power". Firing the override for both causes (not just capacity)
-  // keeps a budget-held card from falling through to the
-  // `PLAN_STATE_HELD_FALLBACK_STATUS = "Limited by the hard cap"` line, which
-  // would wrongly imply the hard cap is the lever (it is physical —
-  // feedback_hard_cap_is_physical). `formatStarvationReason` returns a
-  // non-empty string for both `budget` and `capacity`, so neither case regresses
-  // to the empty fallback.
-  if (dev.starvation?.isStarved) {
-    const override = formatStarvationReason(dev.starvation);
-    if (override) return override;
-  }
-  // Plan-INTENT kind (raw + the idle→held upgrade) — the held fallback must
-  // fire for a hold-reason card the planner marked inactive, and must keep
-  // firing under simulation (only the state word goes factual there).
+  // Plan-INTENT kind (raw + the idle→held upgrade) — the held line must fire for
+  // a hold-reason card the planner marked inactive, and must keep firing under
+  // simulation (only the state word goes factual there).
+  const starved = dev.starvation?.isStarved === true;
   const kind = resolveIntentStateKind({
     kind: resolveRawPlanStateKind(dev),
     reasonCode: (dev.reason as { code?: string } | undefined)?.code,
-    starved: dev.starvation?.isStarved === true,
+    starved,
+  });
+  // One shared ladder across all three card variants: the card states what THIS
+  // device needs, the hero names the ceiling limiting the house. It also owns the
+  // starvation precedence (budget copy first, capacity copy last) — see
+  // `planCardReasonLine.ts`.
+  const heldLine = (): string => resolveHeldCardReasonLine({
+    reason: dev.reason,
+    starvation: dev.starvation,
   });
   if (isTrivialReason(dev.reason)) {
-    return kind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : '';
+    return kind === 'held' || starved ? heldLine() : '';
   }
-  if (isDeviceReason(dev.reason)) return formatReasonSummary(dev.reason);
-  if (kind === 'held') return PLAN_STATE_HELD_FALLBACK_STATUS;
+  if (isDeviceReason(dev.reason)) {
+    return kind === 'held' || starved ? heldLine() : formatReasonSummary(dev.reason);
+  }
+  if (kind === 'held' || starved) return heldLine();
   // Final fallback for malformed snapshots — keep it user-facing so internal
   // planner terms never leak when the upstream reason payload is missing.
   return '';
@@ -644,7 +640,15 @@ export const PlanTemperatureCard = ({
   // when no plan reason renders. The chip duplicate is gone — the same copy
   // never renders twice on one card.
   const idleCopy = resolveIdleCopy(displayDev);
-  const reasonLine = resolveTemperatureReasonLine(displayDev, dryRun) ?? idleCopy?.statusLine ?? null;
+  // The plan reason takes the simulation mood exactly as the generic and stepped
+  // cards do (`resolveReasonText`, `PlanSteppedCard`); the temperature card used
+  // to apply it internally and lost it when the shared ladder landed, leaving one
+  // of three variants asserting a hold PELS never performed. The idle-classification
+  // fallback stays factual — it describes the device, not a PELS action.
+  const planReasonLine = resolveTemperatureReasonLine(displayDev, dryRun);
+  const reasonLine = (planReasonLine === null
+    ? idleCopy?.statusLine ?? null
+    : toSimulationReasonLine(planReasonLine, dryRun));
   const reasonIsIdleCopy = reasonLine !== null && reasonLine === idleCopy?.statusLine;
   const reasonTooltip = reasonIsIdleCopy ? idleCopy?.detail : undefined;
   // The idle-classification copy carries its own tone (warning for

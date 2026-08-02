@@ -6,6 +6,7 @@ import {
   formatShortfallReason,
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
+  resolveRestoreShortfallKw,
   resolveSurplusHoldReportedLoadText,
 } from './planReasonFormatting';
 import { buildComparablePlanReason } from './planReasonParsing';
@@ -19,6 +20,7 @@ export {
   formatShortfallReason,
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
+  resolveRestoreShortfallKw,
   resolveSurplusHoldReportedLoadText,
   buildComparablePlanReason,
 };

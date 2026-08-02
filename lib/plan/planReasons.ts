@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from './planTypes';
 import {
   PLAN_REASON_CODES,
+  resolveRestoreShortfallKw,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { computeBaseRestoreNeed } from './restore/accounting';
@@ -46,6 +47,7 @@ function buildBaseReason(
   // lives on `resolveDailyBindingReattribution`.
   const reattributed = resolveDailyBindingReattribution({
     reasonCode: resolved.code,
+    sourceShortfallKw: resolveRestoreShortfallKw(resolved),
     shedReasonFresh: shedReasons.has(dev.id),
     budgetExempt: dev.budgetExempt === true,
     softLimitSource,
@@ -277,6 +279,7 @@ function normalizeDeviceReason(params: {
 
   const dailyReattribution = resolveDailyBindingReattribution({
     reasonCode: currentReason.code,
+    sourceShortfallKw: resolveRestoreShortfallKw(currentReason.reason),
     shedReasonFresh: shedReasons.has(dev.id),
     budgetExempt: dev.budgetExempt === true,
     softLimitSource,
@@ -316,14 +319,21 @@ function normalizeDeviceReason(params: {
 //   DAILY pace is binding is a budget hold, not a power shortage — `availableKw`
 //   was derived from the budget-derived pace, so no amount of freed power changes
 //   the decision; only budget pacing (or time) does. Without this fold every
-//   budget-bound hold surfaces as `insufficientHeadroom`, the card reads "Waiting
-//   to resume — X kW more needed" while nothing else is running (prod 2026-08-01:
-//   12 devices, house at 0.6 kW, gaps up to 5.2 kW against a 5.0 kW hard cap), and
-//   the hero's "to stay within today's budget" sentence can never fire. Gated on
+//   budget-bound hold surfaces as `insufficientHeadroom` and the hero's "to stay
+//   within today's budget" sentence can never fire. Gated on
 //   `budgetReleasableHeadroomHold`, the producer-resolved flat semantic on
 //   `PlanContext` that `planDiagnostics` also reads, so the card label and the
-//   rescue widget agree by construction. The numeric admission detail stays in
-//   the `restore_rejected` debug log.
+//   rescue widget agree by construction.
+//
+//   The fold re-labels the hold; it does NOT drop its numbers. `sourceShortfallKw`
+//   carries the admission shortfall onto the re-attributed reason so the device
+//   card can still say what the device NEEDS. Until 2026-08-02 the number was
+//   discarded here, deliberately: the displayed gap was `need − available`, which
+//   ignored the reserve stack and produced absurdities (prod 2026-08-01: 12
+//   devices, house at 0.6 kW, gaps up to 5.2 kW against a 5.0 kW hard cap). That
+//   arithmetic was fixed (`resolveRestoreShortfallKw` now computes the gap
+//   admission actually gates on), so the number is trustworthy and belongs on the
+//   card — WHICH ceiling is binding is a house-level fact the hero states once.
 //
 // Note on `DEFERRED_RESTORE_BLOCK_REASON_CODES`
 // (`lib/planContract/planDecisionSemantics.ts`): `dailyBudget` is absent from that
@@ -334,6 +344,10 @@ function normalizeDeviceReason(params: {
 // budget holds ever ride keep-state devices, revisit that set deliberately.
 function resolveDailyBindingReattribution(params: {
   reasonCode: DeviceReason['code'];
+  // Admission shortfall read off the reason being re-attributed, so the
+  // re-labelled hold keeps the kW the card renders. `null` for the
+  // carry-forward `capacity` shape, which never had admission metrics.
+  sourceShortfallKw: number | null;
   shedReasonFresh: boolean;
   budgetExempt: boolean;
   softLimitSource: 'capacity' | 'daily' | null;
@@ -341,7 +355,8 @@ function resolveDailyBindingReattribution(params: {
   budgetReleasableHeadroomHold: boolean;
 }): DeviceReason | null {
   const {
-    reasonCode, shedReasonFresh, budgetExempt, softLimitSource, capacityBreached, budgetReleasableHeadroomHold,
+    reasonCode, sourceShortfallKw, shedReasonFresh, budgetExempt, softLimitSource,
+    capacityBreached, budgetReleasableHeadroomHold,
   } = params;
   if (softLimitSource !== 'daily' || capacityBreached) return null;
   // Never fold a budget-exempt device's hold to `dailyBudget`: per-axis restore
@@ -353,7 +368,8 @@ function resolveDailyBindingReattribution(params: {
   if (budgetExempt) return null;
   const reattribute = (reasonCode === PLAN_REASON_CODES.capacity && !shedReasonFresh)
     || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetReleasableHeadroomHold);
-  return reattribute ? { code: PLAN_REASON_CODES.dailyBudget, detail: null } : null;
+  if (!reattribute) return null;
+  return { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: sourceShortfallKw };
 }
 
 // Surplus dump-load framing: a device the standing "Run on solar surplus" hold

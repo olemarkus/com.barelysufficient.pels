@@ -32,6 +32,31 @@ export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = 
 export const HARD_CAP_TOOLTIP
   = 'your grid tariff step; PELS keeps each hour\'s average power under this.';
 
+// Visible on the Power-now subline, not only in the tooltip above.
+//
+// WHICH ceiling is binding is a house-level fact — the same one for every device
+// — so from 2026-08-02 the hero owns it and the device cards stopped repeating
+// it once per card (see `planCardReasonLine.ts`). That makes this the only place
+// the owner can learn it, and a hover tooltip is not a place: the settings UI
+// runs in a touch WebView where nothing hovers.
+export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
+  capacity: 'set by this hour\'s pace',
+  daily: 'set by today\'s budget',
+  both: 'this hour\'s pace and today\'s budget meet here',
+};
+
+// `null` (rather than the capacity phrase) when the source is unknown: an
+// unattributed marker is honest, a guessed attribution is not — and naming the
+// hard cap when it is not binding is the specific error
+// `feedback_hard_cap_is_physical` warns about.
+export const resolveSafePaceSourceText = (
+  source: HeroSoftLimitSource | null | undefined,
+): string | null => (
+  source === 'capacity' || source === 'daily' || source === 'both'
+    ? SAFE_PACE_SOURCE_BY_SOURCE[source]
+    : null
+);
+
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 const roundKw = (kw: number): number => Math.round(kw * 10) / 10;
 

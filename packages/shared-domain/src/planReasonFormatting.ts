@@ -10,6 +10,7 @@ import {
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
 } from './planStateLabels';
+import { formatStepDisplayLabel } from './steppedStepLabel';
 
 type DetailReason = Extract<
   DeviceReason,
@@ -378,6 +379,12 @@ const ceilToDisplayKw = (gap: number): number | null => (
 export function resolveRestoreShortfallKw(reason: unknown): number | null {
   if (typeof reason !== 'object' || reason === null) return null;
   const r = reason as Record<string, unknown>;
+  // A hold that carries a producer-resolved shortfall wins: the producer had the
+  // admission metrics this reason code no longer carries (a `dailyBudget`
+  // re-attribution, a swap victim, a startup reservation). Already rounded, so
+  // it is returned as-is rather than re-ceilinged.
+  const carried = readFiniteNumber(r['shortfallKw']);
+  if (carried !== null) return carried > 0 ? carried : null;
   if (r['code'] === PLAN_REASON_CODES.insufficientHeadroom) {
     const postReserveMarginKw = readFiniteNumber(r['postReserveMarginKw']);
     const minimumRequiredKw = readFiniteNumber(r['minimumRequiredPostReserveMarginKw']);
@@ -565,6 +572,36 @@ function formatTimedReasonUserFacing(reason: TimedReason): string {
   return `${TIMED_REASON_LABELS[reason.code]} (${formatRemainingSec(reason.remainingSec)}s)`;
 }
 
+// The stepped fairness rule: a stepped device may not climb above its lowest
+// useful step while other devices are still held back. Until 2026-08-02 this
+// read "Blocked by safety rule" — jargon, and wrong twice over: it is a fairness
+// rule, not a safety one, and it named no cause the owner could act on.
+//
+// Two things this line must NOT say, both learned from prod:
+//
+//  - Not "Blocked": the invariant only refuses step *increases*. It never pushes
+//    a device down, so a device running happily at its current step is not
+//    blocked (prod 2026-07-25: an EV charger `Active` at 1.36 kW read as
+//    blocked).
+//  - Not `Limited to {maxStep}`: `maxStep` is the invariant's CAP, not where the
+//    device is. Prod 2026-07-05 showed "Limited to Low" while the device ran at
+//    Medium drawing 1.2 kW. The device's own step is `fromStep`, so the line
+//    renders from that and falls back to the step-less form when the observed
+//    step is unknown rather than substituting the cap.
+//
+// The remedy is also named honestly: those other devices resuming lifts this
+// hold, not more available power.
+function formatShedInvariantUserFacing(
+  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.shedInvariant }>,
+): string {
+  const noun = reason.shedDeviceCount === 1 ? 'device is' : 'devices are';
+  const tail = `cannot increase while ${reason.shedDeviceCount} ${noun} limited`;
+  const currentStep = formatStepDisplayLabel(reason.fromStep);
+  return currentStep === '' || reason.fromStep === 'unknown'
+    ? `Holding — ${tail}`
+    : `Holding at ${currentStep} — ${tail}`;
+}
+
 export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
   if (isStaticReason(reason)) return formatStaticReasonUserFacing(reason);
   if (isDetailReason(reason)) return formatDetailReasonUserFacing(reason);
@@ -583,7 +620,7 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
     case PLAN_REASON_CODES.insufficientHeadroom:
       return formatInsufficientHeadroomUserFacing(reason);
     case PLAN_REASON_CODES.shedInvariant:
-      return 'Blocked by safety rule';
+      return formatShedInvariantUserFacing(reason);
     case PLAN_REASON_CODES.other:
       return reason.text;
     default: {

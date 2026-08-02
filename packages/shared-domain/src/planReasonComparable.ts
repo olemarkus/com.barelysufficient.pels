@@ -43,6 +43,20 @@ export type ComparablePlanReason =
   })
   | ComparableTextReason;
 
+// `dailyBudget` stays here — compared on `detail` alone — even though it now
+// carries a `shortfallKw` the card renders. That kW is DELIBERATELY excluded
+// from every comparable: it moves with `softLimitKw − totalKw`, both of which
+// drift continuously, so folding it in would flip this signature on most plan
+// cycles. That signature gates the per-device device-log ring buffer
+// (`planOverviewEmit.ts` → a 50-entry recorder), and the logged `statusMsg` for
+// a budget hold does not contain the kW — so the ring would fill with textually
+// identical rows and evict the real transitions it exists to keep.
+//
+// Same rule, same reason as `shortfall` sitting in `CODE_ONLY_REASONS` below;
+// pinned by "ignores shortfall jitter in overview transition signatures" in
+// `test/unit/deviceOverview.test.ts`. The card still shows a current number
+// because `normalizePlanMeta` rounds `totalKw`/`softLimitKw` to 0.1 kW and any
+// change there already pushes the whole plan to the UI.
 type DetailComparableReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.keep }

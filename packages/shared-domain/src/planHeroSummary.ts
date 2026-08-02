@@ -190,9 +190,28 @@ export const formatEnergyMeterMarkerLabels = (
 // Keep the safe-pace numeric reference visible in the above-safe-pace state so
 // the user can compare "how much over" against the actual target. Spec:
 // `notes/overview-hero-spec.md` § "Power now".
-export const formatAboveSafePaceSubline = (headroomKw: number, safePaceKw: number): string => {
+//
+// `sourceText` names the binding ceiling (`resolveSafePaceSourceText`), inside
+// the existing parenthetical rather than as a third clause — at 320 px a second
+// separator pushed the line to three rows. Omitted when the source is unknown.
+export const formatAboveSafePaceSubline = (
+  headroomKw: number,
+  safePaceKw: number,
+  sourceText?: string | null,
+): string => {
   const overshootKw = Math.max(0, -headroomKw);
-  return `${formatKw(overshootKw)} above safe pace (${formatKw(safePaceKw)})`;
+  const pace = sourceText ? `${formatKw(safePaceKw)} · ${sourceText}` : formatKw(safePaceKw);
+  return `${formatKw(overshootKw)} above safe pace (${pace})`;
+};
+
+// On-track sibling of the above. Same rule: the ceiling is named here because it
+// is named nowhere else the owner can see.
+export const formatSafePaceSubline = (
+  safePaceKw: number,
+  sourceText?: string | null,
+): string => {
+  const base = `Safe pace now ${formatKw(safePaceKw)}`;
+  return sourceText ? `${base} · ${sourceText}` : base;
 };
 
 // Energy-bar scale used by the Overview hero. When projected is at-or-below

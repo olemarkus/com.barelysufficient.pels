@@ -2,6 +2,7 @@ import {
   DeviceOverviewLogRecorder,
   DEVICE_OVERVIEW_LOG_MAX_DEVICES,
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
+  buildOverviewEventForDevice,
   resolveOverviewControlModel,
 } from '../../lib/plan/deviceOverviewLog';
 import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUiApi';
@@ -106,5 +107,34 @@ describe('resolveOverviewControlModel', () => {
   it('returns the device unchanged when it is neither stepped nor in the map', () => {
     const device = buildPlanDevice({ id: 'x' });
     expect(resolveOverviewControlModel(device, new Map()).controlModel).toBeUndefined();
+  });
+});
+
+// `cardReasonText` logs the line the CARD rendered, so support can reconstruct
+// what the owner saw now that the card and `reasonText` differ by design. The
+// resolver behind it is a HELD ladder: called unconditionally it returns its
+// terminal "Waiting to resume" fallback for a running device, which would log a
+// line no card ever showed — the exact opposite of the field's purpose.
+describe('buildOverviewEventForDevice — cardReasonText', () => {
+  const overview = {
+    powerMsg: 'off', stateMsg: 'Limited', usageMsg: 'Measured: 0.00 kW', statusMsg: 'x',
+  };
+
+  it('logs the card line for a held device', () => {
+    const event = buildOverviewEventForDevice(buildPlanDevice({
+      id: 'dev', plannedState: 'shed', currentState: 'off',
+      reason: { code: 'daily_budget', detail: null, shortfallKw: 0.9 },
+    }), overview);
+    expect(event['cardReasonText']).toBe('Waiting to resume — 0.9 kW more needed');
+  });
+
+  it.each([
+    ['a running device', { plannedState: 'keep' as const, currentState: 'on' }],
+    ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' }],
+  ])('logs null for %s, which renders no reason line', (_label, state) => {
+    const event = buildOverviewEventForDevice(buildPlanDevice({
+      id: 'dev', ...state, reason: { code: 'none' },
+    }), overview);
+    expect(event['cardReasonText']).toBeNull();
   });
 });

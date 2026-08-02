@@ -605,34 +605,6 @@ What remains open is below.*
       exist. Best fixed together with the entry above: guard on inequality and let the suffix carry
       it. Source: prod investigation 2026-07-25. [P2]
 
-- [ ] **A shed-invariant hold renders as "Limited by the hard cap" on the stepped card.**
-      `isLimitedReason` in `packages/shared-domain/src/planSteppedCardText.ts` (~133-135) includes
-      `PLAN_REASON_CODES.shedInvariant`, and the `PLAN_STATE_CAPACITY_STATUS` return at ~260 fires
-      before the dedicated `shedInvariant` branch at ~302 ever runs — so a safety-rule hold is
-      reported as the hard cap, which is neither what is happening nor a lever the owner has
-      (feedback_hard_cap_is_physical). Pre-dates the 2026-07-25 capacity/held-fallback constant
-      split, which renamed the constant without changing which reasons reach it. Fix: a
-      capacity-only predicate for that branch, so `shedInvariant` falls through to its own wording,
-      plus regression coverage. `planTemperatureCardText.ts` is NOT affected — its `isLimitedReason`
-      excludes `shedInvariant`. Closely related to the entry below (same card, same overstatement).
-      Source: CodeRabbit review of #1876, 2026-07-25. [P2]
-
-- [ ] **"Blocked by safety rule" on a device running normally at its target step.** Seen on 2.17.3
-      with the EV charger `Active` at 1.36 kW on step `6a` and `reasonCode: shed_invariant`. The
-      invariant only refuses step *increases* while other devices are limited; it never pushes a
-      device down, so "blocked" overstates what is happening to a device that is running. Same root
-      as the existing `resolveSteppedStatusLine` entry above (rendering the invariant's cap rather
-      than the device's state). Source: prod observation 2026-07-25. [P2]
-
-
-- [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
-      renders the shed-invariant reason as `Limited to ${maxStep}`
-      (`packages/shared-domain/src/planSteppedCardText.ts` ~307), but `maxStep` is the invariant's
-      cap (lowest non-zero step), not the device's state — prod 2026-07-05 20:07 showed "Limited
-      to Low" while Connected 300 ran at Medium drawing 1.2 kW (the invariant only refuses
-      increases; it never pushes a device down). The reason struct already carries
-      `fromStep`/`toStep`; render from those instead, e.g. "Holding at Medium — can't increase
-      while 10 devices are limited". Source: overview correctness review (2026-07-05).
 - [ ] **Hero limited-count disagrees with the stepped card's "N devices still limited".** The
       hero counts `stateKind === 'held' || plannedState === 'shed'` (11 on the 2026-07-05 screen,
       including a hold-reason EV that was never shed), while the stepped card's count comes from
@@ -2083,24 +2055,18 @@ CI failure, so future field-move slices can't silently grow the debt.*
       orientation — a visible sequence prevents the "really tricky to know what to do" first
       session. Source: user onboarding feedback (2026-07-19). [P3]
 
-- [ ] **Simulation wait-lines still read factually on device cards.** Under simulation a held
-      card's waiting copy ("Waiting to resume — 0.2 kW more needed", "Waiting for solar surplus",
-      "Waiting for available power") renders unchanged — `toSimulationReasonLine` deliberately
-      passes non-acted lines through, but "Waiting to resume" claims PELS will resume the device,
-      which under simulation it never will, and the card carries no `(simulation)` marker in that
-      state. Decide a hypothetical form (e.g. "Would resume when 0.2 kW frees up (simulation)")
-      with the copy lens across the three producers (`formatReasonSummary`, `resolveWaitingText`,
-      `resolveBlockedStatusLine`/`resolveOffStatusLine`). Persona: onboarding owner running
-      simulation; hypothesis: a factual promise PELS can't keep in sim erodes the mode's honesty
-      framing. Source: pels-ux-fit implementation gate on the card-grammar PR (2026-07-04). [P2]
+- [ ] **Two simulation wait-lines still read factually on device cards.** `Waiting for solar
+      surplus` and `Waiting for available power` render unchanged under simulation —
+      `toSimulationReasonLine` passes them through as non-acted. Both are arguable: the surplus
+      hold is the device's opted-in baseline (PELS is not acting), and available power is a
+      physical fact either way. Decide with the copy lens whether either should carry a
+      hypothetical form and a `(simulation)` marker. The `Waiting to resume — N kW more needed`
+      half of this entry was resolved 2026-08-02 (the three producers named here collapsed into
+      `planCardReasonLine.ts`, and both the bare and numbered forms now rewrite). Persona:
+      onboarding owner running simulation; hypothesis: a factual promise PELS can't keep in sim
+      erodes the mode's honesty framing. Source: pels-ux-fit implementation gate on the
+      card-grammar PR (2026-07-04). [P3]
 
-- [ ] **"Lowered by PELS" names the actor but not the constraint.** The held temperature card's
-      fallback reason is the only reason line stating a what with no why — siblings name the
-      binding constraint ("Limited to stay within today's budget"). When a cause is resolvable
-      (starvation.cause, reason.code) prefer a constraint-naming line; keep the actor form only
-      for the truly unattributed fallback. Persona: set-and-forget owner asking "why is my room
-      cooler?"; hypothesis: naming the constraint pre-empts the "PELS did something to me"
-      support thread. Source: pels-ux-fit implementation gate (2026-07-04). [P2 copy]
 
 - [ ] **Solar-surplus hold renders at warn tone though it is the expected daily state.** A "Run on
       solar surplus" dump load waiting for export shows `Limited` + warn-toned "Waiting for solar

@@ -9,6 +9,8 @@ import {
   getDeviceOverviewReportedStepId,
 } from '../../packages/shared-domain/src/deviceOverview';
 import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonSemantics';
+import { resolveHeldCardReasonLine } from '../../packages/shared-domain/src/planCardReasonLine';
+import { resolveIntentStateKind, resolveRawPlanStateKind } from '../../packages/shared-domain/src/planCardGrammar';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type {
   SettingsUiDeviceLogEntry,
@@ -96,6 +98,18 @@ export function buildOverviewEventForDevice(
     plannedState: device.plannedState,
     reasonCode: device.reason.code,
     reasonText: formatDeviceReasonUserFacing(device.reason),
+    // The line the CARD actually rendered. Since 2026-08-02 the card and this
+    // helper deliberately differ — the card states what the device needs, the
+    // helper keeps the fuller cause — so logging only `reasonText` would leave a
+    // support session unable to reconstruct what the owner was looking at
+    // (feedback_ui_text_shared_with_logs). Both, not either.
+    //
+    // Gated on the same held/intent state the card gates on. The resolver is a
+    // HELD ladder: called for a running or idle device it returns its terminal
+    // "Waiting to resume" fallback, which would log a line no card ever showed —
+    // the opposite of what this field is for. `null` when the card renders no
+    // reason line.
+    cardReasonText: resolveCardReasonTextForLog(device),
     measuredPowerKw: device.measuredPowerKw ?? null,
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
@@ -114,6 +128,20 @@ export function buildOverviewBatchEvent(
     changedDeviceCount: changedDevices.length,
     devices: changedDevices,
   };
+}
+
+// Mirrors the card's own gate (`PlanDeviceCards` / `planTemperatureCardText`):
+// the reason line renders only for a held card, so the logged copy of it must
+// exist only there too. A device the planner left inactive but a hold reason is
+// keeping back counts as held, which is why this uses the INTENT kind rather
+// than the raw one.
+function resolveCardReasonTextForLog(device: DevicePlanDevice): string | null {
+  const kind = resolveIntentStateKind({
+    kind: resolveRawPlanStateKind(device),
+    reasonCode: device.reason.code,
+    starved: false,
+  });
+  return kind === 'held' ? resolveHeldCardReasonLine({ reason: device.reason }) : null;
 }
 
 /**

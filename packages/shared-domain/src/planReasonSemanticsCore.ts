@@ -53,6 +53,19 @@ export type CountdownReasonTiming = {
   countdownTotalSec?: number;
 };
 
+// The power that, if it became available, would admit this device — already
+// rounded to the 0.1 kW display resolution by `resolveRestoreShortfallKw`.
+// Carried by holds whose producer had the admission arithmetic in scope, so the
+// device card can state what the device NEEDS instead of naming the house-level
+// ceiling (which the hero states once). `null`/absent when the hold is not
+// power-blocked — a carry-forward `capacity` fold, or a shed selected this cycle
+// before the restore lane evaluated the device.
+//
+// Pre-rounded on purpose: the stored value then changes only when the DISPLAYED
+// number changes, so a kW that jitters every plan cycle cannot churn the
+// overview transition signature (see `buildComparableDeviceReason`).
+type AdmissionShortfall = { shortfallKw?: number | null };
+
 export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.none }
   | { code: typeof PLAN_REASON_CODES.keep; detail: string | null }
@@ -64,10 +77,16 @@ export type DeviceReason =
     headroomKw: number | null;
   }
   | { code: typeof PLAN_REASON_CODES.setTarget; targetText: string }
+  // Deliberately NOT `AdmissionShortfall` carriers. The admission arithmetic in
+  // scope at the swap producers (`lib/plan/swap/candidates.ts`,
+  // `lib/plan/restore/swap.ts`, `lib/plan/swap/blocking.ts`) belongs to the
+  // device being swapped IN, not to the victim carrying this reason — pinning it
+  // here would state another device's number as this one's. A swap victim gets
+  // its own figure on the next cycle, when the restore lane evaluates it.
   | { code: typeof PLAN_REASON_CODES.swapPending; targetName: string | null }
   | { code: typeof PLAN_REASON_CODES.swappedOut; targetName: string | null }
   | { code: typeof PLAN_REASON_CODES.hourlyBudget; detail: string | null }
-  | { code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null }
+  | ({ code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null } & AdmissionShortfall)
   | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number | null; headroomKw: number | null }
   | ({ code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number } & CountdownReasonTiming)
@@ -110,6 +129,10 @@ export type DeviceReason =
     shedDeviceCount: number;
     maxStep: string;
   }
+  // Also not a carrier, for the same reason as the swap holds above: the gap that
+  // would admit this device THROUGH a reservation is dominated by the holder's
+  // reserved block, so it states another device's quantity as this one's. The
+  // honest line names the holder.
   | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string | null }
   | { code: typeof PLAN_REASON_CODES.other; text: string };
 

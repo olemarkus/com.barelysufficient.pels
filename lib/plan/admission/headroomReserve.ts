@@ -242,6 +242,15 @@ export function resolveReserveAdmission(params: {
   if (claimedKw > 0) {
     const rawAdmission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw });
     if (rawAdmission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
+      // Deliberately carries NO kW shortfall. This branch means raw power is
+      // already sufficient — it is simply promised to a more important device —
+      // so a gap derived from the post-reserve admission resolves to
+      // `claimedKw + neededKw − availableHeadroom + 0.5`, i.e. it is dominated by
+      // the OTHER device's reserved block. Prod-shaped example: 2.5 kW free, this
+      // device needs 2.0 kW, holder reserves 3.6 kW → the card would read "3.6 kW
+      // more needed". That states another device's quantity as this one's, the
+      // same error `swapPending`/`swappedOut` avoid by not carrying the field.
+      // The honest line here names the holder ("Waiting so X can start").
       return { kind: 'blocked_by_reserve', admission: rawAdmission, effectiveHeadroomKw, reservedKw };
     }
     return { kind: 'insufficient', admission: rawAdmission, effectiveHeadroomKw, reservedKw };
