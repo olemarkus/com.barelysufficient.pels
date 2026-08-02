@@ -55,10 +55,15 @@
     // re-plans and competing tasks.
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
     // Heading for the read-only "what this grants" summary on the confirm sheet.
-    // Reuses the create widget's canonical "Extra permissions" wording (via
-    // SMART_TASK_EXTRA_PERMISSION_LABELS for the line items) so the two surfaces
-    // describe the same permissions identically; here it is informational, not a
-    // set of toggles — the rescue always grants both.
+    // Must stay character-identical to `SMART_TASK_EXTRA_PERMISSIONS_TITLE` in
+    // `deadlineLabels.ts` (line items come from SMART_TASK_EXTRA_PERMISSION_LABELS
+    // there) so every surface naming these permissions reads the same. Kept as a
+    // LITERAL rather than an import on purpose: this module is deliberately off
+    // `deadlineLabels.ts` so the rescue widget bundle doesn't drag the full
+    // smart-task copy module in — see the import note at the top of this file.
+    // Here it is informational, not a set of toggles: the rescue REQUESTS all
+    // three permissions (`buildRescueCandidate`), and the per-device gate decides
+    // which of them survive to be listed here.
     extraPermissionsTitle: "Extra permissions",
     // Factual at-cap honesty signal. The in-isolation preview can show the device
     // running now, but if the house is already pressed against the physical hard
@@ -330,6 +335,8 @@
     // resolved by floor cause / budget bucket count
     satisfied: null
   };
+  var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
+  var SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = "Turn on \u201CMay go over daily budget\u201D to use this.";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
     pickDeviceTitle: "New smart task",
@@ -415,14 +422,12 @@
     // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
     // default; a user opts in per task. The section hint stays honest about scope
     // (only to hit THIS deadline) and never implies more total power or a raised
-    // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
-    // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
-    // breadcrumb, and runtime logs all read identically.
-    extraPermissionsTitle: "Extra permissions",
+    // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
+    // the surface-neutral constants below — the smart-task editor shows the same
+    // strings, so they must not live under a create-widget-scoped name.
+    extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
-    // Shown under the limit-lower-priority toggle when it is disabled: that
-    // permission only has any effect alongside the budget one, so it is gated on it.
-    limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
+    limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
     // Shown in the preview when the in-isolation projection returns a real planner
     // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
     // `at_risk` (might not). Surfaced as a prominent warning so a user never

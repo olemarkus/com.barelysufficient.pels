@@ -21,6 +21,7 @@ import {
 import { normalizeDeferredObjectiveSettings } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import { resolveSmartTaskGoalBounds } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFormat.ts';
+import { isSteppedLoadSnapshot } from '../../../shared-domain/src/steppedLoadObservedState.ts';
 import { getHomeyTimezone } from './homey.ts';
 import {
   closeSmartTaskEditor,
@@ -29,6 +30,7 @@ import {
   initSmartTaskEditController,
   openSmartTaskEditor,
   requestSmartTaskClear,
+  setSmartTaskEditPermission,
   setSmartTaskEditReadyBy,
   setSmartTaskEditTarget,
   submitSmartTaskUpdate,
@@ -302,6 +304,20 @@ const buildSmartTaskEditProps = (
     baselineReadyBy,
     baselineTarget,
     baselineDeadlineAtMs: entry.deadlineAtMs,
+    // The task's CURRENT permissions, as plain granted/not-granted. The editor
+    // only ever expresses that much; the server keeps an existing `'at_risk'`
+    // mode when a toggle is left on, so this coarser view can never silently
+    // promote a conditional grant into an unconditional one.
+    baselinePermissions: {
+      exemptFromBudget: entry.rescue?.exemptFromBudget !== undefined,
+      limitLowerPriorityDevices: entry.rescue?.limitLowerPriorityDevices !== undefined,
+      pauseLowerPriorityDevices: entry.rescue?.pauseLowerPriorityDevices !== undefined,
+    },
+    // Mirrors `AppSmartTaskApi.deviceSupportsLimitLowerPriority` so the toggle is
+    // offered exactly where the server would keep the grant (preview ≡ persist).
+    // Boost has no meaning on a binary device — no higher step to promote to —
+    // so the permission would be dropped as inert.
+    supportsLimitLowerPriority: device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device),
   };
   return {
     mode,
@@ -312,6 +328,7 @@ const buildSmartTaskEditProps = (
     onClose: closeSmartTaskEditor,
     onReadyByInput: setSmartTaskEditReadyBy,
     onTargetInput: setSmartTaskEditTarget,
+    onPermissionToggle: setSmartTaskEditPermission,
     onSave: () => { void submitSmartTaskUpdate(); },
     onClear: mode === 'clear_only'
       ? () => { void beginSmartTaskClear(context); }

@@ -181,6 +181,29 @@ describe('previewSettingsUiSmartTask', () => {
     expect(candidate.rescue).toEqual({ exemptFromBudget: 'always' });
   });
 
+  it('prices the REQUESTED permissions when the request is authoritative', () => {
+    // Preview ≡ persist: an authoritative request saves with `replace`, so an
+    // estimate priced under the standing set would promise a window the save
+    // will not deliver — switching the budget exemption off tightens the plan.
+    const previewDeferredObjectivePlan = vi.fn(
+      (_deviceId: string, _candidate: DeferredObjectivePlanPreviewCandidate) => buildEstimate(),
+    );
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
+    settings.set(OBJECTIVE_KEY, storedEntry({ rescue: { exemptFromBudget: 'always' } }));
+    const result = previewSettingsUiSmartTask({
+      homey,
+      body: updateBody({
+        exemptFromBudget: false,
+        limitLowerPriorityDevices: false,
+        pauseLowerPriorityDevices: false,
+      }),
+    });
+    expect(result).toMatchObject({ ok: true });
+    const candidate = previewDeferredObjectivePlan.mock
+      .calls[0]![1] as DeferredObjectivePlanPreviewCandidate;
+    expect(candidate.rescue).toBeUndefined();
+  });
+
   it('rejects a relocated task before producing an estimate the save lane cannot honor', () => {
     const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
     const resolveSmartTaskHomeScope = vi.fn(() => 'sub_home');
@@ -221,6 +244,9 @@ describe('updateSettingsUiSmartTask', () => {
       DEVICE_ID,
       expect.objectContaining({ deadlineAtMs: echoed, targetTemperatureC: 70 }),
       'settings_ui:smart_task_update',
+      // The candidate already carries the fully-merged permission set, so the
+      // write layer must not second-guess it with its whole-object `preserve`.
+      'replace',
     );
   });
 
@@ -244,7 +270,125 @@ describe('updateSettingsUiSmartTask', () => {
       DEVICE_ID,
       expect.objectContaining({ deadlineAtMs: expectedDeadline('07:00') }),
       'settings_ui:smart_task_update',
+      'replace',
     );
+  });
+
+  // ─── Extra permissions ────────────────────────────────────────────────────
+  //
+  // `absent` and `false` are DIFFERENT on the wire, and the candidate builder
+  // resolves the two against the task's standing permissions PER KEY: absent
+  // keeps what stands, `true` keeps its existing mode, `false` revokes. The
+  // lane then writes that resolved set verbatim (`replace`), so preview and
+  // persist can't disagree.
+
+  it('revokes a standing permission the request explicitly turns off', () => {
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey, settings } = buildContext({ createDeferredObjective });
+    settings.set(OBJECTIVE_KEY, storedEntry({
+      rescue: { exemptFromBudget: 'always', pauseLowerPriorityDevices: 'always' },
+    }));
+    const result = updateSettingsUiSmartTask({
+      homey,
+      body: updateBody({
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: false,
+        pauseLowerPriorityDevices: false,
+      }),
+    });
+    expect(result).toEqual({ ok: true });
+    const [, candidate, , policy] = createDeferredObjective.mock.calls[0]! as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate, string, string,
+    ];
+    // The unchecked pause toggle is gone from the candidate AND the write is
+    // authoritative, so the standing grant is actually cleared.
+    expect(candidate.rescue).toEqual({ exemptFromBudget: 'always' });
+    expect(policy).toBe('replace');
+  });
+
+  it('keeps a left-on permission at its existing at_risk mode instead of promoting it', () => {
+    // The editor's toggles are booleans; mapping a left-alone toggle straight
+    // to `'always'` would silently upgrade a conditional standing grant.
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey, settings } = buildContext({ createDeferredObjective });
+    settings.set(OBJECTIVE_KEY, storedEntry({ rescue: { exemptFromBudget: 'at_risk' } }));
+    const result = updateSettingsUiSmartTask({
+      homey,
+      body: updateBody({
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: false,
+        pauseLowerPriorityDevices: false,
+      }),
+    });
+    expect(result).toEqual({ ok: true });
+    const [, candidate] = createDeferredObjective.mock.calls[0]! as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate,
+    ];
+    expect(candidate.rescue).toEqual({ exemptFromBudget: 'at_risk' });
+  });
+
+  it('mints always for a permission turned on from off, and round-trips the third one', () => {
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey } = buildContext({ createDeferredObjective });
+    const result = updateSettingsUiSmartTask({
+      homey,
+      body: updateBody({
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: true,
+        pauseLowerPriorityDevices: true,
+      }),
+    });
+    expect(result).toEqual({ ok: true });
+    const [, candidate] = createDeferredObjective.mock.calls[0]! as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate,
+    ];
+    expect(candidate.rescue).toEqual({
+      exemptFromBudget: 'always',
+      limitLowerPriorityDevices: 'always',
+      pauseLowerPriorityDevices: 'always',
+    });
+  });
+
+  it('GUARDRAIL: a permission the request never mentions survives the write', () => {
+    // The write layer's `preserve` is a WHOLE-OBJECT fallback — it fires only
+    // when the entry carries no rescue at all — so granting any one permission
+    // through it would drop the rest. The per-key merge in the candidate
+    // builder is what actually keeps an unmentioned grant alive.
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey, settings } = buildContext({ createDeferredObjective });
+    settings.set(OBJECTIVE_KEY, storedEntry({ rescue: { pauseLowerPriorityDevices: 'always' } }));
+    const result = updateSettingsUiSmartTask({
+      homey,
+      body: updateBody({ exemptFromBudget: true }),
+    });
+    expect(result).toEqual({ ok: true });
+    const [, candidate] = createDeferredObjective.mock.calls[0]! as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate,
+    ];
+    expect(candidate.rescue).toEqual({
+      exemptFromBudget: 'always',
+      pauseLowerPriorityDevices: 'always',
+    });
+  });
+
+  it('carries a standing permission through an edit that never mentions it', () => {
+    // The candidate the write receives must already hold the merged set — the
+    // gate's own non-destructive check (`appSmartTaskApi`) is what then keeps an
+    // established grant through a degraded device read.
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey, settings } = buildContext({ createDeferredObjective });
+    settings.set(OBJECTIVE_KEY, storedEntry({
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+    }));
+    const result = updateSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: true });
+    const [, candidate] = createDeferredObjective.mock.calls[0]! as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate,
+    ];
+    expect(candidate.rescue).toEqual({
+      exemptFromBudget: 'always',
+      limitLowerPriorityDevices: 'always',
+    });
   });
 
   it('GUARDRAIL: never creates a task for a device without one', () => {

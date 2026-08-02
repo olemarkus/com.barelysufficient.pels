@@ -440,21 +440,53 @@ The prior "Move deadline later" copy promised an action neither destination offe
 
 Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `What PELS has learned`, not `Plan inputs`.
 
-### Smart-task Flow permissions
+### Smart-task extra permissions
 
-The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, limit lower-priority devices, or reserve power so the task can start sooner. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (raising the hard cap is never a remedy — see § "Hard cap is an hourly ceiling"; every smart-task surface doesn't need to repeat the disclaimer).
+Four surfaces set these: the create-smart-task widget's opt-in disclosure (budget
++ limit only), the smart-task detail page's editor (all three, on **and** off),
+the `allow_smart_task_rescue` Flow action, and the Held-back devices "Let it run
+now" lane, which grants them implicitly. Their strings come from
+`SMART_TASK_EXTRA_PERMISSIONS_TITLE` / `SMART_TASK_EXTRA_PERMISSION_LABELS` in
+`deadlineLabels.ts` — never inline a new copy. The one sanctioned duplicate is
+`planStarvation.ts`'s `extraPermissionsTitle`, which stays a literal because
+that module is deliberately kept off `deadlineLabels.ts` so the rescue widget
+bundle doesn't pull the full smart-task copy module in; it must stay
+character-identical.
+
+Copy says PELS can let a task go over today's budget, limit lower-priority devices, or reserve power so the task can
+start sooner. Stay forward: action verbs over hedge phrasing, no "does not
+guarantee" disclaimer (raising the hard cap is never a remedy — see § "Hard cap
+is an hourly ceiling"; every smart-task surface doesn't need to repeat the
+disclaimer).
 
 **Never say the pause permission turns anything off.** It reserves power; it does not switch devices off, and a device that is already off just waits a little longer before resuming. Copy that promises devices are "held off up front" or "paused, including idle ones" describes the retired implementation and is now untrue — see `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 
 The smart-task detail and list surfaces render the granted permissions on a
-single row whose canonical label is **`Extra permissions (set via Flow)`**
+single read-only row whose canonical label is **`Extra permissions`**
 (source: `SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL` in
-`packages/shared-domain/src/deadlineLabels.ts`). The label hoists `(set via
-Flow)` onto the row owner — what kind of setting this is — so it doesn't read
-as a qualifier on the last joined permission clause. Value clauses are
+`packages/shared-domain/src/deadlineLabels.ts`). Do **not** re-add a
+`(set via Flow)` qualifier: the detail page's editor sets these itself, so
+naming the Flow card would send a user out to build an automation for something
+the row sits right beside. The editor's own disclosure reuses
+`SMART_TASK_EXTRA_PERMISSIONS_TITLE` (`Extra permissions`) with the edit-lane hint
+`Only used to hit this ready-by time.` — the widget's "Off unless you turn them
+on" is false for a task that already holds a grant. On a surface where the user
+GRANTS a permission rather than reads one back, each toggle also carries its
+`SMART_TASK_EXTRA_PERMISSION_HINTS` line: `May pause lower-priority devices` on
+its own is read as "PELS switches my devices off", so its hint names the reserve
+and denies the switch-off in the same breath.
+
+The two "Extra permissions" blocks on the detail page must never be on screen at
+once: the read-only row is suppressed while the editor is open
+(`PlanInputsCard`'s `editorOpen`), because a saved value and an unsaved draft
+under one label disagree the moment a toggle moves. The open editor shows its
+own granted line instead. Value clauses are
 `May go over daily budget`, `May limit lower-priority devices`, and
 `May pause lower-priority devices`, optionally suffixed with ` if at risk` when
-the mode is `at_risk`. `pause` is the **milder**, boost-free sibling of `limit`: it reserves
+the mode is `at_risk`. `at_risk` is Flow-arg-only and no shipped dropdown offers
+it, so no toggle surface needs to express it; the editor's boolean toggles
+preserve an existing `at_risk` grant rather than promoting it. `pause` is the
+**milder**, boost-free sibling of `limit`: it reserves
 power so the task can start sooner, where `limit` boosts the device past the
 fairness rules. Never conflate it with boost.
 

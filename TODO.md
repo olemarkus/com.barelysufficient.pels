@@ -2997,6 +2997,62 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       `getDeviceStandingRescue` (gate on `hasDeferredObjectiveForDevice`), the standing-and-toggles merge
       into BOTH preview and create candidates, and the route-agnostic `Already allowed:` copy.
 
+- [ ] **A Flow granting a permission mid-edit is silently reverted on Save.**
+      *Persona:* Orchestrator following the documented pattern in `docs/smart-tasks.md` — pair
+      "Smart task time is running low" with "status is At risk" so a Flow grants the permission late —
+      who happens to have the task page open when it fires.
+      *Hypothesis:* `baselinePermissions` is captured once at open time
+      (`buildSmartTaskEditProps` → `openSmartTaskEditor`) and later boot refreshes rebuild the
+      context without re-seeding the open draft, by design so a background refresh can't overwrite
+      what the user is typing. The save then states the complete desired set, so it reverts the
+      Flow's grant with no conflict detection. The deadline got an echo-and-revalidate guard
+      (`baselineDeadlineAtMs` → `resolveSmartTaskWriteDeadline` → `deadline_passed`); permissions
+      got none. Narrow — it needs the Flow to fire inside an open editor session — but the docs
+      actively recommend the Flow pattern that triggers it.
+      *Why it's needed:* last-write-wins on a permission the user never saw contradicts the rule the
+      rest of this lane keeps (the editor only changes what it showed you).
+      *If fixed:* echo the baseline permissions on the write and reject on mismatch, the same shape
+      the deadline uses — not a silent re-seed, which would move a toggle under the user's finger.
+      Files: `packages/settings-ui/src/ui/smartTaskEdit.ts`, `setup/settingsUiSmartTaskApi.ts`.
+      Source: pels-runtime-reality on editable smart-task permissions, 2026-08-02. *P2*
+
+- [ ] **The create widget's `preserve` write drops standing permissions it didn't name.**
+      *Persona:* any user who granted a permission by Flow and later re-creates the task from the
+      **New smart task** widget with a different toggle on.
+      *Hypothesis:* `upsertObjectiveForDevice`'s `preserve` is a WHOLE-OBJECT fallback — it fires
+      only when `entry.rescue === undefined` (`lib/objectives/deferredObjectives/objectiveWrite.ts`)
+      — so a create that grants any ONE permission makes `rescue` defined and silently clears the
+      rest. The settings-UI edit lane no longer has this hole (it merges per key in
+      `buildCandidateRescue` and writes `'replace'`), but the widget lane passes no standing set and
+      still relies on the whole-object fallback. Pre-existing; not introduced by the editable-
+      permissions work, which is why it was not fixed there.
+      *Why it's needed:* one lane keeps the "a permission you didn't mention survives" promise and
+      the other doesn't, from the same helper.
+      *If fixed:* thread the device's standing rescue into `widgets/create_smart_task/src/api.ts`'s
+      `buildValidSmartTaskCandidate` call and write `'replace'`, exactly as the edit lane does; this
+      regenerates the widget bundle. Interacts with the create-screen standing-permissions item
+      above — do them together. Files: `widgets/create_smart_task/src/api.ts`,
+      `lib/objectives/deferredObjectives/objectiveWrite.ts`. Source: pels-layering-guardian on
+      editable smart-task permissions, 2026-08-02. *P2*
+
+- [ ] **The editor's boolean toggle can't express — or show — a standing `at_risk` grant.**
+      *Persona:* a user whose task carries a legacy `at_risk` permission (no shipped dropdown offers
+      that mode; only hand-edited or legacy persisted data reaches it).
+      *Hypothesis:* the read-only row renders `May go over daily budget if at risk`
+      (`SMART_TASK_RESCUE_MODE_SUFFIX`) while the editor's toggle for the same fact renders a plain
+      ON. The write side is already correct — `resolveGrantedMode` keeps the existing mode rather
+      than promoting it — so this is display-only. Note the paired edge: on such a task
+      `gateCandidateExtraPermissions` requires `exemptFromBudget === 'always'`, so a limit grant
+      alongside an `at_risk` exemption is dropped; that is now non-destructive for an already-standing
+      grant but still shapes what a NEW request can add.
+      *Why it's needed:* two blocks describing one permission differently is the drift the shared
+      label constants exist to prevent.
+      *If fixed:* render the mode suffix on the toggle's hint rather than inventing a third control —
+      do NOT add an `at_risk` option to any surface (`no shipped dropdown offers it` is deliberate).
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/shared-domain/src/deadlineLabels.ts`. Source: pels-ux-fit + pels-runtime-reality on
+      editable smart-task permissions, 2026-08-02. *P3*
+
 *Smart-task failure-investigation & live UX — the underserved Optimiser and the
 Failing-scenario (acute/recovering) visitors (`notes/personas.md`).*
 

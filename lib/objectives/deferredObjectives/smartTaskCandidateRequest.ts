@@ -8,6 +8,7 @@ import type {
 import { resolveDeferredObjectiveDeadline } from './deadline';
 import {
   normalizeDeferredObjectiveSettingsEntry,
+  type DeferredObjectiveRescueMode,
   type DeferredObjectiveRescuePermissions,
   type DeferredObjectiveSettingsKind,
 } from './settings';
@@ -63,22 +64,44 @@ export const parseSmartTaskCandidateRequest = (body: unknown): SmartTaskCandidat
   const deadlineAtMs = typeof candidate.deadlineAtMs === 'number' && Number.isFinite(candidate.deadlineAtMs)
     ? candidate.deadlineAtMs
     : undefined;
-  // Opt-in "Extra permissions": accept only literal `true` (anything else is
-  // off). Eligibility for limit-lower-priority is re-gated server-side against
-  // the device, so a tampered `true` here can never persist a permission the
-  // device can't honour.
-  const exemptFromBudget = candidate.exemptFromBudget === true ? true : undefined;
-  const limitLowerPriorityDevices = candidate.limitLowerPriorityDevices === true ? true : undefined;
+  // "Extra permissions": ABSENT and `false` are DIFFERENT — absent says nothing
+  // about that permission (it keeps whatever it holds), while an explicit
+  // `false` revokes. `buildCandidateRescue` owns that resolution. Because the
+  // two mean opposite things, a PRESENT-but-malformed value (`null`,
+  // `"false"`, `0`) cannot be folded into either: reading it as absent would
+  // silently preserve a grant the caller may have meant to drop. Reject the
+  // whole request instead, the same way a bad `kind`/`target` does. Eligibility
+  // for limit-lower-priority is re-gated server-side against the device, so a
+  // tampered `true` here can never persist a permission the device can't honour.
+  if (!permissionsAreWellFormed(candidate)) return null;
   return {
     deviceId,
     kind: candidate.kind,
     target: candidate.target,
     readyByLocalTime,
     deadlineAtMs,
-    exemptFromBudget,
-    limitLowerPriorityDevices,
+    exemptFromBudget: readPermission(candidate.exemptFromBudget),
+    limitLowerPriorityDevices: readPermission(candidate.limitLowerPriorityDevices),
+    pauseLowerPriorityDevices: readPermission(candidate.pauseLowerPriorityDevices),
   };
 };
+
+// A permission slot is well-formed only when it is absent or a literal boolean.
+// `undefined` covers both "key omitted" and "key present as undefined"; the two
+// are indistinguishable over the JSON body and mean the same thing here.
+const isPermissionValue = (value: unknown): value is boolean | undefined => (
+  value === undefined || typeof value === 'boolean'
+);
+
+const permissionsAreWellFormed = (candidate: Partial<SmartTaskCandidateRequest>): boolean => (
+  isPermissionValue(candidate.exemptFromBudget)
+  && isPermissionValue(candidate.limitLowerPriorityDevices)
+  && isPermissionValue(candidate.pauseLowerPriorityDevices)
+);
+
+const readPermission = (value: unknown): boolean | undefined => (
+  typeof value === 'boolean' ? value : undefined
+);
 
 // Resolve the request's local ready-by time to a future absolute deadline.
 // Returns null when the time can't be placed in the future (should not happen
@@ -123,19 +146,52 @@ export const resolveSmartTaskWriteDeadline = (
   return { ok: true, deadlineAtMs };
 };
 
-// Map the request's opt-in permission booleans to the candidate's `rescue`
-// shape (`'always'` mode). Returns undefined when neither is on, so a task with
-// no extra permissions carries NO `rescue` — and the create path's `preserve`
-// policy then leaves any standing permission set elsewhere intact. The server
-// re-gates `limitLowerPriorityDevices` against the device.
+// Resolve ONE permission's persisted mode from the request and what the task
+// already holds. Three cases, and the difference between the first two is the
+// whole point of reading the request's booleans as `boolean | undefined`:
+//   - ABSENT   → keep the standing mode verbatim. The request didn't mention
+//                this permission, so it expresses no opinion about it.
+//   - `true`   → granted, at its EXISTING mode if it already stands. The UI only
+//                ever expresses granted/not-granted, so mapping a left-alone
+//                toggle straight to `'always'` would silently upgrade a standing
+//                `'at_risk'` grant. Turning one on from off mints `'always'`.
+//   - `false`  → revoked.
+const resolveGrantedMode = (
+  requested: boolean | undefined,
+  current: DeferredObjectiveRescueMode | undefined,
+): DeferredObjectiveRescueMode | undefined => {
+  if (requested === undefined) return current;
+  return requested ? current ?? 'always' : undefined;
+};
+
+// Resolve the candidate's COMPLETE `rescue` field from the request plus the
+// task's standing permissions. Per-key: an unmentioned permission survives, an
+// explicit `false` revokes. This is the single owner of that merge — callers
+// write the result verbatim (`rescue: 'replace'`) rather than re-deriving it, so
+// the preview and the persist can't diverge. `undefined` when nothing is granted.
+//
+// A caller that passes NO standing (the create widget) gets the pre-existing
+// behaviour: absent resolves to nothing, and the write layer's whole-object
+// `preserve` policy is what keeps a standing permission there.
 const buildCandidateRescue = (
   request: SmartTaskCandidateRequest,
+  standing?: DeferredObjectiveRescuePermissions,
 ): DeferredObjectiveRescuePermissions | undefined => {
-  const rescue: DeferredObjectiveRescuePermissions = {
-    ...(request.exemptFromBudget ? { exemptFromBudget: 'always' as const } : {}),
-    ...(request.limitLowerPriorityDevices ? { limitLowerPriorityDevices: 'always' as const } : {}),
+  const exemptFromBudget = resolveGrantedMode(request.exemptFromBudget, standing?.exemptFromBudget);
+  const limitLowerPriorityDevices = resolveGrantedMode(
+    request.limitLowerPriorityDevices,
+    standing?.limitLowerPriorityDevices,
+  );
+  const pauseLowerPriorityDevices = resolveGrantedMode(
+    request.pauseLowerPriorityDevices,
+    standing?.pauseLowerPriorityDevices,
+  );
+  if (!exemptFromBudget && !limitLowerPriorityDevices && !pauseLowerPriorityDevices) return undefined;
+  return {
+    ...(exemptFromBudget ? { exemptFromBudget } : {}),
+    ...(limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}),
+    ...(pauseLowerPriorityDevices ? { pauseLowerPriorityDevices } : {}),
   };
-  return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : undefined;
 };
 
 // Build and VALIDATE the preview/persist candidate (the settings entry shape
@@ -148,11 +204,15 @@ const buildCandidateRescue = (
 export const buildValidSmartTaskCandidate = (
   request: SmartTaskCandidateRequest,
   deadlineAtMs: number,
+  // The task's CURRENT permissions, when the caller has them (the edit lane).
+  // Only used to keep a left-on permission at its existing mode; a caller
+  // without them (the create widget) mints `'always'` as before.
+  standingRescue?: DeferredObjectiveRescuePermissions,
 ): DeferredObjectivePlanPreviewCandidate | null => {
   const base: DeferredObjectivePlanPreviewCandidate = request.kind === 'ev_soc'
     ? { kind: 'ev_soc', enforcement: 'soft', targetPercent: request.target, deadlineAtMs }
     : { kind: 'temperature', enforcement: 'soft', targetTemperatureC: request.target, deadlineAtMs };
-  const rescue = buildCandidateRescue(request);
+  const rescue = buildCandidateRescue(request, standingRescue);
   const candidate: DeferredObjectivePlanPreviewCandidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;
 };

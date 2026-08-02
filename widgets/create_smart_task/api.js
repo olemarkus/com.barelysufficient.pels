@@ -4798,6 +4798,8 @@ var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   // resolved by floor cause / budget bucket count
   satisfied: null
 };
+var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
+var SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = "Turn on \u201CMay go over daily budget\u201D to use this.";
 var CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 1 — device picker.
   pickDeviceTitle: "New smart task",
@@ -4883,14 +4885,12 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
   // default; a user opts in per task. The section hint stays honest about scope
   // (only to hit THIS deadline) and never implies more total power or a raised
-  // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
-  // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
-  // breadcrumb, and runtime logs all read identically.
-  extraPermissionsTitle: "Extra permissions",
+  // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
+  // the surface-neutral constants below — the smart-task editor shows the same
+  // strings, so they must not live under a create-widget-scoped name.
+  extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
   extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
-  // Shown under the limit-lower-priority toggle when it is disabled: that
-  // permission only has any effect alongside the budget one, so it is gated on it.
-  limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
+  limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
   // Shown in the preview when the in-isolation projection returns a real planner
   // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
   // `at_risk` (might not). Surfaced as a prominent warning so a user never
@@ -5315,18 +5315,21 @@ var parseSmartTaskCandidateRequest = (body) => {
   const readyByLocalTime = typeof candidate.readyByLocalTime === "string" ? candidate.readyByLocalTime.trim() : "";
   if (!LOCAL_TIME_PATTERN.test(readyByLocalTime)) return null;
   const deadlineAtMs = typeof candidate.deadlineAtMs === "number" && Number.isFinite(candidate.deadlineAtMs) ? candidate.deadlineAtMs : void 0;
-  const exemptFromBudget = candidate.exemptFromBudget === true ? true : void 0;
-  const limitLowerPriorityDevices = candidate.limitLowerPriorityDevices === true ? true : void 0;
+  if (!permissionsAreWellFormed(candidate)) return null;
   return {
     deviceId,
     kind: candidate.kind,
     target: candidate.target,
     readyByLocalTime,
     deadlineAtMs,
-    exemptFromBudget,
-    limitLowerPriorityDevices
+    exemptFromBudget: readPermission(candidate.exemptFromBudget),
+    limitLowerPriorityDevices: readPermission(candidate.limitLowerPriorityDevices),
+    pauseLowerPriorityDevices: readPermission(candidate.pauseLowerPriorityDevices)
   };
 };
+var isPermissionValue = (value) => value === void 0 || typeof value === "boolean";
+var permissionsAreWellFormed = (candidate) => isPermissionValue(candidate.exemptFromBudget) && isPermissionValue(candidate.limitLowerPriorityDevices) && isPermissionValue(candidate.pauseLowerPriorityDevices);
+var readPermission = (value) => typeof value === "boolean" ? value : void 0;
 var resolveSmartTaskRequestDeadline = (request, timeZone, nowMs) => {
   const resolution = resolveDeferredObjectiveDeadline({
     nowMs,
@@ -5347,16 +5350,30 @@ var resolveSmartTaskWriteDeadline = (request, timeZone, nowMs) => {
   if (deadlineAtMs === null) return { ok: false, reason: "invalid_ready_by" };
   return { ok: true, deadlineAtMs };
 };
-var buildCandidateRescue = (request) => {
-  const rescue = {
-    ...request.exemptFromBudget ? { exemptFromBudget: "always" } : {},
-    ...request.limitLowerPriorityDevices ? { limitLowerPriorityDevices: "always" } : {}
-  };
-  return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : void 0;
+var resolveGrantedMode = (requested, current) => {
+  if (requested === void 0) return current;
+  return requested ? current ?? "always" : void 0;
 };
-var buildValidSmartTaskCandidate = (request, deadlineAtMs) => {
+var buildCandidateRescue = (request, standing) => {
+  const exemptFromBudget = resolveGrantedMode(request.exemptFromBudget, standing?.exemptFromBudget);
+  const limitLowerPriorityDevices = resolveGrantedMode(
+    request.limitLowerPriorityDevices,
+    standing?.limitLowerPriorityDevices
+  );
+  const pauseLowerPriorityDevices = resolveGrantedMode(
+    request.pauseLowerPriorityDevices,
+    standing?.pauseLowerPriorityDevices
+  );
+  if (!exemptFromBudget && !limitLowerPriorityDevices && !pauseLowerPriorityDevices) return void 0;
+  return {
+    ...exemptFromBudget ? { exemptFromBudget } : {},
+    ...limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {},
+    ...pauseLowerPriorityDevices ? { pauseLowerPriorityDevices } : {}
+  };
+};
+var buildValidSmartTaskCandidate = (request, deadlineAtMs, standingRescue) => {
   const base = request.kind === "ev_soc" ? { kind: "ev_soc", enforcement: "soft", targetPercent: request.target, deadlineAtMs } : { kind: "temperature", enforcement: "soft", targetTemperatureC: request.target, deadlineAtMs };
-  const rescue = buildCandidateRescue(request);
+  const rescue = buildCandidateRescue(request, standingRescue);
   const candidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;
 };

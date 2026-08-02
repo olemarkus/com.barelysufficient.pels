@@ -334,6 +334,16 @@ export const SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL = 'Scheduled';
 export const formatSmartTaskWidgetOverflow = (count: number): string =>
   `+${count} in Smart tasks`;
 
+// ─── Extra permissions: strings shared by every surface that SETS them ───────
+// The create-smart-task widget, the smart-task detail editor, and the Held-back
+// devices confirm sheet all show these, so they are surface-neutral by name —
+// filing them under a widget-scoped record would mean someone tuning the widget
+// silently re-words the editor and its log breadcrumbs.
+export const SMART_TASK_EXTRA_PERMISSIONS_TITLE = 'Extra permissions';
+// Shown under the limit-lower-priority toggle when it is disabled: that
+// permission only has any effect alongside the budget one, so it is gated on it.
+export const SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = 'Turn on “May go over daily budget” to use this.';
+
 // ─── Create-smart-task widget copy ───────────────────────────────────────────
 // User-facing strings for the standalone "New smart task" dashboard widget.
 // Housed here (not inlined in the widget package) so the strings sit beside the
@@ -429,14 +439,12 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
   // default; a user opts in per task. The section hint stays honest about scope
   // (only to hit THIS deadline) and never implies more total power or a raised
-  // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
-  // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
-  // breadcrumb, and runtime logs all read identically.
-  extraPermissionsTitle: 'Extra permissions',
+  // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
+  // the surface-neutral constants below — the smart-task editor shows the same
+  // strings, so they must not live under a create-widget-scoped name.
+  extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
   extraPermissionsHint: 'Off unless you turn them on — only used to hit this deadline.',
-  // Shown under the limit-lower-priority toggle when it is disabled: that
-  // permission only has any effect alongside the budget one, so it is gated on it.
-  limitLowerPriorityNeedsBudget: 'Turn on “May go over daily budget” to use this.',
+  limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
   // Shown in the preview when the in-isolation projection returns a real planner
   // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
   // `at_risk` (might not). Surfaced as a prominent warning so a user never
@@ -519,8 +527,17 @@ export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): st
 export const SMART_TASK_EDIT_COPY = {
   editButton: 'Edit task',
   // Collapsed-row supporting line: says what editing covers so the row earns
-  // its place even before it is tapped.
-  editHint: 'Change the goal or ready-by time.',
+  // its place even before it is tapped. Names the extra permissions too — they
+  // are the least discoverable thing behind this row, and until the editor
+  // could set them users had no way to find them at all.
+  editHint: 'Change the goal, ready-by time, or extra permissions.',
+  // Section hint for the editor's "Extra permissions" disclosure. The create
+  // widget's variant opens "Off unless you turn them on", which is false on an
+  // existing task whose permissions may already be granted — so this one only
+  // keeps the scope half, which is the part that must never be overstated
+  // (these buy the task priority for THIS deadline; they do not raise the cap
+  // or create more power).
+  permissionsHint: 'Only used to hit this ready-by time.',
   saveButton: 'Save changes',
   saving: 'Saving…',
   discardButton: 'Discard',
@@ -534,6 +551,14 @@ export const SMART_TASK_EDIT_COPY = {
   // so the user who later scans history isn't surprised by a run they never
   // knowingly abandoned.
   updated: 'Smart task updated — the earlier run is now in Past tasks.',
+  // A permission-only save changes no goal, no ready-by, and no deadline, so
+  // `objectivesMatch` holds and the recorder no-ops: the run continues and
+  // NOTHING lands in Past tasks. Claiming otherwise would send the user looking
+  // for a history entry that doesn't exist — and read as though flipping a
+  // toggle had broken their task. Says "this run", not "re-planned": *plan* is
+  // reserved for the planning layer on smart-task surfaces
+  // (`notes/ui-terminology.md` § "Plan vs deadline").
+  updatedPermissionsOnly: 'Smart task updated — the new permissions apply to this run.',
   cleared: 'Smart task cleared.',
   // The task ended (completed/expired/cleared elsewhere) while the editor was
   // open — the editor closes rather than offering a retry that would re-create
@@ -789,14 +814,14 @@ export const formatSmartTaskListConfidenceChipLabel = (params: {
   return formatConfidenceChipLabel(params.confidence);
 };
 
-// Row label carries the owner/edit affordance so both the detail
-// (`DeadlinePlan.tsx`) and list (`DeadlinesList.tsx`) surfaces signal that the
-// Flow editor owns the toggle. Hoisted from the value to the label so the
-// `(set via Flow)` scope reads as a property of the row (what kind of setting
-// this is) rather than scoping to the last joined permission clause. Lives
-// here so the wording can't drift between surfaces and runtime log
-// breadcrumbs that share the same row label.
-export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions (set via Flow)';
+// Read-only row label on the smart-task detail (`DeadlinePlan.tsx`) and list
+// (`DeadlinesList.tsx`) surfaces. Carried no `(set via Flow)` qualifier since
+// the detail page's editor gained its own permission toggles — the Flow card is
+// one way to set these, no longer the only one, so naming it would send a user
+// out to a Flow for something the row sits right beside. Lives here so the
+// wording can't drift between surfaces and the runtime log breadcrumbs that
+// share the same row label.
+export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions';
 export const SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE = 'Lower-priority devices may be limited separately.';
 
 // The canonical user-facing names for the two rescue permissions. Exported so
@@ -807,6 +832,20 @@ export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveR
   exemptFromBudget: 'May go over daily budget',
   limitLowerPriorityDevices: 'May limit lower-priority devices',
   pauseLowerPriorityDevices: 'May pause lower-priority devices',
+};
+
+// One line per permission, for a surface where the user GRANTS one rather than
+// reads back what is granted. Each says what it buys and what it costs the rest
+// of the house, because "May pause lower-priority devices" on its own is read as
+// "PELS switches my devices off" — the exact misreading `notes/ui-terminology.md`
+// warns about, and the reason the pause line names the reserve and denies the
+// switch-off in the same breath. Every line stays inside the hard cap
+// (`feedback_hard_cap_is_physical`): these buy a task priority, never more power.
+export const SMART_TASK_EXTRA_PERMISSION_HINTS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
+  exemptFromBudget: 'Lets the task keep going once today’s budget is spent. Still inside your hard cap.',
+  limitLowerPriorityDevices: 'Lets the task turn down devices you ranked lower while it runs.',
+  pauseLowerPriorityDevices: 'Reserves the power the task needs to start, so it starts sooner. '
+    + 'Nothing is switched off — lower-priority devices just wait longer to resume.',
 };
 
 const SMART_TASK_RESCUE_MODE_SUFFIX: Record<DeferredObjectiveRescueMode, string> = {

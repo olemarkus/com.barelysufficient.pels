@@ -51,6 +51,12 @@ const installHomey = async (apiHandler: (call: ApiCall) => unknown) => {
 
 const BASELINE_DEADLINE_AT_MS = 1_850_000_000_000;
 
+const NO_PERMISSIONS = {
+  exemptFromBudget: false,
+  limitLowerPriorityDevices: false,
+  pauseLowerPriorityDevices: false,
+};
+
 const CONTEXT = {
   deviceId: 'heater-1',
   kind: 'temperature' as const,
@@ -61,6 +67,8 @@ const CONTEXT = {
   baselineReadyBy: '07:00',
   baselineTarget: 65,
   baselineDeadlineAtMs: BASELINE_DEADLINE_AT_MS,
+  baselinePermissions: NO_PERMISSIONS,
+  supportsLimitLowerPriority: true,
 };
 
 const okPreview = {
@@ -196,6 +204,111 @@ describe('smartTaskEdit controller', () => {
       deadlineAtMs: okPreview.deadlineAtMs,
     });
     expect(controller.getSmartTaskEditSnapshot()).toBeNull();
+  });
+
+  // ─── Extra permissions ────────────────────────────────────────────────────
+
+  it('sends all three permissions on every request so the server may act on a revoke', async () => {
+    const calls: ApiCall[] = [];
+    await installHomey((call) => {
+      calls.push(call);
+      if (call.uri === SETTINGS_UI_SMART_TASK_PREVIEW_PATH) return okPreview;
+      return { ok: true };
+    });
+    const controller = await loadController();
+    controller.initSmartTaskEditController({ render: vi.fn(), requestClose: vi.fn(), refreshBoot: vi.fn() });
+    controller.openSmartTaskEditor({
+      ...CONTEXT,
+      baselinePermissions: {
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: false,
+        pauseLowerPriorityDevices: true,
+      },
+    });
+    // A goal-only edit still names every permission — that is what makes the
+    // request authoritative, and the unchanged ones must round-trip as-is.
+    controller.setSmartTaskEditTarget('70');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(calls[calls.length - 1]!.body).toMatchObject({
+      exemptFromBudget: true,
+      limitLowerPriorityDevices: false,
+      pauseLowerPriorityDevices: true,
+    });
+  });
+
+  it('a permission-only change arms Save and re-previews under the new permissions', async () => {
+    const calls: ApiCall[] = [];
+    await installHomey((call) => {
+      calls.push(call);
+      if (call.uri === SETTINGS_UI_SMART_TASK_PREVIEW_PATH) return okPreview;
+      return { ok: true };
+    });
+    const controller = await loadController();
+    controller.initSmartTaskEditController({ render: vi.fn(), requestClose: vi.fn(), refreshBoot: vi.fn() });
+    controller.openSmartTaskEditor(CONTEXT);
+    expect(controller.getSmartTaskEditSnapshot()!.dirty).toBe(false);
+    controller.setSmartTaskEditPermission('pauseLowerPriorityDevices', true);
+    expect(controller.getSmartTaskEditSnapshot()).toMatchObject({ dirty: true, valid: true });
+    await vi.advanceTimersByTimeAsync(500);
+    const previews = calls.filter((c) => c.uri === SETTINGS_UI_SMART_TASK_PREVIEW_PATH);
+    expect(previews).toHaveLength(1);
+    expect(previews[0]!.body).toMatchObject({
+      target: 65,
+      readyByLocalTime: '07:00',
+      pauseLowerPriorityDevices: true,
+    });
+    // Toggling back to the baseline is clean again — Save disarms.
+    controller.setSmartTaskEditPermission('pauseLowerPriorityDevices', false);
+    expect(controller.getSmartTaskEditSnapshot()!.dirty).toBe(false);
+  });
+
+  it('turning the budget exemption off forces limit-lower-priority off with it', async () => {
+    await installHomey(() => okPreview);
+    const controller = await loadController();
+    controller.initSmartTaskEditController({ render: vi.fn(), requestClose: vi.fn(), refreshBoot: vi.fn() });
+    controller.openSmartTaskEditor({
+      ...CONTEXT,
+      baselinePermissions: {
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: true,
+        pauseLowerPriorityDevices: false,
+      },
+    });
+    controller.setSmartTaskEditPermission('exemptFromBudget', false);
+    // The server drops the limit grant when it isn't paired with the exemption,
+    // so leaving it visibly checked would show a state the save can't persist.
+    expect(controller.getSmartTaskEditSnapshot()!.draft.permissions).toEqual({
+      exemptFromBudget: false,
+      limitLowerPriorityDevices: false,
+      pauseLowerPriorityDevices: false,
+    });
+  });
+
+  it('carries a standing limit grant through a goal-only edit on an ineligible device', async () => {
+    const calls: ApiCall[] = [];
+    await installHomey((call) => {
+      calls.push(call);
+      if (call.uri === SETTINGS_UI_SMART_TASK_PREVIEW_PATH) return okPreview;
+      return { ok: true };
+    });
+    const controller = await loadController();
+    controller.initSmartTaskEditController({ render: vi.fn(), requestClose: vi.fn(), refreshBoot: vi.fn() });
+    controller.openSmartTaskEditor({
+      ...CONTEXT,
+      supportsLimitLowerPriority: false,
+      baselinePermissions: {
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: true,
+        pauseLowerPriorityDevices: false,
+      },
+    });
+    controller.setSmartTaskEditTarget('70');
+    await vi.advanceTimersByTimeAsync(500);
+    // The draft is seeded from the baseline and the goal edit doesn't touch it,
+    // so an unrelated save can't revoke a grant the user left alone. (The view
+    // still renders this toggle — eligibility blocks turning a NEW grant on, not
+    // seeing or clearing a standing one.)
+    expect(calls[calls.length - 1]!.body).toMatchObject({ limitLowerPriorityDevices: true });
   });
 
   it('a rejected save keeps the editor open with the reason inline', async () => {
