@@ -203,6 +203,27 @@ one of the shared state words; the older modality-specific bare `On`/`Off`
 output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.
 
+### EV charger exception labels (stepped card reason slot)
+
+An EV charger's exceptional charging states render in the reason slot when no
+status line claims it (source: `resolveSteppedEvExceptionLabel` in
+`planSteppedCardText.ts`): `Paused`, `Discharging`, `Unplugged`, and the
+plugged-in-idle pair below. Routine charging folds into the fact line
+(`Charging · level 16 A`) instead.
+
+The plugged-in-idle state (`plugged_in`) discriminates on plan intent, because
+the raw capability only states a fact (connected, not charging), never a cause:
+
+| Label | Used when |
+|---|---|
+| `Waiting for car` | PELS has commanded a powered step and the car still is not drawing — the car (scheduled departure charging, full battery) is provably the holdout. |
+| `Not charging` | No powered step is commanded. The charger idles because PELS left it idle; blaming the car here is false — on setpoint-driven chargers the car cannot initiate charging at all. |
+
+When the snapshot carries no step profile, the powered-vs-0 W distinction is
+unknowable and any non-off target id counts as a charge command (`Waiting for
+car`). In simulation the powered target is hypothetical intent — PELS never
+sent the command — so the label stays `Not charging`.
+
 ### Device cards say what a device needs; the hero says what limits the house
 
 The reason line under a Limited card states **what this device needs**. It does

@@ -128,7 +128,8 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
     satisfiedTargetOnly: isSatisfiedTargetOnlyDevice(dev),
   });
   // Same demotion the Overview stepped card applies: a target-only EV
-  // (`not_applicable`) that is paused / waiting for the car / unplugged is
+  // (`not_applicable`) in any exceptional charging state (paused / not
+  // charging / discharging / unplugged) is
   // not running — `Running` beside the card's exceptional EV state would
   // contradict across the two surfaces.
   if (
