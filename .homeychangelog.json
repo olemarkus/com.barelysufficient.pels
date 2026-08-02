@@ -466,5 +466,8 @@
   },
   "2.19.3": {
     "en": "Drop unecessary geolocation permission."
+  },
+  "2.20.0": {
+    "en": "Smart tasks are easier to adjust: you can change a task's extra permissions directly from the task editor, and tasks now keep their permissions when you edit them. There is also a new option to disable temperature control for individual thermostats, so PELS only switches them on or off and never changes their setpoint. A new Flow trigger fires when power stays above the hard cap for a number of seconds you choose; the existing alert card now reacts immediately, including on brief spikes.\n\nSmart tasks now reserve the power they need to start instead of turning off devices that are already idle. The daily budget behaves more steadily after mid-day changes, the suggested budget now responds when your current budget has been limiting devices, and status texts explain more accurately why a device is idle or waiting to resume."
   }
 }
