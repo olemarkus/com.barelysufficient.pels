@@ -26,27 +26,33 @@ The redesigned Overview uses a compact state word on each device card:
 
 The state row pairs that word with the current power fact. Cards add one
 modality fact where useful—such as temperature and target or charging level—and
-reserve the reason line for an exceptional explanation such as **Turned off by
-PELS**, **Charging paused**, or **Lowered by PELS**.
-
-When **Simulation mode** is on, those readouts read hypothetically instead — **Would be turned off (simulation)**, **Would be lowered (simulation)**, or **Charging would pause (simulation)** — because PELS is showing what it *would* do without actually changing the device.
+reserve the reason line for a single exceptional explanation.
 
 ## Common Status Lines
 
-Chips stay short. The status line below a chip explains why a device is waiting, limited, or resuming.
+Chips stay short. The status line below a chip explains why a device is waiting,
+limited, or resuming.
+
+A device card tells you **what that device needs**. It does not repeat which
+limit the whole house is up against — the hard cap, this hour's pace, or today's
+budget — because that is the same for every device, and the Overview hero states
+it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 
 | Status wording | Meaning |
 | --- | --- |
-| **Waiting for available power** | The device needs more available power before PELS can resume or increase it. |
-| **Limited by the hard cap** | PELS is lowering or pausing the device to protect the hourly hard cap. |
-| **Limited by today's daily budget** | Daily budget pacing is currently the tighter constraint. |
-| **Limited — this hour is near the hard cap** | The current hour is close enough to the hard cap that PELS is holding the device back. |
+| **Waiting to resume — 0.8 kW more needed** | The power that would actually bring this device back. Reserves are already counted, so freeing that much is enough. Stepped devices asking for a higher level read **Waiting to increase — …**. |
+| **Waiting to resume** | The device is waiting for power, but PELS cannot put a number on it yet. |
+| **Waiting for available power** | Shown when a device has been waiting on power long enough to be flagged, with no number available. |
+| **Limited to stay within today's budget** | Today's budget is holding the device back — and this one you can release, with **Let it run now**. |
 | **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Hard cap breach imminent — manual action needed** trigger for alerts. |
 | **Waiting before resuming** | PELS is respecting a cooldown so devices do not rapidly cycle. |
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
-| **Making room for higher-priority device** | PELS is limiting a lower-priority device so a higher-priority one can run. |
-| **Waiting so … can start** | A scheduled smart task needs a clear block of power to begin, so this device waits its turn to resume. The card names the device being waited for when PELS knows it. Nothing was switched off — it was already off. |
+| **Waiting for cheaper hours** | A smart task booked this load into cheaper hours. More power would not start it. |
+| **Waiting for solar surplus** | A "run on solar surplus" device, waiting for the home to export enough. |
+| **Turned off elsewhere — turn it on to resume** | The device was switched off outside PELS. |
+| **Holding at 6 A — cannot increase while 2 devices are limited** | A stepped device may not climb past its lowest useful level while other devices are still held back. Resuming those devices lifts it, not more power. |
+| **Waiting so … can start** | A device is about to start and has reserved the power it needs, so this one waits its turn. The power is there — it is spoken for. |
 
 ## Raw Planner Fields
 
@@ -60,8 +66,8 @@ The raw plan still uses older internal identifiers. These are implementation ter
 | `shedAction: "turn_off"` | Turn off while limiting. |
 | `shedAction: "set_temperature"` | Lower target temperature while limiting. |
 | `reason: "staying off until turned on again"` | Off — the device was turned off elsewhere and PELS was asked to leave it off. |
-| `reason: "shed due to capacity"` | Limited by the hard cap. |
-| `reason: "shed due to daily budget"` | Limited by today's daily budget. |
+| `reason: "shed due to capacity"` | Limited; the card shows the power the device still needs. |
+| `reason: "shed due to daily budget"` | Limited by today's budget pacing; the card shows the power the device still needs, or offers **Let it run now**. |
 | `reason: "restore (...)"` | Waiting to resume, with the required and available power shown internally. |
 | `reason: "shortfall (...)"` | Manual action needed — hard cap may be exceeded. |
 | `reason: "headroom cooldown (...)"` | Waiting for power readings to stabilise after recent change. |

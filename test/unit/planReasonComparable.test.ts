@@ -102,4 +102,45 @@ describe('buildComparableDeviceReason', () => {
       });
     });
   });
+  // The card renders a kW off a `dailyBudget` hold, but that number must NOT
+  // reach any comparable. It tracks `softLimitKw − totalKw`, which drifts
+  // continuously, and this signature gates the per-device device-log ring buffer
+  // (`planOverviewEmit.ts`). Including it would fill a 50-entry recorder with
+  // rows whose rendered `statusMsg` is identical — the logged text for a budget
+  // hold carries no kW — and evict the real transitions.
+  //
+  // Same rule the repo already enforces for `shortfall` via CODE_ONLY_REASONS
+  // ("ignores shortfall jitter in overview transition signatures",
+  // test/unit/deviceOverview.test.ts).
+  describe('display-only shortfall stays out of the comparable', () => {
+    it('compares a daily-budget hold on detail alone, whatever kW it carries', () => {
+      const withGap = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8,
+      });
+      const withoutGap = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.dailyBudget, detail: null,
+      });
+      expect(withGap).toEqual({ code: PLAN_REASON_CODES.dailyBudget, detail: null });
+      expect(withGap).toEqual(withoutGap);
+    });
+
+    // The churn case the ring buffer actually sees: house power moves, the pace
+    // moves, the displayed gap steps a whole 0.1 kW — and the signature must not.
+    it('is unchanged when the displayed kW steps between cycles', () => {
+      const cycleOne = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8,
+      });
+      const cycleTwo = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 1.3,
+      });
+      expect(cycleOne).toEqual(cycleTwo);
+    });
+
+    it('compares a startup-reservation hold on the holder name alone', () => {
+      expect(buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.reservedForStart,
+        targetName: 'Water heater',
+      })).toEqual({ code: PLAN_REASON_CODES.reservedForStart, targetName: 'Water heater' });
+    });
+  });
 });

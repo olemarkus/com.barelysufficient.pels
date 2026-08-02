@@ -11,6 +11,7 @@ import {
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
   formatProjectedEnergySubline,
+  formatSafePaceSubline,
   type HeroMeterMarkerLabels,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
 import {
@@ -19,6 +20,7 @@ import {
   formatHardCapTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
+  resolveSafePaceSourceText,
 } from '../../../../shared-domain/src/planHeroTooltips.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemantics.ts';
@@ -520,18 +522,25 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
 
 // Two mutually exclusive sublines under the Power-now headline, matching
 // `notes/overview-hero-spec.md` § "Power now":
-//   - on track:           "Safe pace now 12.0 kW"
-//   - above safe pace:    "1.5 kW above safe pace (12.0 kW)"
+//   - on track:           "Safe pace now 12.0 kW · set by this hour's pace"
+//   - above safe pace:    "1.5 kW above safe pace (12.0 kW · set by today's budget)"
 // The subline only ever compares against the safe pace PELS reacts to — never
 // against the hard cap, which is an hourly-average ceiling, not an
 // instantaneous threshold.
+//
+// The source clause is the hero's half of the 2026-08-02 split: the hero names
+// the ceiling limiting the HOUSE, device cards state what each device needs.
+// Since the cards stopped repeating it, this is where the owner learns it — so
+// it is visible text, not the hover tooltip it used to be (nothing hovers in the
+// Homey WebView).
 const resolvePowerSubline = (
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  softLimitSource: PlanMetaSnapshot['softLimitSource'],
 ): string => {
-  if (headline.overSoftLimit) {
-    return formatAboveSafePaceSubline(headline.headroomKw, headline.softLimitKw);
-  }
-  return `Safe pace now ${headline.softLimitKw.toFixed(1)} kW`;
+  const sourceText = resolveSafePaceSourceText(softLimitSource);
+  return headline.overSoftLimit
+    ? formatAboveSafePaceSubline(headline.headroomKw, headline.softLimitKw, sourceText)
+    : formatSafePaceSubline(headline.softLimitKw, sourceText);
 };
 
 const PowerSection = ({
@@ -564,7 +573,7 @@ const PowerSection = ({
         {' '}
         <span class="plan-hero__metric-qualifier">kW</span>
       </div>
-      <div class="plan-hero__subline">{resolvePowerSubline(headline)}</div>
+      <div class="plan-hero__subline">{resolvePowerSubline(headline, meta.softLimitSource)}</div>
       {solarNowText !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted" id="plan-hero-solar-now">
           {solarNowText}

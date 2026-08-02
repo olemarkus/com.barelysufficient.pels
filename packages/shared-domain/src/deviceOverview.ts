@@ -26,18 +26,13 @@ import {
   DEVICE_OVERVIEW_INACTIVE_DISCHARGING,
   DEVICE_OVERVIEW_LIMITED,
   DEVICE_OVERVIEW_LOWERED,
-  DEVICE_OVERVIEW_LOWERED_BY_PELS,
   DEVICE_OVERVIEW_RESUME_REQUESTED,
   DEVICE_OVERVIEW_RESUMING,
   DEVICE_OVERVIEW_STATE_UNKNOWN,
   DEVICE_OVERVIEW_TURNED_OFF,
-  DEVICE_OVERVIEW_TURNED_OFF_BY_PELS,
   DEVICE_OVERVIEW_UNAVAILABLE,
   DEVICE_OVERVIEW_UNKNOWN,
   DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER,
-  DEVICE_OVERVIEW_WOULD_LOWER,
-  DEVICE_OVERVIEW_WOULD_PAUSE_CHARGING,
-  DEVICE_OVERVIEW_WOULD_TURN_OFF,
   deviceOverviewEvBatteryStatus,
   deviceOverviewLimitedToStep,
 } from './deviceOverviewStrings';
@@ -103,28 +98,6 @@ export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot):
   device.reportedStepId
 );
 
-// Secondary text under a Limited chip names the action PELS took. Source of
-// truth: notes/ui-terminology.md §"Device state chips". EV chargers map to
-// "Charging paused" rather than "Turned off by PELS" so the language matches
-// what the user sees on the charger itself; turn-off shed actions on other
-// devices read as "Turned off by PELS"; everything else (set_temperature,
-// set_step, missing shedAction) reads as "Lowered by PELS".
-// `dryRun` (simulation mode) switches the fact-stated action to its hypothetical
-// variant — PELS shows what it would do without switching the device, so the
-// card must not claim it acted (notes/overview-hero-spec.md § "Simulation mode
-// is hypothetical").
-export const resolveHeldStateActionLabel = (
-  device: DeviceOverviewSnapshot,
-  dryRun = false,
-): string => {
-  if (isEvChargerDevice(device)) {
-    return dryRun ? DEVICE_OVERVIEW_WOULD_PAUSE_CHARGING : DEVICE_OVERVIEW_CHARGING_PAUSED;
-  }
-  if (device.shedAction === 'turn_off') {
-    return dryRun ? DEVICE_OVERVIEW_WOULD_TURN_OFF : DEVICE_OVERVIEW_TURNED_OFF_BY_PELS;
-  }
-  return dryRun ? DEVICE_OVERVIEW_WOULD_LOWER : DEVICE_OVERVIEW_LOWERED_BY_PELS;
-};
 
 const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => (
   device.targetStepId ?? device.desiredStepId

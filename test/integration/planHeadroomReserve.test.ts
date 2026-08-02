@@ -182,6 +182,9 @@ describe('PlanBuilder startup power reservation', () => {
     const plan = await builder.buildDevicePlanSnapshot(settled);
 
     expect(stateOf(plan, 'thermostat')).toBe('shed');
+    // `targetName` names the holder for the device-detail page and the logs; the
+    // shortfall is what the CARD renders (what this device needs), resolved from
+    // the post-reserve admission rather than the raw figure the decision used.
     expect(deviceOf(plan, 'thermostat')?.reason).toEqual({
       code: PLAN_REASON_CODES.reservedForStart,
       targetName: 'Connected 300',

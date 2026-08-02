@@ -38,19 +38,21 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
 };
 
 // Fallback status line for plan-card / stepped-load devices in the `held`
-// state when no richer per-device reason is available. Settings-UI consumers
-// (`PlanSteppedCard.tsx`, `PlanDeviceCards.tsx`) import this constant; the
-// three shared-domain reason helpers (`planSteppedCardText.ts`,
-// `planTemperatureCardText.ts`, `planReasonFormatting.ts`) still inline the
-// same literal — consolidating those three onto this constant alongside a
-// richer `resolveReportedLoadAfterPauseText` helper is tracked in `TODO.md`
-// under the P2 "Overview device-card status copy" item. Rule 4 (UI text
-// shared with logs) holds because the values match across all five sites.
+// state when no richer per-device reason is available. Since 2026-08-02 all
+// three card variants reach it through the one shared ladder in
+// `planCardReasonLine.ts`, so the literal is defined here and nowhere else —
+// the divergence this comment used to track is gone.
+
 // The copy for a device genuinely limited by capacity — a real `capacity` /
 // limited reason code, where naming the hard cap is accurate. Kept separate from
 // the held FALLBACK below: until 2026-07-25 both were one constant, so a held
 // card with no known constraint borrowed this wording and asserted the hard cap
 // on a house drawing 1.4 kW against a 5.4 kW pace.
+//
+// NOT a device-card string since 2026-08-02 — the binding ceiling is a
+// house-level fact the hero states once (`notes/ui-terminology.md` § "Device
+// cards say what a device needs"). This now serves `formatDeviceReasonUserFacing`
+// only: the device-detail page and the runtime logs.
 export const PLAN_STATE_CAPACITY_STATUS = 'Limited by the hard cap';
 
 // Held card with no known constraint to name. It must NOT claim the hard cap:
@@ -58,15 +60,22 @@ export const PLAN_STATE_CAPACITY_STATUS = 'Limited by the hard cap';
 // trade against (feedback_hard_cap_is_physical), and this line fires precisely
 // when PELS does not know which gate is holding the device — so naming any
 // specific cause is a guess. Prod 2026-07-25: a charger read "Limited by the
-// hard cap" while the house drew 1.4 kW against a 5.4 kW pace. `PlanDeviceCards`
-// already routes every STARVED device to `formatStarvationReason` to avoid this
-// line for the two causes it does know; this is the honest text for the rest.
+// hard cap" while the house drew 1.4 kW against a 5.4 kW pace.
+//
+// Since 2026-08-02 this is also the terminal branch of the shared card ladder
+// (`resolveHeldCardReasonLine`), reached whenever a power-blocked hold carries
+// no resolvable kW shortfall. It sits BELOW the starvation copy, which is more
+// specific when a device has been held long enough to be flagged.
 export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Waiting to resume';
 
 // Mirror status line for `dailyBudget` reason-code holds. Daily-budget pacing
 // is the binding constraint instead of the hard cap. Direct attribution
 // (`Limited by …`) matches `PLAN_STATE_HELD_FALLBACK_STATUS` so the two
 // statuses read in the same shape.
+//
+// Like `PLAN_STATE_CAPACITY_STATUS`, no longer a device-card string: device
+// cards state what the device needs and leave the ceiling to the hero. Serves
+// `formatDeviceReasonUserFacing` — device detail and the runtime logs.
 export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 
 // Sibling status for `hourlyBudget` holds: the planner is holding the device

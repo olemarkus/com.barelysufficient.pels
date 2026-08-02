@@ -16,7 +16,7 @@
 //    planner left inactive because there is no room ("Waiting to resume —
 //    0.2 kW more needed") is held back, and `Idle` beside a waiting reason
 //    contradicts the canon ("Idle" means PELS is NOT holding it back —
-//    notes/ui-terminology.md § Device state chips).
+//    notes/ui-terminology.md § "Device state words (Overview cards)").
 // 2. Simulation renders the FACTUAL device state: `held`/`resuming` are
 //    PELS-acted claims, and in simulation PELS acts on nothing — the bold
 //    word shows what the device is actually doing (Running/Idle/Off) and the

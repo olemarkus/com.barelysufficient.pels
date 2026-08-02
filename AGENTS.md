@@ -311,12 +311,16 @@ Findings come back classified P0/P1/P2 — P0/P1 fix in the same PR; P2/P3 to `T
 | kWh allowed for this hour | Budget this hour |
 | Projected end-of-hour kWh | Projected this hour |
 
-The "Safe pace now" tick uses a single label regardless of whether the binding constraint is capacity-based or daily-budget-based. The tooltip explains the source.
+The "Safe pace now" tick uses a single label regardless of whether the binding constraint is capacity-based or daily-budget-based. The Power-now **subline** names the source in visible text (`Safe pace now 1.9 kW · set by today's budget`) — device cards no longer repeat the binding ceiling, so the hero is the only place the owner reads it, and a hover tooltip is unreachable in the touch WebView.
+
+### Device card reason lines
+
+A device card's one reason line says **what that device needs**, never which ceiling limits the house (the hero states that once). Held-on-power cards read `Waiting to resume — 0.8 kW more needed`; holds that power cannot lift (smart task, solar surplus, external off, stepped fairness, countdowns) keep their own cause. Source of truth: `resolveHeldCardReasonLine` in `packages/shared-domain/src/planCardReasonLine.ts`, shared by all three card variants. Full ladder and the retired-strings list: `notes/ui-terminology.md` § "Device cards say what a device needs".
 
 ### Chips vs reason lines
 
 Chips stay short — canonical chip labels like `Limited`, `Resuming`, `Above safe pace` (see `notes/ui-terminology.md` for the full set).
-Reason lines (below chip or in tooltip) may be a short sentence: `by today's daily budget`.
+Reason lines (below chip or in tooltip) may be a short sentence: `Waiting to resume — 0.8 kW more needed`.
 Do not put sentences in chips.
 
 ### Terms that stay internal (do not surface in normal UI)

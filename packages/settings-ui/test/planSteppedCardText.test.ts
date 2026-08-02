@@ -9,8 +9,8 @@ import {
 } from '../../shared-domain/src/planSteppedCardText.ts';
 import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
 } from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
@@ -506,7 +506,10 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Waiting to resume — 0.3 kW more needed');
     });
 
-    it('returns budget text when held off with capacity reason and no gap info', () => {
+    // The hard cap is a house-level fact the hero names once (and not a lever
+    // the owner can trade against), so a capacity hold with no resolved
+    // shortfall says only that the device is waiting.
+    it('returns the bare waiting line when held off with a capacity reason and no gap info', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -516,9 +519,20 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-        // A real `capacity` reason: naming the hard cap is accurate here. The
-        // separate held FALLBACK (unknown constraint) no longer shares this text.
-      )).toBe(PLAN_STATE_CAPACITY_STATUS);
+      )).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+    });
+
+    it('states the shortfall when a budget hold carries one', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
+          reason: { code: 'daily_budget', detail: null, shortfallKw: 0.6 },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Waiting to resume — 0.6 kW more needed');
     });
 
     it('returns the deferred-objective avoid status when the smart task is waiting for cheaper hours', () => {
@@ -534,17 +548,21 @@ describe('resolveSteppedStatusLine', () => {
       )).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
     });
 
-    it('returns shed invariant status with count and max step', () => {
+    // The invariant only refuses step INCREASES, so the line says where the
+    // device is holding and what would lift it — never "blocked", and never the
+    // invariant's `maxStep` cap, which is not where the device is (prod
+    // 2026-07-05 claimed "Limited to Low" for a device running at Medium).
+    it('names the device step and the devices whose resume would lift the hold', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
-          reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 1, maxStep: 'low' },
+          reportedStepId: 'medium',
+          reason: { code: 'shed_invariant', fromStep: 'medium', toStep: 'high', shedDeviceCount: 1, maxStep: 'low' },
         },
         profile,
         NOW_MS,
-      )).toBe('Limited to Low — 1 device still limited');
+      )).toBe('Holding at Medium — cannot increase while 1 device is limited');
     });
 
     it('returns shed invariant status with plural device count', () => {
@@ -557,7 +575,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Limited to Low — 3 devices still limited');
+      )).toBe('Holding at Low — cannot increase while 3 devices are limited');
     });
 
     it('returns null when desired step is lower with no reason (quiet, no filler line)', () => {

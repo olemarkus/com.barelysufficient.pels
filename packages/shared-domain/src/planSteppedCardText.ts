@@ -2,47 +2,25 @@ import type { EvChargingState, SteppedLoadProfile } from '../../contracts/src/ty
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 import {
+  isHoldReasonCode,
   resolveDisplayStateKind,
   resolveRawPlanStateKind,
   shouldDisplayExternalOffReason,
 } from './planCardGrammar';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
-import { resolveRestoreShortfallKw } from './planReasonFormatting';
+import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
 import { formatStarvationReason } from './planStarvation';
+import { formatShortfallLine, resolveHeldCardReasonLine } from './planCardReasonLine';
+import { formatStepDisplayLabel } from './steppedStepLabel';
 import {
-  PLAN_STATE_DAILY_BUDGET_STATUS,
-  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
-  PLAN_STATE_HOURLY_BUDGET_STATUS,
   type PlanStateKind,
 } from './planStateLabels';
 
 const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 );
-
-// Match stored ampere step ids like `6a`, `16a`, `32a` (digits followed by a
-// lowercase `a`). The persisted stepId is the contract surface — log
-// schemas, plan signatures, and downstream consumers all read it — so this
-// helper only changes the *display* string for human-facing surfaces (step
-// rail, status lines). Numeric values are returned as `"N A"` (uppercase
-// ampere, separated with a space per the SI unit convention) so the label
-// cannot read as `"6 am"`.
-const AMPERE_STEP_PATTERN = /^([0-9]+)a$/i;
-
-const formatStepDisplayLabelInternal = (stepId: string): string => {
-  const trimmed = stepId.trim();
-  if (trimmed.length === 0) return '';
-  const match = AMPERE_STEP_PATTERN.exec(trimmed);
-  if (match) return `${match[1]} A`;
-  // Humanize underscore-delimited ids so an internal token never surfaces raw:
-  // the device-detail editor's default new-step id `step_2` renders `Step 2`,
-  // not `Step_2`. Named/level ids (`low`, `max`) carry no underscore and are
-  // just capitalized.
-  return capitalize(trimmed.replace(/_+/g, ' '));
-};
 
 const isOffLikeId = (id: string | undefined): boolean => {
   const n = (id ?? '').trim().toLowerCase();
@@ -92,7 +70,7 @@ const findStepLabel = (profile: SteppedLoadProfile, stepId: string | null): stri
   const norm = normalizeStepId(stepId);
   if (!norm) return null;
   const step = profile.steps.find((s) => s.id.toLowerCase() === norm);
-  return step ? formatStepDisplayLabelInternal(step.id) : null;
+  return step ? formatStepDisplayLabel(step.id) : null;
 };
 
 const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): boolean => {
@@ -130,23 +108,6 @@ const isSettlingReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.startupStabilization
 );
 
-const isWaitingReason = (code: string): boolean => (
-  code === PLAN_REASON_CODES.insufficientHeadroom
-  || code === PLAN_REASON_CODES.shortfall
-  || code === PLAN_REASON_CODES.waitingForOtherDevices
-  || code === PLAN_REASON_CODES.restoreThrottled
-  || code === PLAN_REASON_CODES.swapPending
-  || code === PLAN_REASON_CODES.swappedOut
-);
-
-const isLimitedReason = (code: string): boolean => (
-  isWaitingReason(code)
-  || code === PLAN_REASON_CODES.shedInvariant
-  || code === PLAN_REASON_CODES.capacity
-  || code === PLAN_REASON_CODES.hourlyBudget
-  || code === PLAN_REASON_CODES.dailyBudget
-);
-
 type SteppedDevice = SteppedCardDevice;
 
 const isAtTargetStep = (device: SteppedDevice): boolean => {
@@ -167,10 +128,6 @@ const isHeadroomCheckSettlingReason = (code: string): boolean => (
 );
 
 // ─── Status line ──────────────────────────────────────────────────────────────
-
-// Admission-accurate shortfall (reserves folded in) — shared resolver, see
-// `resolveRestoreShortfallKw` in `planReasonFormatting.ts`.
-const resolveHeadroomGapKw = (reason: DeviceReason): number | null => resolveRestoreShortfallKw(reason);
 
 const formatSec = (sec: number): string => `${Math.round(Math.max(0, sec))}s`;
 
@@ -232,15 +189,15 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   const targetId = resolveTargetStepId(device);
   if (!targetId || !isPoweredStep(profile, targetId)) return null;
   if (isSteppedCardOffLikeState(device.currentState)) {
-    const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : null;
+    const gap = resolveRestoreShortfallKw(device.reason);
+    return gap !== null ? formatShortfallLine(gap, 'resume') : null;
   }
   const currentId = resolveCurrentStepId(device);
   const currentIdx = findStepIndex(profile, currentId);
   const targetIdx = findStepIndex(profile, targetId);
   if (currentIdx >= 0 && targetIdx > currentIdx) {
-    const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Waiting to increase — ${gap.toFixed(1)} kW more needed` : null;
+    const gap = resolveRestoreShortfallKw(device.reason);
+    return gap !== null ? formatShortfallLine(gap, 'increase') : null;
   }
   return null;
 };
@@ -252,17 +209,14 @@ const resolveOffStatusLine = (
   if (showExternalOffReason) {
     return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
   }
-  if (isWaitingReason(device.reason.code)) {
-    const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
-  }
-  if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
-    return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
-  }
-  if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
-  if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
-  if (isLimitedReason(device.reason.code)) return PLAN_STATE_CAPACITY_STATUS;
-  return null;
+  // Still null-able on purpose: an off device the plan is NOT holding back (no
+  // hold reason, no starvation) gets no status line at all. `external_off_hold`
+  // is deliberately absent from `isHoldReasonCode`, so a stale off-hold on an
+  // unavailable device stays silent rather than telling the owner to flip a
+  // switch PELS cannot currently observe — the `showExternalOffReason` gate
+  // above owns the case where that guidance IS honest.
+  if (!isHoldReasonCode(device.reason.code) && device.starvation?.isStarved !== true) return null;
+  return resolveHeldCardReasonLine({ reason: device.reason, starvation: device.starvation });
 };
 
 // The producer-resolved budget starvation cause wins over every reason.code
@@ -304,12 +258,11 @@ export const resolveSteppedStatusLine = (
     const budgetStatus = resolveBudgetStarvationStatus(device);
     if (budgetStatus !== null) return budgetStatus;
   }
+  // A RUNNING stepped device denied a step up never reaches `resolveOffStatusLine`
+  // below, so this branch stays — but the sentence itself now comes from the
+  // shared formatter, which the device-detail page and the logs also use.
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
-    const r = device.reason;
-    const n = r.shedDeviceCount;
-    const stepLabel = formatStepDisplayLabelInternal(r.maxStep);
-    const noun = n === 1 ? 'device' : 'devices';
-    return `Limited to ${stepLabel} — ${n} ${noun} still limited`;
+    return formatDeviceReasonUserFacing(device.reason);
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
@@ -384,7 +337,7 @@ export const resolveSteppedLevelFact = (device: {
   const stepId = device.steppedLoad?.reportedStepId ?? null;
   if (!stepId) return 'Level unknown';
   if (isOffLikeId(stepId)) return null;
-  const levelText = `level ${formatStepDisplayLabelInternal(stepId)}`;
+  const levelText = `level ${formatStepDisplayLabel(stepId)}`;
   const isRoutineEvCharge = device.controlCapabilityId === 'evcharger_charging'
     && (device.evChargingState ?? '').trim().toLowerCase() === EV_ROUTINE_STATE;
   if (isRoutineEvCharge) {
@@ -406,4 +359,6 @@ export const resolveSteppedEvExceptionLabel = (device: {
 };
 
 export { capitalize as capitalizeStepLabel };
-export { formatStepDisplayLabelInternal as formatStepDisplayLabel };
+// Re-exported for existing importers; the definition now lives in
+// `steppedStepLabel.ts` so `planReasonFormatting.ts` can use it without a cycle.
+export { formatStepDisplayLabel } from './steppedStepLabel';

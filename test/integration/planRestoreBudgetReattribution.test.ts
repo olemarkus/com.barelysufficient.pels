@@ -1,7 +1,10 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import {
+  PLAN_REASON_CODES,
+  resolveRestoreShortfallKw,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   type PlanInputDevice,
   withBinaryDiscriminant,
@@ -176,6 +179,18 @@ describe('budget-bound restore holds through the full plan build', () => {
     expect(third.meta.powerKnown).toBe(true);
     expect(thirdDevice.plannedState).toBe('shed');
     expect(thirdDevice.reason.code).toBe(PLAN_REASON_CODES.dailyBudget);
+
+    // The fold re-LABELS the hold; it must not drop its numbers. The card states
+    // what this device needs (the hero names the binding ceiling once), so the
+    // admission shortfall has to survive re-attribution — before 2026-08-02 it
+    // was discarded here and the card had nothing to say.
+    const shortfallKw = (thirdDevice.reason as { shortfallKw?: number | null }).shortfallKw;
+    expect(shortfallKw).not.toBeNull();
+    expect(shortfallKw).toBeGreaterThan(0);
+    // Display-rounded at the producer, so the stored value cannot churn the
+    // overview signature between cycles that render the same number.
+    expect(shortfallKw).toBeCloseTo(Math.round((shortfallKw ?? 0) * 10) / 10, 10);
+    expect(resolveRestoreShortfallKw(thirdDevice.reason)).toBe(shortfallKw);
   });
 
   it('keeps a capacity-bound blocked restore on the numeric headroom reason', async () => {

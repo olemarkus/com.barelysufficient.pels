@@ -3,9 +3,9 @@ import {
   resolveTemperatureReasonLine,
 } from '../../shared-domain/src/planTemperatureCardText.ts';
 import {
-  PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
 } from '../../shared-domain/src/planStateLabels.ts';
 
 describe('resolveTemperatureLine', () => {
@@ -136,14 +136,57 @@ describe('resolveTemperatureReasonLine', () => {
     })).toBeNull();
   });
 
-  it('uses plain budget wording for daily-budget limiting', () => {
+  // WHICH ceiling is binding is a house-level fact the hero states once, so the
+  // card spends its one line on what THIS device needs. When the hold carries a
+  // resolved shortfall the card names it; without one it says only that the
+  // device is waiting.
+  it('states the shortfall, not the ceiling, for a daily-budget hold', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'off',
+      plannedState: 'shed',
+      currentTemperature: 20.2,
+      plannedTarget: 21,
+      reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 },
+    })).toBe('Waiting to resume — 0.8 kW more needed');
+  });
+
+  it('falls back to the bare waiting line when a budget hold carries no shortfall', () => {
     expect(resolveTemperatureReasonLine({
       currentState: 'off',
       plannedState: 'shed',
       currentTemperature: 20.2,
       plannedTarget: 21,
       reason: { code: 'daily_budget', detail: null },
-    })).toBe(PLAN_STATE_DAILY_BUDGET_STATUS);
+    })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+  });
+
+  // `capacity` and `hourly_budget` can never carry a shortfall — no producer of
+  // either has the admission arithmetic for the device in scope — so they lose
+  // their ceiling name and gain the bare waiting line. That is the trade: the
+  // hero names the ceiling, and a card never asserts the hard cap.
+  it('never names the daily budget or the hard cap on a card', () => {
+    const lines = ([
+      { code: 'capacity', detail: null },
+      { code: 'hourly_budget', detail: null },
+      { code: 'daily_budget', detail: null },
+      { code: 'daily_budget', detail: null, shortfallKw: 0.5 },
+    ] as const).map((reason) => resolveTemperatureReasonLine({
+      currentState: 'off',
+      plannedState: 'shed',
+      currentTemperature: 20.2,
+      plannedTarget: 21,
+      reason,
+    }));
+
+    expect(lines).toEqual([
+      PLAN_STATE_HELD_FALLBACK_STATUS,
+      PLAN_STATE_HELD_FALLBACK_STATUS,
+      PLAN_STATE_HELD_FALLBACK_STATUS,
+      'Waiting to resume — 0.5 kW more needed',
+    ]);
+    for (const line of lines) {
+      expect(line).not.toMatch(/hard cap|budget/i);
+    }
   });
 
   it('renders the deferred-objective avoid status for smart-task waiting', () => {
@@ -156,27 +199,38 @@ describe('resolveTemperatureReasonLine', () => {
     })).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
   });
 
-  it('states "Lowered by PELS" as fact when not simulating', () => {
+  // A shed with no attributed reason: PELS knows it is holding the device but
+  // not which gate is doing it. "Lowered by PELS" used to fill this slot —
+  // restating the bold `Limited` state word and naming no cause. The bare
+  // waiting line is the honest answer, and it needs no simulation variant
+  // because "waiting" claims no action.
+  it('says only that the device is waiting when no constraint is attributed', () => {
+    const unattributed = {
+      currentState: 'on',
+      plannedState: 'shed' as const,
+      currentTemperature: 22.8,
+      plannedTarget: 20,
+      reason: { code: 'none' as const },
+    };
+    expect(resolveTemperatureReasonLine(unattributed)).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+    expect(resolveTemperatureReasonLine(unattributed, true)).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+  });
+
+  // A binary-commanded thermostat has no planned temperature, so it answers
+  // before the temperature-evidence gate. It gets the same line as every other
+  // held card — the old "Turned off by PELS" said less than the state word did.
+  it('states the shortfall on a binary-commanded card without a planned target', () => {
     expect(resolveTemperatureReasonLine({
       currentState: 'on',
       plannedState: 'shed',
-      currentTemperature: 22.8,
-      plannedTarget: 20,
-      reason: { code: 'none' },
-    })).toBe('Lowered by PELS');
+      currentTemperature: 20.3,
+      currentTarget: 22,
+      shedAction: 'turn_off',
+      reason: { code: 'daily_budget', detail: null, shortfallKw: 1.2 },
+    })).toBe('Waiting to resume — 1.2 kW more needed');
   });
 
-  it('states the held action hypothetically in simulation mode (dryRun)', () => {
-    expect(resolveTemperatureReasonLine({
-      currentState: 'on',
-      plannedState: 'shed',
-      currentTemperature: 22.8,
-      plannedTarget: 20,
-      reason: { code: 'none' },
-    }, true)).toBe('Would be lowered (simulation)');
-  });
-
-  it('states the binary action on an observational temperature card without a planned target', () => {
+  it('never claims PELS turned the device off', () => {
     expect(resolveTemperatureReasonLine({
       currentState: 'on',
       plannedState: 'shed',
@@ -184,26 +238,6 @@ describe('resolveTemperatureReasonLine', () => {
       currentTarget: 22,
       shedAction: 'turn_off',
       reason: { code: 'capacity', detail: null },
-    })).toBe('Turned off by PELS');
-  });
-
-  const heldThermostat = (code: 'capacity' | 'hourly_budget' | 'daily_budget') => ({
-    currentState: 'on',
-    plannedState: 'shed' as const,
-    currentTemperature: 22.8,
-    plannedTarget: 20,
-    reason: { code, detail: null },
-  });
-
-  it('states capacity / hourly / daily limiting as FACT when not simulating', () => {
-    expect(resolveTemperatureReasonLine(heldThermostat('capacity'))).toBe('Limited by the hard cap');
-    expect(resolveTemperatureReasonLine(heldThermostat('hourly_budget'))).toBe('Limited — this hour is near the hard cap');
-    expect(resolveTemperatureReasonLine(heldThermostat('daily_budget'))).toBe("Limited by today's daily budget");
-  });
-
-  it('states capacity / hourly / daily limiting HYPOTHETICALLY in simulation (dryRun)', () => {
-    expect(resolveTemperatureReasonLine(heldThermostat('capacity'), true)).toBe('Would be limited by the hard cap (simulation)');
-    expect(resolveTemperatureReasonLine(heldThermostat('hourly_budget'), true)).toBe('Would be limited — this hour is near the hard cap (simulation)');
-    expect(resolveTemperatureReasonLine(heldThermostat('daily_budget'), true)).toBe("Would be limited by today's daily budget (simulation)");
+    })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
   });
 });
