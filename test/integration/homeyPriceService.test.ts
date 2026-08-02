@@ -197,7 +197,7 @@ describe('Homey price service', () => {
       expect.objectContaining({ event: 'homey_energy_currency_fetch_failed' }),
     );
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMEY_PRICES_TOMORROW);
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('NOK');
     expect(structuredLog.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'homey_prices_stored', dayCount: 1 }),

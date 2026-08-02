@@ -216,7 +216,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
 
-    expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(COMBINED_PRICES);
 
     coordinator.stop();
   });

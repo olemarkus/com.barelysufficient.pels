@@ -309,8 +309,11 @@ describe('buildCapacitySettingsSnapshot', () => {
   });
 
   it('resolves a genuinely absent fresh-install setting as an empty policy', () => {
+    // `null` is what the SDK answers for a key that was never written. These
+    // three specs drove `undefined` — a value only a test double produces —
+    // which is why the reader shipped classifying absence on the wrong branch.
     const settings = {
-      get: vi.fn(() => undefined),
+      get: vi.fn(() => null),
       getKeys: vi.fn(() => ['some_other_setting']),
     };
 
@@ -325,7 +328,7 @@ describe('buildCapacitySettingsSnapshot', () => {
 
   it('fails closed when the key is present but its value is unavailable', () => {
     const settings = {
-      get: vi.fn(() => undefined),
+      get: vi.fn(() => null),
       getKeys: vi.fn(() => [TEMPERATURE_CONTROL_DISABLED_DEVICES]),
     };
 
@@ -340,7 +343,7 @@ describe('buildCapacitySettingsSnapshot', () => {
 
   it('fails closed when an empty key list cannot prove fresh-install absence', () => {
     const settings = {
-      get: vi.fn(() => undefined),
+      get: vi.fn(() => null),
       getKeys: vi.fn(() => []),
     };
 

@@ -39,6 +39,8 @@ Logging uses a pino-based structured logger (`lib/logging/`). Logs are JSON obje
 
 ## Homey SDK
 
-- If runtime code uses a new Homey SDK API, update the mock at `test/mocks/homey.ts`.
+- If runtime code uses a new Homey SDK API, update the mock at `test/mocks/homey.ts`, and keep
+  its absence contract faithful — `settings.get()` on an unset key answers `null`. The rule for
+  classifying that absence lives in `setup/AGENTS.md` (the settings adapters own it).
 - Do not use Homey SDK types in `packages/shared-domain/` — that package must stay browser-safe.
 - Flow cards are registered in `flowCards/registerFlowCards.ts`.

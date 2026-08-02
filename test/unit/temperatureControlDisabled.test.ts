@@ -9,6 +9,34 @@ import {
   resolveTemperatureControlDisabled,
 } from '../../setup/appDeviceControlHelpers';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
+import { readTemperatureControlDisabledDevicesSetting } from '../../setup/appSettingsHelpers';
+
+/**
+ * Settings double for the reader's structural port. No cast: a wrong shape is a
+ * compile error rather than a `TypeError` the reader's `catch` would swallow
+ * into the `unavailable` several of these cases assert.
+ *
+ * `absent` is the shape an unwritten key reads back as. The SDK answers `null`;
+ * object doubles elsewhere in the suite answer `undefined`, and the reader
+ * accepts both, so the cases below drive each explicitly.
+ */
+const settingsStore = (params: {
+  entries: Record<string, unknown>;
+  absent?: unknown;
+  get?: (key: string) => unknown;
+  getKeys?: () => unknown;
+}) => ({
+  get: params.get
+    ?? ((key: string) => {
+      if (Object.prototype.hasOwnProperty.call(params.entries, key)) return params.entries[key];
+      // Presence of the field, not its value: `absent: undefined` is a case to
+      // drive, and `?? null` would quietly turn it back into the null case.
+      return Object.prototype.hasOwnProperty.call(params, 'absent') ? params.absent : null;
+    }),
+  getKeys: params.getKeys ?? (() => Object.keys(params.entries)),
+});
+
+const UNAVAILABLE = { devices: {}, state: 'unavailable' as const };
 
 const thermostat = (): TargetDeviceSnapshot => ({
   id: 'thermostat-1',
@@ -18,6 +46,62 @@ const thermostat = (): TargetDeviceSnapshot => ({
   capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
   controlCapabilityId: 'onoff',
   binaryControl: { on: true },
+});
+
+describe('temperature-control policy read', () => {
+  // The absence classification itself (fresh install, listed-but-empty, empty
+  // key list, malformed-value retention) is covered end-to-end through
+  // `buildCapacitySettingsSnapshot` in test/integration/appSettingsHelpers.test.ts.
+  // These cases pin only what that tier does not reach: both absence shapes,
+  // and the guards that fire when the key list itself cannot be trusted.
+
+  it.each([
+    ['null, as the SDK answers', null],
+    ['undefined, as object doubles answer', undefined],
+  ])('resolves a never-written key that reads back as %s', (_label, absent) => {
+    expect(readTemperatureControlDisabledDevicesSetting({
+      settings: settingsStore({ entries: { capacity_limit_kw: 10 }, absent }),
+      current: UNAVAILABLE,
+    })).toEqual({ devices: {}, state: 'resolved' });
+  });
+
+  it.each([
+    ['a non-array key list', () => null],
+    ['a key list holding non-strings', () => [42, 'capacity_limit_kw']],
+  ])('stays unavailable on %s', (_label, getKeys) => {
+    // A key list we cannot read is not evidence of absence, so the policy must
+    // not resolve to "nothing opted out" off the back of it.
+    expect(readTemperatureControlDisabledDevicesSetting({
+      settings: settingsStore({ entries: { capacity_limit_kw: 10 }, getKeys }),
+      current: UNAVAILABLE,
+    })).toEqual(UNAVAILABLE);
+  });
+
+  it('stays unavailable when either settings read throws', () => {
+    expect(readTemperatureControlDisabledDevicesSetting({
+      settings: settingsStore({
+        entries: {},
+        get: () => { throw new Error('settings unavailable'); },
+      }),
+      current: UNAVAILABLE,
+    })).toEqual(UNAVAILABLE);
+    expect(readTemperatureControlDisabledDevicesSetting({
+      settings: settingsStore({
+        entries: { capacity_limit_kw: 10 },
+        getKeys: () => { throw new Error('settings unavailable'); },
+      }),
+      current: UNAVAILABLE,
+    })).toEqual(UNAVAILABLE);
+  });
+
+  it('clears a previously resolved map once the key is proven gone', () => {
+    // Clearing the last opt-out through the UI unsets the key. Retaining the
+    // old map there would keep fencing a device the owner just re-enabled.
+    expect(readTemperatureControlDisabledDevicesSetting({
+      settings: settingsStore({ entries: { capacity_limit_kw: 10 } }),
+      current: { devices: { 'thermostat-1': true }, state: 'resolved' },
+    })).toEqual({ devices: {}, state: 'resolved' });
+  });
 });
 
 describe('disabled temperature control', () => {

@@ -486,7 +486,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1_000);
     await drainPending();
-    expect(mockHomeyInstance.settings.get(trackerKey)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(trackerKey);
     expect(setSpy).not.toHaveBeenCalledWith(trackerKey, expect.anything());
 
     // Repair with the exact last-good payload (the old own-write fingerprint)
@@ -916,7 +916,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
 
     expect(rig.registry.reconcile()).toBe(true);
-    expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(MODE_TARGET_OWNERSHIP_STATE);
 
     ownershipReady = true;
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
@@ -1051,7 +1051,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(blob).toBeTruthy();
     expect(blob?.dryRunEffective).toBe(true);
     // The main home's blob is byte-identical to origin/main: it never gains the field.
-    expect(mockHomeyInstance.settings.get('pels_status')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status');
   });
 
   it('a sub-home plan rebuild drives NONE of the shared UI/side-effect singletons', async () => {
@@ -1177,7 +1177,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.registry.reconcile();
     await drainPending();
     // Held by the gate → no status written yet.
-    expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status:h_a');
 
     // Tear down while the rebuild is held, THEN let it resolve post-teardown.
     writeActiveHomesConfig({ subHomes: [] });
@@ -1186,7 +1186,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     heldGate.release('snapshot_ready');
     await drainPending();
     // The resolving rebuild persisted NO suffixed state (writers fenced on teardown).
-    expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status:h_a');
 
     // A same-homeId recreate is a FRESH bundle with its own (open) fence: it persists.
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });

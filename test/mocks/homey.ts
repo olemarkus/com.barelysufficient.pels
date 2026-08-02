@@ -43,8 +43,13 @@ const DEFAULT_EXTERNAL_CHANGE_BEHAVIOR: Required<MockCapabilityMutationBehavior>
 export class MockSettings extends EventEmitter {
   private store = new Map<string, any>();
 
+  // Mirror the real SDK's `ManagerSettings.get()`: an unset key (never written,
+  // or `unset`) answers `null`, NOT `undefined`. A bare `Map.get` here disagrees
+  // with the device at exactly the branch boundary readers classify absence on,
+  // which is how a reader gated only on `=== undefined` shipped green (the
+  // v2.20.0 temperature-control policy regression). Do not "simplify" this back.
   get(key: string) {
-    return this.store.get(key);
+    return this.store.has(key) ? this.store.get(key) : null;
   }
 
   set(key: string, value: any) {

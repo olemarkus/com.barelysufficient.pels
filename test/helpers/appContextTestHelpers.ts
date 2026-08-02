@@ -55,7 +55,8 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
       getActionCard: vi.fn(() => createFlowCardMock()),
     },
     settings: {
-      get: vi.fn(),
+      // Unset keys answer `null`, as the SDK does — see test/mocks/homey.ts.
+      get: vi.fn(() => null),
       set: vi.fn(),
       unset: vi.fn(),
       getKeys: vi.fn(() => []),

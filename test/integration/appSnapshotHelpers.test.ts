@@ -284,8 +284,8 @@ describe('appSnapshotHelpers', () => {
 
     // No write to MANAGED_DEVICES means the settings handler is never fired,
     // so no recursive snapshot refresh is queued.
-    expect(mockHomeyInstance.settings.get(MANAGED_DEVICES)).toBeUndefined();
-    expect(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES)).toBeUndefined();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(MANAGED_DEVICES);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(CONTROLLABLE_DEVICES);
   });
 
   it('emits flow-backed refresh requests only once across queued snapshot cycles', async () => {

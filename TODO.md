@@ -41,6 +41,28 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **Three settings readers still gate their key-list cross-check on `undefined` alone, so
+      their transient-miss protection is unreachable on a real Homey.** `settings.get()` answers
+      an unset key with `null`, so in `setup/mainMeterSettings.ts:22-27` the `raw === null` early
+      return fires before the cross-check, and in `setup/homeRuntime/homeOperatingMode.ts:95` the
+      whole suspect ladder (`malformed_key_list` / `empty_key_list` / `missing_existing_key`) is
+      skipped. Both then resolve a transient miss to a real value: Main silently reverts to
+      Automatic (changing which physical meter drives its capacity budget), and a pinned meter
+      area silently reverts to the global operating mode (different device targets, no fault
+      surfaced) — each contradicting its own docstring.
+      `setup/externalOffHoldAdapter.ts:61` is the same class with no cross-check at all: one bad
+      read makes every de-opted device look un-opted, so PELS resumes loads the owner turned off
+      by hand.
+      **Not a one-liner:** for all three, `null` is *also* a legitimate stored value (Automatic,
+      "no pin", cleared map), so key-presence cannot discriminate stored-null from a miss. Needs
+      a written-before marker (the pattern `externalOffHoldAdapter` already uses for its own
+      state blob) or a counted grace window, decided per key. Same class as the v2.20.0
+      temperature-control regression fixed in `readTemperatureControlDisabledDevicesSetting`;
+      the rule now lives in `setup/AGENTS.md`. Their unit specs
+      (`test/unit/mainMeterSettings.test.ts:14,21,25`) pin `get: () => undefined` exclusively and
+      so assert branches the device cannot reach — fix the specs with the readers.
+      Source: 2026-08-02 adversarial review of the temperature-control policy fix. [P1]
+
 - [ ] **The editor client still revokes a standing limit-only grant on any permission toggle.**
       `applyPermissionGate` (`packages/settings-ui/src/ui/smartTaskEdit.ts:342-348`) forces
       `limitLowerPriorityDevices: false` whenever `exemptFromBudget` is unchecked, on ANY
@@ -1088,15 +1110,42 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
-- [ ] **One failed boot read of the temperature-control policy flips every thermostat to on/off
-      control.** `resolveTemperatureControlDisabled` (`setup/appDeviceControlHelpers.ts:64-74`)
-      classifies every temperature device target-control-disabled while the policy read is
-      `unavailable` with no prior resolved value, so a capacity shed in that window turns
-      thermostats OFF instead of lowering setpoints, and boost is stripped. Fail-safe direction
-      and self-healing (retry per query), but it is one transient read driving a behavior flip.
-      Count 2–3 consecutive unavailable resolutions before applying the all-temperature fallback,
-      or at least emit a dedicated `temperature_control_policy_unavailable` event so the flip is
-      diagnosable. Source: 2026-08-02 release review, pels-runtime-reality. [P2]
+- [ ] **The same settings-absence classification is hand-rolled in four readers, and the bug
+      shipped in the duplication rather than in any one policy.** `readOptionalSetting`
+      (`setup/homeRuntime/homeModeCatalog.ts:126-146`),
+      `readTemperatureControlDisabledDevicesSetting` (`setup/appSettingsHelpers.ts`),
+      `readConfiguredPowerSource` (`setup/powerSourceSettings.ts`) and
+      `readMainMeterSelection` (`setup/mainMeterSettings.ts`) each re-derive the same evidence:
+      read the value, cross-check `getKeys()`, validate the list is a non-empty string array.
+      Promote that evidence — not the verdict — into one `setup/` module returning
+      `'value' | 'unwritten' | 'listed_but_empty' | 'key_list_unusable'`, and let each reader keep
+      its own policy on top (they legitimately differ: the temperature policy fails closed on
+      `listed_but_empty`, the mode catalog treats it as an explicit stored `null`). This does not
+      conflict with `notes/persisted-settings-state.md`'s "no shared helper" ruling, which rejects
+      sharing differing state machines, not shared evidence.
+      Source: 2026-08-02 adversarial review of the temperature-control policy fix. [P2]
+
+- [ ] **A transient failed read of the temperature-control policy flips every thermostat to on/off
+      control, and nothing says so.** `resolveTemperatureControlDisabled`
+      (`setup/appDeviceControlHelpers.ts:64-74`) classifies every temperature device
+      target-control-disabled while the policy read is `unavailable` with no prior resolved value,
+      so a capacity shed in that window turns thermostats OFF instead of lowering setpoints, and
+      boost is stripped. Fail-safe direction and self-healing (retry per query), but it is one
+      transient read driving a behavior flip. Count 2–3 consecutive unavailable resolutions before
+      applying the all-temperature fallback, and emit a dedicated
+      `temperature_control_policy_unavailable` event so the flip is diagnosable.
+      **The diagnosability half is the load-bearing one, and this entry under-rated it.** As
+      originally filed this was assessed P2 on the premise that `unavailable` is transient and
+      self-heals. It was not: `ManagerSettings.get` answers an unset key with `null`, the reader
+      classified absence on `undefined` alone, and so the policy pinned itself at `unavailable`
+      *permanently* on every install that had never written the key — silently costing every
+      thermostat all setpoint control (shipped in v2.20.0, fixed since; see
+      `readTemperatureControlDisabledDevicesSetting`). A `temperature_control_policy_unavailable`
+      event would have surfaced that in the first production log read instead of a live-device
+      investigation. Do not re-derive the severity of a silent fail-closed state from the code
+      path alone — an undiagnosable one is worth more than the flip it guards.
+      Source: 2026-08-02 release review, pels-runtime-reality; re-scoped 2026-08-02 after the
+      permanent case was found on a live Homey. [P2]
 - [ ] **The sustained hard-cap card's in-app hint omits the flow-source reporting requirement.**
       With `power_source = flow` and samples arriving less often than once a minute, every
       sustained run ends `evidence_stale` (`setup/capacityShortfallAlertDispatch.ts:366`, 60 s

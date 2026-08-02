@@ -399,9 +399,9 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
     await flushPromises();
 
-    // Should not throw, prices should be empty or undefined
+    // Should not throw, prices should be absent or empty
     const prices = mockHomeyInstance.settings.get('electricity_prices');
-    expect(prices === undefined || prices.length === 0).toBe(true);
+    expect(prices === null || prices.length === 0).toBe(true);
   });
 
   it('handles network errors gracefully', async () => {
@@ -426,7 +426,7 @@ describe('Spot price fetching', () => {
 
     // No prices stored due to error
     const prices = mockHomeyInstance.settings.get('electricity_prices');
-    expect(prices === undefined || prices.length === 0).toBe(true);
+    expect(prices === null || prices.length === 0).toBe(true);
   });
 
   it('uses default price area NO1 when not configured', async () => {
@@ -880,7 +880,7 @@ describe('Grid tariff fetching', () => {
 
     // No fallback available and nothing cached → nothing stored.
     const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
-    expect(gridTariffData).toBeUndefined();
+    expect(gridTariffData).toBeNull();
   });
 
   it('clears stale fallback data when the operator no longer has a fallback', async () => {
