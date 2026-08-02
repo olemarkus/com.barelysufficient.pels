@@ -11,7 +11,11 @@
  * `Homey.*` types. `HomeyDeviceLike` (from `lib/utils/types`) is a homey-free
  * structural mirror, so it is allowed here.
  */
-import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type {
+  AssociatedCarSnapshot,
+  BinaryControlObservation,
+  TargetDeviceSnapshot,
+} from '../../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
@@ -69,6 +73,7 @@ export type TransportEvCarLinkProducer = {
   noteCapabilityUpdate: (deviceId: string, capabilityId: string, value: unknown, nowMs: number) => void;
   tick: (nowMs: number) => void;
   getObservedCarDeviceIds: () => string[];
+  getAssociatedCarForCharger: (chargerId: string) => AssociatedCarSnapshot | undefined;
 };
 
 export type SnapshotRefreshOptions = {

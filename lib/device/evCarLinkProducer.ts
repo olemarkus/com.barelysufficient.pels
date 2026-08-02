@@ -24,10 +24,15 @@
  * Correlation rules and their rationale live in `evCarLink.ts`; the design of
  * record is `notes/ev-car-link/README.md`.
  */
-import type { EvChargingState } from '../../packages/contracts/src/types';
+import type { AssociatedCarSnapshot, EvChargingState } from '../../packages/contracts/src/types';
 import type { EvCarLinkEvent } from './evCarLinkEvents';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyDeviceLike } from '../utils/types';
+import { resolveAssociatedCarSnapshot, type ActiveLinkView } from './evCarLinkReadModel';
+import {
+    hasSessionPowerEvidence,
+    type EvCarLinkChargerView,
+} from './evCarLinkChargerView';
 import {
     applyCarCapability,
     mergeCarObservation,
@@ -78,35 +83,6 @@ const EV_CAR_LINK_TARGETED_MISS_GRACE = 3;
 /** Bound on the one-shot report-dedupe ring (see `claimReportKey`). */
 const MAX_REPORTED_KEYS = 200;
 
-/**
- * Charger state as the transport wiring resolves it. Flat, already-narrowed
- * values: the observed-cluster guards (`isEvObserved`, `hasObservedStateOfCharge`,
- * `hasObservedMeasuredPower`) are applied by the producer seam that builds this,
- * so nothing downstream re-branches on provenance.
- */
-export type EvCarLinkChargerView = {
-    id: string;
-    name: string;
-    /** Always resolved: the builder skips a charger whose plug state is unknown. */
-    evChargingState: EvChargingState;
-    /** Measured draw in watts. ABSENT when there is no trusted reading — never a
-     *  fabricated zero, which would read as "idle" and fake a self-stop. */
-    measuredPowerW?: number;
-    /** When that draw was observed; absent when the producer could not resolve it. */
-    measuredPowerObservedAtMs?: number;
-    /**
-     * The charger's OBSERVED binary control state — not what PELS commanded.
-     * Kept observed-only on purpose: `lib/device/AGENTS.md` treats collapsing
-     * commanded into observed as the bug this layer exists to prevent. It is
-     * used here only to widen "the charger believes it is delivering" beyond a
-     * literal `plugged_in_charging`, never to assert PELS asked for anything.
-     */
-    controlOn: boolean;
-    /** Charge already on the charger snapshot (the existing flow card); absent
-     *  when that card has never reported. */
-    reportedSocPct?: number;
-};
-
 export type { EvCarLinkEvent } from './evCarLinkEvents';
 export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
 
@@ -116,13 +92,7 @@ export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
  * on one timestamp lets a stale fetch roll charge backward whenever the plug
  * state happened not to change (which is most of a charging session).
  */
-type ActiveLink = {
-    carId: string;
-    source: string;
-    /** When this session was committed. Charge readings older than this belong to
-     *  a previous session and must not be banked as THIS stop's evidence. */
-    sinceMs: number;
-};
+type ActiveLink = ActiveLinkView & { source: string };
 
 export type EvCarLinkProducerDeps = {
     emit: EvCarLinkEventEmitter;
@@ -130,29 +100,6 @@ export type EvCarLinkProducerDeps = {
     getChargers: () => readonly EvCarLinkChargerView[];
     getSnapshot: () => EvCarLinkSnapshot;
     setSnapshot: (snapshot: EvCarLinkSnapshot) => void;
-};
-
-/**
- * Validate a raw device payload as a car observation. Official capabilities
- * only; anything malformed resolves to `undefined` rather than a fabricated
- * value, so junk never becomes a plug edge or a charge sample.
- */
-/**
- * Whether the charger's measured draw is usable evidence about THIS session.
- *
- * Absent means unresolved, and a reading taken before the session began says
- * nothing about it — a retained idle value from a previous session would
- * otherwise read as live proof the charger is delivering nothing. Callers treat
- * `false` as "hold the dwell", never as "the condition broke": an unresolved
- * reading is not evidence the car resumed.
- */
-const hasSessionPowerEvidence = (
-    charger: EvCarLinkChargerView,
-    sessionStartedAtMs: number,
-): charger is EvCarLinkChargerView & { measuredPowerW: number } => {
-    if (charger.measuredPowerW === undefined) return false;
-    return charger.measuredPowerObservedAtMs === undefined
-        || charger.measuredPowerObservedAtMs >= sessionStartedAtMs;
 };
 
 export class EvCarLinkProducer {
@@ -210,6 +157,11 @@ export class EvCarLinkProducer {
     /** Whether `deviceId` is a currently-tracked car. */
     isCarDevice(deviceId: string): boolean {
         return this.cars.has(deviceId);
+    }
+
+    /** This charger's car for the CURRENT session; rules in `evCarLinkReadModel.ts`. */
+    getAssociatedCarForCharger(chargerId: string): AssociatedCarSnapshot | undefined {
+        return resolveAssociatedCarSnapshot({ cars: this.cars, links: this.activeLinks, chargerId });
     }
 
     /**

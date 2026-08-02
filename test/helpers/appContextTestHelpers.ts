@@ -16,6 +16,7 @@ import type {
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   EvBoostSettings,
+  EvCarAssociations,
   TargetDeviceSnapshot,
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
@@ -110,6 +111,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let temperatureControlDisabledDevices: Record<string, boolean> = {};
   let temperatureControlPolicyState: 'unavailable' | 'resolved' = 'resolved';
   let evBoostSettings: EvBoostSettings = {};
+  let evCarAssociations: EvCarAssociations = {};
   let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   let shedBehaviors: Record<string, ShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
@@ -250,6 +252,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set temperatureBoostSettings(value) { temperatureBoostSettings = value; },
     get evBoostSettings() { return evBoostSettings; },
     set evBoostSettings(value) { evBoostSettings = value; },
+    get evCarAssociations() { return evCarAssociations; },
+    set evCarAssociations(value) { evCarAssociations = value; },
     get deviceCommunicationModels() { return deviceCommunicationModels; },
     set deviceCommunicationModels(value) { deviceCommunicationModels = value; },
     get shedBehaviors() { return shedBehaviors; },

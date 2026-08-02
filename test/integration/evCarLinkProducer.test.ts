@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   EvCarLinkProducer,
-  type EvCarLinkChargerView,
   type EvCarLinkEvent,
 } from '../../lib/device/evCarLinkProducer';
+import type { EvCarLinkChargerView } from '../../lib/device/evCarLinkChargerView';
 import { createEmptyEvCarLinkSnapshot, getEvCarLinkVotes } from '../../lib/device/evCarLinkSnapshot';
 import {
   EV_CAR_LINK_AWAY_VERDICT_MS,
@@ -756,6 +756,34 @@ describe('session lifecycle', () => {
     const before = h.of('ev_car_link_soc_shadow').length;
     h.car(carDevice({ state: 'plugged_out', socPct: 81 }), linkedAt + 20_000);
     expect(h.of('ev_car_link_soc_shadow')).toHaveLength(before);
+  });
+
+  it('reports no association for a charger that has never linked', () => {
+    seedDisconnected(h, 0);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+  });
+
+  it('exposes the associated car once the session resolves', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({
+      carId: 'car-1',
+      carName: 'Polestar',
+      chargingState: 'plugged_in_charging',
+      socPct: 55,
+    });
+  });
+
+  it('drops the association the moment the car unplugs', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const linkedAt = 10_000 + SETTLE_MS;
+
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.car(carDevice({ state: 'plugged_out', socPct: 80 }), linkedAt + 10_000);
+
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
   });
 
   it('ignores devices that are not cars', () => {

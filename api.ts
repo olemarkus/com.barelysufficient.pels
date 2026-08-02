@@ -4,6 +4,7 @@ import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
+import { EV_CAR_REQUIRED_CAPABILITY_IDS } from './lib/device/evCarLinkObservation';
 import {
   getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,
@@ -154,7 +155,14 @@ export = {
   ),
   homey_devices: withApiLogging('homey_devices', async (
     { homey }: ApiContext,
-  ): Promise<Array<{ id: string; name: string; class?: string; hasTemperature: boolean; hasPower: boolean }>> => {
+  ): Promise<Array<{
+    id: string;
+    name: string;
+    class?: string;
+    hasTemperature: boolean;
+    hasPower: boolean;
+    hasCarAssociationSupport: boolean;
+  }>> => {
     const app = getApp(homey);
     if (!app) return [];
     const devices = await getHomeyDevicesForDebugFromApp(app);
@@ -177,6 +185,13 @@ export = {
           // lets the whole-home meter picker filter to power-reporting devices.
           hasPower: Array.isArray(device.capabilities)
             && hasPowerCapability(device.capabilities.filter((cap): cap is string => typeof cap === 'string')),
+          // Whether this is a class `car` device publishing BOTH capabilities the
+          // car-link probe reads — lets the charger page's car picker offer only
+          // cars that can actually be associated. Gated on the class too, so the
+          // flag can never be true for a non-car that happens to expose both.
+          hasCarAssociationSupport: deviceClass === 'car'
+            && Array.isArray(device.capabilities)
+            && EV_CAR_REQUIRED_CAPABILITY_IDS.every((cap) => device.capabilities?.includes(cap)),
         };
       });
   }),

@@ -1086,6 +1086,25 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **A transient settings read-miss silently disables every configured car association.**
+      `buildCapacitySettingsSnapshot` (`setup/appSettingsHelpers.ts`) normalizes
+      `ev_car_associations` unconditionally, so a `null`/malformed read replaces the eligibility
+      map with `{}` and every charger shows no associated car until the next successful reload.
+      Not destructive (nothing is persisted, and the next load restores it) and the same shape as
+      its sibling per-device keys (`ev_boost_settings`, `temperature_boost_settings`), which is
+      why it was not fixed in isolation — it is one more instance of the absence-classification
+      duplication tracked below. Fix with that item, or sooner if the display blip is reported.
+      Source: Codex review of PR #1972, 2026-08-02. [P2]
+
+- [ ] **`hasSessionPowerEvidence` treats a missing observation timestamp as usable evidence.**
+      `lib/device/evCarLinkChargerView.ts` returns `true` when `measuredPowerObservedAtMs` is
+      absent, so a retained reading that predates the session can satisfy the self-stop idle
+      condition — the exact confusion the function's own docblock warns about for the
+      value. Pre-existing behaviour (the predicate was only relocated by PR #1972); changing it
+      alters self-stop detection, so it needs its own change with a regression test covering a
+      timestamp-less charger. Devices without capability timestamps are the honest limit here.
+      Source: CodeRabbit review of PR #1972, 2026-08-02. [P2]
+
 - [ ] **Net-export hours render "Managed 0.0 kW · Background 0.0 kW" under the hero power bar.**
       `computePowerBarScale` (`packages/settings-ui/src/ui/views/PlanHero.tsx`) clamps total draw
       to 0, so an exporting solar home with a known split shows a double-zero legend line that the

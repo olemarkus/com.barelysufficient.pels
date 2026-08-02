@@ -219,6 +219,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public temperatureControlPolicyState: 'unavailable' | 'resolved' = 'unavailable';
   public temperatureBoostSettings: import('./packages/contracts/src/types').TemperatureBoostSettings = {};
   public evBoostSettings: import('./packages/contracts/src/types').EvBoostSettings = {};
+  public evCarAssociations: import('./packages/contracts/src/types').EvCarAssociations = {};
   private nativeEvWiringDevices: Record<string, boolean> = {};
   // Conflict-gated auto-enable decisions for Hoiax native stepped wiring
   // (notes/native-wiring/). In-memory only — recomputed each startup from the
@@ -770,6 +771,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
         temperatureControlPolicyState: this.temperatureControlPolicyState,
         temperatureBoostSettings: this.temperatureBoostSettings,
         evBoostSettings: this.evBoostSettings,
+        evCarAssociations: this.evCarAssociations,
         nativeEvWiringDevices: this.nativeEvWiringDevices,
         deviceDriverOverrides: this.deviceDriverOverrides,
         deviceControlProfiles: this.deviceControlProfiles,

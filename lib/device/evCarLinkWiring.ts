@@ -14,13 +14,13 @@ import type {
     StateOfChargeObservedProbe,
     TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import type { EvCarLinkChargerView } from './evCarLinkChargerView';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import {
     EvCarLinkProducer,
-    type EvCarLinkChargerView,
     type EvCarLinkEventEmitter,
 } from './evCarLinkProducer';
 import { createEmptyEvCarLinkSnapshot } from './evCarLinkSnapshot';

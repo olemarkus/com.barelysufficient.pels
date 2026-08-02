@@ -4,6 +4,7 @@ import type {
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   EvBoostSettings,
+  EvCarAssociations,
   TemperatureBoostSettings,
 } from '../packages/contracts/src/types';
 import {
@@ -27,6 +28,7 @@ import {
   normalizeEvBoostSettings,
   normalizeTemperatureBoostSettings,
 } from '../lib/utils/appTypeGuards';
+import { normalizeEvCarAssociations } from '../lib/utils/evCarAssociations';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
 import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
 import {
@@ -36,6 +38,7 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
+  EV_CAR_ASSOCIATIONS,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
   CAPACITY_PRIORITIES,
@@ -69,6 +72,7 @@ export type CapacitySettingsSnapshot = {
   temperatureControlPolicyState: 'unavailable' | 'resolved';
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
+  evCarAssociations: EvCarAssociations;
   nativeEvWiringDevices: Record<string, boolean>;
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
@@ -182,6 +186,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
   const rawTemperatureBoostSettings = settings.get(TEMPERATURE_BOOST_SETTINGS) as unknown;
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
+  const rawEvCarAssociations = settings.get(EV_CAR_ASSOCIATIONS) as unknown;
 
   const nextCapacity = {
     limitKw: capacityScalars.limitKw,
@@ -230,6 +235,7 @@ export function buildCapacitySettingsSnapshot(params: {
     temperatureControlPolicyState: deviceFlags.temperatureControlPolicyState,
     temperatureBoostSettings: normalizeTemperatureBoostSettings(rawTemperatureBoostSettings),
     evBoostSettings: normalizeEvBoostSettings(rawEvBoostSettings),
+    evCarAssociations: normalizeEvCarAssociations(rawEvCarAssociations),
     nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
     deviceDriverOverrides: deviceOverrides.deviceDriverOverrides,
     deviceControlProfiles: deviceSettings.deviceControlProfiles,

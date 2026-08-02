@@ -35,6 +35,7 @@ import type {
   DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
+  EvCarAssociations,
   ObservedDeviceState,
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
@@ -208,6 +209,8 @@ export type AppContext = {
   set temperatureBoostSettings(value: TemperatureBoostSettings);
   get evBoostSettings(): EvBoostSettings;
   set evBoostSettings(value: EvBoostSettings);
+  get evCarAssociations(): EvCarAssociations;
+  set evCarAssociations(value: EvCarAssociations);
   get deviceDriverOverrides(): Record<string, string>;
   set deviceDriverOverrides(value: Record<string, string>);
   get deviceControlProfiles(): DeviceControlProfiles;

@@ -30,11 +30,12 @@ import type {
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { normalizePowerSource } from '../lib/power/powerSource';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
+  getAssociatedCarForUiFromApp,
   getLatestDevicesForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getPowerTrackerForUiFromApp,
@@ -117,11 +118,30 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
 // (`latestTargetSnapshot`) plus the unmanaged-but-eligible picker devices. Auto-tracked
 // observe-only role devices (home batteries → 'battery', PV → 'solarpanel') ride the
 // managed half here; callers decide whether to expose or merely detect them.
-const getRawSettingsUiDeviceCandidates = ({ homey }: ApiContext): TargetDeviceSnapshot[] => {
+const getRawSettingsUiDeviceCandidates = ({ homey }: ApiContext): DecoratedDeviceSnapshot[] => {
   const managed = getLatestDevicesForUiFromApp(homey) ?? [];
   const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  return [...managed, ...unmanagedEligible];
+  return withAssociatedCars(homey, [...managed, ...unmanagedEligible]);
 };
+
+/**
+ * Decorates each device with the car associated with it right now, resolved from
+ * live probe state at READ time.
+ *
+ * Deliberately not a transport snapshot field: the association changes on the
+ * realtime feed within seconds of a plug edge, while snapshots are rebuilt only
+ * at :25/:55 and are replaced wholesale by every device re-parse — so a stored
+ * copy would be absent most of the time and up to half an hour stale after
+ * unplugging. `getAssociatedCar` answers `undefined` for every device that is
+ * not a charger with both an eligibility set and a live session.
+ */
+const withAssociatedCars = (
+  homey: ApiContext['homey'],
+  devices: TargetDeviceSnapshot[],
+): DecoratedDeviceSnapshot[] => devices.map((device) => {
+  const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
+  return associatedCar ? { ...device, associatedCar } : device;
+});
 
 const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null => (
   getPlanSnapshotForUiFromHomey(homey)

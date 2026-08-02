@@ -22,12 +22,14 @@
 import type Homey from 'homey';
 import { EventEmitter } from 'events';
 import type {
+  AssociatedCarSnapshot,
   BinaryControlObservation,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { projectObservedState } from './observedStateProjection';
+import { resolveAssociatedCar } from './transport/carAssociation';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { TargetedMissState } from './transport/targetedSnapshotMerge';
 import type { PowerEstimateState } from './devicePowerEstimate';
@@ -332,20 +334,19 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         };
     }
 
+    // Read-only producer seams, single-line like the fetch seams above.
     /** Whether `deviceId` is a currently-detected home battery (incl. offline). */
-    isBatteryDevice(deviceId: string): boolean {
-        return this.observationProducers.battery.isBatteryDevice(deviceId);
-    }
-
+    isBatteryDevice(id: string): boolean { return this.observationProducers.battery.isBatteryDevice(id); }
     /** Whether ANY home battery is currently detected (incl. offline). */
-    hasBatteryDevices(): boolean {
-        return this.observationProducers.battery.hasBatteryDevices();
-    }
-
+    hasBatteryDevices(): boolean { return this.observationProducers.battery.hasBatteryDevices(); }
     /** Whether `deviceId` is a currently-detected solar device (incl. offline). */
-    isSolarDevice(deviceId: string): boolean {
-        return this.observationProducers.solar.isSolarDevice(deviceId);
-    }
+    isSolarDevice(id: string): boolean { return this.observationProducers.solar.isSolarDevice(id); }
+    /**
+     * The car associated with this charger right now — the probe's live session,
+     * narrowed to the cars the user allowed for it. Resolved per call rather than
+     * held on the snapshot; see `transport/carAssociation.ts`.
+     */
+    getAssociatedCar(id: string): AssociatedCarSnapshot | undefined { return resolveAssociatedCar(this.ctx, id); }
 
     private nextObservationCursor(deviceId: string, nowMs: number = Date.now()): ObservationCursor {
         const observationSeq = (this.observationSeqByDeviceId.get(deviceId) ?? 0) + 1;
