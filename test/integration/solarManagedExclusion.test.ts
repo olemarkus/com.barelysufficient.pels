@@ -90,6 +90,7 @@ const emptyRestoreResult: RestorePlanResult = {
   planDevices: [],
   stateUpdates: { swapByDevice: {} },
   restoredThisCycle: new Set<string>(),
+  headroomReserves: [],
   availableHeadroom: 1,
   capacityAvailableKw: 1,
   budgetAvailableKw: null,

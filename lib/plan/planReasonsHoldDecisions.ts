@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PlanEngineState } from './planState';
+import type { HeadroomReserve } from './admission';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
@@ -63,6 +64,11 @@ export type ShedHoldParams = {
   // like the binary/stepped lanes. Optional so scalar-only callers/tests keep
   // the single-track behavior.
   ledger?: RestoreHeadroomLedger;
+  // This cycle's startup reservations, resolved once by the restore pass. A
+  // setpoint-shed restore admits against them exactly like the binary/stepped
+  // lanes (`restore/gating.ts`) — a raise into a reserved block is PELS giving
+  // the promised power away. Optional so scalar-only callers/tests opt out.
+  headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall?: boolean;
   debugStructured?: StructuredDebugEmitter;
   getShedBehavior: (deviceId: string) => {
@@ -94,6 +100,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     ledger,
+    headroomReserves,
     guardInShortfall = false,
     debugStructured,
     getShedBehavior,
@@ -125,6 +132,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelay,
+      headroomReserves,
       guardInShortfall,
       debugStructured,
     });
@@ -192,6 +200,7 @@ function resolveHoldDecision(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelay: PendingRestoreDelay | null;
+  headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
@@ -208,6 +217,7 @@ function resolveHoldDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelay,
+    headroomReserves,
     guardInShortfall,
     debugStructured,
   } = params;
@@ -233,6 +243,15 @@ function resolveHoldDecision(params: {
   });
 
   if (!shouldAbortRestoreForShortfall && !shouldHold && wasShedLastPlan) {
+    // "Observed at the shed floor" means the DEVICE reports the floor target —
+    // not the plan's own `plannedTarget`, which the hold writes back each
+    // cycle. Until the floor is observed, a reserve block must keep asserting
+    // the original shed (an actuating reason) rather than the no-actuation
+    // `reservedForStart` hold, or the pending floor command stops being
+    // retried and the device keeps drawing inside the reserved block.
+    const observedAtShedFloor = isTemperaturePlanDevice(dev)
+      && typeof dev.currentTarget === 'number'
+      && dev.currentTarget === behavior.temperature;
     return resolvePostHoldRestoreDecision({
       dev,
       state,
@@ -242,6 +261,9 @@ function resolveHoldDecision(params: {
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelay,
+      headroomReserves,
+      observedAtShedFloor,
+      baseShedReason: getBaseShedReason({ dev, shedReasons }),
       debugStructured,
     });
   }
@@ -266,6 +288,9 @@ function resolvePostHoldRestoreDecision(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelay: PendingRestoreDelay | null;
+  headroomReserves?: readonly HeadroomReserve[];
+  observedAtShedFloor?: boolean;
+  baseShedReason?: PlanReasonDecision;
   debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
@@ -277,6 +302,9 @@ function resolvePostHoldRestoreDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelay,
+    headroomReserves,
+    observedAtShedFloor,
+    baseShedReason,
     debugStructured,
   } = params;
   if (pendingRestoreDelay !== null) {
@@ -300,6 +328,9 @@ function resolvePostHoldRestoreDecision(params: {
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    headroomReserves,
+    observedAtShedFloor,
+    baseShedReason,
     debugStructured,
   });
 }
@@ -322,6 +353,7 @@ function applyHoldToDevice(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelay: PendingRestoreDelay | null;
+  headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
@@ -343,6 +375,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelay,
+    headroomReserves,
     guardInShortfall,
     debugStructured,
   } = params;
@@ -369,6 +402,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelay,
+    headroomReserves,
     guardInShortfall,
     debugStructured,
   });

@@ -6,9 +6,12 @@ import {
   formatDeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
+  buildReservedForStartReason,
   getActivationPenaltyLevel,
   getActivationRestoreBlockCountdownTiming,
   getActivationRestoreBlockRemainingMs,
+  resolveReserveAdmission,
+  type HeadroomReserve,
 } from './admission';
 import { resolveRestorePowerSource } from './restore/accounting';
 import { getRestoreNeed } from './restore/support';
@@ -252,6 +255,14 @@ export function resolveRestoreDecision(params: {
   restoredThisCycle: Set<string>;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
+  headroomReserves?: readonly HeadroomReserve[];
+  // Whether the DEVICE currently reports the shed-floor target. A reserve
+  // block on a device that has not reached its floor must keep the actuating
+  // shed reason (below) so the pending floor command is retried; the
+  // no-actuation `reservedForStart` hold is honest only once the floor is
+  // observed.
+  observedAtShedFloor?: boolean;
+  baseShedReason?: PlanReasonDecision;
   debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
@@ -262,6 +273,9 @@ export function resolveRestoreDecision(params: {
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    headroomReserves = [],
+    observedAtShedFloor,
+    baseShedReason,
     debugStructured,
   } = params;
 
@@ -273,7 +287,58 @@ export function resolveRestoreDecision(params: {
   if (setbackHold) return setbackHold;
 
   const restoreNeed = getRestoreNeed(dev, state);
-  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  // Admit against the power this device may actually claim: raw available power
+  // minus any startup reservation held by a strictly higher-priority device that
+  // has not started yet — the same discrimination the binary/stepped lanes run
+  // (`restore/gating.ts`). Without it, a setpoint raise was the one restore that
+  // could take a reserved block: PELS itself giving the promised power away.
+  const reserved = resolveReserveAdmission({
+    dev, availableHeadroom, neededKw: restoreNeed.needed, reserves: headroomReserves,
+  });
+  if (reserved.kind === 'blocked_by_reserve') {
+    // Enough raw power — it is just promised to a device about to start. Name
+    // the holder on the card; this lane has no swap fallback to defeat.
+    //
+    // Unless the device has not actually reached its shed floor yet: then the
+    // original shed must keep asserting (an ACTUATING reason), because
+    // `reservedForStart` is in `RESTORE_ADMISSION_HOLD_REASON_CODES` and
+    // builds no intent — swapping it in early would stop the pending floor
+    // command's retry while the device keeps drawing inside the reserved
+    // block.
+    if (observedAtShedFloor !== true && baseShedReason !== undefined) {
+      return { type: 'hold', reason: baseShedReason };
+    }
+    const reservedReason = buildReservedForStartReason({ dev, reserves: headroomReserves });
+    emitRestoreRejectedDebug({
+      state,
+      restoreDebugKey,
+      dev,
+      phase,
+      payload: {
+        reason: formatDeviceReason(reservedReason),
+        estimatedPowerKw: restoreNeed.devPower,
+        powerSource: resolveRestorePowerSource(dev),
+        neededKw: restoreNeed.needed,
+        availableKw: availableHeadroom,
+        reservedKw: reserved.reservedKw,
+        decision: 'rejected',
+        decisionReason: formatDeviceReason(reservedReason),
+      },
+      signaturePayload: {
+        reason: buildComparableDeviceReason(reservedReason),
+        estimatedPowerKw: restoreNeed.devPower,
+        powerSource: resolveRestorePowerSource(dev),
+        neededKw: restoreNeed.needed,
+        availableKw: availableHeadroom,
+        reservedKw: reserved.reservedKw,
+        decision: 'rejected',
+        decisionReason: buildComparableDeviceReason(reservedReason),
+      },
+      debugStructured,
+    });
+    return { type: 'hold', reason: { code: 'existing', reason: reservedReason } };
+  }
+  const { admission } = reserved;
   const headroomHold = resolveInsufficientHeadroomHold({
     dev, state, availableHeadroom, phase, restoreDebugKey, restoreNeed, admission, debugStructured,
   });
