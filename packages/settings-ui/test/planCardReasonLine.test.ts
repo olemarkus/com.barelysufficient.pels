@@ -48,17 +48,49 @@ describe('resolveHeldCardReasonLine', () => {
       })).toBe('Waiting to resume — 0.9 kW more needed');
     });
 
-    // These five reach the ceiling branch but can never carry a shortfall (no
-    // producer has this device's admission arithmetic in scope), so the real
-    // production line for each is the bare fallback. Pinning that is the point:
-    // asserting a number here would test a payload the planner never emits.
+    // Since 2026-08-02 every power-liftable ceiling hold carries the device's
+    // own gap: `finalizeCeilingReason` computes it each cycle when no producer
+    // number exists — including for swap victims, where the attached number is
+    // THIS device's need against the pace, never the swapped-in device's.
     it.each([
       PLAN_REASON_CODES.capacity,
-      PLAN_REASON_CODES.hourlyBudget,
+      PLAN_REASON_CODES.swapPending,
+      PLAN_REASON_CODES.swappedOut,
+    ] as const)('%s with a normalizer-attached shortfall states the number', (code) => {
+      expect(resolveHeldCardReasonLine({
+        reason: { code, detail: null, targetName: null, shortfallKw: 1.2 },
+      })).toBe('Waiting to resume — 1.2 kW more needed');
+    });
+
+    // The hour's kWh is spent and cannot be un-spent — no freed power admits
+    // the device before the hour rolls over, so this is the one ceiling hold
+    // whose line is time-based instead of a kW figure.
+    it('renders time-based copy for an exhausted hourly budget, never a kW', () => {
+      const line = resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+      });
+      expect(line).toBe('Waiting to resume — more budget next hour');
+      expect(line).not.toMatch(/kW more needed/);
+    });
+
+    // Verb-aware like the shortfall line: a running stepped device denied a
+    // step-up is not waiting to "resume".
+    it('says "increase" for the hourly line on a step-up denial', () => {
+      expect(resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+        verb: 'increase',
+      })).toBe('Waiting to increase — more budget next hour');
+    });
+
+    // Bare fallback survivors: `sheddingActive` has no live producer (prose
+    // parser + tests only), and a carrier without an attached number means the
+    // arithmetic honestly declined (reserve block, or missing inputs).
+    it.each([
+      PLAN_REASON_CODES.capacity,
       PLAN_REASON_CODES.sheddingActive,
       PLAN_REASON_CODES.swapPending,
       PLAN_REASON_CODES.swappedOut,
-    ] as const)('%s falls back to the bare waiting line', (code) => {
+    ] as const)('%s without a shortfall falls back to the bare waiting line', (code) => {
       const line = resolveHeldCardReasonLine({ reason: { code, detail: null, targetName: null } });
       expect(line).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
       expect(line).not.toMatch(/hard cap|budget|higher-priority/i);
@@ -205,6 +237,10 @@ describe('formatShortfallLine', () => {
 describe('every ladder output has a simulation form', () => {
   it.each([
     ['Waiting to resume — 0.8 kW more needed', 'Would be waiting to resume — 0.8 kW more needed (simulation)'],
+    // The hourly-exhausted line is a PELS-performed hold like the shortfall
+    // line, and shares its prefix, so it rides the same rewrite.
+    ['Waiting to resume — more budget next hour', 'Would be waiting to resume — more budget next hour (simulation)'],
+    ['Waiting to increase — more budget next hour', 'Would be waiting to increase — more budget next hour (simulation)'],
     ['Waiting to increase — 0.3 kW more needed', 'Would be waiting to increase — 0.3 kW more needed (simulation)'],
     [PLAN_STATE_HELD_FALLBACK_STATUS, 'Would be held back (simulation)'],
     ["Limited to stay within today's budget", "Would be limited to stay within today's budget (simulation)"],

@@ -1,7 +1,10 @@
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
 import { formatStarvationReason } from './planStarvation';
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from './planStateLabels';
+import {
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+} from './planStateLabels';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 
@@ -27,13 +30,15 @@ import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/setting
 const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
-  PLAN_REASON_CODES.hourlyBudget,
   PLAN_REASON_CODES.insufficientHeadroom,
+  // Dead producer (prose parser + tests only) — no arithmetic exists for it, so
+  // it always lands on the fallback below. Kept for snapshot compatibility.
   PLAN_REASON_CODES.sheddingActive,
-  // Swap holds: another device took the power. Retired from the card by the
-  // 2026-08-02 scope decision; they carry no shortfall (the admission numbers at
-  // the swap producers belong to the device being swapped IN), so they land on
-  // the fallback below.
+  // Swap holds: another device took the power. The swap PRODUCERS still carry
+  // no shortfall (their admission numbers belong to the device being swapped
+  // IN), but reason normalization (`finalizeCeilingReason`,
+  // `lib/plan/planReasons.ts`) attaches THIS device's own pace-relative gap, so
+  // these render the same kW line as every other power-liftable hold.
   PLAN_REASON_CODES.swapPending,
   PLAN_REASON_CODES.swappedOut,
 ]);
@@ -87,6 +92,14 @@ export const formatShortfallLine = (shortfallKw: number, verb: HeldCardReasonVer
   `Waiting to ${verb} — ${shortfallKw.toFixed(1)} kW more needed`
 );
 
+// Verb-adjusted form of `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS` (the
+// constant is the `resume` form and stays the log formatter's string).
+export const formatHourlyExhaustedLine = (verb: HeldCardReasonVerb): string => (
+  verb === 'resume'
+    ? PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS
+    : 'Waiting to increase — more budget next hour'
+);
+
 export const resolveHeldCardReasonLine = (params: {
   reason: unknown;
   starvation?: SettingsUiPlanDeviceStarvation | null;
@@ -110,6 +123,16 @@ export const resolveHeldCardReasonLine = (params: {
     ?? PLAN_STATE_HELD_FALLBACK_STATUS;
 
   const code = readReasonCode(reason);
+
+  // The one ceiling hold that must NOT show a kW: the hour's energy budget is
+  // spent, and spent kWh cannot be un-spent — no amount of freed power admits
+  // the device before the hour rolls over, so the honest line names the
+  // recourse (next hour's budget) instead of a gap. Verb-aware like the
+  // shortfall line: a running stepped device denied a step-up is not waiting
+  // to "resume".
+  if (code === PLAN_REASON_CODES.hourlyBudget) {
+    return formatHourlyExhaustedLine(verb);
+  }
 
   if (isCeilingHoldReasonCode(code)) {
     const shortfallKw = resolveRestoreShortfallKw(reason);

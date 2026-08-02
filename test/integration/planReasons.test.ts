@@ -1,4 +1,5 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
+import { buildCeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -507,6 +508,210 @@ describe('normalizeShedReasons', () => {
     });
 
     expect(device?.reason.code).not.toBe(PLAN_REASON_CODES.awaitingSolarSurplus);
+  });
+});
+
+// The uniform per-cycle shortfall stage (`finalizeCeilingReason`): every
+// power-liftable ceiling hold leaves normalization carrying the device's own
+// admission gap, computed from the post-hold axes when no producer number
+// exists. Regression target: prod 2026-08-02, five devices held on a 0.55 kW
+// daily pace rendered the bare "Waiting to resume" because the restore lane
+// never evaluated them (headroom −0.99 → pass skipped, reasons carried
+// forward), so no producer ever attached a number.
+describe('normalizeShedReasons — uniform ceiling shortfall', () => {
+  // Fixture need: residualKw.restore 1.0 kW + 0.2 kW buffer = 1.2 kW.
+  const heldDevice = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) => buildPlanDevice({
+    id: 'held-dev',
+    plannedState: 'shed',
+    priority: 3,
+    residualKw: { shed: 0, restore: { kw: 1.0, source: 'planning' } },
+    reason: { code: 'capacity', detail: null },
+    ...overrides,
+  });
+
+  const normalize = (params: {
+    devices: DevicePlanDevice[];
+    capacityAvailableKw: number;
+    budgetAvailableKw?: number | null;
+    headroomReserves?: readonly { deviceId: string; deviceName: string; priority: number; kw: number }[];
+    hourlyBudgetExhausted?: boolean;
+    softLimitSource?: 'capacity' | 'daily' | null;
+    capacityBreached?: boolean;
+  }) => normalizeShedReasons({
+    planDevices: params.devices,
+    shedReasons: new Map(),
+    guardInShortfall: false,
+    headroomRaw: params.capacityAvailableKw,
+    inCooldown: false,
+    activeOvershoot: false,
+    shedCooldownRemainingSec: null,
+    softLimitSource: params.softLimitSource ?? null,
+    capacityBreached: params.capacityBreached ?? false,
+    admissionInputs: buildCeilingShortfallInputs({
+      ledgerAxes: {
+        capacityAvailableKw: params.capacityAvailableKw,
+        budgetAvailableKw: params.budgetAvailableKw ?? null,
+      },
+      headroomReserves: params.headroomReserves ?? [],
+      onDevices: params.devices,
+      swappedOutFor: new Map(),
+      restoredThisCycle: new Set(),
+    }),
+    hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
+  });
+
+  it('attaches the admission gap to a carry-forward capacity hold', () => {
+    // gap = 0.25 − (0.5 − 1.2 − 0.25) = 1.2 kW
+    const [device] = normalize({ devices: [heldDevice()], capacityAvailableKw: 0.5 });
+    expect(device?.reason).toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+  });
+
+  it('attaches THIS device\'s own gap to a swap victim', () => {
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'swapped_out', targetName: 'Water heater' } })],
+      capacityAvailableKw: 0.5,
+    });
+    expect(device?.reason).toEqual({ code: 'swapped_out', targetName: 'Water heater', shortfallKw: 1.2 });
+  });
+
+  // Freshness wins: a producer number is a snapshot of the rejection that
+  // minted it, and carry-forward states keep it on the card while the pace
+  // moves (prod 2026-08-02 evening: "2.3 kW more needed" frozen from a
+  // transient overshoot dip while the true gap was 1.3 kW).
+  it('replaces a carried producer shortfall with the fresh per-cycle gap', () => {
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } })],
+      capacityAvailableKw: 0.5,
+    });
+    expect(device?.reason).toEqual({ code: 'daily_budget', detail: null, shortfallKw: 1.2 });
+  });
+
+  it('strips a carried shortfall the fresh arithmetic would no longer produce', () => {
+    // available 2.0 → admission passes → no number is honest this cycle.
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } })],
+      capacityAvailableKw: 2.0,
+    });
+    expect(device?.reason).toEqual({ code: 'daily_budget', detail: null });
+  });
+
+  it('keeps the producer number only when the per-axis inputs are absent', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [heldDevice({ reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0.5,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+    });
+    expect(device?.reason).toEqual({ code: 'daily_budget', detail: null, shortfallKw: 0.8 });
+  });
+
+  // A pending swap TARGET's relief is already committed (its sources are
+  // `plannedState: 'shed'`, mid turn-off, absent from the swap surface) — a
+  // computed gap would state the full plain deficit the in-flight swap is
+  // about to cover.
+  it('attaches nothing to a pending swap target', () => {
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'swap_pending', targetName: null } })],
+      capacityAvailableKw: 0.5,
+    });
+    expect(device?.reason).toEqual({ code: 'swap_pending', targetName: null });
+  });
+
+  it('attaches nothing when the device is blocked only by a startup reservation', () => {
+    const [device] = normalize({
+      devices: [heldDevice()],
+      capacityAvailableKw: 2.0,
+      headroomReserves: [{ deviceId: 'other', deviceName: 'Water heater', priority: 1, kw: 1.5 }],
+    });
+    expect(device?.reason).toEqual({ code: 'capacity', detail: null });
+  });
+
+  it('reads the capacity axis for a budget-exempt device', () => {
+    const [exempt, bound] = normalize({
+      devices: [
+        heldDevice({ id: 'exempt-dev', budgetExempt: true }),
+        heldDevice({ id: 'bound-dev', budgetExempt: false }),
+      ],
+      capacityAvailableKw: 2.0,
+      budgetAvailableKw: 0.1,
+    });
+    // Capacity axis admits the exempt device → no gap to state; the bare line
+    // is honest. The non-exempt sibling gates on min(cap, budget):
+    // gap = 0.25 − (0.1 − 1.2 − 0.25) = 1.6 kW.
+    expect(exempt?.reason).toEqual({ code: 'capacity', detail: null });
+    expect(bound?.reason).toEqual({ code: 'capacity', detail: null, shortfallKw: 1.6 });
+  });
+
+  // Prod repro (2026-08-02): pace 0.55 kW, draw 1.54 kW → available −0.99 kW,
+  // restore pass never ran. Every held card must resolve a number now.
+  it('gives every deep-hold device a number even when available power is negative', () => {
+    const devices = normalize({
+      devices: [1, 2, 3, 4, 5].map((n) => heldDevice({
+        id: `held-${n}`,
+        reason: { code: 'daily_budget', detail: null },
+      })),
+      capacityAvailableKw: 20.27 - 1.54,
+      budgetAvailableKw: -0.99,
+      softLimitSource: 'daily',
+    });
+    for (const device of devices) {
+      // gap = 0.25 − (−0.99 − 1.2 − 0.25) = 2.69 → 2.7 kW on the display grid.
+      expect(device.reason).toEqual({ code: 'daily_budget', detail: null, shortfallKw: 2.7 });
+    }
+  });
+
+  describe('hourly-exhausted fold', () => {
+    it('folds ceiling holds to hourlyBudget with no kW while the hour is spent', () => {
+      const devices = normalize({
+        devices: [
+          heldDevice({ id: 'cap-dev', reason: { code: 'capacity', detail: null } }),
+          heldDevice({ id: 'daily-dev', reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } }),
+          heldDevice({ id: 'swap-dev', reason: { code: 'swapped_out', targetName: 'Water heater' } }),
+        ],
+        capacityAvailableKw: 0.5,
+        hourlyBudgetExhausted: true,
+      });
+      expect(devices[0]?.reason).toEqual({ code: 'hourly_budget', detail: null });
+      expect(devices[1]?.reason).toEqual({ code: 'hourly_budget', detail: null });
+      // Swap holds keep their framing but render bare: spent kWh cannot be
+      // un-spent, so a kW figure would be dishonest for them too — the attach
+      // is suspended (and any carried number stripped) for the whole hour.
+      expect(devices[2]?.reason).toEqual({ code: 'swapped_out', targetName: 'Water heater' });
+    });
+
+    // The inverse fold: nothing else rewrites a carried-forward `hourlyBudget`
+    // reason once the hour rolls (it is not in `shouldNormalizeReason`), so the
+    // finalize stage must re-attribute it to the binding ceiling — with the
+    // fresh gap attached — or the "next hour" line outlives its hour.
+    it('re-attributes a stale hourlyBudget hold once the hour rolls over', () => {
+      const roll = (params: {
+        softLimitSource: 'capacity' | 'daily';
+        capacityBreached?: boolean;
+        budgetExempt?: boolean;
+      }) => normalize({
+        devices: [heldDevice({
+          reason: { code: 'hourly_budget', detail: null },
+          budgetExempt: params.budgetExempt ?? false,
+        })],
+        capacityAvailableKw: 0.5,
+        softLimitSource: params.softLimitSource,
+        capacityBreached: params.capacityBreached ?? false,
+      })[0];
+
+      expect(roll({ softLimitSource: 'daily' })?.reason)
+        .toEqual({ code: 'daily_budget', detail: null, shortfallKw: 1.2 });
+      expect(roll({ softLimitSource: 'daily', capacityBreached: true })?.reason)
+        .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+      // Per-axis admission evaluates an exempt candidate on capacity, so its
+      // hold is a capacity hold — never a budget label next to an "Always on" chip.
+      expect(roll({ softLimitSource: 'daily', budgetExempt: true })?.reason)
+        .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+      expect(roll({ softLimitSource: 'capacity' })?.reason)
+        .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+    });
   });
 });
 

@@ -4,7 +4,7 @@ import {
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
-  PLAN_STATE_HOURLY_BUDGET_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
 } from '../../packages/shared-domain/src/planStateLabels';
 
 // In simulation, a held/limited device's reason line must read hypothetically to
@@ -20,8 +20,10 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
       .toBe('Would be limited by the hard cap (simulation)');
     expect(toSimulationReasonLine(PLAN_STATE_DAILY_BUDGET_STATUS, true))
       .toBe("Would be limited by today's daily budget (simulation)");
-    expect(toSimulationReasonLine(PLAN_STATE_HOURLY_BUDGET_STATUS, true))
-      .toBe('Would be limited — this hour is near the hard cap (simulation)');
+    // The hourly-exhausted line shares the shortfall line's prefix, so it
+    // rides the "Waiting to resume " rewrite rather than the "Limited" one.
+    expect(toSimulationReasonLine(PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS, true))
+      .toBe('Would be waiting to resume — more budget next hour (simulation)');
   });
 
   it('flips budget-starvation and swap "Limited …" lines', () => {

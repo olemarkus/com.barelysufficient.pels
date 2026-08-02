@@ -78,12 +78,17 @@ export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Waiting to resume';
 // `formatDeviceReasonUserFacing` — device detail and the runtime logs.
 export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 
-// Sibling status for `hourlyBudget` holds: the planner is holding the device
-// back because the current hour is close to the hard cap. Different from
-// `PLAN_STATE_HELD_FALLBACK_STATUS` (a generic capacity shed) — this surface
-// names the hour rather than the cap directly because the precise trigger is
-// "approaching" not "at" the cap.
-export const PLAN_STATE_HOURLY_BUDGET_STATUS = 'Limited — this hour is near the hard cap';
+// Status for `hourlyBudget` holds: the hour's energy budget is spent. This is
+// the one ceiling hold that must NOT carry a kW figure — spent kWh cannot be
+// un-spent, so no amount of freed power admits the device before the hour rolls
+// over, and a "X kW more needed" line would be dishonest. Time-based copy
+// instead: it names the recourse (the next hour's budget) in the same
+// `Waiting to resume — …` shape as the shortfall line. "Budget" here is the
+// hero's `Budget this hour` quantity (canonical vocabulary,
+// `notes/ui-terminology.md`). Replaces the retired
+// `Limited — this hour is near the hard cap`, which named a ceiling on the card
+// and misdescribed the trigger (the hour's kWh being spent, not cap proximity).
+export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = 'Waiting to resume — more budget next hour';
 
 // Status line for devices held because the smart task is between planned hours
 // (the current hour was relatively expensive so the load was booked into cheaper

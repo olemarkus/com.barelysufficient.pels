@@ -75,7 +75,15 @@ function shouldStopAfterCandidate(params: { candidate: ShedCandidate; shedAllCan
 export function resolveShedReason(
   limitSource: PlanContext['softLimitSource'],
   capacityBreached: boolean,
+  hourlyBudgetExhausted = false,
 ): DeviceReason {
+  // The exhausted hour outranks both soft-limit sources: the hour's kWh is
+  // spent, so no freed power (capacity-side or budget-side) admits anything
+  // before the hour rolls over. Its own reason code renders time-based copy on
+  // the card instead of a kW gap, which would be dishonest here.
+  if (hourlyBudgetExhausted) {
+    return { code: PLAN_REASON_CODES.hourlyBudget, detail: null };
+  }
   // `daily` is only the BINDING soft limit — when capacity is breached too, total
   // is over both and capacity is the constraint actually doing the work. Naming
   // the daily budget there is wrong for every device in the cycle, and doubly so

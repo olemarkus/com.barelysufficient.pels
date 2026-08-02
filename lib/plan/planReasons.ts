@@ -17,6 +17,11 @@ import {
   isSwapReason,
   shouldNormalizeReason,
 } from './planReasonsShared';
+import {
+  resolveCeilingShortfallKw,
+  type CeilingShortfallInputs,
+} from './planReasonShortfall';
+import { isSwapTargetPendingReason } from '../planContract/planDecisionSemantics';
 
 // Public entry point. The shed-temperature hold decision table and the plan
 // reason-pair validation live in sibling modules; they are re-exported here so
@@ -133,8 +138,11 @@ export function normalizeShedReasons(params: {
   // this cycle (`resolveSurplusHold`), with the producer-built stable
   // `awaitingSolarSurplus` reason. Adopted like the deferred-avoid framing:
   // it wins over the capacity/dailyBudget default, but never over a fresh
-  // shed decision (`shedReasons`) or the richer shortfall/cooldown/swap/
-  // hourly-budget reasons.
+  // shed decision (`shedReasons`) or the richer shortfall/cooldown/swap
+  // reasons. (A fresh `hourlyBudget` shed IS a `shedReasons` entry, so a
+  // surplus dump load fresh-shed during an exhausted hour shows the hourly
+  // copy for that cycle and re-adopts the surplus framing on the next —
+  // parity with the old dailyBudget-under-exhaustion behaviour.)
   surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
   // Plan-level binding-constraint signal. When `'daily'`, carry-forward
   // `capacity` reasons re-attribute to `dailyBudget` so the device card label
@@ -152,6 +160,15 @@ export function normalizeShedReasons(params: {
   // gating, so the card label and the rescue widget cannot disagree about
   // whether a hold is budget-releasable.
   budgetReleasableHeadroomHold?: boolean;
+  // Post-hold per-axis availability + startup reservations, for the uniform
+  // per-cycle shortfall on ceiling holds (`finalizeCeilingReason`). Optional so
+  // scalar-only callers/tests keep the pre-existing behaviour (no attachment).
+  admissionInputs?: CeilingShortfallInputs;
+  // Producer-resolved on `PlanEngineState`: the hour's energy budget is spent.
+  // Folds every ceiling hold to `hourlyBudget` (time-based copy) — spent kWh
+  // cannot be un-spent, so a kW figure would be dishonest for the rest of the
+  // hour.
+  hourlyBudgetExhausted?: boolean;
 }): DevicePlanDevice[] {
   const {
     planDevices,
@@ -168,24 +185,177 @@ export function normalizeShedReasons(params: {
     softLimitSource = null,
     capacityBreached = false,
     budgetReleasableHeadroomHold = false,
+    admissionInputs,
+    hourlyBudgetExhausted = false,
   } = params;
 
-  return planDevices.map((dev) => normalizeDeviceReason({
-    dev,
-    shedReasons,
-    guardInShortfall,
-    headroomRaw,
-    inCooldown,
-    activeOvershoot,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
-    deferredObjectiveAvoidDeviceIds,
-    surplusHoldReasonById,
+  return planDevices.map((dev) => finalizeCeilingReason({
+    dev: normalizeDeviceReason({
+      dev,
+      shedReasons,
+      guardInShortfall,
+      headroomRaw,
+      inCooldown,
+      activeOvershoot,
+      shedCooldownRemainingSec,
+      shedCooldownStartedAtMs,
+      shedCooldownTotalSec,
+      deferredObjectiveAvoidDeviceIds,
+      surplusHoldReasonById,
+      softLimitSource,
+      capacityBreached,
+      budgetReleasableHeadroomHold,
+    }),
+    shedReasonFresh: shedReasons.has(dev.id),
+    admissionInputs,
+    hourlyBudgetExhausted,
     softLimitSource,
     capacityBreached,
-    budgetReleasableHeadroomHold,
   }));
+}
+
+// Reason codes the hourly-exhausted fold rewrites to `hourlyBudget`. Swap
+// reasons are deliberately absent — they keep their own framing (which device
+// took the power) in the activity log; on the card they render bare during the
+// exhausted hour because the shortfall attach is suspended too (below). A
+// fresh `hourlyBudget` reason never reaches this set — `resolveHourlyFold`
+// early-returns on it to preserve the producer's object identity.
+const HOURLY_FOLD_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.insufficientHeadroom,
+]);
+
+// Reason codes the uniform per-cycle shortfall attaches to. `insufficientHeadroom`
+// self-computes from its own admission margins; `hourlyBudget` never carries a
+// kW (time-based copy); `sheddingActive` has no live producer.
+const SHORTFALL_ATTACH_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.swapPending,
+  PLAN_REASON_CODES.swappedOut,
+]);
+
+// Last stage of reason normalization, run on every device after the per-device
+// framing above has settled. Closes the "bare Waiting to resume" gap
+// (prod 2026-08-02): a ceiling hold whose producer had no admission arithmetic
+// in scope — a fresh shed, a carry-forward under active overshoot, a
+// temperature-lane hold, a swap victim — now gets THIS device's own
+// pace-relative admission gap attached every cycle, so the card can always say
+// what the device needs.
+//
+// Freshness wins over producer numbers on the attach-set codes: a
+// producer-resolved kW is a snapshot of the rejection that minted it, and the
+// carry-forward states (cooldowns, active overshoot) keep it on the card while
+// the pace moves — prod 2026-08-02 evening: cards read "2.3 kW more needed"
+// minted at a transient −0.34 kW overshoot dip, while the recovered pace put
+// the true gap at 1.3 kW. Recomputing every cycle trades the producer's extra
+// detail (swap-reserve fold, penalty inflation — up to ~0.3 kW) for a number
+// that is never minutes old; the producer figure survives only where the
+// per-axis inputs are absent (direct-call tests). `insufficientHeadroom`
+// reasons keep self-computing from their own margins — under daily binding the
+// re-attribution above converts them to `dailyBudget` each cycle, which lands
+// them back in the attach set and refreshes the number.
+//
+// During the exhausted hour no kW is attached to ANY code (and any carried one
+// is stripped): spent kWh cannot be un-spent, so a gap figure would be
+// dishonest until the hour rolls over — the same rule that gives `hourlyBudget`
+// its time-based copy. Swap holds keep their framing and simply render bare.
+function finalizeCeilingReason(params: {
+  dev: DevicePlanDevice;
+  shedReasonFresh: boolean;
+  admissionInputs?: CeilingShortfallInputs;
+  hourlyBudgetExhausted: boolean;
+  softLimitSource: 'capacity' | 'daily' | null;
+  capacityBreached: boolean;
+}): DevicePlanDevice {
+  const {
+    dev, shedReasonFresh, admissionInputs, hourlyBudgetExhausted, softLimitSource, capacityBreached,
+  } = params;
+  if (dev.plannedState !== 'shed') return dev;
+  const withReason = (reason: DeviceReason): DevicePlanDevice => (
+    reason === dev.reason ? dev : { ...dev, reason }
+  );
+
+  const folded = resolveHourlyFold({
+    dev, shedReasonFresh, hourlyBudgetExhausted, softLimitSource, capacityBreached,
+  });
+  if (hourlyBudgetExhausted || folded.code === PLAN_REASON_CODES.hourlyBudget) {
+    return withReason(stripShortfall(folded));
+  }
+
+  if (!admissionInputs || !SHORTFALL_ATTACH_REASON_CODES.has(folded.code)) {
+    return withReason(folded);
+  }
+  // A pending swap TARGET (`swapPending`, target unresolved) already has its
+  // relief committed: its selected sources are `plannedState: 'shed'` and mid
+  // turn-off, so they are absent from the swap surface and the computed gap
+  // would state the full plain deficit that the in-flight swap is about to
+  // cover. No number is honest for the one or two cycles this shape lives.
+  if (isSwapTargetPendingReason(folded)) return withReason(folded);
+  const shortfallKw = resolveCeilingShortfallKw({ dev, inputs: admissionInputs });
+  if (shortfallKw === null) return withReason(stripShortfall(folded));
+  return withReason(attachShortfall(folded, shortfallKw));
+}
+
+// Inverse of `attachShortfall` for the states where no number is honest this
+// cycle: a carried `shortfallKw` from an earlier rejection must not outlive the
+// arithmetic that would no longer produce it.
+function stripShortfall(reason: DeviceReason): DeviceReason {
+  if (!('shortfallKw' in reason) || reason.shortfallKw === undefined) return reason;
+  const { shortfallKw: _dropped, ...rest } = reason;
+  return rest as DeviceReason;
+}
+
+// The hourly-exhausted fold and its inverse. Forward: while the hour's kWh is
+// spent, every ceiling hold reads `hourlyBudget` (time-based copy — spent kWh
+// cannot be un-spent, so a kW would be dishonest). Inverse: once the hour rolls
+// over, a carried-forward `hourlyBudget` reason must be re-attributed to the
+// currently binding ceiling — nothing else rewrites it (it is not in
+// `shouldNormalizeReason` and the restore lane carries reasons forward under
+// overshoot), so without this the "next hour" line would outlive the hour it
+// described. The re-attribution mirrors `resolveShedReason`/
+// `resolveDailyBindingReattribution` semantics: daily only when it binds
+// without a capacity breach, and never for a budget-exempt device (its holds
+// are capacity holds by per-axis admission). A fresh-this-cycle `shedReasons`
+// entry is left alone, same as the daily re-attribution: the selector set it
+// with the current cycle's facts.
+function resolveHourlyFold(params: {
+  dev: DevicePlanDevice;
+  shedReasonFresh: boolean;
+  hourlyBudgetExhausted: boolean;
+  softLimitSource: 'capacity' | 'daily' | null;
+  capacityBreached: boolean;
+}): DeviceReason {
+  const { dev, shedReasonFresh, hourlyBudgetExhausted, softLimitSource, capacityBreached } = params;
+  if (hourlyBudgetExhausted) {
+    if (dev.reason.code === PLAN_REASON_CODES.hourlyBudget) return dev.reason;
+    if (HOURLY_FOLD_REASON_CODES.has(dev.reason.code)) {
+      return { code: PLAN_REASON_CODES.hourlyBudget, detail: null };
+    }
+    return dev.reason;
+  }
+  if (dev.reason.code !== PLAN_REASON_CODES.hourlyBudget) return dev.reason;
+  if (shedReasonFresh) return dev.reason;
+  const daily = softLimitSource === 'daily' && !capacityBreached && dev.budgetExempt !== true;
+  return daily
+    ? { code: PLAN_REASON_CODES.dailyBudget, detail: null }
+    : { code: PLAN_REASON_CODES.capacity, detail: null };
+}
+
+// Per-variant narrowing for the spread — the union type only accepts
+// `shortfallKw` inside the carrier variants.
+function attachShortfall(reason: DeviceReason, shortfallKw: number): DeviceReason {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.capacity:
+    case PLAN_REASON_CODES.dailyBudget:
+      return { ...reason, shortfallKw };
+    case PLAN_REASON_CODES.swapPending:
+    case PLAN_REASON_CODES.swappedOut:
+      return { ...reason, shortfallKw };
+    default:
+      return reason;
+  }
 }
 
 function normalizeDeviceReason(params: {
@@ -334,6 +504,10 @@ function normalizeDeviceReason(params: {
 //   arithmetic was fixed (`resolveRestoreShortfallKw` now computes the gap
 //   admission actually gates on), so the number is trustworthy and belongs on the
 //   card — WHICH ceiling is binding is a house-level fact the hero states once.
+//   `sourceShortfallKw` is still `null` whenever the restore lane never evaluated
+//   the device (fresh shed, skipped pass, temperature-lane hold); that gap is
+//   closed downstream by `finalizeCeilingReason`, which computes the device's own
+//   admission gap every cycle when no producer number exists.
 //
 // Note on `DEFERRED_RESTORE_BLOCK_REASON_CODES`
 // (`lib/planContract/planDecisionSemantics.ts`): `dailyBudget` is absent from that

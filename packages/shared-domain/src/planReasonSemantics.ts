@@ -1,6 +1,7 @@
 import { PLAN_REASON_CODES, getPlanReasonLabel } from './planReasonSemanticsCore';
 import { buildComparableDeviceReason } from './planReasonComparable';
 import {
+  ceilToDisplayKw,
   formatDeviceReason,
   formatDeviceReasonUserFacing,
   formatShortfallReason,
@@ -15,6 +16,7 @@ export {
   PLAN_REASON_CODES,
   getPlanReasonLabel,
   buildComparableDeviceReason,
+  ceilToDisplayKw,
   formatDeviceReason,
   formatDeviceReasonUserFacing,
   formatShortfallReason,

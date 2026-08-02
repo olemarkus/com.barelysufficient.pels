@@ -11,7 +11,7 @@ import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
-  PLAN_STATE_HOURLY_BUDGET_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
 } from '../../packages/shared-domain/src/planStateLabels';
 
 const BANNED = /\b(shed|restore|headroom|shortfall|backoff|invariant|soft limit|controlled|uncontrolled)\b/i;
@@ -71,9 +71,9 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: PLAN_STATE_DAILY_BUDGET_STATUS,
     },
     {
-      label: 'hourly budget shed maps to the hourly hard cap label',
+      label: 'hourly budget shed maps to the next-hour budget line',
       reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
-      expected: PLAN_STATE_HOURLY_BUDGET_STATUS,
+      expected: PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
     },
     {
       label: 'deferred objective avoid maps to the waiting-for-cheaper-hours label',

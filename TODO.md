@@ -582,7 +582,11 @@ What remains open is below.*
       binds broke 6 integration tests precisely because it violated the allow-list. The card no
       longer *says* "Limited by the hard cap" for the unknown case (the held fallback was split off
       from `PLAN_STATE_CAPACITY_STATUS` in the same PR), but a genuine `capacity` reason on a device
-      no limit is holding is still wrong. Source: prod investigation + test suite, 2026-07-25. [P2]
+      no limit is holding is still wrong. (Softened 2026-08-02: `finalizeCeilingReason` now
+      attaches the per-cycle admission gap to that default — when nothing binds, admission passes
+      and the card shows the bare waiting line rather than a phantom number — but the wrong CODE
+      still reaches diagnostics/starvation classification.) Source: prod investigation + test
+      suite, 2026-07-25. [P2]
 
 - [ ] **Stepped devices never say how much power a resume is waiting for.**
       `steppedRestoreAdmission.ts` hardcodes `headroomKw: null` on both `restoreNeed` reasons, so

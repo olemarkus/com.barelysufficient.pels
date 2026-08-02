@@ -43,9 +43,11 @@ export type ComparablePlanReason =
   })
   | ComparableTextReason;
 
-// `dailyBudget` stays here — compared on `detail` alone — even though it now
-// carries a `shortfallKw` the card renders. That kW is DELIBERATELY excluded
-// from every comparable: it moves with `softLimitKw − totalKw`, both of which
+// `dailyBudget` and `capacity` stay here — compared on `detail` alone — even
+// though they carry a `shortfallKw` the card renders (as do the swap variants
+// below, compared on `targetName` alone). That kW is DELIBERATELY excluded
+// from every comparable: since `finalizeCeilingReason` attaches it to every
+// ceiling hold each cycle, it moves with `softLimitKw − totalKw`, both of which
 // drift continuously, so folding it in would flip this signature on most plan
 // cycles. That signature gates the per-device device-log ring buffer
 // (`planOverviewEmit.ts` → a 50-entry recorder), and the logged `statusMsg` for

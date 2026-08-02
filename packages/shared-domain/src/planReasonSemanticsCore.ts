@@ -54,12 +54,16 @@ export type CountdownReasonTiming = {
 };
 
 // The power that, if it became available, would admit this device — already
-// rounded to the 0.1 kW display resolution by `resolveRestoreShortfallKw`.
-// Carried by holds whose producer had the admission arithmetic in scope, so the
-// device card can state what the device NEEDS instead of naming the house-level
-// ceiling (which the hero states once). `null`/absent when the hold is not
-// power-blocked — a carry-forward `capacity` fold, or a shed selected this cycle
-// before the restore lane evaluated the device.
+// rounded to the 0.1 kW display resolution (`ceilToDisplayKw`). Carried by
+// every power-liftable ceiling hold so the device card can state what the
+// device NEEDS instead of naming the house-level ceiling (which the hero
+// states once). On the carrier codes it is recomputed every plan cycle at
+// reason normalization (`finalizeCeilingReason`, `lib/plan/planReasons.ts`)
+// from the current per-axis availability — fresh wins over any number a
+// producer attached earlier, because carry-forward states would otherwise pin
+// a snapshot on the card while the pace moves. `null`/absent when the
+// arithmetic declined this cycle (reserve carve-out, admission would pass, the
+// exhausted hour, or a gap that rounds to nothing).
 //
 // Pre-rounded on purpose: the stored value then changes only when the DISPLAYED
 // number changes, so a kW that jitters every plan cycle cannot churn the
@@ -77,14 +81,17 @@ export type DeviceReason =
     headroomKw: number | null;
   }
   | { code: typeof PLAN_REASON_CODES.setTarget; targetText: string }
-  // Deliberately NOT `AdmissionShortfall` carriers. The admission arithmetic in
-  // scope at the swap producers (`lib/plan/swap/candidates.ts`,
-  // `lib/plan/restore/swap.ts`, `lib/plan/swap/blocking.ts`) belongs to the
-  // device being swapped IN, not to the victim carrying this reason — pinning it
-  // here would state another device's number as this one's. A swap victim gets
-  // its own figure on the next cycle, when the restore lane evaluates it.
-  | { code: typeof PLAN_REASON_CODES.swapPending; targetName: string | null }
-  | { code: typeof PLAN_REASON_CODES.swappedOut; targetName: string | null }
+  // The swap PRODUCERS (`lib/plan/swap/candidates.ts`, `lib/plan/restore/swap.ts`,
+  // `lib/plan/swap/blocking.ts`) must still never pin their own admission numbers
+  // here — those belong to the device being swapped IN, and stating them on the
+  // victim would present another device's quantity as this one's. The
+  // `shortfallKw` these variants carry is attached post hoc at reason
+  // normalization (`finalizeCeilingReason`), computed from THIS device's own
+  // need against the current pace.
+  | ({ code: typeof PLAN_REASON_CODES.swapPending; targetName: string | null } & AdmissionShortfall)
+  | ({ code: typeof PLAN_REASON_CODES.swappedOut; targetName: string | null } & AdmissionShortfall)
+  // Never a carrier: the hour's kWh is spent, so no amount of freed power admits
+  // the device before the hour rolls over — the card renders time-based copy.
   | { code: typeof PLAN_REASON_CODES.hourlyBudget; detail: string | null }
   | ({ code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null } & AdmissionShortfall)
   | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number | null; headroomKw: number | null }
@@ -115,7 +122,7 @@ export type DeviceReason =
   }
   | { code: typeof PLAN_REASON_CODES.sheddingActive; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string | null }
-  | { code: typeof PLAN_REASON_CODES.capacity; detail: string | null }
+  | ({ code: typeof PLAN_REASON_CODES.capacity; detail: string | null } & AdmissionShortfall)
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }

@@ -37,6 +37,9 @@ import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
+import { buildCeilingShortfallInputs } from './planReasonShortfall';
+import { buildSwapState } from './swap/state';
+import { getOnDevices } from './restore/devices';
 import { trackPlanStage } from './planStageTiming';
 
 /**
@@ -69,6 +72,7 @@ type HoldPlanResult = {
   planDevices: DevicePlanDevice[];
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
+  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null } | null;
 };
 
 type FinalizedPlanResult = {
@@ -156,13 +160,15 @@ export class PlanMaterializationStages {
     }));
   }
 
-  normalizeReasons(
-    planDevices: DevicePlanDevice[],
-    context: PlanContext,
-    restoreResult: RestorePlanResult,
-    sheddingPlan: SheddingPlan,
-    holds: ShedReasonHoldInputs,
-  ): DevicePlanDevice[] {
+  normalizeReasons(params: {
+    planDevices: DevicePlanDevice[];
+    context: PlanContext;
+    restoreResult: RestorePlanResult;
+    sheddingPlan: SheddingPlan;
+    holds: ShedReasonHoldInputs;
+    holdResult: HoldPlanResult;
+  }): DevicePlanDevice[] {
+    const { planDevices, context, restoreResult, sheddingPlan, holds, holdResult } = params;
     return trackPlanStage('plan_reasons_ms', () => normalizeShedReasons({
       planDevices,
       shedReasons: sheddingPlan.shedReasons,
@@ -177,6 +183,37 @@ export class PlanMaterializationStages {
       softLimitSource: context.softLimitSource,
       capacityBreached: isCapacityBreached(context.total, context.capacitySoftLimit),
       budgetReleasableHeadroomHold: context.budgetReleasableHeadroomHold,
+      // The hold lane's post-pass axes — `applyHoldPlan` always supplies a
+      // ledger on this path, so `ledgerAxes` is only null for scalar-only
+      // direct callers (tests), which simply get no per-cycle shortfall rather
+      // than a silently different availability basis.
+      //
+      // Gated on KNOWN power (`powerKnown` = fresh sample AND a non-null
+      // total): whenever power is not known the context synthesizes the
+      // headroom (stale_hold → 0, stale_fail_closed → −1, and a fresh tracker
+      // with a null total — e.g. right after an in-place meter swap — also
+      // synthesizes 0), so a gap computed from those axes would be fabricated —
+      // the real recourse is a fresh meter reading, not freed power. No new
+      // numbers while unknown; holds keep whatever the last known cycle
+      // attached.
+      admissionInputs: holdResult.ledgerAxes && context.powerKnown
+        ? buildCeilingShortfallInputs({
+          ledgerAxes: holdResult.ledgerAxes,
+          headroomReserves: restoreResult.headroomReserves,
+          // The SAME victim filter the swap lane uses (`getOnDevices`), not
+          // raw plan devices — the raw list would fold "relief" from devices
+          // a swap can never actually shed (stepped `set_step` behavior,
+          // thermostats already at their shed floor, uncommandable devices),
+          // understating the displayed gap.
+          onDevices: getOnDevices(planDevices, (deviceId) => this.deps.getShedBehavior(deviceId)),
+          // `state.swapByDevice` was refreshed from this cycle's restore pass
+          // in `applyRestorePlanAndUpdateState`, so the swap surface the
+          // shortfall folds in is the same one the next swap decision reads.
+          swappedOutFor: buildSwapState(this.state).swappedOutFor,
+          restoredThisCycle: restoreResult.restoredThisCycle,
+        })
+        : undefined,
+      hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     }));
   }
 

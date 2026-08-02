@@ -3720,8 +3720,11 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet).toEqual(new Set(['second', 'binary']));
-    expect(reasonText(result.shedReasons.get('binary'))).toBe('shed due to daily budget');
-    expect(reasonText(result.shedReasons.get('second'))).toBe('shed due to daily budget');
+    // The exhausted hour carries its own reason code (`resolveShedReason`): the
+    // card renders time-based copy from it, since no freed kW admits anything
+    // before the hour rolls over.
+    expect(reasonText(result.shedReasons.get('binary'))).toBe('shed due to hourly budget');
+    expect(reasonText(result.shedReasons.get('second'))).toBe('shed due to hourly budget');
     expect(result.shedReasons.has('exempt')).toBe(false);
     expect(capacityGuard.setSheddingActive).toHaveBeenCalledWith(true);
   });
