@@ -64,6 +64,7 @@ import {
   diagTargetTemperatureC,
   hasLearnedRateDeviated,
   hasMetadataDriftedWithinSchedule,
+  isFrozenServedDiagnostic,
   MAX_HISTORY_REVISIONS,
   notifyRevisionWrittenIfPubliclyObservable,
   reportedPlanStatus,
@@ -283,7 +284,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // written (`markReplanSettled` after a truthy write), so a no-op `:58` cycle
     // doesn't starve a real change later in the same `:58` window.
     const objectiveChanged = compareObjectiveSignatures(backfilled.objectiveSignature, signature).changed;
-    if (!this.isReplanDueThisCycle(diag.deviceId, objectiveChanged, nowMs)) {
+    if (!this.isReplanDueThisCycle(diag, objectiveChanged, nowMs)) {
       publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
       return;
     }
@@ -494,21 +495,27 @@ export class DeferredObjectiveActivePlanRecorder {
   // The once-per-hour `:58` settle gate (see SCHEDULE_SETTLE_OFFSET_MS). True when
   // a replan revision MAY be written this cycle: an external objective edit
   // (immediate) OR the first cycle at/after `:58` of this clock hour that has not
-  // yet settled a write. PURE — the settle marker is advanced by
+  // yet settled a write. NEVER on a frozen-served diagnostic — it is a projection
+  // of this record's own persisted commitment with nothing new to settle, and its
+  // placeholder detail / stamp-less hours must not overwrite the authoritative
+  // revision (see `isFrozenServedDiagnostic`; checked before the objective-edit
+  // bypass as belt-and-braces — a signature change cannot ride a frozen serve).
+  // PURE — the settle marker is advanced by
   // `markReplanSettled` only after a revision is ACTUALLY written, so a no-op
   // `:58` cycle (no schedule/metadata/source drift) does not consume the hour's
   // slot and a real change later in the `:58` window still lands. Within the hour
   // the persisted plan is otherwise frozen; the planner's per-cycle live
   // allocation still reacts (device stays controlled) — only the RECORD waits.
   private isReplanDueThisCycle(
-    deviceId: string,
+    diag: DeferredObjectiveDiagnostic,
     objectiveChanged: boolean,
     nowMs: number,
   ): boolean {
+    if (isFrozenServedDiagnostic(diag)) return false;
     if (objectiveChanged) return true;
     const currentHourMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
     const pastSettleMark = nowMs - currentHourMs >= SCHEDULE_SETTLE_OFFSET_MS;
-    return pastSettleMark && this.lastScheduleSettledHourMs.get(deviceId) !== currentHourMs;
+    return pastSettleMark && this.lastScheduleSettledHourMs.get(diag.deviceId) !== currentHourMs;
   }
 
   // Advance the settle marker after an actual `:58` write so the next cycle in the

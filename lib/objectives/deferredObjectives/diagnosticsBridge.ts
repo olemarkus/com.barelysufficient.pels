@@ -412,7 +412,27 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     // Serve frozen unless we are re-planning; `replan` already required the horizon
     // to be available, so the fresh path always has a usable `policyHorizon`.
     frozenRead: replan ? null : frozenFallback,
+    // Degradation fallback for a live step-ladder gap: when the fresh path cannot
+    // allocate (no executable steps), a committed task is served frozen even on a
+    // replan-due cycle — the replan is deferred, not the commitment dropped. Null
+    // exactly when there is no commitment to serve.
+    frozenFallback,
   });
+};
+
+// Which frozen read (if any) this cycle serves. Normal path: the caller's replan
+// decision (`frozenRead`). Step-gap degradation: a committed task whose live step
+// ladder is missing serves its commitment even on a replan-due cycle, because
+// re-planning without steps is impossible. Null ⇒ fresh path (or, when steps are
+// missing with no commitment to serve, the caller resolves `unknown`).
+const resolveServedFrozenRead = (params: {
+  liveStepsUnavailable: boolean;
+  frozenRead?: FrozenReadInputs | null;
+  frozenFallback?: FrozenReadInputs | null;
+}): FrozenReadInputs | null => {
+  if (params.frozenRead) return params.frozenRead;
+  if (params.liveStepsUnavailable) return params.frozenFallback ?? null;
+  return null;
 };
 
 const buildDiagnosticWithPolicyHorizon = (params: {
@@ -432,6 +452,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   hardCapKw?: number | null;
   concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
   frozenRead?: FrozenReadInputs | null;
+  frozenFallback?: FrozenReadInputs | null;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -448,6 +469,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     dailyBudgetSnapshot,
     activePlans,
     frozenRead,
+    frozenFallback,
   } = params;
   const unknownWithProgress = (
     reasonCode: DeferredObjectiveDiagnosticReasonCode,
@@ -466,7 +488,21 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   if (profileEnergy.reasonCode) return unknownWithProgress(profileEnergy.reasonCode);
 
   const steps = profileEnergy.energyNeededKWh > 0 ? resolveObjectiveSteps(device) : [];
-  if (profileEnergy.energyNeededKWh > 0 && steps.length === 0) {
+  // Live step-ladder gap. The ladder is a live transport input — a flow-registered
+  // stepped profile does not survive an app restart until the Flow re-fires, and
+  // SDK reads transiently fail — so a COMMITTED task must not be dropped to
+  // `unknown` for want of it: the commitment already encodes what to deliver each
+  // hour (prod 2026-08-01: a restart's step gap stripped the water heater's budget
+  // exemption for 9.5 h while its committed plan sat untouched in settings). Serve
+  // the frozen committed plan through the gap — even on a settle cycle, because
+  // re-planning without steps is impossible (same "replan only when due AND
+  // possible" rule as the missing-price-horizon case above). `expectedStepId`
+  // degrades to null; the executor drives the device via its remaining controls.
+  // Only a task with no commitment to serve (bootstrap/new objective) still
+  // resolves `unknown`.
+  const liveStepsUnavailable = profileEnergy.energyNeededKWh > 0 && steps.length === 0;
+  const effectiveFrozenRead = resolveServedFrozenRead({ liveStepsUnavailable, frozenRead, frozenFallback });
+  if (liveStepsUnavailable && !effectiveFrozenRead) {
     return unknownWithProgress('objective_missing_charge_rate', buildKnownEnergyFields({ objective, profileEnergy }));
   }
 
@@ -476,7 +512,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     objective,
   });
   const commitment = activeCommittedPlan?.commitmentHours;
-  const milestoneHours = frozenRead ? frozenRead.hours : (activeCommittedPlan?.latest.hours ?? []);
+  const milestoneHours = effectiveFrozenRead ? effectiveFrozenRead.hours : (activeCommittedPlan?.latest.hours ?? []);
   // Trajectory gate for mid-execution price deferral. Resolved here (not in the
   // planner) because it compares the buffered energy still needed
   // (`profileEnergy.energyNeededKWh`, derived from the RAW measured value) against
@@ -503,10 +539,11 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   // Mid-hour frozen read: assemble from the persisted commitment + the live measured
   // value (folded into `aheadOfHourMilestone`), skipping the allocator. The caller
   // sets `frozenRead` exactly when it has decided to serve frozen rather than
-  // re-plan, so this is a pure gate — no cold-start determination here (the device
-  // delivers up to the committed hour's milestone; whether the current hour was
-  // booked at all is the allocator's `:58` decision, read off the commitment).
-  if (frozenRead) {
+  // re-plan (plus the step-gap degradation above), so this is a pure gate — no
+  // cold-start determination here (the device delivers up to the committed hour's
+  // milestone; whether the current hour was booked at all is the allocator's `:58`
+  // decision, read off the commitment).
+  if (effectiveFrozenRead) {
     return buildFrozenDiagnostic({
       nowMs,
       base,
@@ -517,7 +554,8 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       profileEnergy,
       aheadOfHourMilestone,
       steps,
-      frozenRead,
+      frozenRead: effectiveFrozenRead,
+      liveStepsUnavailable,
     });
   }
   return buildFreshDiagnostic({

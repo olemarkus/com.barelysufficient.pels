@@ -130,6 +130,13 @@ type BaseDeferredObjectiveDiagnostic = {
   // look like a device or schedule problem.
   dailyBudgetExhaustedBucketCount: number;
   expectedStepId: string | null;
+  // The live step ladder was unavailable this cycle and the diagnostic was served
+  // from the frozen committed plan instead of degrading to `unknown` (a
+  // flow-registered stepped profile does not survive an app restart until the
+  // Flow re-fires; SDK reads transiently fail — see `diagnosticsBridge`). Pure
+  // log-visibility flag: admission and every other consumer treat the diagnostic
+  // identically; `expectedStepId` is null while it is set.
+  liveStepsUnavailable?: true;
   horizonPlan?: DeferredObjectiveHorizonPlan;
   // True only while the current bucket is a planned bucket for a smart task whose "exempt
   // from budget" rescue permission is active. Admission consumes this flat flag to set the

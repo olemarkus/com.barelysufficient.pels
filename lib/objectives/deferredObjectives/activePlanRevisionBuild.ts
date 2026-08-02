@@ -190,6 +190,22 @@ const THERMAL_LEARNING_CAPACITY_REASON_CODES: ReadonlySet<string> = new Set([
   'objective_missing_charge_rate',
 ]);
 
+// A frozen-served diagnostic (allocator skipped — transient price-horizon gap,
+// or a live step-ladder gap; declared via `horizonPlan.frozenRead`) is a
+// projection of the record's OWN persisted commitment: there is no new
+// allocation to settle, its `statusDetail` is a representative placeholder
+// (`FROZEN_STATUS_DETAIL`), and its rebuilt hours carry no
+// `plannedUnitMilestone`/`cheaperHourAhead` stamps — a drift- or
+// deviation-triggered settle write from it would overwrite the authoritative
+// revision with degraded data (regressed `floorShortfallCause`, re-anchored
+// milestones, dead price-deferral flags). The recorder therefore never treats a
+// replan as due on such a cycle; genuine drift is recorded at the next FRESH
+// settle. The per-cycle `diagnosticReasonCode` refresh is unaffected, so
+// chip/overlay recovery stays immediate.
+export const isFrozenServedDiagnostic = (diag: DeferredObjectiveDiagnostic): boolean => (
+  diag.horizonPlan?.frozenRead === true
+);
+
 export const resolvePendingReason = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanPendingReason => {

@@ -84,6 +84,12 @@ export const buildDeferredObjectiveDebugPayload = (
   horizonBucketCount: diagnostic.horizonBucketCount,
   dailyBudgetExhaustedBucketCount: diagnostic.dailyBudgetExhaustedBucketCount,
   expectedStepId: diagnostic.expectedStepId,
+  // Degradation marker: this cycle was served from the frozen committed plan
+  // because the live step ladder was unavailable. Without it, a horizon_planned
+  // event during a step gap is indistinguishable from a healthy one — the
+  // 2026-08-01 pace collapse was undiagnosable from the logs for exactly this
+  // class of reason (the config flag looked fine while the applied state differed).
+  ...(diagnostic.liveStepsUnavailable === true ? { liveStepsUnavailable: true } : {}),
   ...rescueFields(diagnostic),
   ...horizonPlanFields(diagnostic.horizonPlan),
 });

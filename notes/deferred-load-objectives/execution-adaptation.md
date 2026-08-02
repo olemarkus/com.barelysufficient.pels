@@ -378,6 +378,41 @@ admission, asserting the backstop bounds peak consumption to the floor bookings.
 claim of a "cold-start mid-hour regression" as unproven until it reproduces through that
 SDK-boundary harness, unmocked.
 
+### Live step-ladder gap — the frozen read also bridges missing steps
+
+The step ladder is a **live transport input**: a flow-registered stepped profile does not survive an
+app restart until the Flow re-fires, and SDK reads transiently fail. The 2026-08-01 prod incident
+(water heater "Connected 300") showed what happens when the fresh-path requirement leaks onto the
+committed path: after an 18:40 restart, `resolveObjectiveSteps` came up empty and the diagnostic
+short-circuited to `unknown (objective_missing_charge_rate)` for 9.5 h — stripping the task's budget
+exemption/boost/floor every cycle (the hero's safe pace collapsed 2.2 → 1.3 kW) while the committed
+plan sat untouched in persisted settings. The learned rate never degraded; only the ladder did.
+
+The rule (same as the missing-price-horizon case): **re-plan only when due AND possible; a committed
+task is never dropped to `unknown` for want of a live input the commitment already embodies.** With
+steps missing and a commitment available, `buildDiagnosticWithPolicyHorizon` serves the frozen
+committed plan — even on a `:58` settle cycle, where the replan is deferred rather than the
+commitment dropped. The served cycle is marked `liveStepsUnavailable` in the diagnostic/structured
+log, and `expectedStepId` degrades to `null` (the executor drives the device via its remaining
+binary/temperature controls; note the executor's step-drift check passes trivially with no
+expected steps, so an external step change is invisible for the gap's duration — degradation, not
+a hole). Bootstrap — no commitment to serve — still resolves `unknown`. The frozen serve is
+bounded by the commitment: once the last committed hour elapses with the ladder still missing,
+the diagnostic legitimately reverts to `unknown` — re-establishing the ladder after a restart is
+the open P1 in TODO.md.
+Regression harness: `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts` (SDK-boundary, restart
+simulated as a new recorder loading the persisted payload). The rate-lane analogue
+(`profileEnergy.reasonCode` short-circuits one step earlier) is still open — see TODO.
+
+Recorder interaction: a frozen-served diagnostic can now coincide with a `:58` settle for the whole
+gap (previously only transiently, on a price-horizon gap). The frozen plan declares itself via
+`horizonPlan.frozenRead`, and the recorder never settles a replan revision from it — its
+representative `statusDetail` and stamp-less rebuilt hours would otherwise overwrite the
+authoritative revision (regressed `floorShortfallCause`, re-anchored `plannedUnitMilestone`, dead
+`cheaperHourAhead`). Genuine drift is recorded at the next fresh settle. The harness's
+recorder-loop case drives observed settle cycles through the gap and asserts the revision number
+and per-hour stamps are untouched.
+
 ## Work item 3 — Draw-down / reheat anchor (start-above-target objectives) — DONE
 
 **Scope: display-only, both trajectory producers.** WI-1 re-anchored only the *revised* history

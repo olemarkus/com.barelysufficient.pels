@@ -4177,6 +4177,41 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(plan?.latest?.reason).toBe('objective_changed');
     });
 
+    it('never settles from a frozen-served diagnostic — the same plan settles once served fresh', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })], HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+
+      // A grown schedule at :58 — exactly the shape that settles — but served
+      // FROZEN (allocator skipped: transient price-horizon gap, or a live
+      // step-ladder gap). Its representative statusDetail and stamp-less
+      // rebuilt hours must never overwrite the authoritative revision, so the
+      // recorder must not settle from it regardless of what drifted.
+      const grown = makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: { ...grown, frozenRead: true },
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+
+      // The identical plan served FRESH later in the same :58 window settles —
+      // proving the gate discriminates on `frozenRead`, and that the frozen
+      // no-op did not consume the hour's settle slot.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: grown,
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS + 30_000);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+    });
+
     it('a no-op :58 cycle does not consume the hour slot — a real change later in the window still lands', () => {
       const { deps } = buildPersistDeps();
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);

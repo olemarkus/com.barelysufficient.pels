@@ -196,4 +196,12 @@ export type DeferredObjectiveHorizonPlan = {
   // back-compat: absent ⇒ not released. See
   // notes/deferred-load-objectives/execution-adaptation.md (cold-start feasibility).
   coldStartReleaseEligible?: boolean;
+  // This plan is a frozen mid-hour projection of the PERSISTED commitment — the
+  // allocator did not run (see `buildFrozenHorizonPlan`). It carries no new
+  // allocation to settle: its `statusDetail` is a representative placeholder
+  // (`FROZEN_STATUS_DETAIL`) and its buckets carry none of the persisted
+  // per-hour control stamps, so the active-plan recorder never writes a replan
+  // revision from it (`isFrozenServedDiagnostic` gates the settle). Fresh
+  // (allocator-run) plans omit it. Optional/back-compat: absent ⇒ fresh.
+  frozenRead?: true;
 };

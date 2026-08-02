@@ -116,6 +116,9 @@ export const buildFrozenDiagnostic = (params: {
   aheadOfHourMilestone: boolean;
   steps: DeferredObjectiveStep[];
   frozenRead: FrozenReadInputs;
+  // Log-visibility marker (see `diagnosticTypes.ts`): this frozen serve bridges a
+  // live step-ladder gap, so `steps` is empty and `expectedStepId` resolves null.
+  liveStepsUnavailable?: boolean;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs, base, progress, objective, deviceId, deadlineAtMs,
@@ -143,6 +146,7 @@ export const buildFrozenDiagnostic = (params: {
     horizonBucketCount: frozenRead.hours.length,
     dailyBudgetExhaustedBucketCount: frozenRead.dailyBudgetExhaustedBucketCount,
     expectedStepId: horizonPlan.expectedStepId,
+    ...(params.liveStepsUnavailable === true ? { liveStepsUnavailable: true as const } : {}),
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
       && isCurrentBucketPlanned(horizonPlan),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
