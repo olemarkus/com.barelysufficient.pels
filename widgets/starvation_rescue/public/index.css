@@ -432,8 +432,8 @@
 /* ----- Extra permissions (read-only summary) ----- */
 
 /* A bordered informational block listing the standing permissions the rescue
-   grants. Read-only — the rescue always grants both — so it has no toggles,
-   just a title and a list. */
+   grants. Read-only — the rescue requests all three and the per-device gate
+   decides which survive — so it has no toggles, just a title and a list. */
 .extra-perms-summary {
   display: flex;
   flex-direction: column;

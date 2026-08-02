@@ -16,6 +16,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
+  readObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsEntry,
@@ -29,6 +30,7 @@ import {
 } from './appInit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
 import { mapObjectiveWriteRefusalReason, resolveSmartTaskHomeScope } from './appInit/smartTaskHomeScope';
+import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import { getLogger } from '../lib/logging/logger';
 
@@ -166,12 +168,44 @@ export class AppSmartTaskApi {
   //
   // Runs on BOTH lanes so preview ≡ persist. Returns the candidate unchanged when
   // it carries no limit-lower-priority grant.
+  //
+  // The gate WITHHOLDS a grant the caller is newly asking for; it must never
+  // ERASE one the device already holds. The distinction is load-bearing now that
+  // the settings-UI edit lane writes with `rescue: 'replace'`: the eligibility
+  // test reads `controlModel`, which is re-derived from live device reads
+  // (`lib/device/managerNativeEv.ts`) and is absent for an auto-native-wired
+  // stepper during the post-restart window while `autoNativeWiringDecisions` —
+  // in-memory, populated by a background pass — is still filling in. Without the
+  // standing check, one degraded read during an unrelated goal edit would
+  // permanently revoke an effective permission: the destructive-reset-on-a-
+  // transient-read pattern `notes/persisted-settings-state.md` exists to prevent.
+  //
+  // Resolved HERE rather than threaded in from each caller so both lanes reach
+  // the same verdict by construction (preview ≡ persist) and no future caller
+  // can forget to pass it.
+  //
+  // Only the DEVICE conjunct gets that protection. The budget-exemption conjunct
+  // is re-checked even for an established grant, because it is read off the
+  // candidate itself and so can never be a flaky read — skipping it would let a
+  // request that revokes `exemptFromBudget` while keeping the limit grant persist
+  // the inert `{ limitLowerPriorityDevices }` the contract promises is gated.
   private gateCandidateExtraPermissions(
+    deviceId: string,
     device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): DeferredObjectivePlanPreviewCandidate {
     const rescue = candidate.rescue;
     if (!rescue?.limitLowerPriorityDevices) return candidate;
+    // A grant we can't rule out counts as established: an unreadable store is
+    // the same class of transient as a half-warmed device snapshot, so treating
+    // its silence as "nothing stands" would reintroduce the revocation this
+    // check exists to stop (`objectiveAbsenceIsTrustworthy` is the same guard
+    // the write ops use before acting on an absence).
+    const stored = readObjectiveForDevice(this.ctx.homey.settings, deviceId);
+    const standsOrUnknown = stored === undefined
+      ? !objectiveAbsenceIsTrustworthy(this.ctx.homey.settings, deviceId)
+      : stored.rescue?.limitLowerPriorityDevices !== undefined;
+    if (standsOrUnknown && rescue.exemptFromBudget === 'always') return candidate;
     const eligible = device !== undefined
       && this.deviceSupportsLimitLowerPriority(device)
       && rescue.exemptFromBudget === 'always';
@@ -249,7 +283,7 @@ export class AppSmartTaskApi {
       ?? this.ctx.getUiPickerDevices().find((device) => device.id === deviceId);
     // Gate opt-in extra permissions the same way the create lane does, so the
     // preview reflects exactly what would persist (preview ≡ persist).
-    const gatedCandidate = this.gateCandidateExtraPermissions(snapshotDevice, candidate);
+    const gatedCandidate = this.gateCandidateExtraPermissions(deviceId, snapshotDevice, candidate);
     return previewDeferredObjectivePlan({
       nowMs: this.ctx.getNow().getTime(),
       timeZone: this.ctx.getTimeZone(),
@@ -329,7 +363,7 @@ export class AppSmartTaskApi {
     // is normalised/persisted (drops an ineligible/inert limit-lower-priority
     // grant), so a tampered or stale client can never persist a permission this
     // device can't honour. Matches the gate the preview applies.
-    const gatedCandidate = this.gateCandidateExtraPermissions(device, candidate);
+    const gatedCandidate = this.gateCandidateExtraPermissions(deviceId, device, candidate);
     // Re-validate via the canonical normalizer with `enabled: true`; a creation
     // is implicitly an enabled objective. This rejects malformed deadlines and
     // the generic target envelope exactly as the Flow-card / settings paths do.
@@ -374,10 +408,18 @@ export class AppSmartTaskApi {
   // `origin` (the requesting lane's rebuild-reason tag) is REQUIRED here on
   // purpose: a second default on this body could drift from the app stub's.
   // Callers with no lane of their own pass `SMART_TASK_WIDGET_WRITE_ORIGIN`.
+  //
+  // `rescuePolicy` is REQUIRED here for the same reason `origin` is: the app
+  // stub already defaults it, and a second default on this body could drift
+  // from that one. `'preserve'` is the additive lane, where a candidate that
+  // names no permissions leaves a standing grant alone; the settings-UI edit
+  // lane passes `'replace'` because its request states the COMPLETE desired
+  // set, so an unchecked toggle must actually revoke.
   public createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
     origin: SmartTaskWriteOrigin,
+    rescuePolicy: 'preserve' | 'replace',
   ): SmartTaskWriteResult {
     const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
     if (!validated.ok) return validated;
@@ -401,7 +443,7 @@ export class AppSmartTaskApi {
         nowMs: this.ctx.getNow().getTime(),
         rebuildReason: origin,
       }),
-      { deviceId, deviceName: device.name ?? null, entry },
+      { deviceId, deviceName: device.name ?? null, entry, rescue: rescuePolicy },
     );
     // Refusal → reject union mapping (durable scope reasons stay typed; the
     // transient refusals collapse to the retryable `write_refused` lane).
@@ -457,7 +499,10 @@ export class AppSmartTaskApi {
     if (this.hasDeferredObjectiveForDevice(deviceId)) {
       return { ok: false, reason: 'device_not_eligible' };
     }
-    return this.createDeferredObjective(deviceId, candidate, SMART_TASK_WIDGET_WRITE_ORIGIN);
+    // `'preserve'`: this lane is a strictly-fresh create (the guard above
+    // refuses a device that already has a task), so there is no standing rescue
+    // to preserve OR replace — it takes the additive default the widget lane uses.
+    return this.createDeferredObjective(deviceId, candidate, SMART_TASK_WIDGET_WRITE_ORIGIN, 'preserve');
   }
 
 }

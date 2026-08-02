@@ -10,7 +10,10 @@ import type {
   SettingsUiSmartTaskUpdateResponse,
   SmartTaskCandidateRequest,
 } from '../../../contracts/src/smartTaskEdit.ts';
-import type { DeferredObjectiveSettingsKind } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type {
+  DeferredObjectiveRescuePermissions,
+  DeferredObjectiveSettingsKind,
+} from '../../../contracts/src/deferredObjectiveSettings.ts';
 import {
   composeSmartTaskDraftLandingLine,
   CREATE_SMART_TASK_WIDGET_COPY,
@@ -39,6 +42,20 @@ const CLEAR_CONFIRM_REVERT_MS = 5000;
 
 const READY_BY_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// The "Extra permissions" as plain granted/not-granted. The editor only ever
+// expresses that much: the server keeps an existing `'at_risk'` mode when a
+// toggle is left on, so this coarser view can never promote a conditional grant
+// into an unconditional one. Keyed off the contract rather than redeclared, so
+// a permission added there breaks the editor at compile time instead of
+// silently going unsettable — the same trick `SMART_TASK_EXTRA_PERMISSION_LABELS`
+// uses.
+export type SmartTaskEditPermissions = Record<
+  keyof DeferredObjectiveRescuePermissions,
+  boolean
+>;
+
+export type SmartTaskEditPermissionKey = keyof SmartTaskEditPermissions;
+
 export type SmartTaskEditContext = {
   deviceId: string;
   kind: DeferredObjectiveSettingsKind;
@@ -56,6 +73,13 @@ export type SmartTaskEditContext = {
   // instead of letting the server re-resolve the HH:mm — which would silently
   // roll an about-to-expire task to tomorrow.
   baselineDeadlineAtMs: number;
+  // The task's permissions as the editor opened. Seeds the draft, decides
+  // dirtiness, and stands in for a toggle this device never offers.
+  baselinePermissions: SmartTaskEditPermissions;
+  // Whether limit-lower-priority is offerable at all on this device (mirrors the
+  // server's `deviceSupportsLimitLowerPriority`). Off → the toggle is not shown,
+  // because the grant would be dropped as inert on a device with no higher step.
+  supportsLimitLowerPriority: boolean;
 };
 
 export type SmartTaskEditPreviewView = {
@@ -80,7 +104,7 @@ export type SmartTaskEditSnapshot = {
   // `target` is the RAW input text, parsed only at validation/submit time —
   // binding the field to a parsed number would strip intermediate typing
   // states ("20." re-rendering as "20", a lone "-" clearing the field).
-  draft: { readyBy: string; target: string };
+  draft: { readyBy: string; target: string; permissions: SmartTaskEditPermissions };
   dirty: boolean;
   valid: boolean;
   busy: SmartTaskEditBusy;
@@ -129,10 +153,18 @@ const isValidDraft = (s: SmartTaskEditSnapshot): boolean => {
 
 // Dirtiness compares the PARSED target ("65." is still the baseline 65), so
 // intermediate typing that doesn't change the value can't arm Save by itself.
-const isDirtyDraft = (s: SmartTaskEditSnapshot): boolean => (
-  s.draft.readyBy !== s.context.baselineReadyBy
-  || parseTarget(s.draft.target) !== s.context.baselineTarget
-);
+// The draft's permissions are compared as-is: the view renders a toggle for any
+// permission that is offerable OR already standing, so every value here is one
+// the user could actually see and change.
+const isDirtyDraft = (s: SmartTaskEditSnapshot): boolean => {
+  const { permissions } = s.draft;
+  const baseline = s.context.baselinePermissions;
+  return s.draft.readyBy !== s.context.baselineReadyBy
+    || parseTarget(s.draft.target) !== s.context.baselineTarget
+    || permissions.exemptFromBudget !== baseline.exemptFromBudget
+    || permissions.limitLowerPriorityDevices !== baseline.limitLowerPriorityDevices
+    || permissions.pauseLowerPriorityDevices !== baseline.pauseLowerPriorityDevices;
+};
 
 const disarmClearTimer = (): void => {
   if (clearRevertTimer !== null) {
@@ -148,14 +180,25 @@ const cancelPendingPreview = (): void => {
   }
 };
 
-const buildRequestBody = (s: SmartTaskEditSnapshot): SmartTaskCandidateRequest => ({
-  deviceId: s.context.deviceId,
-  kind: s.context.kind,
-  // Callers gate on `isValidDraft`, so the NaN fallback is unreachable; if it
-  // ever leaked, the server's shape guard rejects it as invalid_request.
-  target: parseTarget(s.draft.target) ?? Number.NaN,
-  readyByLocalTime: s.draft.readyBy,
-});
+const buildRequestBody = (s: SmartTaskEditSnapshot): SmartTaskCandidateRequest => {
+  const { permissions } = s.draft;
+  return {
+    deviceId: s.context.deviceId,
+    kind: s.context.kind,
+    // Callers gate on `isValidDraft`, so the NaN fallback is unreachable; if it
+    // ever leaked, the server's shape guard rejects it as invalid_request.
+    target: parseTarget(s.draft.target) ?? Number.NaN,
+    readyByLocalTime: s.draft.readyBy,
+    // ALL THREE, always. On the wire an ABSENT permission means "keep whatever
+    // it holds", so only an explicit `false` revokes — naming every one is what
+    // lets an unchecked toggle actually take a permission away. Sent on the
+    // preview lane too, so the estimate is priced under the same permissions the
+    // save will write (preview ≡ persist).
+    exemptFromBudget: permissions.exemptFromBudget,
+    limitLowerPriorityDevices: permissions.limitLowerPriorityDevices,
+    pauseLowerPriorityDevices: permissions.pauseLowerPriorityDevices,
+  };
+};
 
 const toPreviewView = (
   response: Extract<SettingsUiSmartTaskPreviewResponse, { ok: true }>,
@@ -242,7 +285,11 @@ export const openSmartTaskEditor = (context: SmartTaskEditContext): void => {
   revision += 1;
   state = {
     context,
-    draft: { readyBy: context.baselineReadyBy, target: String(context.baselineTarget) },
+    draft: {
+      readyBy: context.baselineReadyBy,
+      target: String(context.baselineTarget),
+      permissions: { ...context.baselinePermissions },
+    },
     dirty: false,
     valid: true,
     busy: 'idle',
@@ -286,6 +333,32 @@ export const setSmartTaskEditReadyBy = (value: string): void => {
 
 export const setSmartTaskEditTarget = (rawValue: string): void => {
   applyDraftChange({ target: rawValue.trim() });
+};
+
+// Budget exemption is the gate: turning it OFF forces limit-lower-priority off
+// too, because the server drops that grant when it isn't paired with the
+// exemption. Mirrors the create widget's `budgetToggledView` — without it the
+// editor would show a checked toggle the save is guaranteed not to persist.
+const applyPermissionGate = (
+  permissions: SmartTaskEditPermissions,
+): SmartTaskEditPermissions => (
+  permissions.exemptFromBudget
+    ? permissions
+    : { ...permissions, limitLowerPriorityDevices: false }
+);
+
+// A permission change goes through the same draft lane as the fields: it arms
+// Save and re-previews, because the estimate is priced under the permissions
+// (dropping the budget exemption tightens the plan and can change the window).
+export const setSmartTaskEditPermission = (
+  key: SmartTaskEditPermissionKey,
+  value: boolean,
+): void => {
+  const s = state;
+  if (!s) return;
+  applyDraftChange({
+    permissions: applyPermissionGate({ ...s.draft.permissions, [key]: value }),
+  });
 };
 
 // The task ended (completed/expired/cleared elsewhere) while the editor was
@@ -353,11 +426,21 @@ const buildSaveBody = (s: SmartTaskEditSnapshot): SmartTaskCandidateRequest => {
     : buildRequestBody(s);
 };
 
+// A save that changes ONLY permissions leaves the goal, the ready-by and the
+// echoed deadline untouched, so the objective the recorder compares is
+// unchanged and the current run keeps going — nothing is filed under Past
+// tasks. The success toast has to say the truth for whichever save this was.
+const isPermissionOnlySave = (s: SmartTaskEditSnapshot): boolean => (
+  s.draft.readyBy === s.context.baselineReadyBy
+  && parseTarget(s.draft.target) === s.context.baselineTarget
+);
+
 export const submitSmartTaskUpdate = async (): Promise<void> => {
   const s = state;
   if (!s || (s.busy !== 'idle' && s.busy !== 'previewing')) return;
   if (!isValidDraft(s) || !isDirtyDraft(s)) return;
   cancelPendingPreview();
+  const permissionOnly = isPermissionOnlySave(s);
   const body = buildSaveBody(s);
   revision += 1;
   const requestRevision = revision;
@@ -380,7 +463,10 @@ export const submitSmartTaskUpdate = async (): Promise<void> => {
     // that re-fetches this page; the explicit bump covers the sibling
     // surfaces (Smart-tasks list) immediately.
     refreshPlanSurface();
-    await showToast(SMART_TASK_EDIT_COPY.updated, 'ok');
+    await showToast(
+      permissionOnly ? SMART_TASK_EDIT_COPY.updatedPermissionsOnly : SMART_TASK_EDIT_COPY.updated,
+      'ok',
+    );
   } catch (error) {
     if (state === s && revision === requestRevision) {
       s.busy = 'idle';

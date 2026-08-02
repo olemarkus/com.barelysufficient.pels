@@ -230,20 +230,22 @@ describe('previewCreateSmartTask', () => {
     expect(received!.rescue).toBeUndefined();
   });
 
-  it('treats a non-boolean permission flag as off (only literal true opts in)', async () => {
-    let received: DeferredObjectivePlanPreviewCandidate | null = null;
-    const previewDeferredObjectivePlan = vi.fn((_id: string, candidate: DeferredObjectivePlanPreviewCandidate) => {
-      received = candidate;
-      return buildEstimate();
-    });
-    await previewCreateSmartTask({
+  it('REJECTS a non-boolean permission flag instead of guessing what it meant', async () => {
+    // This used to assert junk read as "off", which was safe while only a literal
+    // `true` opted in. It is not safe now that ABSENT and `false` mean opposite
+    // things: folding junk into "absent" would silently PRESERVE a standing
+    // grant. The boundary rejects it outright — same as a bad `kind`/`target` —
+    // so a malformed flag can never resolve to a permission decision at all.
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const result = await previewCreateSmartTask({
       ...buildContext({ previewDeferredObjectivePlan }),
       body: {
         deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00',
         exemptFromBudget: 'yes', limitLowerPriorityDevices: 1,
       },
     });
-    expect(received!.rescue).toBeUndefined();
+    expect(result).toEqual({ ok: false, reason: 'invalid_request' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
   });
 
   it('rolls a ready-by that already passed today to tomorrow', async () => {

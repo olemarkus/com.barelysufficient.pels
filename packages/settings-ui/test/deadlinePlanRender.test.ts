@@ -9,7 +9,12 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  SMART_TASK_EDIT_COPY,
+  SMART_TASK_EXTRA_PERMISSION_LABELS,
+} from '../../shared-domain/src/deadlineLabels.ts';
+import type { SmartTaskEditSnapshot } from '../src/ui/smartTaskEdit.ts';
 import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
@@ -153,12 +158,13 @@ describe('DeadlinePlan pending branch', () => {
         onClose: vi.fn(),
         onReadyByInput: vi.fn(),
         onTargetInput: vi.fn(),
+        onPermissionToggle: vi.fn(),
         onSave: vi.fn(),
         onClear,
       },
     });
 
-    expect(mount.textContent).not.toContain('Change the goal or ready-by time.');
+    expect(mount.textContent).not.toContain(SMART_TASK_EDIT_COPY.editHint);
     expect(mount.textContent).not.toContain('Edit task');
     expect(mount.textContent).not.toContain('Save changes');
     expect(mount.querySelector('.smart-task-edit__time-input')).toBeNull();
@@ -168,6 +174,130 @@ describe('DeadlinePlan pending branch', () => {
     clearButton?.click();
     expect(onOpen).not.toHaveBeenCalled();
     expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  // ─── Extra permissions disclosure in the open editor ──────────────────────
+
+  const buildEditSnapshot = (
+    permissions: Partial<SmartTaskEditSnapshot['draft']['permissions']> = {},
+    contextOverrides: Partial<SmartTaskEditSnapshot['context']> = {},
+  ): SmartTaskEditSnapshot => {
+    const resolved = {
+      exemptFromBudget: false,
+      limitLowerPriorityDevices: false,
+      pauseLowerPriorityDevices: false,
+      ...permissions,
+    };
+    return {
+      context: {
+        deviceId: 'dev_water_heater',
+        kind: 'temperature',
+        unit: '°C',
+        min: 30,
+        max: 75,
+        step: 0.5,
+        baselineReadyBy: '07:00',
+        baselineTarget: 65,
+        baselineDeadlineAtMs: Date.UTC(2026, 4, 6, 6, 0, 0),
+        baselinePermissions: resolved,
+        supportsLimitLowerPriority: true,
+        ...contextOverrides,
+      },
+      draft: { readyBy: '07:00', target: '65', permissions: resolved },
+      dirty: false,
+      valid: true,
+      busy: 'idle',
+      preview: null,
+      errorLine: null,
+      clearArmed: false,
+    };
+  };
+
+  const renderEditor = (snapshot: SmartTaskEditSnapshot, onPermissionToggle = vi.fn()) => {
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, {
+      status: 'pending',
+      pending: buildPendingPayload(),
+      edit: {
+        mode: 'edit_and_clear',
+        snapshot,
+        onOpen: vi.fn(),
+        onClose: vi.fn(),
+        onReadyByInput: vi.fn(),
+        onTargetInput: vi.fn(),
+        onPermissionToggle,
+        onSave: vi.fn(),
+        onClear: vi.fn(),
+      },
+    });
+    return mount;
+  };
+
+  it('offers every permission toggle in the open editor and reports a toggle by key', () => {
+    const onPermissionToggle = vi.fn();
+    const mount = renderEditor(buildEditSnapshot(), onPermissionToggle);
+    const rows = Array.from(mount.querySelectorAll('.smart-task-edit__permissions .md-switch-row'));
+    expect(rows.map((row) => row.querySelector('.md-switch-row__label')?.textContent)).toEqual([
+      SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget,
+      SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices,
+      SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices,
+    ]);
+    const pauseSwitch = rows[2]!.querySelector('md-switch') as HTMLElement & { selected: boolean };
+    pauseSwitch.selected = true;
+    pauseSwitch.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onPermissionToggle).toHaveBeenCalledWith('pauseLowerPriorityDevices', true);
+  });
+
+  it('opens the disclosure when the task already holds a permission', () => {
+    const closed = renderEditor(buildEditSnapshot());
+    expect(closed.querySelector<HTMLDetailsElement>('.smart-task-edit__permissions')?.open).toBe(false);
+    const open = renderEditor(buildEditSnapshot({ exemptFromBudget: true }));
+    expect(open.querySelector<HTMLDetailsElement>('.smart-task-edit__permissions')?.open).toBe(true);
+  });
+
+  it('gates the limit toggle on the budget exemption and hides it on an ineligible device', () => {
+    // The server drops the limit grant unless it is paired with the budget
+    // exemption AND the device is stepped-load eligible, so the editor must
+    // never render it as a state the save would silently discard.
+    const gated = renderEditor(buildEditSnapshot());
+    const limitRow = Array.from(gated.querySelectorAll('.smart-task-edit__permissions .md-switch-row'))[1]!;
+    expect(limitRow.querySelector('md-switch')?.hasAttribute('disabled')).toBe(true);
+    expect(limitRow.textContent).toContain('May go over daily budget');
+
+    const enabled = renderEditor(buildEditSnapshot({ exemptFromBudget: true }));
+    const enabledRow = Array.from(enabled.querySelectorAll('.smart-task-edit__permissions .md-switch-row'))[1]!;
+    expect(enabledRow.querySelector('md-switch')?.hasAttribute('disabled')).toBe(false);
+
+    const ineligible = renderEditor(buildEditSnapshot({}, { supportsLimitLowerPriority: false }));
+    expect(ineligible.textContent).not.toContain(
+      SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices,
+    );
+  });
+
+  it('GUARDRAIL: keeps a STANDING limit grant visible and revocable on an ineligible device', () => {
+    // A stepped device can read as non-stepped for the whole post-restart window
+    // (`controlModel` is re-derived from live reads). Hiding the toggle then
+    // would strand a permission the user still holds: the read-only row is
+    // suppressed while the editor is open, so this is its only surface.
+    // Eligibility must block turning a NEW grant on, never seeing or clearing an
+    // existing one.
+    const onPermissionToggle = vi.fn();
+    const mount = renderEditor(
+      buildEditSnapshot(
+        { exemptFromBudget: true, limitLowerPriorityDevices: true },
+        { supportsLimitLowerPriority: false },
+      ),
+      onPermissionToggle,
+    );
+    const limitRow = Array.from(mount.querySelectorAll('.smart-task-edit__permissions .md-switch-row'))[1]!;
+    expect(limitRow.textContent).toContain(
+      SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices,
+    );
+    const limitSwitch = limitRow.querySelector('md-switch') as HTMLElement & { selected: boolean };
+    expect(limitSwitch.hasAttribute('disabled')).toBe(false);
+    limitSwitch.selected = false;
+    limitSwitch.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onPermissionToggle).toHaveBeenCalledWith('limitLowerPriorityDevices', false);
   });
 
   // Liveness pulse on the pending hero's "Building plan…" chip. The pending

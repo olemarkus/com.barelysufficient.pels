@@ -1058,8 +1058,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
     origin: SmartTaskWriteOrigin = SMART_TASK_WIDGET_WRITE_ORIGIN,
+    rescuePolicy: 'preserve' | 'replace' = 'preserve',
   ): SmartTaskWriteResult {
-    return this.smartTaskApi.createDeferredObjective(deviceId, candidate, origin);
+    return this.smartTaskApi.createDeferredObjective(deviceId, candidate, origin, rescuePolicy);
   }
   public cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome {
     return this.smartTaskApi.cancelDeferredObjective(deviceId);

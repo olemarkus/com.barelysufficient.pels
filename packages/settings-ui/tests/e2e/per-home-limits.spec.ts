@@ -109,9 +109,16 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   await page.locator('#home-limits-simulation-switch').click();
   await expect(page.locator('#home-limits-sim-notice')).toHaveCount(0);
   await expect.poll(() => readStubSetting(page, `capacity_dry_run:${AREA_ID}`)).toBe(false);
+  // The controller disables the switch while its write is in flight, so waiting
+  // for it to come back is the signal that the write COMMITTED and the editor
+  // repainted. Without it the repaint can land between the fill and the blur
+  // below, resetting the field to its stored value so the blur commits nothing —
+  // an intermittent failure that reads as "the cap never persisted".
+  await expect(page.locator('#home-limits-simulation-switch')).toBeEnabled();
 
   // Set a hard cap for the area — persists the suffixed key, never the bare one.
   await page.locator('#home-limits-hard-cap').fill('9');
+  await expect(page.locator('#home-limits-hard-cap')).toHaveValue('9');
   await page.locator('#home-limits-hard-cap').blur();
   await expect.poll(() => readStubSetting(page, `capacity_limit_kw:${AREA_ID}`)).toBe(9);
   await expect(readStubSetting(page, 'capacity_dry_run')).resolves.not.toBe(false);

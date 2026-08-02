@@ -17,7 +17,12 @@ import {
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
   NOW_MARKER_WORD,
+  formatGrantedRescuePermissionsLine,
+  SMART_TASK_EXTRA_PERMISSION_HINTS,
+  SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
+  SMART_TASK_EXTRA_PERMISSIONS_TITLE,
+  SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
   SMART_TASK_LOADING_LABEL,
   SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_SCHEDULE_CARD_TITLE,
@@ -36,8 +41,8 @@ import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
-import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJSX.tsx';
-import type { SmartTaskEditSnapshot } from '../smartTaskEdit.ts';
+import { MdFilledButton, MdFilledTextField, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
+import type { SmartTaskEditPermissionKey, SmartTaskEditSnapshot } from '../smartTaskEdit.ts';
 import { CheckCircleIcon, ExpandMoreIcon } from './icons.tsx';
 import { logSettingsWarn } from '../logging.ts';
 
@@ -282,6 +287,7 @@ export type SmartTaskEditProps = {
   onClose: () => void;
   onReadyByInput: (value: string) => void;
   onTargetInput: (value: string) => void;
+  onPermissionToggle: (key: SmartTaskEditPermissionKey, value: boolean) => void;
   onSave: () => void;
   onClear: () => void;
 };
@@ -1087,15 +1093,23 @@ const renderProvenanceRowDisplay = (
 // `useEchartsMount` hits real ECharts subpaths the JSDOM-aliased shim doesn't
 // fully cover). The production render path still routes through
 // `DeadlinePlanRoot` below.
-export const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
+// `editorOpen` suppresses the read-only "Extra permissions" row while the
+// editor above owns the same setting: two blocks under the same label, one
+// showing the saved value and one the unsaved draft, disagree the moment a
+// toggle moves and nothing on screen says which is which. The row is still the
+// only place the granted set appears at rest, so it comes back on close.
+export const PlanInputsCard = ({ payload, editorOpen = false }: {
+  payload: DeadlinePlanPayload;
+  editorOpen?: boolean;
+}) => {
   const {
     perUnitRateLabel,
     perUnitRateNote,
     maxPowerLabel,
     maxPowerNote,
-    extraPermissionsValue,
     provenanceRows,
   } = payload.planInputs;
+  const extraPermissionsValue = editorOpen ? null : payload.planInputs.extraPermissionsValue;
   // Only arm the 60s tick when at least one row actually needs freshness; on
   // a bootstrap provenance row (Starting estimate only) or no provenance at
   // all the timer never spins up.
@@ -1278,6 +1292,118 @@ const SmartTaskClearControl = ({
   );
 };
 
+/** md-switch exposes its state as a `.selected` property (Material Web interop). */
+type SwitchElement = HTMLElement & { selected: boolean };
+
+// One permission row, on the canonical `.md-switch-row` grammar every other
+// enable-toggle in PELS uses (label + hint leading, switch trailing) — no
+// page-local toggle primitive, per `views/AGENTS.md`. The `--disabled` modifier
+// dims the LABEL only: a disabled row whose label reads at full strength looks
+// like a live control that silently ignores taps, and the hint is the one line
+// that explains why it's off, so it must stay the more legible of the two.
+const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onToggle }: {
+  label: string;
+  hint: string;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: (value: boolean) => void;
+}) => (
+  <label class={disabled ? 'md-switch-row md-switch-row--disabled' : 'md-switch-row'}>
+    <MdSwitch
+      aria-label={label}
+      {...(selected ? { selected: true } : {})}
+      {...(disabled ? { disabled: true } : {})}
+      onChange={(event: Event) => onToggle((event.currentTarget as SwitchElement).selected)}
+    />
+    <span class="md-switch-row__content">
+      <span class="md-switch-row__label pels-text-settings-label">{label}</span>
+      <small class="field__hint">{hint}</small>
+    </span>
+  </label>
+);
+
+// The editor's "Extra permissions" disclosure. Collapsed by default so the
+// common goal/ready-by edit stays a two-field form, but OPEN when the task
+// already holds a permission — a grant the user can now revoke here must not be
+// hidden behind a closed disclosure. `open` is derived from the BASELINE (fixed
+// for the editor session), so the full-root repaint on every runtime refresh
+// re-renders the same value and Preact leaves a manually collapsed panel alone.
+//
+// The limit toggle is offered where the server would keep the grant
+// (`supportsLimitLowerPriority`) OR where the task already holds it. Eligibility
+// blocks turning a NEW grant on; it must not hide a standing one, because a
+// device that transiently reads as non-stepped after a restart would otherwise
+// leave the user unable to see or revoke a permission they still have — the
+// read-only row is suppressed while the editor is open, so this is the only
+// surface for it. Rendering keys off the BASELINE so the row can't vanish the
+// moment it is switched off. The budget exemption gates it either way: the
+// controller forces it off when the exemption goes off, so a
+// checked-but-unpersistable state can't be shown.
+const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle }: {
+  snapshot: SmartTaskEditSnapshot;
+  disabled: boolean;
+  onToggle: (key: SmartTaskEditPermissionKey, value: boolean) => void;
+}) => {
+  const { permissions } = snapshot.draft;
+  const baseline = snapshot.context.baselinePermissions;
+  const anyGranted = baseline.exemptFromBudget
+    || baseline.limitLowerPriorityDevices
+    || baseline.pauseLowerPriorityDevices;
+  // What the DRAFT currently grants, joined in the canonical order. Sits outside
+  // the `<details>` so it survives collapse — the same reason
+  // `.plan-revision-panel__summary-subline` does. Without it a closed disclosure
+  // is a bare title that answers nothing and forces a tap to learn anything.
+  const grantedLine = formatGrantedRescuePermissionsLine({
+    exemptFromBudget: permissions.exemptFromBudget,
+    limitLowerPriorityDevices: permissions.limitLowerPriorityDevices,
+    pauseLowerPriorityDevices: permissions.pauseLowerPriorityDevices,
+  });
+  return (
+    <div class="smart-task-edit__permissions-block">
+      <details class="smart-task-edit__permissions" {...(anyGranted ? { open: true } : {})}>
+        <summary class="smart-task-edit__permissions-summary">
+          <span class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_TITLE}</span>
+          <ExpandMoreIcon class="disclosure-chevron" />
+        </summary>
+        <small class="section-hint">{SMART_TASK_EDIT_COPY.permissionsHint}</small>
+        <SmartTaskPermissionRow
+          label={SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget}
+          hint={SMART_TASK_EXTRA_PERMISSION_HINTS.exemptFromBudget}
+          selected={permissions.exemptFromBudget}
+          disabled={disabled}
+          onToggle={(value) => onToggle('exemptFromBudget', value)}
+        />
+        {(snapshot.context.supportsLimitLowerPriority || baseline.limitLowerPriorityDevices) && (
+          <SmartTaskPermissionRow
+            label={SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices}
+            hint={permissions.exemptFromBudget
+              ? SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices
+              : SMART_TASK_LIMIT_NEEDS_BUDGET_HINT}
+            selected={permissions.limitLowerPriorityDevices}
+            // Off on an ineligible device is a one-way door: the row stays (it
+            // is rendered off the baseline) but can't be switched back on, since
+            // the server would drop a fresh grant here as inert.
+            disabled={disabled
+              || !permissions.exemptFromBudget
+              || (!snapshot.context.supportsLimitLowerPriority && !permissions.limitLowerPriorityDevices)}
+            onToggle={(value) => onToggle('limitLowerPriorityDevices', value)}
+          />
+        )}
+        <SmartTaskPermissionRow
+          label={SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices}
+          hint={SMART_TASK_EXTRA_PERMISSION_HINTS.pauseLowerPriorityDevices}
+          selected={permissions.pauseLowerPriorityDevices}
+          disabled={disabled}
+          onToggle={(value) => onToggle('pauseLowerPriorityDevices', value)}
+        />
+      </details>
+      {grantedLine !== null && (
+        <p class="smart-task-edit__permissions-granted">{grantedLine}</p>
+      )}
+    </div>
+  );
+};
+
 const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
   const s = edit.snapshot;
   if (edit.mode === 'clear_only') {
@@ -1342,6 +1468,11 @@ const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
           }}
         />
       </label>
+      <SmartTaskPermissionsSection
+        snapshot={s}
+        disabled={busySaving || busyClearing}
+        onToggle={edit.onPermissionToggle}
+      />
       {s.preview !== null && (
         <div class="smart-task-edit__preview">
           <p class="smart-task-edit__preview-when">{s.preview.whenLine}</p>
@@ -1485,7 +1616,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <DeadlineHero payload={loadState.payload} />
       {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
       <ScheduleQuestionCards payload={loadState.payload} />
-      <PlanInputsCard payload={loadState.payload} />
+      <PlanInputsCard payload={loadState.payload} editorOpen={loadState.edit?.snapshot != null} />
       <RevisionHistoryPanel payload={loadState.payload} />
       <PriorRunsHistory history={loadState.history} />
     </>

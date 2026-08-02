@@ -81,7 +81,15 @@ Smart tasks compose with the rest of PELS — every layer keeps working undernea
 
 ## Letting a Task Push Harder
 
-By default a Smart task stays polite: it keeps to the daily budget and never takes power from devices you have ranked higher or equal. If a task is **At risk** of missing its target and the deadline matters, you can grant it extra leeway with the **Set what a smart task may do** action card.
+By default a Smart task stays polite: it keeps to the daily budget and never takes power from devices you have ranked higher or equal. If a task is **At risk** of missing its target and the deadline matters, you can grant it extra leeway.
+
+Three places set these permissions:
+
+| Where | Use for |
+| --- | --- |
+| **Smart task page → Edit task → Extra permissions** | Turning a permission on **or off** for an existing task, with the estimate re-priced under the change before you save. |
+| **New smart task** widget | Granting **go over today's budget** or **limit lower-priority devices** while creating the task. It has no toggle for the third one. |
+| **Set what a smart task may do** action card | Granting a permission from a Flow — for example only once a task reports **At risk**. |
 
 | Permission | What it allows |
 | --- | --- |
@@ -89,12 +97,18 @@ By default a Smart task stays polite: it keeps to the daily budget and never tak
 | **limit lower-priority devices** | The task may limit lower-priority devices that are **currently drawing power** — turning them down or off — so it gets the power it needs. Devices at the same or higher priority are never touched. |
 | **pause lower-priority devices** | PELS reserves the power the task needs to start, so it can start sooner. A device that needs a clear block of power to begin — an EV charger, a water heater — cannot start on scraps, so lower-priority devices wait their turn to resume until it has started. Nothing is switched off to make room, and devices at the same or higher priority are never affected. |
 
-For each permission you choose when it applies:
+The Flow card also asks when the permission applies:
 
 | When | Effect |
 | --- | --- |
 | **At no time** | The permission is off. |
 | **While it's scheduled to run** | The permission applies during the task's planned hours, and stays set until you change it or clear the task. |
+
+The **Edit task** toggles and the **New smart task** widget set the same thing as **While it's scheduled to run**; switching a toggle off is the same as **At no time**.
+
+**limit lower-priority devices** only does anything alongside **go over today's budget**, so the editor keeps it switched off until the budget permission is on, and it is offered only on devices that can actually be turned down a step. Editing a task only changes the permissions the page shows you — with one exception: a permission that can have no effect on the device may be dropped when you save.
+
+Changing only the permissions re-plans the task and keeps the current run going. Changing the goal or the ready-by time starts a new run, and the run so far moves to **Past tasks**.
 
 Two things stay true no matter what you grant:
 
@@ -109,7 +123,7 @@ A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked
 - **limit lower-priority devices** so it can claim power from loads you care about less.
 - **pause lower-priority devices** so PELS reserves the power the heater needs to start, instead of letting smaller loads take it a slice at a time.
 
-You can grant the leeway as a standing setting once the task exists, or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
+You can grant the leeway as a standing setting once the task exists — open the task and use **Edit task** — or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
 
 The **Held-back devices** dashboard widget uses the same create engine for a narrower case: a device currently limited by today's daily budget can get **Let it run now**, which creates a short Smart task with budget leeway. Devices waiting for available power, manual control, or an external service do not get that button because the widget cannot bypass the hard cap or another controller.
 

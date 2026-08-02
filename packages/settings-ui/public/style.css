@@ -3057,6 +3057,62 @@ md-filled-button.is-busy {
   }
 }
 
+/* "Extra permissions" disclosure inside the open editor. Same `<details>` +
+ * `.disclosure-chevron` idiom — and the same `.plan-card__title` summary rank —
+ * as the revision panel further down the page, so every collapsible block here
+ * opens the same way and the section title outranks the rows it contains. The
+ * rows are the canonical `.md-switch-row` grammar and bring their own 48 px
+ * floor.
+ *
+ * The wrapper exists so the granted-permissions line can sit OUTSIDE the
+ * `<details>`: HTML hides every child but `<summary>` when closed, and a
+ * collapsed disclosure that says nothing about what is granted forces a tap to
+ * learn anything. Same reason `.plan-revision-panel__summary-subline` is a
+ * sibling rather than a child. */
+.smart-task-edit__permissions-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.smart-task-edit__permissions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.smart-task-edit__permissions-summary {
+  /* Chevron stays right-anchored while the title takes the remaining width —
+   * matches `.plan-revision-panel__summary`. */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--spacing-1) var(--spacing-2);
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-1) 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.smart-task-edit__permissions-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* At-rest readout of what the draft currently grants, in the canonical
+ * budget → limit → pause order the read-only row and the rescue sheet use.
+ * Exists only for the CLOSED state — with the rows on screen it would restate
+ * their labels verbatim under them, reading as an orphan fourth label — so the
+ * sibling combinator retires it the moment the disclosure opens. */
+.smart-task-edit__permissions-granted {
+  margin: 0;
+  color: var(--pels-text-supporting-color);
+  font-size: var(--font-size-sm);
+}
+
+.smart-task-edit__permissions[open] ~ .smart-task-edit__permissions-granted {
+  display: none;
+}
+
 .smart-task-edit__preview {
   display: flex;
   flex-direction: column;
@@ -8296,6 +8352,20 @@ md-switch {
   gap: 2px;
   min-width: 0;
   flex: 1;
+}
+
+/* Gated row: the switch is `disabled`, so the row must READ disabled too. Only
+ * the label dims — at full strength it looks like a live control that silently
+ * swallows taps, while the hint underneath is the one line explaining why it is
+ * off and so must stay the more legible of the two. `0.38` is the same
+ * disabled-content opacity `.smart-task-edit__time-input:disabled` uses, so one
+ * form doesn't speak two disabled languages. */
+.md-switch-row--disabled {
+  cursor: default;
+}
+
+.md-switch-row--disabled .md-switch-row__label {
+  opacity: 0.38;
 }
 
 /* `.md-switch-row__label` composes `.pels-text-settings-label` in markup. */

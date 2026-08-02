@@ -48,6 +48,7 @@ type SmartTaskEditApp = Homey.App & {
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
     origin?: SmartTaskWriteOrigin,
+    rescuePolicy?: 'preserve' | 'replace',
   ) => WidgetObjectiveWriteResult;
   cancelDeferredObjective?: (deviceId: string) => CancelDeferredObjectiveOutcome;
 };
@@ -140,16 +141,14 @@ export const previewSettingsUiSmartTask = (
   const deadlineAtMs = resolveSmartTaskRequestDeadline(request, timeZone, nowMs);
   if (deadlineAtMs === null) return previewReject('invalid_ready_by');
 
-  const bareCandidate = buildValidSmartTaskCandidate(request, deadlineAtMs);
-  if (!bareCandidate) return previewReject('invalid_candidate');
-  // The preview must estimate what a save would ACTUALLY persist: the save
-  // sends a rescue-less candidate and `upsertObjectiveForDevice`'s `preserve`
-  // default keeps the task's standing rescue permissions (budget exemption /
-  // limit-lower-priority). Estimating the bare candidate would price the
-  // draft under stricter constraints than the persisted task will run with.
-  const candidate = gate.entry.rescue
-    ? { ...bareCandidate, rescue: gate.entry.rescue }
-    : bareCandidate;
+  // Preview ≡ persist BY CONSTRUCTION: this builds the same candidate the save
+  // builds, from the same request and the same standing permissions, so the
+  // estimate is priced under exactly the rescue the write will persist —
+  // including a permission the user just switched off, which tightens the plan.
+  // (Merging the standing set over the requested one here, as an earlier shape
+  // did, made the two disagree the moment a toggle changed.)
+  const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs, gate.entry.rescue);
+  if (!candidate) return previewReject('invalid_candidate');
   const estimate = app.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
     ok: true,
@@ -183,9 +182,22 @@ export const updateSettingsUiSmartTask = (
   const deadline = resolveSmartTaskWriteDeadline(request, timeZone, nowMs);
   if (!deadline.ok) return updateReject(deadline.reason);
 
-  const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
+  // The candidate carries the COMPLETE desired permission set: the builder
+  // merges the request over the task's standing permissions per key, so an
+  // unmentioned one survives, a `true` keeps its existing mode rather than being
+  // upgraded to `'always'`, and a `false` revokes.
+  const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs, gate.entry.rescue);
   if (!candidate) return updateReject('invalid_candidate');
-  const result = app.createDeferredObjective(request.deviceId, candidate, 'settings_ui:smart_task_update');
+  // `'replace'` because that merge already happened here. The write layer's
+  // `'preserve'` is a WHOLE-OBJECT fallback — it only fires when the entry
+  // carries no rescue at all — so leaving it on would drop every standing
+  // permission the moment the request granted any one of them.
+  const result = app.createDeferredObjective(
+    request.deviceId,
+    candidate,
+    'settings_ui:smart_task_update',
+    'replace',
+  );
   if (result.ok) return { ok: true };
   return updateReject(mapSmartTaskAppReason(result.reason));
 };

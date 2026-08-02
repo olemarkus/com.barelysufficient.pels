@@ -477,6 +477,8 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
 var SMART_TASK_WIDGET_EMPTY_HINT = "Add a smart task from a Flow card for a managed device, or use the New smart task widget to see it here.";
 var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
 var SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = "Estimate";
+var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
+var SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = "Turn on \u201CMay go over daily budget\u201D to use this.";
 var CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 1 — device picker.
   pickDeviceTitle: "New smart task",
@@ -562,14 +564,12 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
   // default; a user opts in per task. The section hint stays honest about scope
   // (only to hit THIS deadline) and never implies more total power or a raised
-  // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
-  // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
-  // breadcrumb, and runtime logs all read identically.
-  extraPermissionsTitle: "Extra permissions",
+  // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
+  // the surface-neutral constants below — the smart-task editor shows the same
+  // strings, so they must not live under a create-widget-scoped name.
+  extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
   extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
-  // Shown under the limit-lower-priority toggle when it is disabled: that
-  // permission only has any effect alongside the budget one, so it is gated on it.
-  limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
+  limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
   // Shown in the preview when the in-isolation projection returns a real planner
   // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
   // `at_risk` (might not). Surfaced as a prominent warning so a user never

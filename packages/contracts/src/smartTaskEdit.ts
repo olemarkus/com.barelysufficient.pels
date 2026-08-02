@@ -26,15 +26,33 @@ export type SmartTaskCandidateRequest = {
   // rolled to the next day. The server never trusts it as the persisted value
   // without that validation.
   deadlineAtMs?: number;
-  // Optional "Extra permissions" the user opted into for this task (both default
-  // off). `exemptFromBudget` lets the task exceed the soft daily budget;
-  // `limitLowerPriorityDevices` lets it limit lower-priority devices. Both are
-  // re-gated SERVER-side (the client's visibility is not trusted): the latter is
-  // dropped unless the device is stepped-load eligible, and persists only
-  // alongside `exemptFromBudget` (it is inert without it). Sent as plain booleans;
-  // the server maps an opted-in permission to the `'always'` rescue mode.
+  // The "Extra permissions" for this task. `exemptFromBudget` lets it exceed the
+  // soft daily budget; `limitLowerPriorityDevices` lets it limit lower-priority
+  // devices; `pauseLowerPriorityDevices` lets it reserve the power it needs to
+  // start. All are re-gated SERVER-side (the client's visibility is not
+  // trusted): `limitLowerPriorityDevices` is dropped unless the device is
+  // stepped-load eligible AND `exemptFromBudget` is also granted (it is inert
+  // otherwise). The server maps an opted-in permission to the `'always'` mode.
+  //
+  // ABSENT vs `false` is load-bearing, and the difference is PER KEY:
+  //   - ABSENT says nothing about that permission — it keeps whatever the task
+  //     already holds (granted elsewhere by the Flow card or the starvation
+  //     rescue). The create widget omits a toggle that is off, so it stays
+  //     additive without needing a lane of its own.
+  //   - `false` REVOKES. The settings-UI editor sends all three explicitly, so
+  //     an unchecked toggle actually takes the permission away.
+  //   - `true` grants, at the mode it already stands at if it stands — so a
+  //     boolean toggle can never promote a conditional `'at_risk'` grant.
+  // The merge lives in `buildCandidateRescue`
+  // (`lib/objectives/deferredObjectives/smartTaskCandidateRequest.ts`), which is
+  // the single owner of it: callers persist its result verbatim rather than
+  // re-deriving, so the preview and the write can't diverge. That module is also
+  // where any runtime helper for this belongs — this package is TYPES-ONLY at
+  // runtime (the Homey build sanitizer drops it from the bundle, so a value
+  // export here crashes boot).
   exemptFromBudget?: boolean;
   limitLowerPriorityDevices?: boolean;
+  pauseLowerPriorityDevices?: boolean;
 };
 
 export type SmartTaskWriteRejectReason =

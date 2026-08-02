@@ -191,6 +191,82 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
+    it('GUARDRAIL: never strips a grant that is ALREADY STANDING, even when the device reads ineligible', async () => {
+      // The eligibility test reads `controlModel`, which is re-derived from live
+      // device reads and is blank for an auto-native-wired stepper during the
+      // post-restart window. On the settings-UI edit lane — which writes with
+      // `replace` — stripping there would turn an unrelated goal edit into a
+      // PERMANENT revocation of an effective permission. A caller that passes the
+      // standing set gets the grant preserved through the degraded read.
+      const app = await initApp(); // default heater snapshot reads as non-stepped
+      // Seed the grant while the device still reads as a stepper, then let the
+      // snapshot go back to non-stepped — the shape of a post-restart window
+      // where `controlModel` has not been re-derived yet.
+      app.setSnapshotForTests([steppedHeater()]);
+      app.createDeferredObjective(
+        'heater-1',
+        withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+        'settings_ui:smart_task_update',
+        'replace',
+      );
+      app.setSnapshotForTests([buildPlannedHeater() as unknown as TargetDeviceSnapshot]);
+      const result = app.createDeferredObjective(
+        'heater-1',
+        withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+        'settings_ui:smart_task_update',
+        'replace',
+      );
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+      await app.onUninit?.();
+    });
+
+    it('STRIPS an established limit grant once its budget exemption is revoked', async () => {
+      // The standing-grant protection covers only the DEVICE conjunct, which is
+      // re-derived from flaky live reads. The budget-exemption conjunct comes off
+      // the candidate itself and can never be flaky, so it stays enforced even
+      // for an already-persisted grant — otherwise revoking the exemption while
+      // keeping the limit toggle would persist the inert `{ limit }` the
+      // contract promises is gated.
+      const app = await initApp();
+      app.setSnapshotForTests([steppedHeater()]);
+      app.createDeferredObjective(
+        'heater-1',
+        withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+        'settings_ui:smart_task_update',
+        'replace',
+      );
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+
+      const result = app.createDeferredObjective(
+        'heater-1',
+        withRescue({ limitLowerPriorityDevices: 'always' }),
+        'settings_ui:smart_task_update',
+        'replace',
+      );
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      await app.onUninit?.();
+    });
+
+    it('still strips a NEWLY requested limit grant on the same ineligible device', async () => {
+      // The counterpart to the guardrail above: with nothing standing, the gate
+      // is still the defence-in-depth it always was, so a tampered client cannot
+      // persist a permission this device can't honour.
+      const app = await initApp();
+      const result = app.createDeferredObjective(
+        'heater-1',
+        withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+        'settings_ui:smart_task_update',
+        'replace',
+      );
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
+      await app.onUninit?.();
+    });
+
     it('STRIPS limit-lower-priority when budget exemption is not also granted (inert alone)', async () => {
       const app = await initApp();
       app.setSnapshotForTests([steppedHeater()]);
