@@ -992,6 +992,17 @@ program) remain deferred.*
       reservation. *Hypothesis:* rare overlap (reservation + blocked non-swap restore), self-heals
       within the window. Source: Codex review on PR #1954, 2026-08-02. [P2]
 
+- [ ] **A satisfied ON-axis thermostat still reads "Running · 0.0 kW".** The satisfied-idle
+      refinement (2026-08-01) covers only target-only devices (`currentState 'not_applicable'`);
+      a binary temperature device that is on, at/above target, and drawing nothing keeps the
+      "Running" word — and after the fix it sits directly beside a corrected Idle card, making
+      the remaining self-contradiction MORE conspicuous (pels-ux-fit top recommendation on
+      PR #1955). Extend `isSatisfiedTargetOnlyDevice`'s satisfied semantics to on-like temperature
+      devices (same lowered-setpoint and pending-command guards), or explicitly rule the 'on' case
+      out in `notes/ui-terminology.md`. *Persona:* Overview reader with a mixed thermostat fleet.
+      *Hypothesis:* same trust damage as the target-only case, narrower trigger (device must
+      report 'on' while satisfied). Source: pels-ux-fit on PR #1955, 2026-08-02. [P2]
+
 - [ ] **A meter that jitters *and* lags still reads as evidence that a shed achieved nothing.**
       `resolveSameMeasurementSheddingDecision` now holds a shed from deepening while the whole-home
       reading is byte-identical to the one the last shed was decided on

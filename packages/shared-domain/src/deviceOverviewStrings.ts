@@ -25,6 +25,7 @@ export const DEVICE_OVERVIEW_ACTIVE_CHARGING = 'Active (charging)';
 export const DEVICE_OVERVIEW_INACTIVE_CAR_UNPLUGGED = 'Inactive (car unplugged)';
 export const DEVICE_OVERVIEW_INACTIVE_CAR_NOT_CHARGING = 'Inactive (car not charging)';
 export const DEVICE_OVERVIEW_INACTIVE_DISCHARGING = 'Inactive (discharging)';
+export const DEVICE_OVERVIEW_IDLE = 'Idle';
 export const DEVICE_OVERVIEW_INACTIVE = 'Inactive';
 
 // Non-EV resume in flight (binary command pending) vs PELS bringing the device

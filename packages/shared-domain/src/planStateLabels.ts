@@ -140,6 +140,53 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
   device.currentState === 'not_applicable' || isOnLike(device.currentState)
 );
 
+const asFiniteNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+// A target-only device (`not_applicable` — no on/off axis) that has reached its
+// target and is drawing nothing is doing nothing: "Idle", not "Running".
+// `not_applicable → active` is otherwise pure inference, and prod 2026-08-01
+// showed its failure mode — the only card claiming "Running" was a thermostat
+// at 20.8 °C against a 16 °C target at 0.0 kW, the one device with nothing to
+// do. Heating semantics (temperature at/above target = satisfied) — PELS
+// manages heaters, water heaters, and floor thermostats; a device actively
+// drawing power never lands here (the measured gate keeps it "Running").
+// Missing measurement counts as 0: an unmetered thermostat at/above target is
+// not calling for heat.
+//
+// Satisfaction is judged against the HIGHEST target PELS knows about: the live
+// `currentTarget` can be the setpoint PELS itself lowered (shed floor still on
+// the device during keep-state restore windows, pending raise commands), and a
+// room "satisfied" against the lowered floor is the mirror-image lie — "nothing
+// to do" while suppressed. So: never classify while the observed target equals
+// the shed floor or while a target command is in flight, and prefer
+// `plannedTarget` when it is higher than the observed setpoint.
+//
+// Structural dependency: nothing here checks that `currentTarget` is a
+// temperature — the comparison is safe only because producers populate
+// `currentTemperature` exclusively for temperature-observed devices. If a
+// producer ever widens it (e.g. a charger's internal temperature beside an
+// ampere target), this predicate must learn a unit guard.
+export const isSatisfiedTargetOnlyDevice = (device: DeviceOverviewSnapshot): boolean => {
+  if (device.currentState !== 'not_applicable') return false;
+  if (device.pendingTargetCommand) return false;
+  const currentTemperature = asFiniteNumber(device.currentTemperature);
+  const currentTarget = asFiniteNumber(device.currentTarget);
+  if (currentTemperature === null || currentTarget === null) return false;
+  if (
+    device.shedAction === 'set_temperature'
+    && typeof device.shedTemperature === 'number'
+    && currentTarget === device.shedTemperature
+  ) {
+    return false;
+  }
+  const plannedTarget = asFiniteNumber(device.plannedTarget);
+  const effectiveTarget = plannedTarget !== null ? Math.max(currentTarget, plannedTarget) : currentTarget;
+  if (currentTemperature < effectiveTarget - 0.1) return false;
+  return (asFiniteNumber(device.measuredPowerKw) ?? 0) <= 0.05;
+};
+
 export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateKind => {
   if (device.controllable === false) return 'manual';
   if (isGray(device)) return device.available === false ? 'unavailable' : 'unknown';
@@ -147,6 +194,7 @@ export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateK
   if (device.plannedState === 'shed') return 'held';
   if (device.binaryCommandPending && isOffLike(device.currentState)) return 'resuming';
   if (hasSteppedRestorePending(device)) return 'resuming';
+  if (isSatisfiedTargetOnlyDevice(device)) return 'idle';
   if (isActiveState(device)) return 'active';
   if (!normalize(device.currentState)) return 'unknown';
   return 'idle';

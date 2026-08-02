@@ -154,8 +154,8 @@ state row (source: `PLAN_STATE_LABEL` in `planStateLabels.ts`; grammar in
 
 | State word | Used when |
 |---|---|
-| **Running** | The device is on, charging, heating, or otherwise active. |
-| **Idle** | The device is available and on (or has no binary on/off axis), but currently has nothing to do. |
+| **Running** | The device is on, charging, heating, or otherwise active. A target-only device (no on/off axis) reads **Running** by inference — except when demonstrably satisfied (temperature at/above the highest known target, drawing ~0 kW), which resolves **Idle**. Heating semantics; a device actually drawing power always reads Running, and the satisfied check never fires against a PELS-lowered setpoint or while a target write is in flight. |
+| **Idle** | The device is available and on (or has no binary on/off axis), but currently has nothing to do — including a satisfied target-only thermostat at/above its target drawing nothing. |
 | **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
 

@@ -9,6 +9,7 @@ import {
   resolveSurplusHoldReportedLoadText,
 } from '../../../../shared-domain/src/planReasonFormatting.ts';
 import {
+  isSatisfiedTargetOnlyDevice,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_TONE,
   type PlanStateKind,
@@ -313,6 +314,7 @@ const resolveStatePresentation = (dev: PlanDeviceSnapshot, dryRun: boolean) => {
     ...grammarParams,
     dryRun,
     currentState: dev.currentState,
+    satisfiedTargetOnly: isSatisfiedTargetOnlyDevice(dev),
   });
   const tone = kind === rawKind
     ? (dev.stateTone ?? PLAN_STATE_TONE[rawKind])
