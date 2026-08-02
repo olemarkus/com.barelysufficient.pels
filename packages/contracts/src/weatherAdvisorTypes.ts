@@ -72,6 +72,13 @@ export type WeatherDailyRecord = {
   tempMaxC: number;
   tempSampleCount: number;
   quality: WeatherDailyQuality;
+  /**
+   * The daily budget (kWh) that was in force when this day closed. Paired with
+   * `kwhTotal` it gives the budget-pressure loop a measured overshoot — how far
+   * under the budget was actually set — instead of a guess. Absent on backfilled
+   * days and whenever the daily budget was disabled.
+   */
+  appliedBudgetKwh?: number;
   /** Producer-internal censoring evidence; consumers must not branch on it. See WeatherDaySuppression. */
   suppression?: WeatherDaySuppression;
 };
@@ -197,6 +204,21 @@ export type WeatherHistoryState = {
    * the Settings sub-page. Producer-internal — consumers read it as flat values.
    */
   lastAutoApply?: { dateKey: string; kwh: number; appliedAtMs: number };
+  /**
+   * Integral term of the budget-pressure loop: extra kWh the suggestion carries
+   * because the daily budget has been visibly holding devices back. Folded once
+   * per closed day (`throughDateKey` makes that idempotent across repeat rollups
+   * and boot catch-ups), decayed on quiet days. Producer-internal.
+   */
+  budgetPressure?: BudgetPressureState;
+};
+
+/** See `WeatherHistoryState.budgetPressure` and `foldBudgetPressureDay`. */
+export type BudgetPressureState = {
+  /** Accumulated extra kWh; never negative. */
+  kwh: number;
+  /** Newest day already folded in — days at or before this are skipped. */
+  throughDateKey: string;
 };
 
 /**
@@ -248,8 +270,13 @@ export type EnergySignatureFit = {
   suppressedDaysExcluded: number;
   /** Suppression exclusion would have starved the fit, so it was kept unfiltered (estimate may read low). */
   suppressionFilterRelaxed: boolean;
-  /** Recent cold days showed comfort/capacity suppression — the suggestion leans up on a cold forecast. */
-  recentColdSuppressionSuspected: boolean;
+  /**
+   * Recent days the DAILY BUDGET held devices back — the suggestion leans up.
+   * Not temperature-gated: being limited is evidence about demand whatever the
+   * weather, and gating it on a cold forecast left the correction dead above the
+   * heating knee, where the base load is extrapolated rather than observed.
+   */
+  recentSuppressionSuspected: boolean;
   residualQ10: number;
   residualQ50: number;
   residualQ80: number;
@@ -276,8 +303,10 @@ export type EnergySignatureSuggestion = {
   beyondObservedCold: boolean;
   /** Forecast warmer than any observed day; evaluated at the warmest observed instead. */
   beyondObservedWarm: boolean;
-  /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was leaned up. */
+  /** The daily budget has recently been limiting the home — the suggestion was leaned up. */
   budgetMayBeLimiting: boolean;
+  /** kWh the budget-pressure loop added on top of the model, after its ceiling. 0 when idle. */
+  budgetPressureKwh: number;
   /** Tomorrow's forecast low (°C), when the MET summary supplied it — display context only. */
   tempMinC?: number;
   /** Tomorrow's forecast high (°C), when the MET summary supplied it — display context only. */
@@ -375,8 +404,10 @@ export type WeatherAdvisorSuggestion = {
   currentDailyBudgetKwh: number | null;
   /** Tomorrow's expected usage exceeds what the hard cap delivers in a day (cap × 24 h). */
   cappedByCapacity: boolean;
-  /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was raised to match. */
+  /** The daily budget has recently been limiting the home — the suggestion was raised to match. */
   budgetMayBeLimiting: boolean;
+  /** kWh the budget-pressure loop added; named in the reason line when it is worth showing. */
+  budgetPressureKwh: number;
   /** Tomorrow swings genuinely cold in the evening — chooses the cold-evening verdict clause. */
   coldEveningSuspected?: boolean;
 };

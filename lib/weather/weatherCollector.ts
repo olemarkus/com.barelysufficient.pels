@@ -1,4 +1,4 @@
-import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { normalizeError } from '../utils/errorUtils';
 import {
   getDateKeyInTimeZone,
@@ -23,6 +23,10 @@ import {
 import { readMeterScopeDailyKwh } from './weatherMeterScope';
 import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
+import {
+  foldBudgetPressureDay,
+  PRESSURE_CEILING_FRACTION,
+} from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
 const HOUR_MS = 60 * 60 * 1000;
 const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
@@ -609,6 +613,41 @@ export class WeatherCollector {
     }
   }
 
+  /**
+   * The daily budget setting only still describes `dateKey` while that day is
+   * the one that just closed: the normal 00:05 rollup runs BEFORE auto-apply
+   * writes the new day's number. A boot catch-up rolling up days further back
+   * would read a budget that has since moved, so it reports nothing rather than
+   * stamping a wrong one. The pressure loop then HOLDS that day: an unmeasurable
+   * day is not evidence in either direction, so it must neither grow nor decay.
+   */
+  private resolveAppliedBudgetKwh(dateKey: string): number | undefined {
+    const todayKey = getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
+    if (dateKey !== shiftDateKey(todayKey, -1)) return undefined;
+    return this.deps.getAppliedDailyBudgetKwh();
+  }
+
+  /**
+   * Folds a just-closed day into the budget-pressure loop. Called from `rollup`
+   * and NOWHERE else: this is the single point a day genuinely closes. Doing it
+   * in the derived recompute would also run it on the backfill chain's refits,
+   * where records carry no suppression evidence and would silently leak live
+   * evidence away.
+   */
+  private foldClosedDayIntoBudgetPressure(record: WeatherDailyRecord): void {
+    // Bound the integral by what the suggestion could actually apply, using the
+    // prediction from the previous recompute (the refit runs after this batch).
+    const predictedKwh = this.state.latestSuggestion?.predictedKwh;
+    this.state = {
+      ...this.state,
+      budgetPressure: foldBudgetPressureDay(
+        this.state.budgetPressure,
+        record,
+        predictedKwh !== undefined ? PRESSURE_CEILING_FRACTION * predictedKwh : undefined,
+      ),
+    };
+  }
+
   private rollup(dateKey: string): void {
     const timeZone = this.deps.getTimeZone();
     const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
@@ -624,9 +663,11 @@ export class WeatherCollector {
       kwhUncontrolled: kwh.uncontrolled,
       unreliablePower: periodsOverlapWindow(this.deps.getUnreliablePeriods(), dayStartMs, nextDayStartMs),
       suppression: this.deps.getDaySuppression(dateKey),
+      appliedBudgetKwh: this.resolveAppliedBudgetKwh(dateKey),
     });
-    this.markDirty();
     const record = this.state.records.find((entry) => entry.dateKey === dateKey);
+    if (record) this.foldClosedDayIntoBudgetPressure(record);
+    this.markDirty();
     this.deps.logger.info({
       event: 'weather_day_rollup',
       dateKey,
@@ -634,6 +675,8 @@ export class WeatherCollector {
       tempSampleCount: record?.tempSampleCount,
       kwhTotal: record?.kwhTotal,
       quality: record?.quality,
+      appliedBudgetKwh: record?.appliedBudgetKwh ?? null,
+      budgetPressureKwh: this.state.budgetPressure?.kwh ?? 0,
       recordCount: this.state.records.length,
     });
   }

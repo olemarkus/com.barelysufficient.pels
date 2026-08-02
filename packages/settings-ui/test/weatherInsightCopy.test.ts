@@ -1,10 +1,38 @@
 import {
+  composeBudgetLimitingReason,
   composeDeviceFooter,
   composeForecastSourceLine,
   composeOutdoorReadingLine,
   composeTomorrowLowHigh,
   WEATHER_ATTRIBUTION_MET,
+  WEATHER_REASON_BUDGET_LIMITING,
 } from '../../shared-domain/src/weatherInsightCopy';
+
+describe('composeBudgetLimitingReason', () => {
+  it('states plainly that the budget has been limiting, without claiming cold weather', () => {
+    // Golden assertion: the trigger is no longer temperature-gated, so the
+    // sentence must not say "cold days" as it used to.
+    expect(WEATHER_REASON_BUDGET_LIMITING).toBe(
+      'Your budget has recently been limiting your devices — the suggestion is raised to match.',
+    );
+    expect(composeBudgetLimitingReason(0)).toBe(WEATHER_REASON_BUDGET_LIMITING);
+  });
+
+  it('names the pressure contribution as a COMPONENT of the raise, not the whole of it', () => {
+    // "of that covers" matters: the raise also includes a widened headroom, so
+    // an owner subtracting this figure from the suggestion must still reconcile.
+    expect(composeBudgetLimitingReason(7)).toBe(
+      'Your budget has recently been limiting your devices — the suggestion is raised to match.'
+      + ' 7.0 kWh of that covers days that ran past your budget.',
+    );
+  });
+
+  it('drops a contribution too small to act on, and never renders a junk number', () => {
+    expect(composeBudgetLimitingReason(0.9)).toBe(WEATHER_REASON_BUDGET_LIMITING);
+    expect(composeBudgetLimitingReason(Number.NaN)).toBe(WEATHER_REASON_BUDGET_LIMITING);
+    expect(composeBudgetLimitingReason(Number.POSITIVE_INFINITY)).toBe(WEATHER_REASON_BUDGET_LIMITING);
+  });
+});
 
 describe('composeForecastSourceLine', () => {
   it('names the MET forecast for a real prediction', () => {

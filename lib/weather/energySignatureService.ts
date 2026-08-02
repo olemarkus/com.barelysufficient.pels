@@ -69,7 +69,13 @@ export function computeEnergySignatureUpdate(
 
   const forecast = resolveComingDayMeanTempC(state, fit, nowMs, deps.getTimeZone());
   const suggestion = forecast
-    ? buildSuggestion(fit, forecast, deps.getCapacityLimitKw(), nowMs)
+    ? buildSuggestion({
+      fit,
+      forecast,
+      capacityLimitKw: deps.getCapacityLimitKw(),
+      budgetPressure: state.budgetPressure,
+      nowMs,
+    })
     : undefined;
 
   deps.logger.info({
@@ -88,7 +94,7 @@ export function computeEnergySignatureUpdate(
     driftSuspected: fit.driftSuspected,
     suppressedDaysExcluded: fit.suppressedDaysExcluded,
     suppressionFilterRelaxed: fit.suppressionFilterRelaxed,
-    recentColdSuppressionSuspected: fit.recentColdSuppressionSuspected,
+    recentSuppressionSuspected: fit.recentSuppressionSuspected,
     ...(suggestion ? {
       targetDateKey: suggestion.targetDateKey,
       forecastSource: suggestion.forecastSource,
@@ -101,6 +107,7 @@ export function computeEnergySignatureUpdate(
       beyondObservedCold: suggestion.beyondObservedCold,
       beyondObservedWarm: suggestion.beyondObservedWarm,
       budgetMayBeLimiting: suggestion.budgetMayBeLimiting,
+      budgetPressureKwh: round2(suggestion.budgetPressureKwh),
     } : {}),
   });
 
@@ -116,17 +123,24 @@ export function computeEnergySignatureUpdate(
 }
 
 /** Assembles the budget suggestion from the fit + resolved coming-day mean (drops undefined optionals). */
-function buildSuggestion(
-  fit: EnergySignatureFit,
-  forecast: ResolvedComingDay,
-  capacityLimitKw: number | undefined,
-  nowMs: number,
-): EnergySignatureSuggestion {
+function buildSuggestion(params: {
+  fit: EnergySignatureFit;
+  forecast: ResolvedComingDay;
+  capacityLimitKw: number | undefined;
+  budgetPressure: WeatherHistoryState['budgetPressure'];
+  nowMs: number;
+}): EnergySignatureSuggestion {
+  const { fit, forecast, capacityLimitKw, budgetPressure, nowMs } = params;
   return {
     targetDateKey: forecast.targetDateKey,
     forecastMeanTempC: forecast.meanTempC,
     forecastSource: forecast.source,
-    ...suggestDailyBudgetKwh({ fit, forecastMeanTempC: forecast.meanTempC, capacityLimitKw }),
+    ...suggestDailyBudgetKwh({
+      fit,
+      forecastMeanTempC: forecast.meanTempC,
+      capacityLimitKw,
+      ...(budgetPressure !== undefined ? { budgetPressure } : {}),
+    }),
     ...(forecast.tempMinC !== undefined ? { tempMinC: forecast.tempMinC } : {}),
     ...(forecast.tempMaxC !== undefined ? { tempMaxC: forecast.tempMaxC } : {}),
     ...(forecast.coldEveningSuspected !== undefined

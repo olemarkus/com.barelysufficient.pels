@@ -1329,7 +1329,7 @@
         driftSuspected: false,
         suppressedDaysExcluded: 0,
         suppressionFilterRelaxed: false,
-        recentColdSuppressionSuspected: false,
+        recentSuppressionSuspected: false,
         residualQ10: -5,
         residualQ50: 0,
         residualQ80: 5,
@@ -1354,7 +1354,8 @@
           ? Number(settings.daily_budget_kwh ?? 0)
           : null,
         cappedByCapacity: advisor.cappedByCapacity === true,
-        budgetMayBeLimiting: false,
+        budgetMayBeLimiting: advisor.budgetMayBeLimiting === true,
+        budgetPressureKwh: Number(advisor.budgetPressureKwh ?? 0),
       },
       scatter,
       recentDays,

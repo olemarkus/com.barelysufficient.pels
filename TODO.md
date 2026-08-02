@@ -1977,6 +1977,52 @@ CI failure, so future field-move slices can't silently grow the debt.*
       stale `deadlineAtMs`/label could be shown or reused on a later confirm — guard it the same way. Source: codex +
       coderabbit on #1736, 2026-06-17.
 
+- [ ] **The budget-pressure overshoot compares whole-home kWh against a budget that paces on non-exempt energy.**
+      `measuredBudgetOvershootKwh` (`packages/shared-domain/src/energySignature/budgetPressure.ts`) computes
+      `kwhTotal - appliedBudgetKwh`, but `kwhTotal` is metered whole-home consumption while the daily-budget
+      controller deliberately subtracts budget-exempt usage before pacing (`dailyBudgetState.ts`:
+      "Budget control ignores exempt load, but reporting stays on real metered usage"). On a home with exempt
+      devices, their energy is counted as a budget overrun even when non-exempt usage stayed inside the budget,
+      so the loop can grow on a day that never actually ran out. Bounded by the per-day step cap and the
+      prediction-relative ceiling, and inert on a home with no exemptions configured — which is why it is not
+      being fixed in the PR that introduced it. Fix: carry the day's non-exempt (budget-counted) kWh on the
+      record and measure against that. Persona: an owner with a "Get power now" exemption or an always-on
+      exempt device; hypothesis: their suggested budget drifts up for energy the budget was never governing.
+      Source: copilot on #1957, 2026-08-02. P2.
+
+- [ ] **`appliedBudgetKwh` is stamped from the setting as it reads at day close, not as it read during the day.**
+      `lib/weather/weatherCollector.ts` `resolveAppliedBudgetKwh` reads the current daily budget and stamps it on
+      the day being closed, guarded so it only does so when that day is exactly yesterday (the 00:05 rollup runs
+      before auto-apply writes the new number). Two gaps remain. First, an owner who changes the budget manually
+      at 23:00 has the whole day's usage measured against their new number — bounded by the per-day step cap, but
+      it means the loop can grow on the owner's own edit. Second, the correctness of the guard rests on a
+      cross-module ordering assertion (`lib/weather` → `setup` → `lib/dailyBudget`) held only by a comment, with
+      no type or test able to enforce it. The honest fix is a producer: `DailyBudgetService` stamps the budget in
+      force at each day close and exposes `getBudgetKwhForDate(dateKey)`, so the collector reads a resolved value
+      instead of inferring applicability. Persona: contributor changing the rollup or auto-apply order; hypothesis:
+      they reorder two calls and silently break the pressure loop's only measured input. P2.
+
+- [ ] **Two producers answer "what daily budget is applied".** `DailyBudgetService.getAppliedBudgetKwh()` (added
+      for the budget-pressure loop) and `resolveDailyBudgetKwh(ctx)` in
+      `setup/appInit/weatherAdvisorReadoutAssembler.ts` implement identical policy (enabled → finite → `> 0` →
+      value, else absent) from two different sources: the service's in-memory settings and raw `homey.settings`.
+      They can disagree in the window between a settings write and the service's `loadSettings()`, and the weather
+      card would then show one number while the pressure loop measured against another. The service is the
+      correctly-layered producer; delete the setup-local copy and widen the assembler's `Pick<AppContext, …>` to
+      include `dailyBudgetService`. Persona: an owner who just changed their budget and reloads the Budget page;
+      hypothesis: "Your daily budget" reads the old value for one refresh. P2.
+
+- [ ] **A day starved by the daily budget that still lands UNDER budget raises nothing.** The budget-pressure loop
+      (`packages/shared-domain/src/energySignature/budgetPressure.ts`) only grows on days that were budget-suppressed
+      AND ran past their budget, because "a device was blocked for an hour" alone is true on almost every normal day
+      (shed cooldowns, price shaping) and would wind the term up without bound. But the case is real: with
+      `daily_budget_price_flex_share` high, safe pace can collapse to well under 1 kW through the expensive hours
+      while the day still ends comfortably inside its budget — devices are held back all afternoon and the loop sees
+      no error. That is an intra-day ALLOCATION problem, not a level problem, so inflating the daily total is the
+      wrong tool; the right fix is on the shaping side (a per-hour floor, or bounding how far the flex share may
+      starve a single hour). Persona: an owner on a shaped budget; hypothesis: they see "Limited" all evening on a
+      day that never came close to its budget and conclude the budget number is meaningless. P2.
+
 - [ ] **The weather-insight cluster entered the 80% coverage gate at near-zero coverage.** Adding `setup/**` to the
       `vitest.config.mts` coverage include (multi-home headroom PR) pulled in
       `setup/appInit/weatherAdvisorReadoutAssembler.ts` (0% statements, 0% branches) and

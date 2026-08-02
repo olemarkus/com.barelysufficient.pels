@@ -39,7 +39,7 @@ const fit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureFit =>
   driftSuspected: false,
   suppressedDaysExcluded: 0,
   suppressionFilterRelaxed: false,
-  recentColdSuppressionSuspected: false,
+  recentSuppressionSuspected: false,
   residualQ10: -4,
   residualQ50: 0,
   residualQ80: 4,

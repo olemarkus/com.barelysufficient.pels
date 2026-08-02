@@ -4,6 +4,7 @@ import { MockSettings } from '../mocks/homey';
 import { createWeatherHistoryStore } from '../../setup/weatherHistoryStateAdapter';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
+import { normalizeWeatherHistoryState } from '../../lib/weather/weatherHistory';
 import { WEATHER_ADVISOR_SETTINGS, WEATHER_HISTORY_STATE } from '../../lib/utils/settingsKeys';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
@@ -29,6 +30,7 @@ const buildCollector = (
   isManagedDevice: () => false,
   getUnreliablePeriods: () => [],
   getDaySuppression: () => ({}),
+  getAppliedDailyBudgetKwh: () => 50,
   getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
   readMeterScopeSignature: () => meterScopeSignature,
   readMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
@@ -132,5 +134,52 @@ describe('weather history persistence through homey.settings', () => {
       quality: { missingKwh: true },
     });
     collector.stop();
+  });
+
+  it('round-trips the budget-pressure term and the applied budget through persistence', () => {
+    // Both are new persisted fields. A key drift or an over-strict reject in
+    // `normalizeBudgetPressure` would silently reset the integrator on every
+    // restart — Homey restarts often — so the loop could never reach a
+    // multi-day term in production while every suite stayed green.
+    const persisted = {
+      records: [{
+        dateKey: '2026-07-31',
+        kwhTotal: 50,
+        tempMeanC: 12.8,
+        tempMinC: 11.1,
+        tempMaxC: 15.7,
+        tempSampleCount: 24,
+        quality: {
+          partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false,
+        },
+        appliedBudgetKwh: 44,
+        suppression: { blockedByHeadroomMs: 6 * 60 * 60 * 1000 },
+      }],
+      budgetPressure: { kwh: 13.9, throughDateKey: '2026-07-31' },
+    };
+    const homey = { settings: new MockSettings() };
+    homey.settings.set(WEATHER_HISTORY_STATE, persisted);
+    const normalized = normalizeWeatherHistoryState(
+      createWeatherHistoryStore(homey as unknown as Homey.App['homey']).read(),
+    );
+    expect(normalized?.budgetPressure).toEqual({ kwh: 13.9, throughDateKey: '2026-07-31' });
+    expect(normalized?.records[0].appliedBudgetKwh).toBe(44);
+    expect(normalized?.records[0].suppression?.blockedByHeadroomMs).toBe(6 * 60 * 60 * 1000);
+  });
+
+  it('drops a half-written budget-pressure term rather than trusting it', () => {
+    // It is added straight onto a persisted budget, so a malformed value must
+    // restart the loop at zero rather than propagate.
+    const roundTrip = (budgetPressure: unknown) => {
+      const homey = { settings: new MockSettings() };
+      homey.settings.set(WEATHER_HISTORY_STATE, { records: [], budgetPressure });
+      return normalizeWeatherHistoryState(
+        createWeatherHistoryStore(homey as unknown as Homey.App['homey']).read(),
+      )?.budgetPressure;
+    };
+    expect(roundTrip({ kwh: 5 })).toBeUndefined();
+    expect(roundTrip({ throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ kwh: -1, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ kwh: Number.NaN, throughDateKey: 'd' })).toBeUndefined();
   });
 });

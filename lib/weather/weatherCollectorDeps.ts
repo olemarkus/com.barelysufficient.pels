@@ -2,6 +2,7 @@ import type { Logger as PinoLogger } from 'pino';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type {
   WeatherAdvisorSettings,
+  WeatherDaySuppression,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { RawHomeyDeviceLike } from '../utils/types';
@@ -29,11 +30,14 @@ export type WeatherCollectorDeps = {
    * deadline-miss-to-budget), composed by the factory from diagnostics + smart-
    * task history. Absent fields = signal unavailable (treated as unsuppressed).
    */
-  getDaySuppression: (dateKey: string) => {
-    targetDeficitMs?: number;
-    blockedByHeadroomMs?: number;
-    deadlineMissedToBudget?: boolean;
-  };
+  getDaySuppression: (dateKey: string) => WeatherDaySuppression;
+  /**
+   * The daily budget (kWh) currently in force, or `undefined` when the daily
+   * budget is disabled or unreadable. Stamped onto a rolled-up day ONLY when
+   * that day is the one that just closed — see `WeatherCollector.rollup`. The
+   * budget-pressure loop pairs it with the day's measured kWh to size its step.
+   */
+  getAppliedDailyBudgetKwh: () => number | undefined;
   getSettings: () => WeatherAdvisorSettings;
   /**
    * Resolved fingerprint of the whole-home metering arrangement, composed by

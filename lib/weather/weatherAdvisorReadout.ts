@@ -224,7 +224,7 @@ type ResolvedOutlook = {
   result: Pick<
     EnergySignatureSuggestion,
     'predictedKwh' | 'predictedLowKwh' | 'predictedHighKwh' | 'suggestedBudgetKwh'
-    | 'beyondObservedCold' | 'beyondObservedWarm' | 'budgetMayBeLimiting'
+    | 'beyondObservedCold' | 'beyondObservedWarm' | 'budgetMayBeLimiting' | 'budgetPressureKwh'
   >;
 };
 
@@ -307,6 +307,7 @@ function resolveTomorrowOutlook(
       // hard cap clamps the [20,360] floor below the cap on a low-demand day.
       cappedByCapacity: resolved.result.predictedKwh >= capacityCapKwh - 1e-6,
       budgetMayBeLimiting: resolved.result.budgetMayBeLimiting,
+      budgetPressureKwh: resolved.result.budgetPressureKwh,
       ...(resolved.coldEveningSuspected !== undefined
         ? { coldEveningSuspected: resolved.coldEveningSuspected } : {}),
     },
@@ -328,10 +329,14 @@ function recomputeTomorrowSuggestion(
     ...(met?.tempMinC !== undefined ? { tempMinC: met.tempMinC } : {}),
     ...(met?.tempMaxC !== undefined ? { tempMaxC: met.tempMaxC } : {}),
     ...(met?.coldEveningSuspected !== undefined ? { coldEveningSuspected: met.coldEveningSuspected } : {}),
+    // Same inputs the runtime recompute uses, so the number the card shows for
+    // tomorrow is the number auto-apply would write — a readout that recomputed
+    // without the pressure term would understate it.
     result: suggestDailyBudgetKwh({
       fit,
       forecastMeanTempC: meanTempC,
       capacityLimitKw: input.capacityLimitKw,
+      ...(input.state.budgetPressure !== undefined ? { budgetPressure: input.state.budgetPressure } : {}),
     }),
   };
 }

@@ -133,6 +133,10 @@ export function createWeatherCollector(
     // taint a weather day as unreliable, per the WeatherDailyQuality contract.
     getUnreliablePeriods: () => (ctx.powerTracker.unreliablePeriods ?? [])
       .filter((period) => period.end - period.start > LONG_GAP_THRESHOLD_MS),
+    // The daily budget in force right now. The collector only stamps it onto a
+    // day that just closed, so the value it reads still describes that day (the
+    // midnight rollup runs before auto-apply writes the new one).
+    getAppliedDailyBudgetKwh: () => ctx.dailyBudgetService?.getAppliedBudgetKwh(),
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     // Meter-scope fingerprint for the start()-time invalidation reconcile —
     // composed here (setup) because lib/weather must not read the homes config.

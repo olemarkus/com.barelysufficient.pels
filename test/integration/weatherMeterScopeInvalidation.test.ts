@@ -124,6 +124,7 @@ const buildHarness = (
     isManagedDevice: () => false,
     getUnreliablePeriods: () => [],
     getDaySuppression: () => ({}),
+    getAppliedDailyBudgetKwh: () => 50,
     getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
     readMeterScopeSignature: () => readWholeHomeMeterScopeSignature(homeyCast),
     readMainMeterSelection: () => readMainMeterSelection(homey.settings),

@@ -178,7 +178,7 @@ describe('fitEnergySignature — suppression awareness', () => {
     const fit = fitEnergySignature(heatingDays(60), NOW_MS);
     expect(fit?.suppressedDaysExcluded).toBe(0);
     expect(fit?.suppressionFilterRelaxed).toBe(false);
-    expect(fit?.recentColdSuppressionSuspected).toBe(false);
+    expect(fit?.recentSuppressionSuspected).toBe(false);
   });
 
   it('relaxes the filter rather than blanking the fit when exclusion would starve it', () => {
@@ -193,21 +193,45 @@ describe('fitEnergySignature — suppression awareness', () => {
     expect(fit?.usableDays).toBe(25);
   });
 
-  it('flags recentColdSuppressionSuspected for a recent cold day that was comfort-limited', () => {
-    const recentColdLimited = heatingDays(60).map((record, index) => (
+  it('flags recentSuppressionSuspected for a recent day the DAILY BUDGET limited', () => {
+    const recentLimited = heatingDays(60).map((record, index) => (
       index === 59
         ? {
-          ...record, tempMeanC: 0, tempMinC: -3, tempMaxC: 3, kwhTotal: 50, suppression: { targetDeficitMs: 2 * HOUR_MS },
+          ...record,
+          tempMeanC: 0,
+          tempMinC: -3,
+          tempMaxC: 3,
+          kwhTotal: 50,
+          suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
         }
         : record
     ));
-    expect(fitEnergySignature(recentColdLimited, NOW_MS)?.recentColdSuppressionSuspected).toBe(true);
+    expect(fitEnergySignature(recentLimited, NOW_MS)?.recentSuppressionSuspected).toBe(true);
     // Control: same recent cold day, no suppression recorded.
     const control = heatingDays(60).map((record, index) => (
       index === 59 ? { ...record, tempMeanC: 0, kwhTotal: 50 } : record
     ));
-    expect(fitEnergySignature(control, NOW_MS)?.recentColdSuppressionSuspected).toBe(false);
+    expect(fitEnergySignature(control, NOW_MS)?.recentSuppressionSuspected).toBe(false);
   });
+
+  it('flags a WARM recent day the budget limited — detection is not temperature-gated', () => {
+    // Regression: detection used to require the day to be below the balance
+    // point, so a home throttled through a mild week produced no lean at all.
+    const warmLimited = heatingDays(60).map((record, index) => (
+      index === 59
+        ? {
+          ...record,
+          tempMeanC: 25,
+          tempMinC: 22,
+          tempMaxC: 28,
+          kwhTotal: 50,
+          suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
+        }
+        : record
+    ));
+    expect(fitEnergySignature(warmLimited, NOW_MS)?.recentSuppressionSuspected).toBe(true);
+  });
+
 });
 
 describe('predictDailyKwh', () => {

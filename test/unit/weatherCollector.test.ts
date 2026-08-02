@@ -42,6 +42,7 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
     fetchInsights: vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] })),
     getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
     getDaySuppression: vi.fn(() => ({})),
+    getAppliedDailyBudgetKwh: vi.fn(() => 50),
     isManagedDevice: vi.fn(() => false),
     getUnreliablePeriods: vi.fn(() => []),
     getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1' })),
