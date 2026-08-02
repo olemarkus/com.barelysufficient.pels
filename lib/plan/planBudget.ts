@@ -1,3 +1,19 @@
+/**
+ * Producer of both safe-pace thresholds.
+ *
+ * `notes/safe-pace-two-constraints.md` is the definition of record for the names
+ * and for why these are two constraints rather than one. They do not measure the
+ * same load: the capacity pace counts all of net grid import, while the budget
+ * pace counts net import minus exempt draw. Note that is net, not gross house
+ * consumption — the two diverge on a solar home. Neither function rebases the
+ * other's axis: `planBuilder` does that with the projected exempt sum for the
+ * binding pace, and `planContext` with the measured sum for the per-axis restore
+ * admission budget. See `lib/plan/AGENTS.md` § "Terminology" for the full set.
+ *
+ * The other asymmetry callers depend on is that only the capacity pace drains at
+ * the hour boundary (`notes/end-of-hour-mode.md`); the budget pace deliberately
+ * applies no such ceiling.
+ */
 import type { PowerTrackerState } from '../power/tracker';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentHourContext } from './planHourContext';
@@ -17,6 +33,12 @@ const BURST_RATE_MIN_REMAINING_HOURS = BURST_RATE_MIN_REMAINING_MIN / 60;
 // notes/end-of-hour-mode.md for the rationale and the TAU trade-off.
 const EOH_DRAIN_TAU_MIN = 4;
 
+/**
+ * Returns `capacityPaceKw` as `allowedKw` — the dynamic hourly threshold on the
+ * import axis. It is not `hardCapKw`: it budgets the allowance over the time left
+ * in the hour, so it legitimately sits above the configured ceiling in an
+ * under-used hour, and crossing it is not crossing the tariff step.
+ */
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
@@ -48,6 +70,14 @@ export function computeDynamicSoftLimit(params: {
   return { allowedKw, hourlyBudgetExhausted };
 }
 
+/**
+ * Returns `budgetPaceKw`: the daily-budget threshold on the **non-exempt** axis,
+ * so it is not directly comparable with `capacityPaceKw`. `planBuilder` rebases it
+ * onto the import axis (`budgetPaceImportKw`) before the two are compared.
+ *
+ * The window is the current bucket of the daily plan, not the whole day, so this
+ * paces that bucket's share rather than a whole-day burst rate.
+ */
 export function computeDailyUsageSoftLimit(params: {
   plannedKWh: number;
   usedKWh: number;

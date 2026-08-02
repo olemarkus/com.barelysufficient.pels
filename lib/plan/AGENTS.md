@@ -49,6 +49,29 @@ keep per device). Execution is `lib/executor`; reconciliation is `lib/device/dev
   `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
 
+## Terminology: the safe-pace family
+
+`notes/safe-pace-two-constraints.md` § "Canonical names" is the definition of record
+for every pace/limit/exempt quantity, and its translation subsection maps the local
+names onto the canonical ones. Read it before naming, renaming, or comparing any of
+them — the local names here are still mid-migration, and `softLimit` in particular
+means two different quantities depending on the site.
+
+The trap it exists to prevent: `capacityPaceKw` and `budgetPaceKw` sit on **different
+axes** (all of net import vs net import minus exempt draw), so they are not directly
+comparable. Rebasing between them happens at three known sites, and the exempt sum
+each uses is the point:
+
+- `planBuilder` rebases forward with the **projected** sum, producing the binding
+  pace and the display tick.
+- `planContext` rebases forward with the **measured** sum, producing
+  `budgetHeadroomKw` for per-axis restore admission, so an off exempt device
+  reserves nothing on the budget axis.
+- `planStatusHelpers` applies the inverse subtraction to keep the displayed
+  composition additive.
+
+Before adding a fourth, be explicit about which exempt sum it needs and why.
+
 ## Not in this module
 
 - Actuation/dispatch (`lib/executor`, `lib/actuator`), Homey SDK reads/writes (producer + setup adapters), smart-task logic (`lib/objectives/deferredObjectives/`).
