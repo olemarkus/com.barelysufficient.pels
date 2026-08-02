@@ -463,15 +463,37 @@ export type CheapestUpcomingHourInput = {
 
 const DEFAULT_HORIZON_MS = 18 * 60 * 60 * 1000;
 
-const formatPriceForSubline = (price: number, unitLabel: string): string => {
+const formatPriceForSubline = (displayPrice: number, unitLabel: string): string => {
   // Whole-number øre stay integer-friendly; everything else (the scaled
   // "kr/kWh" the caller now passes for Nordpool, or a Flow/Homey unit) gets two
   // decimals to match the standard pricing convention used across the rest of
-  // the UI — "0.32 kr/kWh".
+  // the UI — "0.32 kr/kWh". Takes the already-rounded display price from
+  // `toDisplayPrice` so the rendered number is definitionally the one hour
+  // selection compared — and a negative price that rounds to zero prints
+  // "0.00", never "-0.00" (both template coercion and toFixed drop the sign
+  // of -0).
   if (unitLabel.toLowerCase().startsWith('øre')) {
-    return `${Math.round(price)} ${unitLabel}`;
+    return `${displayPrice} ${unitLabel}`;
   }
-  return `${price.toFixed(2)} ${unitLabel}`;
+  return `${displayPrice.toFixed(2)} ${unitLabel}`;
+};
+
+// Rounds a raw per-hour price to the precision the subline actually displays
+// (whole øre, or two decimals for scaled kr / Flow units). Hour selection
+// compares at this precision so a sub-display difference — e.g. the 1e-14 øre
+// float residue Norgespris adjustment arithmetic leaves on an otherwise flat
+// band — can never make a later hour beat an earlier one that renders the
+// same price.
+const toDisplayPrice = (
+  price: number,
+  unitLabel: string,
+  divisor: number,
+): number => {
+  const scaled = price / divisor;
+  if (unitLabel.toLowerCase().startsWith('øre')) {
+    return Math.round(scaled);
+  }
+  return Number(scaled.toFixed(2));
 };
 
 export const formatCheapestUpcomingHour = (
@@ -483,11 +505,16 @@ export const formatCheapestUpcomingHour = (
     hour.startsAtMs > input.nowMs && hour.startsAtMs <= windowEnd
   ));
   if (upcoming.length === 0) return null;
-  const cheapest = upcoming.reduce((best, hour) => (
-    hour.price < best.price ? hour : best
-  ));
+  const divisor = Math.max(1, input.divisor ?? 1);
+  const cheapest = upcoming.reduce((best, hour) => {
+    const hourPrice = toDisplayPrice(hour.price, input.unitLabel, divisor);
+    const bestPrice = toDisplayPrice(best.price, input.unitLabel, divisor);
+    if (hourPrice < bestPrice) return hour;
+    if (hourPrice === bestPrice && hour.startsAtMs < best.startsAtMs) return hour;
+    return best;
+  });
   const clockText = input.formatClockTime(cheapest.startsAtMs);
-  const scaledPrice = cheapest.price / Math.max(1, input.divisor ?? 1);
-  const priceText = formatPriceForSubline(scaledPrice, input.unitLabel);
+  const displayPrice = toDisplayPrice(cheapest.price, input.unitLabel, divisor);
+  const priceText = formatPriceForSubline(displayPrice, input.unitLabel);
   return `Cheapest hour ahead: ${clockText}, ${priceText}.`;
 };

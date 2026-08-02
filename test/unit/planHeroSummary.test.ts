@@ -419,6 +419,65 @@ describe('formatCheapestUpcomingHour', () => {
       formatClockTime: clock,
     })).toBe('Cheapest hour ahead: 21:00, 1.25 kr/kWh.');
   });
+
+  it('prefers the earlier hour when prices differ only below display precision', () => {
+    // Exact production values (Norgespris flat band, 2026-08-02): the 23:00
+    // hour carried a 1e-14 øre float residue that beat 22:00 on a raw `<`
+    // compare, so the hero named the later hour of two visually identical ones.
+    expect(formatCheapestUpcomingHour({
+      hours: [
+        { startsAtMs: NOW_MS + HOUR, price: 86.0875 },
+        { startsAtMs: NOW_MS + 2 * HOUR, price: 72.9625 },
+        { startsAtMs: NOW_MS + 3 * HOUR, price: 72.962_499_999_999_99 },
+      ],
+      nowMs: NOW_MS,
+      unitLabel: 'kr/kWh',
+      divisor: 100,
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 22:00, 0.73 kr/kWh.');
+  });
+
+  it('still picks a later hour that is genuinely cheaper at display precision', () => {
+    expect(formatCheapestUpcomingHour({
+      hours: [
+        { startsAtMs: NOW_MS + HOUR, price: 72.9 },
+        { startsAtMs: NOW_MS + 2 * HOUR, price: 71 },
+      ],
+      nowMs: NOW_MS,
+      unitLabel: 'kr/kWh',
+      divisor: 100,
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 22:00, 0.71 kr/kWh.');
+  });
+
+  it('treats prices straddling zero inside the display bucket as a tie and never prints -0.00', () => {
+    // +0.4 øre and -0.4 øre both display as 0.00 kr/kWh, so the earlier hour
+    // wins; rendering from the display-rounded value keeps the sign of -0 out
+    // of the subline.
+    expect(formatCheapestUpcomingHour({
+      hours: [
+        { startsAtMs: NOW_MS + HOUR, price: 0.4 },
+        { startsAtMs: NOW_MS + 2 * HOUR, price: -0.4 },
+      ],
+      nowMs: NOW_MS,
+      unitLabel: 'kr/kWh',
+      divisor: 100,
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 21:00, 0.00 kr/kWh.');
+  });
+
+  it('breaks a display-price tie by earliest start even when hours arrive unsorted', () => {
+    expect(formatCheapestUpcomingHour({
+      hours: [
+        { startsAtMs: NOW_MS + 3 * HOUR, price: 18.2 },
+        { startsAtMs: NOW_MS + HOUR, price: 18.4 }, // both round to 18 øre
+        { startsAtMs: NOW_MS + 2 * HOUR, price: 40 },
+      ],
+      nowMs: NOW_MS,
+      unitLabel: 'øre/kWh',
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 21:00, 18 øre/kWh.');
+  });
 });
 
 describe('above-threshold subline formatters', () => {
