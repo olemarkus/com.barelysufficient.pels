@@ -58,6 +58,15 @@ export type DeviceTransportParseProviders = {
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
     getDeviceTargetPowerConfig?: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
+    /**
+     * The cars the user ticked for this charger — an eligibility set, not an
+     * association. Empty or absent means the feature is off for the charger.
+     *
+     * A plain predicate rather than a settings read: `lib/device` may not reach
+     * settings or `AppContext` (`no-domain-to-app-layer`), so the app layer
+     * resolves the value and hands it in, as it does for `getBudgetExempt`.
+     */
+    getEvCarAssociationCarIds?: (chargerId: string) => readonly string[];
 };
 
 export type DeviceTransportParseDeps = {

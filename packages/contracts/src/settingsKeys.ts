@@ -29,6 +29,10 @@ export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
 export const TEMPERATURE_CONTROL_DISABLED_DEVICES = 'temperature_control_disabled_devices';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
+// The cars each charger MAY associate: `Record<chargerId, { carIds }>` (absent or
+// empty = off for that charger). Mirror of EV_CAR_ASSOCIATIONS in
+// lib/utils/settingsKeys.ts — keep both in sync (the settings UI can't import lib).
+export const EV_CAR_ASSOCIATIONS = 'ev_car_associations';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';

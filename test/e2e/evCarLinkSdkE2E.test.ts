@@ -24,8 +24,11 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  EV_CAR_ASSOCIATIONS,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
+import api from '../../api';
+import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { drainUntil } from '../utils/asyncDrain';
 
 const CAR_ID = 'polestar';
@@ -113,6 +116,18 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   };
 
   const of = (event: string): LinkEvent[] => events.filter((entry) => entry.event === event);
+
+  /**
+   * The charger as the settings UI receives it — through the registered
+   * `ui_devices` endpoint handler, not the composer beneath it, so endpoint
+   * registration and routing are part of what this asserts.
+   */
+  const chargerFromUi = async (): Promise<DecoratedDeviceSnapshot> => {
+    const payload = await api.ui_devices({ homey: mockHomeyInstance as never });
+    const charger = payload.devices.find((device: DecoratedDeviceSnapshot) => device.id === CHARGER_ID);
+    if (!charger) throw new Error('charger missing from the settings-UI devices payload');
+    return charger;
+  };
 
   /** Advance `minutes` of app time, flushing detached work as timers fire. */
   const pumpMinutes = async (minutes: number): Promise<void> => {
@@ -231,5 +246,65 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     expect(of('ev_car_session_elsewhere')[0]).toMatchObject({ carId: CAR_ID });
     // No link, so no vote was cast for this pair.
     expect(of('ev_car_link_resolved')).toEqual([]);
+  });
+
+  // The association reaches the settings UI through the real `/ui_devices`
+  // composer, which is the only consumer. Asserting through that seam (rather
+  // than a transport accessor) is what proves the value actually survives to a
+  // reader: an earlier design stamped it onto the device snapshot, where the
+  // observed-state projection dropped it and every device re-parse wiped it.
+  it('serves the associated car to the settings UI only for a car the user ticked', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    driveHomeEnergy(3_000);
+
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await pumpMinutes(2);
+
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
+    await charger.setCapabilityValue('evcharger_charging', true);
+    await charger.setCapabilityValue('measure_power', 7_000);
+    await pumpMinutes(40);
+    await drainUntil(() => of('ev_car_link_resolved').length > 0);
+
+    // The probe has matched the pair, but the user has ticked nothing: the
+    // default for every existing install must stay invisible.
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+
+    // Tick the car for this charger.
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    await flushDetached();
+
+    expect((await chargerFromUi()).associatedCar).toMatchObject({
+      carId: CAR_ID,
+      carName: 'Polestar',
+      chargingState: 'plugged_in_charging',
+      socPct: 40,
+    });
+
+    // A car the user did NOT tick never associates, even though the probe still
+    // holds the same live session for it.
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: ['some-other-car'] } });
+    await flushDetached();
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+
+    // Unplug: the association ends immediately, without waiting for a refresh.
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    await flushDetached();
+    expect((await chargerFromUi()).associatedCar).toBeDefined();
+
+    await car.setCapabilityValue('ev_charging_state', 'plugged_out');
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+    await charger.setCapabilityValue('evcharger_charging', false);
+    await charger.setCapabilityValue('measure_power', 0);
+    await pumpMinutes(40);
+
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
   });
 });

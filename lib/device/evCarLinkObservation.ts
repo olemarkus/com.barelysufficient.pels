@@ -16,6 +16,17 @@ import type { HomeyDeviceLike } from '../utils/types';
 import { isEvChargingState, toCapabilityTimestampMs } from './managerControl';
 import { normalizeStateOfChargePercent } from './transport/stateOfCharge';
 
+/**
+ * The capabilities a car must publish for an association to be possible at all.
+ * A car missing `ev_charging_state` is never even tracked (`readCarDevice`
+ * returns nothing without a resolved plug state), and one missing
+ * `measure_battery` can associate but has no battery level to contribute — so
+ * offering either in the charger's car picker would be offering a car that can
+ * never do the job. Exported so the picker filters on exactly what this module
+ * reads.
+ */
+export const EV_CAR_REQUIRED_CAPABILITY_IDS = ['ev_charging_state', 'measure_battery'] as const;
+
 export type CarObservation = {
     name: string;
     /** Always resolved: a car with no readable plug state is never tracked, so

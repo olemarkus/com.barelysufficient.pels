@@ -1,9 +1,13 @@
 # EV car ↔ charger link — detection probe
 
-**Status: log-only probe.** Nothing in this subsystem reaches planning, admission, or
-actuation. It exists to answer one question before any behaviour depends on the answer:
-*can PELS work out which car is on which charger, and notice when the car stops charging
-for its own reasons?*
+**Status: probe + display.** Correlation is still observation-only — nothing here reaches
+planning, admission, or actuation, and the charger's `stateOfCharge` is untouched. What the
+probe resolves is now *shown*: when the user ticks a car for a charger, the association is
+served to the settings UI (see "Association and eligibility"). It began as a pure probe
+answering one question before any behaviour depended on the answer: *can PELS work out
+which car is on which charger, and notice when the car stops charging for its own reasons?*
+Prod said yes (2026-08-02: a coincidence link at `deltaMs` 76816, charge tracking the flow
+card within 3 pp), which is what this display slice spends.
 
 ## Why
 
@@ -48,13 +52,46 @@ is both layering-correct and what keeps vendor knowledge in the one adapter that
 | File | Role |
 |---|---|
 | `lib/device/evCarLink.ts` | Pure correlation: edges, matching, link resolution, self-stop classification |
+| `lib/device/evCarLinkChargerView.ts` | The charger-side input shape + what its fields are evidence of |
+| `lib/device/evCarLinkReadModel.ts` | Resolves the live session into the consumer-facing association |
+| `lib/device/transport/carAssociation.ts` | Eligibility gate: user's ticked cars ∩ the probe's session |
 | `lib/device/evCarLinkObservation.ts` | Device-payload boundary: resolves a car reading, drops unknowns |
 | `lib/device/evCarLinkSnapshot.ts` | Persisted shape: normalise, vote, sample, prune, summarise |
 | `lib/device/evCarLinkProducer.ts` | The producer: ingests cars, diffs chargers, emits events |
 | `lib/device/evCarLinkWiring.ts` | Charger-view narrowing + producer construction |
 | `lib/device/evCarLinkStore.ts` | Debounce / load-grace persistence |
 | `lib/device/observationProducers.ts` | Builds this alongside the battery and solar producers |
-| `setup/evCarLinkStoreWiring.ts` | Store lifecycle (lazy load, flush) |
+| `setup/appInit/evCarLinkAccess.ts` | Store lifecycle (lazy load, flush) |
+
+## Association and eligibility
+
+A **link** is what the probe correlates. An **association** is what PELS acts on, and it
+needs two independent facts to agree:
+
+- the user ticked this car for this charger (`ev_car_associations`, a per-charger set of
+  car ids; absent or empty means the feature is off for that charger — the default);
+- the probe resolved a live session pairing them.
+
+Eligibility narrows the candidates; it never stands in for the evidence. A ticked car
+plugged in at work reports exactly the same connected state as one on this charger — that
+is what `ev_car_session_elsewhere` reports, and prod logged 357 of them in three days.
+
+**The association is resolved when read, never stored on a device snapshot.** It changes on
+the realtime feed within seconds of a plug edge, while snapshots are rebuilt only at :25 and
+:55 and are replaced wholesale by every device re-parse — a stored copy would be absent most
+of the time and up to half an hour stale after unplugging. `DeviceTransport.getAssociatedCar`
+resolves it per call; the settings-UI devices composer decorates its payload with it.
+
+**The charge reading is served with its timestamp and is not gated on the session start.**
+Cars publish `measure_battery` on change, so a session normally opens with the last pre-plug
+reading and nothing new arrives until the level rises. That reading is the car's real charge.
+`emitSelfStop` keeps a stricter per-session gate because it asks a different question — where
+the car stopped *this time* — and banking an older percentage there would publish a
+confidently wrong charge limit.
+
+A car must publish **both** `ev_charging_state` and `measure_battery` to be offered in the
+picker. Only the first is needed to associate; the second is required because a car that
+cannot report a level has nothing to contribute to the feature the association exists for.
 
 ## Correlation rules
 
@@ -204,8 +241,10 @@ Verified there (2026-07-27), reading `ev_car_*` out of the app log:
 
 ## Known evidence limits
 
-The probe is log-only, so every gap below costs EVIDENCE QUALITY, never correct PELS
-behaviour — nothing reads these events. Read the logs with these in mind:
+For a charger with no ticked car — every install by default — the gaps below cost EVIDENCE
+QUALITY only. For a charger the user HAS configured, a mis-resolved or missing link is now
+user-visible: the wrong car's name and charge, or none at all. Nothing reaches planning,
+admission, or actuation either way. Read the logs with these in mind:
 
 - **A car can be invisible rather than mis-read.** A car whose plug state is unreadable on the
   first fetch, one whose by-id reads flake three times, and one whose app is installed after
@@ -236,8 +275,10 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
 
 ## Out of scope for this slice
 
-- Adopting the car's charge into the snapshot, or any planning/actuation effect.
+- Adopting the car's charge into the charger's `stateOfCharge`, or any planning/actuation
+  effect.
+- Manual car selection: the user picks which cars are *eligible*, never which one is
+  associated. That stays the probe's call.
 - Suspending smart-task accounting on self-stop. The producer lives in `lib/device`, a peer
   that may not reach `lib/objectives`, so tying `ev_car_self_stopped` to a running smart
   task is a log-review exercise for now. Tracked in `TODO.md`.
-- Any settings UI.

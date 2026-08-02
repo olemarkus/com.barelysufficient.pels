@@ -52,5 +52,6 @@ export const buildDeviceParseProviders = (params: {
     getDeviceControlProfile: (id) => ctx.deviceControlProfiles[id],
     getDeviceTargetPowerConfig: (id) => ctx.deviceTargetPowerConfigs[id],
     getFlowReportedCapabilities: (deviceId) => ctx.getFlowReportedCapabilitiesForDevice(deviceId),
+    getEvCarAssociationCarIds: (id) => ctx.evCarAssociations[id]?.carIds ?? [],
   };
 };

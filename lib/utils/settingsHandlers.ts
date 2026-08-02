@@ -23,6 +23,7 @@ import {
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   EV_BOOST_SETTINGS,
+  EV_CAR_ASSOCIATIONS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
   EXPORT_SPOT_FACTOR,
@@ -317,6 +318,34 @@ function buildSettingsHandlers(
   };
 }
 
+/**
+ * Keys whose change must RE-PARSE the device snapshot before the plan rebuild,
+ * because each one changes how a device parses — its control profile, its
+ * native wiring, its driver identity — rather than only how the planner reads an
+ * already-parsed device. Rebuilding the plan alone
+ * would replan against the previous parse.
+ *
+ * The reason strings are the established log vocabulary for these changes and
+ * are load-bearing for log review; keep them verbatim when adding a key.
+ */
+const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
+  [CONTROLLABLE_DEVICES, 'controllable_devices_change'],
+  [MANAGED_DEVICES, 'managed_devices_change'],
+  [NATIVE_EV_WIRING_DEVICES, 'native_ev_wiring_change'],
+  [DEVICE_DRIVER_OVERRIDES, 'device_driver_override_change'],
+  [DEVICE_CONTROL_PROFILES, 'device_control_profile_change'],
+  [DEVICE_TARGET_POWER_CONFIGS, 'device_target_power_change'],
+  [DEVICE_COMMUNICATION_MODELS, 'device_communication_model_change'],
+];
+
+function buildSnapshotReparseHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
+  return Object.fromEntries(SNAPSHOT_REPARSE_SETTINGS.map(([key, reason]) => [key, async () => {
+    deps.loadCapacitySettings();
+    await refreshSnapshotWithLog(deps, reason);
+    await rebuildPlanFromSettings(deps, key);
+  }]));
+}
+
 function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
   return {
     mode_device_targets: async () => handleModeTargetsChange(deps),
@@ -334,41 +363,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // pre-migration follower.
       deps.rebuildHomeRuntimePlansForModeChange?.();
     },
-    [CONTROLLABLE_DEVICES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'controllable_devices_change');
-      await rebuildPlanFromSettings(deps, 'controllable_devices');
-    },
-    [MANAGED_DEVICES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'managed_devices_change');
-      await rebuildPlanFromSettings(deps, 'managed_devices');
-    },
-    [NATIVE_EV_WIRING_DEVICES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'native_ev_wiring_change');
-      await rebuildPlanFromSettings(deps, NATIVE_EV_WIRING_DEVICES);
-    },
-    [DEVICE_DRIVER_OVERRIDES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'device_driver_override_change');
-      await rebuildPlanFromSettings(deps, DEVICE_DRIVER_OVERRIDES);
-    },
-    [DEVICE_CONTROL_PROFILES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'device_control_profile_change');
-      await rebuildPlanFromSettings(deps, DEVICE_CONTROL_PROFILES);
-    },
-    [DEVICE_TARGET_POWER_CONFIGS]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'device_target_power_change');
-      await rebuildPlanFromSettings(deps, DEVICE_TARGET_POWER_CONFIGS);
-    },
-    [DEVICE_COMMUNICATION_MODELS]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'device_communication_model_change');
-      await rebuildPlanFromSettings(deps, DEVICE_COMMUNICATION_MODELS);
-    },
+    ...buildSnapshotReparseHandlers(deps),
+    // Reload only. The car eligibility set is read at the association's read
+    // boundary (`lib/device/transport/carAssociation.ts`), so nothing needs
+    // re-parsing or replanning — the next read resolves against the new set.
+    [EV_CAR_ASSOCIATIONS]: async () => { deps.loadCapacitySettings(); },
     [TEMPERATURE_CONTROL_DISABLED_DEVICES]: async () => {
       // Load synchronously before the first await: every actuator reads this
       // live map at its final setup-layer fence, so an already-queued target or

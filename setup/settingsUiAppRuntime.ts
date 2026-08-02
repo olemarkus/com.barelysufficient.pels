@@ -4,7 +4,7 @@ import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
 } from '../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { AssociatedCarSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart
@@ -22,6 +22,7 @@ const appNotReadyError = (capability: string): Error => (
 type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
+  deviceManager?: { getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined };
   powerTracker?: PowerTrackerState;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
   priceCoordinator?: {
@@ -66,6 +67,18 @@ export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetD
   const snapshot = app?.latestTargetSnapshot;
   return Array.isArray(snapshot) ? snapshot : null;
 };
+
+/**
+ * The live car-association read. Resolved per call by the transport (never held
+ * on a snapshot), so the settings UI sees a plug-in within the probe's ~90 s
+ * settle rather than at the next :25/:55 refresh.
+ */
+export const getAssociatedCarForUiFromApp = (
+  homey: Homey.App['homey'],
+  chargerId: string,
+): AssociatedCarSnapshot | undefined => (
+  getRuntimeApp(homey)?.deviceManager?.getAssociatedCar?.(chargerId)
+);
 
 export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {
   const app = getRuntimeApp(homey);

@@ -90,6 +90,60 @@ export type EvBoostConfig = {
 
 export type EvBoostSettings = Record<string, EvBoostConfig>;
 
+/**
+ * The cars a charger MAY associate, as ticked by the user on the charger's page.
+ *
+ * This is an eligibility set, not an association: it says which class `car`
+ * devices are candidates for this charger, never which one is plugged in right
+ * now. The association itself is session-scoped and lives only in memory
+ * (`lib/device/evCarLinkProducer.ts`) — see `notes/ev-car-link/README.md`.
+ *
+ * An absent or empty entry means the feature is off for that charger.
+ */
+export type EvCarAssociationConfig = {
+    carIds: string[];
+};
+
+export type EvCarAssociations = Record<string, EvCarAssociationConfig>;
+
+/**
+ * The car a charger is associated with FOR THE CURRENT SESSION, resolved by the
+ * car-link probe and narrowed to the cars the user ticked for this charger.
+ *
+ * Resolved WHEN READ, never stored on a device snapshot: it is a cross-device
+ * inference over live probe state, not an observation of the charger, and a
+ * stored copy would go stale between snapshot refreshes and be dropped by every
+ * device re-parse.
+ *
+ * `chargingState` is display-only. It is deliberately NOT merged into the
+ * charger's own `evChargingState` and is not read by any control path: the car
+ * and the charger observe the same plug independently, and collapsing them would
+ * let a car app's reporting lag drive PELS's view of the charger.
+ *
+ * `socPct` is the car's last reported battery level, absent until it has
+ * reported one at all — an omitted value means "never observed", never "zero".
+ * It is deliberately NOT gated on the session start: cars publish
+ * `measure_battery` on change, so a session normally opens with the last
+ * pre-plug reading and nothing new arrives until the level rises, and that
+ * reading is still the car's real charge. `socObservedAtMs` carries when it was
+ * observed so a consumer can render its age; a consumer that needs a
+ * freshness VERDICT (rather than an age to display) must take it from the
+ * established rule that only decays a level while charge is in motion
+ * (`lib/device/transport/stateOfCharge.ts`), never invent its own cutoff.
+ *
+ * A link the probe recovered from its affinity prior (rather than a live plug
+ * coincidence) is presented identically — the distinction is evidence strength
+ * for log review, and surfacing it would ask the user to adjudicate something
+ * they have no way to judge.
+ */
+export type AssociatedCarSnapshot = {
+    carId: string;
+    carName: string;
+    chargingState: EvChargingState;
+    socPct?: number;
+    socObservedAtMs?: number;
+};
+
 export type DeviceControlAdapterSnapshot = {
     kind: 'capability_adapter';
     activationAvailable?: boolean;
@@ -568,8 +622,17 @@ export type SteppedLoadDecoration = {
  * narrow through `isSteppedLoadSnapshot` / `hasObservedReportedStep`; the probes
  * are all-optional, so they widen the carrier without changing its runtime shape.
  */
+/**
+ * Applied by the settings-UI devices composer, not by transport: the association
+ * is resolved from live probe state at read time (see `AssociatedCarSnapshot`),
+ * so it decorates the payload rather than living on the device snapshot.
+ */
+export type AssociatedCarDecoration = {
+    associatedCar?: AssociatedCarSnapshot;
+};
+
 export type DecoratedDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDecoration
-    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & AssociatedCarDecoration;
 
 export type SettingsUiLogLevel = 'info' | 'warn' | 'error';
 

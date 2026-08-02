@@ -104,6 +104,11 @@ export const EXTERNAL_OFF_HOLDS = 'external_off_holds';
 export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
+// The cars each charger MAY associate: `Record<chargerId, { carIds }>` (absent or
+// empty = off for that charger). An eligibility set, never an association — the
+// association is session-scoped and in-memory. Mirror of EV_CAR_ASSOCIATIONS in
+// packages/contracts/src/settingsKeys.ts — keep both in sync.
+export const EV_CAR_ASSOCIATIONS = 'ev_car_associations';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
 // Marker set once the blob → per-device-key migration has run. Per-device
 // objectives live under `deferred_objective.<deviceId>` keys (see
