@@ -82,6 +82,12 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   planDevices: DevicePlanDevice[];
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
+  // Post-pass per-axis availability, for the reason-normalization stage to
+  // compute per-device shortfalls against the SAME axes this lane debited —
+  // rebuilding from the restore-pass axes there would miss the temperature
+  // restores admitted here and over-report availability. `null` when the
+  // caller ran scalar-only (no ledger supplied).
+  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null } | null;
 } {
   const {
     planDevices,
@@ -150,6 +156,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     planDevices: nextDevices,
     availableHeadroom: headroom,
     restoredOneThisCycle: restoredOne,
+    ledgerAxes: ledger ? ledger.axes() : null,
   };
 }
 

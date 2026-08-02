@@ -240,13 +240,33 @@ shared by all three card variants):
 |---|---|
 | Budget-releasable hold (the `Let it run now` case) | `Limited to stay within today's budget` |
 | Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
-| Held on power, no shortfall resolved | `Waiting to resume` |
+| Held because this hour's energy budget is spent | `Waiting to resume — more budget next hour` |
+| Held on power, no shortfall resolved (rare) | `Waiting to resume` |
 | Long-held on capacity, no shortfall | `Waiting for available power` |
 | Hold that is NOT about power | its own cause (below) |
 
 The shortfall is the kW that would actually admit the device — reserves folded
 in (`resolveRestoreShortfallKw`), not `need − available`, which understates the
 real gate by ~0.5 kW.
+
+Since 2026-08-02 the shortfall exists for **every** power-liftable hold, with no
+distinction by which ceiling binds (user ruling): `finalizeCeilingReason`
+(`lib/plan/planReasons.ts`) recomputes the device's own admission gap **every
+cycle** from the current per-axis availability — including for swap holds,
+where the number is THIS device's need against the current pace, never the
+swapped-in device's figures. Fresh wins over producer-minted numbers: a
+rejection snapshot carried across cooldown/overshoot cycles pinned "2.3 kW more
+needed" on prod cards (2026-08-02 evening) while the recovered pace put the
+true gap at 1.3 kW. The bare `Waiting to resume` line survives only where the
+arithmetic honestly declines (a reserve block — the card names the holder
+instead — admission passing this cycle, the exhausted hour on a swap hold, or
+inputs missing in tests).
+
+The hourly-exhausted line is the one ceiling hold that must NOT show a kW: the
+hour's kWh is spent and cannot be un-spent, so no freed power admits the device
+before the hour rolls over. While accrued pace headroom could still fit the
+device this hour, the normal kW line applies — the time-based copy is only for
+the truly spent hour (`hourlyBudgetExhausted`).
 
 Holds where power is not the blocker keep naming their cause, because freeing
 power would not start them and a kW figure would be a lie: `Waiting for cheaper
@@ -261,11 +281,16 @@ and the countdown lines (`Waiting before resuming (50s)`).
 device`, `Blocked by safety rule`. The first two restated the bold `Limited`
 state word and named no cause at all; the rest are house-level.
 
-Where they survive, precisely: the six ceiling/swap strings stay in
+Where they survive, precisely: the ceiling/swap strings stay in
 `formatDeviceReasonUserFacing`, which feeds the runtime logs and the device
 **activity log** (`lib/plan/deviceOverviewLog.ts` → the `ui_device_log` list
-inside device detail). They do NOT appear on the device-detail live-status row,
-which renders no plan reason except the external-off guidance. `Turned off by
+inside device detail) — except `Limited — this hour is near the hard cap`,
+which is retired EVERYWHERE: it misdescribed the trigger (the hour's kWh being
+spent, not cap proximity), and the `hourlyBudget` reason now renders
+`Waiting to resume — more budget next hour` on the card and in the log alike.
+
+They do NOT appear on the device-detail live-status row, which renders no plan
+reason except the external-off guidance. `Turned off by
 PELS` / `Lowered by PELS` are not in that formatter at all — they lived in
 `resolveHeldStateActionLabel`, which now has no production caller.
 

@@ -501,6 +501,39 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Waiting to increase — 0.5 kW more needed');
     });
 
+    // A swap victim denied a step-up carries the normalizer-attached gap —
+    // THIS device's own need against the pace, not the swapped-in device's
+    // numbers — and renders the same verb-adjusted line.
+    it('returns waiting-to-increase text for a swapped-out device with an attached shortfall', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
+          reason: { code: 'swapped_out', targetName: 'Water heater', shortfallKw: 0.7 },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Waiting to increase — 0.7 kW more needed');
+    });
+
+    // The exhausted-hour hold carries no gap by design; a running device denied
+    // a step-up must still get the next-hour explanation in the increase mood.
+    it('returns the increase-mood hourly line for a step-up denied by the exhausted hour', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
+          reason: { code: 'hourly_budget', detail: null },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Waiting to increase — more budget next hour');
+    });
+
     // Production-shaped reason (margins present): the gap is the
     // admission-accurate shortfall `minimumRequired − postReserveMargin`
     // (0.25 − (−0.75) = 1.0 kW), NOT the understated `need − available`
@@ -558,6 +591,36 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       )).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+    });
+
+    // A capacity hold normally arrives with the normalizer-attached gap
+    // (`finalizeCeilingReason`), so the card states the number.
+    it('states the shortfall when a capacity hold carries one', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
+          reason: { code: 'capacity', detail: null, shortfallKw: 0.9 },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Waiting to resume — 0.9 kW more needed');
+    });
+
+    // The exhausted hour renders time-based copy — spent kWh cannot be
+    // un-spent, so a kW figure would be dishonest until the hour rolls over.
+    it('renders the next-hour line for an exhausted hourly budget', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
+          reason: { code: 'hourly_budget', detail: null },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Waiting to resume — more budget next hour');
     });
 
     it('states the shortfall when a budget hold carries one', () => {

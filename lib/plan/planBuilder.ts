@@ -221,9 +221,16 @@ export class PlanBuilder {
     const holdResult = this.stages.applyHoldPlan(planDevices, restoreResult, sheddingPlan);
     planDevices = holdResult.planDevices;
 
-    planDevices = this.stages.normalizeReasons(planDevices, context, restoreResult, sheddingPlan, {
-      deferredObjectiveAvoidDeviceIds: deferredAvoidDeviceIds,
-      surplusHoldReasonById,
+    planDevices = this.stages.normalizeReasons({
+      planDevices,
+      context,
+      restoreResult,
+      sheddingPlan,
+      holds: {
+        deferredObjectiveAvoidDeviceIds: deferredAvoidDeviceIds,
+        surplusHoldReasonById,
+      },
+      holdResult,
     });
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.stages.syncHeadroomCardState(planDevices);

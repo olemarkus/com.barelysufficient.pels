@@ -47,6 +47,13 @@ const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
 // shed invariant, startup stabilization, waiting on other devices). The deferred-
 // release producer reads this so a smart task claims power only when the planner
 // agrees — it never overrides capacity/cooldown.
+//
+// `dailyBudget` and `hourlyBudget` are deliberately absent, but the coupling is
+// LATENT today: `buildExecutableReleaseIntent` requires `plannedState === 'keep'`
+// before consulting the reason, and every budget-attributed hold rides a shed
+// device, so a smart-task binary_restore cannot lift those holds through this
+// set. Pinned in `test/unit/planDecisionSemantics.test.ts`; if budget holds ever
+// ride keep-state devices, revisit deliberately.
 const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.activationBackoff,
   PLAN_REASON_CODES.capacity,

@@ -11,7 +11,7 @@ import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
 import { formatStarvationReason } from './planStarvation';
-import { formatShortfallLine, resolveHeldCardReasonLine } from './planCardReasonLine';
+import { formatHourlyExhaustedLine, formatShortfallLine, resolveHeldCardReasonLine } from './planCardReasonLine';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 import {
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
@@ -196,6 +196,13 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   const currentIdx = findStepIndex(profile, currentId);
   const targetIdx = findStepIndex(profile, targetId);
   if (currentIdx >= 0 && targetIdx > currentIdx) {
+    // The exhausted-hour hold deliberately carries no gap — a running device
+    // denied a step-up must still get the next-hour explanation (in the
+    // `increase` mood), not silence, or the one hold state with a firm time
+    // recourse would be the only one the card cannot explain.
+    if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) {
+      return formatHourlyExhaustedLine('increase');
+    }
     const gap = resolveRestoreShortfallKw(device.reason);
     return gap !== null ? formatShortfallLine(gap, 'increase') : null;
   }

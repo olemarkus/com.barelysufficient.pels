@@ -139,9 +139,13 @@ function planShedding(
   const result = selectShedDevices({
     candidates,
     needed,
+    // The flag short-circuits inside `resolveShedReason`, so the limit source
+    // is passed plain — the old `exhausted ? 'daily' : …` alias only fed the
+    // pre-2026-08 reason mapping.
     reason: resolveShedReason(
-      hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
+      context.softLimitSource,
       candidateSummary.capacityBreached,
+      hourlyBudgetExhausted,
     ),
     debugStructured: deps.debugStructured,
     shedAllCandidates: hourlyBudgetExhausted,
@@ -219,6 +223,10 @@ function resolveWithheldShedding(params: {
   if (!heldOnUnchangedReading) {
     return skipSheddingAwaitingMeasurement({ candidateParams, deps, needed });
   }
+  // No `hourlyBudgetExhausted` threading here: `shouldSkipSameMeasurement`
+  // returns false while the hour is exhausted, so this held-unchanged-reading
+  // path is unreachable in that state and its `resolveShedReason` never needs
+  // the flag.
   return holdSheddingAtLastDecision({
     candidateParams, state, deps, needed, limitSource, unchangedPowerW,
   });

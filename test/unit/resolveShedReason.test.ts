@@ -35,4 +35,19 @@ describe('resolveShedReason', () => {
       detail: null,
     });
   });
+
+  // The exhausted hour outranks both soft-limit sources (including a capacity
+  // breach): spent kWh cannot be un-spent, so no freed power admits anything
+  // before the hour rolls over, and the card renders time-based copy from this
+  // code instead of a kW gap.
+  it('names the hourly budget when the hour is exhausted, whatever else binds', () => {
+    expect(resolveShedReason('daily', false, true)).toEqual({
+      code: PLAN_REASON_CODES.hourlyBudget,
+      detail: null,
+    });
+    expect(resolveShedReason('capacity', true, true)).toEqual({
+      code: PLAN_REASON_CODES.hourlyBudget,
+      detail: null,
+    });
+  });
 });

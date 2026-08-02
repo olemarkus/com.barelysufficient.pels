@@ -466,6 +466,34 @@ describe('device overview transition signatures', () => {
       .toBe(buildDeviceOverviewTransitionSignature(jitterOnly));
   });
 
+  // Since `finalizeCeilingReason` attaches a pace-relative `shortfallKw` to
+  // every ceiling hold each cycle, the exclusion must hold for all carriers —
+  // the gap moves with `softLimitKw − totalKw`, so including it would flip the
+  // signature on most rebuilds and flood the device-log ring buffer.
+  it('ignores shortfall jitter on capacity, budget, and swap carriers', () => {
+    const withGap = (reason: DeviceReason) => ({
+      currentState: 'off',
+      plannedState: 'shed' as const,
+      shedAction: 'turn_off' as const,
+      reason,
+    });
+    const carriers = [
+      [{ code: 'capacity', detail: null, shortfallKw: 1.2 }, { code: 'capacity', detail: null, shortfallKw: 2.7 }],
+      [
+        { code: 'daily_budget', detail: null, shortfallKw: 0.8 },
+        { code: 'daily_budget', detail: null, shortfallKw: 1.1 },
+      ],
+      [
+        { code: 'swapped_out', targetName: 'Water heater', shortfallKw: 0.7 },
+        { code: 'swapped_out', targetName: 'Water heater', shortfallKw: 1.3 },
+      ],
+    ] as const;
+    for (const [a, b] of carriers) {
+      expect(buildDeviceOverviewTransitionSignature(withGap(a)))
+        .toBe(buildDeviceOverviewTransitionSignature(withGap(b)));
+    }
+  });
+
   it('changes when power, state, or status changes', () => {
     const base = {
       currentState: 'on',

@@ -8,7 +8,7 @@ import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
-  PLAN_STATE_HOURLY_BUDGET_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
 } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 
@@ -372,7 +372,7 @@ const readFiniteNumber = (value: unknown): number | null => (
 // contract: a true gap of 1.04 kW rendered as "1.0" invites freeing exactly
 // 1.0 kW and still being 0.04 kW short. Ceiling also kills the
 // "0.0 kW more needed" wart for gaps in (0.01, 0.05) — they now render 0.1.
-const ceilToDisplayKw = (gap: number): number | null => (
+export const ceilToDisplayKw = (gap: number): number | null => (
   gap > 0.01 ? Math.ceil(gap * 10 - 1e-9) / 10 : null
 );
 
@@ -548,7 +548,10 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
     case PLAN_REASON_CODES.keep:
       return reason.detail ? normalizeDetailSentence(reason.detail) : '';
     case PLAN_REASON_CODES.hourlyBudget:
-      return appendUserDetail(PLAN_STATE_HOURLY_BUDGET_STATUS, reason.detail);
+      // Same string as the card ladder (`resolveHeldCardReasonLine`) so the
+      // activity log and the card cannot drift. The detail suffix is kept for
+      // the rare producer-supplied context.
+      return appendUserDetail(PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS, reason.detail);
     case PLAN_REASON_CODES.dailyBudget:
       return appendUserDetail(PLAN_STATE_DAILY_BUDGET_STATUS, reason.detail);
     case PLAN_REASON_CODES.sheddingActive:

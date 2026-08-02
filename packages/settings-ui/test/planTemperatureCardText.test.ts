@@ -160,13 +160,16 @@ describe('resolveTemperatureReasonLine', () => {
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
   });
 
-  // `capacity` and `hourly_budget` can never carry a shortfall — no producer of
-  // either has the admission arithmetic for the device in scope — so they lose
-  // their ceiling name and gain the bare waiting line. That is the trade: the
-  // hero names the ceiling, and a card never asserts the hard cap.
-  it('never names the daily budget or the hard cap on a card', () => {
+  // No card line may name a ceiling. Carriers with a shortfall state the kW
+  // (`capacity` gets its number attached by `finalizeCeilingReason` when the
+  // restore lane supplied none); a numberless carrier stays on the bare waiting
+  // line; the exhausted hourly budget renders time-based copy — the one line
+  // that legitimately mentions the word "budget", as a recourse rather than a
+  // ceiling attribution.
+  it('never attributes a ceiling on a card', () => {
     const lines = ([
       { code: 'capacity', detail: null },
+      { code: 'capacity', detail: null, shortfallKw: 1.1 },
       { code: 'hourly_budget', detail: null },
       { code: 'daily_budget', detail: null },
       { code: 'daily_budget', detail: null, shortfallKw: 0.5 },
@@ -180,12 +183,13 @@ describe('resolveTemperatureReasonLine', () => {
 
     expect(lines).toEqual([
       PLAN_STATE_HELD_FALLBACK_STATUS,
-      PLAN_STATE_HELD_FALLBACK_STATUS,
+      'Waiting to resume — 1.1 kW more needed',
+      'Waiting to resume — more budget next hour',
       PLAN_STATE_HELD_FALLBACK_STATUS,
       'Waiting to resume — 0.5 kW more needed',
     ]);
     for (const line of lines) {
-      expect(line).not.toMatch(/hard cap|budget/i);
+      expect(line).not.toMatch(/hard cap|limited by/i);
     }
   });
 
