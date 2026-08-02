@@ -11,6 +11,7 @@ import {
   isOnLikeState,
   normalizeDeviceState,
 } from './deviceStatePredicates';
+import { isSatisfiedTargetOnlyDevice, resolvePlanStateKind } from './planStateLabels';
 import {
   DEVICE_OVERVIEW_ACTIVE,
   DEVICE_OVERVIEW_ACTIVE_CHARGING,
@@ -18,6 +19,7 @@ import {
   DEVICE_OVERVIEW_CAPACITY_CONTROL_OFF,
   DEVICE_OVERVIEW_CHARGING_PAUSED,
   DEVICE_OVERVIEW_CHARGING_REQUESTED,
+  DEVICE_OVERVIEW_IDLE,
   DEVICE_OVERVIEW_INACTIVE,
   DEVICE_OVERVIEW_INACTIVE_CAR_NOT_CHARGING,
   DEVICE_OVERVIEW_INACTIVE_CAR_UNPLUGGED,
@@ -55,6 +57,18 @@ export type DeviceOverviewSnapshot = {
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   shedTemperature?: number | null;
   currentTarget?: unknown;
+  // Observed room/tank temperature for temperature-controlled devices. Loosely
+  // typed like `currentTarget` (snapshot-boundary value). Read by
+  // `resolvePlanStateKind` to resolve a satisfied target-only device to `idle`
+  // instead of inferring "Running" from `not_applicable`.
+  currentTemperature?: unknown;
+  // The planner's intended target. The satisfied-idle predicate judges against
+  // max(currentTarget, plannedTarget): the live setpoint can still be the shed
+  // floor during keep-state restore windows.
+  plannedTarget?: unknown;
+  // Truthy while a target write is in flight — a satisfied verdict against the
+  // pre-command setpoint would be premature.
+  pendingTargetCommand?: unknown;
   reportedStepId?: string;
   targetStepId?: string;
   selectedStepId?: string;
@@ -233,6 +247,10 @@ const resolveKeepStateMsg = (device: DeviceOverviewSnapshot): string => {
   }
   if (isOffLikeState(device.currentState)) return DEVICE_OVERVIEW_RESUMING;
   if (normalizeDeviceState(device.currentState) === 'not_applicable') {
+    // Keep the chip text in lockstep with the resolved state word: a satisfied
+    // target-only device is stamped `idle`, and an idle-toned chip reading
+    // "Active (temperature-managed)" would contradict the card one line up.
+    if (isSatisfiedTargetOnlyDevice(device)) return DEVICE_OVERVIEW_IDLE;
     return DEVICE_OVERVIEW_ACTIVE_TEMPERATURE_MANAGED;
   }
   return DEVICE_OVERVIEW_ACTIVE;
@@ -352,5 +370,12 @@ export const buildDeviceOverviewTransitionSignature = (
     surplusAbsorbActive: device.surplusAbsorbActive === true,
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
     targetStepId: getTargetStepId(device) ?? null,
+    // The RESOLVED state kind, not the raw temperatures: a satisfied
+    // target-only device flipping Running ↔ Idle can have `currentTemperature`
+    // as its only changed input, which no other signature field carries — the
+    // device log would silently skip the transition. The classification is
+    // stable (a 0.1 °C wobble below the epsilon does not change it), so this
+    // cannot churn the log the way a raw temperature field would.
+    stateKind: resolvePlanStateKind(device),
   })
 );

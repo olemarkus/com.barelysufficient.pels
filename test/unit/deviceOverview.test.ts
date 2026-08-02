@@ -12,6 +12,30 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 
 const r = (reason: string): DeviceReason => legacyDeviceReason(reason)!;
 
+describe('overview transition signature', () => {
+  // Regression (PR #1955 review, Copilot + Codex): a satisfied target-only
+  // thermostat's Running ↔ Idle flip can have the temperature as its only
+  // changed input; the signature must carry the RESOLVED state kind so the
+  // device log records the transition (and only the transition — sub-epsilon
+  // temperature wobble must not change the signature).
+  it('changes when the satisfied-idle classification flips, not on sub-epsilon wobble', () => {
+    const base = {
+      currentState: 'not_applicable',
+      plannedState: 'keep',
+      reason: r('keep'),
+      controllable: true,
+      available: true,
+      measuredPowerKw: 0,
+      currentTarget: 16,
+    };
+    const running = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 14 });
+    const idle = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 20.8 });
+    const idleWobble = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 20.9 });
+    expect(idle).not.toBe(running);
+    expect(idleWobble).toBe(idle);
+  });
+});
+
 describe('device overview formatter', () => {
   it('formats active devices with measured and expected power', () => {
     expect(formatDeviceOverview({
@@ -26,6 +50,23 @@ describe('device overview formatter', () => {
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW',
       statusMsg: '',
     });
+  });
+
+  // The chip text must stay in lockstep with the resolved state word: a
+  // satisfied target-only device is stamped `idle`, so an idle-toned chip
+  // reading "Active (temperature-managed)" would contradict the card.
+  it('formats a satisfied target-only keep device as Idle, unsatisfied as Active (temperature-managed)', () => {
+    const base = {
+      currentState: 'not_applicable',
+      plannedState: 'keep',
+      reason: r('keep'),
+      measuredPowerKw: 0,
+      expectedPowerKw: 1,
+      currentTarget: 16,
+    };
+    expect(formatDeviceOverview({ ...base, currentTemperature: 20.8 }).stateMsg).toBe('Idle');
+    expect(formatDeviceOverview({ ...base, currentTemperature: 14.2 }).stateMsg)
+      .toBe('Active (temperature-managed)');
   });
 
   it('formats inactive devices', () => {

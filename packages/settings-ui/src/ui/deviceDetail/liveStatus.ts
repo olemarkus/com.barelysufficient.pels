@@ -21,7 +21,10 @@ import {
   shouldDisplayExternalOffReason,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
 import { resolveSteppedEvExceptionLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
-import { PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS } from '../../../../shared-domain/src/planStateLabels.ts';
+import {
+  isSatisfiedTargetOnlyDevice,
+  PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
+} from '../../../../shared-domain/src/planStateLabels.ts';
 import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { state } from '../state.ts';
@@ -122,6 +125,7 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
     ...grammarParams,
     dryRun: state.dryRun,
     currentState: dev.currentState,
+    satisfiedTargetOnly: isSatisfiedTargetOnlyDevice(dev),
   });
   // Same demotion the Overview stepped card applies: a target-only EV
   // (`not_applicable`) that is paused / waiting for the car / unplugged is

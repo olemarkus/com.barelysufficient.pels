@@ -63,6 +63,20 @@ describe('resolveDisplayStateKind — simulation renders the factual state', () 
     })).toBe('active');
   });
 
+  it('collapses a SATISFIED target-only device to idle under simulation, not active', () => {
+    // The factual collapse must not resurrect "Running" on a satisfied 0-draw
+    // device that real mode reads as Idle — the caller threads the resolved
+    // `isSatisfiedTargetOnlyDevice` verdict in.
+    expect(resolveDisplayStateKind({
+      kind: 'held',
+      dryRun: true,
+      currentState: 'not_applicable',
+      reasonCode: 'capacity',
+      starved: false,
+      satisfiedTargetOnly: true,
+    })).toBe('idle');
+  });
+
   it('never fires the idle→held upgrade under simulation (nothing is held)', () => {
     expect(resolveDisplayStateKind({
       kind: 'idle', dryRun: true, currentState: 'off', reasonCode: 'insufficient_headroom', starved: true,

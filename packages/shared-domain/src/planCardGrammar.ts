@@ -138,6 +138,10 @@ export type DisplayStateParams = IntentStateParams & {
   // The device's observed on/off state (canon: "Running" covers on, charging,
   // heating, or otherwise active — regardless of instantaneous draw).
   currentState: string | undefined;
+  // Caller-resolved `isSatisfiedTargetOnlyDevice(dev)` — the simulation factual
+  // collapse must not resurrect "Running" on a satisfied 0-draw target-only
+  // device that real mode reads as Idle.
+  satisfiedTargetOnly?: boolean;
 };
 
 // The state word the card displays (and the `data-state-kind` styling hook).
@@ -148,9 +152,10 @@ export const resolveDisplayStateKind = (params: DisplayStateParams): PlanDisplay
     // Simulation: PELS-acted kinds collapse to the factual device state; the
     // hypothetical action lives in the reason line. `not_applicable` (a
     // target-only device with no on/off axis) counts as active, matching
-    // `resolvePlanStateKind`'s own active-state rule.
+    // `resolvePlanStateKind`'s active-state rule — including its satisfied
+    // carve-out, threaded in as `satisfiedTargetOnly` by the caller.
     const factualActive = currentState === 'not_applicable' || isOnLikeState(currentState);
-    if (factualActive) return 'active';
+    if (factualActive) return params.satisfiedTargetOnly === true ? 'idle' : 'active';
     return currentState?.trim().toLowerCase() === 'off' ? 'off' : 'idle';
   }
   // `Idle` describes a device that remains available/on but has nothing to do.
