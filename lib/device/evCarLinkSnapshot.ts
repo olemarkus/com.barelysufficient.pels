@@ -306,5 +306,9 @@ export const pruneEvCarLinkSnapshot = (params: {
         version: EV_CAR_LINK_VERSION,
         pairs: Object.fromEntries(pairs),
         cars: Object.fromEntries(cars),
+        // Carried through: pruning ages out EVIDENCE, and a live session is not
+        // evidence. Rebuilding without it meant one stale pair at boot silently
+        // dropped every session, so a mid-charge restart lost its car.
+        ...(snapshot.sessions ? { sessions: snapshot.sessions } : {}),
     };
 };

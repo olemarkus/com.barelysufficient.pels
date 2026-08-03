@@ -39,43 +39,53 @@ const resolve = (params: {
 
 describe('resolveResumableSessions', () => {
   it('resumes when both the charger and its remembered car report connected', () => {
-    expect(resolve({})).toEqual([{ chargerId: 'charger-1', carId: 'car-1', sinceMs: 1_000 }]);
+    expect(resolve({}).resume).toEqual([{ chargerId: 'charger-1', carId: 'car-1', sinceMs: 1_000 }]);
   });
 
   it('carries the original session start rather than restamping it', () => {
     // The session did not begin again; PELS looked away and came back. Restamping
     // would date it from the restart and misreport how long the car has been on.
-    expect(resolve({})[0].sinceMs).toBe(1_000);
+    expect(resolve({}).resume[0].sinceMs).toBe(1_000);
   });
 
-  it('does not resume when only the car reports connected', () => {
+  it('forgets the session when the charger reports nothing connected', () => {
     // The everyday away case: the car is plugged in at work, which looks
-    // identical from the car's side, while this charger has nothing on it.
-    expect(resolve({ chargers: [charger({ evChargingState: 'plugged_out' })] })).toEqual([]);
+    // identical from the car's side, while this charger has nothing on it. The
+    // record goes, so the pair cannot resume later on unrelated connections.
+    const verdict = resolve({ chargers: [charger({ evChargingState: 'plugged_out' })] });
+    expect(verdict.resume).toEqual([]);
+    expect(verdict.forget).toEqual(['charger-1']);
   });
 
-  it('does not resume when only the charger reports connected', () => {
+  it('forgets the session when the remembered car reports disconnected', () => {
     // Some other car is on it — a guest, or a household car PELS does not track.
-    expect(resolve({ cars: [['car-1', car({ state: 'plugged_out' })]] })).toEqual([]);
+    const verdict = resolve({ cars: [['car-1', car({ state: 'plugged_out' })]] });
+    expect(verdict.resume).toEqual([]);
+    expect(verdict.forget).toEqual(['charger-1']);
   });
 
-  it('does not resume a car that is no longer in Homey', () => {
-    expect(resolve({ cars: [] })).toEqual([]);
+  it('holds an unobserved car rather than disproving the session', () => {
+    // Absence of telemetry is not evidence: the car may simply not have been
+    // read yet this pass. Forgetting here would throw away a resumable session
+    // for want of a fetch.
+    const verdict = resolve({ cars: [] });
+    expect(verdict.resume).toEqual([]);
+    expect(verdict.forget).toEqual([]);
   });
 
   it('resumes nothing without a persisted session', () => {
     // Snapshots written before sessions were persisted, and every charger whose
     // session ended normally.
-    expect(resolve({ sessions: {} })).toEqual([]);
+    expect(resolve({ sessions: {} }).resume).toEqual([]);
     expect(resolveResumableSessions({
       sessions: undefined, chargers: [charger()], cars: new Map(), isSettled: () => false,
-    })).toEqual([]);
+    })).toEqual({ resume: [], forget: [] });
   });
 
   it('leaves a charger alone once it is settled', () => {
     // Already linked, or already resumed this run — resuming again would re-emit
     // on every correlation pass.
-    expect(resolve({ settled: ['charger-1'] })).toEqual([]);
+    expect(resolve({ settled: ['charger-1'] })).toEqual({ resume: [], forget: [] });
   });
 
   it('resumes each charger in a two-car, two-charger home', () => {
@@ -90,6 +100,6 @@ describe('resolveResumableSessions', () => {
       cars: new Map([['car-1', car()], ['car-2', car({ name: 'Zoe' })]]),
       isSettled: () => false,
     });
-    expect(resumed.map((entry) => entry.carId)).toEqual(['car-1', 'car-2']);
+    expect(resumed.resume.map((entry) => entry.carId)).toEqual(['car-1', 'car-2']);
   });
 });

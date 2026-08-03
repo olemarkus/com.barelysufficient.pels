@@ -1,8 +1,8 @@
 import {
-  clearCarStateOfCharge,
   resolveStateOfChargeSnapshot,
   updateStateOfChargeFromCarObservation,
 } from '../../lib/device/transport/stateOfCharge';
+import { clearCarStateOfCharge } from '../../lib/device/transport/carStateOfChargeWrite';
 
 describe('resolveStateOfChargeSnapshot', () => {
   it('prefers native SoC capabilities over flow-backed battery reports', () => {
@@ -184,7 +184,7 @@ describe('car-sourced state of charge', () => {
       nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
-      carAdoptionActive: true,
+      eligibleCarIds: ['car-1'],
     })).toBeUndefined();
   });
 
@@ -203,7 +203,7 @@ describe('car-sourced state of charge', () => {
       nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
-      carAdoptionActive: true,
+      eligibleCarIds: ['car-1'],
       retainedStateOfCharge: {
         percent: 63, observedAtMs: 1_500, status: 'fresh', source: 'car', sourceDeviceId: 'car-1',
       },
@@ -219,7 +219,7 @@ describe('car-sourced state of charge', () => {
       nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
-      carAdoptionActive: true,
+      eligibleCarIds: ['car-1'],
       retainedStateOfCharge: { percent: 71, observedAtMs: 1_500, status: 'fresh' },
     })).toBeUndefined();
   });

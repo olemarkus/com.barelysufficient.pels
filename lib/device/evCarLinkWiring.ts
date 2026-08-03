@@ -68,7 +68,15 @@ export const buildEvCarLinkChargerViews = (
         // percentage the observation layer has already marked stale or
         // invalidated (an unplug/reconnect). Comparing the car against that would
         // corrupt the very flow-card accuracy signal the shadow exists to report.
-        ...(hasObservedStateOfCharge(snapshot) && snapshot.stateOfCharge.status === 'fresh'
+        //
+        // A car-sourced value is excluded for the same reason, more sharply: it
+        // IS the car's own reading written back, so the shadow would compare the
+        // car against itself and report ordinary charge movement as charger-report
+        // accuracy — silencing the evidence channel for exactly the chargers under
+        // test.
+        ...(hasObservedStateOfCharge(snapshot)
+            && snapshot.stateOfCharge.status === 'fresh'
+            && snapshot.stateOfCharge.source !== 'car'
             ? { reportedSocPct: snapshot.stateOfCharge.percent }
             : {}),
     }];
