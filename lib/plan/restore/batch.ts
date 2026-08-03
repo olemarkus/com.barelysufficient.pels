@@ -24,6 +24,20 @@ export function buildRestoreBatchState(params: {
   };
 }
 
+// One-at-a-time admission: the exempt restore lane runs while shedding is
+// latched, where batch continuation must stay off even in the hysteresis band
+// (activeOvershoot false) — so it gets an explicitly-disabled batch state
+// rather than relying on buildRestoreBatchState's overshoot conjunct.
+export function buildDisabledRestoreBatchState(): RestoreBatchState {
+  return {
+    enabled: false,
+    maxDevices: RESTORE_BATCH_MAX_DEVICES,
+    maxNeedKw: 0,
+    admittedCount: 0,
+    admittedNeedKw: 0,
+  };
+}
+
 export function canAttemptBatchContinuation(batchState: RestoreBatchState): boolean {
   return batchState.enabled && batchState.admittedCount > 0 && batchState.admittedCount < batchState.maxDevices;
 }

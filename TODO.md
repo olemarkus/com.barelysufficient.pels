@@ -1086,6 +1086,43 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Exempt restore lane keys on the instantaneous binding source, not the latch cause.**
+      `shouldPlanBudgetExemptRestores` (`lib/plan/restore/timing.ts`) opens on
+      `softLimitSource === 'daily'`, but `sheddingActive` is a latch: a capacity-latched shed
+      whose binding source flips to `daily` mid-latch (daily pace recomputes below the capacity
+      dynamic limit while binding headroom sits in the hysteresis band) opens the lane and lets
+      an exempt admission consume part of the capacity clearance margin the latch was holding.
+      Bounded by the admission floor and the shed/restore cooldowns (documented in the
+      predicate's docblock), so no divergence — but recording the latch *cause* alongside
+      `sheddingActive` in the capacity guard and gating the lane on it would close the corner.
+      Source: pels-runtime-reality review of the exempt-restore-lane PR, 2026-08-03. [P2]
+
+- [ ] **A `set_temperature`-only budget-exempt device stays budget-pinned while binary/stepped
+      exempt devices resume.** The exempt restore lane (`lib/plan/restore/exemptRestoreLane.ts`)
+      covers binary and stepped candidates — the ledger's admission surface — but the temperature
+      hold lane stays gated by `inShedWindow` (`planReasonsHoldDecisions.ts`), so a target-only
+      exempt heater is not resumed while shedding is latched on the budget axis. Deliberate scope
+      cut, stated in the lane's docblock; extending it means teaching the hold lane per-axis
+      admission. Persona: owner who exempted a floor-heating thermostat and sees the exempt EV
+      charger climb while the thermostat stays held; hypothesis: rare today because exemption is
+      mostly applied to chargers/heaters with binary or stepped control. [P3]
+
+- [ ] **Exempt lane can open with nothing admittable (pre-reserve vs post-reserve asymmetry).**
+      The lane gate reads pre-reserve `context.capacityHeadroomKw > 0` while the cycle ledger
+      subtracts `pendingReserveKw` (`lib/plan/restore/index.ts`, `buildCycleHeadroomLedger`), so
+      when a pending-restore reservation consumes the whole capacity axis the lane opens and every
+      candidate gets an insufficient-headroom reject instead of the blocked-branch stay-off
+      reason for that cycle. Truthful either way; cosmetic no-op cycle. Align the gate with the
+      post-reserve axis if the reason churn ever shows up on cards. [P3]
+
+- [ ] **`deviceFilter` hooks on the marking helpers are open lambdas.** `markOffDevicesStayOff`
+      (`lib/plan/restore/devices.ts`) and `markSteppedDevicesStayAtCurrentLevel`
+      (`lib/plan/restore/helpers.ts`) accept `deviceFilter?: (dev) => boolean`; today the only
+      caller is the exempt lane passing the exemption predicate. If a second caller appears with
+      a different predicate, replace the open hook with a named semantic option (e.g.
+      `excludeBudgetExempt: true`) so marking policy stays enumerable in the producer.
+      Source: pels-layering-guardian review of the exempt-restore-lane PR, 2026-08-03. [P3]
+
 - [ ] **A transient settings read-miss silently disables every configured car association.**
       `buildCapacitySettingsSnapshot` (`setup/appSettingsHelpers.ts`) normalizes
       `ev_car_associations` unconditionally, so a `null`/malformed read replaces the eligibility

@@ -65,14 +65,17 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'startupStabilizationRemainingSec'>;
   currentOffPlannedState?: 'shed' | 'keep';
   getLastControlledMs?: (deviceId: string) => number | undefined;
+  deviceFilter?: (dev: DevicePlanDevice) => boolean;
 }): void {
   const {
     deviceMap,
     timing,
     currentOffPlannedState = 'shed',
     getLastControlledMs,
+    deviceFilter,
   } = params;
-  const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
+  const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()))
+    .filter((dev) => deviceFilter?.(dev) ?? true);
   for (const dev of steppedDevices) {
     // "Off" here must use the SAME step-axis resolution as the candidacy filter:
     // a step-only stepped device (no binary handle) parked at its off step is off

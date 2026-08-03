@@ -187,6 +187,7 @@ export function markOffDevicesStayOff(params: {
   reasonOverride?: (dev: DevicePlanDevice) => DeviceReason;
   blockedPlannedState?: 'shed' | 'keep';
   getLastControlledMs?: (deviceId: string) => number | undefined;
+  deviceFilter?: (dev: DevicePlanDevice) => boolean;
 }): void {
   const {
     deviceMap,
@@ -195,9 +196,11 @@ export function markOffDevicesStayOff(params: {
     reasonOverride,
     blockedPlannedState = 'shed',
     getLastControlledMs,
+    deviceFilter,
   } = params;
   const offDevices = Array.from(deviceMap.values())
-    .filter((device) => isBinaryRestoreCandidate(device));
+    .filter((device) => isBinaryRestoreCandidate(device))
+    .filter((device) => deviceFilter?.(device) ?? true);
   for (const dev of offDevices) {
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
