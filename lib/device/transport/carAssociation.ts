@@ -2,8 +2,8 @@ import type { AssociatedCarSnapshot } from '../../../packages/contracts/src/type
 import type { DeviceTransportParseProviders } from './managerParseDevice';
 import type { TransportEvCarLinkProducer } from './transportContext';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import { clearCarStateOfCharge } from './carStateOfChargeWrite';
 import {
-  clearCarStateOfCharge,
   EV_SOC_CAPABILITY_ID,
   updateStateOfChargeFromCarObservation,
 } from './stateOfCharge';

@@ -245,7 +245,7 @@ export function assembleDeviceSnapshot(params: {
             capabilityObj: overlay.capabilityObj,
             reportedCapabilities: overlay.reportedCapabilities,
             retainedStateOfCharge: previousSnapshot?.stateOfCharge,
-            carAdoptionActive: (providers.getEvCarAssociationCarIds?.(deviceId) ?? []).length > 0,
+            eligibleCarIds: providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
         }),
         currentTemperature,
         capabilities: overlay.capabilities,
@@ -312,7 +312,7 @@ function resolveParsedSoc(params: {
     capabilityObj: DeviceCapabilityMap;
     reportedCapabilities: FlowReportedCapabilitiesForDevice;
     retainedStateOfCharge: DeviceStateOfChargeSnapshot | undefined;
-    carAdoptionActive: boolean;
+    eligibleCarIds: readonly string[];
 }): DeviceStateOfChargeSnapshot | undefined {
     return resolveStateOfChargeSnapshot({
         ...params,

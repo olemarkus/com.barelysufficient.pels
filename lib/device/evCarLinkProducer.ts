@@ -534,13 +534,20 @@ export class EvCarLinkProducer {
 
     /** Applies whatever `resolveResumableSessions` says may be picked back up. */
     private resumePersistedSessions(chargers: readonly EvCarLinkChargerView[]): void {
-        const resumable = resolveResumableSessions({
+        const verdict = resolveResumableSessions({
             sessions: this.deps.getSnapshot().sessions,
             chargers,
             cars: this.cars,
             isSettled: (id) => this.activeLinks.has(id) || this.resumedChargerIds.has(id),
         });
-        for (const session of resumable) {
+        // Disproved first: a remembered endpoint reporting disconnected means that
+        // session is over. Keeping the record would let the pair resume later on
+        // unrelated connections — the old car plugging in at work while a guest
+        // car uses this charger.
+        for (const chargerId of verdict.forget) {
+            this.deps.setSnapshot(clearEvCarLinkSession({ snapshot: this.deps.getSnapshot(), chargerId }));
+        }
+        for (const session of verdict.resume) {
             this.resumedChargerIds.add(session.chargerId);
             this.activeLinks.set(session.chargerId, {
                 carId: session.carId,

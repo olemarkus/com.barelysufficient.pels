@@ -34,24 +34,43 @@ export type ResumableSession = {
  * ordinary two-car, two-charger household on every restart, a far commoner case
  * than the one it guards against.
  */
+export type SessionResumeVerdict = {
+    resume: ResumableSession[];
+    /**
+     * Sessions an observation has DISPROVED: a remembered endpoint reported
+     * affirmatively disconnected, so that session is over and its record should
+     * go. Leaving it would let the pair resume later on unrelated connections —
+     * the old car plugging in at work while a guest car uses this charger.
+     */
+    forget: string[];
+};
+
 export const resolveResumableSessions = (params: {
     sessions: Readonly<Record<string, EvCarLinkSession>> | undefined;
     chargers: readonly EvCarLinkChargerView[];
     cars: ReadonlyMap<string, CarObservation>;
     /** Chargers that already hold a live link, or were already resumed this run. */
     isSettled: (chargerId: string) => boolean;
-}): ResumableSession[] => {
+}): SessionResumeVerdict => {
     const { sessions, chargers, cars, isSettled } = params;
-    if (!sessions) return [];
-    const resumable: ResumableSession[] = [];
+    if (!sessions) return { resume: [], forget: [] };
+    const resume: ResumableSession[] = [];
+    const forget: string[] = [];
     for (const charger of chargers) {
         if (isSettled(charger.id)) continue;
         const session = sessions[charger.id];
         if (!session) continue;
-        if (!isEvConnectedState(charger.evChargingState)) continue;
         const car = cars.get(session.carId);
-        if (!car || !isEvConnectedState(car.state)) continue;
-        resumable.push({ chargerId: charger.id, carId: session.carId, sinceMs: session.sinceMs });
+        // Absent telemetry is not a disproof — an unobserved car says nothing.
+        // Only a reading that affirmatively says disconnected ends the session.
+        const chargerDisconnected = !isEvConnectedState(charger.evChargingState);
+        const carDisconnected = car !== undefined && !isEvConnectedState(car.state);
+        if (chargerDisconnected || carDisconnected) {
+            forget.push(charger.id);
+            continue;
+        }
+        if (!car) continue;
+        resume.push({ chargerId: charger.id, carId: session.carId, sinceMs: session.sinceMs });
     }
-    return resumable;
+    return { resume, forget };
 };
