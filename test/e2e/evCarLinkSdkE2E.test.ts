@@ -2,9 +2,11 @@
 //
 // WHAT THIS PROBES: a class `car` device — which PELS otherwise drops entirely at
 // `SUPPORTED_DEVICE_CLASSES` — is nonetheless observed, correlated against a real
-// EV charger's plug transitions, and reported through structured logs. And that
-// the probe stays a probe: no capability is ever written to the car, and the
-// charger's `stateOfCharge` is never populated from the car's reading.
+// EV charger's plug transitions, and reported through structured logs. The probe
+// still writes nothing to the CAR, and a charger the user has not opted in keeps
+// its `stateOfCharge` entirely its own — that arm is what protects every
+// existing install. Opting a charger in is what lets the car's level become the
+// charger's.
 //
 // HOW IT IS SIMULATED: through real Homey signals only — official capabilities
 // (`ev_charging_state`, `measure_battery` on the car; `evcharger_charging`,
@@ -117,6 +119,13 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
 
   const of = (event: string): LinkEvent[] => events.filter((entry) => entry.event === event);
 
+  /** The charger's state-of-charge as transport currently holds it. */
+  const socOf = (snapshot: ReturnType<typeof getLatestTargetSnapshotForTests>) => (
+    (snapshot.find((device) => device.id === CHARGER_ID) as {
+      stateOfCharge?: { percent: number; source?: string; sourceDeviceId?: string; status: string };
+    } | undefined)?.stateOfCharge
+  );
+
   /**
    * The charger as the settings UI receives it — through the registered
    * `ui_devices` endpoint handler, not the composer beneath it, so endpoint
@@ -215,7 +224,8 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     ));
     expect(carWrites).toEqual([]);
 
-    // And never adopts the reading onto the charger's state-of-charge.
+    // With no car ticked for this charger, its state-of-charge stays untouched —
+    // the default every existing install runs on.
     const snapshot = getLatestTargetSnapshotForTests();
     const chargerSnapshot = snapshot.find((device) => device.id === CHARGER_ID);
     expect(chargerSnapshot).toBeDefined();
@@ -246,6 +256,55 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     expect(of('ev_car_session_elsewhere')[0]).toMatchObject({ carId: CAR_ID });
     // No link, so no vote was cast for this pair.
     expect(of('ev_car_link_resolved')).toEqual([]);
+  });
+
+  it('adopts the associated car battery level as the charger state-of-charge', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    // The user ticks this car for this charger BEFORE the session, which is the
+    // only difference from the first scenario.
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    driveHomeEnergy(3_000);
+
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await pumpMinutes(2);
+
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
+    await charger.setCapabilityValue('evcharger_charging', true);
+    await charger.setCapabilityValue('measure_power', 7_000);
+    await pumpMinutes(40);
+    await drainUntil(() => of('ev_car_link_resolved').length > 0);
+
+    // A level the car reports DURING the session lands on the charger, without
+    // waiting for the next snapshot refresh.
+    await car.setCapabilityValue('measure_battery', 63);
+    // The reading is queued and drained on the next correlation pass, which the
+    // 30 s heartbeat drives — quiet devices produce no telemetry to ride on.
+    await pumpMinutes(2);
+    await drainUntil(() => socOf(getLatestTargetSnapshotForTests())?.percent === 63);
+
+    expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({
+      percent: 63,
+      source: 'car',
+      sourceDeviceId: CAR_ID,
+      status: 'fresh',
+    });
+
+    // Unplug ends the association, and the car's level goes with it: there is no
+    // car, so there is no battery to report.
+    await car.setCapabilityValue('ev_charging_state', 'plugged_out');
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+    await charger.setCapabilityValue('evcharger_charging', false);
+    await charger.setCapabilityValue('measure_power', 0);
+    await pumpMinutes(40);
+
+    expect(socOf(getLatestTargetSnapshotForTests())).toBeUndefined();
   });
 
   // The association reaches the settings UI through the real `/ui_devices`

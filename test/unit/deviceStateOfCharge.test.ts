@@ -1,4 +1,8 @@
-import { resolveStateOfChargeSnapshot } from '../../lib/device/transport/stateOfCharge';
+import {
+  clearCarStateOfCharge,
+  resolveStateOfChargeSnapshot,
+  updateStateOfChargeFromCarObservation,
+} from '../../lib/device/transport/stateOfCharge';
 
 describe('resolveStateOfChargeSnapshot', () => {
   it('prefers native SoC capabilities over flow-backed battery reports', () => {
@@ -161,5 +165,95 @@ describe('resolveStateOfChargeSnapshot', () => {
       reportedCapabilities: {},
       retainedSession: unplugged,
     })?.sessionStartedAtMs).toBeUndefined();
+  });
+});
+
+describe('car-sourced state of charge', () => {
+  const chargerCaps = {
+    measure_battery: { value: 55, lastUpdated: 1_000 },
+    evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: 500 },
+    evcharger_charging: { value: true, lastUpdated: 500 },
+  };
+
+  it('reports nothing from the charger itself once a car is ticked for it', () => {
+    // The opt-in makes the car the only source: a native reading and a
+    // flow-reported one are both ignored, so the level cannot flip between two
+    // sources mid-session.
+    expect(resolveStateOfChargeSnapshot({
+      deviceClassKey: 'evcharger',
+      nowMs: 2_000,
+      capabilityObj: chargerCaps,
+      reportedCapabilities: {},
+      carAdoptionActive: true,
+    })).toBeUndefined();
+  });
+
+  it('still reads the charger when no car is ticked', () => {
+    expect(resolveStateOfChargeSnapshot({
+      deviceClassKey: 'evcharger',
+      nowMs: 2_000,
+      capabilityObj: chargerCaps,
+      reportedCapabilities: {},
+    })).toMatchObject({ percent: 55 });
+  });
+
+  it('carries a car-sourced level across a refresh, with its provenance', () => {
+    const resolved = resolveStateOfChargeSnapshot({
+      deviceClassKey: 'evcharger',
+      nowMs: 2_000,
+      capabilityObj: chargerCaps,
+      reportedCapabilities: {},
+      carAdoptionActive: true,
+      retainedStateOfCharge: {
+        percent: 63, observedAtMs: 1_500, status: 'fresh', source: 'car', sourceDeviceId: 'car-1',
+      },
+    });
+    expect(resolved).toMatchObject({ percent: 63, source: 'car', sourceDeviceId: 'car-1' });
+  });
+
+  it('never carries a charger-owned level forward as if a car had reported it', () => {
+    // The toggle may have been switched on while one of the charger's own
+    // readings was still present; adopting it would relabel someone else's data.
+    expect(resolveStateOfChargeSnapshot({
+      deviceClassKey: 'evcharger',
+      nowMs: 2_000,
+      capabilityObj: chargerCaps,
+      reportedCapabilities: {},
+      carAdoptionActive: true,
+      retainedStateOfCharge: { percent: 71, observedAtMs: 1_500, status: 'fresh' },
+    })).toBeUndefined();
+  });
+
+  it('writes a car reading onto the charger and drops it when the session ends', () => {
+    const snapshot = {
+      id: 'charger-1',
+      name: 'Elbillader',
+      deviceClass: 'evcharger',
+      evChargingState: 'plugged_in_charging',
+      evCharging: true,
+      targets: [],
+    } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0]['snapshot'];
+
+    expect(updateStateOfChargeFromCarObservation({
+      snapshot, percent: 63, observedAtMs: 1_500, carId: 'car-1', nowMs: 1_600,
+    })).toBe(true);
+    expect(snapshot.stateOfCharge).toMatchObject({
+      percent: 63, source: 'car', sourceDeviceId: 'car-1', capabilityId: 'measure_battery',
+    });
+    // The car's own observation time, never `now` — stamping `now` would make a
+    // two-day-old reading read fresh.
+    expect(snapshot.stateOfCharge?.observedAtMs).toBe(1_500);
+
+    expect(clearCarStateOfCharge({ snapshot })).toBe(true);
+    expect(snapshot.stateOfCharge).toBeUndefined();
+  });
+
+  it('leaves a charger-owned level alone when a session ends', () => {
+    const snapshot = {
+      id: 'charger-1', name: 'Elbillader', deviceClass: 'evcharger', targets: [],
+      stateOfCharge: { percent: 71, observedAtMs: 1_000, status: 'fresh' },
+    } as unknown as Parameters<typeof clearCarStateOfCharge>[0]['snapshot'];
+    expect(clearCarStateOfCharge({ snapshot })).toBe(false);
+    expect(snapshot.stateOfCharge).toMatchObject({ percent: 71 });
   });
 });

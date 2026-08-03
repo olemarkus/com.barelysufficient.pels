@@ -38,6 +38,7 @@ export const createEmptyEvCarLinkSnapshot = (): EvCarLinkSnapshot => ({
     version: EV_CAR_LINK_VERSION,
     pairs: {},
     cars: {},
+    sessions: {},
 });
 
 export const buildEvCarLinkPairKey = (carId: string, chargerId: string): string => `${carId}|${chargerId}`;
@@ -116,6 +117,16 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCa
             ? [[key, { ...normalized, lastVotedAtMs: clamp(normalized.lastVotedAtMs) }] as const]
             : [];
     });
+    // Absent on snapshots written before sessions were persisted, which just
+    // means nothing can be resumed — never a reason to discard the whole blob.
+    const sessionsRaw = isRecord(value.sessions) ? value.sessions : {};
+    const sessions = Object.entries(sessionsRaw).flatMap(([chargerId, raw]) => {
+        if (chargerId.length === 0 || !isRecord(raw)) return [];
+        const { carId, sinceMs } = raw;
+        if (typeof carId !== 'string' || carId.length === 0) return [];
+        if (typeof sinceMs !== 'number' || !Number.isFinite(sinceMs) || sinceMs < 0) return [];
+        return [[chargerId, { carId, sinceMs: clamp(sinceMs) }] as const];
+    });
     const cars = Object.entries(carsRaw).flatMap(([carId, raw]) => {
         if (carId.length === 0) return [];
         const normalized = normalizeObservedStops(raw);
@@ -128,7 +139,34 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCa
         version: EV_CAR_LINK_VERSION,
         pairs: Object.fromEntries(pairs),
         cars: Object.fromEntries(cars.slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
+        sessions: Object.fromEntries(sessions.slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
     };
+};
+
+/** Records the session a charger is in, so a restart can offer to resume it. */
+export const recordEvCarLinkSession = (params: {
+    snapshot: EvCarLinkSnapshot;
+    chargerId: string;
+    carId: string;
+    sinceMs: number;
+}): EvCarLinkSnapshot => ({
+    ...params.snapshot,
+    sessions: {
+        ...params.snapshot.sessions,
+        [params.chargerId]: { carId: params.carId, sinceMs: params.sinceMs },
+    },
+});
+
+/**
+ * Forgets a charger's session. Called on every normal session end, so a
+ * persisted session can only ever survive an outage — never an unplug PELS saw.
+ */
+export const clearEvCarLinkSession = (params: {
+    snapshot: EvCarLinkSnapshot;
+    chargerId: string;
+}): EvCarLinkSnapshot => {
+    const { [params.chargerId]: removed, ...rest } = params.snapshot.sessions ?? {};
+    return removed === undefined ? params.snapshot : { ...params.snapshot, sessions: rest };
 };
 
 /**

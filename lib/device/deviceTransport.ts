@@ -29,7 +29,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { projectObservedState } from './observedStateProjection';
-import { resolveAssociatedCar } from './transport/carAssociation';
+import { createCarStateOfChargeAdoption, resolveAssociatedCar } from './transport/carAssociation';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { TargetedMissState } from './transport/targetedSnapshotMerge';
 import type { PowerEstimateState } from './devicePowerEstimate';
@@ -246,6 +246,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             emit: (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
             getSnapshots: () => this.latestSnapshot,
             evCarLinkSnapshotAccess: options?.evCarLinkSnapshotAccess,
+            // The probe reports; this decides whether anything is written.
+            ...createCarStateOfChargeAdoption({
+                getCtx: () => this.ctx,
+                dispatch: (id, cap) => this.dispatchObservedStateForDevice(id, cap),
+            }),
         });
         this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
         this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();

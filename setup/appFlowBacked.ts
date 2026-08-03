@@ -12,6 +12,7 @@ import {
   EV_SOC_CAPABILITY_ID,
   updateStateOfChargeObservationFreshness,
 } from '../lib/device/transport/stateOfCharge';
+import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
@@ -205,7 +206,15 @@ export class AppFlowBacked {
   }): boolean {
     const { deviceId, capabilityId, update } = params;
     if (capabilityId !== EV_SOC_CAPABILITY_ID) return false;
-    const device = this.deps.getSnapshotDevice(deviceId);
+    // Probe-widened for the same reason as `canEvSocFreshnessBecomeFreshForBoost`
+    // below: the snapshot physically carries the observed SoC bag the base type
+    // omits.
+    const device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined = this.deps
+      .getSnapshotDevice(deviceId);
+    // A charger reading its level off an associated car ignores this flow card
+    // entirely, so letting the report wake the planner would replan for a value
+    // nothing reads.
+    if (device && hasObservedStateOfCharge(device) && device.stateOfCharge.source === 'car') return false;
     if (!this.deps.hasEnabledEvBoostForSnapshot(device)) return false;
     if (!device?.flowBackedCapabilityIds?.includes(EV_SOC_CAPABILITY_ID)) return false;
     if (update.valueChanged) return true;
@@ -241,13 +250,22 @@ export class AppFlowBacked {
   }): void {
     const snapshot = this.deps.getDeviceManager()?.getSnapshot();
     if (!snapshot) return;
-    const device = snapshot.find((entry) => entry.id === params.deviceId);
+    // Probe-widened: the stored snapshot physically carries the observed SoC bag
+    // the base type omits, and this seam mutates its freshness in place.
+    const device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined = snapshot
+      .find((entry) => entry.id === params.deviceId);
     if (!device || device.flowBacked !== true) return;
     if (!isFlowReportedObservationCapabilityId(params.capabilityId)) {
       return;
     }
     if (params.capabilityId === EV_SOC_CAPABILITY_ID) {
       if (!device.flowBackedCapabilityIds?.includes(params.capabilityId)) return;
+      // A car-sourced level is NOT the flow card's to keep alive. This helper
+      // spreads the previous reading forward, so without this guard a flow card
+      // that keeps firing would re-stamp the CAR's percentage as freshly
+      // observed — holding a sleeping car's level at `fresh` indefinitely, which
+      // is exactly what the freshness rule exists to prevent.
+      if (hasObservedStateOfCharge(device) && device.stateOfCharge.source === 'car') return;
       updateStateOfChargeObservationFreshness({
         snapshot: device,
         reportedAt: params.reportedAt,

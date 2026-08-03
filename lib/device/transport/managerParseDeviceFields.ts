@@ -48,8 +48,7 @@ import {
 } from './managerParseSnapshot';
 import {
     resolveStateOfChargeSnapshot,
-    type RetainedStateOfChargeSession,
-} from './stateOfCharge';
+    } from './stateOfCharge';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
 import { resolveAvailable as resolveAvail } from './managerParsedAvailability';
 import type { ParsedDeviceIdentity } from './managerParseIdentity';
@@ -240,10 +239,14 @@ export function assembleDeviceSnapshot(params: {
         evChargingStateObservedAtMs: toCapabilityTimestampMs(
             overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
         ),
-        stateOfCharge: resolveParsedSoc(
-            deviceClassKey, now, overlay.capabilityObj, overlay.reportedCapabilities,
-            previousSnapshot?.stateOfCharge,
-        ),
+        stateOfCharge: resolveParsedSoc({
+            deviceClassKey,
+            nowMs: now,
+            capabilityObj: overlay.capabilityObj,
+            reportedCapabilities: overlay.reportedCapabilities,
+            retainedStateOfCharge: previousSnapshot?.stateOfCharge,
+            carAdoptionActive: (providers.getEvCarAssociationCarIds?.(deviceId) ?? []).length > 0,
+        }),
         currentTemperature,
         capabilities: overlay.capabilities,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
@@ -303,19 +306,17 @@ function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSna
 // mid-session charging-state change look like a reconnect and invalidate the
 // last SoC report. Same rule as "never let an older full fetch erase a fresher
 // realtime observation" (`lib/device/AGENTS.md`).
-function resolveParsedSoc(
-    deviceClassKey: string,
-    nowMs: number,
-    capabilityObj: DeviceCapabilityMap,
-    reportedCapabilities: FlowReportedCapabilitiesForDevice,
-    retainedSession: RetainedStateOfChargeSession | undefined,
-): DeviceStateOfChargeSnapshot | undefined {
+function resolveParsedSoc(params: {
+    deviceClassKey: string;
+    nowMs: number;
+    capabilityObj: DeviceCapabilityMap;
+    reportedCapabilities: FlowReportedCapabilitiesForDevice;
+    retainedStateOfCharge: DeviceStateOfChargeSnapshot | undefined;
+    carAdoptionActive: boolean;
+}): DeviceStateOfChargeSnapshot | undefined {
     return resolveStateOfChargeSnapshot({
-        deviceClassKey,
-        nowMs,
-        capabilityObj,
-        reportedCapabilities,
-        retainedSession,
+        ...params,
+        retainedSession: params.retainedStateOfCharge,
     });
 }
 

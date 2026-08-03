@@ -158,6 +158,19 @@ export type DeviceStateOfChargeSnapshot = {
     capabilityId?: string;
     sessionStartedAtMs?: number;
     invalidatedAtMs?: number;
+    /**
+     * Where the level came from. ABSENT means the charger reported it itself —
+     * a native capability or the `report_evcharger_battery_level` flow card —
+     * which is every reading PELS has ever produced, so existing readers stay
+     * correct without narrowing.
+     *
+     * `'car'` means it was read off the associated car instead, because the user
+     * ticked that car for this charger. The charger still owns the session: a
+     * plug-out invalidates a car-sourced reading exactly as it does its own.
+     */
+    source?: 'car';
+    /** The car's Homey device id, when `source` is `'car'`. */
+    sourceDeviceId?: string;
 };
 
 /**

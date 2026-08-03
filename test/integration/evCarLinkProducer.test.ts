@@ -59,6 +59,9 @@ const charger = (overrides: Partial<EvCarLinkChargerView> = {}): EvCarLinkCharge
 
 class Harness {
   events: EvCarLinkEvent[] = [];
+  /** Readings the producer offered for adoption, and sessions it reported ended. */
+  adopted: Array<{ chargerId: string; carId: string; socPct: number; socAtMs: number }> = [];
+  ended: string[] = [];
   chargers: EvCarLinkChargerView[] = [charger()];
   snapshot: EvCarLinkSnapshot = createEmptyEvCarLinkSnapshot();
   readonly producer: EvCarLinkProducer;
@@ -69,6 +72,8 @@ class Harness {
       getChargers: () => this.chargers,
       getSnapshot: () => this.snapshot,
       setSnapshot: (next) => { this.snapshot = next; },
+      onAssociatedCarStateOfCharge: (reading) => { this.adopted.push(reading); },
+      onAssociationEnded: (chargerId) => { this.ended.push(chargerId); },
     });
   }
 
@@ -549,19 +554,59 @@ describe('self-stop detection', () => {
 });
 
 describe('state-of-charge shadow', () => {
-  it('reports the car reading against the flow-card value without adopting it', () => {
+  it('reports the car reading against the flow-card value and offers it for adoption', () => {
     seedDisconnected(h, 0);
     h.setCharger({ reportedSocPct: 71 });
     plugIn(h, 10_000);
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 74 }), 10_000 + SETTLE_MS + 5_000);
+    const readingAt = 10_000 + SETTLE_MS + 5_000;
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 74 }), readingAt);
 
     const shadow = h.of('ev_car_link_soc_shadow');
     expect(shadow).toHaveLength(1);
     expect(shadow[0]).toMatchObject({
       carSocPct: 74, reportedSocPct: 71, deltaPct: 3, wouldAdopt: true,
     });
-    // The probe must never write the charger's state-of-charge.
+    // The producer offers the reading; it never mutates its charger views, which
+    // are read-only inputs built fresh from the committed snapshot.
     expect(h.chargers[0].reportedSocPct).toBe(71);
+    // Offered repeatedly and idempotently, not once on change: the level is a
+    // value the probe holds, so an associated charger can always ask for it.
+    // The consumer writes only when it actually moves.
+    expect(h.adopted).toContainEqual(
+      { chargerId: 'charger-1', carId: 'car-1', socPct: 74, socAtMs: readingAt },
+    );
+  });
+
+  it('offers nothing for a car with no session', () => {
+    seedDisconnected(h, 0);
+    h.car(carDevice({ state: 'plugged_out', socPct: 62 }), 10_000);
+    expect(h.adopted).toEqual([]);
+  });
+
+  it('keeps offering the level while the car reports nothing new', () => {
+    // The case that made adoption stall when it was driven by change events: a
+    // car sitting at one percentage publishes nothing, so a charger that missed
+    // the one notification had no level at all.
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+    const afterLink = h.adopted.length;
+    expect(afterLink).toBeGreaterThan(0);
+
+    h.tick(10_000 + SETTLE_MS + 60_000);
+
+    expect(h.adopted.length).toBeGreaterThan(afterLink);
+    expect(h.adopted[h.adopted.length - 1]).toMatchObject({ carId: 'car-1', socPct: 55 });
+  });
+
+  it('reports the session ending so a consumer can drop what it adopted', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    expect(h.ended).toEqual([]);
+
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.car(carDevice({ state: 'plugged_out', socPct: 80 }), 10_000 + SETTLE_MS + 10_000);
+
+    expect(h.ended).toEqual(['charger-1']);
   });
 
   it('says nothing while no link is established', () => {

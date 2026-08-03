@@ -1,8 +1,10 @@
 # EV car ↔ charger link — detection probe
 
-**Status: probe + display.** Correlation is still observation-only — nothing here reaches
-planning, admission, or actuation, and the charger's `stateOfCharge` is untouched. What the
-probe resolves is now *shown*: when the user ticks a car for a charger, the association is
+**Status: probe + adoption.** Correlation is still observation-only — nothing here reaches
+planning or actuation directly. What the probe resolves is now *used*: for a charger the user
+opted in, the associated car's `measure_battery` becomes that charger's `stateOfCharge`, which
+does reach anything that reads a charger's charge (EV boost, smart-task progress). What the
+probe resolves is also shown: when the user ticks a car for a charger, the association is
 served to the settings UI (see "Association and eligibility"). It began as a pure probe
 answering one question before any behaviour depended on the answer: *can PELS work out
 which car is on which charger, and notice when the car stops charging for its own reasons?*
@@ -55,6 +57,8 @@ is both layering-correct and what keeps vendor knowledge in the one adapter that
 | `lib/device/evCarLinkChargerView.ts` | The charger-side input shape + what its fields are evidence of |
 | `lib/device/evCarLinkReadModel.ts` | Resolves the live session into the consumer-facing association |
 | `lib/device/transport/carAssociation.ts` | Eligibility gate: user's ticked cars ∩ the probe's session |
+| `lib/device/evCarLinkSessionResume.ts` | Which persisted sessions a restart may pick back up |
+| `lib/device/evCarLinkSelfStop.ts` | Self-stop episodes: dwell, reason identity, charge-limit evidence |
 | `lib/device/evCarLinkObservation.ts` | Device-payload boundary: resolves a car reading, drops unknowns |
 | `lib/device/evCarLinkSnapshot.ts` | Persisted shape: normalise, vote, sample, prune, summarise |
 | `lib/device/evCarLinkProducer.ts` | The producer: ingests cars, diffs chargers, emits events |
@@ -88,6 +92,42 @@ reading and nothing new arrives until the level rises. That reading is the car's
 `emitSelfStop` keeps a stricter per-session gate because it asks a different question — where
 the car stopped *this time* — and banking an older percentage there would publish a
 confidently wrong charge limit.
+
+### Adoption
+
+For a charger with a non-empty eligibility set, the associated car's battery level **is** the
+charger's `stateOfCharge`, carrying `source: 'car'` and the car's device id. Three rules follow:
+
+- **The charger's own sources are ignored, not ranked below.** Neither a native `measure_battery`
+  nor the `report_evcharger_battery_level` flow card contributes. Ranking them as a fallback
+  would let the level flip between two sources mid-session, and the opt-in is a clear statement
+  about which one the user wants.
+- **The level comes from the association, not from a change notification.** The probe holds the
+  car's current `measure_battery` continuously and offers it every correlation pass, so an
+  associated charger always has a level. Driving it from change events instead would strand a
+  charger whose car is sitting at one percentage with nothing new to say — and, because an absent
+  level reads to a smart task exactly like a broken one, the task would then never admit the
+  charger, so it would never charge, so the level would never change. A closed loop.
+- **A session survives a restart.** The active pair is persisted alongside the votes and restored
+  as a CANDIDATE: it becomes an association again only when the charger and that car both
+  independently report connected (`evCarLinkSessionResume.ts`). A restart observes no plug-in —
+  the plug-in already happened — so without this a charger mid-charge would have no car until the
+  next physical unplug and replug. Neither half of the test suffices alone: a car plugged in at
+  work reports connected exactly like one here, and a charger reports connected whichever car is
+  on it. Accepted limitation: a car swapped for another DURING the outage resumes the wrong car,
+  which needs an outage long enough for one car to leave and another to arrive and self-corrects
+  on the next unplug. Refusing whenever another car is also connected was considered and rejected
+  — it would break the ordinary two-car, two-charger household on every restart.
+- **The remaining gap is the first session PELS has never seen:** a charger it meets mid-charge
+  with no persisted session reports no level until the car plugs out and back in.
+- **Unplug drops the level rather than ageing it out.** With no car there is no battery to
+  report, and leaving the last percentage behind would show a departed car's charge as this
+  charger's. Only a car-sourced reading is ever dropped; a charger's own is untouched.
+
+The value arrives on the realtime seam, at the point the probe already computed `wouldAdopt`,
+and is dispatched as a `measure_battery` observation so the existing EV-boost plan-rebuild gate
+fires exactly as it does for a charger's own report. Staleness is the established rule
+unchanged: a level decays only while charge is actually in motion.
 
 A car must publish **both** `ev_charging_state` and `measure_battery` to be offered in the
 picker. Only the first is needed to associate; the second is required because a car that
@@ -195,7 +235,8 @@ measurement is not evidence of idleness.
   refreshes and, at that cadence, outside the window entirely.
 - **The first session after a restart contributes no connect edge.** A first observation is
   not a plug event; treating it as one would hand out a vote on every boot. Its disconnect
-  edge still counts.
+  edge still counts. The persisted-session resume above is what recovers the ASSOCIATION across
+  a restart; it deliberately earns no vote, because no plug coincidence was observed.
 - **One stop proves nothing.** `summarizeEvCarObservedLimit` returns `null` below two
   samples and always reports spread alongside the median. A tight cluster over many
   sessions is a charge limit; a wide spread is just a user unplugging at varying levels.
@@ -242,9 +283,10 @@ Verified there (2026-07-27), reading `ev_car_*` out of the app log:
 ## Known evidence limits
 
 For a charger with no ticked car — every install by default — the gaps below cost EVIDENCE
-QUALITY only. For a charger the user HAS configured, a mis-resolved or missing link is now
-user-visible: the wrong car's name and charge, or none at all. Nothing reaches planning,
-admission, or actuation either way. Read the logs with these in mind:
+QUALITY only. For a charger the user HAS configured they now cost correct PELS behaviour: a
+mis-resolved link puts another car's charge on the charger, and a missing one leaves it with no
+charge at all, which EV boost and smart-task progress both read. Read the logs with these in
+mind:
 
 - **A car can be invisible rather than mis-read.** A car whose plug state is unreadable on the
   first fetch, one whose by-id reads flake three times, and one whose app is installed after
@@ -275,8 +317,8 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
 
 ## Out of scope for this slice
 
-- Adopting the car's charge into the charger's `stateOfCharge`, or any planning/actuation
-  effect.
+- Suspending smart-task accounting on `ev_car_self_stopped`, and clamping a smart task's target
+  to the observed car limit. Both still need a device→objectives seam.
 - Manual car selection: the user picks which cars are *eligible*, never which one is
   associated. That stays the probe's call.
 - Suspending smart-task accounting on self-stop. The producer lives in `lib/device`, a peer

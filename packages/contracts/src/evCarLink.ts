@@ -37,10 +37,33 @@ export type EvCarObservedStops = {
     lastObservedAtMs: number;
 };
 
+/**
+ * The session a charger was in when PELS last stopped.
+ *
+ * Persisted so a restart mid-charge can pick the session back up: a restart
+ * observes no plug-in, because the plug-in already happened, so without this the
+ * charger has no car until the next physical unplug/replug. Restored only as a
+ * CANDIDATE — both the charger and that car must independently report connected
+ * before it becomes an association again.
+ *
+ * Cleared when the session ends, so a stale pair can only survive an outage, not
+ * a normal unplug.
+ */
+export type EvCarLinkSession = {
+    carId: string;
+    /** When the session was first committed, carried across the restart. */
+    sinceMs: number;
+};
+
 export type EvCarLinkSnapshot = {
     version: EvCarLinkVersion;
     /** Keyed `${carId}|${chargerId}` — see `buildEvCarLinkPairKey`. */
     pairs: Record<string, EvCarLinkAffinity>;
     /** Keyed by car device id. */
     cars: Record<string, EvCarObservedStops>;
+    /**
+     * Keyed by charger device id. Absent on snapshots written before this
+     * existed, which simply means no session can be resumed.
+     */
+    sessions?: Record<string, EvCarLinkSession>;
 };
