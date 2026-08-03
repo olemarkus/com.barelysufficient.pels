@@ -13,35 +13,32 @@ import {
   getRestoreCandidates,
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
-  isBinaryRestoreCandidate,
-  isOffSteppedRestoreCandidate,
   markOffDevicesStayOff,
-  type RestoreCandidate,
 } from './devices';
 import {
   markSteppedDevicesStayAtCurrentLevel,
-  planRestoreForSteppedDevice,
   setRestorePlanDevice as setDevice,
-  type SteppedSwapExecutor,
 } from './helpers';
 import {
   buildRestoreTiming,
   resolveMeterSettlingRemainingSec,
+  shouldPlanBudgetExemptRestores,
   shouldPlanRestores,
   type RestoreTiming,
 } from './timing';
-import {
-  resolveHeadroomReserves,
-  resolveRestoreDecisionPhase,
-  type HeadroomReserve,
-} from '../admission';
+import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
+import { resolveHeadroomReserves, type HeadroomReserve } from '../admission';
 import { reserveHeadroomForPendingRestores } from './support';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
-import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import { buildRestoreBatchState } from './batch';
-import { planRestoreForDevice } from './gating';
 import { markOffDevicesMeterSettling, markRestoreCandidatesStayShedForShortfall } from './marking';
-import type { RestoreBatchState, RestoreDeps, RestoreLoopState, RestorePlanResult } from './types';
+import {
+  applyActiveSteppedRestoreCandidates,
+  applyRestoreCandidates,
+  buildSteppedSwapExecutor,
+  planSteppedRestoreThroughSourceHold,
+} from './candidateLoop';
+import type { RestoreBatchState, RestoreDeps, RestorePlanResult } from './types';
 
 export type { RestoreDeps, RestorePlanState, RestorePlanResult } from './types';
 
@@ -86,43 +83,29 @@ export function applyRestorePlan(params: {
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
   } else if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
-    const snapshot = Array.from(deviceMap.values());
-    const restoreCandidates = getRestoreCandidates(snapshot);
-    const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
-    const steppedSwapExecutor = buildSteppedSwapExecutor({
-      deviceMap,
-      onDevices,
-      swapState,
-      state,
-      timing: effectiveTiming,
-      restoredThisCycle,
-      deps,
-    });
-    ({ restoredOneThisCycle } = applyRestoreCandidates({
-      restoreCandidates,
-      deviceMap,
-      onDevices,
-      swapState,
-      state,
-      timing: effectiveTiming,
-      ledger,
-      restoredThisCycle,
-      restoredOneThisCycle,
-      batchState,
-      deps,
-      steppedSwapExecutor,
-      headroomReserves,
+    ({ restoredOneThisCycle } = applyFullRestorePass({
+      deviceMap, swapState, state, effectiveTiming, ledger,
+      restoredThisCycle, restoredOneThisCycle, batchState, deps, headroomReserves,
     }));
-    ({ restoredOneThisCycle } = applyActiveSteppedRestoreCandidates({
+  } else if (shouldPlanBudgetExemptRestores({
+    sheddingActive,
+    softLimitSource: context.softLimitSource,
+    capacityHeadroomKw: context.capacityHeadroomKw,
+    // Raw timing on purpose: under daily source effectiveTiming clears the
+    // startup-stabilization hold, but this lane runs while shedding is latched
+    // — keep the conservative hold there.
+    timing,
+  })) {
+    ({ restoredOneThisCycle } = applyBudgetExemptRestorePass({
       deviceMap,
       swapState,
       state,
       timing: effectiveTiming,
       ledger,
+      restoredThisCycle,
       restoredOneThisCycle,
-      debugStructured: deps.debugStructured,
-      steppedSwapExecutor,
       headroomReserves,
+      deps,
     }));
   } else if (
     sheddingActive
@@ -204,201 +187,63 @@ function resolveCycleHeadroomReserves(
   });
 }
 
-function applyRestoreCandidates(params: {
-  restoreCandidates: RestoreCandidate[];
+// The ordinary unrestricted restore pass (the shouldPlanRestores branch of
+// applyRestorePlan), extracted to keep that function within the line ceiling.
+function applyFullRestorePass(params: {
   deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
   swapState: SwapState;
   state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
+  effectiveTiming: RestoreTiming;
   ledger: RestoreHeadroomLedger;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
   batchState: RestoreBatchState;
   deps: RestoreDeps;
-  steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
 }): { restoredOneThisCycle: boolean } {
+  const {
+    deviceMap, swapState, state, effectiveTiming, ledger,
+    restoredThisCycle, batchState, deps, headroomReserves,
+  } = params;
   let { restoredOneThisCycle } = params;
-  for (const candidate of params.restoreCandidates) {
-    // Ledger translation: the inner gates keep their single availableKw scalar;
-    // the axis choice (exempt → capacity, else min with the measured-exempt
-    // budget axis) and the per-axis debit live here.
-    const availableForCandidate = params.ledger.availableFor(candidate.device);
-    const result = applyRestoreCandidate({
-      candidate,
-      deviceMap: params.deviceMap,
-      onDevices: params.onDevices,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
-      availableHeadroom: availableForCandidate,
-      restoredThisCycle: params.restoredThisCycle,
-      restoredOneThisCycle,
-      batchState: params.batchState,
-      deps: params.deps,
-      steppedSwapExecutor: params.steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-    });
-    params.ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
-    restoredOneThisCycle = result.restoredOneThisCycle;
-  }
-  return { restoredOneThisCycle };
-}
-
-// Single shared entry for every stepped-restore path. It applies the pending-swap source-off
-// hold (a stepped-swap target must not be restored while its swapped-out sources are still on)
-// and then routes through planRestoreForSteppedDevice with the stepped-swap executor context.
-// Funnelling normal restore, restore cooldown, meter-settling, and active stepped-upgrade paths
-// through here keeps both admission wrappers applied uniformly.
-function planSteppedRestoreThroughSourceHold(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
-  availableHeadroom: number;
-  restoredOneThisCycle: boolean;
-  debugStructured: RestoreDeps['debugStructured'];
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-}): RestoreLoopState {
-  const { dev, deviceMap, swapState, availableHeadroom, restoredOneThisCycle } = params;
-  if (holdPendingSwapTargetUntilSourcesAreOff({ swapState, targetDevice: dev, deviceMap })) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-  return planRestoreForSteppedDevice({
-    dev,
+  const snapshot = Array.from(deviceMap.values());
+  const restoreCandidates = getRestoreCandidates(snapshot);
+  const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
+  const steppedSwapExecutor = buildSteppedSwapExecutor({
     deviceMap,
-    state: params.state,
-    timing: params.timing,
-    availableHeadroom,
-    restoredOneThisCycle,
-    debugStructured: params.debugStructured,
-    swapExecutor: params.steppedSwapExecutor,
-    headroomReserves: params.headroomReserves,
+    onDevices,
+    swapState,
+    state,
+    timing: effectiveTiming,
+    restoredThisCycle,
+    deps,
   });
-}
-
-function applyActiveSteppedRestoreCandidates(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
-  ledger: RestoreHeadroomLedger;
-  restoredOneThisCycle: boolean;
-  debugStructured: RestoreDeps['debugStructured'];
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-}): { restoredOneThisCycle: boolean } {
-  let { restoredOneThisCycle } = params;
-  const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
-    .filter((dev) => isActiveSteppedRestoreCandidate(dev));
-  for (const dev of activeSteppedDevices) {
-    const availableForCandidate = params.ledger.availableFor(dev);
-    const result = planSteppedRestoreThroughSourceHold({
-      dev,
-      deviceMap: params.deviceMap,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
-      availableHeadroom: availableForCandidate,
-      restoredOneThisCycle,
-      debugStructured: params.debugStructured,
-      steppedSwapExecutor: params.steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-    });
-    params.ledger.commit(dev, availableForCandidate - result.availableHeadroom);
-    restoredOneThisCycle = result.restoredOneThisCycle;
-  }
-  return { restoredOneThisCycle };
-}
-
-function applyRestoreCandidate(params: {
-  candidate: RestoreCandidate;
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
-  availableHeadroom: number;
-  restoredThisCycle: Set<string>;
-  restoredOneThisCycle: boolean;
-  batchState: RestoreBatchState;
-  deps: RestoreDeps;
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-}): RestoreLoopState {
-  const dev = params.deviceMap.get(params.candidate.device.id);
-  const currentState = {
-    availableHeadroom: params.availableHeadroom,
-    restoredOneThisCycle: params.restoredOneThisCycle,
-  };
-  if (!dev) return currentState;
-  if (holdPendingSwapTargetUntilSourcesAreOff({
-    swapState: params.swapState,
-    targetDevice: dev,
-    deviceMap: params.deviceMap,
-  })) return currentState;
-  if (params.candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
-    return planRestoreForDevice({
-      dev,
-      deviceMap: params.deviceMap,
-      onDevices: params.onDevices,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
-      availableHeadroom: params.availableHeadroom,
-      restoredThisCycle: params.restoredThisCycle,
-      restoredOneThisCycle: params.restoredOneThisCycle,
-      batchState: params.batchState,
-      deps: params.deps,
-      headroomReserves: params.headroomReserves,
-    });
-  }
-  if (params.candidate.kind === 'stepped' && isOffSteppedRestoreCandidate(dev)) {
-    return planSteppedRestoreThroughSourceHold({
-      dev,
-      deviceMap: params.deviceMap,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
-      availableHeadroom: params.availableHeadroom,
-      restoredOneThisCycle: params.restoredOneThisCycle,
-      debugStructured: params.deps.debugStructured,
-      steppedSwapExecutor: params.steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-    });
-  }
-  return currentState;
-}
-
-function buildSteppedSwapExecutor(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Pick<RestoreTiming, 'measurementTs'>;
-  restoredThisCycle: Set<string>;
-  deps: RestoreDeps;
-}): SteppedSwapExecutor {
-  const { deviceMap, onDevices, swapState, state, timing, restoredThisCycle, deps } = params;
-  return ({ dev, needed, devPower, availableHeadroom, admittedDeviceUpdate, rejectedDeviceUpdate }) => (
-    attemptSwapRestore({
-      dev,
-      deviceMap,
-      onDevices,
-      swapState,
-      phase: resolveRestoreDecisionPhase(state.currentRebuildReason),
-      availableHeadroom,
-      restoreNeed: { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
-      measurementTs: timing.measurementTs,
-      restoredThisCycle,
-      deps,
-      admittedDeviceUpdate,
-      rejectedDeviceUpdate,
-    })
-  );
+  ({ restoredOneThisCycle } = applyRestoreCandidates({
+    restoreCandidates,
+    deviceMap,
+    onDevices,
+    swapState,
+    state,
+    timing: effectiveTiming,
+    ledger,
+    restoredThisCycle,
+    restoredOneThisCycle,
+    batchState,
+    deps,
+    steppedSwapExecutor,
+    headroomReserves,
+  }));
+  return applyActiveSteppedRestoreCandidates({
+    deviceMap,
+    swapState,
+    state,
+    timing: effectiveTiming,
+    ledger,
+    restoredOneThisCycle,
+    debugStructured: deps.debugStructured,
+    steppedSwapExecutor,
+    headroomReserves,
+  });
 }
 
 // Handles the inRestoreCooldown branch of applyRestorePlan, extracted to keep that function's

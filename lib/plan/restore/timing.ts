@@ -1,4 +1,5 @@
 import type { PlanEngineState } from '../planState';
+import type { SoftLimitSource } from '../planContext';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   RESTORE_COOLDOWN_MS,
@@ -103,6 +104,40 @@ export const shouldPlanRestores = (
   && !timing.inCooldown
   && !timing.inRestoreCooldown
   && !timing.inStartupStabilization
+);
+
+/**
+ * Gate for the restricted budget-exempt restore lane
+ * (`notes/safe-pace-two-constraints.md` § "Proposed model"): while shedding is
+ * latched by a budget-driven overshoot, exempt candidates are still admitted —
+ * against the capacity axis only, via the ledger's exempt routing.
+ *
+ * `softLimitSource === 'daily'` (not a headroom sign check) is the
+ * discriminator on purpose: the latch persists through the clear-threshold
+ * hysteresis band, so binding headroom may hover at/above zero while the lane
+ * must keep running; and when the source is `capacity` the capacity axis IS
+ * the binding axis, where running the lane would defeat the latch's flap
+ * protection. `capacityHeadroomKw > 0` (strict) inherits the exhausted-hour
+ * and stale-meter carve-outs, which force the axis to -1 or 0.
+ *
+ * Known accepted corner: `softLimitSource` is instantaneous while
+ * `sheddingActive` is a latch, so a capacity-latched shed whose binding source
+ * flips to `daily` mid-latch opens the lane while capacity headroom sits in
+ * the hysteresis band. Bounded by the admission floor and the shed/restore
+ * cooldowns; recording the latch cause would close it (tracked in TODO.md).
+ */
+export const shouldPlanBudgetExemptRestores = (params: {
+  sheddingActive: boolean;
+  softLimitSource: SoftLimitSource;
+  capacityHeadroomKw: number;
+  timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>;
+}): boolean => (
+  params.sheddingActive
+  && params.softLimitSource === 'daily'
+  && params.capacityHeadroomKw > 0
+  && !params.timing.inCooldown
+  && !params.timing.inRestoreCooldown
+  && !params.timing.inStartupStabilization
 );
 
 const resolveRestoreCooldown = (

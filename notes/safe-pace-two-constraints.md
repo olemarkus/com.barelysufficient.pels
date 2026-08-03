@@ -66,11 +66,20 @@ than anywhere else.
 
 One qualification on the table above, since the admission-scoped slice of § "Proposed
 model" has now shipped: `bindingPaceKw` is described there as "the threshold the
-planner acts on", which is no longer the whole story. It still drives shedding, the
-display tick, and the should-plan-restores gate, but **restore admission is per-axis**
-— an exempt candidate reads `capacityHeadroomKw`, a non-exempt one reads
+planner acts on", which is no longer the whole story. It still drives shedding and the
+display tick, but **restore admission is per-axis** — an exempt candidate reads
+`capacityHeadroomKw`, a non-exempt one reads
 `min(capacityHeadroomKw, budgetHeadroomKw)`, where the budget axis is built from the
-measured exempt sum so an off exempt device reserves nothing on it.
+measured exempt sum so an off exempt device reserves nothing on it. The
+should-plan-restores gate is per-axis-aware too: `bindingPaceKw` still gates the full
+restore pass (via the shedding latch), but a budget-driven latch no longer blocks
+exempt candidates — `shouldPlanBudgetExemptRestores` opens a restricted lane
+(`applyBudgetExemptRestorePass`, capacity-axis only, no swap, no batching) so a
+boosted exempt charger is not pinned at its lowest step by background draw exceeding
+an exhausted daily pace (prod 2026-08-03). Deliberate tradeoff: an admitted exempt
+device's draw can make capacity the binding axis and keep the latch — and the
+non-exempt holds — alive longer; that is the boost/exemption priority working as
+intended, not a spiral (the lane closes as soon as the source flips to `capacity`).
 
 `hardCapKw` is a partial exception: the name is already in wide use across
 `lib/objectives/deferredObjectives/**`, the settings UI, and

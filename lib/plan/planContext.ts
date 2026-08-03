@@ -45,8 +45,10 @@ export type PlanContext = {
   budgetReleasableHeadroomHold: boolean;
   // Per-axis restore-admission inputs (notes/safe-pace-two-constraints.md
   // § "Proposed model", restore-admission-scoped). `headroom` above stays the
-  // BINDING (min) axis and keeps driving shedding and the should-plan-restores
-  // gate; these two let admission evaluate each candidate on the axis that
+  // BINDING (min) axis and keeps driving shedding and the full restore pass's
+  // gate — though a budget-driven shedding latch no longer blocks exempt
+  // candidates (`shouldPlanBudgetExemptRestores` opens the restricted
+  // capacity-axis lane); these two let admission evaluate each candidate on the axis that
   // actually constrains it: a budget-exempt candidate admits against capacity
   // only (its own projection already sits in the daily add-back — gating it on
   // the binding pace made its reservation unusable by construction, prod

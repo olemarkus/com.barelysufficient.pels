@@ -53,6 +53,9 @@ Batching is intentionally narrow:
 - cumulative admitted restore need is capped at 50% of the starting available headroom
 - stale whole-home power, startup stabilization, shortfall, overshoot, shed cooldown, and restore
   cooldown keep the previous one-at-a-time behavior
+- the budget-exempt restore lane (admissions while shedding stays latched on a budget-driven
+  overshoot) is always one-at-a-time: its batch state is explicitly disabled, independent of the
+  overshoot flag, so the hysteresis band cannot re-enable continuation there
 - target-based and stepped restores remain conservative unless separately proven safe
 - stepped-load `off -> lowest active step` restores follow normal cross-device priority ordering;
   the conservative stepped gate applies to later step-ups while other devices remain shed, unless

@@ -360,6 +360,37 @@ describe('plan restore device helpers', () => {
     );
   });
 
+  it('skips devices excluded by deviceFilter and defaults to marking every candidate', () => {
+    const deviceMap = new Map<string, DevicePlanDevice>([
+      ['exempt', makeDevice({ id: 'exempt', name: 'Exempt', budgetExempt: true, powerKw: 1 })],
+      ['plain', makeDevice({ id: 'plain', name: 'Plain', powerKw: 1 })],
+    ]);
+    const setDevice = vi.fn();
+    const timing = {
+      activeOvershoot: true,
+      inCooldown: false,
+      inStartupStabilization: false,
+      restoreCooldownSeconds: 9,
+      shedCooldownRemainingSec: null,
+      startupStabilizationRemainingSec: null,
+    };
+    // Filtered: only the non-exempt device is marked (the exempt lane relies on
+    // this so marking cannot overwrite an admission it makes afterwards).
+    markOffDevicesStayOff({
+      deviceMap,
+      timing,
+      setDevice,
+      deviceFilter: (dev) => dev.budgetExempt !== true,
+    });
+    expect(setDevice).toHaveBeenCalledTimes(1);
+    expect(setDevice).toHaveBeenCalledWith('plain', expect.anything());
+
+    // Default (no filter): both candidates are marked — unchanged behavior.
+    setDevice.mockClear();
+    markOffDevicesStayOff({ deviceMap, timing, setDevice });
+    expect(setDevice).toHaveBeenCalledTimes(2);
+  });
+
   it('shares the same live eligibility gate across restore candidate paths', () => {
     const eligible = makeDevice({ id: 'eligible', currentState: 'off' });
     const stale = makeDevice({ id: 'stale', currentState: 'off' });
