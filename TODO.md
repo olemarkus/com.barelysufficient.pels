@@ -2139,15 +2139,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       static placeholder's id or drop it once the redesign surface owns first paint. Source:
       pels-ux-fit (2026-07-19). [P2]
 
-- [ ] **First-run setup checklist on Overview.** A truly fresh install now gets two recovery
-      links (no-data banner → power source, empty overview → Devices page), but the user still
-      assembles the setup order themselves. A dismissable Overview checklist card (1. choose
-      power source → 2. pick managed devices → 3. optionally prices) that ticks itself off and
-      disappears once configured would make the path explicit. Needs mock-ups before build.
-      Persona: brand-new owner on first open; hypothesis: the two links fix recovery but not
-      orientation — a visible sequence prevents the "really tricky to know what to do" first
-      session. Source: user onboarding feedback (2026-07-19). [P3]
-
 - [ ] **Two simulation wait-lines still read factually on device cards.** `Waiting for solar
       surplus` and `Waiting for available power` render unchanged under simulation —
       `toSimulationReasonLine` passes them through as non-acted. Both are arguable: the surplus
@@ -3386,20 +3377,67 @@ Failing-scenario (acute/recovering) visitors (`notes/personas.md`).*
       revision content below the fold, weakening the one surface this persona uses to
       reconstruct what changed. Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `PlanInputsCard`. Source: pels-m3-critic/ux-fit on PR #1197 (batches 1–3 shipped).
+
+- [ ] **Create Smart tasks directly from the Smart tasks page.**
+      *Persona:* Set-and-forget owner / Optimiser who is already on the Smart tasks page.
+      *Hypothesis:* the aggregate Smart tasks page can inspect, edit, and cancel tasks but its
+      first-run state sends the user to a Flow or dashboard widget to create one. A `New smart
+      task` action using the existing candidate picker, goal bounds, preview, and device-scoped
+      write path makes the surface complete without introducing another persistence lane.
+      *Why it's needed:* creation is an ordinary Smart-task operation and should not require
+      leaving the canonical task surface. Keep the dashboard widget as a convenient second route;
+      both surfaces must share contracts and producer-resolved validation.
+      Design: `notes/smart-task-ui/README.md`.
+      Files: `setup/settingsUiSmartTaskApi.ts`, `packages/contracts/src/smartTaskEdit.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`, creation controller/view code shared
+      with or adapted from `widgets/create_smart_task/`.
+
+- [ ] **Add a generic immediate Smart-task intent for temperature devices and EV chargers.**
+      *Persona:* Failing scenario (acute) / Orchestrator who needs one managed device to make
+      progress now rather than at a later price-selected hour.
+      *Hypothesis:* offering `Start now` beside `Ready by` after device selection provides one
+      generic intent with kind-specific heating/charging wording. The immediate intent includes
+      the current hour whenever the device is commandable and the hard cap permits it. It is
+      price-neutral: disabled or unavailable prices must produce a non-price current-hour
+      horizon, not `objective_price_feature_disabled` / `objective_missing_price_horizon`. It
+      applies all three existing objective-scoped permissions as `always` (`exemptFromBudget`,
+      `limitLowerPriorityDevices`, `pauseLowerPriorityDevices`), so the soft daily budget and
+      lower-priority loads cannot silently defeat the request. Those permissions alone are
+      insufficient because the scheduler may still select a later cheap hour; its intent
+      discriminator must also suppress the
+      `priceDeferralEligible` and `coldStartReleaseEligible` release paths; otherwise admission
+      can idle a booked current-hour task.
+      *Why it's needed:* the existing Held-back devices and Overview rescue is temperature-only,
+      appears only after a daily-budget hold, and can still schedule its bounded task later.
+      Reuse the Smart-task planner, preview, history, and write lifecycle; do not build separate
+      heating and EV override subsystems. Require an explicit EV target percent, seed temperature
+      from the current mode target, and keep stale-power/hard-cap safety. Preview and create must
+      share an exact finite `deadlineAtMs`: `now + max(3 h, estimated duration + 1 h)`, refused
+      when the estimate is unavailable/non-finite or exceeds the existing 36 h candidate horizon.
+      Reaching the target finalizes `Succeeded`; expiry finalizes `Missed`; cancellation finalizes
+      `Abandoned`. Define existing-task conflict handling before implementation.
+      Design: `notes/smart-task-ui/README.md`.
+      Files: deferred-objective contracts, a shared immediate-deadline resolver/constants,
+      price-neutral policy horizon/current-hour allocation, admission permissions/release gates
+      and diagnostic parity, lifecycle finalization, Smart-task candidate APIs, Smart tasks
+      creation UI, and `widgets/create_smart_task/`.
+
 *EV charging — the Optimiser / EV commuter (`notes/personas.md`).*
 
-- [ ] **EV deadline polish: manual override actions + imminent-deadline urgency rule.**
+- [ ] **EV deadline polish: pause action + imminent-deadline urgency rule.**
       *Persona:* Failing scenario (acute) with EV-commuter / Optimiser overlap —
       realizes mid-evening the car won't be ready by morning and needs to intervene.
-      *Hypothesis:* exposing `charge_now` / `pause_until_next_planned_slot` actions and
-      force-admitting planned charging when `(deadline − now) < requiredHours + 1 h buffer`
-      lets the panicking user override manually *and* trust the system to self-rescue when the
-      window gets tight.
+      *Hypothesis:* exposing `pause_until_next_planned_slot` and force-admitting planned charging
+      when `(deadline − now) < requiredHours + 1 h buffer` lets the user intervene and trust the
+      system to self-rescue when the window gets tight. Immediate charging belongs to the generic
+      Smart-task item above, not this EV-only slice.
       *Why it's needed:* today an imminent deadline can stay shed under capacity/price logic
       with no escape hatch and no auto-urgency — the worst failure mode for the
       highest-intensity persona. (Notification delivery is the user's own flow; PELS supplies
       the trigger tokens — that token work lives in the P2 observability entry, not here.)
-      Design: `notes/ev-ready-by/README.md`. Files: new flow action JSONs + registrations.
+      Design: `notes/ev-ready-by/README.md`. Files: pause Flow action JSON/registration plus
+      deferred-objective admission/status logic for urgency.
 
 *Usage & budget — the Orchestrator and Set-and-forget owner (`notes/personas.md`).*
 

@@ -34,15 +34,16 @@ target percent, battery size, ready-by time, and approximate charging speed — 
 trust hidden conversions from "I need X kWh" to "charge for Y hours". When that conversion is
 wrong, the deadline slips and the user wakes up to an under-charged car.
 
-PELS already has the SoC observation, learned charging profile, horizon planner, and active-plan
-recorder needed to make this conversion visible and correct. What is missing is the runtime that
-actually starts the charger when the plan says so, plus the feature surfaces that make the
-estimate trustworthy.
+PELS already has the SoC observation, learned charging profile, horizon planner, active-plan
+recorder, and pause/resume actuation needed to make this conversion visible and correct. The
+remaining product gap addressed by the current direction is direct creation on the Smart tasks
+page and a generic immediate intent, alongside the feature extensions listed below.
 
 ## Product Principles
 
-- **Flow cards are the input surface.** Users create deadlines via flow cards today and will
-  continue to. Per-charger automation is quality-of-life follow-up, not the v1 path.
+- **One creation contract, several routes.** The Smart tasks page should join the dashboard
+  widget as a direct creation surface; Flow remains the automation route. Every route must use
+  the same planner and device-scoped write contract.
 - **No hidden speed assumption.** Required energy, planning speed (kW), and estimated duration
   are visible side by side. The speed source (learned, bootstrap, manual, conservative) is
   labeled.
@@ -53,8 +54,8 @@ estimate trustworthy.
 
 ## Current Baseline
 
-The deferred-objective subsystem already ships enough infrastructure to deliver the temperature
-deadline feature end-to-end and to display EV deadline plans without actuating them:
+The deferred-objective subsystem already delivers temperature and SoC-based EV deadline tasks
+end-to-end, including charger pause/resume actuation:
 
 - EV SoC observation with session validity (`lib/device/transport/stateOfCharge.ts`): fresh / stale
   status, session start on plug-in, invalidation on plug-out.
@@ -87,8 +88,9 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   conservative-low query primitives, already wired into stepped-load deferred objectives.
 - Smart tasks UI surfaces: list and per-device deadline-plan and history pages
   (`packages/settings-ui/src/ui/deadlinePlan.ts`, `deadlinesList.ts`).
-- Temperature admission wired in `lib/plan/admission/deferredObjective.ts`: cap-off devices made
-  visible during planned hours, kept idle outside, setpoint lifted to deadline target.
+- Temperature admission wired in `lib/objectives/deferredObjectives/admission.ts`, with intents
+  attached in `lib/plan/planBuilderDecoration.ts`: cap-off devices made visible during planned
+  hours, kept idle outside, setpoint lifted to deadline target.
 - EV admission and pause/resume actuation wired across admission, planner, and executor:
   `admission.ts` emits `binary_restore`/`binary_release` intents per cycle;
   `lib/plan/planBuilder.ts` collects them via `attachDeferredReleaseIntents`;
@@ -132,12 +134,13 @@ different questions; only the second keys off that bit.
 EV admission to charger actuation has landed, and the two trust-surface
 follow-ups that this note originally flagged have **shipped** (see below): the
 Smart tasks device card now explains charger plan state, and the deadline-plan
-hero surfaces planning speed and estimated duration. The remaining gaps are the
-feature extensions — kWh target mode, expanded observability — described further
-down.
+hero surfaces planning speed and estimated duration. The broader product
+follow-ups are direct creation on the Smart tasks page and the generic immediate
+intent. The remaining EV-specific extensions — kWh target mode and expanded
+observability — are described further down.
 
-Feature extensions (kWh target, observability) are stand-alone work that broadens
-coverage and adds user agency.
+Those EV-specific extensions are stand-alone work that broadens coverage and
+adds user agency.
 
 ## Topic map
 
@@ -152,8 +155,8 @@ planned EV bucket resumes a paused plugged-in charger; an idle bucket
 pauses a charging one. Cooldowns and the stale-power failsafe are honored.
 Integration coverage lives in `test/integration/evDevices.integration.test.ts`.
 
-Files (for reference): `lib/plan/admission/deferredObjective.ts`,
-`lib/plan/planBuilder.ts`, `lib/executor/binaryExecutor.ts`,
+Files (for reference): `lib/objectives/deferredObjectives/admission.ts`,
+`lib/plan/planBuilderDecoration.ts`, `lib/executor/binaryExecutor.ts`,
 `lib/executor/planExecutor.ts`, `test/integration/evDevices.integration.test.ts`.
 
 ### Trust-surface follow-ups (shipped)
@@ -252,12 +255,17 @@ re-fires.
 Files: new `packages/contracts/src/evChargerDefaults.ts`, new
 `lib/app/evChargerDefaultsWiring.ts`, `lib/device/transport/stateOfCharge.ts`.
 
-#### Manual override actions and deadline-imminent urgency rule
+#### Immediate intent, pause action, and deadline-imminent urgency
 
-- `charge_now` flow action: override the plan for a one-off trip. Open
-  shape questions: duration semantics; capacity-bound vs hard-cap-only;
-  what happens when the plan already says "charge now"; how it interacts
-  with a stale-power failsafe.
+- Immediate charging is the EV presentation of the generic immediate
+  Smart-task intent in `notes/smart-task-ui/README.md`, not an EV-only
+  command lane. It asks for a target percent, includes the current hour
+  whenever the charger is commandable and the hard cap permits it, works
+  without a price source, applies the task-scoped budget/lower-priority
+  permissions, suppresses the price/cold-start release gates, and retains
+  stale-power safety. Its finite expiry and outcomes come from the generic
+  intent contract. The Smart tasks page and the New smart task widget should
+  reach the same implementation.
 - `pause_until_next_planned_slot` flow action: soft-pause until the next
   planned bucket boundary. Open shape questions: behavior when no next
   bucket exists; whether the pause surfaces in trigger tokens.
@@ -267,12 +275,15 @@ Files: new `packages/contracts/src/evChargerDefaults.ts`, new
   bound). Open shape questions: the threshold value and the
   user-visible explanation.
 
-Files: new flow action JSONs and registrations.
+Files: shared Smart-task contracts and candidate/write paths, Smart tasks and
+dashboard creation surfaces, the pause Flow action/registration, and
+deferred-objective admission/status logic for urgency.
 
 ## Out of Scope (v1)
 
-- Settings UI editor for creating one-off plans. The existing flow card covers creation; an
-  editor adds surface area without addressing the trust gap.
+- Direct creation on the Smart tasks page was excluded from v1. The later product direction
+  is tracked in `notes/smart-task-ui/README.md` and `TODO.md`; it reuses the shipped
+  preview/write paths rather than changing the v1 objective model.
 - Native push notifications. PELS does not deliver notifications; it exposes trigger tokens
   with enough text content for the user's own flow to compose a message.
 - Cold-weather reserve. Risks implying precision the runtime cannot deliver; revisit only if
