@@ -9535,3 +9535,43 @@ md-switch {
 
   margin-top: var(--spacing-2);
 }
+
+/* Charger page: the cars this charger may match. A checkbox list rather than
+   switches — these are list members, not independent capabilities, and the
+   checkbox reads as "include this one". */
+.detail-car-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* The section's answer — which car, and how full — so it reads as the headline
+   rather than as a footnote under the list it drives. */
+.detail-car-status {
+  margin: 0;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-semantic-text-primary);
+}
+
+.detail-car-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-car-row {
+  gap: var(--spacing-3);
+  cursor: pointer;
+}
+
+.detail-car-row input[type='checkbox'] {
+  order: 2;
+  flex-shrink: 0;
+  margin-left: auto;
+  width: var(--spacing-4);
+  height: var(--spacing-4);
+  accent-color: var(--color-role-accent);
+}
+
+.detail-car-row .md-switch-row__label {
+  order: 1;
+}

@@ -66,6 +66,7 @@ import {
   loadEvBoostSettings,
   renderEvBoostSettings,
 } from './evBoost.ts';
+import { loadEvCarAssociations, renderCarAssociation } from './carAssociation.ts';
 import {
   initTemperatureBoostHandlers,
   loadTemperatureBoostSettings,
@@ -270,6 +271,7 @@ const refreshOpenDeviceDetail = () => {
   renderTargetPowerConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
+  renderCarAssociation(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   setDeviceDetailSurplusValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
@@ -313,6 +315,7 @@ export const openDeviceDetail = (deviceId: string) => {
   renderTargetPowerConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
+  renderCarAssociation(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
   setDeviceDetailSurplusValues(deviceId);
@@ -385,7 +388,7 @@ const initDeviceDetailControlModelHandler = () => {
   });
 };
 
-export { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings };
+export { loadEvBoostSettings, loadEvCarAssociations, loadShedBehaviors, loadTemperatureBoostSettings };
 
 export const initDeviceDetailHandlers = () => {
   const overlayContext = {

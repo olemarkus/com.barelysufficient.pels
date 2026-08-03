@@ -1,5 +1,6 @@
 import type {
   DeviceDescriptor,
+  AssociatedCarDecoration,
   EvBoostConfig,
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
@@ -47,6 +48,9 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   // them, which the control-mode / target-power / stepped-load-draft detail panes
   // read (and optimistically mutate). Probe-widen rather than re-Pick the base.
   & SteppedLoadDescriptorProbe
+  // The car the charger matched this session, decorated onto `/ui_devices` by
+  // the backend composer (resolved per read, never stored on the snapshot).
+  & AssociatedCarDecoration
   & {
     temperatureBoost?: TemperatureBoostConfig;
     evBoost?: EvBoostConfig;

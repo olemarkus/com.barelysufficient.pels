@@ -5,6 +5,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
+  EV_CAR_ASSOCIATIONS,
   CAPACITY_PRIORITIES,
   MAIN_HOME_ID,
   MODE_DEVICE_TARGETS,
@@ -14,6 +15,8 @@ import {
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
+import { normalizeEvCarAssociations } from '../../../contracts/src/evCarAssociations.ts';
+import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -66,6 +69,11 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.shedBehaviors),
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
+    // Both sides of the association map: a charger that ONLY has ticked cars,
+    // and a car that only appears inside some charger's list, are otherwise
+    // invisible to cleanup discovery and can never be purged.
+    ...Object.keys(state.evCarAssociations),
+    ...Object.values(state.evCarAssociations).flatMap((entry) => entry.carIds),
     ...Object.keys(state.priceOptimizationSettings),
     ...Object.keys(state.temperatureControlDisabledMap),
   ];
@@ -122,6 +130,24 @@ const removeDeviceIdsFromRecord = <T>(
   Object.entries(map).filter(([deviceId]) => !deviceIds.has(deviceId)),
 );
 
+/**
+ * A purged device can appear on BOTH sides of this map: as the charger (the key)
+ * and as a car inside another charger's list. Dropping only the key would leave
+ * a deleted car ticked on every charger it was listed for, invisible in the UI
+ * and permanently unmatchable. A charger left with no cars loses its entry —
+ * empty means off.
+ */
+const purgeEvCarAssociations = (
+  associations: EvCarAssociations,
+  deviceIds: Set<string>,
+): EvCarAssociations => Object.fromEntries(
+  Object.entries(associations).flatMap(([chargerId, config]) => {
+    if (deviceIds.has(chargerId)) return [];
+    const carIds = config.carIds.filter((carId) => !deviceIds.has(carId));
+    return carIds.length === 0 ? [] : [[chargerId, { carIds }]];
+  }),
+);
+
 const buildPurgedState = (deviceIds: Set<string>) => ({
   controllableMap: removeDeviceIdsFromRecord(state.controllableMap, deviceIds),
   managedMap: removeDeviceIdsFromRecord(state.managedMap, deviceIds),
@@ -130,6 +156,7 @@ const buildPurgedState = (deviceIds: Set<string>) => ({
   shedBehaviors: removeDeviceIdsFromRecord(state.shedBehaviors, deviceIds),
   temperatureBoostSettings: removeDeviceIdsFromRecord(state.temperatureBoostSettings, deviceIds),
   evBoostSettings: removeDeviceIdsFromRecord(state.evBoostSettings, deviceIds),
+  evCarAssociations: purgeEvCarAssociations(state.evCarAssociations, deviceIds),
   priceOptimizationSettings: removeDeviceIdsFromRecord(state.priceOptimizationSettings, deviceIds),
   temperatureControlDisabledMap: removeDeviceIdsFromRecord(state.temperatureControlDisabledMap, deviceIds),
   capacityPriorities: removeDeviceIdsFromModeMap(state.capacityPriorities, deviceIds),
@@ -144,6 +171,7 @@ const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
   state.shedBehaviors = next.shedBehaviors;
   state.temperatureBoostSettings = next.temperatureBoostSettings;
   state.evBoostSettings = next.evBoostSettings;
+  state.evCarAssociations = next.evCarAssociations;
   state.priceOptimizationSettings = next.priceOptimizationSettings;
   state.temperatureControlDisabledMap = next.temperatureControlDisabledMap;
   state.capacityPriorities = next.capacityPriorities;
@@ -222,6 +250,10 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
       apply: (value) => { state.evBoostSettings = readRecordSetting(value); },
     },
     {
+      key: EV_CAR_ASSOCIATIONS, fallback: state.evCarAssociations,
+      apply: (value) => { state.evCarAssociations = normalizeEvCarAssociations(value); },
+    },
+    {
       key: 'price_optimization_settings',
       fallback: state.priceOptimizationSettings,
       apply: (value) => { state.priceOptimizationSettings = readRecordSetting(value); },
@@ -279,6 +311,7 @@ const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting(OVERSHOOT_BEHAVIORS, next.shedBehaviors),
     setSetting(TEMPERATURE_BOOST_SETTINGS, next.temperatureBoostSettings),
     setSetting(EV_BOOST_SETTINGS, next.evBoostSettings),
+    setSetting(EV_CAR_ASSOCIATIONS, next.evCarAssociations),
     setSetting('price_optimization_settings', next.priceOptimizationSettings),
     setSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES, next.temperatureControlDisabledMap),
     purgeModeCatalogDeviceIds(ids, homeIds),
