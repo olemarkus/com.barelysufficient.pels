@@ -472,5 +472,8 @@
   },
   "2.20.1": {
     "en": "Fixes thermostats being limited to on and off switching even when temperature control was left enabled for them."
+  },
+  "2.20.2": {
+    "en": "Devices waiting for power now say how much more power is needed before they can resume, updated every cycle, and the amount reacts to the current situation rather than a fixed figure. The Overview no longer blames the car when it was PELS that paused the charger, the managed and background split is shown when managed usage is a known zero, and device cards now describe what that device needs while the hero line states what is limiting the home. Smart tasks and other budget-exempt work can resume while the daily budget is holding other devices back, as long as there is capacity for them, and ties between equally cheap hours now pick the earliest hour."
   }
 }
