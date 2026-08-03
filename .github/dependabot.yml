@@ -15,3 +15,33 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # Keep the npm tree patched. Without this block the repo still *raised*
+  # Dependabot security alerts but never opened a PR for any of them, so they
+  # accumulated silently (19 open when this was added).
+  - package-ecosystem: npm
+    # The root lockfile covers the workspaces under packages/ too.
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Patch/minor churn lands as two PRs a week rather than twenty. Majors
+      # stay ungrouped so each one gets its own PR and its own CI signal —
+      # they carry real lint/type churn here (typescript, eslint plugins).
+      production:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # The Playwright browsers live in a container image pinned by tag in
+      # test.yml, which Dependabot's npm ecosystem cannot see. Bumping the
+      # package alone fails every browser-backed job with "Executable doesn't
+      # exist". Update the package and the four image tags in the same PR.
+      - dependency-name: "@playwright/test"

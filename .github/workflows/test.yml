@@ -183,6 +183,8 @@ jobs:
     env:
       HOME: /root
     container:
+      # Must match the @playwright/test version in package-lock.json — the image
+      # ships that release's browsers and refuses to launch on a mismatch.
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
 
@@ -205,6 +207,8 @@ jobs:
     env:
       HOME: /root
     container:
+      # Must match the @playwright/test version in package-lock.json — the image
+      # ships that release's browsers and refuses to launch on a mismatch.
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
 
@@ -242,6 +246,8 @@ jobs:
     env:
       HOME: /root
     container:
+      # Must match the @playwright/test version in package-lock.json — the image
+      # ships that release's browsers and refuses to launch on a mismatch.
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
 
@@ -293,6 +299,8 @@ jobs:
     env:
       HOME: /root
     container:
+      # Must match the @playwright/test version in package-lock.json — the image
+      # ships that release's browsers and refuses to launch on a mismatch.
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
 
