@@ -63,3 +63,24 @@ export const resolveAssociatedCarSnapshot = (params: {
         ...(car.socPct === undefined ? {} : { socPct: car.socPct, socObservedAtMs: car.socAtMs }),
     };
 };
+
+/**
+ * Every associated charger's current car battery level.
+ *
+ * The level is a value the probe holds continuously, not an event: a car sitting
+ * at 40 % publishes nothing, and one whose level moved while PELS was down has
+ * already sent its update. Serving it from the association rather than from a
+ * change notification is what lets an associated charger always have a level.
+ */
+export const collectAssociatedCarLevels = (params: {
+    cars: ReadonlyMap<string, CarObservation>;
+    links: ReadonlyMap<string, ActiveLinkView>;
+}): Array<{ chargerId: string; carId: string; socPct: number; socAtMs: number }> => {
+    const readings: Array<{ chargerId: string; carId: string; socPct: number; socAtMs: number }> = [];
+    for (const [chargerId, link] of params.links) {
+        const car = params.cars.get(link.carId);
+        if (car?.socPct === undefined) continue;
+        readings.push({ chargerId, carId: link.carId, socPct: car.socPct, socAtMs: car.socAtMs });
+    }
+    return readings;
+};

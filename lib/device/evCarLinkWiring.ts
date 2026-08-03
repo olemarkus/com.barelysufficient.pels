@@ -21,6 +21,7 @@ import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/state
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import {
     EvCarLinkProducer,
+    type EvCarLinkProducerDeps,
     type EvCarLinkEventEmitter,
 } from './evCarLinkProducer';
 import { createEmptyEvCarLinkSnapshot } from './evCarLinkSnapshot';
@@ -92,6 +93,8 @@ export const createEvCarLinkProducer = (params: {
     emit: EvCarLinkEventEmitter;
     getSnapshots: () => readonly ChargerViewInput[];
     snapshotAccess?: EvCarLinkSnapshotAccess;
+    onAssociatedCarStateOfCharge?: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'];
+    onAssociationEnded?: EvCarLinkProducerDeps['onAssociationEnded'];
 }): EvCarLinkProducer => {
     let inMemory: EvCarLinkSnapshot = createEmptyEvCarLinkSnapshot();
     const access: EvCarLinkSnapshotAccess = params.snapshotAccess ?? {
@@ -104,5 +107,7 @@ export const createEvCarLinkProducer = (params: {
         getChargers: () => buildEvCarLinkChargerViews(params.getSnapshots()),
         getSnapshot: access.get,
         setSnapshot: access.set,
+        onAssociatedCarStateOfCharge: params.onAssociatedCarStateOfCharge,
+        onAssociationEnded: params.onAssociationEnded,
     });
 };

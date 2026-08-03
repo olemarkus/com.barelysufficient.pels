@@ -20,6 +20,15 @@ export type EvCarLinkEvent =
         votes: number; source: string;
     }
     | {
+        // A session picked back up after a restart: the persisted pair, confirmed
+        // by both sides currently reporting connected. `sinceMs` is the ORIGINAL
+        // session start carried across the outage, so a log review can tell a
+        // resumed session from a fresh one by its age.
+        component: 'devices'; event: 'ev_car_link_resumed';
+        carId: string; carName: string; chargerId: string; chargerName: string;
+        sinceMs: number;
+    }
+    | {
         component: 'devices'; event: 'ev_car_link_ambiguous';
         chargerId: string; chargerName: string; carIds: string[]; kind: string;
     }

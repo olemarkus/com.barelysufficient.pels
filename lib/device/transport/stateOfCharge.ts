@@ -39,6 +39,9 @@ type StateOfChargeCandidate = {
   percent: number;
   observedAtMs?: number;
   capabilityId: string;
+  /** Absent = the charger reported it; `'car'` = read off the associated car. */
+  source?: 'car';
+  sourceDeviceId?: string;
 };
 
 // The session anchoring / invalidation pair the caller already knows about.
@@ -55,6 +58,18 @@ export function resolveStateOfChargeSnapshot(params: {
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   retainedSession?: RetainedStateOfChargeSession;
+  /**
+   * Whether the user ticked any car for this charger. When they have, the car
+   * is the ONLY source of its battery level: the charger's own native reading
+   * and the `report_evcharger_battery_level` flow card are both ignored, so the
+   * level cannot flip between two sources mid-session and the user gets what
+   * they asked for. The value itself arrives on the realtime seam
+   * (`updateStateOfChargeFromCarObservation`); parse's job is to carry it, not
+   * to re-derive it.
+   */
+  carAdoptionActive?: boolean;
+  /** The level parse last held, so an adopting charger can retain a car reading. */
+  retainedStateOfCharge?: DeviceStateOfChargeSnapshot;
 }): DeviceStateOfChargeSnapshot | undefined {
   const {
     deviceClassKey,
@@ -62,13 +77,17 @@ export function resolveStateOfChargeSnapshot(params: {
     capabilityObj,
     reportedCapabilities,
     retainedSession,
+    carAdoptionActive,
+    retainedStateOfCharge,
   } = params;
   if (deviceClassKey !== 'evcharger') return undefined;
 
-  const candidate = resolveStateOfChargeCandidate({ capabilityObj });
+  const candidate = carAdoptionActive
+    ? retainedCarCandidate(retainedStateOfCharge)
+    : resolveStateOfChargeCandidate({ capabilityObj });
   if (!candidate) return undefined;
 
-  return buildStateOfChargeSnapshot({
+  const resolved = buildStateOfChargeSnapshot({
     percent: candidate.percent,
     observedAtMs: candidate.observedAtMs,
     capabilityId: candidate.capabilityId,
@@ -81,6 +100,107 @@ export function resolveStateOfChargeSnapshot(params: {
       charging: getBooleanCapabilityValue(capabilityObj.evcharger_charging?.value),
     }),
   });
+  return candidate.source === 'car'
+    ? { ...resolved, source: 'car', ...(candidate.sourceDeviceId ? { sourceDeviceId: candidate.sourceDeviceId } : {}) }
+    : resolved;
+}
+
+/**
+ * The car-sourced level parse is carrying forward, or nothing.
+ *
+ * An adopting charger has no candidate of its own to fall back to — that is the
+ * point of the opt-in — so before the first car reading lands (a fresh install,
+ * or a restart mid-session) it reports no level at all rather than briefly
+ * showing the flow card's. A reading the charger itself produced is never
+ * retained here: the toggle may have been switched on with one still present.
+ */
+function retainedCarCandidate(
+  retained: DeviceStateOfChargeSnapshot | undefined,
+): StateOfChargeCandidate | null {
+  if (retained?.source !== 'car') return null;
+  return {
+    percent: retained.percent,
+    observedAtMs: retained.observedAtMs,
+    capabilityId: retained.capabilityId ?? EV_SOC_CAPABILITY_ID,
+    source: 'car',
+    sourceDeviceId: retained.sourceDeviceId,
+  };
+}
+
+/**
+ * Writes the associated car's battery level onto the charger, on the realtime
+ * seam the probe reports it on. Mirrors
+ * `updateStateOfChargeFromRealtimeCapability` — same session anchoring, same
+ * invalidation carry-forward, same status rule — because a car-sourced level is
+ * the charger's level as far as everything downstream is concerned; only its
+ * provenance differs.
+ */
+export function updateStateOfChargeFromCarObservation(params: {
+  snapshot: TransportDeviceSnapshot;
+  percent: number;
+  observedAtMs: number;
+  carId: string;
+  nowMs: number;
+}): boolean {
+  const { snapshot, percent, observedAtMs, carId, nowMs } = params;
+  if (snapshot.deviceClass !== 'evcharger') return false;
+  const normalized = normalizeStateOfChargePercent(percent);
+  if (normalized === undefined) return false;
+
+  const chargeInMotion = isChargeInMotionForSnapshot(snapshot);
+  const previous = snapshot.stateOfCharge;
+  const next = buildStateOfChargeSnapshot({
+    percent: normalized,
+    observedAtMs,
+    capabilityId: EV_SOC_CAPABILITY_ID,
+    capabilityObj: {
+      evcharger_charging_state: {
+        value: snapshot.evChargingState,
+        lastUpdated: previous?.sessionStartedAtMs ?? observedAtMs,
+      },
+    },
+    reportedCapabilities: {},
+    nowMs,
+    retainedSession: previous,
+    chargeInMotion,
+  });
+  const invalidatedAtMs = maxPositive([
+    previous?.invalidatedAtMs,
+    next.invalidatedAtMs,
+  ].filter(isFinitePositiveNumber));
+  const sessionStartedAtMs = resolveRealtimeSessionStartedAtMs(previous, next);
+  snapshot.stateOfCharge = {
+    ...next,
+    source: 'car',
+    sourceDeviceId: carId,
+    ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
+    ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
+    status: resolveStateOfChargeStatus({
+      observedAtMs,
+      nowMs,
+      sessionStartedAtMs,
+      invalidatedAtMs,
+      chargeInMotion,
+    }),
+  };
+  return previous?.percent !== normalized
+    || previous?.observedAtMs !== observedAtMs
+    || previous?.status !== snapshot.stateOfCharge.status;
+}
+
+/**
+ * Drops a car-sourced level when the association ends.
+ *
+ * Removed rather than aged out: with no car there is no battery to report, and
+ * leaving the last percentage behind would show a departed car's charge as this
+ * charger's. Only ever clears a reading the car produced — a charger's own
+ * native or flow-reported level is untouched.
+ */
+export function clearCarStateOfCharge(params: { snapshot: TransportDeviceSnapshot }): boolean {
+  const { snapshot } = params;
+  if (snapshot.stateOfCharge?.source !== 'car') return false;
+  snapshot.stateOfCharge = undefined;
+  return true;
 }
 
 export function updateStateOfChargeObservationFreshness(params: {

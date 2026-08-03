@@ -14,7 +14,7 @@
  */
 import { BatteryStateProducer } from './batteryStateProducer';
 import { SolarProductionProducer } from './solarProductionProducer';
-import type { EvCarLinkProducer } from './evCarLinkProducer';
+import type { EvCarLinkProducer, EvCarLinkProducerDeps } from './evCarLinkProducer';
 import {
     createEvCarLinkProducer,
     type ChargerViewInput,
@@ -40,6 +40,10 @@ export const createObservationProducers = (params: {
     getSnapshots: () => readonly ChargerViewInput[];
     /** Persistence port for the probe, injected by the wiring layer; omit to stay in-memory. */
     evCarLinkSnapshotAccess?: EvCarLinkSnapshotAccess;
+    /** A fresh battery level from a charger's associated car (see the probe deps). */
+    onAssociatedCarStateOfCharge?: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'];
+    /** A charger's car session ended. */
+    onAssociationEnded?: EvCarLinkProducerDeps['onAssociationEnded'];
 }): ObservationProducers => {
     const evCarLinkAccess = params.evCarLinkSnapshotAccess;
     return ({
@@ -49,6 +53,8 @@ export const createObservationProducers = (params: {
         emit: (payload) => params.emit({ ...payload }),
         getSnapshots: params.getSnapshots,
         snapshotAccess: evCarLinkAccess,
+        onAssociatedCarStateOfCharge: params.onAssociatedCarStateOfCharge,
+        onAssociationEnded: params.onAssociationEnded,
     }),
     destroy: () => evCarLinkAccess?.flush(),
     });
