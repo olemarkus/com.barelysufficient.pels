@@ -43,6 +43,9 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // raw snapshot before the read model serializes, so a boot-present EV's real
     // plug-state is materialized for cycle 1.
     getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
+    // Read live from the transport, not off a snapshot: the association is
+    // resolved per read and moves within seconds of a plug edge.
+    getAssociatedCarChargingState: (deviceId) => ctx.deviceManager?.getAssociatedCar(deviceId)?.chargingState,
     getObservedTemperature: (deviceId) => readObservedTemperatureState(ctx.getObservedState(deviceId)),
     // Observation staleness for the settings-UI gray-state label and the idle
     // classifier, sourced from the observer projection — the same seam as

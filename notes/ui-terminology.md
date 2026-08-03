@@ -196,9 +196,14 @@ absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
 title + at most ONE status chip (ladder: `Let it run now` → `Budget limited`/
 `Low power` → `Boost` → `Always on`; the `Smart task` badge is an
 identity/route badge and may coexist), the state row (state word + power
-fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · level
-6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
-exception reason line. Quiet states render no chip and no reason. `Off` is now
+fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
+level 6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
+exception reason line. An EV charger's fact line carries the car's battery
+level in the slot a temperature device uses for its measured value — that is
+the number the owner is asking the card for, not only the amps PELS set. It
+appears only for a `fresh` reading; a stale or invalid one is dropped rather
+than qualified, because the card is a glance and 320 px is the floor (device
+detail spells out `stale` / `Invalid report`). Quiet states render no chip and no reason. `Off` is now
 one of the shared state words; the older modality-specific bare `On`/`Off`
 output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.
@@ -1207,3 +1212,12 @@ whole-clock-hour kWh on three different days). Two rules follow:
    before a deadline is to **lower the daily budget** so future days reserve
    available power earlier — see `cannotMeetDailyBudgetExhausted` copy in
    `deadlineLabels.ts`.
+
+## EV charger card states
+
+What an EV charger's card may say about *why* it is idle is governed by
+`notes/ev-charger-state-copy.md` — the matrix of PELS intent, the charger's
+command capability, the charger's observed state, and the associated car's own
+state, with the copy each combination earns. The rule it exists to enforce:
+**never name a cause PELS cannot observe.** Without an associated car, a
+plugged-in idle charger is `Not charging` and nothing more.

@@ -62,6 +62,13 @@ export type PlanServiceDeps = {
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  /**
+   * The plug state reported by the CAR associated with this charger, when the
+   * user has ticked one and the probe matched it. Absent means PELS has no car
+   * to ask — which is a different thing from the car saying nothing, and the
+   * card copy depends on the distinction (`notes/ev-charger-state-copy.md`).
+   */
+  getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
   // Temperature readings for the settings-UI overview are observational truth,
   // not planner command state. In particular, a temperature-control-disabled
   // device is projected to the planner as binary but still shows the external

@@ -858,3 +858,67 @@ describe('resolveSteppedStatusLine — budget hold vs active recovery', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('battery level on the EV charger fact line', () => {
+  const evCard = (overrides: Record<string, unknown> = {}) => ({
+    currentState: 'on',
+    controlCapabilityId: 'evcharger_charging',
+    steppedLoad: { reportedStepId: '16a', targetStepId: '16a', commandPending: false },
+    ...overrides,
+  });
+
+  it('shows the level beside the amps while charging', () => {
+    expect(resolveSteppedLevelFact(evCard({
+      evChargingState: 'plugged_in_charging',
+      stateOfCharge: { percent: 64, status: 'fresh' },
+    }))).toBe('Charging · 64 % · level 16 A');
+  });
+
+  it('shows the level when connected but not charging', () => {
+    expect(resolveSteppedLevelFact(evCard({
+      evChargingState: 'plugged_in',
+      stateOfCharge: { percent: 64, status: 'fresh' },
+    }))).toBe('64 % · Level 16 A');
+  });
+
+  it('rounds to a whole percent', () => {
+    expect(resolveSteppedLevelFact(evCard({
+      evChargingState: 'plugged_in_charging',
+      stateOfCharge: { percent: 63.6, status: 'fresh' },
+    }))).toBe('Charging · 64 % · level 16 A');
+  });
+
+  it('drops a reading that is not fresh rather than qualifying it', () => {
+    // The card is a glance and 320 px is the floor; device detail already spells
+    // out "stale" / "Invalid report" for anyone who needs the reason.
+    for (const status of ['stale', 'invalid', 'unknown']) {
+      expect(resolveSteppedLevelFact(evCard({
+        evChargingState: 'plugged_in_charging',
+        stateOfCharge: { percent: 64, status },
+      }))).toBe('Charging · level 16 A');
+    }
+  });
+
+  it('is unchanged when there is no reading at all', () => {
+    expect(resolveSteppedLevelFact(evCard({ evChargingState: 'plugged_in_charging' })))
+      .toBe('Charging · level 16 A');
+    expect(resolveSteppedLevelFact(evCard({ evChargingState: 'plugged_in' })))
+      .toBe('Level 16 A');
+  });
+
+  it('never shows a battery level for a non-EV stepped device', () => {
+    // Only an EV charger has a car behind it; a water heater carrying a stray
+    // percentage must not render one.
+    expect(resolveSteppedLevelFact(evCard({
+      controlCapabilityId: 'onoff',
+      stateOfCharge: { percent: 64, status: 'fresh' },
+    }))).toBe('Level 16 A');
+  });
+
+  it('says nothing at all when the charger is off', () => {
+    expect(resolveSteppedLevelFact(evCard({
+      currentState: 'off',
+      stateOfCharge: { percent: 64, status: 'fresh' },
+    }))).toBeNull();
+  });
+});
