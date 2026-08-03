@@ -326,6 +326,8 @@ const EV_CHARGING_STATE_LABELS: Record<string, string> = {
 // `resolveSteppedEvExceptionLabel`).
 const EV_IDLE_STATE = 'plugged_in';
 const EV_IDLE_COMMANDED_LABEL = 'Waiting for car';
+const EV_CAR_DISAGREES_LABEL = 'Car and charger disagree';
+const EV_CAR_PAUSED_LABEL = 'Paused by the car';
 
 // ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────
 
@@ -346,18 +348,41 @@ export const resolveSteppedLevelFact = (device: {
   steppedLoad?: SteppedLoadCardState;
   evChargingState?: EvChargingState;
   controlCapabilityId?: string;
+  stateOfCharge?: { percent: number; status: string };
 }): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
   const stepId = device.steppedLoad?.reportedStepId ?? null;
   if (!stepId) return 'Level unknown';
   if (isOffLikeId(stepId)) return null;
   const levelText = `level ${formatStepDisplayLabel(stepId)}`;
-  const isRoutineEvCharge = device.controlCapabilityId === 'evcharger_charging'
+  const isEvCharger = device.controlCapabilityId === 'evcharger_charging';
+  const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;
+  const isRoutineEvCharge = isEvCharger
     && (device.evChargingState ?? '').trim().toLowerCase() === EV_ROUTINE_STATE;
-  if (isRoutineEvCharge) {
-    return `${EV_CHARGING_STATE_LABELS[EV_ROUTINE_STATE]} · ${levelText}`;
-  }
-  return `${capitalize(levelText)}`;
+  const segments = isRoutineEvCharge
+    ? [EV_CHARGING_STATE_LABELS[EV_ROUTINE_STATE], batteryText, levelText]
+    : [batteryText, capitalize(levelText)];
+  return segments.filter((segment): segment is string => segment !== null).join(' · ');
+};
+
+/**
+ * The car's battery level for the fact line, or nothing.
+ *
+ * This is the number an EV owner is actually asking the card for — the same slot
+ * where a temperature device shows its measured value, rather than only the amps
+ * PELS set.
+ *
+ * Shown ONLY for a `fresh` reading. A stale, invalid or unknown one is dropped
+ * rather than qualified: the card is a glance, the qualifier costs width the
+ * 320 px floor does not have, and the device-detail readout already spells out
+ * `stale` / `Invalid report` for anyone who needs to know why.
+ */
+const resolveBatteryFact = (
+  stateOfCharge: { percent: number; status: string } | undefined,
+): string | null => {
+  if (stateOfCharge?.status !== 'fresh') return null;
+  if (!Number.isFinite(stateOfCharge.percent)) return null;
+  return `${Math.round(stateOfCharge.percent)} %`;
 };
 
 type EvExceptionSteppedLoad = SteppedLoadCardState & { profile?: SteppedLoadProfile };
@@ -385,16 +410,61 @@ const isCommandedToPoweredStep = (steppedLoad: EvExceptionSteppedLoad | undefine
 // label stays the neutral fact.
 export const resolveSteppedEvExceptionLabel = (device: {
   evChargingState?: EvChargingState;
+  /** The associated car's own plug state; absent when no car is associated. */
+  carChargingState?: EvChargingState;
   controlCapabilityId?: string;
   steppedLoad?: EvExceptionSteppedLoad;
 }, dryRun = false): string | null => {
   if (device.controlCapabilityId !== 'evcharger_charging') return null;
   const state = (device.evChargingState ?? '').trim().toLowerCase();
   if (state === EV_ROUTINE_STATE) return null;
+  const carLabel = resolveEvCarExceptionLabel(device, state, dryRun);
+  if (carLabel !== null) return carLabel;
   if (state === EV_IDLE_STATE && !dryRun && isCommandedToPoweredStep(device.steppedLoad)) {
     return EV_IDLE_COMMANDED_LABEL;
   }
   return EV_CHARGING_STATE_LABELS[state] ?? null;
+};
+
+/**
+ * What the associated CAR adds, and only where the charger alone is ambiguous.
+ *
+ * Without a car, a plugged-in idle charger is `Not charging` and nothing more:
+ * PELS cannot see why, and naming the car as the holdout is an assertion it
+ * cannot make. With a car it becomes an observation — the car itself says
+ * whether it is drawing. Matrix of record: `notes/ev-charger-state-copy.md`.
+ */
+const resolveEvCarExceptionLabel = (
+  device: { carChargingState?: EvChargingState; steppedLoad?: EvExceptionSteppedLoad },
+  state: string,
+  dryRun: boolean,
+): string | null => {
+  const carState = device.carChargingState;
+  // In simulation the powered target is hypothetical — PELS never sent the
+  // command — so the car cannot be the holdout of anything.
+  if (carState === undefined || dryRun) return null;
+  if (!isCommandedToPoweredStep(device.steppedLoad)) return null;
+  // The charger reports current flowing, so whatever the car believes, this is
+  // the routine case and the fact line already carries it.
+  if (state === EV_ROUTINE_STATE) return null;
+  if (state === EV_IDLE_STATE) {
+    // Both observe the same plug. Disagreement is a real fault — a lagging car
+    // app or a wrong association — and is reported rather than smoothed over.
+    if (carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
+    // The car says it is not plugged in at all, so the association is suspect.
+    // Return the plain fact rather than falling through — falling through would
+    // reach the intent-based inference and name the car as holdout on the
+    // strength of an association the car itself just contradicted.
+    if (carState === 'plugged_out') return EV_CHARGING_STATE_LABELS[state] ?? null;
+    return EV_IDLE_COMMANDED_LABEL;
+  }
+  if (state === 'plugged_in_paused') {
+    // Same contradiction as the idle case, and reported for the same reason: the
+    // charger says it halted while the car says current is flowing.
+    if (carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
+    if (carState === 'plugged_in_paused') return EV_CAR_PAUSED_LABEL;
+  }
+  return null;
 };
 
 export { capitalize as capitalizeStepLabel };

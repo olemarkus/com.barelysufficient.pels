@@ -43,6 +43,33 @@ need forces a split. Reasons:
 - The `source: 'capability' | 'flow'` field on the public contract added no
   consumer-visible behavior and has been removed.
 
+## Amendment (2026-08-03): `source: 'car'` is a different question
+
+`DeviceStateOfChargeSnapshot` now carries `source?: 'car'` and `sourceDeviceId?`
+(PR #1975). That is not a reversal of the decision above, and the distinction is
+worth stating so neither rule gets applied to the other case.
+
+The removed field asked *which charger-side input produced this* — native
+capability or flow-reported synthetic. Both describe the same device, and no
+consumer ever needed to tell them apart, which is exactly why it went.
+
+`'car'` says the value came from a **different device**: the associated car,
+adopted because the user ticked it for this charger
+(`notes/ev-car-link/README.md`). It has real consumers, and each of them would be
+wrong without it:
+
+- `setup/appFlowBacked.ts` — a flow report must not wake the planner for, or
+  refresh the freshness of, a level the flow card no longer supplies.
+- `retainedCarCandidate` (`lib/device/transport/stateOfCharge.ts`) — parse carries
+  a car reading across refreshes and must not promote a charger-owned one.
+- `clearCarStateOfCharge` — an ended association drops only what the car supplied.
+- `buildEvCarLinkChargerViews` — the accuracy shadow must not compare a car
+  reading against itself.
+
+The original rule still holds for everything it covered: charger-side provenance
+stays in the observation layer, and `status` remains the answer to "can I trust
+this reading". `source` answers "whose reading is it", which no other field does.
+
 Revisit if:
 
 - Deadline / objective planning needs to discount synthetic SoC readings

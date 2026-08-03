@@ -28,6 +28,7 @@ export type SettingsOverviewReadModelDeps = {
   // read model surfaces the raw string for display, so it reads it from the
   // observer here rather than off the plan device (which no longer carries it).
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
   getObservedTemperature?: (deviceId: string) => {
     currentTarget: number | null;
     currentTemperature?: number;
@@ -162,6 +163,7 @@ export function buildSettingsOverviewDeviceReadModel(
     controlModel: resolveDisplayControlModel(device, producerDeviceType, producerControlModel),
     controlCapabilityId: device.controlCapabilityId,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
+    carChargingState: deps.getAssociatedCarChargingState?.(device.id),
     currentTarget: temperature.currentTarget,
     plannedTarget: temperature.plannedTarget,
     currentTemperature: temperature.currentTemperature,
@@ -174,6 +176,13 @@ export function buildSettingsOverviewDeviceReadModel(
     surplusAbsorbActive: device.surplusAbsorbActive,
     evBoost: ev?.evBoost,
     evBoostActive: ev?.evBoostActive,
+    // Projected to the two properties the wire type declares rather than passed
+    // whole: the observation layer's session/invalidation bookkeeping is its own
+    // business, and `status` already answers everything a card needs to know
+    // about the reading's currency (`notes/ev-soc-layering.md`).
+    stateOfCharge: ev?.stateOfCharge
+      ? { percent: ev.stateOfCharge.percent, status: ev.stateOfCharge.status }
+      : undefined,
     // Display-only staleness, sourced from the observer (not the plan device).
     observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,

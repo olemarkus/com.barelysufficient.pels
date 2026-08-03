@@ -6,7 +6,8 @@ import type {
   TemperatureKind,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  DeviceStateOfChargeSnapshot, EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
@@ -168,6 +169,9 @@ export const buildPlanDevice = (
     deviceType?: 'temperature' | 'onoff';
     currentOn?: boolean;
     binaryControl?: { on: boolean };
+    // Lives on the orthogonal `EvKind` cluster, same as the two above; the plan
+    // device receives it through the snapshot spread in `toPlanDevice`.
+    stateOfCharge?: DeviceStateOfChargeSnapshot;
   } = {},
 ):
 DevicePlanDevice => {

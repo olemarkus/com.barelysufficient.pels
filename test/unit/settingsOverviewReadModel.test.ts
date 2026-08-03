@@ -164,6 +164,29 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device).evChargingState).toBeUndefined();
   });
 
+  it('surfaces the EV battery reading so the card can show it beside the level', () => {
+    const device = buildPlanDevice({
+      id: 'ev-1',
+      controlCapabilityId: 'evcharger_charging',
+      stateOfCharge: {
+        percent: 64,
+        status: 'fresh',
+        observedAtMs: 1_000,
+        sessionStartedAtMs: 500,
+      },
+    });
+
+    // Projected to what the wire type declares: the observation layer's session
+    // bookkeeping is its own business (`notes/ev-soc-layering.md`).
+    expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge)
+      .toEqual({ percent: 64, status: 'fresh' });
+  });
+
+  it('emits no battery reading for a device that has none', () => {
+    const device = buildPlanDevice({ id: 'heater-1' });
+    expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge).toBeUndefined();
+  });
+
   it('reproduces the control-mode card from profile-presence + producer deviceType', () => {
     // controlModel is a producer setting the planner no longer carries. The read
     // model must still emit the faithful value so the settings-UI picks the right
