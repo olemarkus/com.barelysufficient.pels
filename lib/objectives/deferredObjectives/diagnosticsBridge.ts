@@ -64,8 +64,6 @@ import {
 export type {
   BuildPriceHorizon,
   DeferredObjectiveDiagnostic,
-  DeferredObjectiveDiagnosticReasonCode,
-  DeferredObjectiveKwhPerUnitSource,
 } from './diagnosticTypes';
 export { progressCurrentValue } from './diagnosticFields';
 

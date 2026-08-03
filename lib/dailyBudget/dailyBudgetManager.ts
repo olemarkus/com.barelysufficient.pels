@@ -547,5 +547,5 @@ export class DailyBudgetManager {
   private markDirty(reason: DailyBudgetStatePersistReason): void { this.persistReasons.add(reason); }
 }
 
-export { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
+export { buildDefaultProfile, buildPlan } from './dailyBudgetMath';
 export type { CombinedPriceData } from './dailyBudgetMath';

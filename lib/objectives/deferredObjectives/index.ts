@@ -1,7 +1,6 @@
 export { planDeferredObjectiveHorizon } from './horizonPlanner';
 export {
   buildDeferredObjectiveDiagnostics,
-  emitDeferredObjectiveDiagnostics,
 } from './diagnosticsBridge';
 export { createDeferredObjectiveStatusBus } from './statusBus';
 export { createDeferredObjectivePlanRevisionBus } from './planRevisionBus';
@@ -25,7 +24,6 @@ export type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCro
 export { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
 export type {
   DeferredObjectiveStatusBus,
-  DeferredObjectiveStatusSnapshot,
 } from './statusBus';
 export {
   DeferredObjectivePlanHistoryRecorder,
@@ -35,7 +33,6 @@ export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';
 export { DeferredObjectiveActivePlanRecorder } from './activePlanRecorder';
 export {
   applyDeferredObjectiveChange,
-  type DeferredObjectiveChangeInput,
 } from './objectiveChange';
 export {
   upsertObjectiveForDevice,
@@ -78,31 +75,17 @@ export {
 export type {
   BuildPriceHorizon,
   DeferredObjectiveDiagnostic,
-  DeferredObjectiveDiagnosticReasonCode,
 } from './diagnosticsBridge';
-export type { DeferredObjectiveDeadlineResolution } from './deadline';
-export type {
-  DeferredObjectivePolicyHorizonResult,
-  DeferredObjectivePolicyHorizonUnavailableReason,
-  PriceHorizonEntry,
-} from './policyHorizon';
 export type {
   DeferredObjectiveRescueMode,
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsKind,
   DeferredObjectiveSettingsV1,
 } from './settings';
 export type {
   DeferredObjective,
-  DeferredObjectiveCurrentBucketPlan,
-  DeferredObjectiveEnforcement,
   DeferredObjectiveHorizonBucket,
-  DeferredObjectiveHorizonInput,
   DeferredObjectiveHorizonPlan,
-  DeferredObjectiveHorizonStatus,
-  DeferredObjectiveHorizonStatusDetail,
-  DeferredObjectiveKind,
   DeferredObjectivePlannedBucket,
   DeferredObjectiveStep,
 } from './types';

@@ -52,14 +52,12 @@ export type DailyBudgetState = {
 // local use by the response/update types below.
 import type {
   ConfidenceDebug,
-  DailyBudgetAllocationPressure,
   DailyBudgetDayPayload,
   DailyBudgetUiPayload,
 } from '../../packages/contracts/src/dailyBudgetTypes';
 
 export type {
   ConfidenceDebug,
-  DailyBudgetAllocationPressure,
   DailyBudgetDayPayload,
   DailyBudgetUiPayload,
 };

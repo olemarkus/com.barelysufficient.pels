@@ -26,8 +26,8 @@ import { isSwapTargetPendingReason } from '../planContract/planDecisionSemantics
 // Public entry point. The shed-temperature hold decision table and the plan
 // reason-pair validation live in sibling modules; they are re-exported here so
 // importers keep a single `./planReasons` entry point.
-export { applyShedTemperatureHold, type ShedHoldParams } from './planReasonsHoldDecisions';
-export { finalizePlanDevices, type PlanReasonPairValidationIssue } from './planReasonsValidation';
+export { applyShedTemperatureHold } from './planReasonsHoldDecisions';
+export { finalizePlanDevices } from './planReasonsValidation';
 
 // The two standing-hold framing inputs `normalizeShedReasons` consumes (the
 // smart-task avoid set + the surplus dump-load hold reasons), bundled so the

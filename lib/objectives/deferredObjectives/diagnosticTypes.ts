@@ -42,8 +42,6 @@ export type DeferredObjectiveDiagnosticReasonCode =
   // be visible — the task reports risk rather than claiming it is on track.
   | 'objective_stalled_device_capped';
 
-export type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
-
 type BaseDeferredObjectiveDiagnostic = {
   deviceId: string;
   deviceName?: string;

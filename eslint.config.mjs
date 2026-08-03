@@ -463,6 +463,10 @@ export default tseslint.config(
       'complexity': 'off',
       'max-lines': 'off',
       'max-lines-per-function': 'off',
+      // `describe > describe > it > callback` is the shape of a table-driven
+      // vitest spec, so depth 4 is the norm rather than a smell. Off for the
+      // same reason as the other complexity metrics above.
+      'max-nested-callbacks': 'off',
       'max-statements': 'off',
       'functional/immutable-data': 'off',
       'sonarjs/cognitive-complexity': 'off',
@@ -608,6 +612,10 @@ export default tseslint.config(
       'complexity': 'off',
       'max-lines': 'off',
       'max-lines-per-function': 'off',
+      // `describe > describe > it > callback` is the shape of a table-driven
+      // vitest spec, so depth 4 is the norm rather than a smell. Off for the
+      // same reason as the other complexity metrics above.
+      'max-nested-callbacks': 'off',
       'max-statements': 'off',
       'functional/immutable-data': 'off',
       'sonarjs/cognitive-complexity': 'off',

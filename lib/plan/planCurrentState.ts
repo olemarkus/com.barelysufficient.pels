@@ -8,7 +8,6 @@ import {
   resolveObservedCurrentStateValue,
   resolveObservedSteppedLoadCurrentState,
   type CurrentStateInput,
-  type ObservedCurrentStateInput,
 } from '../observer/observedState';
 import { isBinaryControlled, getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 
@@ -27,7 +26,7 @@ export {
   resolveObservedCurrentState,
   resolveObservedSteppedLoadCurrentState,
 };
-export type { CurrentStateInput, ObservedCurrentStateInput };
+export type { CurrentStateInput };
 
 type ResolveCurrentStateOptions = {
   pendingPresent?: boolean;
