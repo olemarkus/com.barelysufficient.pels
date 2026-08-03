@@ -1,6 +1,6 @@
 {
   "id": "com.barelysufficient.pels",
-  "version": "2.20.1",
+  "version": "2.20.2",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "platforms": [
