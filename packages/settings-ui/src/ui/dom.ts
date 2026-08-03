@@ -248,6 +248,10 @@ export const deviceDetailEvBoostBelow = document.querySelector(
   '#device-detail-ev-boost-below',
 ) as MdFilledTextFieldElement;
 export const deviceDetailEvBoostStatus = qs('#device-detail-ev-boost-status');
+export const deviceDetailCarSection = qs('#device-detail-car-section');
+export const deviceDetailCarList = qs('#device-detail-car-list');
+export const deviceDetailCarStatus = qs('#device-detail-car-status');
+export const deviceDetailCarFlowNote = qs('#device-detail-car-flow-note');
 export const deviceDetailSteppedAddStep = document.querySelector(
   '#device-detail-stepped-add-step',
 ) as MdButtonElement;

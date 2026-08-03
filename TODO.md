@@ -1123,6 +1123,31 @@ program) remain deferred.*
       `excludeBudgetExempt: true`) so marking policy stays enumerable in the producer.
       Source: pels-layering-guardian review of the exempt-restore-lane PR, 2026-08-03. [P3]
 
+- [ ] **The charger page shows the same battery level twice without saying they are the same
+      number.** With a car ticked, the Car section reads `Polestar 3 · Charging · 63 %` while
+      Setup's "Battery level" readout independently reads `63 %` — one screen, two apparently
+      independent sources. Name the source in the Setup readout (`63 % · from Polestar 3`,
+      `packages/settings-ui/src/ui/deviceDetail/socState.ts`), and have charge boost say where its
+      level comes from when a car is adopted. `stateOfCharge.source === 'car'` already carries it.
+      Source: pels-ux-fit review of PR #1976, 2026-08-02. [P2]
+
+- [ ] **The car picker uses a native checkbox where `md-checkbox` exists.**
+      `.detail-car-row input[type='checkbox']` (`packages/settings-ui/public/style.css`) renders a
+      16 px control next to the 48 px `md-switch` rows in Setup and looks foreign. The row's tap
+      target is already 48 px, so this is appearance only. AGENTS.md says use `@material/web` where
+      a component matches. Source: pels-ux-fit review of PR #1976, 2026-08-02. [P2]
+
+- [ ] **A ticked car that no longer exists renders as an ordinary device row.** `orphanedCarIds`
+      (`packages/settings-ui/src/ui/deviceDetail/carAssociation.ts`) labels it `Removed car`, which
+      reads as a car actually named that. It is kept visible so it can be un-ticked, which is
+      right; the presentation should say what it is — hint styling, or a Clear affordance instead of
+      a checkbox pretending to be a device. Source: pels-ux-fit review of PR #1976, 2026-08-02. [P2]
+
+- [ ] **The car's battery level is shown without its age.** `AssociatedCarSnapshot.socObservedAtMs`
+      is carried and unused by the UI, while Setup's own readout shows "Updated X ago". A car parked
+      at work reporting a day-old level is exactly the case where the owner needs the timestamp.
+      Source: pels-ux-fit review of PR #1976, 2026-08-02. [P2]
+
 - [ ] **A transient settings read-miss silently disables every configured car association.**
       `buildCapacitySettingsSnapshot` (`setup/appSettingsHelpers.ts`) normalizes
       `ev_car_associations` unconditionally, so a `null`/malformed read replaces the eligibility

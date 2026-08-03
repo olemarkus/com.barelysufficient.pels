@@ -321,6 +321,18 @@ const EV_CHARGING_STATE_LABELS: Record<string, string> = {
   plugged_out: 'Unplugged',
 };
 
+/**
+ * The plug state in the words users already read on the device card. Shared so a
+ * car's state and its charger's state are never described differently — they are
+ * observations of the same plug.
+ *
+ * Returns `null` for an unrecognised state rather than echoing the raw enum: a
+ * capability id is not user-facing copy.
+ */
+export const resolveEvChargingStateLabel = (state: string | undefined): string | null => (
+  state === undefined ? null : EV_CHARGING_STATE_LABELS[state] ?? null
+);
+
 // The plugged-in-idle state (`plugged_in`) upgrades to a car-attributed label
 // only when the plan proves the car is the holdout (see
 // `resolveSteppedEvExceptionLabel`).
