@@ -47,7 +47,6 @@ import {
  * existing importers (`boot.ts`, `deadlinePlanRouter.ts`) keep one entry point.
  */
 
-export { refreshPlanForUi, refreshPowerData } from './uiRefreshTasks.ts';
 export { setActiveTabIndicator, showTab } from './tabNavigation.ts';
 
 const handlePlanUpdated = (plan: unknown) => {

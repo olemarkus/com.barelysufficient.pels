@@ -23,9 +23,7 @@ export type { ActivationAttemptSource } from './activationBackoff';
 export {
   clearSurplusEligibility,
   SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
-  SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_RESERVE_KW,
-  SURPLUS_ABSORB_SETTLE_MS,
   syncSurplusEligibilityState,
 } from './surplusAbsorb';
 
@@ -43,11 +41,10 @@ export type { RestoreAdmissionMetrics } from './reserve';
 
 export {
   buildReservedForStartReason,
-  resolveClaimedReserveKw,
   resolveHeadroomReserves,
   resolveReserveAdmission,
 } from './headroomReserve';
-export type { HeadroomReserve, ReserveAdmission } from './headroomReserve';
+export type { HeadroomReserve } from './headroomReserve';
 
 export {
   resolvePlanningTotalPower,

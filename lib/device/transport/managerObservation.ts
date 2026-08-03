@@ -3,7 +3,6 @@
 // that external callers consume so import paths stay stable.
 export {
     createObservationState,
-    type CapabilityObservationSource,
     type DeviceDebugObservedSource,
     type DeviceDebugObservedSources,
     type DeviceTransportObservationState,

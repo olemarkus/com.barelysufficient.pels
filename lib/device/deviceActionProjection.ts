@@ -45,11 +45,9 @@ import {
 export {
   resolveCommandableNow,
   isCommandableNow,
-  getCommandableNowReason,
 } from '../../packages/shared-domain/src/commandableNow';
 export type {
   CommandableNowResolveInput,
-  CommandableNowResolution,
 } from '../../packages/shared-domain/src/commandableNow';
 import {
   getSteppedLoadLowestActiveStep,

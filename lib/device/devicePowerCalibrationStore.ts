@@ -12,7 +12,6 @@ import {
   type RecordSampleConfig,
   type RecordSampleInput,
   type RecordSampleOutcome,
-  POWER_CALIBRATION_CONSTANTS,
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
   isStrictlyValidPersistedDevice,
@@ -568,4 +567,3 @@ export function createCalibrationSnapshotMutationHook(params: {
   };
 }
 
-export { POWER_CALIBRATION_CONSTANTS };

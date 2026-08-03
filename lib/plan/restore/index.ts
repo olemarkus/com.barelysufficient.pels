@@ -40,7 +40,7 @@ import {
 } from './candidateLoop';
 import type { RestoreBatchState, RestoreDeps, RestorePlanResult } from './types';
 
-export type { RestoreDeps, RestorePlanState, RestorePlanResult } from './types';
+export type { RestoreDeps, RestorePlanResult } from './types';
 
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];

@@ -20,10 +20,7 @@ export {
   getEvRestoreBlockReason,
 } from '../device/deviceActionProjection';
 
-export {
-  isFlowBackedBinaryControl,
-  type BinaryControlDecision,
-} from './planBinaryControlHelpers';
+export { type BinaryControlDecision } from './planBinaryControlHelpers';
 
 type BinaryControlDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;

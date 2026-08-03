@@ -24,7 +24,6 @@ export type {
 
 export {
   OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
-  buildObjectiveProfileSample,
 } from './samples';
 
 export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;

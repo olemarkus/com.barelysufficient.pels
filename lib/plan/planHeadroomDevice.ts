@@ -21,7 +21,6 @@ export type {
   HeadroomUsageObservation,
 } from './planHeadroomSupport';
 export {
-  resolveHeadroomCardCooldown,
   syncHeadroomCardState,
   syncHeadroomUsageObservation,
 } from './planHeadroomState';
