@@ -26,12 +26,11 @@ const { BudgetExemptChip, PlanGenericCard, PlanTemperatureCard } = await import(
 const { PlanSteppedCard } = await import('../src/ui/views/PlanSteppedCard.tsx');
 const { state } = await import('../src/ui/state.ts');
 
-const budgetStarvation = (
+const heldBackStarvation = (
   overrides: Partial<SettingsUiPlanDeviceStarvation> = {},
 ): SettingsUiPlanDeviceStarvation => ({
   isStarved: true,
   accumulatedMs: 5 * 60_000,
-  cause: 'budget',
   startedAtMs: 0,
   ...overrides,
 });
@@ -40,7 +39,7 @@ const buildDevice = (overrides: Partial<PlanDeviceSnapshot> = {}): PlanDeviceSna
   id: 'heater-1',
   name: 'Termostat Synne',
   reason: { code: PLAN_REASON_CODES.none },
-  starvation: budgetStarvation(),
+  starvation: heldBackStarvation(),
   ...overrides,
 } as PlanDeviceSnapshot);
 
@@ -83,24 +82,33 @@ describe('BudgetExemptChip', () => {
     expect(button?.querySelector('svg.plan-chip__icon')).not.toBeNull();
   });
 
-  it('renders nothing for a capacity-held device (the hard cap is physical)', () => {
-    const dev = buildDevice({ starvation: budgetStarvation({ cause: 'capacity' }) });
-    expect(renderChip(dev).querySelector('button')).toBeNull();
+  // The chip used to be withheld from a device whose momentary cause bucket read
+  // `capacity`. It is offered on both axes now: the rescue pauses and limits
+  // lower-priority load up to — never above — the hard cap, so it clears room for
+  // a capacity-held device without touching the cap.
+  it('renders for a device held on the capacity ceiling', () => {
+    const dev = buildDevice({ reason: { code: PLAN_REASON_CODES.capacity, detail: null } });
+    expect(renderChip(dev).querySelector('button')).not.toBeNull();
   });
 
-  it('renders nothing when the device is already budget exempt', () => {
-    expect(renderChip(buildDevice({ budgetExempt: true })).querySelector('button')).toBeNull();
+  // A standing budget exemption no longer suppresses the chip: the device can
+  // still be held back on the capacity axis, and the rescue clears room from
+  // lower-priority load rather than lifting a budget it is already exempt from.
+  // The rescue widget never suppressed it either, so keeping the term had the
+  // same device offering the action on the dashboard and not on its own card.
+  it('still renders when the device is already budget exempt', () => {
+    expect(renderChip(buildDevice({ budgetExempt: true })).querySelector('button')).not.toBeNull();
   });
 
   it('renders nothing when the device is not held back', () => {
-    const dev = buildDevice({ starvation: budgetStarvation({ isStarved: false }) });
+    const dev = buildDevice({ starvation: heldBackStarvation({ isStarved: false }) });
     expect(renderChip(dev).querySelector('button')).toBeNull();
   });
 
   it('renders nothing when the device is NOT in the server-resolved rescuable set', () => {
     // Mirrors getStarvedRescueDevices: a device with its own smart task, or no
-    // known target, is budget-held but NOT rescuable — so it offers no chip and
-    // a create call can never be rejected for a shown chip.
+    // known target, is held back but NOT rescuable — so it offers no chip, and a
+    // create call that the server would reject is not offered in the first place.
     state.starvationRescuableDeviceIds = new Set(['some-other-device']);
     expect(renderChip(buildDevice()).querySelector('button')).toBeNull();
   });
@@ -304,12 +312,14 @@ describe('BudgetExemptChip', () => {
   });
 });
 
-// The reason line is where the original contradiction slipped through: a
-// budget-held card kept showing the `PLAN_STATE_HELD_FALLBACK_STATUS =
-// "Limited by the hard cap"` fallback even though the binding constraint was
-// the daily budget (the hard cap is physical — feedback_hard_cap_is_physical).
-// These render the FULL card so the reason line is actually exercised.
-describe('held-card reason line names the real binding constraint', () => {
+// The reason line is where the contradictions have kept slipping through: first
+// a budget-held card showing the "Limited by the hard cap" fallback, then (until
+// 2026-08-04) every starved card showing "Limited to stay within today's budget"
+// — a house-level ceiling the hero already states, in place of the shortfall the
+// runtime had already computed. A starved card now states its own two facts: how
+// long it has been held, and what it needs. These render the FULL card so the
+// reason line is actually exercised.
+describe('held-card reason line states what the device needs', () => {
   const renderCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {
     const mount = document.createElement('div');
     act(() => {
@@ -321,33 +331,41 @@ describe('held-card reason line names the real binding constraint', () => {
     return mount;
   };
 
-  it('a budget-held card reads the budget attribution, NOT "Limited by the hard cap"', () => {
-    const reason = renderCard(buildDevice()).querySelector('.plan-card__reason');
-    expect(reason?.textContent).toBe("Limited to stay within today's budget");
-    expect(reason?.textContent).not.toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+  it('states the hold duration and the shortfall, not a ceiling', () => {
+    const dev = buildDevice({
+      reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8 },
+    });
+    const reason = renderCard(dev).querySelector('.plan-card__reason')?.textContent ?? '';
+    expect(reason).toContain('0.8 kW more needed');
+    expect(reason).toContain('Held 5');
+    // None of the retired ceiling-naming lines.
+    expect(reason).not.toBe("Limited to stay within today's budget");
+    expect(reason).not.toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+    expect(reason.toLowerCase()).not.toContain('hard cap');
   });
 
-  it('a capacity-held card still reads its capacity reason and offers NO rescue chip', () => {
-    const dev = buildDevice({ starvation: budgetStarvation({ cause: 'capacity' }) });
-    const mount = renderCard(dev);
-    expect(mount.querySelector('.plan-card__reason')?.textContent).toBe('Waiting for available power');
-    // Capacity is physical — the rescue action never appears.
-    expect(mount.querySelector('button')).toBeNull();
+  it('reads identically whichever ceiling is binding', () => {
+    const lineFor = (code: typeof PLAN_REASON_CODES.capacity | typeof PLAN_REASON_CODES.dailyBudget): string => (
+      renderCard(buildDevice({
+        reason: { code, detail: null, shortfallKw: 0.8 },
+      })).querySelector('.plan-card__reason')?.textContent ?? ''
+    );
+    expect(lineFor(PLAN_REASON_CODES.capacity)).toBe(lineFor(PLAN_REASON_CODES.dailyBudget));
+  });
+
+  it('offers the rescue chip on a capacity-held card too', () => {
+    const dev = buildDevice({ reason: { code: PLAN_REASON_CODES.capacity, detail: null } });
+    expect(renderCard(dev).querySelector('button')).not.toBeNull();
   });
 });
 
 // The devices users actually own render PlanTemperatureCard (thermostats) and
-// PlanSteppedCard (water heaters), whose reason/status lines key on
-// `reason.code`, NOT `starvation.cause`. Before the fix, a budget-held
-// thermostat/water-heater showed the "Budget limited" badge + rescue chip but a
-// reason line of "Waiting for available power" / "Waiting to resume — N kW
-// more needed" (insufficient_headroom path) or "Limited by the hard cap" (held
-// fallback) — capacity/hard-cap framing that contradicts the budget chip + badge
-// (the hard cap is physical — feedback_hard_cap_is_physical). These render the
-// FULL real card so the reason/status line is actually exercised through
-// resolveTemperatureReasonLine / resolveSteppedStatusLine.
+// PlanSteppedCard (water heaters). All three card variants share one ladder
+// (`resolveHeldCardReasonLine`), so these render the FULL real card to prove the
+// starved grammar reaches them through resolveTemperatureReasonLine /
+// resolveSteppedStatusLine too — the three used to disagree with each other.
 
-describe('PlanTemperatureCard reason line names the real binding constraint', () => {
+describe('PlanTemperatureCard reason line states what the device needs', () => {
   const buildTemperatureDevice = (
     overrides: Partial<PlanDeviceSnapshot> = {},
   ): PlanDeviceSnapshot => ({
@@ -359,7 +377,7 @@ describe('PlanTemperatureCard reason line names the real binding constraint', ()
     currentTemperature: 19.4,
     plannedTarget: 22,
     reason: { code: PLAN_REASON_CODES.insufficientHeadroom, needKw: 2, effectiveAvailableKw: 0 },
-    starvation: budgetStarvation(),
+    starvation: heldBackStarvation(),
     ...overrides,
   } as PlanDeviceSnapshot);
 
@@ -374,25 +392,23 @@ describe('PlanTemperatureCard reason line names the real binding constraint', ()
     return mount;
   };
 
-  it('a budget-held thermostat reads the budget attribution, NOT a capacity/hard-cap line', () => {
-    const reason = renderTemperatureCard(buildTemperatureDevice()).querySelector('.plan-card__temp-reason');
-    expect(reason?.textContent).toBe("Limited to stay within today's budget");
-    expect(reason?.textContent).not.toBe('Waiting for available power');
-    expect(reason?.textContent).not.toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
-    expect(reason?.textContent).not.toContain('hard cap');
+  it('states the hold duration and the shortfall, not a ceiling', () => {
+    const reason = renderTemperatureCard(buildTemperatureDevice())
+      .querySelector('.plan-card__temp-reason')?.textContent ?? '';
+    expect(reason).toContain('Held 5');
+    expect(reason).toContain('kW more needed');
+    expect(reason).not.toBe("Limited to stay within today's budget");
+    expect(reason).not.toBe('Waiting for available power');
+    expect(reason).not.toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+    expect(reason.toLowerCase()).not.toContain('hard cap');
   });
 
-  it('a capacity-held thermostat keeps its capacity waiting copy and offers NO rescue chip', () => {
-    const dev = buildTemperatureDevice({ starvation: budgetStarvation({ cause: 'capacity' }) });
-    const mount = renderTemperatureCard(dev);
-    const reason = mount.querySelector('.plan-card__temp-reason')?.textContent;
-    expect(reason).toContain('Waiting to resume');
-    expect(reason).not.toBe("Limited to stay within today's budget");
-    expect(mount.querySelector('button')).toBeNull();
+  it('offers the rescue chip alongside that line', () => {
+    expect(renderTemperatureCard(buildTemperatureDevice()).querySelector('button')).not.toBeNull();
   });
 });
 
-describe('PlanSteppedCard status line names the real binding constraint', () => {
+describe('PlanSteppedCard status line states what the device needs', () => {
   const steppedProfile = (): SteppedLoadProfile => ({
     model: 'stepped_load',
     steps: [
@@ -410,7 +426,7 @@ describe('PlanSteppedCard status line names the real binding constraint', () => 
     plannedState: 'shed',
     currentState: 'off',
     reason: { code: PLAN_REASON_CODES.insufficientHeadroom, needKw: 2, effectiveAvailableKw: 0 },
-    starvation: budgetStarvation(),
+    starvation: heldBackStarvation(),
     steppedLoad: {
       profile: steppedProfile(),
       reportedStepId: 'off',
@@ -431,19 +447,17 @@ describe('PlanSteppedCard status line names the real binding constraint', () => 
     return mount;
   };
 
-  it('a budget-held water heater reads the budget attribution, NOT a waiting/hard-cap line', () => {
-    const status = renderSteppedCard(buildSteppedDevice()).querySelector('.plan-card__status-line');
-    expect(status?.textContent).toBe("Limited to stay within today's budget");
-    expect(status?.textContent).not.toBe('Waiting for available power');
-    expect(status?.textContent).not.toContain('Waiting to resume');
-    expect(status?.textContent).not.toContain('hard cap');
+  it('states the hold duration and the shortfall, not a ceiling', () => {
+    const status = renderSteppedCard(buildSteppedDevice())
+      .querySelector('.plan-card__status-line')?.textContent ?? '';
+    expect(status).toContain('Held 5');
+    expect(status).not.toBe("Limited to stay within today's budget");
+    expect(status).not.toBe('Waiting for available power');
+    expect(status.toLowerCase()).not.toContain('hard cap');
   });
 
-  it('a capacity-held water heater still reads its waiting copy and offers NO rescue chip', () => {
-    const dev = buildSteppedDevice({ starvation: budgetStarvation({ cause: 'capacity' }) });
-    const mount = renderSteppedCard(dev);
-    expect(mount.querySelector('.plan-card__status-line')?.textContent).toContain('Waiting to resume');
-    expect(mount.querySelector('button')).toBeNull();
+  it('offers the rescue chip alongside that line', () => {
+    expect(renderSteppedCard(buildSteppedDevice()).querySelector('button')).not.toBeNull();
   });
 
   it('renders the step rail as a non-interactive level indicator: track + fill, no draggable stop dots', () => {

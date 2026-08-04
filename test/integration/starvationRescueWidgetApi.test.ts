@@ -20,7 +20,6 @@ const RESCUE_HORIZON_MS = 3 * 60 * 60 * 1000;
 const budgetDevice: StarvationRescueDevice = {
   deviceId: 'heater-1',
   deviceName: 'Hot water',
-  cause: 'budget',
   accumulatedMs: 42 * 60 * 1000,
   intendedNormalTargetC: 65,
   smartTaskHomeScope: 'main',
@@ -30,7 +29,6 @@ const budgetDevice: StarvationRescueDevice = {
 const capacityDevice: StarvationRescueDevice = {
   deviceId: 'rad-1',
   deviceName: 'Living room',
-  cause: 'capacity',
   accumulatedMs: 11 * 60 * 1000,
   intendedNormalTargetC: 21,
   smartTaskHomeScope: 'main',
@@ -102,7 +100,7 @@ describe('buildStarvationRescueDevicesPayload', () => {
     const payload = buildStarvationRescueDevicesPayload({ devices: [budgetDevice, capacityDevice] });
     if (payload.state !== 'ready') throw new Error('expected ready');
     expect(payload.devices).toHaveLength(2);
-    expect(payload.devices[0].cause).toBe('budget');
+    expect(payload.devices[0].deviceId).toBe(budgetDevice.deviceId);
   });
 });
 
@@ -132,17 +130,31 @@ describe('previewStarvationRescue', () => {
     expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
   });
 
-  it('GUARDRAIL: rejects a capacity-starved device with not_rescuable', async () => {
+  it('GUARDRAIL: rejects a device absent from the live starved list with not_rescuable', async () => {
     const previewStarvationRescuePlan = freshPreviewPlan();
     const result = await previewStarvationRescue({
-      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [capacityDevice]), previewStarvationRescuePlan }),
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), previewStarvationRescuePlan }),
       body: { deviceId: 'rad-1' },
     });
     expect(result).toEqual({ ok: false, reason: 'not_rescuable' });
     expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
   });
 
-  it('GUARDRAIL: rejects a budget device that already has its own smart task with not_rescuable', async () => {
+  // The gate no longer asks which constraint holds the device: the rescue clears
+  // room on the capacity axis too (`pauseLowerPriorityDevices`, always up to and
+  // never above the hard cap), and the bucket it used to key off was a momentary
+  // snapshot that flipped mid-hold.
+  it('previews any held-back row on the live list', async () => {
+    const previewStarvationRescuePlan = freshPreviewPlan();
+    const result = await previewStarvationRescue({
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [capacityDevice]), previewStarvationRescuePlan }),
+      body: { deviceId: 'rad-1' },
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(previewStarvationRescuePlan).toHaveBeenCalledOnce();
+  });
+
+  it('GUARDRAIL: rejects a device that already has its own smart task with not_rescuable', async () => {
     const previewStarvationRescuePlan = freshPreviewPlan();
     const result = await previewStarvationRescue({
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => [taskOwningBudgetDevice]), previewStarvationRescuePlan }),
@@ -227,10 +239,10 @@ describe('previewStarvationRescue', () => {
 });
 
 describe('createStarvationRescue', () => {
-  it('GUARDRAIL: rejects a capacity-starved device without calling the rescue method', async () => {
+  it('GUARDRAIL: rejects a device absent from the live starved list without calling the rescue method', async () => {
     const rescueDeviceWithBudgetExemption = vi.fn();
     const result = await createStarvationRescue({
-      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [capacityDevice]), rescueDeviceWithBudgetExemption }),
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), rescueDeviceWithBudgetExemption }),
       body: { deviceId: 'rad-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
     });
     expect(result).toEqual({ ok: false, reason: 'not_rescuable' });

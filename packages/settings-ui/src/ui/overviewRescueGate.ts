@@ -34,7 +34,7 @@ export const repaintOverviewWithRescueGate = (
 };
 
 // Opening Overview must refresh the gate alongside the plan: a device that became
-// budget-held while the user was on another tab never had its gate updated (the
+// held back while the user was on another tab never had its gate updated (the
 // `plan_updated` refresh is Overview-only), so a fresh plan would otherwise render
 // against a stale gate — missing a newly-rescuable chip, or leaving a stale one.
 // Load the gate first, then refresh the plan so its render reflects the fresh

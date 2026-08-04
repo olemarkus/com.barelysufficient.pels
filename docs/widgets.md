@@ -90,10 +90,12 @@ This is the dashboard equivalent of the **Add charging task** / **Add heating ta
 
 Answers **"why isn't this running — and can I let it now?"**
 
-The widget lists devices PELS is currently holding back (paused or limited) and the reason. For a device held back by today's daily budget, you can tap **Let it run now** to create a short Smart task with budget leeway. Capacity, manual, and external-service rows stay informational because the hard cap holds your tariff step and cannot be bypassed from the widget.
+The widget lists devices PELS is currently holding back (paused or limited), and how long each has waited. Tap **Let it run now** on any of them to create a short Smart task that gives the device leeway on today's budget and lets it take room from lower-priority devices. Your hard cap is never raised: the rescue only clears room underneath it, so a house already pressed against the cap may still make the device wait.
 
-![Held-back devices widget listing devices PELS is holding back, with a Let it run now button on the budget-held row](/screenshots/widgets/held-back-1-list.png)
-*Step 1 — the held-back list. Only a budget-held device offers **Let it run now**.*
+The one row without the button is a device that already has its own Smart task — that task is what will bring it back, and the row says so.
+
+![Held-back devices widget listing devices PELS is holding back, with a Let it run now button on each row](/screenshots/widgets/held-back-1-list.png)
+*Step 1 — the held-back list. Every held-back device offers **Let it run now**.*
 
 ![Held-back devices widget confirm step, showing the cost estimate and scheduled hours for the rescue](/screenshots/widgets/held-back-2-confirm.png)
 *Step 2 — confirm the bounded, budget-exempt run.*
@@ -104,6 +106,6 @@ The widget lists devices PELS is currently holding back (paused or limited) and 
 - **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
 - **Smart tasks** — when you depend on smart-task deadlines; the widget turns red before you'd otherwise notice a miss.
 - **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
-- **Held-back devices** — to understand why something is not running right now, and optionally let one budget-held device run now.
+- **Held-back devices** — to understand why something is not running right now, and optionally let one device run now.
 
 All widgets read from the same data PELS already maintains for the app itself, so adding them costs nothing in extra polling or device traffic.

@@ -27,7 +27,7 @@
 // Chip ladder (single status chip; losers are visible in device detail):
 //   1. "Let it run now" rescue action  (releasable budget hold; suppressed in
 //      simulation — there is nothing to release when PELS actuates nothing)
-//   2. starvation badge (Budget limited / Low power) while the card is held
+//   2. held-back badge (`Held back`) while the card is held
 //   3. Boost (temperature or EV boost active)
 //   4. Budget exempt
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';

@@ -27,33 +27,24 @@ module.exports = __toCommonJS(starvationRescueWidgetPayload_exports);
 
 // packages/shared-domain/src/planStarvation.ts
 var STARVATION_RESCUE_WIDGET_COPY = {
-  // List header — names what the widget SHOWS (the devices PELS is holding back
-  // via the daily budget), not an action the user takes. Shown only when at
-  // least one device is held back; the calm empty state stands alone.
+  // List header — names what the widget SHOWS (the devices PELS is holding
+  // back), not an action the user takes. Shown only when at least one device is
+  // held back; the calm empty state stands alone.
   headerTitle: "Held-back devices",
   // Empty (calm) state — nothing is held back. This is the steady, good state.
   emptySubtitle: "No device is being held back right now.",
   // Transient "wiring up to Homey" state, distinct from a hard load failure.
   notReady: "Connecting to Homey\u2026",
   loadError: "Could not load devices. Try again later.",
-  // Row status-chip word. The widget appends "· N min". Cause-specific so the
-  // chip never overclaims: only budget rows (the releasable "Let it run now"
-  // state) say "Held back"; capacity rows say "Waiting" (physically held — the
-  // hard cap is not a tuning knob, feedback_hard_cap_is_physical). User-facing
-  // register only — no "starvation" jargon.
+  // Row status-chip word. The widget appends "· 24 min" / "· 2 h 15 min".
+  // User-facing register only — no "starvation" jargon.
   starvedChip: "Held back",
-  waitingChip: "Waiting",
-  // Rescue affordance (budget-caused rows only). "Let it run now" is device-
-  // scoped — it releases THIS device from the daily budget so it runs now,
-  // rather than promising house power. The rescue is a bounded near-term run
-  // (the confirm sheet surfaces the "By {time}" timing prominently).
+  // Rescue affordance. "Let it run now" is device-scoped — it clears room for
+  // THIS device so it runs now, rather than promising house power. The rescue is
+  // a bounded near-term run (the confirm sheet surfaces the "By {time}" timing
+  // prominently).
   rescueButton: "Let it run now",
-  // Informational note on capacity rows — they get NO rescue affordance. Honest
-  // about why, without implying the user can raise the cap. Matches the canonical
-  // "Waiting for available power" wording the overview and the row subtext use,
-  // so the capacity story reads the same everywhere.
-  capacityNote: "Waiting for available power.",
-  // A budget-held device that already has a smart task: shown in the list (so the
+  // A held-back device that already has a smart task: shown in the list (so the
   // user sees it is held back) but with no rescue button — its own task is what
   // brings it to target, so a one-shot rescue would only get in the way.
   smartTaskNote: "Its smart task will bring it back.",
@@ -112,7 +103,7 @@ var BUDGET_EXEMPT_CARD_ACTION_COPY = {
   // Chip label — the canonical rescue verb, identical to the held-back widget's
   // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
   // from today's budget so it runs now, never a hard-cap change. The leading
-  // bolt glyph distinguishes it from the adjacent "Budget limited" status badge.
+  // bolt glyph distinguishes it from the adjacent "Held back" status badge.
   label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
   // Tooltip / accessible description — the same honest money-action consequence
   // the widget's confirm sheet names: the rescue lets the device use power

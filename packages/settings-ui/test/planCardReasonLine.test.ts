@@ -8,12 +8,16 @@ import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planSta
 import { toSimulationReasonLine } from '../../shared-domain/src/simulationReasonMood.ts';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
 
+// The duration is NBSP-joined so "2 h 15 min" cannot break across lines
+// mid-figure at 320 px. Spelled out here rather than pasted invisibly, so a
+// later edit cannot silently swap in an ordinary space.
+const NBSP = '\u00a0';
+
 const starvation = (
-  cause: 'budget' | 'capacity',
+  accumulatedMs = 20 * 60 * 1000,
 ): SettingsUiPlanDeviceStarvation => ({
   isStarved: true,
-  cause,
-  accumulatedMs: 20 * 60 * 1000,
+  accumulatedMs,
   startedAtMs: Date.UTC(2026, 7, 2, 12, 0, 0),
 });
 
@@ -152,32 +156,81 @@ describe('resolveHeldCardReasonLine', () => {
     });
   });
 
-  describe('starvation precedence', () => {
-    // The budget hold is the one with a user action attached ("Let it run now"),
-    // so its copy outranks even the shortfall number.
-    it('puts the releasable budget copy above the shortfall', () => {
-      const line = resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8 },
-        starvation: starvation('budget'),
-      });
-      expect(line).not.toContain('kW more needed');
-      expect(line).toBe("Limited to stay within today's budget");
-    });
-
-    // Capacity starvation carries no action, so the actionable number wins and
-    // its copy is used only when there is no number.
-    it('puts the shortfall above the capacity copy', () => {
+  // Starvation DECORATES the ladder; it never preempts it. Before 2026-08-04 a
+  // budget-caused starvation returned its own line from the top of the function,
+  // which discarded the shortfall the runtime had already computed and swallowed
+  // the copy of every hold power cannot lift.
+  describe('starvation decoration', () => {
+    it('keeps the shortfall and states how long the device has been held', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.capacity, detail: null, shortfallKw: 1.1 },
-        starvation: starvation('capacity'),
-      })).toBe('Waiting to resume — 1.1 kW more needed');
+        reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8 },
+        starvation: starvation(2 * 60 * 60 * 1000),
+      })).toBe(`Held 2${NBSP}h — 0.8 kW more needed`);
     });
 
-    it('uses the capacity copy when no shortfall is available', () => {
+    // The duration is the device's own fact; which ceiling binds is the hero's.
+    // A budget-bound and a capacity-bound hold of the same age read identically.
+    it('reads the same whichever ceiling is binding', () => {
+      const forCode = (code: string): string => resolveHeldCardReasonLine({
+        reason: { code, detail: null, shortfallKw: 1.1 },
+        starvation: starvation(45 * 60 * 1000),
+      });
+      expect(forCode(PLAN_REASON_CODES.capacity)).toBe(`Held 45${NBSP}min — 1.1 kW more needed`);
+      expect(forCode(PLAN_REASON_CODES.dailyBudget)).toBe(forCode(PLAN_REASON_CODES.capacity));
+    });
+
+    // The stepped card's `increase` verb has no bearing on the starved stem:
+    // "Held 45 min" describes the hold, not the transition being denied.
+    it('drops the verb distinction once starved', () => {
+      expect(resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.capacity, detail: null, shortfallKw: 0.3 },
+        starvation: starvation(45 * 60 * 1000),
+        verb: 'increase',
+      })).toBe(`Held 45${NBSP}min — 0.3 kW more needed`);
+    });
+
+    it('decorates the spent-hour line, which still carries no kW', () => {
+      const line = resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+        starvation: starvation(75 * 60 * 1000),
+      });
+      expect(line).toBe(`Held 1${NBSP}h${NBSP}15${NBSP}min — more budget next hour`);
+      expect(line).not.toContain('kW');
+    });
+
+    it('uses the plain held copy when no shortfall is available', () => {
       expect(resolveHeldCardReasonLine({
         reason: { code: PLAN_REASON_CODES.capacity, detail: null },
-        starvation: starvation('capacity'),
+        starvation: starvation(),
       })).toBe('Waiting for available power');
+    });
+
+    // The regression the preempting branch caused: a starved device merely
+    // waiting out a restore cooldown had its countdown replaced by a ceiling
+    // sentence. The countdown is what the device is actually waiting for.
+    it('does not swallow the countdown copy of a starved device', () => {
+      expect(resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 50 },
+        starvation: starvation(),
+      })).toBe('Waiting before resuming (50s)');
+    });
+
+    // Same regression, other half: a hold power cannot lift keeps its own cause.
+    // Freeing kW would not start these, so a kW figure would be a lie.
+    it.each([
+      [PLAN_REASON_CODES.deferredObjectiveAvoid],
+      [PLAN_REASON_CODES.awaitingSolarSurplus],
+      [PLAN_REASON_CODES.externalOffHold],
+    ])('keeps the cause copy of a %s hold', (code) => {
+      const starved = resolveHeldCardReasonLine({
+        reason: { code, detail: null },
+        starvation: starvation(),
+      });
+      // The exact copy is the reason formatter's business; what this pins is
+      // that starvation changed NOTHING about it.
+      expect(starved).toBe(resolveHeldCardReasonLine({ reason: { code, detail: null } }));
+      expect(starved).not.toContain(`Held 20${NBSP}min`);
+      expect(starved).not.toBe('Waiting for available power');
     });
   });
 
@@ -243,7 +296,11 @@ describe('every ladder output has a simulation form', () => {
     ['Waiting to increase — more budget next hour', 'Would be waiting to increase — more budget next hour (simulation)'],
     ['Waiting to increase — 0.3 kW more needed', 'Would be waiting to increase — 0.3 kW more needed (simulation)'],
     [PLAN_STATE_HELD_FALLBACK_STATUS, 'Would be held back (simulation)'],
-    ["Limited to stay within today's budget", "Would be limited to stay within today's budget (simulation)"],
+    // The starved forms. The elapsed duration cannot survive the transform: in
+    // simulation PELS held nothing, so reporting "2 h" would assert a history
+    // that never happened. Only the need clause carries over.
+    [`Held 2${NBSP}h — 0.8 kW more needed`, 'Would be held back — 0.8 kW more needed (simulation)'],
+    [`Held 1${NBSP}h${NBSP}15${NBSP}min — more budget next hour`, 'Would be held back — more budget next hour (simulation)'],
     [
       'Holding at 6 A — cannot increase while 2 devices are limited',
       'Would be holding at 6 A — cannot increase while 2 devices are limited (simulation)',

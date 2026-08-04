@@ -32,7 +32,7 @@ import type {
 const C = STARVATION_RESCUE_WIDGET_COPY;
 
 // Two interactive states plus a success flash. `list` shows the starved devices;
-// `confirm` shows the budget-exempt rescue preview for one budget-caused device
+// `confirm` shows the bounded rescue preview for one held-back device
 // before commit; `done` is the brief success flash before the controller resets.
 export type ViewState =
   | { kind: 'list' }
@@ -92,12 +92,6 @@ const setLine = (el: HTMLElement, text: string | null): void => {
   el.hidden = !visible;
 };
 
-// Two display lines are "the same" if they match after lowercasing, trimming,
-// and dropping a single trailing period — used to suppress a note that merely
-// restates the subtext.
-const normalizeLine = (text: string): string => text.trim().replace(/\.$/, '').toLowerCase();
-const linesMatch = (a: string, b: string): boolean => normalizeLine(a) === normalizeLine(b);
-
 const hide = (el: HTMLElement): void => { el.hidden = true; };
 
 const setVisible = (el: HTMLElement, visible: boolean): void => { el.hidden = !visible; };
@@ -116,11 +110,9 @@ const configureRescueButton = (
 
 const resolveDeviceRowNote = (
   device: StarvationRescueDevice,
-  offersRescue: boolean,
 ): string | null => {
   if (device.smartTaskHomeScope === 'unavailable') return C.temporaryUnavailableNote;
-  if (offersRescue) return null;
-  return resolveStarvationRowNote(device.cause, device.hasSmartTask);
+  return resolveStarvationRowNote(device.hasSmartTask, device.intendedNormalTargetC);
 };
 
 /* eslint-enable no-param-reassign */
@@ -135,13 +127,12 @@ const renderDeviceRow = (
   const li = fragment.querySelector('.row');
   if (!(li instanceof HTMLElement)) throw new Error('device template missing .row');
 
-  // Offer the rescue ONLY when the row is actually rescuable: budget-caused, a
-  // known target to aim at, AND the device has no smart task of its own (a
-  // task-having device is shown but not rescuable — its task brings it back).
+  // Offer the rescue ONLY when the row is actually rescuable: a known target to
+  // aim at, AND the device has no smart task of its own (a task-having device is
+  // shown but not rescuable — its task brings it back).
   // Mirrors the API guardrail (`resolveRescuableDevice`), so the button is never
   // shown for a request the API would then reject.
   const offersRescue = starvationRowIsRescuable(
-    device.cause,
     device.intendedNormalTargetC,
     device.hasSmartTask,
     device.smartTaskHomeScope,
@@ -156,29 +147,25 @@ const renderDeviceRow = (
   const noteEl = li.querySelector('[data-device-note]');
   const rescueBtn = li.querySelector('[data-rescue-button]');
 
-  const subtext = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
+  const subtext = resolveStarvationRowSubtext(device.intendedNormalTargetC);
 
   if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
-  if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.cause, device.accumulatedMs);
+  if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.accumulatedMs);
   if (subtextEl instanceof HTMLElement) {
     subtextEl.textContent = subtext;
   }
 
-  // Budget rows: a rescue button (the only interactive affordance). Capacity
-  // rows: a muted informational note, no button (the guardrail — capacity is
-  // physical, the hard cap is not a tuning knob).
+  // Rescuable rows: a rescue button (the only interactive affordance). The rest:
+  // a muted informational note, no button.
   if (rescueBtn instanceof HTMLButtonElement) {
     configureRescueButton(rescueBtn, device, offersRescue);
   }
   if (noteEl instanceof HTMLElement) {
-    // The note is suppressed for rescuable (budget) rows, and otherwise only
-    // shown when it adds information beyond the subtext. For capacity rows the
-    // note and subtext are near-identical (e.g. "Waiting for available power" vs
-    // "Waiting for available power.") — printing both reads as a doubled line, so
-    // drop the note when it duplicates the subtext (compared case-insensitively,
-    // ignoring a trailing period).
-    const note = resolveDeviceRowNote(device, offersRescue);
-    setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
+    // Every row carries a second line: the smart-task explanation for the one
+    // row without a button, and otherwise the canonical "why" — this widget is a
+    // standalone dashboard surface with no hero to state it once. The resolver
+    // suppresses it when the subtext already says the same thing.
+    setLine(noteEl, resolveDeviceRowNote(device));
   }
   return li;
 };

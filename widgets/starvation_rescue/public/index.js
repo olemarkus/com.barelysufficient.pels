@@ -7,33 +7,24 @@
   // packages/shared-domain/src/planStarvation.ts
   var STARVATION_WAITING_FOR_POWER_COPY = "Waiting for available power";
   var STARVATION_RESCUE_WIDGET_COPY = {
-    // List header — names what the widget SHOWS (the devices PELS is holding back
-    // via the daily budget), not an action the user takes. Shown only when at
-    // least one device is held back; the calm empty state stands alone.
+    // List header — names what the widget SHOWS (the devices PELS is holding
+    // back), not an action the user takes. Shown only when at least one device is
+    // held back; the calm empty state stands alone.
     headerTitle: "Held-back devices",
     // Empty (calm) state — nothing is held back. This is the steady, good state.
     emptySubtitle: "No device is being held back right now.",
     // Transient "wiring up to Homey" state, distinct from a hard load failure.
     notReady: "Connecting to Homey\u2026",
     loadError: "Could not load devices. Try again later.",
-    // Row status-chip word. The widget appends "· N min". Cause-specific so the
-    // chip never overclaims: only budget rows (the releasable "Let it run now"
-    // state) say "Held back"; capacity rows say "Waiting" (physically held — the
-    // hard cap is not a tuning knob, feedback_hard_cap_is_physical). User-facing
-    // register only — no "starvation" jargon.
+    // Row status-chip word. The widget appends "· 24 min" / "· 2 h 15 min".
+    // User-facing register only — no "starvation" jargon.
     starvedChip: "Held back",
-    waitingChip: "Waiting",
-    // Rescue affordance (budget-caused rows only). "Let it run now" is device-
-    // scoped — it releases THIS device from the daily budget so it runs now,
-    // rather than promising house power. The rescue is a bounded near-term run
-    // (the confirm sheet surfaces the "By {time}" timing prominently).
+    // Rescue affordance. "Let it run now" is device-scoped — it clears room for
+    // THIS device so it runs now, rather than promising house power. The rescue is
+    // a bounded near-term run (the confirm sheet surfaces the "By {time}" timing
+    // prominently).
     rescueButton: "Let it run now",
-    // Informational note on capacity rows — they get NO rescue affordance. Honest
-    // about why, without implying the user can raise the cap. Matches the canonical
-    // "Waiting for available power" wording the overview and the row subtext use,
-    // so the capacity story reads the same everywhere.
-    capacityNote: "Waiting for available power.",
-    // A budget-held device that already has a smart task: shown in the list (so the
+    // A held-back device that already has a smart task: shown in the list (so the
     // user sees it is held back) but with no rescue button — its own task is what
     // brings it to target, so a one-shot rescue would only get in the way.
     smartTaskNote: "Its smart task will bring it back.",
@@ -88,8 +79,20 @@
     deadlinePassed: "That timing just passed. Try again."
   };
   var starvationDurationMinutes = (accumulatedMs) => Number.isFinite(accumulatedMs) && accumulatedMs > 0 ? Math.floor(accumulatedMs / 6e4) : 0;
-  var resolveStarvationRowChipWord = (cause) => cause === "budget" ? STARVATION_RESCUE_WIDGET_COPY.starvedChip : STARVATION_RESCUE_WIDGET_COPY.waitingChip;
-  var formatStarvationRowChip = (cause, accumulatedMs) => `${resolveStarvationRowChipWord(cause)} \xB7 ${starvationDurationMinutes(accumulatedMs)} min`;
+  var STARVATION_NBSP = "\xA0";
+  var MINUTES_PER_HOUR = 60;
+  var formatStarvationDurationLabel = (accumulatedMs) => {
+    const totalMinutes = starvationDurationMinutes(accumulatedMs);
+    const hours = Math.floor(totalMinutes / MINUTES_PER_HOUR);
+    const minutes = totalMinutes % MINUTES_PER_HOUR;
+    if (hours === 0) return `${minutes}${STARVATION_NBSP}min`;
+    if (minutes === 0) return `${hours}${STARVATION_NBSP}h`;
+    return `${hours}${STARVATION_NBSP}h${STARVATION_NBSP}${minutes}${STARVATION_NBSP}min`;
+  };
+  var formatStarvationRowChip = (accumulatedMs) => {
+    const chip = STARVATION_RESCUE_WIDGET_COPY.starvedChip;
+    return starvationDurationMinutes(accumulatedMs) > 0 ? `${chip} \xB7 ${formatStarvationDurationLabel(accumulatedMs)}` : chip;
+  };
   var STARVATION_RESCUE_VISIBLE_ROWS = 2;
   var formatStarvationOverflowCue = (totalCount) => {
     if (!Number.isFinite(totalCount) || totalCount <= STARVATION_RESCUE_VISIBLE_ROWS) return null;
@@ -102,23 +105,19 @@
     const rounded = Math.round(targetC * 10) / 10;
     return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} \xB0C`;
   };
-  var resolveStarvationRowSubtext = (cause, intendedNormalTargetC) => {
-    if (cause === "budget") {
-      const degrees = formatTargetDegrees(intendedNormalTargetC);
-      return degrees ? `Held below ${degrees} by today\u2019s budget` : "Held by today\u2019s budget";
-    }
-    return STARVATION_WAITING_FOR_POWER_COPY;
+  var resolveStarvationRowSubtext = (intendedNormalTargetC) => {
+    const degrees = formatTargetDegrees(intendedNormalTargetC);
+    return degrees ? `Held below ${degrees}` : STARVATION_WAITING_FOR_POWER_COPY;
   };
-  var resolveStarvationRowNote = (cause, hasSmartTask = false) => {
-    if (cause === "budget") return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
-    return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
+  var resolveStarvationRowNote = (hasSmartTask = false, intendedNormalTargetC) => {
+    if (hasSmartTask) return STARVATION_RESCUE_WIDGET_COPY.smartTaskNote;
+    return formatTargetDegrees(intendedNormalTargetC) === null ? null : STARVATION_WAITING_FOR_POWER_COPY;
   };
-  var starvationRowOffersRescue = (cause) => cause === "budget";
   var BUDGET_EXEMPT_CARD_ACTION_COPY = {
     // Chip label — the canonical rescue verb, identical to the held-back widget's
     // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
     // from today's budget so it runs now, never a hard-cap change. The leading
-    // bolt glyph distinguishes it from the adjacent "Budget limited" status badge.
+    // bolt glyph distinguishes it from the adjacent "Held back" status badge.
     label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
     // Tooltip / accessible description — the same honest money-action consequence
     // the widget's confirm sheet names: the rescue lets the device use power
@@ -130,7 +129,7 @@
     // verb so the action word is shared across surfaces.
     confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
   };
-  var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false, smartTaskHomeScope = "main") => starvationRowOffersRescue(cause) && smartTaskHomeScope === "main" && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
+  var starvationRowIsRescuable = (intendedNormalTargetC, hasSmartTask = false, smartTaskHomeScope = "main") => smartTaskHomeScope === "main" && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
   var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => {
     if (reason === "deadline_passed") return STARVATION_RESCUE_WIDGET_COPY.deadlinePassed;
@@ -274,7 +273,6 @@
       {
         deviceId: "preview-hot-water",
         deviceName: "Hot water",
-        cause: "budget",
         accumulatedMs: 42 * 60 * 1e3,
         intendedNormalTargetC: 65,
         smartTaskHomeScope: "main",
@@ -283,7 +281,6 @@
       {
         deviceId: "preview-radiator",
         deviceName: "Living room",
-        cause: "capacity",
         accumulatedMs: 11 * 60 * 1e3,
         intendedNormalTargetC: 21,
         smartTaskHomeScope: "main",
@@ -292,7 +289,6 @@
       {
         deviceId: "preview-floor",
         deviceName: "Bathroom floor",
-        cause: "budget",
         accumulatedMs: 18 * 60 * 1e3,
         intendedNormalTargetC: 24,
         smartTaskHomeScope: "main",
@@ -954,8 +950,6 @@
     el.textContent = visible ? text : "";
     el.hidden = !visible;
   };
-  var normalizeLine = (text) => text.trim().replace(/\.$/, "").toLowerCase();
-  var linesMatch = (a, b) => normalizeLine(a) === normalizeLine(b);
   var hide = (el) => {
     el.hidden = true;
   };
@@ -969,17 +963,15 @@
     button.textContent = C.rescueButton;
     button.setAttribute("aria-label", `${C.rescueButton}: ${device.deviceName}`);
   };
-  var resolveDeviceRowNote = (device, offersRescue) => {
+  var resolveDeviceRowNote = (device) => {
     if (device.smartTaskHomeScope === "unavailable") return C.temporaryUnavailableNote;
-    if (offersRescue) return null;
-    return resolveStarvationRowNote(device.cause, device.hasSmartTask);
+    return resolveStarvationRowNote(device.hasSmartTask, device.intendedNormalTargetC);
   };
   var renderDeviceRow = (template, device) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
     if (!(li instanceof HTMLElement)) throw new Error("device template missing .row");
     const offersRescue = starvationRowIsRescuable(
-      device.cause,
       device.intendedNormalTargetC,
       device.hasSmartTask,
       device.smartTaskHomeScope
@@ -990,9 +982,9 @@
     const subtextEl = li.querySelector("[data-device-subtext]");
     const noteEl = li.querySelector("[data-device-note]");
     const rescueBtn = li.querySelector("[data-rescue-button]");
-    const subtext = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
+    const subtext = resolveStarvationRowSubtext(device.intendedNormalTargetC);
     if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
-    if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.cause, device.accumulatedMs);
+    if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.accumulatedMs);
     if (subtextEl instanceof HTMLElement) {
       subtextEl.textContent = subtext;
     }
@@ -1000,8 +992,7 @@
       configureRescueButton(rescueBtn, device, offersRescue);
     }
     if (noteEl instanceof HTMLElement) {
-      const note = resolveDeviceRowNote(device, offersRescue);
-      setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
+      setLine(noteEl, resolveDeviceRowNote(device));
     }
     return li;
   };

@@ -22,7 +22,6 @@ const RESCUE_HORIZON_MS = 3 * 60 * 60 * 1000;
 const budgetDevice: StarvationRescueDevice = {
   deviceId: 'heater-1',
   deviceName: 'Hot water',
-  cause: 'budget',
   accumulatedMs: 42 * 60 * 1000,
   intendedNormalTargetC: 65,
   smartTaskHomeScope: 'main',
@@ -32,7 +31,6 @@ const budgetDevice: StarvationRescueDevice = {
 const capacityDevice: StarvationRescueDevice = {
   deviceId: 'rad-1',
   deviceName: 'Living room',
-  cause: 'capacity',
   accumulatedMs: 11 * 60 * 1000,
   intendedNormalTargetC: 21,
   smartTaskHomeScope: 'main',
@@ -88,12 +86,14 @@ afterEach(() => {
 });
 
 describe('getSettingsUiStarvationRescueDevices', () => {
-  it('returns only the rescuable (budget, task-free, known-target) device IDs', () => {
+  it('returns only the rescuable (task-free, known-target) device IDs', () => {
     const getStarvedRescueDevices = vi.fn(() => [
       budgetDevice, capacityDevice, taskOwningBudgetDevice, noTargetBudgetDevice,
     ]);
     const payload = getSettingsUiStarvationRescueDevices(buildContext({ getStarvedRescueDevices }));
-    expect(payload.rescuableDeviceIds).toEqual(['heater-1']);
+    // Both plain held-back rows qualify now; only the task-owning and
+    // no-target rows are filtered out.
+    expect(payload.rescuableDeviceIds).toEqual(['heater-1', 'rad-1']);
   });
 
   it('returns an empty set when the app getter is missing', () => {
@@ -112,17 +112,17 @@ describe('previewSettingsUiStarvationRescue', () => {
     expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
   });
 
-  it('GUARDRAIL: rejects a capacity-starved device with not_rescuable', () => {
+  it('GUARDRAIL: rejects a device that is not on the live starved list', () => {
     const previewStarvationRescuePlan = freshPreviewPlan();
     const result = previewSettingsUiStarvationRescue({
-      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [capacityDevice]), previewStarvationRescuePlan }),
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), previewStarvationRescuePlan }),
       body: { deviceId: 'rad-1' },
     });
     expect(result).toEqual({ ok: false, reason: 'not_rescuable' });
     expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
   });
 
-  it('previews a budget-starved device with the now+3h deadline and a formatted label', () => {
+  it('previews a held-back device with the now+3h deadline and a formatted label', () => {
     const previewStarvationRescuePlan = freshPreviewPlan();
     const result = previewSettingsUiStarvationRescue({
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), previewStarvationRescuePlan }),

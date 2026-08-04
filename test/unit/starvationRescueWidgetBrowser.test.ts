@@ -69,13 +69,16 @@ const click = (selector: string): void => {
   (document.querySelector(selector) as HTMLElement).click();
 };
 
+// The row chip NBSP-joins its duration so "2 h 15 min" cannot break mid-figure.
+const NBSP = '\u00a0';
+
 const READY_PAYLOAD: StarvationRescueDevicesPayload = {
   state: 'ready',
   devices: [
-    { deviceId: 'budget-1', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65, smartTaskHomeScope: 'main', hasSmartTask: false },
-    { deviceId: 'cap-1', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21, smartTaskHomeScope: 'main', hasSmartTask: false },
-    // Budget-held, but it already has its own smart task → shown, no rescue button.
-    { deviceId: 'task-1', deviceName: 'Cabin water', cause: 'budget', accumulatedMs: 30 * 60_000, intendedNormalTargetC: 60, smartTaskHomeScope: 'main', hasSmartTask: true },
+    { deviceId: 'long-1', deviceName: 'Hot water', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65, smartTaskHomeScope: 'main', hasSmartTask: false },
+    { deviceId: 'short-1', deviceName: 'Living room', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21, smartTaskHomeScope: 'main', hasSmartTask: false },
+    // Held back, but it already has its own smart task → shown, no rescue button.
+    { deviceId: 'task-1', deviceName: 'Cabin water', accumulatedMs: 30 * 60_000, intendedNormalTargetC: 60, smartTaskHomeScope: 'main', hasSmartTask: true },
   ],
 };
 
@@ -162,7 +165,7 @@ describe('starvation rescue widget browser', () => {
     expect((document.querySelector('[data-list-title]') as HTMLElement).hidden).toBe(true);
   });
 
-  test('renders a list with tone-by-duration and the budget-only rescue guardrail', async () => {
+  test('renders a list with tone-by-duration, a rescue on every row, and the canonical why', async () => {
     const controller = installWidget(window as WidgetWindow, document);
     controller!.bootstrap(buildHomey());
     await flushPromises();
@@ -175,32 +178,35 @@ describe('starvation rescue widget browser', () => {
     const rows = document.querySelectorAll('[data-device-list] .row');
     expect(rows).toHaveLength(3);
 
-    const [budgetRow, capacityRow, taskRow] = Array.from(rows) as HTMLElement[];
-    // Budget row: 42 min ⇒ danger tone, offers a rescue button, no muted note.
-    expect(budgetRow.dataset.tone).toBe('danger');
-    expect((budgetRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Held back · 42 min');
-    expect((budgetRow.querySelector('[data-device-subtext]') as HTMLElement).textContent).toBe('Held below 65 °C by today’s budget');
-    const budgetBtn = budgetRow.querySelector('[data-rescue-button]') as HTMLButtonElement;
-    expect(budgetBtn.hidden).toBe(false);
-    expect(budgetBtn.dataset.deviceId).toBe('budget-1');
-    expect((budgetRow.querySelector('[data-device-note]') as HTMLElement).hidden).toBe(true);
-
-    // Capacity row: 11 min ⇒ warn tone, NO rescue button (the guardrail).
-    // Chip reads "Waiting", never the budget-releasable "Held back" (the hard cap
-    // is physical — a capacity row is not something the user can let run now).
-    expect(capacityRow.dataset.tone).toBe('warn');
-    expect((capacityRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Waiting · 11 min');
-    expect((capacityRow.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
-    // The capacity subtext already reads "Waiting for available power"; the note
-    // ("Waiting for available power.") only restates it, so it is suppressed to
-    // avoid printing the same reason twice (differs only by a trailing period).
-    expect((capacityRow.querySelector('[data-device-subtext]') as HTMLElement).textContent)
+    const [longRow, shortRow, taskRow] = Array.from(rows) as HTMLElement[];
+    // 42 min ⇒ danger tone, offers a rescue button, no muted note.
+    expect(longRow.dataset.tone).toBe('danger');
+    expect((longRow.querySelector('[data-device-chip]') as HTMLElement).textContent)
+      .toBe(`Held back · 42${NBSP}min`);
+    expect((longRow.querySelector('[data-device-subtext]') as HTMLElement).textContent).toBe('Held below 65 °C');
+    const longBtn = longRow.querySelector('[data-rescue-button]') as HTMLButtonElement;
+    expect(longBtn.hidden).toBe(false);
+    expect(longBtn.dataset.deviceId).toBe('long-1');
+    // The note carries the canonical why. This widget is a standalone dashboard
+    // surface — no hero sits near it — so without this the row would show only
+    // its felt symptom and never say why the device is held.
+    expect((longRow.querySelector('[data-device-note]') as HTMLElement).textContent)
       .toBe('Waiting for available power');
-    const note = capacityRow.querySelector('[data-device-note]') as HTMLElement;
-    expect(note.hidden).toBe(true);
-    expect(note.textContent).toBe('');
 
-    // Task-owning budget row: SHOWN (visibility preserved) but NO rescue button —
+    // 11 min ⇒ warn tone. It ALSO offers a rescue: the button no longer depends
+    // on which constraint is holding the device (the rescue clears room on both
+    // axes, up to but never above the hard cap), and the bucket it used to gate
+    // on flipped mid-hold anyway.
+    expect(shortRow.dataset.tone).toBe('warn');
+    expect((shortRow.querySelector('[data-device-chip]') as HTMLElement).textContent)
+      .toBe(`Held back · 11${NBSP}min`);
+    expect((shortRow.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(false);
+    expect((shortRow.querySelector('[data-device-subtext]') as HTMLElement).textContent)
+      .toBe('Held below 21 °C');
+    expect((shortRow.querySelector('[data-device-note]') as HTMLElement).textContent)
+      .toBe('Waiting for available power');
+
+    // Task-owning row: SHOWN (visibility preserved) but NO rescue button —
     // and an explanatory note so the missing button isn't a mystery.
     expect((taskRow.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
     const taskNote = taskRow.querySelector('[data-device-note]') as HTMLElement;
@@ -208,7 +214,7 @@ describe('starvation rescue widget browser', () => {
     expect(taskNote.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
   });
 
-  test('budget row with no known target hides the rescue button (API would reject no_target)', async () => {
+  test('row with no known target hides the rescue button (API would reject no_target)', async () => {
     const controller = installWidget(window as WidgetWindow, document);
     controller!.bootstrap(buildHomey({
       api: vi.fn(async (_method: string, path: string) => {
@@ -216,7 +222,7 @@ describe('starvation rescue widget browser', () => {
           return {
             state: 'ready',
             devices: [
-              { deviceId: 'budget-no-target', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null, smartTaskHomeScope: 'main', hasSmartTask: false },
+              { deviceId: 'no-target', deviceName: 'Hot water', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null, smartTaskHomeScope: 'main', hasSmartTask: false },
             ],
           } satisfies StarvationRescueDevicesPayload;
         }
@@ -226,10 +232,14 @@ describe('starvation rescue widget browser', () => {
     await flushPromises();
 
     const row = document.querySelector('[data-device-list] .row') as HTMLElement;
-    // Budget-caused but no target to aim at: no rescue button is offered, so the
-    // widget never sends a request the API rejects with `no_target`.
+    // No target to aim at: no rescue button is offered, so the widget never sends
+    // a request the API rejects with `no_target`.
     expect((row.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
-    // No cause-specific note either (budget has none) — the row is just informational.
+    // No note either: with no target to name, the row SUBTEXT is already the
+    // canonical "why", so repeating it under itself would print the same line
+    // twice.
+    expect((row.querySelector('[data-device-subtext]') as HTMLElement).textContent)
+      .toBe('Waiting for available power');
     expect((row.querySelector('[data-device-note]') as HTMLElement).hidden).toBe(true);
   });
 
@@ -241,9 +251,8 @@ describe('starvation rescue widget browser', () => {
           return {
             state: 'ready',
             devices: [{
-              deviceId: 'budget-unavailable',
+              deviceId: 'held-unavailable',
               deviceName: 'Hot water',
-              cause: 'budget',
               accumulatedMs: 20 * 60_000,
               intendedNormalTargetC: 65,
               smartTaskHomeScope: 'unavailable',
@@ -287,7 +296,7 @@ describe('starvation rescue widget browser', () => {
       .toBe(STARVATION_RESCUE_WIDGET_COPY.rescueDone);
     // The create echoes the deadline the preview resolved (not a fresh now+3h).
     expect((homey.api as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
-      'POST', '/rescue', { deviceId: 'budget-1', deadlineAtMs: OK_PREVIEW.deadlineAtMs },
+      'POST', '/rescue', { deviceId: 'long-1', deadlineAtMs: OK_PREVIEW.deadlineAtMs },
     );
   });
 

@@ -150,24 +150,24 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
     evBoostActive: false,
     budgetExempt: false,
   };
-  const budgetStarved = { isStarved: true, cause: 'budget' as const, accumulatedMs: 60_000, startedAtMs: 0 };
+  const heldBackStarved = { isStarved: true, accumulatedMs: 60_000, startedAtMs: 0 };
 
   it('rescue action wins the ladder, but never under simulation', () => {
     expect(resolvePlanCardStatusChip({
-      ...base, rescueEligible: true, starvation: budgetStarved,
+      ...base, rescueEligible: true, starvation: heldBackStarved,
     })).toEqual({ type: 'rescue' });
     const simChip = resolvePlanCardStatusChip({
-      ...base, rescueEligible: true, starvation: budgetStarved, dryRun: true, displayKind: 'active',
+      ...base, rescueEligible: true, starvation: heldBackStarved, dryRun: true, displayKind: 'active',
     });
     expect(simChip?.type).not.toBe('rescue');
   });
 
   it('shows the starvation badge only while the card reads held', () => {
-    const held = resolvePlanCardStatusChip({ ...base, starvation: budgetStarved });
-    expect(held).toMatchObject({ type: 'status', label: 'Budget limited', tone: 'info' });
+    const held = resolvePlanCardStatusChip({ ...base, starvation: heldBackStarved });
+    expect(held).toMatchObject({ type: 'status', label: 'Held back', tone: 'warn' });
     // Recovery latch: device running again, starvation still flagged — no badge.
     expect(resolvePlanCardStatusChip({
-      ...base, displayKind: 'active', starvation: budgetStarved,
+      ...base, displayKind: 'active', starvation: heldBackStarved,
     })).toBeNull();
   });
 

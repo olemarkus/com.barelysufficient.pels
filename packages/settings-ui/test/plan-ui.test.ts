@@ -946,7 +946,7 @@ describe('Redesign plan UI', () => {
       expect(subline?.textContent?.trim()).toBe('Safe pace now 5.0 kW');
     });
   
-    it('surfaces starvation badges and overrides the reason line for capacity starvation', async () => {
+    it('surfaces starvation badges and the held-back reason line', async () => {
       await renderPlanSnapshot({
         meta: { totalKw: 4.2, softLimitKw: 5, headroomKw: 0.8 },
         devices: [
@@ -958,7 +958,6 @@ describe('Redesign plan UI', () => {
             starvation: {
               isStarved: true,
               accumulatedMs: 23 * 60 * 1000,
-              cause: 'capacity',
               startedAtMs: Date.UTC(2026, 3, 20, 11, 0, 0),
             },
           },
@@ -967,7 +966,7 @@ describe('Redesign plan UI', () => {
   
       const badgeTexts = Array.from(document.querySelectorAll('[data-device-id="dev-starved"] .plan-chip'))
         .map((el) => el.textContent?.trim());
-      expect(badgeTexts).toContain('Low power');
+      expect(badgeTexts).toContain('Held back');
       expect(getReasonText('dev-starved')).toBe('Waiting for available power');
       // Starvation summary is shown on device card, not in hero
     });

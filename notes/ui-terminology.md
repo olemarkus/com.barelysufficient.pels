@@ -193,8 +193,8 @@ absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
 | **Unknown** | PELS does not have enough current state to choose a more specific word. |
 
 **Card grammar (2026-07 legibility pass):** one anatomy for every card —
-title + at most ONE status chip (ladder: `Let it run now` → `Budget limited`/
-`Low power` → `Boost` → `Budget exempt`; the `Smart task` badge is an
+title + at most ONE status chip (ladder: `Let it run now` → `Held back` →
+`Boost` → `Budget exempt`; the `Smart task` badge is an
 identity/route badge and may coexist), the state row (state word + power
 fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
 level 6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
@@ -245,12 +245,23 @@ shared by all three card variants):
 
 | Situation | Line |
 |---|---|
-| Budget-releasable hold (the `Let it run now` case) | `Limited to stay within today's budget` |
 | Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
-| Held because this hour's energy budget is spent | `Waiting to resume — more budget next hour` |
+| …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
+| Held because this hour's energy budget is spent | `Waiting to resume — more budget next hour` (held back: `Held 2 h — more budget next hour`) |
 | Held on power, no shortfall resolved (rare) | `Waiting to resume` |
-| Long-held on capacity, no shortfall | `Waiting for available power` |
+| Long held back, no shortfall | `Waiting for available power` |
 | Hold that is NOT about power | its own cause (below) |
+
+**Held-back cards state the elapsed hold, and still name no ceiling** (2026-08-04).
+Once a hold has run long enough to register as held back, the stem becomes
+`Held 2 h` instead of `Waiting to resume`. The duration is the device's own
+fact — and the only one that answers why THIS card carries the `Let it run now`
+action while its neighbours, held in the same cycle, do not. It replaced
+`Limited to stay within today's budget`, which opened by restating the `Limited`
+state word and closed by naming a house-level ceiling the hero already states
+once. The line reads the same whichever ceiling is binding: the budget and the
+hourly pace are the same whole-home limit from a device's point of view, and
+which one binds moves on its own.
 
 The shortfall is the kW that would actually admit the device — reserves folded
 in (`resolveRestoreShortfallKw`), not `need − available`, which understates the
@@ -287,6 +298,16 @@ and the countdown lines (`Waiting before resuming (50s)`).
 `Limited — this hour is near the hard cap`, `Making room for higher-priority
 device`, `Blocked by safety rule`. The first two restated the bold `Limited`
 state word and named no cause at all; the rest are house-level.
+
+**Retired 2026-08-04 — do not reintroduce anywhere:** `Limited to stay within
+today's budget` (the held-back card line; failed both tests at once — it opened
+by restating the state word and closed by naming a house-level ceiling), plus
+the `budget`/`capacity` badge pair `Budget limited` / `Low power` and the widget
+chip word `Waiting`. All four keyed off a starvation cause bucket that no longer
+exists: it was a snapshot of whichever constraint bound on the last accumulation
+tick, so it flipped mid-hold and took the copy — and the rescue button — with it.
+One badge (`Held back`, warn) and one chip word (`Held back`) now serve every
+held-back device.
 
 Where they survive, precisely: the ceiling/swap strings stay in
 `formatDeviceReasonUserFacing`, which feeds the runtime logs and the device
@@ -329,7 +350,7 @@ in `packages/shared-domain/src/deviceOverviewStrings.ts` +
 
 ### "Held back" — the Held-back-devices widget
 
-The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining because of the daily budget, with a per-device **Let it run now** action (a one-device budget exemption — never a hard-cap change). The duration chip word is cause-specific so it never overclaims: only **budget** rows (the releasable "Let it run now" state) read `Held back · N min`; **capacity** rows read `Waiting · N min` (physically held — the hard cap is not a tuning knob) and get an informational note instead of a rescue button. (There is no "manual"/"external" cause: a device PELS merely keeps below its target is not starved, so it never appears here.) This is a deliberate, widget-scoped synonym of the overview **Limited** state word: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview state word) and **Held back** (the widget and device-detail diagnostics).
+The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining, with a per-device **Let it run now** action (a one-device rescue that lifts the budget for it and clears room from lower-priority load — never a hard-cap change). Every row reads `Held back · N min`, rolling over into hours past 60 minutes (`Held back · 2 h 15 min`). The former cause-specific `Waiting · N min` variant went with the `budget`/`capacity` bucket on 2026-08-04: the bucket was a snapshot of whichever constraint bound on the last tick, so a steady device flipped chip word — and rescue button — between cycles. (There is no "manual"/"external" cause either: a device PELS merely keeps below its target is not held back, so it never appears here.) The only row without a rescue button is one whose device already has its own smart task, which says so in a note. This is a deliberate, widget-scoped synonym of the overview **Limited** state word: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview state word) and **Held back** (the widget and device-detail diagnostics).
 
 ### Headroom-widget chips — "Available power" widget
 

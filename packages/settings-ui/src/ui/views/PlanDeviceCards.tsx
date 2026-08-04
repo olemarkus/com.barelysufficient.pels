@@ -153,12 +153,14 @@ export const DeadlineChip = (
 // propagation so the parent card's whole-surface tap (which would open the
 // device-detail overlay) does not also fire.
 //
-// GATED on the rescue's REAL preconditions: budget-caused + held + not exempt
+// GATED on the rescue's REAL preconditions: held back
 // (`shouldOfferBudgetExemptCardAction`, from card data) AND server-confirmed
 // rescuable (task-free + a known target; `isStarvationRescuable`, mirroring
-// `getStarvedRescueDevices`). A device with its own smart task, a capacity hold,
-// or no known target never renders the chip — so the create call can't be
-// rejected for a shown chip.
+// `getStarvedRescueDevices`). A device with its own smart task or no known
+// target never renders the chip. That set is a snapshot, so a stale chip can
+// still be rejected on create — rare, and handled by the reject copy rather than
+// prevented. It is NOT gated on which constraint holds the device: the rescue
+// clears room on both axes, up to but never above the hard cap.
 // `arming` is the window between the first tap and the preview landing. It is a
 // distinct state (not `armed`) because Confirm must not be committable until the
 // granted-permission disclosure has rendered.
@@ -187,7 +189,7 @@ export const BudgetExemptChip = ({
   // holds other devices off, which the user must see before authorising).
   const [permissionsLine, setPermissionsLine] = useState<string | null>(null);
 
-  if (!shouldOfferBudgetExemptCardAction(dev.starvation, dev.budgetExempt)) return null;
+  if (!shouldOfferBudgetExemptCardAction(dev.starvation)) return null;
   if (!isStarvationRescuable(dev.id)) return null;
 
   const displayName = dev.name ? formatDisplayDeviceName(dev.name) : '';
@@ -348,7 +350,7 @@ export const PlanCardStatusChipView = ({
     displayKind,
     dryRun,
     starvation: dev.starvation,
-    rescueEligible: shouldOfferBudgetExemptCardAction(dev.starvation, dev.budgetExempt)
+    rescueEligible: shouldOfferBudgetExemptCardAction(dev.starvation)
       && isStarvationRescuable(dev.id),
     temperatureBoostActive: dev.temperatureBoostActive === true,
     evBoostActive: dev.evBoostActive === true,
@@ -398,8 +400,8 @@ const resolveReasonTextFactual = (dev: PlanDeviceSnapshot): string => {
     starved,
   });
   // One shared ladder across all three card variants: the card states what THIS
-  // device needs, the hero names the ceiling limiting the house. It also owns the
-  // starvation precedence (budget copy first, capacity copy last) — see
+  // device needs, the hero names the ceiling limiting the house. Starvation
+  // DECORATES that ladder with the elapsed hold; it never preempts it — see
   // `planCardReasonLine.ts`.
   const heldLine = (): string => resolveHeldCardReasonLine({
     reason: dev.reason,

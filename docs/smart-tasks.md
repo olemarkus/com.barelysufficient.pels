@@ -125,7 +125,7 @@ A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked
 
 You can grant the leeway as a standing setting once the task exists — open the task and use **Edit task** — or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
 
-The **Held-back devices** dashboard widget uses the same create engine for a narrower case: a device currently limited by today's daily budget can get **Let it run now**, which creates a short Smart task with budget leeway. Devices waiting for available power, manual control, or an external service do not get that button because the widget cannot bypass the hard cap or another controller.
+The **Held-back devices** dashboard widget uses the same create engine for a narrower case: a device PELS is currently holding back can get **Let it run now**, which creates a short Smart task with budget leeway and permission to take room from lower-priority devices. It never raises your hard cap. A device that already has its own Smart task does not get the button — that task is what brings it back.
 
 ## Different Targets Can Be Useful
 

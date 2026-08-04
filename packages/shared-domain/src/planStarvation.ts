@@ -7,11 +7,16 @@ import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope'
 // widget bundles don't drag the full smart-task copy module in.
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
 
-// Canonical capacity-starvation copy: a device held below target because the
-// house lacks available power (the hard cap holds the tariff step, not a tuning knob —
-// feedback_hard_cap_is_physical). Single home for this exact wording so the
-// overview, the rescue-widget row subtext, and the device-detail diagnostics
-// map all read identically and cannot drift.
+// Canonical starvation copy: a device held below target because the house has no
+// power to spare for it. Single home for this exact wording so the overview, the
+// rescue-widget row subtext, and the device-detail diagnostics map all read
+// identically and cannot drift.
+//
+// Deliberately names NO ceiling. Which limit binds — the hourly pace or today's
+// budget — is one house-level fact that moves on its own, and the hero states it
+// once (`Safe pace now 1.9 kW · set by today's budget`). Until 2026-08-04 this
+// module split every string on a `budget | capacity` bucket; see the header note
+// on the rescue gate below for why that bucket is gone.
 export const STARVATION_WAITING_FOR_POWER_COPY = 'Waiting for available power';
 
 export type PlanStarvationTone = 'warn' | 'info' | 'muted';
@@ -22,42 +27,28 @@ export type PlanStarvationBadgeView = {
   tooltip: string;
 };
 
-// Two starvation buckets only: capacity (physically held — the hard cap is not a
-// tuning knob) and budget (releasable). A device PELS merely keeps below its
-// target is not starved, so there is no "manual"/"external" badge.
-const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarvationTone => (
-  cause === 'budget' ? 'info' : 'warn'
-);
-
-const resolveBadgeLabel = (cause: SettingsUiPlanDeviceStarvation['cause']): string => (
-  cause === 'budget' ? 'Budget limited' : 'Low power'
-);
-
-const resolveStarvationMessage = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
-): string => (
-  cause === 'budget'
-    ? "Limited to stay within today's budget"
-    : STARVATION_WAITING_FOR_POWER_COPY
-);
+// One starved state, one badge. A device PELS merely keeps below its target is
+// not starved, so there is no "manual"/"external" badge either. `Held back` is
+// the same user-facing word the rescue widget's rows use, so the two surfaces
+// name the state identically.
+export const PLAN_STARVATION_BADGE_LABEL = 'Held back';
 
 export const formatStarvationBadge = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
 ): PlanStarvationBadgeView | null => {
   if (!starvation?.isStarved) return null;
   return {
-    label: resolveBadgeLabel(starvation.cause),
-    tone: resolveTone(starvation.cause),
-    tooltip: resolveStarvationMessage(starvation.cause),
+    label: PLAN_STARVATION_BADGE_LABEL,
+    tone: 'warn',
+    tooltip: STARVATION_WAITING_FOR_POWER_COPY,
   };
 };
 
 export const formatStarvationReason = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
-): string | null => {
-  if (!starvation?.isStarved) return null;
-  return resolveStarvationMessage(starvation.cause);
-};
+): string | null => (
+  starvation?.isStarved ? STARVATION_WAITING_FOR_POWER_COPY : null
+);
 
 // ─── Held-back-devices widget vocabulary ─────────────────────────────────────
 //
@@ -67,43 +58,33 @@ export const formatStarvationReason = (
 // (feedback_ui_text_shared_with_logs). NOTE: no runtime/logging path consumes
 // these widget strings today — starvation logging uses its own vocabulary
 // (`starvedDeviceCount`, `starvationCause`); this is the single-home placement,
-// not actual log parity yet. The widget shows which devices PELS is holding back via the
-// daily budget; it does NOT conjure house power (the hard cap is never raised), so
-// the framing is device-scoped ("held back") rather than "get power". "Held
-// back" / "limited" vocabulary only — no shed/restore/headroom jargon
-// (notes/ui-terminology.md). Per feedback_hard_cap_is_physical, the
-// capacity-held copy never suggests raising the hard cap.
+// not actual log parity yet. The widget shows which devices PELS is holding back;
+// it does NOT conjure house power (the hard cap is never raised), so the framing
+// is device-scoped ("held back") rather than "get power". "Held back" / "limited"
+// vocabulary only — no shed/restore/headroom jargon (notes/ui-terminology.md).
+// Per feedback_hard_cap_is_physical, no string here suggests raising the hard cap.
 
 export type StarvationRescueRowTone = 'warn' | 'danger';
 
 export const STARVATION_RESCUE_WIDGET_COPY = {
-  // List header — names what the widget SHOWS (the devices PELS is holding back
-  // via the daily budget), not an action the user takes. Shown only when at
-  // least one device is held back; the calm empty state stands alone.
+  // List header — names what the widget SHOWS (the devices PELS is holding
+  // back), not an action the user takes. Shown only when at least one device is
+  // held back; the calm empty state stands alone.
   headerTitle: 'Held-back devices',
   // Empty (calm) state — nothing is held back. This is the steady, good state.
   emptySubtitle: 'No device is being held back right now.',
   // Transient "wiring up to Homey" state, distinct from a hard load failure.
   notReady: 'Connecting to Homey…',
   loadError: 'Could not load devices. Try again later.',
-  // Row status-chip word. The widget appends "· N min". Cause-specific so the
-  // chip never overclaims: only budget rows (the releasable "Let it run now"
-  // state) say "Held back"; capacity rows say "Waiting" (physically held — the
-  // hard cap is not a tuning knob, feedback_hard_cap_is_physical). User-facing
-  // register only — no "starvation" jargon.
+  // Row status-chip word. The widget appends "· 24 min" / "· 2 h 15 min".
+  // User-facing register only — no "starvation" jargon.
   starvedChip: 'Held back',
-  waitingChip: 'Waiting',
-  // Rescue affordance (budget-caused rows only). "Let it run now" is device-
-  // scoped — it releases THIS device from the daily budget so it runs now,
-  // rather than promising house power. The rescue is a bounded near-term run
-  // (the confirm sheet surfaces the "By {time}" timing prominently).
+  // Rescue affordance. "Let it run now" is device-scoped — it clears room for
+  // THIS device so it runs now, rather than promising house power. The rescue is
+  // a bounded near-term run (the confirm sheet surfaces the "By {time}" timing
+  // prominently).
   rescueButton: 'Let it run now',
-  // Informational note on capacity rows — they get NO rescue affordance. Honest
-  // about why, without implying the user can raise the cap. Matches the canonical
-  // "Waiting for available power" wording the overview and the row subtext use,
-  // so the capacity story reads the same everywhere.
-  capacityNote: 'Waiting for available power.',
-  // A budget-held device that already has a smart task: shown in the list (so the
+  // A held-back device that already has a smart task: shown in the list (so the
   // user sees it is held back) but with no rescue button — its own task is what
   // brings it to target, so a one-shot rescue would only get in the way.
   smartTaskNote: 'Its smart task will bring it back.',
@@ -165,24 +146,43 @@ export const starvationDurationMinutes = (accumulatedMs: number): number => (
   Number.isFinite(accumulatedMs) && accumulatedMs > 0 ? Math.floor(accumulatedMs / 60_000) : 0
 );
 
-// Status-chip word per cause: only budget rows are the releasable "Held back"
-// state; capacity rows are "Waiting" (physically held — the hard cap is not a
-// tuning knob). Keeps the chip honest per-cause so a capacity row is never
-// mislabeled as the budget-releasable "Held back" state.
-const resolveStarvationRowChipWord = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
-): string => (
-  cause === 'budget' ? STARVATION_RESCUE_WIDGET_COPY.starvedChip : STARVATION_RESCUE_WIDGET_COPY.waitingChip
-);
+// Non-breaking space so a duration is one unbreakable token — "2 h 15 min" must
+// never split across lines mid-figure at 320 px. Held locally rather than
+// imported from `deferredPlanHistoryReceiptStrings` (which owns the identical
+// convention for receipt margins): this module is deliberately kept off the
+// smart-task copy modules so the rescue widget bundle stays lean — see the
+// import note at the top of this file.
+const STARVATION_NBSP = ' ';
+const MINUTES_PER_HOUR = 60;
 
-// "Held back · 24 min" (budget) / "Waiting · 24 min" (capacity) status label for
-// a held-back row.
-export const formatStarvationRowChip = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
-  accumulatedMs: number,
-): string => (
-  `${resolveStarvationRowChipWord(cause)} · ${starvationDurationMinutes(accumulatedMs)} min`
-);
+// "0 min" / "45 min" / "2 h" / "2 h 15 min" — how long PELS has been holding the
+// device below its target. Built on `starvationDurationMinutes`, so the
+// no-seconds contract (notes/starvation/README.md) holds here too. Rolls over
+// into hours: a 2.6-hour hold read "156 min" before 2026-08-04, which is the
+// exact case the overview card now shows on every long hold.
+export const formatStarvationDurationLabel = (accumulatedMs: number): string => {
+  const totalMinutes = starvationDurationMinutes(accumulatedMs);
+  const hours = Math.floor(totalMinutes / MINUTES_PER_HOUR);
+  const minutes = totalMinutes % MINUTES_PER_HOUR;
+  if (hours === 0) return `${minutes}${STARVATION_NBSP}min`;
+  if (minutes === 0) return `${hours}${STARVATION_NBSP}h`;
+  return `${hours}${STARVATION_NBSP}h${STARVATION_NBSP}${minutes}${STARVATION_NBSP}min`;
+};
+
+// "Held back · 24 min" / "Held back · 2 h 15 min" status label for a held-back row.
+//
+// A non-positive or malformed duration drops the suffix entirely rather than
+// printing "Held back · 0 min", which reads as a stuck counter. Mirrors the
+// card's `resolveStarvedForMs` rule (`planCardReasonLine.ts`), which takes the
+// plain stem for the same input. Unreachable on a real row — a device only
+// registers as held back after the 15-minute entry latency — so this is
+// boundary hardening, not a live case.
+export const formatStarvationRowChip = (accumulatedMs: number): string => {
+  const chip = STARVATION_RESCUE_WIDGET_COPY.starvedChip;
+  return starvationDurationMinutes(accumulatedMs) > 0
+    ? `${chip} · ${formatStarvationDurationLabel(accumulatedMs)}`
+    : chip;
+};
 
 // How many starved rows fit in the widget's fixed 240px height before the list
 // scrolls. Beyond this, a "+N more" footer cues the user that rows (possibly the
@@ -218,43 +218,36 @@ const formatTargetDegrees = (targetC: number | null | undefined): string | null 
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} °C`;
 };
 
-// Plain-language subtext for a rescue-widget row, derived from the
-// producer-resolved flat `cause` (never re-derived from internals —
-// feedback_layering_resolution_in_producer). Budget rows get the actionable
-// felt-symptom line naming the target the budget is holding the device below
-// ("Held below 65 °C by today's budget") when the intended normal target is known,
-// falling back to the plain budget line otherwise. Capacity reuses the canonical
-// "Waiting for available power" overview wording so the two surfaces agree; the
-// rest get honest informational copy.
+// Plain-language subtext for a rescue-widget row: the felt symptom, naming the
+// target PELS is holding the device below ("Held below 65 °C") when the intended
+// normal target is known. Names no ceiling — see `STARVATION_WAITING_FOR_POWER_COPY`
+// — and falls back to that canonical wording when there is no target to name.
 export const resolveStarvationRowSubtext = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
   intendedNormalTargetC?: number | null,
 ): string => {
-  if (cause === 'budget') {
-    const degrees = formatTargetDegrees(intendedNormalTargetC);
-    return degrees ? `Held below ${degrees} by today’s budget` : "Held by today’s budget";
-  }
-  return STARVATION_WAITING_FOR_POWER_COPY;
+  const degrees = formatTargetDegrees(intendedNormalTargetC);
+  return degrees ? `Held below ${degrees}` : STARVATION_WAITING_FOR_POWER_COPY;
 };
 
-// The informational note for a row that gets no rescue button: capacity rows,
-// plus a budget row whose device already has a smart task (the task handles it).
-// The `hasSmartTask` note wins for budget rows so the user sees WHY the otherwise-
-// rescuable row has no button.
+// The second line under a rescue-widget row.
+//
+// A device with its own smart task gets the note explaining why the otherwise-
+// rescuable row has no button — that task, not a one-shot rescue, is what brings
+// it back. Every other row gets the canonical "why", because unlike an Overview
+// card this widget is a STANDALONE dashboard surface: there is no hero anywhere
+// near it to state the house-level fact once, so a row carrying only its felt
+// symptom ("Held below 65 °C") would never say why. Suppressed when the subtext
+// already IS that sentence (no known target to name), so the row never prints
+// the same line twice.
 export const resolveStarvationRowNote = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
   hasSmartTask = false,
+  intendedNormalTargetC?: number | null,
 ): string | null => {
-  if (cause === 'budget') return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
-  return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
+  if (hasSmartTask) return STARVATION_RESCUE_WIDGET_COPY.smartTaskNote;
+  return formatTargetDegrees(intendedNormalTargetC) === null
+    ? null
+    : STARVATION_WAITING_FOR_POWER_COPY;
 };
-
-// Whether a starved row may offer the budget-exempt rescue. ONLY budget-caused
-// rows: capacity is physical (the hard cap is not a tuning knob —
-// feedback_hard_cap_is_physical).
-export const starvationRowOffersRescue = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
-): boolean => cause === 'budget';
 
 // ─── Overview held-card "Let it run now" rescue affordance ───────────────────
 //
@@ -272,16 +265,26 @@ export const starvationRowOffersRescue = (
 // and a future runtime log breadcrumb could reuse the same word
 // (feedback_ui_text_shared_with_logs).
 //
-// ONLY budget-caused, task-free, rescuable held cards get the affordance:
-// capacity is physical (the hard cap is not a tuning knob —
-// feedback_hard_cap_is_physical), a device with its own smart task is brought
-// back by that task, and a device with no known target has nothing to aim the
-// rescue at. Already-exempt devices show the standing "Budget exempt" badge instead.
+// Task-free, rescuable held cards get the affordance: a device with its own
+// smart task is brought back by that task, and a device with no known target has
+// nothing to aim the rescue at.
+//
+// It is NOT gated on which constraint is holding the device (removed 2026-08-04).
+// The flat `budget | capacity` bucket it used to key off was a momentary snapshot
+// — overwritten every accumulation tick — so a device alternating between
+// budget-bound and capacity-bound cycles had the button appear and vanish under
+// the user's finger. And the gate was never a technical precondition:
+// `buildRescueCandidate` requests `pauseLowerPriorityDevices` and
+// `limitLowerPriorityDevices` alongside the budget exemption precisely because
+// these surfaces cannot see which constraint binds, and both of those clear room
+// UP TO — never above — the hard cap. Offering the rescue on a capacity-held
+// device therefore helps it without implying the cap is a tuning knob
+// (feedback_hard_cap_is_physical).
 export const BUDGET_EXEMPT_CARD_ACTION_COPY = {
   // Chip label — the canonical rescue verb, identical to the held-back widget's
   // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
   // from today's budget so it runs now, never a hard-cap change. The leading
-  // bolt glyph distinguishes it from the adjacent "Budget limited" status badge.
+  // bolt glyph distinguishes it from the adjacent "Held back" status badge.
   label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
   // Tooltip / accessible description — the same honest money-action consequence
   // the widget's confirm sheet names: the rescue lets the device use power
@@ -295,21 +298,24 @@ export const BUDGET_EXEMPT_CARD_ACTION_COPY = {
 } as const;
 
 // Whether an Overview device card is eligible (by the data the card itself
-// carries) to surface the rescue chip: budget-caused, held, and not already
-// exempt. This is the CAUSE-and-state gate; the full rescuable gate (task-free +
-// a known target) is enforced server-side and reflected in the rescuable-device
-// list the card view intersects against, so a shown chip's create call cannot be
-// rejected as not-rescuable. The `cause` gate mirrors `starvationRowOffersRescue`
-// (budget-only); the already-exempt suppression mirrors the card's "Budget exempt"
-// badge so the two never render together.
+// carries) to surface the rescue chip: it is held back. The full rescuable gate
+// (task-free + a known target) is enforced server-side and reflected in the
+// rescuable-device list the card view intersects against. That list is a
+// snapshot, so a chip shown from a stale one can still be rejected on create —
+// rare, and the reject copy covers it rather than the gate preventing it.
+//
+// A standing budget exemption no longer suppresses it (2026-08-04). That
+// suppression made sense while every held-back device was held by the budget: an
+// exempt device could not be, so the chip would have been inert. Now that a hold
+// can be capacity-bound, an exempt device CAN be held back — and the rescue still
+// helps it, because `pauseLowerPriorityDevices` / `limitLowerPriorityDevices`
+// clear room from lower-priority load rather than lifting the budget. Keeping the
+// term would also have put the two surfaces in disagreement: the rescue widget's
+// gate (`starvationRowIsRescuable`) never had it, so the same device would offer
+// the action on the dashboard and not on its card.
 export const shouldOfferBudgetExemptCardAction = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
-  budgetExempt: boolean | undefined,
-): boolean => (
-  Boolean(starvation?.isStarved)
-  && starvation?.cause === 'budget'
-  && budgetExempt !== true
-);
+): boolean => Boolean(starvation?.isStarved);
 
 // Accessible label for the rescue action, naming the device so a screen-reader
 // user hears which card the action belongs to (mirrors DeadlineChip's aria
@@ -318,20 +324,17 @@ export const budgetExemptCardActionAriaLabel = (deviceName: string): string => (
   deviceName !== '' ? `Let ${deviceName} run now` : 'Let this device run now'
 );
 
-// Whether a starved row can actually be rescued NOW: a budget-caused row AND a
-// known intended normal target to aim the rescue at. This mirrors the
-// server-side guardrail in the widget API (`resolveRescuableDevice`, which
+// Whether a starved row can actually be rescued NOW: a known intended normal
+// target to aim the rescue at, no task of its own, on the main home. This mirrors
+// the server-side guardrail in the widget API (`resolveRescuableDevice`, which
 // rejects `no_target`) so the UI never offers a rescue button that the API then
-// rejects. `starvationRowOffersRescue` is the cause-only gate; this is the
-// full actionable predicate the button visibility uses.
+// rejects.
 export const starvationRowIsRescuable = (
-  cause: SettingsUiPlanDeviceStarvation['cause'],
   intendedNormalTargetC: number | null,
   hasSmartTask = false,
   smartTaskHomeScope: SmartTaskHomeScope = 'main',
 ): boolean => (
-  starvationRowOffersRescue(cause)
-  && smartTaskHomeScope === 'main'
+  smartTaskHomeScope === 'main'
   && !hasSmartTask // a device with its own task is shown but not rescuable
   && intendedNormalTargetC !== null
   && Number.isFinite(intendedNormalTargetC)

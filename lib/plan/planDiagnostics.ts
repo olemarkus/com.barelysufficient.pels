@@ -180,14 +180,19 @@ const resolveEligibleForStarvation = (params: {
 // power sample is trustworthy (`budgetReleasableHeadroomHold`, resolved in the producer)
 // — the physical capacity cap is not the constraint doing the work; the daily budget is,
 // and it is the releasable lever the owner can rescue against. Re-attribute the counting
-// cause to `daily_budget` so the overview budget-vs-capacity bucket, the rescue-widget
-// gating, and the emitted `device_starvation_started` cause all read the true, releasable
-// cause — without any consumer re-deriving the source. This mirrors the shed-time
-// re-attribution `resolveShedReason`/`buildBaseReason` already perform for capacity→daily.
-// A genuine capacity-bound shortfall — physical capacity, an exhausted hourly cap (which
-// forces `softLimitSource` to 'capacity'), or a non-fresh meter (stale hold/fail-closed, so
-// `powerKnown` is false) — keeps `insufficient_headroom` (→ the capacity bucket, no rescue
-// the budget exemption can honor).
+// cause to `daily_budget` so device detail and the emitted `device_starvation_started`
+// cause both read the true, releasable cause — without any consumer re-deriving the
+// source. This mirrors the shed-time re-attribution `resolveShedReason`/`buildBaseReason`
+// already perform for capacity→daily. A genuine capacity-bound shortfall — physical
+// capacity, an exhausted hourly cap (which forces `softLimitSource` to 'capacity'), or a
+// non-fresh meter (stale hold/fail-closed, so `powerKnown` is false) — keeps
+// `insufficient_headroom`.
+//
+// This re-attribution no longer gates anything user-facing. Until 2026-08-04 it fed the
+// flat overview `budget | capacity` bucket, which decided whether the "Let it run now"
+// rescue was offered; both the bucket and that gate are gone (the rescue is offered on
+// either axis). What remains is diagnostic honesty — do not restore a consumer that
+// branches on it.
 const reattributeHeadroomShortfallCause = (
   countingCause: DeviceDiagnosticsStarvationCountingCause | null,
   budgetReleasableHeadroomHold: boolean,

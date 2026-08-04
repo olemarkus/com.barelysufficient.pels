@@ -23,30 +23,46 @@ integration gaps should still follow this note.
 > - The physical-temperature entry/exit thresholds and the anchor/step-deficit
 >   table (`lib/diagnostics/starvationThresholds.ts`) are GONE.
 > - `keep` / `inactive` / `invalid_observation` can no longer START starvation.
-> - There are only two overview/badge buckets: `capacity` (physical) and
->   `budget` (releasable). The `manual` and `external` causes are removed; a
->   starved episode always carries a capacity/budget counting cause, retained
->   across pauses.
+> - A starved episode always carries a granular counting cause
+>   (`capacity` / `daily_budget` / `hourly_budget` / `shortfall` / …), retained
+>   across pauses. The `manual` and `external` causes are removed.
+> - **There is no overview/badge cause bucket** (removed 2026-08-04). The flat
+>   `capacity | budget` fold this document used to specify was overwritten on
+>   every accumulation tick, so a device held steadily across a budget-bound and
+>   a capacity-bound cycle flipped its badge, its copy, and its rescue button
+>   with nothing about the device having changed. The granular counting cause
+>   survives and still feeds device detail and the `device_starvation_*` logs;
+>   the overview carries `isStarved`, `accumulatedMs`, and `startedAtMs` only.
 
 > **v2 — user-initiated budget-exempt rescue (shipped).** The v1 DETECTION model
 > below is unchanged: the planner still never auto-mitigates starvation. What v2
 > adds is a separate, explicitly user-initiated lane: the starvation-rescue
-> dashboard widget (`widgets/starvation_rescue/`) lets a user grant a
-> *budget-caused* held-back device a bounded smart task with budget leeway and,
-> where the device can honor it, lower-priority limiting. The widget excludes
-> devices that already have an open smart task, so the action is a fresh create
-> through the same engine as the New smart task widget, not a merge into an
-> existing deadline. This bypasses DAILY-BUDGET admission only — never capacity
-> (the hard cap holds the tariff step and is never a remedy), and capacity rows get no rescue affordance. So the
-> system is no longer "detection-only" for temperature devices — but the new
-> behaviour is gated behind explicit user action, not automatic mitigation.
+> dashboard widget (`widgets/starvation_rescue/`) lets a user grant a held-back
+> device a bounded smart task with budget leeway and, where the device can honor
+> it, lower-priority limiting and pausing. The widget excludes devices that
+> already have an open smart task, so the action is a fresh create through the
+> same engine as the New smart task widget, not a merge into an existing
+> deadline. So the system is no longer "detection-only" for temperature devices —
+> but the new behaviour is gated behind explicit user action, not automatic
+> mitigation.
 >
-> The widget's row status chip intentionally shows the live duration with
-> cause-specific wording: `Held back · N min` for budget-held rows that can be
-> released and `Waiting · N min` for capacity rows. The "do not append duration to
-> the badge" rule in the *Overview UI* section below governs the OVERVIEW HERO
-> surface, not this standalone action widget, where the duration is the primary
-> signal for choosing what to rescue.
+> **The rescue is offered on both axes** (2026-08-04). It was originally
+> budget-only, on the reasoning that capacity is physical. But
+> `buildRescueCandidate` always requested `pauseLowerPriorityDevices` and
+> `limitLowerPriorityDevices` alongside `exemptFromBudget`, precisely because the
+> offering surfaces cannot see which constraint binds — and both of those clear
+> room UP TO, never above, the hard cap. So the rescue already worked on a
+> capacity-held device; the gate withheld a working action on the strength of a
+> bucket that flipped mid-hold. The hard cap is still never raised and never
+> suggested as a remedy (`feedback_hard_cap_is_physical`).
+>
+> The widget's row status chip shows the live duration: `Held back · N min`,
+> rolling over into hours past 60 minutes (`Held back · 2 h 15 min`). The "do not
+> append duration to the badge" rule in the *Overview UI* section below governs
+> the OVERVIEW HERO surface, not this standalone action widget, where the
+> duration is the primary signal for choosing what to rescue. The overview device
+> CARD does carry the duration, in its one reason line — see
+> `notes/ui-terminology.md` § "Device cards say what a device needs".
 
 The detection feature is detection only:
 
@@ -195,8 +211,8 @@ it back.
 
 Cooldown, retry/backoff, restore holds, and other non-counting PELS hold states
 PAUSE a latched episode (they do not start one and they do not add counted time):
-while paused the device is not being limited right now. The original capacity/
-budget cause is retained across the pause for badge attribution.
+while paused the device is not being limited right now. The original counting
+cause is retained across the pause for diagnostic attribution.
 
 Starvation is orthogonal metadata, not a new planner state:
 
@@ -378,7 +394,7 @@ Current planner-text examples that should normalize to these causes:
 
 These are pause reasons, NOT counting causes. They cannot start starvation and do
 not add counted time; on a latched episode they pause accumulation (the device is
-not being limited right now) while retaining the original capacity/budget cause:
+not being limited right now) while retaining the original counting cause:
 
 - `cooldown (...)`
 - `headroom cooldown (...)`
@@ -440,7 +456,7 @@ Add starvation time only while all are true:
 Pause starvation accumulation while the sample is invalid/stale, OR PELS is not
 holding the device below target via a real counting cause (a `keep`/`inactive`/
 cooldown/restore pause, or a still-below device under a non-counting suppression).
-The original capacity/budget cause is retained across the pause.
+The original counting cause is retained across the pause.
 
 ### Clear
 
@@ -578,8 +594,9 @@ Logs should include:
 - starvation enters only after `15 minutes` of continuous below-target counting suppression
 - invalid observations and sample gaps do not backfill or count as continuous qualification
 - non-counting holds (cooldown/backoff/restore/keep/inactive) cannot start starvation and pause a
-  latched episode, retaining its capacity/budget cause
-- the overview/badge has exactly two buckets — `capacity` and `budget`; no manual/external bucket
+  latched episode, retaining its counting cause
+- the overview/badge carries NO cause bucket (removed 2026-08-04); the granular
+  counting cause serves device detail and the logs
 - `capacity control off` clears and resets starvation
 - starvation clears only after PELS commands the full mode target for `10 minutes`
 - enabling starvation detection does not change planner decisions

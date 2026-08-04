@@ -7,14 +7,13 @@ import {
   resolveRescuableDeviceFromList,
 } from '../../packages/shared-domain/src/starvationRescueShared';
 
-// Pure shared logic for the budget-exempt rescue, used by BOTH the
-// starvation_rescue widget and the overview device-card rescue path. These pin
-// the guardrail so the two surfaces can never drift in what they let through.
+// Pure shared logic for the rescue, used by BOTH the starvation_rescue widget
+// and the overview device-card rescue path. These pin the guardrail so the two
+// surfaces can never drift in what they let through.
 
-const budget: StarvationRescueDevice = {
+const heldBack: StarvationRescueDevice = {
   deviceId: 'heater-1',
   deviceName: 'Hot water',
-  cause: 'budget',
   accumulatedMs: 60_000,
   intendedNormalTargetC: 65,
   smartTaskHomeScope: 'main',
@@ -48,33 +47,44 @@ describe('resolveRescuableDeviceFromList', () => {
     expect(resolveRescuableDeviceFromList(null, 'heater-1')).toEqual({ ok: false, reason: 'unavailable' });
   });
 
-  it('resolves a budget, task-free, known-target device', () => {
-    expect(resolveRescuableDeviceFromList([budget], 'heater-1')).toEqual({ ok: true, targetTemperatureC: 65 });
+  it('resolves a task-free, known-target device', () => {
+    expect(resolveRescuableDeviceFromList([heldBack], 'heater-1')).toEqual({ ok: true, targetTemperatureC: 65 });
   });
 
   it('preserves transient Main authority as unavailable while the row remains visible', () => {
-    const unavailable = { ...budget, smartTaskHomeScope: 'unavailable' as const };
+    const unavailable = { ...heldBack, smartTaskHomeScope: 'unavailable' as const };
     expect(resolveRescuableDeviceFromList([unavailable], 'heater-1'))
       .toEqual({ ok: false, reason: 'unavailable' });
   });
 
-  it('rejects a capacity row as not_rescuable (the hard cap is physical)', () => {
-    const capacity = { ...budget, cause: 'capacity' as const };
-    expect(resolveRescuableDeviceFromList([capacity], 'heater-1')).toEqual({ ok: false, reason: 'not_rescuable' });
+  // Removed 2026-08-04: the guardrail used to reject any row whose momentary
+  // cause bucket read `capacity`. `buildRescueCandidate` (below) grants
+  // `pauseLowerPriorityDevices` and `limitLowerPriorityDevices` precisely
+  // because it cannot see which constraint binds, and both clear room UP TO the
+  // hard cap — so a capacity-held row had a working rescue withheld from it on
+  // the strength of a bucket that flipped mid-hold.
+  // The predicate now reads only the target, the task flag, and the home scope —
+  // there is no constraint field left on the row for it to reject. The
+  // end-to-end proof that a capacity-attributed device reaches this point lives
+  // in `test/unit/deviceDiagnosticsService.test.ts`.
+  it('rescues a held-back row on the strength of its target alone', () => {
+    const longHeld = { ...heldBack, accumulatedMs: 3 * 60 * 60_000 };
+    expect(resolveRescuableDeviceFromList([longHeld], 'heater-1')).toEqual({ ok: true, targetTemperatureC: 65 });
+    expect(Object.keys(heldBack)).not.toContain('cause');
   });
 
-  it('rejects a task-owning budget row as not_rescuable', () => {
-    const owned = { ...budget, hasSmartTask: true };
+  it('rejects a task-owning row as not_rescuable', () => {
+    const owned = { ...heldBack, hasSmartTask: true };
     expect(resolveRescuableDeviceFromList([owned], 'heater-1')).toEqual({ ok: false, reason: 'not_rescuable' });
   });
 
   it('rejects a budget row with no known target as no_target', () => {
-    const noTarget = { ...budget, intendedNormalTargetC: null };
+    const noTarget = { ...heldBack, intendedNormalTargetC: null };
     expect(resolveRescuableDeviceFromList([noTarget], 'heater-1')).toEqual({ ok: false, reason: 'no_target' });
   });
 
   it('rejects an unknown device id as not_rescuable', () => {
-    expect(resolveRescuableDeviceFromList([budget], 'missing')).toEqual({ ok: false, reason: 'not_rescuable' });
+    expect(resolveRescuableDeviceFromList([heldBack], 'missing')).toEqual({ ok: false, reason: 'not_rescuable' });
   });
 });
 

@@ -3261,16 +3261,43 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
       Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
       activity" feed on Overview is a possible follow-on if the per-device view proves used.
-- [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
-      *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
-      *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the
-      same phrase the new `STARVATION_WAITING_FOR_POWER_COPY` constant owns (differs only by a trailing
-      period), so the two can silently diverge from the overview/row-subtext wording.
-      *Why it's needed:* completing the same-file dedup removes the last in-file copy of this literal.
-      Deferred from the dedup PR because `capacityNote` is bundled into the `starvation_rescue` widget,
-      so the change regenerates `widgets/starvation_rescue/*` — a build-artifact churn out of scope for a
-      string-sourcing chore. Fix: `` capacityNote: `${STARVATION_WAITING_FOR_POWER_COPY}.` `` and commit
-      the regenerated widget bundles. Source: pels-copy-and-terminology on PR #1535, 2026-06-06.
+- [ ] **The rescue tooltip names the one thing that may change nothing.**
+      *Persona:* Optimiser (`notes/personas.md`) tapping `Let it run now` on a held-back device.
+      *Hypothesis:* `BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip` reuses `rescueConsequence` — "This lets
+      the device use power beyond today's budget until it reaches its normal target." For a device
+      with a standing budget exemption, or one held on the capacity axis, that clause describes the
+      grant that does nothing and omits the two that do (pausing and limiting lower-priority load).
+      Pre-existing for capacity-held devices; more reachable since the rescue stopped being
+      budget-only (2026-08-04).
+      *Why it's needed:* the confirm step is a money action, so its one-line summary should name the
+      lever that actually applies. Mitigated today by the armed state's server-gated
+      `permissionsLine`, which discloses the real grant before commit, and by hover tooltips being
+      unreachable in the touch WebView — so this is copy honesty, not a broken flow. Source:
+      adversarial review, 2026-08-05.
+
+- [ ] **A rescue on the lowest-priority device can grant nothing and still report success.**
+      *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
+      *Hypothesis:* now that the rescue is offered on both axes, a device that is capacity-held AND
+      bottom-priority AND binary can end up with an empty effective grant:
+      `gateCandidateExtraPermissions` (`setup/appSmartTaskApi.ts`) drops `limitLowerPriorityDevices`
+      for binary devices, `pauseLowerPriorityDevices` has nothing below it to pause, and
+      `exemptFromBudget` is inert when the budget is not what binds. The user confirms, gets the
+      `Power on the way` flash, nothing changes — and the device is now un-rescuable because it has a
+      smart task.
+      *Why it's needed:* a money-action confirm that provably cannot help is the one thing the rescue
+      confirm sheet exists to prevent. Fix direction: compute the effective grant set server-side
+      before the confirm and surface an honest "this will not free power for this device" state, or
+      fall through to `rescueDoneQueued` framing. Source: adversarial review, 2026-08-04.
+
+- [ ] **The device activity log does not carry the starved card line.**
+      *Persona:* maintainer / support (`notes/personas.md`) reconstructing what the owner saw.
+      *Hypothesis:* `lib/plan/deviceOverviewLog.ts` hardcodes `starved: false` and calls
+      `resolveHeldCardReasonLine({ reason })` with no starvation, because `DevicePlanDevice` does not
+      carry it — so a card reading `Held 2 h — 0.8 kW more needed` is logged as
+      `Waiting to resume — 0.8 kW more needed`. Pre-existing divergence, widened 2026-08-04.
+      *Why it's needed:* `feedback_ui_text_shared_with_logs` exists so support can trust the log is
+      what the owner read. Threading it means reaching `lib/diagnostics/**` state into `lib/plan/**`,
+      so it is a layering decision, not a copy fix. Source: adversarial review, 2026-08-04.
 
 - [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
       *Persona:* Optimiser / Orchestrator (`notes/personas.md`) who expects

@@ -5,6 +5,7 @@ import {
   BUDGET_EXEMPT_CARD_ACTION_COPY,
   STARVATION_RESCUE_WIDGET_COPY,
   budgetExemptCardActionAriaLabel,
+  formatStarvationDurationLabel,
   formatStarvationOverflowCue,
   formatStarvationRowChip,
   resolveStarvationRescueRejectCopy,
@@ -15,7 +16,6 @@ import {
   shouldOfferBudgetExemptCardAction,
   starvationDurationMinutes,
   starvationRowIsRescuable,
-  starvationRowOffersRescue,
 } from '../../packages/shared-domain/src/planStarvation';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 
@@ -31,14 +31,54 @@ describe('starvation-rescue shared helpers', () => {
     });
   });
 
-  describe('formatStarvationRowChip', () => {
-    it('says "Held back" only for the budget-releasable cause', () => {
-      expect(formatStarvationRowChip('budget', 24 * 60_000)).toBe('Held back · 24 min');
+  // NBSP-joined so a duration is one unbreakable token at 320 px.
+  const NBSP = '\u00a0';
+
+  describe('formatStarvationDurationLabel', () => {
+    it('rolls over into hours instead of unbounded minutes', () => {
+      // The pre-2026-08-04 minutes-only chip rendered a 2.6-hour hold as
+      // "156 min" — the exact case the overview card now shows on every long
+      // hold, which is why the rollover had to exist before the card used it.
+      expect(formatStarvationDurationLabel(156 * 60_000)).toBe(`2${NBSP}h${NBSP}36${NBSP}min`);
+      expect(formatStarvationDurationLabel(0)).toBe(`0${NBSP}min`);
+      expect(formatStarvationDurationLabel(45 * 60_000)).toBe(`45${NBSP}min`);
+      expect(formatStarvationDurationLabel(60 * 60_000)).toBe(`1${NBSP}h`);
+      expect(formatStarvationDurationLabel(120 * 60_000)).toBe(`2${NBSP}h`);
+      expect(formatStarvationDurationLabel(135 * 60_000)).toBe(`2${NBSP}h${NBSP}15${NBSP}min`);
     });
-    it('says "Waiting" for the physically-held capacity cause', () => {
-      // The hard cap is not a tuning knob — a capacity row is never mislabeled
-      // as the budget-releasable "Held back" state.
-      expect(formatStarvationRowChip('capacity', 24 * 60_000)).toBe('Waiting · 24 min');
+
+    it('inherits the no-seconds contract and the non-negative floor', () => {
+      expect(formatStarvationDurationLabel(59_999)).toBe(`0${NBSP}min`);
+      expect(formatStarvationDurationLabel(-5)).toBe(`0${NBSP}min`);
+      expect(formatStarvationDurationLabel(Number.NaN)).toBe(`0${NBSP}min`);
+    });
+  });
+
+  describe('formatStarvationRowChip', () => {
+    // One chip word for every held-back row: which constraint binds is not a
+    // property of the device, and the bucket that used to split this flipped
+    // mid-hold.
+    it('says "Held back" with the rolled-over duration', () => {
+      expect(formatStarvationRowChip(24 * 60_000)).toBe(`Held back · 24${NBSP}min`);
+      expect(formatStarvationRowChip(135 * 60_000)).toBe(`Held back · 2${NBSP}h${NBSP}15${NBSP}min`);
+    });
+
+    // The hour boundary, where the rollover either fires or does not.
+    it('crosses the hour boundary exactly once', () => {
+      expect(formatStarvationRowChip(59 * 60_000)).toBe(`Held back · 59${NBSP}min`);
+      expect(formatStarvationRowChip(60 * 60_000)).toBe(`Held back · 1${NBSP}h`);
+      expect(formatStarvationRowChip(61 * 60_000)).toBe(`Held back · 1${NBSP}h${NBSP}1${NBSP}min`);
+    });
+
+    // "Held back · 0 min" reads as a stuck counter, so a duration that rounds to
+    // nothing drops the suffix instead. Unreachable on a real row (the 15-minute
+    // entry latency guarantees a positive duration) — this is the boundary.
+    it('drops the duration suffix rather than printing a zero', () => {
+      expect(formatStarvationRowChip(0)).toBe('Held back');
+      expect(formatStarvationRowChip(30_000)).toBe('Held back');
+      expect(formatStarvationRowChip(-1)).toBe('Held back');
+      expect(formatStarvationRowChip(Number.NaN)).toBe('Held back');
+      expect(formatStarvationRowChip(Number.POSITIVE_INFINITY)).toBe('Held back');
     });
   });
 
@@ -52,21 +92,20 @@ describe('starvation-rescue shared helpers', () => {
   });
 
   describe('resolveStarvationRowSubtext', () => {
-    it('maps each producer-resolved cause to plain language', () => {
-      // Budget with no known target falls back to the plain budget line.
-      expect(resolveStarvationRowSubtext('budget')).toBe('Held by today’s budget');
-      // Capacity reuses the canonical overview wording.
-      expect(resolveStarvationRowSubtext('capacity')).toBe('Waiting for available power');
+    it('names the held-below target when known (the felt symptom)', () => {
+      expect(resolveStarvationRowSubtext(65)).toBe('Held below 65 °C');
+      expect(resolveStarvationRowSubtext(21.5)).toBe('Held below 21.5 °C');
     });
 
-    it('names the held-below target on budget rows when known (felt symptom)', () => {
-      expect(resolveStarvationRowSubtext('budget', 65)).toBe('Held below 65 °C by today’s budget');
-      expect(resolveStarvationRowSubtext('budget', 21.5)).toBe('Held below 21.5 °C by today’s budget');
-      // Non-finite / null target drops the felt-symptom clause.
-      expect(resolveStarvationRowSubtext('budget', null)).toBe('Held by today’s budget');
-      expect(resolveStarvationRowSubtext('budget', Number.NaN)).toBe('Held by today’s budget');
-      // The target only personalises budget rows, never the other causes.
-      expect(resolveStarvationRowSubtext('capacity', 21)).toBe('Waiting for available power');
+    it('falls back to the canonical wording when there is no target to name', () => {
+      expect(resolveStarvationRowSubtext()).toBe('Waiting for available power');
+      expect(resolveStarvationRowSubtext(null)).toBe('Waiting for available power');
+      expect(resolveStarvationRowSubtext(Number.NaN)).toBe('Waiting for available power');
+    });
+
+    it('names no ceiling — that is the hero\'s one job', () => {
+      // Which limit binds moves on its own; the row states the device's symptom.
+      expect(resolveStarvationRowSubtext(65).toLowerCase()).not.toMatch(/budget|cap|limit/);
     });
   });
 
@@ -81,44 +120,47 @@ describe('starvation-rescue shared helpers', () => {
   });
 
   describe('resolveStarvationRowNote', () => {
-    it('returns an informational note for capacity rows only', () => {
-      expect(resolveStarvationRowNote('budget')).toBeNull();
-      expect(resolveStarvationRowNote('capacity')).toBe(STARVATION_RESCUE_WIDGET_COPY.capacityNote);
+    it('explains a row that has no rescue button because the device has its own task', () => {
+      // A plain row gets no note (it has a rescue button); a row whose device
+      // already has a smart task gets the explanatory smart-task note. This is
+      // the only note left — the capacity note went with the cause bucket, and
+      // it had only ever restated the row subtext.
+      expect(resolveStarvationRowNote(true)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
+      expect(resolveStarvationRowNote(true, 65)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
     });
 
-    it('never suggests raising the hard cap (capacity is physical)', () => {
-      expect(STARVATION_RESCUE_WIDGET_COPY.capacityNote.toLowerCase()).not.toMatch(/cap|limit|raise|increase/);
+    // The widget is a standalone dashboard surface — no hero sits near it to
+    // state the house-level fact once, so a row whose subtext is only its felt
+    // symptom would never say why the device is held.
+    it('carries the canonical why on a row whose subtext names a target', () => {
+      expect(resolveStarvationRowNote(false, 65)).toBe('Waiting for available power');
     });
 
-    it('explains a budget row that has no rescue button because the device has its own task', () => {
-      // A plain budget row gets no note (it has a rescue button); a budget row
-      // whose device already has a smart task gets the explanatory smart-task note.
-      expect(resolveStarvationRowNote('budget', false)).toBeNull();
-      expect(resolveStarvationRowNote('budget', true)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
+    it('suppresses it when the subtext already IS that sentence', () => {
+      expect(resolveStarvationRowNote()).toBeNull();
+      expect(resolveStarvationRowNote(false)).toBeNull();
+      expect(resolveStarvationRowNote(false, null)).toBeNull();
+      expect(resolveStarvationRowSubtext(null)).toBe('Waiting for available power');
     });
   });
 
-  describe('starvationRowOffersRescue (budget-only guardrail)', () => {
-    it('offers a rescue only for budget starvation', () => {
-      expect(starvationRowOffersRescue('budget')).toBe(true);
-      expect(starvationRowOffersRescue('capacity')).toBe(false);
-    });
-  });
-
-  describe('starvationRowIsRescuable (budget + known target)', () => {
-    it('is rescuable only for a budget row with a finite target', () => {
-      expect(starvationRowIsRescuable('budget', 65)).toBe(true);
-      // Budget but no target — API would reject `no_target`, so the row is not rescuable.
-      expect(starvationRowIsRescuable('budget', null)).toBe(false);
-      expect(starvationRowIsRescuable('budget', Number.NaN)).toBe(false);
-      // Capacity is never rescuable regardless of target.
-      expect(starvationRowIsRescuable('capacity', 21)).toBe(false);
+  describe('starvationRowIsRescuable (known target, task-free, main home)', () => {
+    it('is rescuable with a finite target', () => {
+      expect(starvationRowIsRescuable(65)).toBe(true);
+      // No target — the API would reject `no_target`, so the row is not rescuable.
+      expect(starvationRowIsRescuable(null)).toBe(false);
+      expect(starvationRowIsRescuable(Number.NaN)).toBe(false);
     });
 
     it('is NOT rescuable when the device already has its own smart task', () => {
       // Shown in the list but button-suppressed — its existing task handles it.
-      expect(starvationRowIsRescuable('budget', 65, true)).toBe(false);
-      expect(starvationRowIsRescuable('budget', 65, false)).toBe(true);
+      expect(starvationRowIsRescuable(65, true)).toBe(false);
+      expect(starvationRowIsRescuable(65, false)).toBe(true);
+    });
+
+    it('is NOT rescuable outside the main home (smart tasks are main-home only)', () => {
+      expect(starvationRowIsRescuable(65, false, 'unavailable')).toBe(false);
+      expect(starvationRowIsRescuable(65, false, 'main')).toBe(true);
     });
   });
 
@@ -165,38 +207,38 @@ describe('starvation-rescue shared helpers', () => {
     ): SettingsUiPlanDeviceStarvation => ({
       isStarved: true,
       accumulatedMs: 5 * 60_000,
-      cause: 'budget',
       startedAtMs: 0,
       ...overrides,
     });
 
     describe('shouldOfferBudgetExemptCardAction', () => {
-      it('offers the affordance for a budget-held device that is not already exempt', () => {
-        expect(shouldOfferBudgetExemptCardAction(starvation(), false)).toBe(true);
-        expect(shouldOfferBudgetExemptCardAction(starvation(), undefined)).toBe(true);
-      });
-
-      it('never offers it for a capacity-held device (the hard cap is physical)', () => {
-        expect(shouldOfferBudgetExemptCardAction(starvation({ cause: 'capacity' }), false)).toBe(false);
-      });
-
-      it('suppresses it when the device is already budget exempt (the "Budget exempt" badge covers that)', () => {
-        expect(shouldOfferBudgetExemptCardAction(starvation(), true)).toBe(false);
+      // Held back is the whole gate. A standing budget exemption used to suppress
+      // it too, on the reasoning that an exempt device cannot be budget-held — but
+      // a hold can be capacity-bound, so it can be held back anyway, and the
+      // rescue still helps by clearing room from lower-priority load. The
+      // exemption no longer reaches this predicate at all, so the regression guard
+      // for that lives where it can still fail: `budgetExemptChip.test.ts` renders
+      // the real chip with `budgetExempt: true`.
+      it('offers the affordance for a held-back device', () => {
+        expect(shouldOfferBudgetExemptCardAction(starvation())).toBe(true);
       });
 
       it('does not offer it when the device is not held back at all', () => {
-        expect(shouldOfferBudgetExemptCardAction(starvation({ isStarved: false }), false)).toBe(false);
-        expect(shouldOfferBudgetExemptCardAction(null, false)).toBe(false);
-        expect(shouldOfferBudgetExemptCardAction(undefined, false)).toBe(false);
+        expect(shouldOfferBudgetExemptCardAction(starvation({ isStarved: false }))).toBe(false);
+        expect(shouldOfferBudgetExemptCardAction(null)).toBe(false);
+        expect(shouldOfferBudgetExemptCardAction(undefined)).toBe(false);
       });
 
-      it('shares the budget-only cause gate with starvationRowOffersRescue', () => {
-        // Both surfaces release the SAME budget-caused devices; a capacity row
-        // never offers either lever.
-        expect(shouldOfferBudgetExemptCardAction(starvation(), false))
-          .toBe(starvationRowOffersRescue('budget'));
-        expect(shouldOfferBudgetExemptCardAction(starvation({ cause: 'capacity' }), false))
-          .toBe(starvationRowOffersRescue('capacity'));
+      // The gate reads `isStarved` and nothing else — no duration threshold, and
+      // (since 2026-08-04) no constraint bucket and no exemption term. The
+      // end-to-end proof that a capacity-attributed device now reaches the
+      // affordance lives at the producer, in `deviceDiagnosticsService.test.ts`
+      // ('lists currently-starved devices …'), which feeds one `capacity` and
+      // one `daily_budget` device through the real service and gets two
+      // identical rescue entries.
+      it('offers the affordance the moment a device is held back, at any duration', () => {
+        expect(shouldOfferBudgetExemptCardAction(starvation({ accumulatedMs: 0 }))).toBe(true);
+        expect(shouldOfferBudgetExemptCardAction(starvation({ accumulatedMs: 3 * 60 * 60_000 }))).toBe(true);
       });
     });
 

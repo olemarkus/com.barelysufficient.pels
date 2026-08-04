@@ -25,7 +25,7 @@ import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 // network/fetch logic (views/AGENTS.md).
 
 // Refresh the set of device IDs the rescue chip may offer the action on — the
-// same gate the widget uses (budget-caused + task-free + a known target),
+// same gate the widget uses (task-free + a known target),
 // resolved server-side. Stored on `state` so the card view can gate the chip on
 // membership; a fetch failure leaves the prior set untouched (no chip flicker on
 // a transient read miss).
