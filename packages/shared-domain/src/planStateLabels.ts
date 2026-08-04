@@ -79,16 +79,21 @@ export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Waiting to resume';
 export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 
 // Status for `hourlyBudget` holds: the hour's energy budget is spent. This is
-// the one ceiling hold that must NOT carry a kW figure — spent kWh cannot be
-// un-spent, so no amount of freed power admits the device before the hour rolls
-// over, and a "X kW more needed" line would be dishonest. Time-based copy
-// instead: it names the recourse (the next hour's budget) in the same
-// `Waiting to resume — …` shape as the shortfall line. "Budget" here is the
-// hero's `Budget this hour` quantity (canonical vocabulary,
-// `notes/ui-terminology.md`). Replaces the retired
-// `Limited — this hour is near the hard cap`, which named a ceiling on the card
-// and misdescribed the trigger (the hour's kWh being spent, not cap proximity).
-export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = 'Waiting to resume — more budget next hour';
+// the one ceiling hold that must NOT carry a kW figure — freeing power does not
+// put kWh back in the hour, so a "X kW more needed" line would be dishonest.
+// It states the CONDITION and promises nothing about when it lifts.
+//
+// It used to read "…— more budget next hour", which promised a recourse PELS
+// cannot underwrite. Two ways that promise breaks: the hour can un-exhaust
+// itself mid-flight, because `usedKWh` is a NET bucket floored at zero
+// (`lib/plan/planHourContext.ts`) and a solar export burst pulls it back under
+// the budget with no rollover involved; and pointing at the next hour tells the
+// owner to wait for the wrong event. "Budget" here is the hero's
+// `Budget this hour` quantity (canonical vocabulary, `notes/ui-terminology.md`).
+// Replaces the retired `Limited — this hour is near the hard cap`, which named a
+// ceiling on the card and misdescribed the trigger (the hour's kWh being spent,
+// not cap proximity).
+export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = "Waiting to resume — this hour's budget is spent";
 
 // Status line for devices held because the smart task is between planned hours
 // (the current hour was relatively expensive so the load was booked into cheaper

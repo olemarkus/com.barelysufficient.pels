@@ -247,7 +247,7 @@ shared by all three card variants):
 |---|---|
 | Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
-| Held because this hour's energy budget is spent | `Waiting to resume — more budget next hour` (held back: `Held 2 h — more budget next hour`) |
+| Held because this hour's energy budget is spent | `Waiting to resume — this hour's budget is spent` (held back: `Held 2 h — this hour's budget is spent`) |
 | Held on power, no shortfall resolved (rare) | `Waiting to resume` |
 | Long held back, no shortfall | `Waiting for available power` |
 | Hold that is NOT about power | its own cause (below) |
@@ -299,6 +299,22 @@ and the countdown lines (`Waiting before resuming (50s)`).
 device`, `Blocked by safety rule`. The first two restated the bold `Limited`
 state word and named no cause at all; the rest are house-level.
 
+**The spent-hour hold is a documented exception to "cards name no ceiling."**
+Every other held card has a device-scoped need to state — the kW that would admit
+it. This one has none: the hour's energy is spent, so freeing power changes
+nothing, and the reason line's only honest content is the condition itself. It is
+the same carve-out that lets a smart-task or solar-surplus hold keep its own
+cause. Do not "fix" it by substituting device-scoped wording; there is no
+device-scoped fact to substitute.
+
+**Never promise the next hour will be roomier.** The spent-hour line states the
+condition (`this hour's budget is spent`) and names no recourse. The retired
+`— more budget next hour` promised an event PELS cannot underwrite: the hour can
+un-exhaust itself mid-flight, because the hour's usage bucket is NET and floored
+at zero, so a solar export burst pulls it back under the budget with no rollover
+involved. Pointing the owner at the next hour tells them to wait for the wrong
+thing. Applies to any future copy, not just this line.
+
 **Retired 2026-08-04 — do not reintroduce anywhere:** `Limited to stay within
 today's budget` (the held-back card line; failed both tests at once — it opened
 by restating the state word and closed by naming a house-level ceiling), plus
@@ -315,7 +331,7 @@ Where they survive, precisely: the ceiling/swap strings stay in
 inside device detail) — except `Limited — this hour is near the hard cap`,
 which is retired EVERYWHERE: it misdescribed the trigger (the hour's kWh being
 spent, not cap proximity), and the `hourlyBudget` reason now renders
-`Waiting to resume — more budget next hour` on the card and in the log alike.
+`Waiting to resume — this hour's budget is spent` on the card and in the log alike.
 
 They do NOT appear on the device-detail live-status row, which renders no plan
 reason except the external-off guidance. `Turned off by
