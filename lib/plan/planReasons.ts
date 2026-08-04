@@ -480,7 +480,7 @@ function normalizeDeviceReason(params: {
 //   too, capacity is the constraint doing the work and the daily budget is not a
 //   lever that can help. Prod 2026-07-25: a budget-exempt EV charger — shed only
 //   because a real breach overrode its exemption — read "Limited by today's daily
-//   budget" next to its own "Always on" chip, with a "Let it run now" release that
+//   budget" next to its own "Budget exempt" chip, with a "Let it run now" release that
 //   could not create capacity headroom. Budget-exempt devices are excluded
 //   below: since per-axis restore admission, an exempt candidate is evaluated
 //   on the capacity axis, so its holds are never budget holds.

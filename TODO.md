@@ -228,8 +228,8 @@ What remains open is below.*
       separately above. What is left open, and is what this entry is now about, is the REPORTING:
       the hold is real and correct, and no surface says so. Original observation: Prod
       2026-07-26 21:03-21:16Z:
-      `Elbillader`, badged "Always on"
-      (`PLAN_CARD_ALWAYS_ON_CHIP_LABEL` = budget exempt), took 20 `diagnostics_shed_recorded` /
+      `Elbillader`, badged "Budget exempt"
+      (`PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL`), took 20 `diagnostics_shed_recorded` /
       `full_shed_to_off` events in 13 minutes, the first six at 21:03:28, 21:04:09, 21:04:48,
       21:05:20, 21:05:48, 21:06:18 and the rest continuing at the same ~35 s cadence to 21:16Z
       — while `plan_debug_summary` read `totalKw 0.85`, `softLimitKw 4.73→4.84`,
@@ -320,7 +320,7 @@ What remains open is below.*
       capacity-headroom contradiction) all because `limited_by_daily_budget` was read as a cause.
       PELS's reason codes did not track its behaviour in ANY of the four. [P1]
 
-      **The exemption IS reaching the planner.** The card rendered the "Always on" chip, which
+      **The exemption IS reaching the planner.** The card rendered the "Budget exempt" chip, which
       `planCardGrammar.ts` ~196 emits only `if (budgetExempt)` (tooltip "Exempt from the daily
       budget"), sourced from the plan device via `settingsOverviewReadModel.ts` ~145. So
       `budgetExempt: true` was on the plan device and the shed happened anyway — this is NOT the
@@ -358,7 +358,7 @@ What remains open is below.*
       writes those records without stamping the shed or instability clocks, and this run produced
       only ONE accepted write. The evidence for the restamping mechanism is the 321 accepted writes
       in the hotfix run, documented in the entry below. Persona: owner watching a charger badged
-      "Always on" that never draws; hypothesis: whichever cause holds, a resetting countdown reads
+      "Budget exempt" that never draws; hypothesis: whichever cause holds, a resetting countdown reads
       as a hung app. Source: prod investigation, 2026-07-26. [P1]
 
 - [ ] **A device card claims "Running" and "Limited — will try to resume" at the same time.**
@@ -2948,6 +2948,16 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 
 ## P3 Future and Exploratory Work
 
+- [ ] **A switched-off EV charger's reason line may restate its own state word.**
+      With signal-2 gating (2026-08-04), a charger the owner switched off renders the state word
+      `Off` above the reason line `Not charging` — close to saying the same thing twice, the failure
+      mode that retired `Turned off by PELS`. It clearly earns the slot on the case that motivated
+      the gate (state word `Manual`, where nothing else names the plug state), so the fix is
+      conditional, not a revert: suppress `resolveSteppedEvExceptionLabel`'s idle label when the
+      display state word is already `Off`. Persona: owner glancing at a charger they unplugged from
+      the app. *Hypothesis:* the pair reads as padding at `Off` and as information at `Manual`, so
+      gating on the state word keeps the informative case without the echo. Source: 2026-08-04
+      `pels-copy-and-terminology` pass on the signal-2 change. [P3]
 - [ ] **An ON-but-unmetered exempt device zeroes the budget axis for everyone else.**
       `sumBudgetExemptMeasuredUsageKw` (`lib/plan/planUsage.ts:87-95`) counts only
       `measuredPowerKw`, so a running exempt device with no measurement contributes to the meter

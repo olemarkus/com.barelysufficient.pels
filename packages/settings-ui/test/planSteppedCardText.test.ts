@@ -107,42 +107,37 @@ describe('resolveSteppedEvExceptionLabel', () => {
     })).toBe('Paused');
   });
 
-  it('reads "Not charging" for a plugged-in idle charger PELS is not commanding', () => {
-    // No plan target at all — PELS left the charger idle; the car (which
-    // cannot initiate charging past an idle setpoint) must not be blamed.
+  it('reads "Not charging" for a plugged-in charger that is switched off', () => {
+    // Signal 2 is off: no current is on offer, so nothing is waiting on the car.
+    // Holds whether or not PELS is the one controlling the charger.
+    expect(resolveSteppedEvExceptionLabel({
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in',
+      currentState: 'off',
+    })).toBe('Not charging');
+    // No read-back at all is not evidence of a charge command either.
     expect(resolveSteppedEvExceptionLabel({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in',
     })).toBe('Not charging');
-    // An explicit off / zero-watt target is equally PELS-idled.
-    expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in',
-      steppedLoad: { ...steppedLoad({ targetStepId: 'off' }), profile: profileWithOff },
-    })).toBe('Not charging');
   });
 
-  it('reads "Waiting for car" only when a powered step is commanded and the car does not draw', () => {
+  it('reads "Waiting for car" only when the charger is on and no current flows', () => {
     expect(resolveSteppedEvExceptionLabel({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in',
-      steppedLoad: { ...steppedLoad({ targetStepId: 'low' }), profile: profileWithOff },
-    })).toBe('Waiting for car');
-    // Without a profile, a non-off target id is the best available evidence
-    // of a charge command.
-    expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in',
-      steppedLoad: steppedLoad({ targetStepId: '16a' }),
+      currentState: 'on',
     })).toBe('Waiting for car');
   });
 
-  it('never blames the car in simulation — the powered target is hypothetical intent', () => {
+  it('keeps the claim in simulation — it is an observation, not a plan intent', () => {
+    // The charger really is switched on and really is not delivering; simulation
+    // changes what PELS would do, not what the device reports.
     expect(resolveSteppedEvExceptionLabel({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in',
-      steppedLoad: { ...steppedLoad({ targetStepId: 'low' }), profile: profileWithOff },
-    }, true)).toBe('Not charging');
+      currentState: 'on',
+    })).toBe('Waiting for car');
   });
 });
 

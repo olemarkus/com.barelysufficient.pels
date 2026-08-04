@@ -239,7 +239,7 @@ describe('Redesign plan UI', () => {
       expect(heroHtml).not.toContain('Projected this hour -');
     });
 
-    it('renders the budget-exempt "Always on" chip on device cards', async () => {
+    it('renders the "Budget exempt" chip on device cards', async () => {
       await renderPlanSnapshot({
         meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
         devices: [
@@ -256,7 +256,7 @@ describe('Redesign plan UI', () => {
       expect(
         (document.querySelector('[data-device-id="dev-always-on"] .plan-chip--muted') as HTMLElement | null)
           ?.textContent?.trim(),
-      ).toBe('Always on');
+      ).toBe('Budget exempt');
     });
 
     it('renders the hero info button with the kW-vs-kWh tooltip', async () => {

@@ -9,6 +9,7 @@ import {
 } from './planCardGrammar';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
+import { isOnLikeState } from './deviceStatePredicates';
 import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
 import { formatStarvationReason } from './planStarvation';
 import { formatHourlyExhaustedLine, formatShortfallLine, resolveHeldCardReasonLine } from './planCardReasonLine';
@@ -334,7 +335,7 @@ export const resolveEvChargingStateLabel = (state: string | undefined): string |
 );
 
 // The plugged-in-idle state (`plugged_in`) upgrades to a car-attributed label
-// only when the plan proves the car is the holdout (see
+// only when the charger's own command (signal 2) says current is on offer (see
 // `resolveSteppedEvExceptionLabel`).
 const EV_IDLE_STATE = 'plugged_in';
 const EV_IDLE_COMMANDED_LABEL = 'Waiting for car';
@@ -397,76 +398,97 @@ const resolveBatteryFact = (
   return `${Math.round(stateOfCharge.percent)} %`;
 };
 
-type EvExceptionSteppedLoad = SteppedLoadCardState & { profile?: SteppedLoadProfile };
-
-// "Waiting for car" is honest only when PELS has commanded a powered step —
-// then the plugged-in-idle charger really is waiting on the car to draw. With
-// no powered target the charger idles because PELS left it idle, and the car
-// (which cannot initiate charging past an idle setpoint) must not be blamed.
-const isCommandedToPoweredStep = (steppedLoad: EvExceptionSteppedLoad | undefined): boolean => {
-  const targetId = steppedLoad?.targetStepId ?? null;
-  if (targetId === null || isOffLikeId(targetId)) return false;
-  const profile = steppedLoad?.profile;
-  // No profile → the powered-vs-0W distinction is unknowable; a non-off
-  // target id is the best available evidence of a charge command.
-  if (!profile) return true;
-  return isPoweredStep(profile, targetId);
-};
+/**
+ * Is the charger offering current at all? This is what "waiting on the car"
+ * turns on: current can only be refused if it was on offer in the first place.
+ *
+ * The observer's `currentState` answers exactly that, and answers it across
+ * BOTH withholding axes rather than only signal 2 — it resolves to `off` when
+ * the `evcharger_charging` command is false *or* when the step axis is parked
+ * at a 0 W step (`resolveObservedSteppedLoadCurrentState`,
+ * `lib/observer/observedState.ts`). A charger switched on at 0 A offers nothing,
+ * so the car is not its holdout either; collapsing both into one `off` is the
+ * behaviour this label wants, not a lossy approximation of signal 2. It is also
+ * the sanctioned use of that projection, which is scoped to "reason/UI
+ * rendering" and barred only from standing in as on/off CONTROL truth (the
+ * shed/restore lanes read `currentOn` for that).
+ *
+ * Every device reaching this helper has a binary capability (the exception label
+ * returns early unless the control capability is `evcharger_charging`, and
+ * `hasBinaryCapability` is that capability's presence), so the observer always
+ * resolves a concrete `on`/`off` here, never `not_applicable`.
+ *
+ * PELS's own commanded step is deliberately NOT consulted. For a device with
+ * Power-limit control off the planner's keep path still fills `targetStepId`
+ * with a powered step (`resolveSteppedKeepDesiredStepId`), so intent reads as a
+ * charge command PELS never sent — which is how an idle, switched-off charger
+ * came to be labelled "Waiting for car". Matrix: `notes/ev-charger-state-copy.md`.
+ */
+const isChargerCommandedOn = (currentState: string | undefined): boolean => (
+  isOnLikeState(currentState)
+);
 
 // Exceptional EV states for the reason slot — null for the routine charging
 // state (carried by the fact line) and for non-EV devices. The idle state
-// (`plugged_in`) states the plain fact ("Not charging") unless the plan
-// proves the car is the holdout, in which case it names it ("Waiting for
-// car"). In simulation (`dryRun`) the powered target is hypothetical intent —
-// PELS never sent the command — so the car cannot be the holdout and the
-// label stays the neutral fact.
+// (`plugged_in`) names the car as the holdout ("Waiting for car") only when the
+// charger has been told to charge; a charger commanded off states the plain
+// fact ("Not charging"), because nothing is waiting on a car that has not been
+// offered any current.
+//
+// The claim is an observation rather than an inference, so it holds in
+// simulation too and takes no `dryRun` argument: `toSimulationReasonLine`
+// leaves factual device states alone by design.
 export const resolveSteppedEvExceptionLabel = (device: {
+  /** Observer-resolved "is current on offer": `off` when commanded off OR at a 0 W step. */
+  currentState?: string;
   evChargingState?: EvChargingState;
   /** The associated car's own plug state; absent when no car is associated. */
   carChargingState?: EvChargingState;
   controlCapabilityId?: string;
-  steppedLoad?: EvExceptionSteppedLoad;
-}, dryRun = false): string | null => {
+}): string | null => {
   if (device.controlCapabilityId !== 'evcharger_charging') return null;
   const state = (device.evChargingState ?? '').trim().toLowerCase();
   if (state === EV_ROUTINE_STATE) return null;
-  const carLabel = resolveEvCarExceptionLabel(device, state, dryRun);
+  const commandedOn = isChargerCommandedOn(device.currentState);
+  const carLabel = resolveEvCarExceptionLabel(device, state, commandedOn);
   if (carLabel !== null) return carLabel;
-  if (state === EV_IDLE_STATE && !dryRun && isCommandedToPoweredStep(device.steppedLoad)) {
-    return EV_IDLE_COMMANDED_LABEL;
-  }
+  if (state === EV_IDLE_STATE && commandedOn) return EV_IDLE_COMMANDED_LABEL;
   return EV_CHARGING_STATE_LABELS[state] ?? null;
 };
 
 /**
  * What the associated CAR adds, and only where the charger alone is ambiguous.
  *
- * Without a car, a plugged-in idle charger is `Not charging` and nothing more:
- * PELS cannot see why, and naming the car as the holdout is an assertion it
- * cannot make. With a car it becomes an observation — the car itself says
- * whether it is drawing. Matrix of record: `notes/ev-charger-state-copy.md`.
+ * The charger table already decides the idle plug on its own — commanded on →
+ * `Waiting for car`, commanded off → `Not charging`. What a car adds is the two
+ * contradiction readings the charger can never produce by itself, plus
+ * confirmation of a pause the charger only reports as its own. Matrix of
+ * record: `notes/ev-charger-state-copy.md`.
  */
 const resolveEvCarExceptionLabel = (
-  device: { carChargingState?: EvChargingState; steppedLoad?: EvExceptionSteppedLoad },
+  device: { carChargingState?: EvChargingState },
   state: string,
-  dryRun: boolean,
+  commandedOn: boolean,
 ): string | null => {
   const carState = device.carChargingState;
-  // In simulation the powered target is hypothetical — PELS never sent the
-  // command — so the car cannot be the holdout of anything.
-  if (carState === undefined || dryRun) return null;
-  if (!isCommandedToPoweredStep(device.steppedLoad)) return null;
+  if (carState === undefined) return null;
   // The charger reports current flowing, so whatever the car believes, this is
   // the routine case and the fact line already carries it.
   if (state === EV_ROUTINE_STATE) return null;
   if (state === EV_IDLE_STATE) {
+    // A charger commanded off explains the idle plug by itself, and a car that
+    // still reports charging is the expected lag behind that off command rather
+    // than a fault — so neither the car-holdout claim nor the contradiction is
+    // made here. Both need the charger to have been told to deliver current;
+    // yielding leaves the caller to state the plain fact.
+    if (!commandedOn) return null;
     // Both observe the same plug. Disagreement is a real fault — a lagging car
     // app or a wrong association — and is reported rather than smoothed over.
     if (carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
     // The car says it is not plugged in at all, so the association is suspect.
     // Return the plain fact rather than falling through — falling through would
-    // reach the intent-based inference and name the car as holdout on the
-    // strength of an association the car itself just contradicted.
+    // name the car as holdout on the strength of an association the car itself
+    // just contradicted.
     if (carState === 'plugged_out') return EV_CHARGING_STATE_LABELS[state] ?? null;
     return EV_IDLE_COMMANDED_LABEL;
   }

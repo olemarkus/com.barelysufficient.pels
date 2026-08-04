@@ -9,7 +9,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 // (`shedding/candidates.ts` excludes exempt devices from daily-budget shedding
 // unless capacity is breached). Prod 2026-07-25: an exempt EV charger was shed at
 // 6.60 kW against a 5.12 kW capacity soft limit and labelled "Limited by today's
-// daily budget" on a card that also showed the "Always on" (budget exempt) chip.
+// daily budget" on a card that also showed the "Budget exempt" chip.
 describe('resolveShedReason', () => {
   it('names the daily budget when it binds and capacity is not breached', () => {
     expect(resolveShedReason('daily', false)).toEqual({
