@@ -20,8 +20,8 @@ Use this page when you need to:
 
 ## What you need
 
-- Node.js 22 or later
-- npm 10.x
+- Node.js 22.x — the major Homey Pro runs, so the app is built and type-checked against it. Newer majors are not supported here.
+- npm 12.x
 - Homey CLI installed globally:
 
 ```bash
@@ -37,6 +37,11 @@ git clone https://github.com/olemarkus/com.barelysufficient.pels.git
 cd com.barelysufficient.pels
 npm install
 ```
+
+npm 12 blocks dependency install scripts unless they are allow-listed, so the
+install ends with a warning that esbuild and unrs-resolver had their `postinstall`
+blocked. That is expected — both ship their platform binaries as optional
+dependencies, so the build and the linter work without those scripts.
 
 ## Run the docs site locally
 

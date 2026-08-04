@@ -1,13 +1,22 @@
 name: Setup Node and dependencies
 description: Install the pinned Node.js + npm toolchain and the workspace dependencies via npm ci.
 
+# These two defaults and package.json's `volta` block, `packageManager` field,
+# and `engines.npm` all carry the same exact versions and must move together;
+# nothing bumps them automatically (Dependabot watches the `uses:` SHAs and the
+# npm tree, not these plain strings). `engines.node` is deliberately a supported
+# range instead, so it moves only when the supported floor or major does.
+#
+# Node stays on the major that Homey Pro runs — the same major `tsconfig.json`
+# targets via @tsconfig/node22 — and only tracks the newest patch within it.
+# npm never reaches Homey, so it just tracks latest.
 inputs:
   node-version:
     description: Node.js version to install
-    default: "22.22.0"
+    default: "22.23.2"
   npm-version:
     description: npm version to pin globally
-    default: "10.9.4"
+    default: "12.0.2"
 
 runs:
   using: composite

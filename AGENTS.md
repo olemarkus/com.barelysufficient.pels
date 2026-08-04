@@ -13,7 +13,7 @@ This file is the canonical agent guide. `CLAUDE.md` files in this repo are one-l
 ├── app.ts                    # Homey app entry point
 ├── api.ts                    # REST API handlers for the settings UI
 ├── app.json                  # Auto-generated from .homeycompose — do not edit directly
-├── package.json              # npm workspace root (Node 22, npm 10.9.4)
+├── package.json              # npm workspace root (Node 22, npm 12)
 ├── vitest.config.*.mts       # vitest configs (80% coverage threshold)
 ├── eslint.config.mjs         # ESLint (strict, sonarjs, functional, unicorn)
 ├── .dependency-cruiser.cjs   # Enforced architecture boundary rules
