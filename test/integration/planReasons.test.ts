@@ -171,7 +171,7 @@ describe('normalizeShedReasons', () => {
   // limit, not the one the draw has crossed. With daily binding AND capacity
   // breached, capacity is the constraint doing the work — re-attributing to the
   // daily budget put "Limited by today's daily budget" on a budget-exempt
-  // charger's card next to its own "Always on" chip (it could only have been shed
+  // charger's card next to its own "Budget exempt" chip (it could only have been shed
   // because the breach overrode the exemption), and offered a "Let it run now"
   // release that cannot create capacity headroom.
   it('does not re-attribute carry-forward capacity to dailyBudget while capacity is breached', () => {
@@ -706,7 +706,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       expect(roll({ softLimitSource: 'daily', capacityBreached: true })?.reason)
         .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
       // Per-axis admission evaluates an exempt candidate on capacity, so its
-      // hold is a capacity hold — never a budget label next to an "Always on" chip.
+      // hold is a capacity hold — never a budget label next to a "Budget exempt" chip.
       expect(roll({ softLimitSource: 'daily', budgetExempt: true })?.reason)
         .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
       expect(roll({ softLimitSource: 'capacity' })?.reason)

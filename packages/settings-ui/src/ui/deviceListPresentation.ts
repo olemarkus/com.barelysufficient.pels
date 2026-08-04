@@ -7,6 +7,7 @@ import {
   requiresNativeWiringForActivation,
   type SettingsUiDeviceListItem,
 } from './deviceUtils.ts';
+import { PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL } from '../../../shared-domain/src/planCardGrammar.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import { resolveManagedState, state } from './state.ts';
 import { PRICE_TEMPERATURE_ONLY_REASON, type RowDisabledReasons } from './deviceControlAvailability.ts';
@@ -42,9 +43,12 @@ const buildDeviceAvailabilityChip = (device: SettingsUiDeviceListItem): HTMLElem
   );
 };
 
+// Same flag, same word as the overview card's chip, from the same constant, so
+// the two surfaces cannot drift apart again the way "Always on" did. The
+// tooltip stays list-local: this row has space for the fuller sentence.
 const buildBudgetExemptChip = (device: SettingsUiDeviceListItem): HTMLElement | null => {
   if (state.budgetExemptMap[device.id] !== true && device.budgetExempt !== true) return null;
-  return buildStateChip('Budget exempt', 'This device is excluded from daily budget limits.');
+  return buildStateChip(PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL, 'This device is excluded from daily budget limits.');
 };
 
 const buildFlowBackedChip = (device: SettingsUiDeviceListItem): HTMLElement | null => {

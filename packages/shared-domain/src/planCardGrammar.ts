@@ -29,7 +29,7 @@
 //      simulation — there is nothing to release when PELS actuates nothing)
 //   2. starvation badge (Budget limited / Low power) while the card is held
 //   3. Boost (temperature or EV boost active)
-//   4. Always on (budget exempt)
+//   4. Budget exempt
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import { isOnLikeState } from './deviceStatePredicates';
 import {
@@ -195,8 +195,12 @@ export const shouldDisplayExternalOffReason = (
 export const PLAN_CARD_BOOST_CHIP_LABEL = 'Boost';
 export const PLAN_CARD_BOOST_TEMPERATURE_TOOLTIP = 'Temperature boost is active';
 export const PLAN_CARD_BOOST_EV_TOOLTIP = 'EV boost is active';
-export const PLAN_CARD_ALWAYS_ON_CHIP_LABEL = 'Always on';
-export const PLAN_CARD_ALWAYS_ON_TOOLTIP = 'Exempt from the daily budget';
+// The chip states what the flag actually does — the device is exempt from the
+// daily budget — and matches what the same flag is called on the Devices list
+// and on its own detail toggle. The former "Always on" promised something the
+// flag never delivered: an exempt device is still limited on the capacity axis.
+export const PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL = 'Budget exempt';
+export const PLAN_CARD_BUDGET_EXEMPT_TOOLTIP = 'Exempt from the daily budget';
 
 export type PlanCardStatusChip =
   // The interactive "Let it run now" two-step rescue chip (rendered by the
@@ -243,7 +247,10 @@ export const resolvePlanCardStatusChip = (params: PlanCardChipParams): PlanCardS
   }
   if (budgetExempt) {
     return {
-      type: 'status', label: PLAN_CARD_ALWAYS_ON_CHIP_LABEL, tone: 'muted', tooltip: PLAN_CARD_ALWAYS_ON_TOOLTIP,
+      type: 'status',
+      label: PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL,
+      tone: 'muted',
+      tooltip: PLAN_CARD_BUDGET_EXEMPT_TOOLTIP,
     };
   }
   return null;

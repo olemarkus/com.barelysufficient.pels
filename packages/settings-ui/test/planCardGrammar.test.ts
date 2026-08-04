@@ -171,7 +171,7 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
     })).toBeNull();
   });
 
-  it('falls through boost then always-on, one chip max', () => {
+  it('falls through boost then budget-exempt, one chip max', () => {
     expect(resolvePlanCardStatusChip({
       ...base, displayKind: 'active', temperatureBoostActive: true, budgetExempt: true,
     })).toMatchObject({ type: 'status', label: 'Boost' });
@@ -180,7 +180,7 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
     })).toMatchObject({ type: 'status', label: 'Boost' });
     expect(resolvePlanCardStatusChip({
       ...base, displayKind: 'active', budgetExempt: true,
-    })).toMatchObject({ type: 'status', label: 'Always on' });
+    })).toMatchObject({ type: 'status', label: 'Budget exempt' });
     expect(resolvePlanCardStatusChip({ ...base, displayKind: 'active' })).toBeNull();
   });
 });

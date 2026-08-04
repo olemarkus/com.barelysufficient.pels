@@ -144,8 +144,9 @@ export const PlanSteppedCard = ({
   // (Paused / Not charging / Waiting for car / Discharging / Unplugged)
   // fills the slot only
   // when no status renders. In simulation the held/limited status reads
-  // hypothetically (no-op outside simulation / for non-acted lines).
-  const singleReason = factualStatusText ?? resolveSteppedEvExceptionLabel(displayDev, dryRun);
+  // hypothetically (no-op outside simulation / for non-acted lines); the EV
+  // state is a device observation and stays factual either way.
+  const singleReason = factualStatusText ?? resolveSteppedEvExceptionLabel(displayDev);
   const statusText = singleReason === null ? null : toSimulationReasonLine(singleReason, dryRun);
 
   const cardClasses = [

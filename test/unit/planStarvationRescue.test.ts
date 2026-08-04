@@ -180,7 +180,7 @@ describe('starvation-rescue shared helpers', () => {
         expect(shouldOfferBudgetExemptCardAction(starvation({ cause: 'capacity' }), false)).toBe(false);
       });
 
-      it('suppresses it when the device is already budget exempt (the "Always on" badge covers that)', () => {
+      it('suppresses it when the device is already budget exempt (the "Budget exempt" badge covers that)', () => {
         expect(shouldOfferBudgetExemptCardAction(starvation(), true)).toBe(false);
       });
 

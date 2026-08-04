@@ -194,7 +194,7 @@ absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
 
 **Card grammar (2026-07 legibility pass):** one anatomy for every card —
 title + at most ONE status chip (ladder: `Let it run now` → `Budget limited`/
-`Low power` → `Boost` → `Always on`; the `Smart task` badge is an
+`Low power` → `Boost` → `Budget exempt`; the `Smart task` badge is an
 identity/route badge and may coexist), the state row (state word + power
 fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
 level 6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
@@ -216,18 +216,20 @@ status line claims it (source: `resolveSteppedEvExceptionLabel` in
 plugged-in-idle pair below. Routine charging folds into the fact line
 (`Charging · level 16 A`) instead.
 
-The plugged-in-idle state (`plugged_in`) discriminates on plan intent, because
-the raw capability only states a fact (connected, not charging), never a cause:
+The plugged-in-idle state (`plugged_in`) discriminates on the charger's own
+on/off capability (`evcharger_charging`), because the plug state only states a
+fact (connected, not charging), never a cause:
 
 | Label | Used when |
 |---|---|
-| `Waiting for car` | PELS has commanded a powered step and the car still is not drawing — the car (scheduled departure charging, full battery) is provably the holdout. |
-| `Not charging` | No powered step is commanded. The charger idles because PELS left it idle; blaming the car here is false — on setpoint-driven chargers the car cannot initiate charging at all. |
+| `Waiting for car` | The charger has been told to charge and still no current flows — the car (scheduled departure charging, full battery) is the holdout. |
+| `Not charging` | The charger is switched off. Nothing is on offer, so nothing is waiting on the car; blaming it here is false. |
 
-When the snapshot carries no step profile, the powered-vs-0 W distinction is
-unknowable and any non-off target id counts as a charge command (`Waiting for
-car`). In simulation the powered target is hypothetical intent — PELS never
-sent the command — so the label stays `Not charging`.
+The claim turns on the charger's command, not on what PELS wants — PELS's
+commanded step is not a command at all when the device's Power-limit control is
+off, and reading it as one is what once labelled a switched-off charger
+`Waiting for car`. Because the gate is an observation, it holds in simulation
+too. Matrix of record: `notes/ev-charger-state-copy.md`.
 
 ### Device cards say what a device needs; the hero says what limits the house
 
@@ -1216,8 +1218,10 @@ whole-clock-hour kWh on three different days). Two rules follow:
 ## EV charger card states
 
 What an EV charger's card may say about *why* it is idle is governed by
-`notes/ev-charger-state-copy.md` — the matrix of PELS intent, the charger's
-command capability, the charger's observed state, and the associated car's own
-state, with the copy each combination earns. The rule it exists to enforce:
-**never name a cause PELS cannot observe.** Without an associated car, a
-plugged-in idle charger is `Not charging` and nothing more.
+`notes/ev-charger-state-copy.md` — the matrix of the charger's command
+capability, the charger's observed state, and the associated car's own state,
+with the copy each combination earns. The rule it exists to enforce: **never
+name a cause PELS cannot observe.** A plugged-in idle charger says `Waiting for
+car` when the charger itself is switched on — with or without an associated car,
+and whether or not PELS is the one controlling it. Commanded off it is
+`Not charging` and nothing more.

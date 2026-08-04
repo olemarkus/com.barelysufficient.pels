@@ -276,7 +276,7 @@ export const starvationRowOffersRescue = (
 // capacity is physical (the hard cap is not a tuning knob —
 // feedback_hard_cap_is_physical), a device with its own smart task is brought
 // back by that task, and a device with no known target has nothing to aim the
-// rescue at. Already-exempt devices show the standing "Always on" badge instead.
+// rescue at. Already-exempt devices show the standing "Budget exempt" badge instead.
 export const BUDGET_EXEMPT_CARD_ACTION_COPY = {
   // Chip label — the canonical rescue verb, identical to the held-back widget's
   // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
@@ -300,7 +300,7 @@ export const BUDGET_EXEMPT_CARD_ACTION_COPY = {
 // a known target) is enforced server-side and reflected in the rescuable-device
 // list the card view intersects against, so a shown chip's create call cannot be
 // rejected as not-rescuable. The `cause` gate mirrors `starvationRowOffersRescue`
-// (budget-only); the already-exempt suppression mirrors the card's "Always on"
+// (budget-only); the already-exempt suppression mirrors the card's "Budget exempt"
 // badge so the two never render together.
 export const shouldOfferBudgetExemptCardAction = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
