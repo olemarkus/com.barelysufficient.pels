@@ -475,5 +475,8 @@
   },
   "2.20.2": {
     "en": "Devices waiting for power now say how much more power is needed before they can resume, updated every cycle, and the amount reacts to the current situation rather than a fixed figure. The Overview no longer blames the car when it was PELS that paused the charger, the managed and background split is shown when managed usage is a known zero, and device cards now describe what that device needs while the hero line states what is limiting the home. Smart tasks and other budget-exempt work can resume while the daily budget is holding other devices back, as long as there is capacity for them, and ties between equally cheap hours now pick the earliest hour."
+  },
+  "2.21.0": {
+    "en": "You can now tell PELS which cars charge at a given charger. Open the charger's page, tick the cars that use it, and PELS matches one when it plugs in and reads its battery level, so charge boost and smart tasks know how full the car is without setting up a Flow. The charger card shows that battery level, and when a car is associated it can say for itself whether it is the one holding up charging, including when the car and the charger disagree about what is happening.\n\nThe 'Waiting for car' line no longer appears on a charger that is simply switched off, and a smart task created while tomorrow's prices are already available no longer claims it is waiting for prices."
   }
 }
