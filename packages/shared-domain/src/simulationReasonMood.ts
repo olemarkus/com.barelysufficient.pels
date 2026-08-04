@@ -64,5 +64,21 @@ export const toSimulationReasonLine = (label: string, dryRun: boolean): string =
     || label.startsWith('Holding —')) {
     return `Would be ${label.charAt(0).toLowerCase()}${label.slice(1)}${SIMULATION_TAG}`;
   }
+  // The starved form of a ceiling hold ("Held 2 h — 0.7 kW more needed",
+  // `planCardReasonLine.ts`). The elapsed duration is the one part that CANNOT
+  // carry over: in simulation PELS held nothing, so there is no elapsed hold to
+  // report — printing "Would be held 2 h" would assert a history that did not
+  // happen. The stem collapses to the bare hypothetical and only the need clause
+  // survives, which is the part that is still true of the projected plan.
+  // Matched on the stem SHAPE (`Held <digits>`), not the bare word: `Held back`
+  // (the status badge) and `Held below 65 °C` (the rescue-widget row subtext)
+  // both start with "Held " and neither is a card reason line.
+  if (/^Held \d/u.test(label)) {
+    const dashAt = label.indexOf('—');
+    const need = dashAt === -1 ? '' : label.slice(dashAt + 1).trim();
+    return need === ''
+      ? `Would be held back${SIMULATION_TAG}`
+      : `Would be held back — ${need}${SIMULATION_TAG}`;
+  }
   return label;
 };

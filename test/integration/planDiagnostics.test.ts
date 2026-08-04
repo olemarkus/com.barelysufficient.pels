@@ -19,7 +19,6 @@ import {
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
-import { starvationRowOffersRescue } from '../../packages/shared-domain/src/planStarvation';
 
 const r = (reason: string) => legacyDeviceReason(reason)!;
 
@@ -1024,26 +1023,26 @@ describe('daily-bound headroom starvation flows through to the overview budget b
       isDebugEnabled: () => false,
     });
 
-    // Feed the REAL producer's output across many rebuild cycles. Previously the
-    // restore producer alternated `insufficient_headroom` (→ capacity, rescue
-    // hidden) and `daily_budget` (→ budget, rescue shown) for the same daily-bound
-    // hold, so the overview cause flipped and the rescue button flickered. With the
-    // producer re-attribution the cause is steady, so the bucket never flips.
+    // Feed the REAL producer's output across many rebuild cycles. The restore
+    // producer alternates `insufficient_headroom` and `daily_budget` for the same
+    // daily-bound hold; the re-attribution keeps the GRANULAR counting cause
+    // steady on `daily_budget`, which is what device detail and the
+    // `device_starvation_*` logs report. (The overview's flat budget/capacity
+    // bucket that used to flip with it — taking the rescue button with it — was
+    // deleted 2026-08-04; the overview now carries no cause to flip.)
     const start = Date.now();
-    const seenCauses = new Set<string>();
+    const seenCountingCauses = new Set<string | null>();
     for (const offset of [0, 9, 16, 25, 40, 55]) {
       service.observePlanSample({
         nowTs: start + offset * 60 * 1000,
         observations: [buildSteadyDailyHeadroomObservation()],
       });
-      const overview = service.getOverviewStarvation('heater-1');
-      if (overview) seenCauses.add(overview.cause);
+      const summary = service.getUiPayload().diagnosticsByDeviceId['heater-1']?.starvation;
+      if (summary?.isStarved) seenCountingCauses.add(summary.starvationCause);
     }
 
-    expect([...seenCauses]).toEqual(['budget']);
-    const finalOverview = service.getOverviewStarvation('heater-1');
-    expect(finalOverview).toMatchObject({ isStarved: true, cause: 'budget' });
-    expect(starvationRowOffersRescue(finalOverview!.cause)).toBe(true);
+    expect([...seenCountingCauses]).toEqual(['daily_budget']);
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
 
     expect(DEVICE_DIAGNOSTICS_STATE_KEY).toBe('device_diagnostics_v1');
     service.destroy();
@@ -1085,7 +1084,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     softLimitSource: 'daily',
   });
 
-  it('holds a stable budget bucket while the plan reason oscillates dailyBudget <-> insufficient_headroom', () => {
+  it('holds a stable counting cause while the plan reason oscillates dailyBudget <-> insufficient_headroom', () => {
     const store = new Map<string, unknown>();
     const settings = {
       get: (key: string) => store.get(key),
@@ -1099,10 +1098,12 @@ describe('daily-bound headroom starvation flows through to the overview budget b
       isDebugEnabled: () => false,
     });
 
-    // Alternate the two budget-family reasons across rebuilds. The overview cause must
-    // never leave the budget bucket — that is the regression guard for the flicker.
+    // Alternate the two budget-family reasons across rebuilds. The granular
+    // counting cause must never leave `daily_budget` — that is the regression
+    // guard the re-attribution exists for, and it still feeds device detail and
+    // the starvation logs.
     const start = Date.now();
-    const seenCauses = new Set<string>();
+    const seenCountingCauses = new Set<string | null>();
     const offsets = [0, 9, 16, 25, 40, 55];
     offsets.forEach((offset, index) => {
       const observation = index % 2 === 0
@@ -1112,14 +1113,12 @@ describe('daily-bound headroom starvation flows through to the overview budget b
         nowTs: start + offset * 60 * 1000,
         observations: [observation],
       });
-      const overview = service.getOverviewStarvation('heater-1');
-      if (overview) seenCauses.add(overview.cause);
+      const summary = service.getUiPayload().diagnosticsByDeviceId['heater-1']?.starvation;
+      if (summary?.isStarved) seenCountingCauses.add(summary.starvationCause);
     });
 
-    expect([...seenCauses]).toEqual(['budget']);
-    const finalOverview = service.getOverviewStarvation('heater-1');
-    expect(finalOverview).toMatchObject({ isStarved: true, cause: 'budget' });
-    expect(starvationRowOffersRescue(finalOverview!.cause)).toBe(true);
+    expect([...seenCountingCauses]).toEqual(['daily_budget']);
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
     service.destroy();
   });
 });

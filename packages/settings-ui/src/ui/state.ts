@@ -98,9 +98,11 @@ export type UiState = {
   // the meter-only PV case. Also unlocks the "Use solar surplus" control.
   hasExhibitedExport: boolean;
   // Device IDs the overview "Let it run now" rescue chip may offer the action on,
-  // resolved server-side (budget-caused + task-free + a known target). The card
-  // view gates the chip on membership so a shown chip's create call cannot be
-  // rejected as not-rescuable. Empty until the first rescuable-devices fetch.
+  // resolved server-side (task-free + a known target). The card view gates the
+  // chip on membership, which keeps stale affordances rare — but this is a
+  // SNAPSHOT: a device can recover, gain a smart task, lose its target, or change
+  // home scope between the fetch and the tap, and the create path re-checks live
+  // state and may still reject. Empty until the first rescuable-devices fetch.
   starvationRescuableDeviceIds: Set<string>;
   // One entry per ACTIVE meter area (maintained by capacity.ts's roster+flag
   // refresh). `simulating` is the area's resolved `capacity_dry_run:<homeId>`

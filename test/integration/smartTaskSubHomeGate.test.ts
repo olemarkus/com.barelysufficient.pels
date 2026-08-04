@@ -427,7 +427,7 @@ describe('smart-task membership and authority predicates', () => {
       deviceDiagnosticsService: {
         getStarvedRescueEntries: () => [{
           deviceId: 'd1',
-          starvation: { isStarved: true, cause: 'budget', accumulatedMs: 20 * 60_000 },
+          starvation: { isStarved: true, accumulatedMs: 20 * 60_000 },
           intendedNormalTargetC: 60,
         }],
       } as unknown as AppContext['deviceDiagnosticsService'],
@@ -453,7 +453,7 @@ describe('smart-task membership and authority predicates', () => {
     ctx.deviceDiagnosticsService = {
       getStarvedRescueEntries: () => [{
         deviceId: 'meter-1',
-        starvation: { isStarved: true, cause: 'budget', accumulatedMs: 20 * 60_000 },
+        starvation: { isStarved: true, accumulatedMs: 20 * 60_000 },
         intendedNormalTargetC: 60,
       }],
     } as unknown as AppContext['deviceDiagnosticsService'];

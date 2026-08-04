@@ -797,55 +797,75 @@ describe('resolveSteppedActiveStepId', () => {
   });
 });
 
-describe('resolveSteppedStatusLine — budget hold vs active recovery', () => {
-  const budgetHeld: SettingsUiPlanDeviceStarvation = {
+describe('resolveSteppedStatusLine — held-back hold vs active recovery', () => {
+  const heldBack: SettingsUiPlanDeviceStarvation = {
     isStarved: true,
     accumulatedMs: 60_000,
-    cause: 'budget',
     startedAtMs: NOW_MS - 60_000,
   };
 
-  it('shows the budget line for a budget-held device that is not moving', () => {
+  // The stepped card used to run its own starvation override ahead of every
+  // reason.code framing, returning the budget line. It now shares the one ladder
+  // with the other two card variants, so a held-back device that is not moving
+  // gets that ladder's answer — here the plain held copy, because a `none` reason
+  // carries no shortfall to name.
+  it('shows the shared held copy for a held-back device that is not moving', () => {
     const result = resolveSteppedStatusLine(
       {
         ...baseDevice,
         currentState: 'off',
         steppedLoad: steppedLoad({ reportedStepId: 'off', commandPending: false }),
-        starvation: budgetHeld,
+        starvation: heldBack,
       },
       profileWithOff,
       NOW_MS,
     );
-    expect(result).toBe("Limited to stay within today's budget");
+    expect(result).toBe('Waiting for available power');
+    expect(result).not.toBe("Limited to stay within today's budget");
   });
 
-  it('lets an in-flight step command win over the latched budget hold during recovery', () => {
-    // After a budget device is commanded back up, diagnostics keeps `isStarved`
-    // latched through the clear window; the status line must show the transit
-    // state, not the stale budget hold.
+  it('states the hold duration and shortfall when the plan supplies one', () => {
+    const result = resolveSteppedStatusLine(
+      {
+        ...baseDevice,
+        currentState: 'off',
+        reason: { code: 'daily_budget', detail: null, shortfallKw: 0.6 },
+        steppedLoad: steppedLoad({ reportedStepId: 'off', commandPending: false }),
+        starvation: { ...heldBack, accumulatedMs: 90 * 60_000 },
+      },
+      profileWithOff,
+      NOW_MS,
+    );
+    expect(result).toContain('0.6 kW more needed');
+    expect(result).toContain('Held 1');
+  });
+
+  it('lets an in-flight step command win over the latched hold during recovery', () => {
+    // After a held-back device is commanded back up, diagnostics keeps
+    // `isStarved` latched through the clear window; the status line must show
+    // the transit state, not the stale hold.
     const transiting = {
       ...baseDevice,
       currentState: 'on',
       steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'max', commandPending: true }),
-      starvation: budgetHeld,
+      starvation: heldBack,
     };
-    const withBudget = resolveSteppedStatusLine(transiting, profile, NOW_MS);
-    const withoutBudget = resolveSteppedStatusLine({ ...transiting, starvation: undefined }, profile, NOW_MS);
-    expect(withBudget).not.toBe("Limited to stay within today's budget");
-    expect(withBudget).toBe(withoutBudget);
+    const withStarvation = resolveSteppedStatusLine(transiting, profile, NOW_MS);
+    const withoutStarvation = resolveSteppedStatusLine({ ...transiting, starvation: undefined }, profile, NOW_MS);
+    expect(withStarvation).toBe(withoutStarvation);
   });
 
-  it('stays neutral for a suppressed at-target settling latch even while budget-starved', () => {
+  it('stays neutral for a suppressed at-target settling latch even while held back', () => {
     // A headroom-check settling that is suppressed because the device is AT target
     // is a recovery latch — it must read quiet (no status line), never the
-    // latched budget hold.
+    // latched hold.
     const result = resolveSteppedStatusLine(
       {
         ...baseDevice,
         currentState: 'on',
         steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
         reason: { code: 'meter_settling', remainingSec: 14 },
-        starvation: budgetHeld,
+        starvation: heldBack,
       },
       profile,
       NOW_MS,

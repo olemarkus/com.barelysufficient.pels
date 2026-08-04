@@ -692,7 +692,6 @@ describe('settingsUiApi', () => {
         starvation: {
           isStarved: true,
           accumulatedMs: 1_800_000,
-          cause: 'capacity',
           startedAtMs: 1234,
         },
         reason: buildComparablePlanReason('capacity'),

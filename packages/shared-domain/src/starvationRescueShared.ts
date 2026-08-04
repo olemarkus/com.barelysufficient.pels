@@ -58,12 +58,12 @@ export type ResolvedRescuableDevice =
   | { ok: true; targetTemperatureC: number }
   | { ok: false; reason: StarvationRescueRejectReason };
 
-// Confirm the requested device is a rescuable (budget-caused, task-free) starved
-// row with a known target against the LIVE starved list. This is the guardrail's
-// enforcement point: run on both preview and create so a stale or tampered
-// request can never build a budget-exempt rescue for a capacity row, a device
-// that already recovered, or one that already has its own smart task. Pure over
-// the supplied list — `null` means the app getter was unavailable.
+// Confirm the requested device is a rescuable (task-free, known-target) starved
+// row against the LIVE starved list. This is the guardrail's enforcement point:
+// run on both preview and create so a stale or tampered request can never build
+// a rescue for a device that already recovered, or one that already has its own
+// smart task. Pure over the supplied list — `null` means the app getter was
+// unavailable.
 export const resolveRescuableDeviceFromList = (
   devices: StarvationRescueDevice[] | null,
   deviceId: string,
@@ -74,15 +74,14 @@ export const resolveRescuableDeviceFromList = (
     return { ok: false, reason: 'unavailable' };
   }
   // `starvationRowIsRescuable` is the full actionable predicate the surfaces' UI
-  // gates also use (budget cause AND task-free AND a known finite target), so a
-  // shown affordance and this enforcement agree by construction.
+  // gates also use (task-free AND a known finite target), so a shown affordance
+  // and this enforcement agree by construction.
   if (!device || !starvationRowIsRescuable(
-    device.cause,
     device.intendedNormalTargetC,
     device.hasSmartTask,
     device.smartTaskHomeScope,
   )) {
-    if (device && device.cause === 'budget' && !device.hasSmartTask
+    if (device && !device.hasSmartTask
       && (device.intendedNormalTargetC === null || !Number.isFinite(device.intendedNormalTargetC))) {
       return { ok: false, reason: 'no_target' };
     }

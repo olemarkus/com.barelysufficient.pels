@@ -107,8 +107,7 @@ export const mapObjectiveWriteRefusalReason = (
 // `getOverviewStarvation` freshness/eligibility gate) and joined against the
 // runtime-planned snapshot for the device name — a starved device is by
 // definition managed + capacity-controlled, so it is in `latestTargetSnapshot`.
-// The `cause` is the producer-resolved flat value; the widget never re-derives
-// it. Entries are dropped when the device is no longer in the snapshot (e.g.
+// Entries are dropped when the device is no longer in the snapshot (e.g.
 // removed mid-cycle — never shown with a stale name) and when it is durably in
 // a sub-home or is an active source device. A transient Main authority fence
 // keeps the diagnostic row visible but marks its rescue unavailable.
@@ -129,7 +128,6 @@ export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevi
     return [{
       deviceId: entry.deviceId,
       deviceName: device.name,
-      cause: entry.starvation.cause,
       accumulatedMs: entry.starvation.accumulatedMs,
       intendedNormalTargetC: entry.intendedNormalTargetC,
       smartTaskHomeScope,

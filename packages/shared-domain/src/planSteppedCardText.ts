@@ -11,7 +11,6 @@ import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import { isOnLikeState } from './deviceStatePredicates';
 import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
-import { formatStarvationReason } from './planStarvation';
 import { formatHourlyExhaustedLine, formatShortfallLine, resolveHeldCardReasonLine } from './planCardReasonLine';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 import {
@@ -191,7 +190,7 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   if (!targetId || !isPoweredStep(profile, targetId)) return null;
   if (isSteppedCardOffLikeState(device.currentState)) {
     const gap = resolveRestoreShortfallKw(device.reason);
-    return gap !== null ? formatShortfallLine(gap, 'resume') : null;
+    return gap !== null ? formatShortfallLine(gap, 'resume', device.starvation) : null;
   }
   const currentId = resolveCurrentStepId(device);
   const currentIdx = findStepIndex(profile, currentId);
@@ -202,10 +201,10 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
     // `increase` mood), not silence, or the one hold state with a firm time
     // recourse would be the only one the card cannot explain.
     if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) {
-      return formatHourlyExhaustedLine('increase');
+      return formatHourlyExhaustedLine('increase', device.starvation);
     }
     const gap = resolveRestoreShortfallKw(device.reason);
-    return gap !== null ? formatShortfallLine(gap, 'increase') : null;
+    return gap !== null ? formatShortfallLine(gap, 'increase', device.starvation) : null;
   }
   return null;
 };
@@ -227,44 +226,27 @@ const resolveOffStatusLine = (
   return resolveHeldCardReasonLine({ reason: device.reason, starvation: device.starvation });
 };
 
-// The producer-resolved budget starvation cause wins over every reason.code
-// framing in the status line: a budget-held water heater reads "Limited to stay
-// within today's budget", never the insufficient-headroom waiting copy or the
-// hard-cap fallback — mirrors `resolveReasonText` on the generic card.
-// Capacity-cause starvation returns null so the reason.code paths produce the
-// correct "Waiting for available power" copy (the hard cap is not a remedy —
-// feedback_hard_cap_is_physical). Extracted so the parent resolver stays under
-// the cognitive-complexity cap.
-const resolveBudgetStarvationStatus = (device: SteppedDevice): string | null => (
-  device.starvation?.isStarved && device.starvation.cause === 'budget'
-    ? formatStarvationReason(device.starvation)
-    : null
-);
-
 export const resolveSteppedStatusLine = (
   device: SteppedDevice,
   profile: SteppedLoadProfile,
   nowMs: number,
   dryRun = false,
 ): string | null => {
-  // Active-movement states win first: a budget-held device commanded back up
-  // (transit) or settling after a command is RECOVERING, but diagnostics keeps
-  // `starvation.isStarved` latched through the 10-min clear window — so the
-  // budget override must NOT preempt "Turning on/increasing" / settling copy
-  // during recovery. It still wins over the static reason.code fallbacks below.
-  // A suppressed at-target headroom-settling latch is also a recovery state: it must
-  // read neutral ("Maintaining level"), not the latched budget hold, so skip the
-  // override there too (the budget line still wins over the static fallbacks below).
-  let skipBudgetOverride = false;
+  // Active-movement states win first: a held-back device commanded back up
+  // (transit) or settling after a command is RECOVERING, and diagnostics keeps
+  // `starvation.isStarved` latched through the 10-min clear window — so those
+  // states must render their own copy rather than a hold the device is already
+  // coming out of. A suppressed at-target headroom-settling latch is a recovery
+  // state too, and falls through to the reason.code paths below.
+  //
+  // This is where the stepped card used to run its OWN starvation override,
+  // which returned the budget line ahead of every reason.code framing. The hold
+  // lines below now carry the starvation themselves, through the same ladder the
+  // other two card variants use, so there is nothing left to preempt.
   if (isSteppedTransit(device)) return resolveTransitStatusLine(device, profile);
   if (isSettlingReason(device.reason.code)) {
     const suppressed = isHeadroomCheckSettlingReason(device.reason.code) && isAtTargetStep(device);
     if (!suppressed) return resolveSettlingStatusLine(device.reason, nowMs);
-    skipBudgetOverride = true;
-  }
-  if (!skipBudgetOverride) {
-    const budgetStatus = resolveBudgetStarvationStatus(device);
-    if (budgetStatus !== null) return budgetStatus;
   }
   // A RUNNING stepped device denied a step up never reaches `resolveOffStatusLine`
   // below, so this branch stays — but the sentence itself now comes from the

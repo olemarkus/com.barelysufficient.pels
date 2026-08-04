@@ -315,12 +315,12 @@ The "Safe pace now" tick uses a single label regardless of whether the binding c
 
 ### Device card reason lines
 
-A device card's one reason line says **what that device needs**, never which ceiling limits the house (the hero states that once). Held-on-power cards read `Waiting to resume — 0.8 kW more needed`; holds that power cannot lift (smart task, solar surplus, external off, stepped fairness, countdowns) keep their own cause. Source of truth: `resolveHeldCardReasonLine` in `packages/shared-domain/src/planCardReasonLine.ts`, shared by all three card variants. Full ladder and the retired-strings list: `notes/ui-terminology.md` § "Device cards say what a device needs".
+A device card's one reason line says **what that device needs**, never which ceiling limits the house (the hero states that once). Held-on-power cards read `Waiting to resume — 0.8 kW more needed`, and once the hold has run long enough to count as held back, `Held 2 h — 0.8 kW more needed` — the elapsed time is the device's own fact, and the only one that explains why that card carries `Let it run now` and its neighbours do not. Holds that power cannot lift (smart task, solar surplus, external off, stepped fairness, countdowns) keep their own cause. Source of truth: `resolveHeldCardReasonLine` in `packages/shared-domain/src/planCardReasonLine.ts`, shared by all three card variants. Full ladder and the retired-strings list: `notes/ui-terminology.md` § "Device cards say what a device needs".
 
 ### Chips vs reason lines
 
 Chips stay short — canonical chip labels like `Limited`, `Resuming`, `Above safe pace` (see `notes/ui-terminology.md` for the full set).
-Reason lines (below chip or in tooltip) may be a short sentence: `Waiting to resume — 0.8 kW more needed`.
+Reason lines (below chip or in tooltip) may be a short sentence: `Waiting to resume — 0.8 kW more needed`, `Held 2 h — 0.8 kW more needed`.
 Do not put sentences in chips.
 
 ### Terms that stay internal (do not surface in normal UI)

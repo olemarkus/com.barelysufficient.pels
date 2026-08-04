@@ -66,9 +66,9 @@ const createRescueReject = (
 ): SettingsUiStarvationRescueCreateResponse => ({ ok: false, reason });
 
 // The device IDs the overview chip may offer the rescue on — the same gate the
-// widget uses (budget-caused + task-free + a known target). Resolved from
-// `getStarvedRescueDevices` so a shown chip's create call can never be rejected
-// as not-rescuable.
+// widget uses (task-free + a known target), resolved from
+// `getStarvedRescueDevices`. A snapshot: the create path re-validates against the
+// live list, so a chip shown from a stale set can still be rejected.
 export const getSettingsUiStarvationRescueDevices = (
   { homey }: RescueApiContext,
 ): SettingsUiStarvationRescueDevicesPayload => {

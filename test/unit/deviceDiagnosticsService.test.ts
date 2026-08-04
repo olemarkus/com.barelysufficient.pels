@@ -495,11 +495,13 @@ describe('DeviceDiagnosticsService', () => {
       });
   });
 
-  it('lists currently-starved devices with their cause + intended target for the rescue widget', () => {
+  it('lists currently-starved devices with their intended target for the rescue widget', () => {
     const { service } = createDeps();
     const start = Date.now();
-    // A budget-starved device (offers a rescue) and a capacity-starved device
-    // (informational only). Both enter starvation after the 15-minute latency.
+    // Two devices held by different constraints. Both enter starvation after the
+    // 15-minute latency, and both are listed identically — the rescue entries
+    // stopped carrying a budget/capacity bucket on 2026-08-04, because it was a
+    // momentary snapshot that flipped mid-hold and took the rescue button with it.
     const budget = buildObservation({ deviceId: 'heater-1', countingCause: 'daily_budget', intendedNormalTargetC: 65 });
     const capacity = buildObservation({ deviceId: 'rad-1', name: 'Radiator', countingCause: 'capacity', intendedNormalTargetC: 21 });
 
@@ -511,11 +513,11 @@ describe('DeviceDiagnosticsService', () => {
     expect(entries).toHaveLength(2);
     const byId = new Map(entries.map((entry) => [entry.deviceId, entry]));
     expect(byId.get('heater-1')).toMatchObject({
-      starvation: { isStarved: true, cause: 'budget' },
+      starvation: { isStarved: true },
       intendedNormalTargetC: 65,
     });
     expect(byId.get('rad-1')).toMatchObject({
-      starvation: { isStarved: true, cause: 'capacity' },
+      starvation: { isStarved: true },
       intendedNormalTargetC: 21,
     });
   });
@@ -556,12 +558,12 @@ describe('DeviceDiagnosticsService', () => {
 
     // The episode is still latched (badge stays attributed through the window)…
     expect(getStarvationState(service)?.isStarved).toBe(true);
-    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true, cause: 'budget' });
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
     // …but the rescue list drops it: PELS is no longer holding it below target.
     expect(service.getStarvedRescueEntries()).toHaveLength(0);
   });
 
-  it('maps shortfall starvation to the compact capacity cause', () => {
+  it('keeps the granular shortfall counting cause for device detail and the logs', () => {
     const { service } = createDeps();
     const start = Date.now();
     const shortfallObservation = buildObservation({ countingCause: 'shortfall' });
@@ -579,10 +581,8 @@ describe('DeviceDiagnosticsService', () => {
       observations: [shortfallObservation],
     });
 
-    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
-      isStarved: true,
-      cause: 'capacity',
-    });
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
+    expect(getStarvationState(service)?.starvationCause).toBe('shortfall');
   });
 
   it('pauses accumulation through a non-counting hold then resumes under a real cap hold', () => {
@@ -704,10 +704,8 @@ describe('DeviceDiagnosticsService', () => {
     }
 
     expect(getStarvationState(service)?.isStarved).toBe(true);
-    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
-      isStarved: true,
-      cause: 'capacity',
-    });
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
+    expect(getStarvationState(service)?.starvationCause).toBe('capacity');
   });
 
   it('starves a device PELS sheds by turning it OFF while below its mode target', () => {
@@ -731,13 +729,11 @@ describe('DeviceDiagnosticsService', () => {
     }
 
     expect(getStarvationState(service)?.isStarved).toBe(true);
-    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
-      isStarved: true,
-      cause: 'capacity',
-    });
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
+    expect(getStarvationState(service)?.starvationCause).toBe('capacity');
   });
 
-  it('attributes a turn_off budget shed below target to the budget bucket', () => {
+  it('attributes a turn_off budget shed below target to the daily-budget counting cause', () => {
     const { service } = createDeps();
     const start = Date.now();
 
@@ -756,10 +752,8 @@ describe('DeviceDiagnosticsService', () => {
     }
 
     expect(getStarvationState(service)?.isStarved).toBe(true);
-    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
-      isStarved: true,
-      cause: 'budget',
-    });
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
+    expect(getStarvationState(service)?.starvationCause).toBe('daily_budget');
   });
 
   it('does not starve a device the USER turned off (PELS not shedding it)', () => {
@@ -904,16 +898,13 @@ describe('DeviceDiagnosticsService', () => {
     const starvation = getStarvationState(service);
     expect(starvation?.isStarved).toBe(true);
     expect(starvation?.starvedAccumulatedMs).toBe(5 * 60 * 1000);
-    // The original capacity cause is RETAINED across the pause — a pause does not
-    // change WHY the device became starved, so the overview still reads capacity
-    // (there is no manual/external bucket anymore).
+    // The original capacity counting cause is RETAINED across the pause — a pause
+    // does not change WHY the device became starved, so device detail and the
+    // `device_starvation_*` logs keep reading capacity.
     expect(starvation?.starvationCause).toBe('capacity');
     expect(starvation?.starvationPauseReason).toBe('suppression_none');
     expect(starvation?.starvationLastResumedAt).toBeUndefined();
-    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
-      isStarved: true,
-      cause: 'capacity',
-    });
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
   });
 
   it('resets pending starvation entry when the intended normal target changes', () => {

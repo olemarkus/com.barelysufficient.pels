@@ -1,25 +1,21 @@
 // Browser-safe contract for the starvation-rescue widget. The runtime backend
 // produces a `StarvationRescueDevicesPayload` (the currently-starved devices),
 // and the widget reuses the deferred-objective plan-preview + create contracts
-// for the bounded budget-exempt rescue. Type-only; imports nothing from `lib/`.
+// for the bounded rescue. Type-only; imports nothing from `lib/`.
 
-import type { SettingsUiPlanStarvationCause } from './settingsUiApi.js';
 import type { DeferredObjectivePlanPreviewEstimate } from './deferredObjectivePlanPreview.js';
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
 
 // One currently-starved device the rescue widget lists. `accumulatedMs` is the
-// counted starvation duration (the widget floors it to whole minutes for
-// display); `cause` is the producer-resolved flat cause — the widget never
-// re-derives it (feedback_layering_resolution_in_producer). Only `cause:
-// 'budget'` rows offer the exempt rescue; the rest are informational.
+// counted starvation duration (the widget renders it as whole minutes, rolling
+// over into hours).
 //
 // `intendedNormalTargetC` is the device's normal comfort/storage target — the
-// value a budget rescue must drive the device to. Present only for temperature
+// value the rescue must drive the device to. Present only for temperature
 // devices that reported it; null otherwise (the rescue is then not offered).
 export type StarvationRescueDevice = {
   deviceId: string;
   deviceName: string;
-  cause: SettingsUiPlanStarvationCause;
   accumulatedMs: number;
   intendedNormalTargetC: number | null;
   // Current semantic authority for the rescue action. A transient unavailable
@@ -30,7 +26,7 @@ export type StarvationRescueDevice = {
   // device is STILL shown in the held-back list (so the user sees it is
   // struggling), but its rescue button is suppressed — the rescue is a fresh
   // one-shot task and must never replace the device's own task; the existing task
-  // is what should bring it to target. Producer-resolved, like `cause`.
+  // is what should bring it to target. Producer-resolved.
   hasSmartTask: boolean;
 };
 
@@ -58,8 +54,8 @@ export type StarvationRescueDevicesPayload = {
 // (its deadline is a fixed now+3h horizon) and adds two rescue-only gates.
 export type StarvationRescueRejectReason =
   | 'invalid_request'
-  // The device is not a currently-starved BUDGET-caused row (it cleared, its
-  // cause changed to capacity, or it never offered a rescue).
+  // The device is not a currently-rescuable starved row (it cleared, or it has a
+  // smart task of its own that will bring it back).
   | 'not_rescuable'
   // No intended normal target known for the device yet, so there is nothing to
   // aim the rescue at.
@@ -83,9 +79,11 @@ export type StarvationRescueRejectReason =
   | 'unavailable';
 
 // The device IDs the overview chip may offer the rescue on, resolved server-side
-// from the SAME `getStarvedRescueDevices` list the widget gates on (budget-caused
-// + task-free + a known target). The settings UI gates the chip on membership in
-// this set, so a shown chip's create call can never be rejected as not-rescuable.
+// from the SAME `getStarvedRescueDevices` list the widget gates on (task-free
+// + a known target). The settings UI gates the chip on membership in this set,
+// which keeps a stale affordance rare — but the set is a snapshot, and
+// `resolveRescuableDeviceFromList` re-checks live state on preview AND create, so
+// a shown chip's call can still come back `not_rescuable` / `no_target`.
 export type SettingsUiStarvationRescueDevicesPayload = {
   rescuableDeviceIds: string[];
 };

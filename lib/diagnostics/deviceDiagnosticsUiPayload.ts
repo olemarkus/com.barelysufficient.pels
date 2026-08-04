@@ -1,13 +1,11 @@
 import { getDateKeyInTimeZone } from '../utils/dateUtils';
 import type {
-  DeviceDiagnosticsStarvationCountingCause,
   DeviceDiagnosticsStarvationSummary,
   DeviceDiagnosticsSummary,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type {
   SettingsUiPlanDeviceStarvation,
-  SettingsUiPlanStarvationCause,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { LiveDeviceDiagnostics } from './deviceDiagnosticsServiceTypes';
 import { DEVICE_DIAGNOSTICS_WINDOW_DAYS, type DeviceDiagnosticsPersistence } from './deviceDiagnosticsPersistence';
@@ -47,24 +45,6 @@ export const buildStarvationSummary = (
     starvationPauseReason: starvation.starvationPauseReason,
   };
 };
-
-const OVERVIEW_BUDGET_STARVATION_CAUSES = new Set<DeviceDiagnosticsStarvationCountingCause>([
-  'daily_budget',
-  'hourly_budget',
-]);
-
-// Every starvation episode now carries a real counting cause (capacity/budget):
-// PELS only starves a device it is actively holding below its mode target, so a
-// starved device always has a `countingCause` (retained across pauses). The
-// overview surfaces exactly two buckets — budget (releasable) vs capacity
-// (physical). There is no manual or external bucket: a below-target device PELS
-// merely keeps is not starved. The null fallback is defensive only and maps to
-// the physical-capacity bucket (the non-actionable default).
-const resolveOverviewStarvationCause = (
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null,
-): SettingsUiPlanStarvationCause => (
-  countingCause !== null && OVERVIEW_BUDGET_STARVATION_CAUSES.has(countingCause) ? 'budget' : 'capacity'
-);
 
 export const buildUiPayload = (params: {
   liveByDeviceId: Record<string, LiveDeviceDiagnostics>;
@@ -126,7 +106,6 @@ export const getOverviewStarvation = (
   return {
     isStarved: true,
     accumulatedMs: live.starvation.starvedAccumulatedMs,
-    cause: resolveOverviewStarvationCause(live.starvation.starvationCause),
     startedAtMs: live.starvation.starvationEpisodeStartedAt ?? null,
   };
 };

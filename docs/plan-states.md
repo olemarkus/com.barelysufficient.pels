@@ -44,7 +44,7 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | **Waiting to resume — more budget next hour** | This hour's energy budget is spent, so freeing power will not help. The device can resume when the next hour's budget starts. |
 | **Waiting to resume** | The device is waiting for power, but PELS cannot put a number on it yet. |
 | **Waiting for available power** | Shown when a device has been waiting on power long enough to be flagged, with no number available. |
-| **Limited to stay within today's budget** | Today's budget is holding the device back — and this one you can release, with **Let it run now**. |
+| **Held 2 h — 0.8 kW more needed** | The same power fact as the first row, for a device PELS has been holding back long enough to flag. The elapsed time is why this card offers **Let it run now** and its neighbours do not. |
 | **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Hard cap breach imminent — manual action needed** trigger for alerts. |
 | **Waiting before resuming** | PELS is respecting a cooldown so devices do not rapidly cycle. |
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |

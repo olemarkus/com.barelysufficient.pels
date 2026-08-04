@@ -164,12 +164,16 @@ export type SettingsUiPlanPendingTargetCommand = {
   lastObservedSource?: string;
 };
 
-export type SettingsUiPlanStarvationCause = 'capacity' | 'budget';
-
+// One starved state, no cause bucket. The flat `capacity | budget` split was
+// removed 2026-08-04: it was a momentary snapshot of whichever constraint bound
+// on the last accumulation tick, so it flipped mid-hold, and every surface that
+// branched on it (badge, widget chip, row copy, and the rescue gate) flipped with
+// it. The granular `DeviceDiagnosticsStarvationCountingCause` — which does carry
+// real diagnostic value — is unaffected and still reaches device detail and the
+// `device_starvation_*` logs.
 export type SettingsUiPlanDeviceStarvation = {
   isStarved: boolean;
   accumulatedMs: number;
-  cause: SettingsUiPlanStarvationCause;
   startedAtMs: number | null;
 };
 

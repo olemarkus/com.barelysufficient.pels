@@ -77,7 +77,7 @@ const handlePlanUpdated = (plan: unknown) => {
   document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan: parsedPlan } }));
   if (!isPanelVisible('#overview-panel')) return;
   // Refresh the rescuable-device set so the "Let it run now" chip's gate tracks
-  // the live starvation state (a device that just entered / left budget-caused
+  // the live starvation state (a device that just entered / left
   // starvation, gained / lost a smart task, or learned its target). Overview-only
   // so it never fetches while the user is on another tab. The guarded repaint
   // follows the fetch so the chip appears / disappears once it loads, but only if

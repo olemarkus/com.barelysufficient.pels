@@ -276,8 +276,11 @@ export class StarvationTracker {
     const clearAt = clearQualifiedStartedAt + DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS;
     live.starvation.clearQualifiedStartedAt = clearQualifiedStartedAt;
     live.starvation.starvationLastResumedAt = undefined;
-    // Hold the original capacity/budget cause through the clear-hysteresis window
-    // so the overview badge stays attributed until the episode fully resets.
+    // Hold the counting cause through the clear-hysteresis window — accumulation
+    // has stopped, so nothing overwrites it — leaving device detail and a later
+    // `device_starvation_resumed` attributed until the episode fully resets. Not
+    // an immutable episode-entry cause: while accumulation IS running,
+    // `applyStarvationAccumulationProgress` refreshes it from each observation.
     live.starvation.starvationPauseReason = null;
     if (endTs < clearAt) return;
     (this.deps.structuredLog ?? moduleLogger).info({
@@ -336,9 +339,10 @@ export class StarvationTracker {
     }
     live.starvation.clearQualifiedStartedAt = undefined;
     live.starvation.starvationLastResumedAt = undefined;
-    // Keep the original capacity/budget cause so a paused-but-latched episode
-    // still reports its true cause to the overview badge (capacity vs budget) —
-    // a pause does not change WHY the device became starved.
+    // Keep the counting cause so a paused-but-latched episode still reports its
+    // last attributed cause to device detail, and to `device_starvation_resumed`
+    // if it resumes — a pause does not change WHY the device became starved.
+    // (`device_starvation_paused` / `_cleared` carry no cause field themselves.)
     live.starvation.starvationPauseReason = pauseReason;
   }
 

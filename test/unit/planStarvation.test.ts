@@ -10,45 +10,38 @@ describe('planStarvation', () => {
     expect(formatStarvationBadge({
       isStarved: false,
       accumulatedMs: 0,
-      cause: 'capacity',
       startedAtMs: null,
     })).toBeNull();
     expect(formatStarvationReason(undefined)).toBeNull();
   });
 
-  it('formats a capacity-starvation badge and reason', () => {
+  // One starved state, one badge. The `Budget limited` / `Low power` pair it
+  // replaced keyed off a bucket that was overwritten on every accumulation tick,
+  // so a device holding steady could swap badge and tone between two cycles
+  // without anything about it changing.
+  it('formats one badge and reason for every held-back device', () => {
     const starvation = {
       isStarved: true,
       accumulatedMs: 23 * 60 * 1000,
-      cause: 'capacity' as const,
       startedAtMs: Date.UTC(2026, 3, 20, 11, 0, 0),
     };
 
     expect(formatStarvationBadge(starvation)).toEqual({
-      label: 'Low power',
+      label: 'Held back',
       tone: 'warn',
       tooltip: 'Waiting for available power',
     });
     expect(formatStarvationReason(starvation)).toBe('Waiting for available power');
   });
 
-  it('formats a budget-starvation badge with a softer info tone', () => {
-    expect(formatStarvationBadge({
+  it('names no ceiling in the badge — the hero states that once', () => {
+    const badge = formatStarvationBadge({
       isStarved: true,
       accumulatedMs: 12 * 60 * 1000,
-      cause: 'budget',
       startedAtMs: null,
-    })).toEqual({
-      label: 'Budget limited',
-      tone: 'info',
-      tooltip: "Limited to stay within today's budget",
     });
-    expect(formatStarvationReason({
-      isStarved: true,
-      accumulatedMs: 12 * 60 * 1000,
-      cause: 'budget',
-      startedAtMs: null,
-    })).toBe("Limited to stay within today's budget");
+    expect(badge).not.toBeNull();
+    expect(`${badge!.label} ${badge!.tooltip}`.toLowerCase()).not.toMatch(/budget|hard cap/);
   });
 
   it('summarizes all starved devices in the hero', () => {
@@ -58,7 +51,6 @@ describe('planStarvation', () => {
         starvation: {
           isStarved: true,
           accumulatedMs: 20 * 60 * 1000,
-          cause: 'capacity',
           startedAtMs: null,
         },
       },
@@ -66,7 +58,6 @@ describe('planStarvation', () => {
         starvation: {
           isStarved: true,
           accumulatedMs: 20 * 60 * 1000,
-          cause: 'budget',
           startedAtMs: null,
         },
       },
@@ -77,7 +68,6 @@ describe('planStarvation', () => {
         starvation: {
           isStarved: true,
           accumulatedMs: 20 * 60 * 1000,
-          cause: 'capacity',
           startedAtMs: null,
         },
       },
@@ -85,7 +75,6 @@ describe('planStarvation', () => {
         starvation: {
           isStarved: true,
           accumulatedMs: 10 * 60 * 1000,
-          cause: 'capacity',
           startedAtMs: null,
         },
       },

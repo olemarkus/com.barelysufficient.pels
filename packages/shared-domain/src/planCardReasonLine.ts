@@ -1,6 +1,6 @@
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
-import { formatStarvationReason } from './planStarvation';
+import { formatStarvationDurationLabel, formatStarvationReason } from './planStarvation';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
@@ -26,7 +26,12 @@ import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/setting
 // word is `Limited` and the power fact is beside it, so "Turned off by PELS"
 // (the pre-2026-08-02 fallback) contributed nothing — it named the action the
 // state word had already named, and dropped the cause the runtime had already
-// resolved.
+// resolved. "Limited to stay within today's budget" (retired 2026-08-04) failed
+// the same test twice over: it opened by restating the state word and closed by
+// naming a house-level ceiling. A held card that has been held long enough to
+// count as starved now says so — `Held 2 h — 0.7 kW more needed` — because the
+// duration is the device's own fact, and the only one that explains why THIS
+// card carries the "Let it run now" action and its neighbours do not.
 const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
@@ -88,17 +93,78 @@ const readReasonCode = (reason: unknown): string | undefined => {
 // number and the ladder are identical.
 export type HeldCardReasonVerb = 'resume' | 'increase';
 
-export const formatShortfallLine = (shortfallKw: number, verb: HeldCardReasonVerb): string => (
-  `Waiting to ${verb} — ${shortfallKw.toFixed(1)} kW more needed`
+// The need clause every ceiling-hold line ends in, held apart from the stem so
+// the starved form below can reuse it verbatim.
+const formatShortfallNeed = (shortfallKw: number): string => (
+  `${shortfallKw.toFixed(1)} kW more needed`
 );
+
+const HOURLY_EXHAUSTED_NEED = 'more budget next hour';
+
+// The starved form of a ceiling hold: "Held 2 h — 0.7 kW more needed". Same need
+// clause, but the stem states how long PELS has been holding the device below
+// target instead of the generic "Waiting to resume".
+//
+// The duration is the ONE device-scoped fact that distinguishes this card from
+// every other device held in the same cycle — it is why this card, and not its
+// neighbours, carries the "Let it run now" action. It replaces the pre-2026-08-04
+// line ("Limited to stay within today's budget"), which restated the `Limited`
+// state word and then named a house-level ceiling the hero already states once.
+//
+// `verb` drops out here: "Held 2 h" describes the hold itself, so the
+// resume/increase distinction the non-starved stems need does not arise.
+const formatStarvedHoldLine = (accumulatedMs: number, need: string): string => (
+  `Held ${formatStarvationDurationLabel(accumulatedMs)} — ${need}`
+);
+
+// The starved duration to decorate with, or null when the device is not starved.
+// A non-positive accumulation takes the plain stem rather than rendering
+// `Held 0 min`: an episode latched but not yet accumulated has nothing to report,
+// and "held for no time" reads as a bug to the owner.
+const resolveStarvedForMs = (
+  starvation: SettingsUiPlanDeviceStarvation | null | undefined,
+): number | null => (
+  starvation?.isStarved === true
+    && Number.isFinite(starvation.accumulatedMs)
+    && starvation.accumulatedMs > 0
+    ? starvation.accumulatedMs
+    : null
+);
+
+// The one builder for "<stem> — <need>" lines. A device held long enough to
+// count as starved gets the elapsed-hold stem; everything else gets the plain
+// waiting stem. Single home so the generic, temperature, and stepped cards
+// cannot drift — the stepped card carried its own competing starvation override
+// until 2026-08-04, and the two disagreed about which fact won.
+const formatHeldNeedLine = (params: {
+  need: string;
+  verb: HeldCardReasonVerb;
+  starvation?: SettingsUiPlanDeviceStarvation | null;
+}): string => {
+  const { need, verb, starvation } = params;
+  const starvedForMs = resolveStarvedForMs(starvation);
+  return starvedForMs === null
+    ? `Waiting to ${verb} — ${need}`
+    : formatStarvedHoldLine(starvedForMs, need);
+};
+
+export const formatShortfallLine = (
+  shortfallKw: number,
+  verb: HeldCardReasonVerb,
+  starvation?: SettingsUiPlanDeviceStarvation | null,
+): string => formatHeldNeedLine({ need: formatShortfallNeed(shortfallKw), verb, starvation });
 
 // Verb-adjusted form of `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS` (the
 // constant is the `resume` form and stays the log formatter's string).
-export const formatHourlyExhaustedLine = (verb: HeldCardReasonVerb): string => (
-  verb === 'resume'
+export const formatHourlyExhaustedLine = (
+  verb: HeldCardReasonVerb,
+  starvation?: SettingsUiPlanDeviceStarvation | null,
+): string => (
+  verb === 'resume' && resolveStarvedForMs(starvation) === null
     ? PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS
-    : 'Waiting to increase — more budget next hour'
+    : formatHeldNeedLine({ need: HOURLY_EXHAUSTED_NEED, verb, starvation })
 );
+
 
 export const resolveHeldCardReasonLine = (params: {
   reason: unknown;
@@ -107,18 +173,17 @@ export const resolveHeldCardReasonLine = (params: {
 }): string => {
   const { reason, starvation, verb = 'resume' } = params;
 
-  // A budget-releasable hold is the one case with a user action attached ("Let
-  // it run now"), so its producer-resolved copy outranks even the shortfall.
-  if (starvation?.isStarved && starvation.cause === 'budget') {
-    const budgetLine = formatStarvationReason(starvation);
-    if (budgetLine) return budgetLine;
-  }
+  // Starvation DECORATES a ceiling hold; it never preempts the ladder. Until
+  // 2026-08-04 a budget-caused starvation returned its own line from the top of
+  // this function, which also swallowed the countdown copy of a device merely
+  // waiting out a restore cooldown and the smart-task/solar/external-off causes
+  // of a device power could not admit at all. Those keep their own copy below —
+  // exactly as this module's header always said they should.
 
-  // Capacity-cause starvation is the LAST resort, not the first: its copy
-  // ("Waiting for available power") is true but says less than a kW figure, and
-  // the hard cap behind it is not a lever the owner can trade against
-  // (feedback_hard_cap_is_physical). Used only where nothing more specific
-  // exists, so a long-held card never falls back to a blank line.
+  // Starvation with nothing more specific to say is the LAST resort: its copy
+  // ("Waiting for available power") is true but says less than a kW figure.
+  // Used only where nothing more specific exists, so a long-held card never
+  // falls back to a blank line.
   const fallback = (starvation?.isStarved ? formatStarvationReason(starvation) : null)
     ?? PLAN_STATE_HELD_FALLBACK_STATUS;
 
@@ -131,12 +196,12 @@ export const resolveHeldCardReasonLine = (params: {
   // shortfall line: a running stepped device denied a step-up is not waiting
   // to "resume".
   if (code === PLAN_REASON_CODES.hourlyBudget) {
-    return formatHourlyExhaustedLine(verb);
+    return formatHourlyExhaustedLine(verb, starvation);
   }
 
   if (isCeilingHoldReasonCode(code)) {
     const shortfallKw = resolveRestoreShortfallKw(reason);
-    return shortfallKw === null ? fallback : formatShortfallLine(shortfallKw, verb);
+    return shortfallKw === null ? fallback : formatShortfallLine(shortfallKw, verb, starvation);
   }
 
   // Everything else keeps the canonical user-facing sentence the runtime already

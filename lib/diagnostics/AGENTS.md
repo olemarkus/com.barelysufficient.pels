@@ -19,10 +19,10 @@ Design-of-record: `notes/starvation/README.md`; intended-target model also in `l
 
 - **Starve only when PELS holds a device below its mode target.** The signal is `commandedTargetC < intendedNormalTargetC` (commanded = `plannedTarget ?? currentTarget`) under a real counting cause — NOT the physical temperature. A device PELS commands in full (`keep`) is never starved, however cold it is. The old physical-temperature deficit thresholds (anchor table in the deleted `starvationThresholds.ts`) are gone.
 - Entry requires 15 minutes of continuous below-target counting suppression — not a single-cycle check.
-- Non-counting holds (cooldown, retry/backoff, restore, keep, inactive) **cannot start** starvation; on a latched episode they **pause** accumulation (the device is not being limited right now) and retain the original capacity/budget cause.
+- Non-counting holds (cooldown, retry/backoff, restore, keep, inactive) **cannot start** starvation; on a latched episode they **pause** accumulation (the device is not being limited right now) and retain the original counting cause.
 - `capacity control off` must **clear and reset** starvation entirely.
 - Clear requires PELS to command the full mode target (`commandedTargetC >= intendedNormalTargetC`) for 10 continuous minutes (hysteresis — partial recovery does not clear starvation).
-- Exactly two overview/badge buckets: **capacity** (physical) and **budget** (releasable). No `manual`/`external` bucket.
+- **No overview/badge cause bucket** (the flat `capacity | budget` fold was removed 2026-08-04). It was overwritten on every accumulation tick, so a device held steadily across a budget-bound and a capacity-bound cycle flipped its badge, its copy, and its rescue button with nothing about the device having changed. The overview payload carries `isStarved`, `accumulatedMs`, and `startedAtMs` only; the granular counting cause below is unaffected and still feeds device detail and the `device_starvation_*` logs. No `manual`/`external` bucket either.
 - Duration-threshold flow triggers must fire **once per episode per threshold**, not every planning cycle.
 - Accumulated duration must be tracked explicitly — a single start timestamp is insufficient.
 

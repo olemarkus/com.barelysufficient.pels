@@ -3203,7 +3203,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       deviceDiagnosticsService: {
         getStarvedRescueEntries: () => [{
           deviceId: 'd-moving',
-          starvation: { isStarved: true, cause: 'budget', accumulatedMs: 20 * 60_000 },
+          starvation: { isStarved: true, accumulatedMs: 20 * 60_000 },
           intendedNormalTargetC: 60,
         }],
       },

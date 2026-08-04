@@ -69,7 +69,7 @@ export const CheckCircleIcon = (props: IconProps) => (
 // Material `bolt` glyph. Leads the Overview "Exempt from budget" action chip:
 // the lightning bolt reads as "let it run / give it power now", the consequence
 // of exempting the device from today's budget. It also visually separates the
-// tappable action chip from the adjacent "Budget limited" status badge (which
+// tappable action chip from the adjacent "Held back" status badge (which
 // has no icon).
 export const BoltIcon = (props: IconProps) => (
   <svg {...baseSvgProps(props)}>
