@@ -41,7 +41,7 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | Status wording | Meaning |
 | --- | --- |
 | **Waiting to resume — 0.8 kW more needed** | The power that would actually bring this device back. Reserves are already counted, so freeing that much is enough. Stepped devices asking for a higher level read **Waiting to increase — …**. |
-| **Waiting to resume — more budget next hour** | This hour's energy budget is spent, so freeing power will not help. The device can resume when the next hour's budget starts. |
+| **Waiting to resume — this hour's budget is spent** | This hour's energy budget is used up, so freeing power will not help. |
 | **Waiting to resume** | The device is waiting for power, but PELS cannot put a number on it yet. |
 | **Waiting for available power** | Shown when a device has been waiting on power long enough to be flagged, with no number available. |
 | **Held 2 h — 0.8 kW more needed** | The same power fact as the first row, for a device PELS has been holding back long enough to flag. The elapsed time is why this card offers **Let it run now** and its neighbours do not. |

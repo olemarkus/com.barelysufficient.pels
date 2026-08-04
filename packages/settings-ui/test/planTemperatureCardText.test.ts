@@ -184,7 +184,7 @@ describe('resolveTemperatureReasonLine', () => {
     expect(lines).toEqual([
       PLAN_STATE_HELD_FALLBACK_STATUS,
       'Waiting to resume — 1.1 kW more needed',
-      'Waiting to resume — more budget next hour',
+      "Waiting to resume — this hour's budget is spent",
       PLAN_STATE_HELD_FALLBACK_STATUS,
       'Waiting to resume — 0.5 kW more needed',
     ]);

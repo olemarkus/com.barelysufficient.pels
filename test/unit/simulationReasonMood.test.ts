@@ -23,7 +23,7 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
     // The hourly-exhausted line shares the shortfall line's prefix, so it
     // rides the "Waiting to resume " rewrite rather than the "Limited" one.
     expect(toSimulationReasonLine(PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS, true))
-      .toBe('Would be waiting to resume — more budget next hour (simulation)');
+      .toBe("Would be waiting to resume — this hour's budget is spent (simulation)");
   });
 
   it('flips budget-starvation and swap "Limited …" lines', () => {

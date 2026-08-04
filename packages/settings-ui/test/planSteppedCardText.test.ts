@@ -526,7 +526,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to increase — more budget next hour');
+      expect(result).toBe("Waiting to increase — this hour's budget is spent");
     });
 
     // Production-shaped reason (margins present): the gap is the
@@ -615,7 +615,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Waiting to resume — more budget next hour');
+      )).toBe("Waiting to resume — this hour's budget is spent");
     });
 
     it('states the shortfall when a budget hold carries one', () => {

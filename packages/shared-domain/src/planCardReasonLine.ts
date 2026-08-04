@@ -99,7 +99,7 @@ const formatShortfallNeed = (shortfallKw: number): string => (
   `${shortfallKw.toFixed(1)} kW more needed`
 );
 
-const HOURLY_EXHAUSTED_NEED = 'more budget next hour';
+const HOURLY_EXHAUSTED_NEED = "this hour's budget is spent";
 
 // The starved form of a ceiling hold: "Held 2 h — 0.7 kW more needed". Same need
 // clause, but the stem states how long PELS has been holding the device below
@@ -190,11 +190,11 @@ export const resolveHeldCardReasonLine = (params: {
   const code = readReasonCode(reason);
 
   // The one ceiling hold that must NOT show a kW: the hour's energy budget is
-  // spent, and spent kWh cannot be un-spent — no amount of freed power admits
-  // the device before the hour rolls over, so the honest line names the
-  // recourse (next hour's budget) instead of a gap. Verb-aware like the
-  // shortfall line: a running stepped device denied a step-up is not waiting
-  // to "resume".
+  // spent, and freeing power does not put kWh back into the hour, so the honest
+  // line names the condition instead of a gap. It names no recourse either —
+  // see `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS` for why "more budget next
+  // hour" was a promise PELS could not keep. Verb-aware like the shortfall line:
+  // a running stepped device denied a step-up is not waiting to "resume".
   if (code === PLAN_REASON_CODES.hourlyBudget) {
     return formatHourlyExhaustedLine(verb, starvation);
   }
