@@ -27,8 +27,16 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
   const reportPowerCard = deps.homey.flow.getActionCard('report_power_usage');
   reportPowerCard.registerRunListener(async (args: unknown) => {
     const power = readFlowNumberArg(args, 'power');
-    if (power === null || power < 0) {
-      throw new Error('Power must be a non-negative number (W).');
+    // SIGNED: negative watts are grid export, admitted on the same terms as the
+    // Homey Energy source, which has always passed them through
+    // (`extractLiveMeterPowerWatts`). Rejecting them here fenced every exporting
+    // home out of the flow source entirely — an ordinary signed HAN meter could
+    // not report at all while exporting, so PELS received no sample and went
+    // stale rather than reading a net value it already knows how to handle.
+    // `readFlowNumberArg` already guarantees finite-or-null, so absence is the
+    // only remaining rejection.
+    if (power === null) {
+      throw new Error('Power must be a number (W).');
     }
     await deps.recordPowerSample(power);
     return true;

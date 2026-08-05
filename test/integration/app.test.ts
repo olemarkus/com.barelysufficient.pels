@@ -827,6 +827,39 @@ describe('MyApp initialization', () => {
       .rejects.toThrow(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
   });
 
+  it('report_power_usage admits signed watts and rejects only a non-number', async () => {
+    // Grid export is a NEGATIVE whole-home reading. Rejecting it fenced every
+    // exporting home out of the flow power source: an ordinary signed HAN meter
+    // could not report at all while exporting, so PELS received no sample and
+    // went stale. The Homey Energy source has always passed signed values
+    // through (`extractLiveMeterPowerWatts`); this card is the only place that
+    // ever disagreed.
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    mockHomeyInstance.settings.set('power_source', 'flow');
+
+    const app = createApp();
+    await initApp(app);
+
+    const recordSpy = vi.spyOn(app as unknown as {
+      recordPowerSample: (powerW: number, nowMs?: number) => Promise<void>;
+    }, 'recordPowerSample');
+
+    const reportPower = mockHomeyInstance.flow._actionCardListeners['report_power_usage'];
+    await expect(reportPower({ power: -2500 })).resolves.toBe(true);
+    expect(recordSpy).toHaveBeenCalledWith(-2500, expect.any(Number));
+
+    await expect(reportPower({ power: 0 })).resolves.toBe(true);
+    await expect(reportPower({ power: 3000 })).resolves.toBe(true);
+
+    // Absence is the only remaining rejection — `readFlowNumberArg` already
+    // guarantees finite-or-null, so NaN/Infinity arrive as null.
+    await expect(reportPower({})).rejects.toThrow('Power must be a number (W).');
+    await expect(reportPower({ power: 'not-a-number' })).rejects.toThrow('Power must be a number (W).');
+
+    recordSpy.mockRestore();
+  });
+
   it('clears a queued power rebuild and resolves its pending promise on uninit', async () => {
     vi.useRealTimers();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });

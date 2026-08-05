@@ -2468,6 +2468,133 @@ describe('recordPowerSampleForApp', () => {
     }));
   });
 
+  // Gross consumption during EXPORT with no co-sampled production reading.
+  // `net + generation` cannot resolve gross from a negative net when generation
+  // is absent, and `max(0, net)` would assert the home consumed nothing — which
+  // zeroes the managed/background split while devices are demonstrably drawing.
+  describe('gross consumption on a negative net sample', () => {
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    const drawingSnapshot = (observedAtMs: number) => () => ([
+      {
+        id: 'heater-a',
+        name: 'Heater A',
+        targets: [],
+        measuredPowerKw: 1.2,
+        measuredPowerObservedAtMs: observedAtMs,
+      },
+      {
+        id: 'heater-b',
+        name: 'Heater B',
+        targets: [],
+        measuredPowerKw: 0.8,
+        measuredPowerObservedAtMs: observedAtMs,
+      },
+    ]);
+
+    const record = async (params: {
+      currentPowerW: number;
+      generationW?: number;
+      getLatestTargetSnapshot: () => never[] | ReturnType<ReturnType<typeof drawingSnapshot>>;
+    }): Promise<PowerTrackerState> => {
+      let tracker: PowerTrackerState = {};
+      await recordPowerSampleForApp({
+        currentPowerW: params.currentPowerW,
+        ...(params.generationW !== undefined ? { generationW: params.generationW } : {}),
+        nowMs: start,
+        capacitySettings: { limitKw: 10, marginKw: 0.2 },
+        getLatestTargetSnapshot: params.getLatestTargetSnapshot as never,
+        powerTracker: {},
+        splitControlledUsage: splitControlledUsageKw,
+        sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+        updateObjectiveProfiles: ({ state }) => state,
+        schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+        saveState: (nextState) => {
+          tracker = nextState;
+        },
+      });
+      return tracker;
+    };
+
+    it('attributes the measured device draw instead of reporting a 0 kW home', async () => {
+      const tracker = await record({
+        currentPowerW: -1500,
+        getLatestTargetSnapshot: drawingSnapshot(start),
+      });
+      // 1.2 + 0.8 kW of measured managed draw survives the export sample.
+      expect(tracker.lastControlledPowerW).toBe(2000);
+      // Background load is genuinely unobservable without a production reading,
+      // so it stays 0 — a floor, not a claim.
+      expect(tracker.lastUncontrolledPowerW).toBe(0);
+      // The billed total keeps net, floored — export is not negative energy.
+      expect(tracker.lastPowerW).toBe(-1500);
+    });
+
+    it('never attributes a non-controllable device\'s draw to a managed device', async () => {
+      // The floor must be summed over the SAME set the split attributes over.
+      // A home battery is real draw but `controllable: false`, so it is excluded
+      // from the controlled sum — while a controllable device with no fresh
+      // measurement contributes its `expectedPowerKw` estimate to that sum. A
+      // floor built from raw measured device draw would hand the battery's 2 kW
+      // to the split, which would then record it as 2 kW of HEATER usage with 0
+      // background: the wrong device credited for watts it never drew.
+      const tracker = await record({
+        currentPowerW: -1000,
+        getLatestTargetSnapshot: () => ([
+          {
+            id: 'home-battery',
+            name: 'Home battery',
+            targets: [],
+            controllable: false,
+            measuredPowerKw: 2,
+            measuredPowerObservedAtMs: start,
+          },
+          {
+            id: 'heater-estimated',
+            name: 'Heater (no fresh measurement)',
+            targets: [],
+            expectedPowerKw: 2,
+          },
+        ]) as never,
+      });
+
+      // Only the heater's own projected 2 kW is attributed — the battery's
+      // measured draw is not laundered into the managed bucket.
+      expect(tracker.lastControlledPowerW).toBe(2000);
+      expect(tracker.lastUncontrolledPowerW).toBe(0);
+    });
+
+    it('reports 0 when no fresh measured draw is available to floor at', async () => {
+      const tracker = await record({
+        currentPowerW: -1500,
+        getLatestTargetSnapshot: () => [],
+      });
+      expect(tracker.lastControlledPowerW).toBeUndefined();
+      expect(tracker.lastPowerW).toBe(-1500);
+    });
+
+    it('still prefers net + generation when a production reading is co-sampled', async () => {
+      const tracker = await record({
+        currentPowerW: -1500,
+        generationW: 4000,
+        getLatestTargetSnapshot: drawingSnapshot(start),
+      });
+      // gross = -1500 + 4000 = 2500 W, so the split measures against 2.5 kW and
+      // the 2 kW of managed draw leaves 0.5 kW of background — NOT the 2 kW
+      // floor, proving the floor never displaces an authoritative reading.
+      expect(tracker.lastControlledPowerW).toBe(2000);
+      expect(tracker.lastUncontrolledPowerW).toBe(500);
+    });
+
+    it('leaves a positive net sample byte-identical', async () => {
+      const tracker = await record({
+        currentPowerW: 2500,
+        getLatestTargetSnapshot: drawingSnapshot(start),
+      });
+      expect(tracker.lastControlledPowerW).toBe(2000);
+      expect(tracker.lastUncontrolledPowerW).toBe(500);
+    });
+  });
+
 });
 
 describe('createCalibrationSnapshotMutationHook', () => {

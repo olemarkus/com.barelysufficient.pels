@@ -569,11 +569,10 @@ describe('settingsUiApi', () => {
     expect(payload.hasExhibitedExport).toBe(true);
   });
 
-  it('keeps hasExhibitedExport false below the material floor and on the flow source', () => {
-    // A sub-kWh export blip stays under the material floor (no toggle flicker),
-    // and the flow source never exports (negative watts are rejected at the power
-    // boundary), so even a material export history there reads false — flow homes
-    // get no solar surfaces.
+  it('keeps hasExhibitedExport false below the material floor, on either power source', () => {
+    // A sub-kWh export blip stays under the material floor on both sources —
+    // the floor is what prevents toggle flicker, and it is the ONLY thing
+    // holding the flag down.
     const tinyHomey = createHomey({
       settings: { power_source: 'homey_energy' },
       latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
@@ -583,6 +582,20 @@ describe('settingsUiApi', () => {
     };
     expect(getSettingsUiDevicesPayload({ homey: tinyHomey as never }).hasExhibitedExport).toBe(false);
 
+    const tinyFlowHomey = createHomey({
+      settings: { power_source: 'flow' },
+      latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
+    });
+    (tinyFlowHomey.app as { powerTracker: unknown }).powerTracker = {
+      exportBuckets: { '2026-03-03T10:00:00.000Z': 0.2 },
+    };
+    expect(getSettingsUiDevicesPayload({ homey: tinyFlowHomey as never }).hasExhibitedExport).toBe(false);
+  });
+
+  it('reports hasExhibitedExport on the flow source too — export is source-blind', () => {
+    // The flow card accepts signed watts, so a flow home's export families fill
+    // on exactly the same evidence as a Homey Energy one. The flag must read the
+    // accrued export, never the source name.
     const flowHomey = createHomey({
       settings: { power_source: 'flow' },
       latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
@@ -590,7 +603,7 @@ describe('settingsUiApi', () => {
     (flowHomey.app as { powerTracker: unknown }).powerTracker = {
       exportDailyTotals: { '2026-02-01': 9.9 },
     };
-    expect(getSettingsUiDevicesPayload({ homey: flowHomey as never }).hasExhibitedExport).toBe(false);
+    expect(getSettingsUiDevicesPayload({ homey: flowHomey as never }).hasExhibitedExport).toBe(true);
   });
 
   it('returns an empty diagnostics payload when the app has no diagnostics API yet', () => {

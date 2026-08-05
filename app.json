@@ -1322,7 +1322,7 @@
           "en": "Report power [[power]] W"
         },
         "hint": {
-          "en": "Send the current whole-house power reading (W) from your meter so PELS can track hourly energy use and stay under the hard cap."
+          "en": "Send the current whole-house power reading (W) from your meter so PELS can track hourly energy use and stay under the hard cap. If your meter reports a signed value, send it as-is: a negative reading means you are exporting to the grid."
         },
         "args": [
           {
@@ -1331,7 +1331,6 @@
             "title": {
               "en": "Power (W)"
             },
-            "min": 0,
             "step": 1
           }
         ],

@@ -187,6 +187,13 @@ const refreshPriceSettings = (key: string) => {
 const refreshPowerSettings = (key: string) => {
   if (key === POWER_TRACKER_STATE) {
     invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+    // The whole-home `ui_devices` payload derives `hasExhibitedExport` from this
+    // same tracker, so a bare tracker write must sweep the devices entries too —
+    // Main's mirror of the suffixed rule below. Without it a single-home install
+    // that cached `ui_devices` before its first material export keeps the
+    // solar-surplus and export-price affordances hidden until the WebView
+    // reloads, even though the export is recorded.
+    invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
     runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'settings.set');
     refreshStaleDataStatus('settings.set');
     refreshDailyBudgetIfVisible('settings.set');

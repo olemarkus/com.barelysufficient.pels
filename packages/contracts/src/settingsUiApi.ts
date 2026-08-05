@@ -291,7 +291,8 @@ export type SettingsUiDevicesPayload = {
   // export-kWh signal), even without a role-detected solar device — the meter-only PV
   // case (string inverter, no Homey solarpanel device). Broadens the "Use solar surplus"
   // toggle gate so such homes, whose surplus-absorb engine already works off whole-home
-  // net export, also get the control. Always false on the flow power source.
+  // net export, also get the control. Source-blind: both power sources report signed net,
+  // so a flow home exhibits export on exactly the same evidence as a Homey Energy one.
   hasExhibitedExport?: boolean;
   // Present only on a `?homeId=` read; absent keeps the whole-home payload
   // byte-identical. `unavailable` means the empty `devices: []` is the empty
@@ -360,14 +361,14 @@ export type SettingsUiPowerPayload = {
     limitKw: number;
     marginKw: number;
   };
-  // Home-level "this home has solar surfaces" gate for the Usage tab's Solar
-  // card (which cannot read the lazy-loaded devices payload). True only when
-  // a tracked solar/PV device exists AND the power source is homey_energy —
-  // on the flow source the power boundary rejects negative watts and carries
-  // no generation field, so solar buckets can never fill and the card must
-  // not promise data (see getSettingsUiPower). Optional: realtime status-only
-  // pushes don't carry it — consumers treat absence as false and fall back to
-  // the recorded solar buckets.
+  // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
+  // Solar card (which cannot read the lazy-loaded devices payload). True only
+  // when a tracked solar/PV device exists AND the active source delivers a
+  // production reading (`deliversProductionSignal`) — without one the
+  // generation buckets can never fill and the card must not promise data (see
+  // getSettingsUiPower). EXPORT is a separate axis and is not gated by this
+  // flag. Optional: realtime status-only pushes don't carry it — consumers
+  // treat absence as false and fall back to the recorded solar buckets.
   hasManagedSolarDevice?: boolean;
   // Present only on a `?homeId=` read; absent keeps the whole-home payload
   // byte-identical (realtime pushes never carry it either). `unavailable` means

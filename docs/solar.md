@@ -9,15 +9,19 @@ If you have rooftop solar (PV), this page explains what PELS does with it today.
 
 **Short version:** PELS uses your solar to protect your capacity for free; it can nudge a heater to soak surplus — or run an on/off load such as a pool pump only while you export — instead of sending it to the grid; and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
 
-::: warning Requires the Power meter power source
-The solar features below need the **Power meter** power source (read through Homey Energy) — either a solar device that reports production, or a meter that shows your solar export. On the Flow power source, PELS does not receive a solar signal.
+::: warning Needs a signal that you export
+The solar features below need a signal that you are exporting — either a solar device that reports production, or a meter that shows your solar export.
+
+On the **Power meter** power source (read through Homey Energy) both signals are available, and every feature on this page works.
+
+On the **Flow** power source, send your meter's reading to the "Report power usage" card exactly as your meter gives it: if it reports a signed value, a negative reading means you are exporting, and PELS reads it as export. That gives you capacity protection, the export accounting below, and the heating surplus boost. Two things are Power-meter-only: a **production** figure (your panels' output is not available on the Flow source, so the Solar card shows what you exported and stays silent about what you produced), and **"Run on solar surplus"** for on/off devices.
 :::
 
 ## What to do today
 
 To use more of your own solar with PELS:
 
-1. **Confirm your power source is Power meter** and your solar device's production shows up in Homey Energy. Capacity protection then works automatically — there is nothing else to turn on.
+1. **Confirm PELS can see your export** — on the Power meter source, that your solar device's production shows up in Homey Energy; on the Flow source, that the reading you send goes negative while exporting. Capacity protection then works automatically — there is nothing else to turn on.
 2. **Optionally turn on "Use solar surplus"** on a managed heating device (a water tank, floor heating, or a room heater) so surplus warms your home instead of going to the grid.
 3. **Keep an EV charger managed with current control.** While the sun is up, a charging car naturally uses the freed-up power, so much of that charge comes from your own solar.
 
@@ -55,8 +59,9 @@ PELS waits for the surplus to settle before engaging, and — to avoid flapping 
 
 On a managed **on/off** device you can turn on **"Run on solar surplus"** (the toggle appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export). PELS then keeps the device **off** and turns it on only while your export comfortably covers its draw — the same settle-and-hold behaviour as the heating boost, so passing clouds don't flap it. When the surplus is gone, PELS turns it off again.
 
-Two things to know before you use it:
+Before you use it:
 
+- **This one needs the Power meter power source.** On the Flow power source the toggle may appear, but PELS will not act on it — the device keeps running as normal. Everything else on this page works on either source.
 - **If you switch the device on yourself while there is no surplus, PELS will switch it off again.** The toggle hands the on/off decision to PELS; turn the toggle off to take the device back.
 - **Use it for loads that can wait for the sun**: a pool pump, a towel dryer, a garage or cabin heater.
 
@@ -87,7 +92,8 @@ While the sun is up, the **Overview** hero adds a live line under Power now — 
 Two honest edges to know about:
 
 - **Battery homes:** Exported can be *higher* than Produced in some hours — a battery discharging to the grid exports stored energy on top of (or instead of) live production. The card notes this rather than hiding it.
-- **A meter without a production reading** (Homey Energy reports your export but no solar device reports production): the card falls back to an export-only view and never pretends to know your production. On the Flow power source PELS receives no solar signal at all — neither production nor export — so the Solar card does not appear there.
+- **A meter without a production reading** (your export is visible but no solar device reports production): the card falls back to an export-only view and never pretends to know your production. This is also what a **Flow** power source home sees — export is read from your meter's negative readings, but production is not available there, so the card shows what you exported and stays silent about what you produced.
+- **While you are exporting on the Flow power source**, the Usage tab's managed/background split shows your managed devices only. Without a production reading PELS cannot tell how much of your total use your panels are covering, so it reports the part it can measure rather than guessing at the rest.
 
 ### Battery and inverter are read-only
 
