@@ -16,6 +16,7 @@ import type {
 import type {
   DebugSection,
   EnergyApproximationValues,
+  EnergyContainerValue,
   EnergyDebugPayload,
   EnergyInference,
   HomeyCapabilitySummary,
@@ -72,23 +73,63 @@ const inferExpectedW = (params: {
   return { inferredExpectedW: null, inferredSource: null };
 };
 
+/**
+ * One reported field of the energy container, or `null` to omit it.
+ *
+ * A non-finite number is carried as its literal TEXT rather than as a number.
+ * `safeJsonStringify` is `JSON.stringify`, which renders `NaN`/`Infinity` as
+ * `null` — the same thing this dump emits for a genuinely declared `null`, so
+ * the two would be indistinguishable in exactly the artefact whose job is to
+ * report what the device declared. Gating them away (the other obvious option)
+ * trades that ambiguity for a worse one: an absent key reads as "the device
+ * declared nothing here", when in fact it declared something broken, and a
+ * broken declaration is a finding rather than noise.
+ */
+const resolveEnergyContainerValue = (value: unknown): { value: EnergyContainerValue } | null => {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return { value };
+  if (typeof value === 'number') return { value: Number.isFinite(value) ? value : String(value) };
+  return null;
+};
+
+/**
+ * The energy container's own PRIMITIVE fields, copied verbatim — the role
+ * declaration (`cumulative`, `homeBattery`, `cumulative*Capability`,
+ * `meterPower*Capability`). Primitives only: `approximation` and any other
+ * nested object is already covered by the resolved values below, and copying
+ * nested structures wholesale would let one device balloon the dump.
+ */
+const compactEnergyContainer = (
+  energy: UnknownRecord,
+): Record<string, EnergyContainerValue> => Object.fromEntries(
+  Object.entries(energy).flatMap(([key, raw]) => {
+    const resolved = resolveEnergyContainerValue(raw);
+    return resolved === null ? [] : [[key, resolved.value] as const];
+  }),
+);
+
 export const buildEnergyDebugPayload = (device: HomeyDeviceLike): EnergyDebugPayload | null => {
   const energy = resolveEnergyContainer(device);
   if (!energy) return null;
 
+  // No "every approximation value is absent → null" bail-out: that dropped the
+  // whole section for exactly the devices whose ROLE we most need to read. A
+  // meter declares `cumulative`/`cumulative*Capability` and no `approximation`
+  // at all, so it used to dump as `unavailable` and say nothing. A container
+  // that exists is always worth reporting; only its total absence is `null`.
   const onoff = resolveOnOffValue(device);
+  // The approximation/`W` values keep reading the RESOLVED container only —
+  // that precedence is shared with `hasPotentialHomeyEnergyEstimate` and
+  // `devicePowerEstimate`, and is not this change's to alter. Only the reported
+  // role declaration covers both containers.
   const values = resolveApproximationValues(energy);
-  if (
-    values.usageOnW === null
-    && values.usageOffW === null
-    && values.energyW === null
-  ) {
-    return null;
-  }
-
   const inference = inferExpectedW({ onoff, values });
+  const record = device as unknown as UnknownRecord;
   return {
     onoff,
+    containers: {
+      energyObj: isRecord(record.energyObj) ? compactEnergyContainer(record.energyObj) : null,
+      energy: isRecord(record.energy) ? compactEnergyContainer(record.energy) : null,
+    },
     ...values,
     ...inference,
   };

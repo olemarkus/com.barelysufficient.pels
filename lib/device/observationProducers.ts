@@ -13,6 +13,7 @@
  * - `evCarLink` — EV car-to-charger correlation probe (`evCarLinkProducer.ts`)
  */
 import { BatteryStateProducer } from './batteryStateProducer';
+import { createObservationEmitGate } from './observationEmitGate';
 import { SolarProductionProducer } from './solarProductionProducer';
 import type { EvCarLinkProducer, EvCarLinkProducerDeps } from './evCarLinkProducer';
 import {
@@ -46,9 +47,21 @@ export const createObservationProducers = (params: {
     onAssociationEnded?: EvCarLinkProducerDeps['onAssociationEnded'];
 }): ObservationProducers => {
     const evCarLinkAccess = params.evCarLinkSnapshotAccess;
+    // Gated: battery and solar re-report the SAME value on every fetch (~1/min),
+    // so an unchanged repeat carries nothing. The gate wraps them here rather
+    // than inside either producer so their "retain nothing" contract stays
+    // literally true — dedup state belongs to the log sink, not an observation.
+    //
+    // NOT gated: the EV car-link probe. Its events are discrete OCCURRENCES
+    // ("resolved", "ambiguous", "self-stopped"), not observations of a value,
+    // and a repeat is its signal rather than noise — `ev_car_link_ambiguous`
+    // carries a fully static payload, so gating it would swallow a genuine
+    // second occurrence. It is also not a volume problem. See the caller
+    // contract in `observationEmitGate.ts`.
+    const observationEmit = createObservationEmitGate({ emit: params.emit });
     return ({
-    battery: new BatteryStateProducer((payload) => params.emit({ ...payload })),
-    solar: new SolarProductionProducer((payload) => params.emit({ ...payload })),
+    battery: new BatteryStateProducer((payload) => observationEmit({ ...payload })),
+    solar: new SolarProductionProducer((payload) => observationEmit({ ...payload })),
     evCarLink: createEvCarLinkProducer({
         emit: (payload) => params.emit({ ...payload }),
         getSnapshots: params.getSnapshots,
