@@ -2073,23 +2073,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the shared gap-reset (48 h) bounds the error and the card's copy claims "so far today", not
       exactness. Files: `packages/settings-ui/src/ui/solarStats.ts`,
       `packages/settings-ui/src/ui/solarUsageSection.ts`.
-- [ ] **Source-hide the "Run on solar surplus" / temperature-lift controls on the flow power source WITHOUT hiding the export-price section.**
-      *Persona:* flow-source owner with a Homey solar device who flips the surplus toggle.
-      *Status:* the destructive half is FIXED — `toPlanDevice` now gates the runtime `surplusOnly`
-      stamp to `homey_energy` (`resolveSurplusOnlyPosture.meteredPowerSource`), so a flow home can
-      no longer strand a dump load "Waiting for solar surplus" forever; the toggle is at worst
-      inert there. What remains is purely the misleading *offer*: `/ui_devices.hasManagedSolarDevice`
-      is not source-gated, so a flow+solar-device home still shows the surplus controls.
-      *Why not the one-liner:* gating `hasManagedSolarDevice` in `getSettingsUiDevicesPayload` also
-      hides the export-price *settings* section — it feeds `resolveHomeExhibitsSolar`, which gates
-      `showExportSection` "in lockstep" (`priceConfig.ts:162`). The fixed feed-in amount is
-      deliberately usable on flow (`docs/solar.md`), so that section must stay. Correct fix:
-      DECOUPLE — gate only the surplus controls (the dump-load toggle in
-      `deviceDetail/solarSurplus.ts` + the temperature-lift row in `deviceDetail/index.ts`) by
-      power source directly, leaving `resolveHomeExhibitsSolar`/the export section intact. *P3
-      (was P2 before the producer gate removed the harm).* Files: `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/index.ts`.
-
 - [ ] **Hoist onboarding-link copy into shared-domain.** The stale-data banner strings
       (`resolveStaleDataBannerContent` in `capacity.ts`) and the Overview empty-state strings
       (`PlanOverview.tsx`) are inlined in settings-ui, and the no-plan sentence is a duplicated

@@ -88,14 +88,20 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.surplusOnly).toBeUndefined();
   });
 
-  it('abandons the main-home projection when the persisted source key read is suspect', () => {
+  it('projects normally when the persisted source key read is suspect — the posture no longer reads it', () => {
+    // This used to THROW, aborting the producer cycle so the plan service kept
+    // its last-good plan rather than transiently stamping an authoritative Flow
+    // posture. That hazard only existed while the posture depended on the power
+    // source. It no longer does, so there is nothing left for the abort to
+    // protect, and a suspect read of an unrelated key must not fence a device
+    // out of its plan.
     const ctx = buildSurplusCtx();
     (ctx.homey.settings.get as Mock).mockReturnValue(undefined);
     vi.spyOn(ctx.homey.settings, 'getKeys').mockReturnValue([POWER_SOURCE]);
 
-    expect(() => toPlanDevice(ctx, buildSurplusWillingSnapshot())).toThrow(
-      'power source settings read is suspect',
-    );
+    // `priceOptimizationSettings` lives on the context, not the settings store,
+    // so the willing opt-in survives a settings read that answers nothing.
+    expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
     expect(ctx.homey.settings.set).not.toHaveBeenCalled();
   });
 
