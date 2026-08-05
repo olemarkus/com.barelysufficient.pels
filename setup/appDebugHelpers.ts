@@ -93,6 +93,52 @@ export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<Homey
     .map((item) => ({ id: item.id, name: nameById.get(item.id) ?? item.id }));
 }
 
+// Distinguishes concurrent/repeated dumps so a reader can tell one press of
+// "Log device" from the next. Process-local and monotonic — no clock or
+// randomness needed, since it only has to be unique within a log file.
+let deviceDumpSequence = 0;
+
+/**
+ * Emits the dump as one line PER SECTION rather than a single line carrying the
+ * whole serialized payload.
+ *
+ * Why: the dump is the artefact we ask users to send back, and a device with
+ * many capabilities produces a very long line — a user's report came back with
+ * no `homey_device_dump` in it at all, most plausibly because the line was
+ * truncated by the log viewer. A dump we cannot read is worth nothing, so no
+ * single line is allowed to carry the whole thing.
+ *
+ * The event NAME is deliberately unchanged across all sections: "send me the
+ * lines containing `homey_device_dump`" stays the one instruction a user needs,
+ * and `dumpId` reassembles them.
+ */
+function emitDeviceDumpSections(params: {
+  deviceId: string;
+  label: string;
+  dump: DeviceDebugDump;
+}): void {
+  const { deviceId, label, dump } = params;
+  deviceDumpSequence += 1;
+  const dumpId = `${deviceId}#${deviceDumpSequence}`;
+  const sections: readonly (readonly [string, unknown])[] = [
+    ['summary', dump.homey.summary],
+    ['settings', dump.homey.settings],
+    ['energy', dump.homey.energyApproximation],
+    ['comparison', dump.homey.comparison],
+    ...(dump.pels !== undefined ? [['pels', dump.pels] as const] : []),
+  ];
+  for (const [section, payload] of sections) {
+    debugLogger.info({
+      event: 'homey_device_dump',
+      dumpId,
+      section,
+      deviceId,
+      label,
+      payload: safeJsonStringify(payload),
+    });
+  }
+}
+
 export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
   deviceManager: DeviceTransport;
@@ -181,12 +227,7 @@ export async function logHomeyDeviceForDebug(params: {
     source: 'side_by_side',
   };
 
-  debugLogger.info({
-    event: 'homey_device_dump',
-    deviceId: safeDeviceId,
-    label: safeLabel,
-    payload: safeJsonStringify(dump),
-  });
+  emitDeviceDumpSections({ deviceId: safeDeviceId, label: safeLabel, dump });
   return true;
 }
 

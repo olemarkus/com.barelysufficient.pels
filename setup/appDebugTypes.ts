@@ -19,8 +19,39 @@ export type EnergyInference = {
   inferredSource: string | null;
 };
 
+/**
+ * A single reported field of a device's energy container. Non-finite numbers are
+ * carried as their literal text (`'NaN'`, `'Infinity'`) rather than as numbers —
+ * see `compactEnergyContainer`.
+ */
+export type EnergyContainerValue = string | number | boolean | null;
+
 export type EnergyDebugPayload = EnergyApproximationValues & {
   onoff: boolean | null;
+  /**
+   * The device's energy containers, shallow-copied verbatim (primitive fields
+   * only). This is what declares the device's ENERGY ROLE to Homey Energy —
+   * `cumulative`, `homeBattery`, `cumulativeImportedCapability`,
+   * `cumulativeExportedCapability`, `meterPowerExportedCapability` — and it is
+   * not derivable from the app's published driver manifest, because the
+   * "tracks total home energy consumption" designation and runtime `setEnergy()`
+   * both mutate the effective container. A live dump is the only way to read
+   * what a user's device actually declares, which is what a faithful mock of it
+   * needs (`../test-devices` drivers are defined by exactly these fields).
+   *
+   * BOTH are reported, never just the first one found. Homey can expose
+   * `energyObj` and `energy` at once, and a present-but-incomplete `energyObj`
+   * (`{}`) alongside a role-carrying `energy` is a real shape — the runtime's
+   * own role detection reads the two INDEPENDENTLY for exactly that reason
+   * (`isHomeBatteryDevice`, `lib/device/managerEnergy.ts`). Reporting only the
+   * resolved one would print `{}` for such a device and read as "declared
+   * nothing", which is how a mock gets built with the wrong role. `null`
+   * distinguishes "not present" from an empty-but-present `{}`.
+   */
+  containers: {
+    energyObj: Record<string, EnergyContainerValue> | null;
+    energy: Record<string, EnergyContainerValue> | null;
+  };
 } & EnergyInference;
 
 export type DebugSection<T> = {

@@ -29,10 +29,32 @@ const buildDeviceManager = (params: {
   }) as unknown as DeviceTransport;
 };
 
+type DumpSectionEvent = { dumpId?: string; section?: string; payload?: string };
+
+const findDumpSections = (capture: LoggerCapture): DumpSectionEvent[] => (
+  capture.findEvents('homey_device_dump') as DumpSectionEvent[]
+);
+
+/**
+ * The dump is emitted one line per section (so no single line is long enough to
+ * be truncated by a log viewer). Reassembles them into the whole-dump shape the
+ * assertions read, and asserts along the way that the sections really do share
+ * one `dumpId`.
+ */
 const parseDumpPayload = (capture: LoggerCapture): Record<string, any> => {
-  const dumpEvent = capture.findEvent('homey_device_dump') as { payload?: string } | undefined;
-  expect(dumpEvent?.payload).toBeDefined();
-  return JSON.parse(dumpEvent?.payload ?? '{}');
+  const sections = findDumpSections(capture);
+  expect(sections.length).toBeGreaterThan(0);
+  expect(new Set(sections.map((entry) => entry.dumpId)).size).toBe(1);
+  const bySection = new Map(sections.map((entry) => [entry.section, JSON.parse(entry.payload ?? '{}')]));
+  return {
+    homey: {
+      summary: bySection.get('summary'),
+      settings: bySection.get('settings'),
+      energyApproximation: bySection.get('energy'),
+      comparison: bySection.get('comparison'),
+    },
+    ...(bySection.has('pels') ? { pels: bySection.get('pels') } : {}),
+  };
 };
 
 describe('appDebugHelpers', () => {
@@ -122,7 +144,7 @@ describe('appDebugHelpers', () => {
     expect(getDevicesForDebug).not.toHaveBeenCalled();
   });
 
-  it('logs a single nested device dump when APIs are available', async () => {
+  it('logs the device dump as one line per section when APIs are available', async () => {
     const device: HomeyDeviceLike = {
       id: 'dev-1',
       name: 'Kitchen Socket',
@@ -162,7 +184,8 @@ describe('appDebugHelpers', () => {
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
-    expect(capture.findEvents('homey_device_dump')).toHaveLength(1);
+    expect(findDumpSections(capture).map((entry) => entry.section))
+      .toEqual(['summary', 'settings', 'energy', 'comparison']);
 
     const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
@@ -221,7 +244,8 @@ describe('appDebugHelpers', () => {
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
-    expect(capture.findEvents('homey_device_dump')).toHaveLength(1);
+    expect(findDumpSections(capture).map((entry) => entry.section))
+      .toEqual(['summary', 'settings', 'energy', 'comparison']);
 
     const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
