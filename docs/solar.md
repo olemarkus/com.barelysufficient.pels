@@ -14,7 +14,7 @@ The solar features below need a signal that you are exporting — either a solar
 
 On the **Power meter** power source (read through Homey Energy) both signals are available, and every feature on this page works.
 
-On the **Flow** power source, send your meter's reading to the "Report power usage" card exactly as your meter gives it: if it reports a signed value, a negative reading means you are exporting, and PELS reads it as export. That gives you capacity protection, the export accounting below, and the heating surplus boost. Two things are Power-meter-only: a **production** figure (your panels' output is not available on the Flow source, so the Solar card shows what you exported and stays silent about what you produced), and **"Run on solar surplus"** for on/off devices.
+On the **Flow** power source, send your meter's reading to the "Report power usage" card exactly as your meter gives it: if it reports a signed value, a negative reading means you are exporting, and PELS reads it as export. Everything that works off export works here too — capacity protection, the export accounting below, the heating surplus boost, and running an on/off device on surplus. The one thing that is Power-meter-only is a **production** figure: your panels' own output is not available on the Flow source, so the Solar card shows what you exported and stays silent about what you produced.
 :::
 
 ## What to do today
@@ -61,7 +61,6 @@ On a managed **on/off** device you can turn on **"Run on solar surplus"** (the t
 
 Before you use it:
 
-- **This one needs the Power meter power source.** On the Flow power source the toggle may appear, but PELS will not act on it — the device keeps running as normal. Everything else on this page works on either source.
 - **If you switch the device on yourself while there is no surplus, PELS will switch it off again.** The toggle hands the on/off decision to PELS; turn the toggle off to take the device back.
 - **Use it for loads that can wait for the sun**: a pool pump, a towel dryer, a garage or cabin heater.
 

@@ -43,7 +43,6 @@ const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnly
   plainBinaryControlModel: true,
   controllable: true,
   managed: true,
-  meteredPowerSource: true,
   ...overrides,
 });
 
@@ -68,11 +67,6 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
     ['not a plain binary control model', { plainBinaryControlModel: false }],
     ['power-limit control off', { controllable: false }],
     ['unmanaged', { managed: false }],
-    // Flow power source: no surplus signal can ever arrive (the flow boundary
-    // rejects negative watts and carries no generation channel), so a dump load
-    // must never be stamped `surplusOnly` — else the surplus hold keeps it off
-    // forever. The producer resolves this bit to false on the flow source.
-    ['not metered (flow power source)', { meteredPowerSource: false }],
   ])('excludes: %s', (_label, overrides) => {
     expect(resolveSurplusOnlyPosture(candidateParams(overrides))).toBe(false);
   });

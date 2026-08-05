@@ -38,7 +38,6 @@ import { buildSwapCandidates } from '../../lib/plan/swap/candidates';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import type { AppContext } from '../../lib/app/appContext';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 
@@ -529,28 +528,25 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
   // The producer gates `surplusOnly` to the metered power source; seed it so these
   // candidacy specs isolate the modality/managed/controllable predicates (the
   // source gate itself is covered by the dedicated flow-source spec below).
-  const withMeteredSource = (ctx: AppContext): AppContext => {
-    vi.mocked(ctx.homey.settings.get).mockImplementation(
-      (key: string) => (key === POWER_SOURCE ? 'homey_energy' : undefined),
-    );
-    return ctx;
-  };
-
   it('stamps surplusOnly for a willing managed binary device', () => {
-    const ctx = withMeteredSource(createAppContextMock({
+    const ctx = createAppContextMock({
       priceOptimizationSettings: {
         [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
       },
-    }));
+    });
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
     expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
   });
 
-  it('does not stamp surplusOnly on the flow power source (no surplus signal can arrive)', () => {
-    // The flow power boundary rejects negative watts and carries no generation
-    // channel, so a dump load stamped surplusOnly there would be held OFF forever
-    // waiting for a surplus that never comes. The producer gates it to homey_energy.
+  it('stamps surplusOnly on the flow power source too — the posture is source-independent', () => {
+    // The gate here used to be `power_source === 'homey_energy'`, justified by
+    // "no surplus signal can arrive on flow". That rested on the Flow card
+    // rejecting negative watts; it no longer does, and the measured surplus pool
+    // is `-signedNetKw` with no production term (`composeSurplusPool`). Only the
+    // INFERRED curtailment term needs generation, and it stays dormant without
+    // one by construction — so a net-only source simply contributes nothing to
+    // that half of the pool rather than being unable to have a surplus at all.
     const ctx = createAppContextMock({
       priceOptimizationSettings: {
         [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
@@ -561,7 +557,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     );
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBeUndefined();
+    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
   });
 
   it('does not stamp a non-willing device, an unmanaged device, or a temperature device', () => {
@@ -569,7 +565,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
       [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
     };
     const managedCtx = (settings: typeof willing | Record<string, never>, managed: boolean) => {
-      const ctx = withMeteredSource(createAppContextMock({ priceOptimizationSettings: settings }));
+      const ctx = createAppContextMock({ priceOptimizationSettings: settings });
       (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => managed;
       (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
       return ctx;
@@ -586,11 +582,11 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     // classify continuous/preset/stepped (an enabled targetPowerConfig or a
     // non-binary controlModel) is NOT a dump-load candidate, even if willing.
     const willingCtx = () => {
-      const ctx = withMeteredSource(createAppContextMock({
+      const ctx = createAppContextMock({
         priceOptimizationSettings: {
           [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
         },
-      }));
+      });
       (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
       (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
       return ctx;

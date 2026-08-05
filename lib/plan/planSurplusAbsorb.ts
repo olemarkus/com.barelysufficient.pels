@@ -65,13 +65,13 @@ const willingWithLift = (config: SurplusConfig | undefined): boolean => (
  * runtime candidacy never disagrees with what the toggle offers — a device the
  * UI classifies continuous/preset/stepped is never stamped `surplusOnly`.
  *
- * Metered-source gate: surplus — measured export OR inferred curtailment —
- * physically cannot exist on the flow power source (its boundary rejects
- * negative watts and carries no generation channel), so a flow home must never
- * stamp a dump load `surplusOnly` — the surplus hold would otherwise keep it off
- * forever waiting for a signal that can never arrive. The producer resolves the
- * flat `meteredPowerSource` bit (mirroring the settings-UI solar gates); this
- * helper only reads it and never branches on `power_source` provenance.
+ * Candidacy is SOURCE-INDEPENDENT. It used to carry a `meteredPowerSource` bit
+ * on the premise that surplus "physically cannot exist on the flow power
+ * source", which was true only because that source's boundary rejected negative
+ * watts. It no longer does: both sources report signed net, and the measured
+ * surplus pool is `-signedNetKw` (`composeSurplusPool`) with no production term
+ * anywhere in its path. A dump load is therefore a candidate wherever its own
+ * modality and managed/controllable bits say so.
  */
 export function resolveSurplusOnlyPosture(params: {
   surplusWilling: boolean | undefined;
@@ -86,13 +86,8 @@ export function resolveSurplusOnlyPosture(params: {
   plainBinaryControlModel: boolean;
   controllable: boolean;
   managed: boolean;
-  // Producer-resolved: the whole-home power source is metered (Homey Energy).
-  // False on the flow source, where no surplus signal exists — see the
-  // metered-source gate in the docblock above.
-  meteredPowerSource: boolean;
 }): boolean {
   return params.surplusWilling === true
-    && params.meteredPowerSource
     && params.controlCapabilityId !== undefined
     && params.controlCapabilityId !== 'evcharger_charging'
     && !isEvDevice({ deviceClass: params.deviceClass, controlCapabilityId: params.controlCapabilityId })
