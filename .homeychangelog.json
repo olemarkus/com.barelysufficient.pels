@@ -478,5 +478,8 @@
   },
   "2.21.0": {
     "en": "You can now tell PELS which cars charge at a given charger. Open the charger's page, tick the cars that use it, and PELS matches one when it plugs in and reads its battery level, so charge boost and smart tasks know how full the car is without setting up a Flow. The charger card shows that battery level, and when a car is associated it can say for itself whether it is the one holding up charging, including when the car and the charger disagree about what is happening.\n\nThe 'Waiting for car' line no longer appears on a charger that is simply switched off, and a smart task created while tomorrow's prices are already available no longer claims it is waiting for prices."
+  },
+  "2.21.1": {
+    "en": "A device that is waiting for power now tells you how long it has been held and how much more power it needs, instead of naming the limit that applies to the whole home. The badge and the widget chip use one wording for every kind of hold, holds longer than an hour are shown in hours rather than as a large number of minutes, and the 'Let it run now' action is offered for any device that is being held back rather than only some of them. A device waiting because this hour's energy budget is used up now says exactly that, instead of promising more budget next hour, which was not always true.\n\nDiagnostics reports are more useful: repeated solar and battery readings no longer fill up the log with the same value, and the device information PELS is asked to include is now complete and no longer cut short."
   }
 }
