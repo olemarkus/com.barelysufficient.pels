@@ -97,6 +97,52 @@ const buildFreshMeasuredDevicePowerWById = (params: {
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
 
+/**
+ * Whole-home actual consumption for the managed/background split.
+ *
+ * `net + generation` is authoritative wherever a production reading is
+ * co-sampled. Where one is NOT — any source that reports net only — a negative
+ * net cannot be resolved to gross at all: the solar covering the load is
+ * invisible, and `max(0, net)` asserts the home consumed NOTHING. That is not a
+ * conservative floor, it is a false statement: `resolveControlledSample` bounds
+ * the split by gross, so managed load reads 0 kW and the controlled/uncontrolled
+ * buckets accrue nothing for every exporting sample, while the devices are
+ * demonstrably drawing.
+ *
+ * So on a negative net with no production term, floor at the split's OWN
+ * unbounded controlled sum (`splitControlledUsage` with a null total, which
+ * skips the bounding step). The floor and the attribution are then the same
+ * quantity by construction — every watt of the floor is a watt the split
+ * assigns to a controllable device, and background stays 0 because it is
+ * genuinely unobservable without a production reading.
+ *
+ * Flooring at raw measured DEVICE draw instead would leak across devices: that
+ * set includes non-controllable ones (a home battery charging is real draw but
+ * `controllable: false`), while the controlled sum they would inflate is
+ * computed over controllable devices and falls back to `expectedPowerKw` when a
+ * device has no fresh measurement (`resolveObservedOnUsageKw`). A home exporting
+ * 1 kW with a battery drawing a measured 2 kW and a heater carrying a stale 2 kW
+ * estimate would then report 2 kW of *heater* usage and 0 background — the
+ * battery's watts attributed to the wrong device.
+ *
+ * Whether gross should floor at the controlled sum ALWAYS (not just during
+ * export) is a separate question this deliberately does not answer.
+ */
+const resolveGrossConsumptionW = (params: {
+  currentPowerW: number;
+  generationW?: number;
+  devices: TargetDeviceSnapshot[];
+  splitControlledUsage: SplitControlledUsage;
+}): number => {
+  const { currentPowerW, generationW, devices, splitControlledUsage } = params;
+  if (generationW !== undefined || currentPowerW >= 0) {
+    return Math.max(0, currentPowerW + Math.max(0, generationW ?? 0));
+  }
+  if (devices.length === 0) return 0;
+  const { controlledKw } = splitControlledUsage({ devices, totalKw: null });
+  return controlledKw !== null ? Math.max(0, controlledKw * 1000) : 0;
+};
+
 export type SplitControlledUsage = (params: {
   devices: TargetDeviceSnapshot[];
   totalKw: number | null;
@@ -148,16 +194,21 @@ export async function recordPowerSampleForApp(params: {
     sumBudgetExemptUsage,
     updateObjectiveProfiles,
   } = params;
-  // Authoritative whole-home actual consumption = net grid import + gross
-  // generation. With no generation signal this is exactly `currentPowerW`, so
-  // non-solar / flow-source homes are byte-for-byte unchanged. The split below
-  // measures against gross so a managed device whose draw is partly solar-fed is
-  // not clamped down to the (smaller) net total; the cap path keeps `currentPowerW`.
-  // Floored at 0: actual consumption can't be negative, so a noisy net+generation
-  // (e.g. a transient export sample exceeding the reported generation) clamps to 0.
-  const grossConsumptionW = Math.max(0, currentPowerW + Math.max(0, generationW ?? 0));
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
+  // Authoritative whole-home actual consumption = net grid import + gross
+  // generation. With no generation signal this is exactly `currentPowerW`, so
+  // non-solar homes are byte-for-byte unchanged. The split below measures
+  // against gross so a managed device whose draw is partly solar-fed is not
+  // clamped down to the (smaller) net total; the cap path keeps `currentPowerW`.
+  // Floored at 0: actual consumption can't be negative, so a noisy net+generation
+  // (e.g. a transient export sample exceeding the reported generation) clamps to 0.
+  const grossConsumptionW = resolveGrossConsumptionW({
+    currentPowerW,
+    generationW,
+    devices: snapshot,
+    splitControlledUsage,
+  });
   const { controlledKw } = snapshot.length
     ? splitControlledUsage({
       devices: snapshot,

@@ -174,11 +174,10 @@ export const resolveManagedState = (deviceId: string): boolean => {
 // The per-device "Use solar surplus" control is meaningful only in a home that
 // exports solar. Two independent signals unlock it: a role-detected solar/PV
 // device (`hasManagedSolarDevice`) OR a meter-only PV home that has exhibited
-// material grid export (`hasExhibitedExport`). Only the export signal is
-// source-gated: on a flow-source home `hasExhibitedExport` is always false (the
-// flow power boundary rejects negative watts), but `hasManagedSolarDevice` is
-// NOT source-gated, so a flow home with a role-detected solar device still
-// resolves true here.
+// material grid export (`hasExhibitedExport`). Neither is gated on the power
+// source — both sources report signed net, so a flow home exports on the same
+// evidence as a Homey Energy one, and the surplus pool it feeds
+// (`composeSurplusPool`) never needed a production reading.
 export const resolveHomeExhibitsSolar = (): boolean => (
   state.hasManagedSolarDevice || state.hasExhibitedExport
 );

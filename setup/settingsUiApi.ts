@@ -32,7 +32,7 @@ import type {
 } from '../packages/contracts/src/settingsUiApi';
 import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
-import { normalizePowerSource } from '../lib/power/powerSource';
+import { deliversProductionSignal, normalizePowerSource } from '../lib/power/powerSource';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
   getAssociatedCarForUiFromApp,
@@ -178,15 +178,15 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
       ? { mainDryRunEffective: app.capacityDryRun }
       : {}),
     ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
-    // Home-level "this home has solar surfaces" gate for the Usage tab's
+    // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). Requires BOTH a role-detected PV device (class-key
-    // 'solarpanel') AND the homey_energy power source: on the flow source the
-    // power boundary rejects negative watts and carries no generation field,
-    // so the solar buckets can never fill — flagging such a home would render
-    // an eternal "gathering" card that promises data that will never come
-    // (terminology rule: flow homes get NO solar surfaces).
-    hasManagedSolarDevice: isHomeyEnergySource(homey)
+    // 'solarpanel') AND a source that actually delivers a production reading:
+    // without one the generation buckets can never fill, and the card would
+    // promise data that will never come. Resolved from the capability
+    // (`deliversProductionSignal`), never from the source name — export is a
+    // separate axis and is NOT gated here, since both sources report signed net.
+    hasManagedSolarDevice: hasProductionSignal(homey)
       && hasSolarCandidate(getRawSettingsUiDeviceCandidates({ homey })),
   };
 };
@@ -248,8 +248,11 @@ const hasSolarCandidate = (candidates: readonly TargetDeviceSnapshot[]): boolean
   candidates.some((device) => device.deviceClass === 'solarpanel')
 );
 
-const isHomeyEnergySource = (homey: Homey.App['homey']): boolean => (
-  normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+// Does this home's configured source deliver a production reading? The source
+// identity stops here — everything downstream (payload flags, the settings UI,
+// the planner) sees only the capability.
+const hasProductionSignal = (homey: Homey.App['homey']): boolean => (
+  deliversProductionSignal(normalizePowerSource(homey.settings.get('power_source')))
 );
 
 // ── `?homeId=` composers ────────────────────────────────────────────────────
@@ -298,17 +301,17 @@ const powerPayloadForHome = (
   // could be cached for the session.
   const statusRead = homeScope.readStatus(scope);
   if (statusRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
-  // The `power_source` gate behind the solar flag is a settings read as well,
-  // so the adapter classifies its failure the same way — never an untyped
-  // transport error escaping a scoped request, never a flag fabricated from a
-  // failed read (absence already means "realtime status-only push" here).
+  // The `power_source` read behind the production-capability flag is a settings
+  // read as well, so the adapter classifies its failure the same way — never an
+  // untyped transport error escaping a scoped request, never a flag fabricated
+  // from a failed read (absence already means "realtime status-only push" here).
   const sourceRead = homeScope.readPowerSource();
   if (sourceRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
   return {
     tracker: reading.powerTracker,
     status: statusRead.status,
     heartbeat: null,
-    hasManagedSolarDevice: sourceRead.source === 'homey_energy' && hasSolarCandidate(members),
+    hasManagedSolarDevice: deliversProductionSignal(sourceRead.source) && hasSolarCandidate(members),
     homeScope: { state: 'resolved', homeId: scope.homeId },
   };
 };
@@ -325,15 +328,13 @@ const devicesPayloadForHome = (
   // unfiltered, empty or previous-generation one.
   const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
   if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
-  // Same rule as the power composer's status read: the `power_source` gate is
-  // a settings read, and the adapter classifies its transient failure into the
-  // endpoint's typed `unavailable` instead of rejecting the request.
-  const sourceRead = homeScope.readPowerSource();
-  if (sourceRead.state === 'unavailable') return UNAVAILABLE_DEVICES_PAYLOAD;
   return {
     devices: members.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
     hasManagedSolarDevice: hasSolarCandidate(members),
-    hasExhibitedExport: sourceRead.source === 'homey_energy' && hasMaterialExhibitedExport(reading.powerTracker),
+    // Source-blind: export is whatever this home's accrued export families say
+    // it is. Both sources report signed net, so a flow home exports on exactly
+    // the same evidence as a Homey Energy one.
+    hasExhibitedExport: hasMaterialExhibitedExport(reading.powerTracker),
     homeScope: { state: 'resolved', homeId: scope.homeId },
   };
 };
@@ -363,19 +364,16 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).
     // NOT source-gated: this flag also unlocks the export-price *settings* section (via
     // `resolveHomeExhibitsSolar`), whose fixed feed-in amount is deliberately usable on the
-    // flow source (see TODO + `docs/solar.md`). The flow-only harm — a dump load stranded
-    // "Waiting for solar surplus" forever — is fixed at the producer instead (`toPlanDevice`
-    // gates the runtime `surplusOnly` stamp to homey_energy), so the toggle is at worst inert
-    // on flow, never destructive. Gating this flag to source-hide the surplus controls WITHOUT
-    // hiding the export section needs a decoupled per-control gate — tracked in TODO.
+    // flow source (`docs/solar.md`). Note this is the DEVICE-presence flag; the Usage tab's
+    // production surfaces use the ui_power flag, which additionally requires a source that
+    // delivers a production reading (`deliversProductionSignal`).
     hasManagedSolarDevice: hasSolarCandidate(candidates),
     // Meter-only PV homes (a string inverter with no Homey solarpanel device) get no
     // `hasManagedSolarDevice` signal, yet the surplus-absorb engine keys off whole-home net
     // export, which they DO exhibit. Broaden the "Use solar surplus" toggle gate to them via a
-    // stable, accumulated export-kWh signal. Source-gated to homey_energy: the flow power
-    // boundary rejects negative watts, so a flow home's export families are always empty anyway.
-    hasExhibitedExport: isHomeyEnergySource(homey)
-      && hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
+    // stable, accumulated export-kWh signal. Source-blind: both sources report signed net, so
+    // a flow home exhibits export on exactly the same evidence as a Homey Energy one.
+    hasExhibitedExport: hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
   };
 };
 
