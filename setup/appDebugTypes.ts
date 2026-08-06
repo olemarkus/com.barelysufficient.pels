@@ -136,7 +136,7 @@ export type PelsObservedSourceSummary = {
   capabilityId?: string;
   value?: unknown;
   localEcho?: boolean;
-  shouldReconcilePlan?: boolean;
+  observedControlStateChanged?: boolean;
   preservedLocalState?: boolean;
   changes?: Array<{
     capabilityId: string;

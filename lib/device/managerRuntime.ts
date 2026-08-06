@@ -35,7 +35,7 @@ export type RealtimeDeviceReconcileChange = {
 };
 
 type RealtimeReconcileResult = {
-  shouldReconcilePlan: boolean;
+  observedControlStateChanged: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
   currentSnapshot: TransportDeviceSnapshot | null;
@@ -97,7 +97,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
   } = params;
   const deviceId = device.id;
   if (!deviceId) return {
-    shouldReconcilePlan: false,
+    observedControlStateChanged: false,
     changes: [],
     observedCapabilityIds: [],
     currentSnapshot: null,
@@ -110,14 +110,14 @@ export function reconcileRealtimeDeviceUpdate(params: {
     if (snapshotIndex >= 0) {
       latestSnapshot.splice(snapshotIndex, 1);
       return {
-        shouldReconcilePlan: false,
+        observedControlStateChanged: false,
         changes: [],
         observedCapabilityIds: [],
         currentSnapshot: null,
       };
     }
     return {
-      shouldReconcilePlan: false,
+      observedControlStateChanged: false,
       changes: [],
       observedCapabilityIds: [],
       currentSnapshot: null,
@@ -160,7 +160,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
   return {
-    shouldReconcilePlan: changes.length > 0,
+    observedControlStateChanged: changes.length > 0,
     changes,
     observedCapabilityIds,
     currentSnapshot: parsed,

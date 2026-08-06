@@ -57,9 +57,14 @@ export type DeviceUpdateProcessedDebugEvent = {
   source: 'device_update';
   deviceId: string;
   deviceName: string | null;
-  reasonCode: 'binary_settled' | 'binary_drift' | 'drift_detected' | 'changed_without_reconcile' | 'no_snapshot_change';
+  reasonCode:
+    | 'binary_settled'
+    | 'binary_drift'
+    | 'control_state_changed'
+    | 'changed_without_control_effect'
+    | 'no_snapshot_change';
   hadChanges: boolean;
-  shouldReconcilePlan: boolean;
+  observedControlStateChanged: boolean;
   rawChangeCount: number;
   filteredChangeCount: number;
   changes: RealtimeDeviceReconcileChange[];
@@ -77,7 +82,21 @@ export type DeviceUpdateProcessedDebugEvent = {
 
 export type HandleRealtimeDeviceUpdateResult = {
   hadChanges: boolean;
-  shouldReconcilePlan: boolean;
+  /**
+   * At least one CONTROL-RELEVANT capability moved in this event (`hadChanges`
+   * counts raw changes, including ones the filter drops).
+   *
+   * This is a fact about the observation and nothing more. The producer knows
+   * which capabilities are control-relevant; it does not know what the plan
+   * wants, whether the device disagrees with it, or what should happen next.
+   * Deciding that is the executor's (`lib/executor/executorConvergence.ts`) and
+   * the planner's, in that order.
+   *
+   * Formerly `shouldReconcilePlan` — a producer naming a plan operation, which
+   * is inversion #1 of the drift/reconcile layering problem. Do not reintroduce
+   * an imperative name here.
+   */
+  observedControlStateChanged: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
   currentSnapshot: TransportDeviceSnapshot | null | undefined;
@@ -132,7 +151,7 @@ export function handleRealtimeDeviceUpdate(params: {
   if (!shouldTrackRealtimeDevice(deviceId)) {
     return {
       hadChanges: false,
-      shouldReconcilePlan: false,
+      observedControlStateChanged: false,
       changes: [],
       observedCapabilityIds: [],
       currentSnapshot: undefined,
@@ -162,7 +181,7 @@ export function handleRealtimeDeviceUpdate(params: {
     createObservationCursor,
   });
   const filteredChanges = settleResult.changes;
-  const shouldReconcilePlan = filteredChanges.length > 0;
+  const observedControlStateChanged = filteredChanges.length > 0;
   if (result.observedCapabilityIds.length > 0) {
     recordObservedCapabilities?.(deviceId, result.observedCapabilityIds);
   }
@@ -184,7 +203,7 @@ export function handleRealtimeDeviceUpdate(params: {
     rawBinaryValue,
     binarySettleOutcome: settleResult.binarySettleOutcome,
     hadChanges,
-    shouldReconcilePlan,
+    observedControlStateChanged,
     rawChanges: result.changes,
     filteredChanges,
     observedCapabilityIds: result.observedCapabilityIds,
@@ -192,7 +211,7 @@ export function handleRealtimeDeviceUpdate(params: {
   }));
   emitDeviceObservationEvents({
     hadChanges,
-    shouldReconcilePlan,
+    observedControlStateChanged,
     deviceId,
     label,
     changes: filteredChanges,
@@ -203,10 +222,10 @@ export function handleRealtimeDeviceUpdate(params: {
     emitObservedState,
     emitPlanReconcile,
   });
-  if (!shouldReconcilePlan) {
+  if (!observedControlStateChanged) {
     return {
       hadChanges,
-      shouldReconcilePlan: false,
+      observedControlStateChanged: false,
       changes: filteredChanges,
       observedCapabilityIds: result.observedCapabilityIds,
       currentSnapshot: result.currentSnapshot,
@@ -214,7 +233,7 @@ export function handleRealtimeDeviceUpdate(params: {
   }
   return {
     hadChanges,
-    shouldReconcilePlan: true,
+    observedControlStateChanged: true,
     changes: filteredChanges,
     observedCapabilityIds: result.observedCapabilityIds,
     currentSnapshot: result.currentSnapshot,
@@ -223,7 +242,7 @@ export function handleRealtimeDeviceUpdate(params: {
 
 function emitDeviceObservationEvents(params: {
   hadChanges: boolean;
-  shouldReconcilePlan: boolean;
+  observedControlStateChanged: boolean;
   deviceId: string;
   label?: string;
   changes: RealtimeDeviceReconcileChange[];
@@ -236,7 +255,7 @@ function emitDeviceObservationEvents(params: {
 }): void {
   const {
     hadChanges,
-    shouldReconcilePlan,
+    observedControlStateChanged,
     deviceId,
     label,
     changes,
@@ -259,7 +278,7 @@ function emitDeviceObservationEvents(params: {
     observedCapabilityIds,
     measurePowerBecameSignificantlyPositive,
   });
-  if (!shouldReconcilePlan) return;
+  if (!observedControlStateChanged) return;
   emitPlanReconcile({
     deviceId,
     ...eventCursor,
@@ -357,7 +376,7 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
   rawBinaryValue: boolean | undefined;
   binarySettleOutcome: BinarySettleOutcome;
   hadChanges: boolean;
-  shouldReconcilePlan: boolean;
+  observedControlStateChanged: boolean;
   rawChanges: RealtimeDeviceReconcileChange[];
   filteredChanges: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
@@ -372,7 +391,7 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
     rawBinaryValue,
     binarySettleOutcome,
     hadChanges,
-    shouldReconcilePlan,
+    observedControlStateChanged,
     rawChanges,
     filteredChanges,
     observedCapabilityIds,
@@ -383,9 +402,9 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
     source: 'device_update',
     deviceId,
     deviceName: deviceName ?? null,
-    reasonCode: resolveDeviceUpdateReasonCode({ binarySettleOutcome, hadChanges, shouldReconcilePlan }),
+    reasonCode: resolveDeviceUpdateReasonCode({ binarySettleOutcome, hadChanges, observedControlStateChanged }),
     hadChanges,
-    shouldReconcilePlan,
+    observedControlStateChanged,
     rawChangeCount: rawChanges.length,
     filteredChangeCount: filteredChanges.length,
     changes: filteredChanges,
@@ -405,13 +424,13 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
 function resolveDeviceUpdateReasonCode(params: {
   binarySettleOutcome: BinarySettleOutcome;
   hadChanges: boolean;
-  shouldReconcilePlan: boolean;
+  observedControlStateChanged: boolean;
 }): DeviceUpdateProcessedDebugEvent['reasonCode'] {
-  const { binarySettleOutcome, hadChanges, shouldReconcilePlan } = params;
+  const { binarySettleOutcome, hadChanges, observedControlStateChanged } = params;
   if (binarySettleOutcome === 'settled') return 'binary_settled';
   if (binarySettleOutcome === 'drift') return 'binary_drift';
-  if (shouldReconcilePlan) return 'drift_detected';
-  if (hadChanges) return 'changed_without_reconcile';
+  if (observedControlStateChanged) return 'control_state_changed';
+  if (hadChanges) return 'changed_without_control_effect';
   return 'no_snapshot_change';
 }
 

@@ -99,7 +99,9 @@ const buildObservedSourceSummary = (
     ...(source.capabilityId ? { capabilityId: source.capabilityId } : {}),
     ...(Object.prototype.hasOwnProperty.call(source, 'value') ? { value: source.value } : {}),
     ...(typeof source.localEcho === 'boolean' ? { localEcho: source.localEcho } : {}),
-    ...(typeof source.shouldReconcilePlan === 'boolean' ? { shouldReconcilePlan: source.shouldReconcilePlan } : {}),
+    ...(typeof source.observedControlStateChanged === 'boolean'
+      ? { observedControlStateChanged: source.observedControlStateChanged }
+      : {}),
     ...(typeof source.preservedLocalState === 'boolean'
       ? { preservedLocalState: source.preservedLocalState }
       : {}),

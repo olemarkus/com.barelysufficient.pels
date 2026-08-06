@@ -17,7 +17,7 @@ export type DeviceDebugObservedSource = {
     capabilityId?: string;
     value?: unknown;
     localEcho?: boolean;
-    shouldReconcilePlan?: boolean;
+    observedControlStateChanged?: boolean;
     preservedLocalState?: boolean;
     changes?: Array<{
         capabilityId: string;
