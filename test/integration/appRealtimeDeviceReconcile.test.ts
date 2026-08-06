@@ -1,7 +1,9 @@
 import {
   createRealtimeDeviceReconcileState,
   flushRealtimeDeviceReconcileQueue,
+  resolveRealtimeRebuildDelayMs,
   scheduleRealtimeDeviceReconcile,
+  REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS,
   type RealtimeDeviceReconcileEvent,
 } from '../../setup/appRealtimeDeviceReconcile';
 import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -28,6 +30,28 @@ describe('appRealtimeDeviceReconcile', () => {
     queue.set(event.deviceId, event);
     state.pendingEventsByQueue.set(QUEUE_KEY, queue);
   };
+
+  // `Date.now()` is not monotonic. Without the clamp in `resolveRealtimeRebuildDelayMs`,
+  // a backwards NTP step makes `sinceMs` negative and arms the timer for
+  // `floor + step`; `hasPendingTimer` then blocks re-arming, so every later
+  // observation for the home coalesces into that stalled timer and the lane goes
+  // dark for an unbounded interval. The clamp is observable even at the test
+  // floor of 0: unclamped this would return the 5 s step, not the debounce.
+  it('never arms a longer delay than the floor when the clock steps backwards', () => {
+    const state = createRealtimeDeviceReconcileState();
+    // A last-rebuild stamp in the FUTURE is exactly what a backwards step leaves.
+    state.lastRebuildAtMsByQueue.set(QUEUE_KEY, Date.now() + 5_000);
+
+    expect(resolveRealtimeRebuildDelayMs(state, QUEUE_KEY))
+      .toBe(REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS);
+  });
+
+  it('debounces an isolated observation with no prior rebuild', () => {
+    const state = createRealtimeDeviceReconcileState();
+
+    expect(resolveRealtimeRebuildDelayMs(state, QUEUE_KEY))
+      .toBe(REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS);
+  });
 
   it('logs drift details when queueing realtime reconcile', () => {
     vi.useFakeTimers();
@@ -99,7 +123,7 @@ describe('appRealtimeDeviceReconcile', () => {
     const structuredLog = createInfoLoggerMock();
     queueEvent(state, { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
     queueEvent(state, { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
-    const requestRebuild = vi.fn().mockResolvedValue(true);
+    const requestRebuild = vi.fn().mockResolvedValue(['dev-1', 'dev-2']);
 
     await flushRealtimeDeviceReconcileQueue({
       state,
@@ -111,10 +135,10 @@ describe('appRealtimeDeviceReconcile', () => {
     // ONE rebuild covers both devices — it re-plans the whole home, so there is
     // nothing per-device to run.
     expect(requestRebuild).toHaveBeenCalledTimes(1);
-    // Both are charged an attempt. The old per-event `shouldRecordAttempt` asked
-    // "is this device STILL drifting?", which is a planner comparison the wiring
-    // layer had no business making; the rebuild's own "did I write?" answer is
-    // what the breaker counts now.
+    // Both are charged an attempt because the rebuild wrote to both. The old
+    // per-event `shouldRecordAttempt` asked "is this device STILL drifting?",
+    // which is a planner comparison the wiring layer had no business making; the
+    // rebuild's own per-device "which did I write?" answer is what counts now.
     expect(state.circuitState.get('dev-1')).toEqual(expect.objectContaining({ reconcileCount: 1 }));
     expect(state.circuitState.get('dev-2')).toEqual(expect.objectContaining({ reconcileCount: 1 }));
     expect(structuredLog.info).toHaveBeenCalledWith({
@@ -124,6 +148,31 @@ describe('appRealtimeDeviceReconcile', () => {
         { deviceId: 'dev-1', deviceName: 'Heater 1', capabilityId: 'onoff' },
         { deviceId: 'dev-2', deviceName: 'Heater 2', capabilityId: 'onoff' },
       ],
+    });
+  });
+
+  it('charges a strike only to the device the rebuild actually wrote', async () => {
+    const state = createRealtimeDeviceReconcileState();
+    const structuredLog = createInfoLoggerMock();
+    queueEvent(state, { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+    queueEvent(state, { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
+
+    await flushRealtimeDeviceReconcileQueue({
+      state,
+      queueKey: QUEUE_KEY,
+      // One rebuild covered both devices, but the planner only acted on dev-2.
+      requestRebuild: vi.fn().mockResolvedValue(['dev-2']),
+      structuredLog,
+    });
+
+    // dev-1 merely reported a change and was left alone — charging it here would
+    // suppress its observations for 60 s after three innocent batches.
+    expect(state.circuitState.get('dev-1')).toBeUndefined();
+    expect(state.circuitState.get('dev-2')).toEqual(expect.objectContaining({ reconcileCount: 1 }));
+    expect(structuredLog.info).toHaveBeenCalledWith({
+      event: 'realtime_observation_rebuild_applied',
+      deviceCount: 1,
+      devices: [{ deviceId: 'dev-2', deviceName: 'Heater 2', capabilityId: 'onoff' }],
     });
   });
 
@@ -137,7 +186,7 @@ describe('appRealtimeDeviceReconcile', () => {
       queueKey: QUEUE_KEY,
       // The rebuild ran and decided nothing needed doing — the common case once
       // the gate is gone, and it must not count toward the breaker.
-      requestRebuild: vi.fn().mockResolvedValue(false),
+      requestRebuild: vi.fn().mockResolvedValue([]),
       structuredLog,
     });
 
@@ -152,7 +201,7 @@ describe('appRealtimeDeviceReconcile', () => {
     await flushRealtimeDeviceReconcileQueue({
       state,
       queueKey: QUEUE_KEY,
-      requestRebuild: vi.fn().mockResolvedValue(false),
+      requestRebuild: vi.fn().mockResolvedValue([]),
     });
 
     // The floor is about how often a rebuild STARTS. A no-op rebuild still cost
@@ -169,7 +218,7 @@ describe('appRealtimeDeviceReconcile', () => {
       await flushRealtimeDeviceReconcileQueue({
         state,
         queueKey: QUEUE_KEY,
-        requestRebuild: vi.fn().mockResolvedValue(true),
+        requestRebuild: vi.fn().mockResolvedValue(['dev-1']),
         structuredLog,
       });
     }
@@ -200,7 +249,7 @@ describe('appRealtimeDeviceReconcile', () => {
       await flushRealtimeDeviceReconcileQueue({
         state,
         queueKey: QUEUE_KEY,
-        requestRebuild: vi.fn().mockResolvedValue(true),
+        requestRebuild: vi.fn().mockResolvedValue(['dev-1']),
         structuredLog,
       });
     }

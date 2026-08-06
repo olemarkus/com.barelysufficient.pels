@@ -1136,6 +1136,38 @@ program) remain deferred.*
       `npm run build`) and validates only at level `debug`, so it is added CI minutes rather than a
       swap — worth measuring before adopting. Source: 2026-08-07 build-size audit, adversarial pass
       on PR #2006. [P2]
+
+- [ ] **Measure apply-path churn on the test Homey before assuming the widened rebuild gate is
+      free.** `maybeApplyPlanChanges` now enters `applyPlanActions` whenever the executor reports
+      work outstanding, which is permanently true for a device whose observation can never confirm
+      the intent (a thermostat that rejects its setpoint, an unknown binary state, an EV charger
+      with no `onoff` report). Each entry rebuilds `buildExecutablePlan` + `buildExecutableObservedState`
+      + a per-device stepped-fallback map and runs the full dispatch loop before every dampener
+      declines to write. WRITES are bounded (pending windows and retry ladders); the WORK is not —
+      with the power lane and the observation lane both at ≤2 s that is up to ~1 apply-pass/s/home
+      of short-lived allocation that previously happened only on action change. Nothing is retained,
+      so this is GC pressure rather than a leak, but the RSS ceiling is 160 MB with ~30 MB headroom.
+      Read `gcObserver`/`smapsRollup` on the test Homey under a home with one unconvergeable device.
+      Related: `MAX_RECENT_REBUILD_TRACES` (64) now drains roughly twice as fast, shortening the
+      forensic window exactly when a churn incident would be investigated.
+      *Source: pels-runtime-reality on the drift/reconcile layering train, 2026-08-06.*
+
+- [ ] **`lib/executor/executorConvergence.ts` speaks the planner's vocabulary, not the executor's.**
+      It imports `DevicePlan`/`PlanInputDevice` and the three plan-device type guards, then reads
+      `plannedState`, `shedAction`, `desiredStepId`, `plannedTarget` and `reportedStepId` straight
+      off plan devices — while its sibling `planExecutionDrift.ts` goes through
+      `buildExecutableDeviceIntent`/`buildExecutableObservedDeviceState` as `lib/AGENTS.md` asks
+      ("avoid passing broad planner device shapes into executor modules"). The move that created
+      this file was deliberately behaviour-free, so the code arrived in the executor without
+      arriving at its vocabulary, and `lib/executor` now has two drift dialects. Convert it to the
+      executable intent/observed split. *Source: pels-layering-guardian on the same train.*
+
+- [ ] **The external-off-hold rebuild bypasses the observation lane's debounce and rebuild floor.**
+      `applyExternalOffHoldToReconcile` calls `hooks.rebuild(...)` directly
+      (`setup/appRealtimeDeviceReconcileRuntime.ts`), so one realtime→rebuild path is throttled and
+      the other is not. Pre-existing, but the floor added by the layering train makes the asymmetry
+      newly visible. *Source: pels-layering-guardian on the same train.*
+
 - [ ] **`PlanEngine` is the composition root for the layer below it — the planner constructs its
       own executor and actuator.** `lib/plan/planEngine.ts` does `new PlanExecutor(...)` and holds
       the injected `Actuator`, so `lib/plan → lib/executor` is a structural value edge that the
@@ -1147,6 +1179,17 @@ program) remain deferred.*
       that currently forwards (`applyPlanActions`, `handleShortfall`, `hasSettledActuation`,
       `hasExecutionWorkOutstanding`, …). Worth doing, not urgent: the boundary is enforced
       everywhere else, and the excepted edge is one file that a reviewer can see.
+
+      A cheaper first step that removes most of the residue: DELETE the drift consultation from the
+      planner instead of routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
+      let the executor no-op per device — it is already built for that (`handleTargetCommandPreflight`
+      skips on an equal observed value, and this train made retry suppression and cooldown stamping
+      unconditional). That collapses the gate in `maybeApplyPlanChanges` to a dry-run check, drops
+      `hasExecutionWorkOutstanding` (probably `shouldApplyStablePlanActions` too) from the facade,
+      leaves `hasSettledActuation` as the only convergence question the planner asks, and makes
+      "the planner knows nothing about drift" literally true rather than true-about-imports. Price
+      it against the churn item above — the gate is a cost optimization, so removing it trades CPU
+      for a clean boundary and the measurement should come first.
       *Source: the drift/reconcile layering train (2026-08-06); noted while closing the three
       inversions behind `inc_26449fb9`.*
 

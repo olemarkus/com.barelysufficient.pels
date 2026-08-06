@@ -137,7 +137,9 @@ async function executePlanRebuild(
     });
   }
 
-  const { applyMs, appliedActions, deviceWriteCount, commandRequestCount } = await maybeApplyPlanChanges(
+  const {
+    applyMs, appliedActions, deviceWriteCount, commandRequestCount, writtenDeviceIds,
+  } = await maybeApplyPlanChanges(
     host,
     stampedPlan,
     changes,
@@ -157,6 +159,7 @@ async function executePlanRebuild(
     appliedActions,
     deviceWriteCount,
     commandRequestCount,
+    writtenDeviceIds,
     hadShedding,
   });
 }
@@ -251,32 +254,52 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  * binary intent is `controlled`), and the stepped command-hold / transition-phase
  * conditions that a bare observed-vs-desired step comparison cannot express.
  */
+function shouldApplyPlan(
+  host: PlanRebuildHost,
+  plan: DevicePlan,
+  changes: PlanChangeSet,
+  isDryRun: boolean,
+  liveDevices: PlanInputDevice[],
+): boolean {
+  if (isDryRun) return false;
+  if (changes.actionChanged) return true;
+  if (host.deps.planEngine.shouldApplyStablePlanActions(plan)) return true;
+  return host.deps.planEngine.hasExecutionWorkOutstanding(plan, liveDevices);
+}
+
 async function maybeApplyPlanChanges(
   host: PlanRebuildHost,
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
   liveDevices: PlanInputDevice[],
-): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number; commandRequestCount: number }> {
-  const shouldApplyStablePlanActions = host.deps.planEngine.shouldApplyStablePlanActions(plan);
-  const hasExecutionWorkOutstanding = host.deps.planEngine.hasExecutionWorkOutstanding(plan, liveDevices);
-  if (
-    isDryRun
-    || (!changes.actionChanged && !shouldApplyStablePlanActions && !hasExecutionWorkOutstanding)
-  ) {
-    return { applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0 };
+): Promise<{
+  applyMs: number;
+  appliedActions: boolean;
+  deviceWriteCount: number;
+  commandRequestCount: number;
+  writtenDeviceIds: string[];
+}> {
+  if (!shouldApplyPlan(host, plan, changes, isDryRun, liveDevices)) {
+    return {
+      applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [],
+    };
   }
 
   const applyStart = Date.now();
   let appliedActions = false;
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
+  let writtenDeviceIds: string[] = [];
   try {
     const actuation = await host.deps.planEngine.applyPlanActions(plan);
     const rawDeviceWriteCount = actuation?.deviceWriteCount;
     const rawCommandRequestCount = actuation?.commandRequestCount;
     deviceWriteCount = sanitizeActuationCount(rawDeviceWriteCount);
     commandRequestCount = sanitizeActuationCount(rawCommandRequestCount);
+    writtenDeviceIds = Array.isArray(actuation?.writtenDeviceIds)
+      ? actuation.writtenDeviceIds.filter((id): id is string => typeof id === 'string')
+      : [];
     appliedActions = deviceWriteCount > 0 || commandRequestCount > 0;
     if (appliedActions) {
       host.deps.schedulePostActuationRefresh?.();
@@ -296,6 +319,7 @@ async function maybeApplyPlanChanges(
     appliedActions,
     deviceWriteCount,
     commandRequestCount,
+    writtenDeviceIds,
   };
 }
 

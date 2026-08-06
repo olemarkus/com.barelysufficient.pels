@@ -86,9 +86,8 @@ This note is for contributors changing runtime logging.
 - `startup_step_failed`
 - `startup_background_task_failed`
 - `realtime_reconcile_queued`
-- `realtime_reconcile_skipped_no_drift`
 - `realtime_reconcile_suppressed`
-- `realtime_reconcile_applied`
+- `realtime_observation_rebuild_applied`
 - `realtime_reconcile_circuit_opened`
 - `realtime_reconcile_failed`
 - `device_update_processed`

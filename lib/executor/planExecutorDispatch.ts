@@ -59,6 +59,13 @@ const logger = getLogger('executor/plan');
 export type PlanActuationResult = {
   deviceWriteCount: number;
   commandRequestCount: number;
+  /**
+   * Ids of the devices this actuation actually touched (a write or a command
+   * request). The counts alone are a plan-wide fact; consumers that act per
+   * device need to know WHICH — the realtime circuit breaker charges a strike
+   * against a device only when that device was the one written.
+   */
+  writtenDeviceIds: string[];
 };
 
 type PlanActionHandleResult = {
@@ -93,7 +100,16 @@ export type PlanExecutorCore = {
   applySheddingToDevice: (deviceId: string, deviceName: string, reason?: string) => Promise<boolean>;
 };
 
-type DispatchDelta = PlanActuationResult;
+/**
+ * One device's contribution. Deliberately NOT `PlanActuationResult`: that is the
+ * plan-wide total and additionally names WHICH devices were touched, which a
+ * per-device delta cannot know. Aliasing the two is what let a plan-wide
+ * "something was written" answer be attributed to every device in a batch.
+ */
+type DispatchDelta = {
+  deviceWriteCount: number;
+  commandRequestCount: number;
+};
 
 const delta = (deviceWriteCount: number, commandRequestCount: number): DispatchDelta => ({
   deviceWriteCount,
@@ -410,6 +426,7 @@ export const dispatchPlanActions = async (
   logUnderspecifiedSteppedShedDevices(plan, executablePlan);
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
+  const writtenDeviceIds: string[] = [];
   for (const intent of executablePlan.devices) {
     const observed = observedMap.get(intent.id);
     const snapshot = observed?.snapshot;
@@ -423,6 +440,10 @@ export const dispatchPlanActions = async (
       });
       deviceWriteCount += result.deviceWriteCount;
       commandRequestCount += result.commandRequestCount;
+      if (result.deviceWriteCount > 0 || result.commandRequestCount > 0) {
+        // eslint-disable-next-line functional/immutable-data -- local accumulator, same shape as the counters above
+        writtenDeviceIds.push(intent.id);
+      }
     } catch (error) {
       logger.error({
         event: 'executor_plan_error',
@@ -431,7 +452,7 @@ export const dispatchPlanActions = async (
       });
     }
   }
-  return { deviceWriteCount, commandRequestCount };
+  return { deviceWriteCount, commandRequestCount, writtenDeviceIds };
 };
 
 export const applySheddingToDeviceImpl = async (

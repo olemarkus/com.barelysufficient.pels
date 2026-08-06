@@ -397,7 +397,7 @@ describe('PlanExecutor declined actuator requests', () => {
       desired: false,
       flowBacked: false,
     });
-    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0 });
+    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
     expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
@@ -434,7 +434,7 @@ describe('PlanExecutor declined actuator requests', () => {
       capabilityId: 'target_temperature',
       value: 23,
     });
-    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0 });
+    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] });
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
     expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
     expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
@@ -496,7 +496,7 @@ describe('PlanExecutor restore logging', () => {
           reason: CAPACITY_REASON,
         }),
       ],
-    })).resolves.toEqual({ deviceWriteCount: 1, commandRequestCount: 0 });
+    })).resolves.toEqual(expect.objectContaining({ deviceWriteCount: 1, commandRequestCount: 0 }));
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       msg: 'Failed to apply action for Bad stepped load; continuing with remaining devices',
@@ -1599,10 +1599,10 @@ describe('PlanExecutor stepped loads', () => {
 
     await expect(executor.applyPlanActions(steppedPlan({
       reportedStepId: undefined,
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'low',
@@ -1649,10 +1649,10 @@ describe('PlanExecutor stepped loads', () => {
       reportedStepId: undefined,
       selectedStepId: 'low',
       desiredStepId: 'max',
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -1677,10 +1677,10 @@ describe('PlanExecutor stepped loads', () => {
       reportedStepId: undefined,
       selectedStepId: 'low',
       desiredStepId: 'max',
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -1697,14 +1697,14 @@ describe('PlanExecutor stepped loads', () => {
     deviceManager.requestSteppedLoadStep.mockResolvedValue({ requested: false });
 
     const plan = steppedPlan({ reportedStepId: undefined });
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
-    });
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+    }));
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
-    });
+    }));
 
     expect(deviceManager.requestSteppedLoadStep).toHaveBeenCalledTimes(2);
     expect(deviceManager.requestSteppedLoadStep).toHaveBeenNthCalledWith(
@@ -1735,10 +1735,10 @@ describe('PlanExecutor stepped loads', () => {
 
     await expect(executor.applyPlanActions(steppedPlan({
       reportedStepId: undefined,
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
@@ -1778,10 +1778,10 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'low',
     });
     expect(executor.hasStablePlanActuation(plan)).toBe(false);
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -1839,10 +1839,10 @@ describe('PlanExecutor stepped loads', () => {
           { id: 'max', planningPowerW: 3000, planningCurrentA: 3000 / 230 },
         ],
       },
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
@@ -1859,10 +1859,10 @@ describe('PlanExecutor stepped loads', () => {
 
     // Capability-built / non-preset profiles carry no per-step current, which is
     // the same zero the old watts-per-amp path produced for a missing preset.
-    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({
+    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
@@ -1899,10 +1899,10 @@ describe('PlanExecutor stepped loads', () => {
     await expect(executor.applyPlanActions(steppedPlan({
       currentTarget: 18,
       plannedTarget: 23,
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalled();
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
@@ -1944,10 +1944,10 @@ describe('PlanExecutor stepped loads', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-    }))).resolves.toEqual({
+    }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'max_power_3000', '3');
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
@@ -3308,10 +3308,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) }),
     );
 
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
-    });
+    }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),

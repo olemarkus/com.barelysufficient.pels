@@ -349,9 +349,9 @@ module.exports = {
         + 'planEngine.ts is the composition root that constructs PlanExecutor, so it legitimately '
         + 'imports the class and its types — and it is the single seam through which the rest of '
         + 'lib/plan asks the executor anything (hasPendingTargetCommands, hasSettledActuation, …). '
-        + 'HONESTY CAVEAT: tsPreCompilationDeps is unset, so this catches only VALUE imports; the '
-        + 'type-only PlanActuationMode/PlanActuationResult edges in planService.ts are erased and '
-        + 'pass regardless.',
+        + 'HONESTY CAVEAT: tsPreCompilationDeps is unset, so this catches only VALUE imports. One '
+        + 'type-only edge survives it: planService.ts importing PlanActuationResult. Moving that '
+        + 'type to lib/planContract/ would close the caveat entirely.',
       severity: 'error',
       from: { path: '^lib/plan/', pathNot: '^lib/plan/planEngine\\.ts$' },
       to: { path: '^lib/executor/' },

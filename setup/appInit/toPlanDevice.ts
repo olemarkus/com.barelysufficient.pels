@@ -335,7 +335,7 @@ export function toPlanDevice(
     // The four-valued observed-state label, resolved once here from the full
     // snapshot (which keeps the raw `binaryControl` + stepped descriptor). The
     // producer emits the CONCRETE latched label (never 'unknown' from staleness);
-    // plan consumers (`planDevices.resolveCurrentState`, `planReconcileState`)
+    // plan consumers (`planDevices.resolveCurrentState`, `planLiveStateMerge`)
     // trust this producer resolution instead of re-resolving from the raw binary
     // axis, so `binaryControl` can stay off the plan kinds.
     currentState: resolveObservedCurrentState(device),

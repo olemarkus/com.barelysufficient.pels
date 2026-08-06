@@ -3,7 +3,7 @@
  * is rebuilt and everything around the build, never WHAT the plan decides —
  * shed/restore decisions belong to `PlanEngine`/`PlanBuilder`, to which every
  * build and actuation call is forwarded. Invariants callers can rely on:
- * plan operations (rebuild, reconcile, manual shed) are serialized through
+ * plan operations (rebuild, live-state sync, manual shed) are serialized through
  * one promise queue (`syncLivePlanStateInline` runs un-queued by design — the
  * executor invokes it inside an already-queued actuation); the first rebuild
  * is held behind the snapshot warmup gate (snapshot-ready or bounded timeout),
