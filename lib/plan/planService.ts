@@ -47,11 +47,7 @@ import { createIdleClassifier, type IdleClassifier, type IdleClassifierDeviceInp
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
-import {
-  buildLiveStatePlan,
-  canRefreshPlanSnapshotFromLiveState,
-  hasPlanExecutionDriftAgainstIntent,
-} from './planReconcileState';
+import { buildLiveStatePlan } from './planLiveStateMerge';
 import { resolvePowerSampleFreshness } from './planPowerFreshness';
 import type {
   DevicePlan,
@@ -286,7 +282,7 @@ export class PlanService {
     const livePlan = this.decoratePlanWithPendingTargetCommands(
       buildLiveStatePlan(this.latestPlanSnapshot, liveDevices),
     );
-    if (canRefreshPlanSnapshotFromLiveState(this.latestPlanSnapshot, livePlan)) {
+    if (this.deps.planEngine.hasSettledActuation(this.latestPlanSnapshot, livePlan)) {
       const refreshedPlan = this.preservePlanGeneratedAt(livePlan, this.latestPlanSnapshot);
       const nowMs = Date.now();
       this.latestPlanSnapshot = refreshedPlan;
@@ -470,7 +466,7 @@ export class PlanService {
     if (!plannedSnapshot) return false;
 
     const liveDevices = this.deps.getPlanDevices();
-    if (!hasPlanExecutionDriftAgainstIntent(plannedSnapshot, liveDevices)) {
+    if (!this.deps.planEngine.hasExecutionWorkOutstanding(plannedSnapshot, liveDevices)) {
       return false;
     }
 

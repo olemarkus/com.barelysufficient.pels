@@ -14,8 +14,20 @@ import {
   resolveKnownEffectiveStepId,
   serializeLegacyStepFields,
 } from './planSteppedLoadState';
-import { hasPlanDeviceExecutionDrift } from '../executor/planExecutionDrift';
 
+/**
+ * Merges live observations onto a plan snapshot, producing a refreshed snapshot
+ * for publication and for use as the next build's base. Only OBSERVED fields
+ * are overwritten (`currentState`, `selectedStepId`, `powerKw`, `currentOn`,
+ * `currentTarget`, …); the decision fields (`plannedState`, `shedAction`,
+ * `desiredStepId`, `plannedTarget`) are carried through untouched, because this
+ * is a projection, not a re-plan.
+ *
+ * That asymmetry is the reason this module must never grow a "should we
+ * re-actuate?" predicate: its output is by construction the OLD decision seen
+ * freshly, so acting on it would re-assert a plan nobody re-decided. Whether
+ * observed still disagrees with intent is `lib/executor/executorConvergence.ts`.
+ */
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   return {
@@ -154,46 +166,6 @@ function clampShedDesiredStepId(
   return device.desiredStepId;
 }
 
-export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {
-  if (previousPlan.devices.length !== livePlan.devices.length) return true;
-  for (let index = 0; index < previousPlan.devices.length; index += 1) {
-    const previous = previousPlan.devices[index];
-    const live = livePlan.devices[index];
-    if (previous.id !== live.id) return true;
-    if (hasRelevantBinaryExecutionDrift(previous, live)) return true;
-    if (hasRelevantTargetExecutionDrift(previous, live)) return true;
-  }
-  return false;
-}
-
-export function canRefreshPlanSnapshotFromLiveState(
-  basePlan: DevicePlan,
-  livePlan: DevicePlan,
-): boolean {
-  if (!hasPlanExecutionDrift(basePlan, livePlan)) return false;
-  if (basePlan.devices.length !== livePlan.devices.length) return false;
-
-  for (let index = 0; index < basePlan.devices.length; index += 1) {
-    const baseDevice = basePlan.devices[index];
-    const liveDevice = livePlan.devices[index];
-    if (!liveDevice || baseDevice.id !== liveDevice.id) return false;
-    if (!hasSettledPostActuationState(baseDevice, liveDevice)) return false;
-  }
-  return true;
-}
-export function hasPlanExecutionDriftAgainstIntent(
-  previousPlan: DevicePlan,
-  liveDevices: PlanInputDevice[],
-): boolean {
-  const liveById = new Map(liveDevices.map((device) => [device.id, device]));
-  for (const previous of previousPlan.devices) {
-    const live = liveById.get(previous.id);
-    if (!live) continue;
-    if (hasPlanDeviceExecutionDrift({ planDevice: previous, liveDevice: live })) return true;
-  }
-  return false;
-}
-
 function resolveCurrentStateFromPlanInput(
   liveDevice: PlanInputDevice,
   mergedProfile: SteppedLoadProfile | undefined,
@@ -230,96 +202,4 @@ function resolveLiveBinaryFields(
       selectedStepId: mergedSelectedStepId,
     }),
   };
-}
-
-// The binary on/off settle check: a planned binary restore is settled only once
-// the live device reads on (`currentOn`), a planned binary shed only once it reads
-// off. On/off is binary-only, so a non-binary live device is never confirmed
-// on/off and the corresponding restore/shed never reads settled here.
-function hasSettledBinaryActuation(
-  baseDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  if (requiresBinaryRestore(baseDevice) && !(isBinaryPlanDevice(liveDevice) && liveDevice.currentOn)) return false;
-  if (requiresBinaryShed(baseDevice) && !(isBinaryPlanDevice(liveDevice) && !liveDevice.currentOn)) return false;
-  return true;
-}
-
-function hasSettledPostActuationState(
-  baseDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  if (baseDevice.available === false || liveDevice.available === false) return true;
-  if (
-    isSteppedLoadDevice(baseDevice)
-    && baseDevice.desiredStepId
-    && liveDevice.selectedStepId !== baseDevice.desiredStepId
-  ) {
-    return false;
-  }
-  if (!hasSettledBinaryActuation(baseDevice, liveDevice)) return false;
-  const liveCurrentTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
-  const basePlannedTarget = isTemperaturePlanDevice(baseDevice) ? baseDevice.plannedTarget : undefined;
-  if (requiresTargetUpdate(baseDevice) && liveCurrentTarget !== basePlannedTarget) return false;
-  return true;
-}
-
-function requiresBinaryRestore(device: DevicePlan['devices'][number]): boolean {
-  return device.controllable !== false
-    && device.plannedState === 'keep'
-    && isBinaryPlanDevice(device) && !device.currentOn;
-}
-
-function requiresBinaryShed(device: DevicePlan['devices'][number]): boolean {
-  // Only a `turn_off` shed settles on the binary axis. `set_step` and
-  // `set_temperature` sheds settle on the step / target axis — a step-only
-  // stepper (no binary handle) sheds via `set_step` and must NOT be held for a
-  // binary-off read it can never produce. (An already-off binary device's
-  // `turn_off` still settles immediately via the live binary-off read.)
-  return device.plannedState === 'shed' && device.shedAction === 'turn_off';
-}
-
-function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
-  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
-    return false;
-  }
-  if (!isTemperaturePlanDevice(device)) return false;
-  const { currentTarget, plannedTarget } = device;
-  return typeof plannedTarget === 'number' && plannedTarget !== currentTarget;
-}
-
-function hasRelevantBinaryExecutionDrift(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  if (isSteppedLoadDevice(previousDevice)) {
-    return previousDevice.selectedStepId !== liveDevice.selectedStepId
-      || previousDevice.currentState !== liveDevice.currentState
-      || hasSteppedEvidenceChanged(previousDevice, liveDevice);
-  }
-  return previousDevice.currentState !== liveDevice.currentState;
-}
-
-function hasSteppedEvidenceChanged(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  return previousDevice.reportedStepId !== liveDevice.reportedStepId;
-}
-
-function hasRelevantTargetExecutionDrift(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  if (!tracksTargetForExecution(previousDevice)) return false;
-  const previousTarget = isTemperaturePlanDevice(previousDevice) ? previousDevice.currentTarget : null;
-  const liveTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
-  return previousTarget !== liveTarget;
-}
-
-function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {
-  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
-    return false;
-  }
-  return isTemperaturePlanDevice(device) && typeof device.plannedTarget === 'number';
 }

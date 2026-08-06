@@ -1,6 +1,6 @@
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanContext } from '../../lib/plan/planContext';
-import { buildLiveStatePlan } from '../../lib/plan/planReconcileState';
+import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import { isBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import { createPlanEngineState } from '../../lib/plan/planState';

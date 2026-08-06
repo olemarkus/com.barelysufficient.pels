@@ -307,13 +307,6 @@ module.exports = {
     },
     // Existing inversions to track but not yet break — clean-up targets.
     {
-      name: 'todo-tighten-plan-executor-boundary',
-      comment: 'TODO: extract executor-needed types/predicates into lib/planContract; plan should not import executor (Phase 3 in the architecture refactor).',
-      severity: 'warn',
-      from: { path: '^lib/plan/' },
-      to: { path: '^lib/executor/' },
-    },
-    {
       name: 'no-plan-to-smarttasks',
       comment:
         'DEFINITION-OF-DONE for the smart-task controller extraction (see '
@@ -344,6 +337,24 @@ module.exports = {
         path: '^lib/device/',
         pathNot: '^lib/device/(deviceObservation|deviceActionProjection|deviceResidualKw)\\.ts$',
       },
+    },
+    {
+      name: 'no-plan-to-executor',
+      comment: 'The planner decides desired state from its own inputs; it must not reach into the '
+        + 'executor for drift, convergence, or actuation concepts. Converging observed onto desired '
+        + 'is the executor\'s charter (lib/AGENTS.md § Layer boundaries), and a planner that consults '
+        + 'a drift predicate is one step from re-asserting a stale plan instead of re-deciding — the '
+        + 'shape that caused the 2026-08-05 hard-cap breach (inc_26449fb9). Replaces the former '
+        + 'todo-tighten-plan-executor-boundary warning, whose stated goal this is. Allowed exception: '
+        + 'planEngine.ts is the composition root that constructs PlanExecutor, so it legitimately '
+        + 'imports the class and its types — and it is the single seam through which the rest of '
+        + 'lib/plan asks the executor anything (hasPendingTargetCommands, hasSettledActuation, …). '
+        + 'HONESTY CAVEAT: tsPreCompilationDeps is unset, so this catches only VALUE imports; the '
+        + 'type-only PlanActuationMode/PlanActuationResult edges in planService.ts are erased and '
+        + 'pass regardless.',
+      severity: 'error',
+      from: { path: '^lib/plan/', pathNot: '^lib/plan/planEngine\\.ts$' },
+      to: { path: '^lib/executor/' },
     },
     {
       name: 'no-device-action-projection-to-plan',

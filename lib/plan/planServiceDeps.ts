@@ -20,6 +20,8 @@ type PlanServicePlanEngine = Pick<
   | 'handleShortfallCleared'
   | 'applyPlanActions'
   | 'shouldApplyStablePlanActions'
+  | 'hasSettledActuation'
+  | 'hasExecutionWorkOutstanding'
   | 'syncPendingTargetCommands'
   | 'syncPendingBinaryCommands'
   | 'prunePendingTargetCommands'
