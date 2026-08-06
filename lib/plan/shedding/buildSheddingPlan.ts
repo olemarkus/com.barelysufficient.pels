@@ -135,6 +135,8 @@ function planShedding(
     blockedCandidateCount: candidateSummary.blockedCandidateCount,
     reducibleControlledKw: candidateSummary.reducibleControlledKw,
     blockedReducibleControlledKw: candidateSummary.blockedReducibleControlledKw,
+    skippedCandidateCount: candidateSummary.skippedCandidateCount,
+    skippedCandidateReasons: candidateSummary.skippedCandidateReasons,
   });
   const result = selectShedDevices({
     candidates,
@@ -305,6 +307,8 @@ function holdSheddingAtLastDecision(params: {
       blockedCandidateCount: candidateSummary.blockedCandidateCount,
       reducibleControlledKw: candidateSummary.reducibleControlledKw,
       blockedReducibleControlledKw: candidateSummary.blockedReducibleControlledKw,
+      skippedCandidateCount: candidateSummary.skippedCandidateCount,
+      skippedCandidateReasons: candidateSummary.skippedCandidateReasons,
     }),
   };
 }

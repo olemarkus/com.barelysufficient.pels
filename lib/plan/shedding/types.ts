@@ -5,6 +5,7 @@ import type { PlanContext } from '../planContext';
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
+import type { ShedCandidateSkipSummary } from './candidateSkipLog';
 
 export type SheddingPlan = {
   shedSet: Set<string>;
@@ -33,6 +34,8 @@ export type OvershootStats = {
   blockedReducibleControlledKw: number;
   allShedCandidatesExhausted: boolean;
   controlRecoverable: boolean;
+  skippedCandidateCount: number;
+  skippedCandidateReasons: ShedCandidateSkipSummary['skippedCandidateReasons'];
 };
 
 export type SheddingDeps = {
