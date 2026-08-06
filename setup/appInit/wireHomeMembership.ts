@@ -132,7 +132,8 @@ const reconcilePreparedPlans = async (params: {
   } = params;
   let mainReconcileAborted = false;
   const [, subHomesReconciled] = await Promise.all([
-    planService.reconcileLatestPlanState(
+    planService.rebuildPlanFromCache(
+      'home_membership_settled',
       () => !isStableSampleRevision(getMainStableSampleRevision(), mainSampleRevision),
       () => {
         mainReconcileAborted = true;

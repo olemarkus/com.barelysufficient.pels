@@ -48,14 +48,16 @@ const applySourceRecovery = async (
   const endPreparedReconcile = params.beginPreparedReconcile(sampleRevision);
   let reconciledCurrent: boolean;
   try {
-    const outcome = await params.planService.rebuildPlanFromCache('home_source_authority_recovered');
-    if (outcome.failed || !isSourceRecoveryCurrent(params, sampleRevision)) return false;
-    let reconcileAborted = false;
-    await params.planService.reconcileLatestPlanState(
+    // ONE rebuild: it re-plans AND converges, so the follow-up reconcile that
+    // used to force the apply for an unchanged action signature is redundant.
+    let rebuildAborted = false;
+    const outcome = await params.planService.rebuildPlanFromCache(
+      'home_source_authority_recovered',
       () => !isSourceRecoveryCurrent(params, sampleRevision),
-      () => { reconcileAborted = true; },
+      () => { rebuildAborted = true; },
     );
-    reconciledCurrent = !reconcileAborted && isSourceRecoveryCurrent(params, sampleRevision);
+    if (outcome.failed) return false;
+    reconciledCurrent = !rebuildAborted && isSourceRecoveryCurrent(params, sampleRevision);
   } finally {
     endPreparedReconcile();
   }
@@ -65,10 +67,14 @@ const applySourceRecovery = async (
 /**
  * A final actuator fence can reject an otherwise-current shed when the
  * POWER_SOURCE adapter is transiently unavailable. The committed plan then has
- * the same action signature on every later sample, so an ordinary plan rebuild
- * is not guaranteed to re-apply it. Own that retry here: rebuild fresh once
- * source authority recovers, then reconcile behind the same stable-sample fence
- * as ownership-generation recovery.
+ * the same action signature on every later sample — which used to mean an
+ * ordinary rebuild would not re-apply it, so this module owned an explicit
+ * reconcile to force the write. The rebuild now applies whenever the executor
+ * still has work outstanding, so the retry is a plain rebuild behind the same
+ * stable-sample fence as ownership-generation recovery.
+ *
+ * The retry schedule stays: recovering source authority is what makes the write
+ * possible again, and nothing else would prompt a rebuild at that moment.
  */
 export const installHomeCapacityBundleSourceRecovery = (
   params: SourceRecoveryParams,

@@ -1106,16 +1106,41 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   // Spy `rebuildPlanFromCache` so only the ready-edge rebuild is controllable;
   // every OTHER reason (initial build, sample-driven, capacity reload) runs the
   // real method. Returns the deferred resolver for the ready-edge rebuild.
+  /**
+   * Hold the ready-edge rebuild in flight and expose the abort predicate it was
+   * handed.
+   *
+   * With one convergence lane the edge no longer plans and then separately
+   * reconciles, so there is no second call to spy on as a proxy for "did it
+   * actuate?". The predicate IS the fence: `rebuildPlanFromCache` re-checks it
+   * inside the queued body, before planning or writing, and the actuator seam
+   * (`isActuationFenced` in `createHomeCapacityBundle`) independently gates on
+   * teardown / membership / a superseded prepared-sample fence. Asserting the
+   * predicate reports stale is asserting the property, not a stand-in for it.
+   */
   const interceptReadyEdgeRebuild = (
     handler: (resolve: (outcome: PlanRebuildOutcome) => void) => void,
-  ): void => {
+  ): { readAbortDecision: () => boolean } => {
     const realRebuild = PlanService.prototype.rebuildPlanFromCache;
+    let capturedShouldAbort: (() => boolean) | undefined;
     vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
-      .mockImplementation(function reroute(this: PlanService, reason?: string) {
-        if (reason !== 'home_membership_ready') return realRebuild.call(this, reason);
+      .mockImplementation(function reroute(
+        this: PlanService,
+        reason?: string,
+        shouldAbort?: () => boolean,
+        onAbort?: () => void,
+      ) {
+        if (reason !== 'home_membership_ready') return realRebuild.call(this, reason, shouldAbort, onAbort);
+        capturedShouldAbort = shouldAbort;
         return new Promise<PlanRebuildOutcome>((resolve) => handler(resolve));
       });
+    return { readAbortDecision: () => capturedShouldAbort?.() ?? false };
   };
+
+  /** Ready-edge rebuild calls, the observable for "the latch re-armed". */
+  const countReadyEdgeRebuilds = (
+    spy: { mock: { calls: unknown[][] } },
+  ): number => spy.mock.calls.filter((call) => call[0] === 'home_membership_ready').length;
 
   const armBundleGatedThenReady = async (): Promise<void> => {
     rig.setMembershipReady(false);
@@ -1125,37 +1150,41 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.setMembershipReady(true);
   };
 
-  it('P0#1 ready-edge: a FAILED rebuild does not reconcile and re-arms so a later attempt applies', async () => {
+  it('P0#1 ready-edge: a FAILED rebuild re-arms the latch so a later attempt applies', async () => {
     await armBundleGatedThenReady();
-    const reconcileSpy = vi.spyOn(PlanService.prototype, 'reconcileLatestPlanState');
     // Control ONLY the ready-edge rebuild outcome; every other reason runs real.
     let failReady = true;
     const realRebuild = PlanService.prototype.rebuildPlanFromCache;
-    vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
-      .mockImplementation(function reroute(this: PlanService, reason?: string) {
+    const rebuildSpy = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
+      .mockImplementation(function reroute(
+        this: PlanService,
+        reason?: string,
+        shouldAbort?: () => boolean,
+        onAbort?: () => void,
+      ) {
         if (reason === 'home_membership_ready') {
           return Promise.resolve({ ...createPlanRebuildOutcome(false), failed: failReady });
         }
-        return realRebuild.call(this, reason);
+        return realRebuild.call(this, reason, shouldAbort, onAbort);
       });
 
     rig.registry.onMembershipReady();
     await drainPending();
-    // Failed fresh rebuild → the stale pre-gate plan is NOT reconciled (would restore over cap).
-    expect(reconcileSpy).not.toHaveBeenCalled();
+    // A failed rebuild neither planned nor actuated, so nothing stale was applied
+    // (the old lane's hazard was reconciling the pre-gate plan after this failure).
+    expect(countReadyEdgeRebuilds(rebuildSpy)).toBe(1);
 
-    // Latch re-armed: a later SUCCESSFUL attempt now reconciles.
+    // Latch re-armed: a later attempt runs the ready-edge rebuild again.
     failReady = false;
     rig.registry.onMembershipReady();
     await drainPending();
-    expect(reconcileSpy).toHaveBeenCalled();
+    expect(countReadyEdgeRebuilds(rebuildSpy)).toBe(2);
   });
 
-  it('P0#2 teardown during an in-flight ready-edge rebuild: the resolving rebuild does NOT reconcile', async () => {
+  it('P0#2 teardown during an in-flight ready-edge rebuild: the resolving rebuild is fenced', async () => {
     await armBundleGatedThenReady();
-    const reconcileSpy = vi.spyOn(PlanService.prototype, 'reconcileLatestPlanState');
     let releaseRebuild: (outcome: PlanRebuildOutcome) => void = () => undefined;
-    interceptReadyEdgeRebuild((resolve) => { releaseRebuild = resolve; });
+    const { readAbortDecision } = interceptReadyEdgeRebuild((resolve) => { releaseRebuild = resolve; });
 
     rig.registry.onMembershipReady();
     await drainPending();
@@ -1163,10 +1192,14 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     writeActiveHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
-    // The in-flight rebuild resolves (healthy) AFTER teardown — must be fenced.
+    // The in-flight rebuild resolves (healthy) AFTER teardown — the edge's fence
+    // must report stale so the rebuild aborts before planning or writing. (The
+    // actuator seam independently gates on `isTornDown()`, and the no-persist
+    // half is covered by the sibling test below, which holds its warmup gate so
+    // nothing has been written before teardown.)
+    expect(readAbortDecision()).toBe(true);
     releaseRebuild({ ...createPlanRebuildOutcome(false), failed: false });
     await drainPending();
-    expect(reconcileSpy).not.toHaveBeenCalled();
   });
 
   it('P0#2 teardown during an in-flight rebuild: no suffixed-key persist; a same-homeId recreate is unaffected', async () => {
@@ -1196,21 +1229,23 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeTruthy();
   });
 
-  it('P1#5 ready-edge: a newer sample landing mid-rebuild aborts the reconcile (no stale restore)', async () => {
+  it('P1#5 ready-edge: a newer sample landing mid-rebuild trips the stale fence (no stale restore)', async () => {
     await armBundleGatedThenReady();
-    const reconcileSpy = vi.spyOn(PlanService.prototype, 'reconcileLatestPlanState');
     let releaseRebuild: (outcome: PlanRebuildOutcome) => void = () => undefined;
-    interceptReadyEdgeRebuild((resolve) => { releaseRebuild = resolve; });
+    const { readAbortDecision } = interceptReadyEdgeRebuild((resolve) => { releaseRebuild = resolve; });
 
     rig.registry.onMembershipReady();
     await drainPending();
+    // The fence is clean before the newer sample lands.
+    expect(readAbortDecision()).toBe(false);
     // A NEWER meter sample lands while the (under-cap) ready-edge rebuild is in flight.
     rig.registry.routeMeterReadings({ 'm-a': 5000 }, Date.now());
     await drainPending();
-    // The stale under-cap rebuild resolves AFTER the newer sample → reconcile aborted.
+    // The under-cap rebuild is now stale: its fence reports so, which is what
+    // `rebuildPlanFromCache` re-checks before planning or writing.
+    expect(readAbortDecision()).toBe(true);
     releaseRebuild({ ...createPlanRebuildOutcome(false), failed: false });
     await drainPending();
-    expect(reconcileSpy).not.toHaveBeenCalled();
   });
 
   it('P1#4 freshness heartbeat: bounded — one rebuild per stale period, no per-tick storm', async () => {
@@ -1528,53 +1563,57 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     }
 
     expect(rig.ctx.timers.has('home:h_a:sourceActuationRetry')).toBe(true);
-    expect(rebuild).not.toHaveBeenCalledWith('home_source_authority_recovered');
+    expect(rebuild.mock.calls.some((call) => call[0] === 'home_source_authority_recovered')).toBe(false);
 
     sourceReadUnavailable = false;
     await vi.advanceTimersByTimeAsync(1_000);
     await drainPending();
 
-    expect(rebuild).toHaveBeenCalledWith('home_source_authority_recovered');
+    expect(rebuild.mock.calls.some((call) => call[0] === 'home_source_authority_recovered')).toBe(true);
     expect(setCapability).toHaveBeenCalledWith('load-a', 'onoff', false);
     expect(rig.ctx.timers.has('home:h_a:sourceActuationRetry')).toBe(false);
   });
 
-  it('R3#5 ready-edge: a sample landing AFTER the pre-enqueue check but BEFORE the queued reconcile aborts, re-arms and re-applies (not permanently latched)', async () => {
+  it('R3#5 ready-edge: a sample landing AFTER the pre-enqueue check but BEFORE the queued rebuild aborts, re-arms and re-applies (not permanently latched)', async () => {
     // The pre-enqueue revision check (P1#5) closes the race only up to the enqueue
     // boundary. This is the residual TOCTOU it cannot see: the sample lands after
-    // that check has already passed but before the queued reconcile body reads the
-    // revision. The body aborts on the point-of-use predicate — and a bare `false`
-    // return there is indistinguishable from an ordinary no-op. The ready-edge must
-    // observe the DISTINCT abort signal, re-arm its latch, and reschedule; otherwise
-    // the latch is permanently burned and the pre-gate stable shed never applies.
+    // that check has already passed but before the queued rebuild body reads the
+    // revision. The body aborts on the point-of-use predicate — and a zeroed
+    // outcome there is indistinguishable from an ordinary no-op. The ready-edge
+    // must observe the DISTINCT `onAbort` signal, re-arm its latch, and
+    // reschedule; otherwise the latch is permanently burned and the pre-gate
+    // stable shed never applies.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     await armBundleGatedThenReady();
 
-    // Reproduce the post-enqueue window from INSIDE the queued reconcile call: by
-    // the time `reconcileLatestPlanState` runs, the ready-edge's pre-enqueue check
-    // has already passed (revision stable), so bumping the revision here — exactly
+    // Reproduce the post-enqueue window from INSIDE the queued rebuild call: by the
+    // time `rebuildPlanFromCache` runs, the ready-edge's pre-enqueue check has
+    // already passed (revision stable), so bumping the revision here — exactly
     // once — models a sample landing after that check but before the body reads it.
     // `shouldAbort()` captured at spy entry equals the value the real body will see.
-    const realReconcile = PlanService.prototype.reconcileLatestPlanState;
+    const realRebuild = PlanService.prototype.rebuildPlanFromCache;
     const abortDecisions: boolean[] = [];
     let injectedOnce = false;
-    vi.spyOn(PlanService.prototype, 'reconcileLatestPlanState')
+    vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
       .mockImplementation(function wrapped(
         this: PlanService,
+        reason?: string,
         shouldAbort?: () => boolean,
         onAbort?: () => void,
-      ): Promise<boolean> {
+      ): Promise<PlanRebuildOutcome> {
+        if (reason !== 'home_membership_ready') return realRebuild.call(this, reason, shouldAbort, onAbort);
         if (!injectedOnce) {
           injectedOnce = true;
           rig.registry.routeMeterReadings({ 'm-a': 5000 }, Date.now());
         }
         abortDecisions.push(shouldAbort?.() ?? false);
-        return realReconcile.call(this, shouldAbort, onAbort);
+        return realRebuild.call(this, reason, shouldAbort, onAbort);
       });
 
     rig.registry.onMembershipReady();
-    // With the bug (latch burned on abort) the reconcile is invoked exactly ONCE
-    // and never retries, so this drain would throw — the decisive regression guard.
+    // With the bug (latch burned on abort) the ready-edge rebuild is invoked
+    // exactly ONCE and never retries, so this drain would throw — the decisive
+    // regression guard.
     await drainUntil(() => abortDecisions.length >= 2);
     await drainPending();
 

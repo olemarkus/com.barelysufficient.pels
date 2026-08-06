@@ -1395,7 +1395,7 @@ describe('MyApp initialization', () => {
     }
   });
 
-  it('reconciles the current plan after an external target drift without rebuilding', async () => {
+  it('re-plans after an external target drift', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('target_temperature', 20);
@@ -1412,7 +1412,6 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     clearRecentLocalCapabilityWrites(app);
-    const reconcileSpy = vi.spyOn((app as any).planService, 'reconcileLatestPlanState');
     const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
 
     (app as any).deviceManager.injectDeviceUpdateForTest({
@@ -1428,10 +1427,16 @@ describe('MyApp initialization', () => {
       },
     });
 
-    await waitFor(() => reconcileSpy.mock.calls.length === 1);
+    // The setpoint moved outside PELS. That is an ordinary planner input now: the
+    // observation requests a RE-PLAN, which decides afresh from current device
+    // state and whole-home usage. It used to request a re-assert of the committed
+    // plan instead, which is the lane that breached the hard cap in production
+    // (inc_26449fb9) by re-applying a decision made before the observation.
+    await waitFor(() => rebuildSpy.mock.calls.some(
+      (call: unknown[]) => call[0] === 'device_observation_changed',
+    ));
     await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
-    expect(rebuildSpy).not.toHaveBeenCalled();
     expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
     });
@@ -1596,7 +1601,7 @@ describe('MyApp initialization', () => {
     }
   });
 
-  it('does not reconcile the current plan for temperature-only realtime device updates', async () => {
+  it('does not re-plan for temperature-only realtime device updates', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('target_temperature', 20);
@@ -1611,7 +1616,7 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    const reconcileSpy = vi.spyOn((app as any).planService, 'reconcileLatestPlanState');
+    const observationRebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
 
     (app as any).deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
@@ -1628,7 +1633,14 @@ describe('MyApp initialization', () => {
 
     await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
-    expect(reconcileSpy).not.toHaveBeenCalled();
+    // `measure_temperature` is not a control capability, so the producer reports
+    // `observedControlStateChanged: false` and no re-plan is requested. This is the
+    // filter that keeps a chatty sensor from driving a rebuild every few seconds —
+    // it is the producer's job, and it is what makes dropping the wiring-layer
+    // drift gate affordable.
+    expect(observationRebuildSpy.mock.calls.filter(
+      (call: unknown[]) => call[0] === 'device_observation_changed',
+    )).toEqual([]);
     expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       currentTemperature: 23,
       binaryControl: { on: true },

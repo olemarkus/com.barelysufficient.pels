@@ -47,7 +47,7 @@ import type {
 } from '../../lib/power/trackerTypes';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
-import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
+import type { DevicePlan } from '../../lib/plan/planTypes';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
 import CapacityGuard from '../../lib/power/capacityGuard';
@@ -134,17 +134,21 @@ export type HomeCapacityBundleDeps = {
 export type HomeCapacityBundleDiagnostics = HomeRuntimeDiagnostics;
 
 /**
- * The realtime-reconcile routing seam for a device THIS home owns (multi-home
- * R7b P1#1). The app's realtime-device-reconcile wrapper binds these closures
- * when a drifting device resolves to a sub-home, so an external on/off change to
- * a sub-home load is drift-checked and reconciled against THAT home's plan —
- * main's plan filters sub-home members out, so it would never see the drift.
- * Shapes mirror the main-home closures the wrapper otherwise uses.
+ * The realtime-observation routing seam for a device THIS home owns (multi-home
+ * R7b P1#1). The app's realtime-device wrapper binds these closures when a
+ * device that moved resolves to a sub-home, so the re-plan runs against THAT
+ * home's plan and device set — main's plan filters sub-home members out, so it
+ * would never see the device at all. Shapes mirror the main-home closures the
+ * wrapper otherwise uses.
  */
 export type RealtimeReconcileHooks = {
   getLatestPlanSnapshot: () => DevicePlan | null;
-  getLiveDevices: () => PlanInputDevice[];
-  reconcile: () => Promise<boolean>;
+  /**
+   * Re-plan THIS home from current device state and whole-home usage, resolving
+   * true when the rebuild actually wrote to devices. Not "re-apply this home's
+   * committed plan" — that lane is gone (see `PlanService`'s docblock).
+   */
+  requestRebuild: () => Promise<boolean>;
   /**
    * "Leave off until turned on again" seams, routed to THIS home. Its pending
    * commands live in this bundle's engine and its plan in this bundle's service,

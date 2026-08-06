@@ -1,7 +1,6 @@
 import { PassThrough } from 'node:stream';
 import type { Mock } from 'vitest';
 import { PlanService } from '../../lib/plan/planService';
-import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
 import type {
   DevicePlan,
   PlanInputDevice,
@@ -21,7 +20,6 @@ import type { BinaryControlObservation } from '../../packages/contracts/src/type
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
@@ -1052,7 +1050,7 @@ describe('PlanService', () => {
     expect(service.getLatestPlanSnapshot()?.meta.totalKw).toBe(1.2);
   });
 
-  it('reapplies the current plan when the live onoff state drifts', async () => {
+  it('does not publish drifted live state as the committed snapshot', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
@@ -1098,18 +1096,14 @@ describe('PlanService', () => {
       plannedTarget: 20,
     });
 
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          currentTarget: 20,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }), 'reconcile');
+    // `syncLivePlanState` must not publish drifted live state as the committed
+    // snapshot: the device reads off while the plan wants it on, which is NOT a
+    // settled actuation, so the stored snapshot keeps saying `on` and no
+    // `plan_updated` goes out. (Convergence itself is the rebuild's job — see
+    // 'actuates on a detail-only rebuild when the device drifted from plan
+    // intent', and the per-shape drift coverage in executorConvergence.test.ts.)
+    await expect(service.syncLivePlanState('device_update')).resolves.toBe(false);
+    expect(applyPlanActions).not.toHaveBeenCalled();
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
         expect.objectContaining({
@@ -1124,14 +1118,16 @@ describe('PlanService', () => {
     expect(realtime).not.toHaveBeenCalled();
   });
 
-  it('aborts the reconcile (no reapply) when the abort predicate reports a stale revision', async () => {
-    // The committed plan HAS execution drift (the live onoff state diverged from
-    // the planned intent), so a bare reconcile WOULD reapply. But `reconcileLatestPlanState`
-    // only enqueues; by the time this queued body runs, the caller's precondition
-    // (a sub-home ready-edge's meter-sample revision) may have moved. The abort
-    // predicate — checked inside the reconcile, at the point of use — must prevent
-    // the now-stale reapply (R7b P1 TOCTOU).
+  it('aborts the rebuild (no actuation) when the abort predicate reports a stale revision', async () => {
+    // The live onoff state diverges from what the plan intends, so this rebuild
+    // WOULD actuate. But `rebuildPlanFromCache` only enqueues; by the time the
+    // queued body runs, the caller's precondition (a sub-home ready-edge's
+    // meter-sample revision) may have moved. The abort predicate — checked inside
+    // the queued body, at the point of use — must prevent the now-stale actuation
+    // (R7b P1 TOCTOU), and `onAbort` must fire so the caller can tell an abort
+    // from an ordinary no-op.
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const onAbort = vi.fn();
     const service = new PlanService({
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1175,150 +1171,15 @@ describe('PlanService', () => {
       plannedTarget: 20,
     });
 
-    // Predicate reports the revision moved → the reconcile aborts before touching devices.
-    await expect(service.reconcileLatestPlanState(() => true)).resolves.toBe(false);
+    // Predicate reports the revision moved → the rebuild aborts before planning
+    // or touching devices.
+    const outcome = await service.rebuildPlanFromCache('stale_revision', () => true, onAbort);
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(outcome.failed).toBe(false);
+    expect(outcome.appliedActions).toBe(false);
     expect(applyPlanActions).not.toHaveBeenCalled();
   });
 
-  it('blocks stale EV deadline resume intents during realtime reconcile', async () => {
-    const applyPlanActions = vi.fn().mockImplementation(async (plan: DevicePlan) => {
-      expect(plan.meta.powerFreshnessState).toBe('stale_hold');
-      expect(buildExecutablePlan(plan).devices[0].release).toBeNull();
-      return { deviceWriteCount: 0, commandRequestCount: 0 };
-    });
-    const liveDevices: PlanInputDevice[] = [withBinaryDiscriminant({
-      id: 'ev-1',
-      name: 'EV Charger',
-      deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging' as const,
-      binaryControl: { on: false },
-      currentOn: false,
-    }) as PlanInputDevice];
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => liveDevices,
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(
-      null,
-      'keep',
-      { powerFreshnessState: 'fresh' },
-      {
-        id: 'ev-1',
-        name: 'EV Charger',
-        binaryControl: { on: false },
-        currentOn: false,
-        currentState: 'off',
-        currentTarget: null,
-        plannedState: 'keep',
-        deviceClass: 'evcharger',
-        controlCapabilityId: 'evcharger_charging',
-        deferredReleaseIntent: 'binary_restore',
-      },
-    );
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      meta: expect.objectContaining({ powerFreshnessState: 'stale_hold' }),
-      devices: [
-        expect.objectContaining({
-          id: 'ev-1',
-          deferredReleaseIntent: 'binary_restore',
-        }),
-      ],
-    }), 'reconcile');
-  });
-
-  it('reapplies the current plan when the live target drifts', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
-      currentTarget: 20,
-      plannedState: 'keep',
-      plannedTarget: 20,
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-          currentTarget: 17,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }), 'reconcile');
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-          currentTarget: 20,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }));
-    expect(realtime).not.toHaveBeenCalled();
-  });
 
   it('keeps the observed target stale while exposing pending confirmation state', async () => {
     const settingsSet = vi.fn();
@@ -1551,167 +1412,6 @@ describe('PlanService', () => {
     }));
   });
 
-  it('skips plan reconcile for power-only drift', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        currentTemperature: 21,
-        powerKw: 2,
-        expectedPowerKw: 2,
-        measuredPowerKw: 2,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
-      currentTarget: 20,
-      plannedState: 'keep',
-      plannedTarget: 20,
-      powerKw: 1,
-      expectedPowerKw: 1,
-      measuredPowerKw: 1,
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(false);
-    expect(applyPlanActions).not.toHaveBeenCalled();
-  });
-
-  it('skips plan reconcile for target-only drift while a shed device is already off', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 23.5, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(21, 'shed due to capacity', {}, {
-      currentState: 'off',
-      plannedState: 'shed',
-      currentTarget: 21,
-      plannedTarget: 21,
-      shedAction: 'turn_off',
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(false);
-    expect(applyPlanActions).not.toHaveBeenCalled();
-  });
-
-  it('reapplies shed-off intent when live binary state is still on', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        binaryControlObservation: buildBinaryObservation('onoff', true),
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(21, 'shed due to capacity', {}, {
-      currentState: 'on',
-      plannedState: 'shed',
-      currentTarget: 21,
-      plannedTarget: 21,
-      shedAction: 'turn_off',
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-          plannedState: 'shed',
-          shedAction: 'turn_off',
-        }),
-      ],
-    }), 'reconcile');
-  });
 
   it('refreshes the stored plan snapshot when a pending binary command is confirmed by live state', async () => {
     let hasPendingBinaryCommands = true;
@@ -1779,212 +1479,6 @@ describe('PlanService', () => {
     }));
   });
 
-  it('does not replace the stored plan snapshot with drifted live state before reconcile actuation completes', async () => {
-    let resolveApply: (() => void) | undefined;
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const applyPlanActions = vi.fn().mockImplementation(
-      () => new Promise<void>((resolve) => {
-        resolveApply = resolve;
-      }),
-    );
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
-      currentTarget: 20,
-      plannedState: 'keep',
-      plannedTarget: 20,
-    });
-
-    const reconcilePromise = service.reconcileLatestPlanState();
-    await Promise.resolve();
-
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-          currentTarget: 20,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }));
-    expect(realtime).not.toHaveBeenCalledWith('plan_updated', expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-        }),
-      ],
-    }));
-
-    resolveApply?.();
-    await expect(reconcilePromise).resolves.toBe(true);
-  });
-
-  it('reapplies the current plan when reconcile runs from a stale keep/off snapshot', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'off',
-      plannedState: 'keep',
-      currentTarget: 20,
-      plannedTarget: 20,
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          plannedState: 'keep',
-        }),
-      ],
-    }), 'reconcile');
-  });
-
-  it('does not refresh the stored plan snapshot from stale live state immediately after reconcile actuation', async () => {
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
-      currentTarget: 20,
-      plannedState: 'keep',
-      plannedTarget: 20,
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }), 'reconcile');
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-          currentTarget: 20,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }));
-    expect(realtime).not.toHaveBeenCalled();
-  });
 
   it('does not refresh the stored plan snapshot from partially updated live state immediately after rebuild actuation', async () => {
     let liveCurrentOnById: Record<string, boolean> = {
@@ -2499,145 +1993,6 @@ describe('PlanService', () => {
       ],
     }));
   });
-  it('refreshes the live plan snapshot after reconcile re-applies a restore', async () => {
-    let currentOn = false;
-    const applyPlanActions = vi.fn().mockImplementation(async () => {
-      currentOn = true;
-    });
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: currentOn },
-        currentOn: currentOn,
-        binaryControlObservation: buildBinaryObservation('onoff', currentOn),
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
-      currentTarget: 20,
-      plannedState: 'keep',
-      plannedTarget: 20,
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }), 'reconcile');
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-          currentTarget: 20,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }));
-    expect(realtime).not.toHaveBeenCalled();
-  });
-
-  it('queues reconcile behind an in-flight rebuild and avoids double actuation once the rebuild fixes drift', async () => {
-    let currentOn = false;
-    let resolveApply: (() => void) | undefined;
-    const applyPlanActions = vi.fn().mockImplementation(async () => new Promise<void>((resolve) => {
-      resolveApply = () => {
-        currentOn = true;
-        resolve();
-      };
-    }));
-    const service = new PlanService({
-      homeId: 'main',
-      writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'off',
-          plannedState: 'keep',
-          currentTarget: 20,
-          plannedTarget: 20,
-        })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        controlCapabilityId: 'onoff',
-        binaryControl: { on: currentOn },
-        currentOn: currentOn,
-        currentTemperature: 21,
-      }],
-      getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-          });
-
-    const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const reconcilePromise = service.reconcileLatestPlanState();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(applyPlanActions).toHaveBeenCalledTimes(1);
-
-    resolveApply?.();
-    await rebuildPromise;
-    await expect(reconcilePromise).resolves.toBe(false);
-    expect(applyPlanActions).toHaveBeenCalledTimes(1);
-  });
 
   it('queues external shedding behind an in-flight rebuild', async () => {
     let resolveApply: (() => void) | undefined;
@@ -3007,22 +2362,6 @@ describe('PlanService', () => {
         }),
       ],
     }), 'plan');
-    applyPlanActions.mockClear();
-
-    // And because the rebuild already converged it, the reconcile lane has
-    // nothing left to re-assert — it is now redundant rather than load-bearing.
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          currentTarget: 20,
-          plannedState: 'keep',
-          plannedTarget: 20,
-        }),
-      ],
-    }), 'reconcile');
   });
 
   it('reuses cached pels status computation when inputs are unchanged', () => {
@@ -3667,9 +3006,11 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalledTimes(2);
   });
 
-  it('calls schedulePostActuationRefresh after reconcile actuation', async () => {
+  it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    // Report a real device write so the rebuild resolves `appliedActions: true` —
+    // the post-actuation refresh is gated on having actually written.
+    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1, commandRequestCount: 0 });
     const service = new PlanService({
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3680,7 +3021,12 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn(),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+          currentState: 'on',
+          currentTarget: 20,
+          plannedState: 'keep',
+          plannedTarget: 20,
+        })),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -3707,14 +3053,8 @@ describe('PlanService', () => {
       schedulePostActuationRefresh,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
-      currentTarget: 20,
-      plannedState: 'keep',
-      plannedTarget: 20,
-    });
-
-    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
+    // The plan wants the device on; it reads off, so the rebuild has work to do.
+    await service.rebuildPlanFromCache('post_actuation_refresh');
     expect(applyPlanActions).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
   });

@@ -47,8 +47,6 @@ export type PlanRebuildHost = {
   setLatestPlanSnapshot: (plan: DevicePlan | null) => void;
   getLatestPlanSnapshotUpdatedAtMs: () => number | null;
   setLatestPlanSnapshotUpdatedAtMs: (ms: number | null) => void;
-  getLatestReconcilePlanSnapshot: () => DevicePlan | null;
-  setLatestReconcilePlanSnapshot: (plan: DevicePlan | null) => void;
   settleDevices: () => PendingBinaryLiveDevice[];
   trackChanges: (plan: DevicePlan, metaSignature: string) => PlanChangeSet;
   updatePlanSnapshot: (plan: DevicePlan, changes: PlanChangeSet) => void;
@@ -146,9 +144,6 @@ async function executePlanRebuild(
     isDryRun,
     liveDevices,
   );
-  if (changes.actionChanged || !host.getLatestReconcilePlanSnapshot()) {
-    host.setLatestReconcilePlanSnapshot(host.getLatestPlanSnapshot() ?? stampedPlan);
-  }
   Object.assign(outcome, {
     buildMs,
     changeMs,
@@ -313,7 +308,6 @@ function refreshLatestPlanSnapshotFromSettledLiveState(host: PlanRebuildHost, ba
   const nowMs = Date.now();
   host.setLatestPlanSnapshot(refreshedPlan);
   host.setLatestPlanSnapshotUpdatedAtMs(nowMs);
-  host.setLatestReconcilePlanSnapshot(refreshedPlan);
   host.emitPlanUpdated(refreshedPlan);
   return true;
 }
