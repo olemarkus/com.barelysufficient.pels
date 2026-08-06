@@ -126,11 +126,12 @@ export type TransportObservedStateDispatcher = {
     setHomePowerW: (w: number | null) => void;
     /**
      * Push the gross PV generation (W) resolved from the same energy report into
-     * observer's holder, or `null` when absent. Used only to gross up the
-     * authoritative whole-home actual consumption for the managed/unmanaged
-     * split — it never reaches the hard-cap import path.
+     * observer's holder, or `null` when absent, stamped with its read time. Used
+     * to gross up the authoritative whole-home actual consumption for the
+     * managed/unmanaged split, and to co-sample production on the flow source —
+     * it never reaches the hard-cap import path.
      */
-    setGenerationW: (w: number | null) => void;
+    setGenerationW: (w: number | null, observedAtMs: number) => void;
 };
 
 export type DeviceTransportOptions = {

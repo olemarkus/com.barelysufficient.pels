@@ -43,6 +43,17 @@ export type PowerSamplePipelineDeps = {
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
+  /**
+   * Production (W) for a sample that does not carry its own, or `undefined` when
+   * there is no fresh reading. The `homey_energy` poll always supplies
+   * generation from the same report it read net from, so this resolves only for
+   * a Flow-reported sample — where the companion generation poll
+   * (`GenerationPollSource`) left it in observer state. The FRESHNESS bound is
+   * the caller's (`resolveFreshGenerationW`); absent means "not known", never a
+   * stale value inherited into the accrual. Omitted by sub-home pipelines, which
+   * are capacity-only and must not adopt the main home's production.
+   */
+  getCoSampledGenerationW?: (nowMs: number) => number | undefined;
   /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
    *  power (W, import positive) to the learned PV forecast; no-op when absent. */
   recordPvGenerationSample?: (generationW: number | undefined, nowMs: number, netPowerW?: number) => void;
@@ -93,6 +104,14 @@ type PowerSampleRequest = {
   nowMs: number;
   revision: number;
   generationW?: number;
+  /**
+   * Generation for consumers that REQUIRE co-temporality with `currentPowerW` —
+   * i.e. the curtailment-surplus estimator, whose freshness guarantee is stamped
+   * from the net clock. Resolved here, at the producer: present only when the
+   * sample carried its own reading, absent when it was co-sampled from the
+   * observer's held value. Consumers read the flat field and branch on nothing.
+   */
+  coTemporalGenerationW?: number;
   resolvedHomeMeterDeviceId?: string | null;
   homeMeterArrangement?: HomeMeterArrangementObservation;
 };
@@ -102,20 +121,37 @@ const buildPowerSampleRequest = (
   nowMs: number,
   options: PowerSampleOptions,
   revision: number,
-): PowerSampleRequest => ({
-  currentPowerW,
-  nowMs,
-  revision,
-  ...(typeof options.generationW === 'number' && Number.isFinite(options.generationW)
-    ? { generationW: Math.max(0, options.generationW) }
-    : {}),
-  ...(options.resolvedHomeMeterDeviceId !== undefined
-    ? { resolvedHomeMeterDeviceId: options.resolvedHomeMeterDeviceId }
-    : {}),
-  ...(options.homeMeterArrangement !== undefined
-    ? { homeMeterArrangement: options.homeMeterArrangement }
-    : {}),
-});
+  coSampledGenerationW?: number,
+): PowerSampleRequest => {
+  // The sample's OWN generation wins: it was read from the same report as this
+  // net, so it is co-temporal by construction. The fallback exists for sources
+  // that carry net only, and is resolved (and freshness-bounded) by the caller.
+  //
+  // Validity gates the SELECTION, not just the write. A junk own-reading must
+  // fall THROUGH to the co-sampled value rather than block it — and a negative
+  // one must be rejected outright rather than floored to 0, which would both
+  // fabricate a zero-production observation and suppress a good fallback.
+  // Production is `+`-only at every producer, so a negative here is malformed.
+  const ownGenerationW = typeof options.generationW === 'number'
+    && Number.isFinite(options.generationW)
+    && options.generationW >= 0
+    ? options.generationW
+    : undefined;
+  const generationW = ownGenerationW ?? coSampledGenerationW;
+  return {
+    currentPowerW,
+    nowMs,
+    revision,
+    ...(generationW !== undefined ? { generationW } : {}),
+    ...(ownGenerationW !== undefined ? { coTemporalGenerationW: ownGenerationW } : {}),
+    ...(options.resolvedHomeMeterDeviceId !== undefined
+      ? { resolvedHomeMeterDeviceId: options.resolvedHomeMeterDeviceId }
+      : {}),
+    ...(options.homeMeterArrangement !== undefined
+      ? { homeMeterArrangement: options.homeMeterArrangement }
+      : {}),
+  };
+};
 
 /**
  * Lives in `setup/` because the only state it owns is the coalescing
@@ -154,7 +190,9 @@ export class PowerSamplePipeline {
   ): Promise<PowerSampleAdmission> {
     this.sampleRevision += 1;
     incPerfCounter('power_sample_requested_total');
-    const request = buildPowerSampleRequest(currentPowerW, nowMs, options, this.sampleRevision);
+    const request = buildPowerSampleRequest(
+      currentPowerW, nowMs, options, this.sampleRevision, this.deps.getCoSampledGenerationW?.(nowMs),
+    );
 
     if (this.powerSampleLoop) {
       if (this.powerSampleRerunRequested) {
@@ -237,14 +275,25 @@ export class PowerSamplePipeline {
     const { currentPowerW, nowMs, generationW } = request;
     const sampleStart = Date.now();
     // Record gross generation for the learned PV forecast, independent of the
-    // capacity/plan path below (a pure data tap — never affects shed decisions).
-    // `currentPowerW` is the SIGNED net home power co-sampled with generation
-    // (Homey-Energy mode); flow-driven samples carry no generationW, so this
-    // stays a no-op for flow homes.
+    // capacity/plan path below. `currentPowerW` is the SIGNED net home power
+    // co-sampled with generation. Live on BOTH power sources now: a flow sample
+    // carries generation once the companion poll has a fresh reading, so this is
+    // no longer a no-op for flow homes. Still not a shed decision itself — but
+    // note that supplying generation does move `resolveGrossConsumptionW`, and
+    // through it the managed/background split and daily-budget attribution.
     this.deps.recordPvGenerationSample?.(generationW, nowMs, currentPowerW);
-    // Same co-sampled pair to the curtailment-surplus estimator (another pure
-    // data tap — the estimator only ever feeds the surplus pool, never sheds).
-    this.deps.recordCurtailmentSample?.(currentPowerW, generationW, nowMs);
+    // The curtailment-surplus estimator takes a sample's OWN generation only.
+    // Its `CURTAIL_SAMPLE_FRESH_MS` (45 s) guarantee is timestamped from the NET
+    // clock, which is only sound while the two are read from one report. A
+    // co-sampled reading can be up to `POWER_SAMPLE_STALE_THRESHOLD_MS` older
+    // than the net beside it, which would silently stretch that 45 s to ~105 s —
+    // and a stale-LOW generation reading inflates the inferred surplus, engaging
+    // a lift on production that is already self-consumed and pushing into real
+    // grid import. So the estimator stays dormant on sources that do not deliver
+    // the pair together; arming it there needs the generation's own clock
+    // carried into `recordSample` first. The PV forecast tap above has no such
+    // contract (it trains on hourly buckets) and takes the merged value.
+    this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

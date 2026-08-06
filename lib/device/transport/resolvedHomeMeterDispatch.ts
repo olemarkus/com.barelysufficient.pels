@@ -48,9 +48,23 @@ export function updateHomePowerFromReport(
     // and pushes it to observer's holder via the injected dispatcher; it no
     // longer caches the value locally. The return value still feeds the direct
     // `pollHomePowerW()` caller (homey_energy poll source), with generation
-    // carried from the same report so later Flow samples cannot inherit it.
+    // carried from the same report so it stays co-temporal with the net it was
+    // read beside.
     ctx.observedStateDispatcher?.setHomePowerW(report.homePowerW);
-    ctx.observedStateDispatcher?.setGenerationW(report.generationW);
+    // Stamped with the read time. On THIS path net and generation are
+    // co-temporal, but the holder is shared with the flow source's separate
+    // generation reader (`GenerationPollSource`), whose readings are not — so
+    // every writer carries a time rather than letting the holder assume one.
+    //
+    // A FAILED read is not a measurement and must not be published: this
+    // snapshot path runs on flow homes too, where a thrown fetch would
+    // otherwise overwrite the companion poll's good reading with a
+    // freshly-stamped `null` — defeating the freshness window, dropping
+    // `lastGenerationW`, and moving the gross-consumption split on the next
+    // Flow event. Leave the held value to age out on its own instead.
+    if (report.reportAvailable) {
+      ctx.observedStateDispatcher?.setGenerationW(report.generationW, Date.now());
+    }
     if (report.homePowerW === null) return null;
     const homeMeterArrangement = deriveHomeMeterArrangement(report);
     return report.generationW === null

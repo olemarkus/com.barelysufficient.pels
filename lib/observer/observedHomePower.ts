@@ -15,6 +15,8 @@ export class ObservedHomePower {
 
     private generationW: number | null = null;
 
+    private generationObservedAtMs: number | null = null;
+
     /** Push the latest whole-home reading (watts), or `null` when absent. */
     setHomePowerW(w: number | null): void {
         this.homePowerW = w;
@@ -30,20 +32,44 @@ export class ObservedHomePower {
 
     /**
      * Push the latest gross PV generation reading (watts), or `null` when no
-     * generation signal is present. Co-temporal with `setHomePowerW` (both come
-     * from the same energy-report poll). `+`-only.
+     * generation signal is present, stamped with the time it was read. `+`-only.
+     *
+     * On the `homey_energy` source this is co-temporal with `setHomePowerW` (one
+     * report, one poll). On `flow` it is NOT: net arrives through the
+     * `report_power_usage` card while generation comes from a separate reader
+     * (`GenerationPollSource`), so the two ride different clocks. That is why the
+     * read time is held here — a consumer must be able to tell a fresh reading
+     * from one left behind by a poll that stopped, and it cannot recover that
+     * from the value alone.
+     *
+     * This class stays a dumb value+time store. The staleness POLICY lives in
+     * `generationFreshness.ts`, beside the layer's other freshness producers —
+     * consumers read a producer-resolved answer rather than re-deriving one from
+     * a raw age (`lib/observer/AGENTS.md`).
      */
-    setGenerationW(w: number | null): void {
+    setGenerationW(w: number | null, observedAtMs: number): void {
         this.generationW = w;
+        this.generationObservedAtMs = observedAtMs;
     }
 
     /**
      * Returns the gross PV generation in watts as last reported by transport, or
-     * `null` when no generation signal is available. Consumed only to gross up
-     * the authoritative whole-home actual consumption for the managed/unmanaged
-     * split — never the hard-cap import path.
+     * `null` when no generation signal is available. Consumed to gross up the
+     * authoritative whole-home actual consumption for the managed/unmanaged
+     * split, and — on the flow source — to co-sample production alongside a
+     * Flow-reported net. Never the hard-cap import path.
      */
     getGenerationW(): number | null {
         return this.generationW;
+    }
+
+    /**
+     * When {@link getGenerationW} was read, or `null` if nothing has been pushed
+     * yet. An absent VALUE and an absent TIMESTAMP are different things: a
+     * reading of `null` (the report carried no generation) is itself an
+     * observation and carries a time.
+     */
+    getGenerationObservedAtMs(): number | null {
+        return this.generationObservedAtMs;
     }
 }

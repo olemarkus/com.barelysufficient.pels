@@ -71,6 +71,19 @@ the cruiser rule promote to error.
 > Observer introduces **no** `lib/power/**` import — the correction to the
 > original "fed via event/contract from `lib/power/`" wording below.
 >
+> **The holder later gained a second writer, and therefore a timestamp.** The
+> generation half (`setGenerationW`) started out co-temporal with the net half:
+> one energy report, one poll, both scalars pushed together. Production parity
+> for the flow power source broke that pairing — there, net arrives through the
+> `report_power_usage` Flow card while production comes from a separate reader
+> (`lib/power/sources/generationPoll.ts`), so the two ride different clocks and a
+> consumer cannot tell a fresh reading from one left behind by a poll that
+> stopped. `setGenerationW(w, observedAtMs)` therefore carries a read time, and
+> every writer supplies one. The holder stays a dumb value+time store; the
+> staleness POLICY sits beside the layer's other freshness producers
+> (`lib/observer/generationFreshness.ts`), so consumers read a producer-resolved
+> answer instead of re-deriving one from a raw age.
+>
 > **PR2b — snapshot store move, DEFERRED BY DECISION.** Moving `latestSnapshot` /
 > `latestSnapshotById` onto the observer was evaluated and dropped. It would be a
 > dual-store: transport keeps the array as a pipeline scratchpad (the

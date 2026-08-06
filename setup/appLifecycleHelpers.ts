@@ -146,6 +146,7 @@ export async function startAppServices(ctx: AppContext): Promise<void> {
   appContext.registerFlowCards();
   appContext.snapshotHelpers.startPeriodicSnapshotRefresh();
   appContext.homeyEnergyHelpers.start();
+  appContext.generationPollSource.start();
   priceCoordinator.startPriceRefresh();
   const bootstrapSnapshotAndPlan = async (): Promise<void> => {
     let snapshotRefreshSucceeded = false;

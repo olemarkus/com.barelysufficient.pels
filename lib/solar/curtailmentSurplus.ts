@@ -39,8 +39,18 @@
 //   it, making "net ~0 while curtailed" indistinguishable from "battery
 //   charging" — v1 suppresses the term entirely (a batteryPowerW-discounted
 //   variant needs a retained aggregate that does not exist yet).
-// - FLOW HOMES: no generation channel ⇒ samples carry `generationW: undefined`
-//   ⇒ dormancy never lifts ⇒ term null forever, with zero source-branching.
+// - HOMES WITH NO CO-TEMPORAL PRODUCTION READING: samples carry
+//   `generationW: undefined` ⇒ dormancy never lifts ⇒ term null forever, with
+//   zero source-branching. Flow homes now DO obtain production
+//   (`lib/power/sources/generationPoll.ts`), but from a separate poll, so the
+//   ingest deliberately withholds it here: `CURTAIL_SAMPLE_FRESH_MS` below is
+//   stamped from the NET clock, which is only sound while the pair is read from
+//   one report. A co-sampled reading can be up to 60 s older than its net,
+//   stretching that 45 s to ~105 s — and a stale-LOW generation value INFLATES
+//   the inferred surplus, engaging a lift on production already self-consumed
+//   and pushing into real grid import. Arming this on flow needs the
+//   generation's own `observedAtMs` carried into `recordSample` first; see
+//   `PowerSampleRequest.coTemporalGenerationW` in `setup/powerSamplePipeline.ts`.
 // - TWO-CHANNEL INGEST (once armed): a finite `netW` ALWAYS drives the net
 //   channel (latch, in-window refute, window-min tracking), even when the
 //   generation read transiently fails — an import must never escape the latch

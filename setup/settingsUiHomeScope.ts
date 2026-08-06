@@ -34,8 +34,7 @@ import type Homey from 'homey';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../lib/home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../lib/home/membership';
 import { isValidSubHomeId } from '../lib/home/homeConfig';
-import { normalizePowerSource, type PowerSource } from '../lib/power/powerSource';
-import { PELS_STATUS, POWER_SOURCE, homeScopedSettingsKey, type HomeId } from '../lib/utils/settingsKeys';
+import { PELS_STATUS, homeScopedSettingsKey, type HomeId } from '../lib/utils/settingsKeys';
 import type { SettingsUiPowerStatus } from '../packages/contracts/src/settingsUiApi';
 
 /**
@@ -75,18 +74,6 @@ export type ResolvedSubHomeScope = Extract<SettingsUiRequestedHomeScope, { state
  */
 export type SubHomeStatusRead =
   | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus | null }
-  | { readonly state: 'unavailable' };
-
-/**
- * The whole-install `power_source` read the scoped composers gate their solar
- * fields on, discriminated at this adapter boundary. `resolved` carries the
- * closed union `normalizePowerSource` resolves (unset/garbage keeps the
- * historical Flow fallback). `unavailable` is a THROWN settings read: the key
- * is global, but the read runs inside a `?homeId=` request, so a transient
- * Homey store failure must not escape as an untyped transport error there.
- */
-export type HomePowerSourceRead =
-  | { readonly state: 'resolved'; readonly source: PowerSource }
   | { readonly state: 'unavailable' };
 
 const asQueryRecord = (value: unknown): Record<string, unknown> | null => (
@@ -178,27 +165,6 @@ export class SettingsUiHomeScopeAdapter {
         ? status as SettingsUiPowerStatus
         : null,
     };
-  }
-
-  /**
-   * The global `power_source` setting, classified for the scoped composers.
-   *
-   * A thrown `settings.get` (transient Homey store failure) is classified HERE
-   * — adapters own the complete classification of thrown reads, exactly as
-   * {@link readStatus} does for the scoped status blob — so a scoped endpoint
-   * answers `homeScope: unavailable` instead of rejecting the whole API
-   * request. The WHOLE-HOME composers keep reading the key directly
-   * (`isHomeyEnergySource`) and let a failure bubble to the api.ts wrapper:
-   * their historical error behaviour is part of the byte-identical contract.
-   */
-  public readPowerSource(): HomePowerSourceRead {
-    let raw: unknown;
-    try {
-      raw = this.homey.settings.get(POWER_SOURCE);
-    } catch {
-      return { state: 'unavailable' };
-    }
-    return { state: 'resolved', source: normalizePowerSource(raw) };
   }
 
   /**

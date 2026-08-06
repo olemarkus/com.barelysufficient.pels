@@ -103,6 +103,8 @@ import type { ZoneTree } from './transport/managerZones';
 import { ZoneTreeCache } from './transport/zoneTreeCache';
 import {
   computePeriodicStatusMetrics,
+  fetchLiveGenerationW as runFetchLiveGenerationW,
+  type LiveGenerationRead,
   fetchDevicesByKnownIds as runFetchDevicesByKnownIds,
   fetchDevicesForDebug,
   fetchDevicesForSnapshot as runFetchDevicesForSnapshot,
@@ -373,12 +375,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
-    getSnapshotByDeviceId(deviceId: string): TargetDeviceSnapshot | undefined {
-        return this.latestSnapshotById.get(deviceId);
-    }
-    getUiPickerDevices(): TargetDeviceSnapshot[] {
-        return getSnapshotUiPickerDevices(this.ctx);
-    }
+    getSnapshotByDeviceId(id: string): TargetDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
+    getUiPickerDevices(): TargetDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
     // Poll-path home power read; also fans the additional (sub-home) meter
     // readings out to the `onAdditionalMeterReadings` provider (multi-home
     // R7b) — see `pollHomePowerWithMeterFanOut` in `snapshotRefresh.ts`.
@@ -389,6 +387,22 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         authorizeFanOut?: () => boolean,
     ): Promise<HomePowerSampleWithIdentity | null> {
         return runPollHomePowerWithMeterFanOut(this.ctx, authorizeFanOut);
+    }
+    /**
+     * Gross PV production for the flow source's companion poll
+     * (`GenerationPollSource`) — a PURE READ that discriminates a missing
+     * generation signal from a failed one, so the caller never publishes an SDK
+     * failure as a measurement.
+     *
+     * Deliberately NOT `pollHomePowerW`: that path also publishes `homePowerW`
+     * and fires the sub-home meter fan-out. On a flow home Homey's net is not
+     * authoritative — for a split import/export meter it floors at 0 while the
+     * home genuinely exports (`test-devices` Run D) — so publishing it would
+     * overwrite a correct negative net with a wrong zero, and the fan-out would
+     * start delivering sub-home samples no flow-home consumer expects.
+     */
+    async readGenerationW(): Promise<LiveGenerationRead> {
+        return runFetchLiveGenerationW(this.logger);
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
         // Mirror the production refresh funnel (`commitRefreshedSnapshot`): commit
@@ -426,10 +440,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationState, deviceId);
     }
-    getBinarySettleEvidenceByDeviceId(deviceId: string): BinaryControlObservation | undefined {
-        const evidence = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
-        return evidence ? cloneBinaryControlObservation(evidence) : undefined;
-    }
+    getBinarySettleEvidenceByDeviceId(id: string): BinaryControlObservation | undefined {
+        const found = this.latestBinarySettleEvidenceByDeviceId.get(id);
+        return found ? cloneBinaryControlObservation(found) : undefined; }
 
     async init(): Promise<void> {
         if (this.sdkReady) return;

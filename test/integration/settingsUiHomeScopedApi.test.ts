@@ -315,24 +315,18 @@ describe('settings-UI `?homeId=` endpoints', () => {
       });
     });
 
-    it('classifies a thrown power-source read as unavailable, not a rejected request', () => {
-      // The power composer performs one more settings read than the status
-      // blob: `power_source`, behind the production-capability flag
-      // (`deliversProductionSignal`). The same adapter rule applies — a
-      // transient failure becomes the typed `homeScope: unavailable`, never an
-      // escaping transport error and never a resolved payload whose production
-      // flag was fabricated from a failed read.
+    it('serves every scoped composer when the power-source read throws — none of them read it', () => {
+      // This used to assert the POWER composer answered `unavailable`, because
+      // its solar flag was gated on the source. No scoped payload depends on the
+      // power source any more: production reaches both sources, so the flag is
+      // device presence alone. A transient failure of a key nothing reads must
+      // not fence a home out of its own payload — the classification is per
+      // read, not a blanket catch around the endpoint.
       const { homey, get, readRealSetting } = installBoundary();
       get.mockImplementation(failOnlyPowerSource(readRealSetting));
 
-      expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
-      });
-      // The plan AND devices composers read no power source, so they stay
-      // served: the classification is per read, not a blanket catch around the
-      // endpoint. The devices payload joined that group when export accounting
-      // stopped depending on the source — both its solar flags are now derived
-      // from device membership and accrued export alone.
+      const powerPayload = getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } });
+      expect(powerPayload.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
       const devicesPayload = getSettingsUiDevicesPayload({ homey, query: { homeId: AREA_ID } });
       expect(devicesPayload.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
       expect(deviceIds(devicesPayload)).toEqual(['dev-area']);

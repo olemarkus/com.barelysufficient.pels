@@ -25,6 +25,8 @@ import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/po
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { filterDevicesForHome } from '../homeMembership';
+import { resolveFreshGenerationW } from '../../lib/observer/generationFreshness';
+import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { PowerSamplePipeline } from '../powerSamplePipeline';
 
 export type HomePowerPipelineDeps = {
@@ -58,6 +60,14 @@ export type HomePowerPipelineDeps = {
   /** Feed the same co-sampled pair to the curtailment-surplus estimator; no-op
    *  when absent (sub-home pipelines — see the module doc). */
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
+  /**
+   * Observer's whole-home holder, supplied by the MAIN home only. Its held
+   * production is co-sampled onto samples that carry none of their own — i.e.
+   * Flow-reported ones, since the `homey_energy` poll always supplies its own
+   * from the report it read net from. A sub-home pipeline omits it: those are
+   * capacity-only and must never adopt the main home's production.
+   */
+  observedHomePower?: ObservedHomePower;
 };
 
 export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSamplePipeline {
@@ -87,6 +97,13 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,
+    getCoSampledGenerationW: deps.observedHomePower
+      ? (nowMs) => resolveFreshGenerationW({
+        generationW: deps.observedHomePower?.getGenerationW() ?? null,
+        observedAtMs: deps.observedHomePower?.getGenerationObservedAtMs() ?? null,
+        nowMs,
+      })
+      : undefined,
     recordPvGenerationSample: deps.recordPvGenerationSample,
     recordCurtailmentSample: deps.recordCurtailmentSample,
     // Main home only: the sampled whole-home meter identity feeds membership's

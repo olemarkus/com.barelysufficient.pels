@@ -2585,6 +2585,35 @@ describe('recordPowerSampleForApp', () => {
       expect(tracker.lastUncontrolledPowerW).toBe(500);
     });
 
+    it('falls back when a co-sampled production reading cannot explain the export', async () => {
+      // A solar home carries generation on EVERY sample now, including `0` at
+      // night. `0` is still a reading, so a presence check would send this home
+      // back to "consumed nothing" — the exact answer the fallback exists to
+      // prevent — on the source that just gained production. Exporting under
+      // zero reported production is real: a battery discharging to grid after
+      // dark, or a second inverter Homey cannot see.
+      const tracker = await record({
+        currentPowerW: -1500,
+        generationW: 0,
+        getLatestTargetSnapshot: drawingSnapshot(start),
+      });
+      expect(tracker.lastControlledPowerW).toBe(2000);
+      expect(tracker.lastUncontrolledPowerW).toBe(0);
+    });
+
+    it('still prefers net + generation when the two together are positive', async () => {
+      // Partial cover: 3 kW of production against a 1.5 kW export means the home
+      // really is drawing 1.5 kW, and that authoritative figure must win over
+      // the measured-draw floor.
+      const tracker = await record({
+        currentPowerW: -1500,
+        generationW: 3000,
+        getLatestTargetSnapshot: drawingSnapshot(start),
+      });
+      expect(tracker.lastControlledPowerW).toBe(1500);
+      expect(tracker.lastUncontrolledPowerW).toBe(0);
+    });
+
     it('leaves a positive net sample byte-identical', async () => {
       const tracker = await record({
         currentPowerW: 2500,

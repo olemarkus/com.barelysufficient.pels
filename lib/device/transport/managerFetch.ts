@@ -141,6 +141,14 @@ export async function fetchDevicesByIds(params: {
 
 export type LivePowerReport = {
   byDeviceId: LiveDevicePowerWatts;
+  /**
+   * Whether this report is a MEASUREMENT (`true`) or a failed read (`false`).
+   * `generationW: null` and `homePowerW: null` are shape-identical either way,
+   * so consumers that publish from the report — `updateHomePowerFromReport` —
+   * must consult this before overwriting held state. Required rather than
+   * optional so a future failure branch cannot silently default to available.
+   */
+  reportAvailable: boolean;
   homePowerW: number | null;
   /** Gross PV generation (W) from the same payload; null when absent. `+`-only. */
   generationW: number | null;
@@ -187,6 +195,11 @@ export type LivePowerReport = {
  * `additionalMeterPowerW`.
  */
 export const buildEmptyLivePowerReport = (): LivePowerReport => ({
+  // A FAILED read, not a measurement. `generationW: null` below is
+  // indistinguishable from "the report carried no generator", so consumers that
+  // publish generation must check this flag before overwriting a good reading
+  // with a freshly-stamped null (`updateHomePowerFromReport`).
+  reportAvailable: false,
   byDeviceId: {},
   homePowerW: null,
   generationW: null,
@@ -273,6 +286,46 @@ const extractAdditionalMeterPowerW = (
   }),
 );
 
+/**
+ * A whole-home PRODUCTION read that discriminates "no generation signal" from
+ * "the read failed" — the two things `LivePowerReport.generationW: null`
+ * conflates, because `buildEmptyLivePowerReport()` is what both a dead REST
+ * client and a thrown fetch return.
+ *
+ * That conflation is harmless on the `homey_energy` path: a failed report also
+ * nulls `homePowerW`, so no sample is recorded and the fabricated null never
+ * reaches an accrual. It is NOT harmless on `flow`, where net keeps arriving
+ * from the Flow card independently — publishing a failure as a fresh
+ * "producing nothing" observation would overwrite a good reading, stamp it
+ * `now`, and so slip past the freshness window straight into `generationBuckets`.
+ * The adapter owns the classification (root `AGENTS.md`); the caller decides
+ * whether to publish.
+ *
+ * Deliberately narrower than {@link fetchLivePowerReport}: production comes from
+ * the report's own `totalGenerated` aggregate, independent of meter selection,
+ * so this needs neither the selection nor the per-device/sub-meter lanes.
+ */
+export type LiveGenerationRead =
+  | { readonly state: 'resolved'; readonly generationW: number | null }
+  | { readonly state: 'unavailable' };
+
+export async function fetchLiveGenerationW(logger: Logger): Promise<LiveGenerationRead> {
+  try {
+    const report = await getEnergyLiveReport();
+    if (report === null) {
+      logger.error({
+        event: 'energy_live_generation_unavailable',
+        reasonCode: 'rest_client_not_initialized',
+      });
+      return { state: 'unavailable' };
+    }
+    return { state: 'resolved', generationW: extractLiveGenerationWatts(report) };
+  } catch (error) {
+    logDeviceTransportRuntimeError(logger, { event: 'energy_live_generation_fetch_failed' }, error);
+    return { state: 'unavailable' };
+  }
+}
+
 export async function fetchLivePowerReport(params: {
   logger: Logger;
   debugStructured?: StructuredDebugEmitter;
@@ -316,6 +369,7 @@ export async function fetchLivePowerReport(params: {
         : {}),
     });
     return {
+      reportAvailable: true,
       byDeviceId,
       homePowerW,
       generationW,

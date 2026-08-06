@@ -112,10 +112,13 @@ export type ObservedStateEmitterDispatcher = {
     setHomePowerW: (w: number | null) => void;
     /**
      * Push the gross PV generation reading (watts) into observer's
-     * `ObservedHomePower` holder, or `null` when absent. Same source/poll as
-     * `setHomePowerW`; used only to gross up actual consumption for the split.
+     * `ObservedHomePower` holder, or `null` when absent, stamped with its read
+     * time. On this path the stamp is the same instant as `setHomePowerW` (one
+     * report, one poll); it is carried explicitly because the flow source's
+     * separate generation reader rides a different clock, and the holder's
+     * consumers must be able to tell a fresh reading from an abandoned one.
      */
-    setGenerationW: (w: number | null) => void;
+    setGenerationW: (w: number | null, observedAtMs: number) => void;
 };
 
 /**
@@ -170,7 +173,7 @@ export class ObservedStateEmitter {
             observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
             planReconcile: (event) => this.emitPlanReconcile(event),
             setHomePowerW: (w) => homePower.setHomePowerW(w),
-            setGenerationW: (w) => homePower.setGenerationW(w),
+            setGenerationW: (w, observedAtMs) => homePower.setGenerationW(w, observedAtMs),
         };
     }
 }
