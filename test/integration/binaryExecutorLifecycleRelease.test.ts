@@ -110,7 +110,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
   it('EV binary_release (lifecycle-end): records via the release recorder and leaves the markers clean', async () => {
     const h = buildCtx(evSnapshot);
     const intent: ExecutableReleaseIntent = { kind: 'binary_release', deviceId: 'ev-1', name: 'Charger' };
-    const applied = await applyDeferredBinaryCommand(h.ctx, intent, undefined, 'plan');
+    const applied = await applyDeferredBinaryCommand(h.ctx, intent, undefined);
     expect(applied).toBe(true);
     expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'evcharger_charging', value: false }]);
     expect(h.recordReleaseShedActuation).toHaveBeenCalledTimes(1);

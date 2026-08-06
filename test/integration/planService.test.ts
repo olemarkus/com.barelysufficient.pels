@@ -2361,7 +2361,7 @@ describe('PlanService', () => {
           plannedTarget: 20,
         }),
       ],
-    }), 'plan');
+    }));
   });
 
   it('reuses cached pels status computation when inputs are unchanged', () => {

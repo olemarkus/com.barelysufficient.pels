@@ -58,7 +58,6 @@ const applyStep = async (
     desiredStepId: command.desiredStepId,
     planningPowerW: command.planningPowerW,
     planningCurrentA: command.planningCurrentA,
-    actuationMode: command.actuationMode,
     previousStepId: command.previousStepId,
   });
   return { requested: result.requested, steppedResult: result };

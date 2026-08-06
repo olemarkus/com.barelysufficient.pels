@@ -1,6 +1,5 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import {
-  type BinaryControlActuationMode,
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
@@ -87,12 +86,11 @@ export async function decideAndDispatchBinaryControl(params: {
   logContext: BinaryControlLogContext;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
-  actuationMode?: BinaryControlActuationMode;
   lifecycleRelease?: boolean;
 }): Promise<BinaryControlOutcome> {
   const {
     transport, deviceId, name, desired, snapshot, logContext,
-    restoreSource, reason, actuationMode, lifecycleRelease,
+    restoreSource, reason, lifecycleRelease,
   } = params;
   const decision = decideBinaryControl({
     pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
@@ -104,7 +102,6 @@ export async function decideAndDispatchBinaryControl(params: {
     logContext,
     restoreSource,
     reason,
-    actuationMode,
     lifecycleRelease,
   });
   if (!decision) return { applied: false };
@@ -177,7 +174,6 @@ function recordPendingForDispatch(params: {
     flowBackedControl: decision.flowBackedControl,
     logContext: decision.logContext,
     restoreSource: decision.restoreSource,
-    actuationMode: decision.actuationMode,
     ...(decision.reason ? { reason: decision.reason } : {}),
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
   });
@@ -204,7 +200,6 @@ async function dispatchBinaryCommand(params: {
       capabilityId: decision.capabilityId,
       desired: decision.desired,
       logContext: decision.logContext,
-      actuationMode: decision.actuationMode,
     });
   }
   return true;
@@ -221,7 +216,6 @@ function emitBinaryCommandSuccess(params: {
     capabilityId: decision.capabilityId,
     desired: decision.desired,
     logContext: decision.logContext,
-    actuationMode: decision.actuationMode,
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     msg: buildBinaryControlSuccessLogMessage({
@@ -230,7 +224,6 @@ function emitBinaryCommandSuccess(params: {
       name: decision.name,
       reason: decision.reason,
       restoreSource: decision.restoreSource,
-      actuationMode: decision.actuationMode,
       flowBackedControl: decision.flowBackedControl,
     }),
   });
@@ -249,7 +242,6 @@ function emitBinaryCommandFailure(params: {
     desired: decision.desired,
     capabilityId: decision.capabilityId,
     logContext: decision.logContext,
-    actuationMode: decision.actuationMode,
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     err,
@@ -267,7 +259,6 @@ function buildBinaryControlSuccessLogMessage(params: {
   name: string;
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
-  actuationMode: BinaryControlActuationMode;
   flowBackedControl: boolean;
 }): string {
   const {
@@ -276,7 +267,6 @@ function buildBinaryControlSuccessLogMessage(params: {
     name,
     reason,
     restoreSource,
-    actuationMode,
     flowBackedControl,
   } = params;
   if (flowBackedControl) {
@@ -286,10 +276,9 @@ function buildBinaryControlSuccessLogMessage(params: {
       name,
       reason,
       restoreSource,
-      actuationMode,
     });
   }
-  return buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
+  return buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource });
 }
 
 function buildBinaryControlFailureLogMessage(params: {

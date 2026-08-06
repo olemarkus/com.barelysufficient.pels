@@ -11,7 +11,6 @@ import type {
 export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
 export type PendingBinaryLogContext = 'capacity' | 'capacity_control_off';
 export type PendingBinaryRestoreSource = 'shed_state' | 'current_plan';
-export type PendingBinaryActuationMode = 'plan' | 'reconcile';
 
 export type PendingTargetCommandState = {
   capabilityId: string;
@@ -221,7 +220,6 @@ export class PlanEngineState {
     flowBackedControl?: boolean;
     logContext?: PendingBinaryLogContext;
     restoreSource?: PendingBinaryRestoreSource;
-    actuationMode?: PendingBinaryActuationMode;
     reason?: string;
     // True when issued by the smart-task lifecycle-end disable path (not a
     // capacity shed); routes the deferred flow-backed confirmation through the

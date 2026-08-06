@@ -7,7 +7,6 @@ import {
 } from './binaryControlDispatch';
 import type { PlanEngineState } from '../plan/planState';
 import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
-import type { PlanActuationMode } from './executorTypes';
 import { getLogger } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -52,7 +51,6 @@ export const skipRestoreForSurplusPosture = (
     deviceId,
     deviceName: name,
     logContext: 'capacity_control_off',
-    actuationMode: 'plan',
   });
   ctx.state.clearDeviceShed(deviceId);
   ctx.state.clearShedDecision(deviceId); // clears shedDecidedMs + the surplus stamp
@@ -99,11 +97,10 @@ export const runBinaryControl = async (params: {
   logContext: 'capacity' | 'capacity_control_off';
   restoreSource?: 'shed_state' | 'current_plan';
   reason?: string;
-  actuationMode?: PlanActuationMode;
   lifecycleRelease?: boolean;
 }): Promise<BinaryControlOutcome> => {
   const {
-    ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason, actuationMode,
+    ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     lifecycleRelease,
   } = params;
   return decideAndDispatchBinaryControl({
@@ -115,7 +112,6 @@ export const runBinaryControl = async (params: {
     logContext,
     restoreSource,
     reason,
-    actuationMode,
     lifecycleRelease,
   });
 };

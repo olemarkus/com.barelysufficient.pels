@@ -11,7 +11,6 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadTransition,
 } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
   type SteppedLoadStepRequestTransport,
@@ -37,14 +36,12 @@ export const isSteppedLoadStepCommandRedundant = (
 export const maybeLogSteppedLoadCommandPendingSkip = (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
-  mode: PlanActuationMode,
   commandStepId: string,
 ): boolean => {
   const sameDesiredStepPendingState = action.matchingCommandAttempt;
   if (sameDesiredStepPendingState?.status === 'awaiting_confirmation') {
     logSteppedLoadCommandSkip(ctx, {
       action,
-      mode,
       reasonCode: 'waiting_for_confirmation',
       logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `awaiting confirmation of ${commandStepId}`,
@@ -55,7 +52,6 @@ export const maybeLogSteppedLoadCommandPendingSkip = (
   if (sameDesiredStepPendingState?.status === 'retry_backoff') {
     logSteppedLoadCommandSkip(ctx, {
       action,
-      mode,
       reasonCode: 'retry_backoff',
       logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `retry backoff for ${commandStepId} remains active`,
@@ -74,7 +70,6 @@ export const logSteppedLoadCommandSkip = (
   _ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
-    mode: PlanActuationMode;
     reasonCode:
       | 'missing_step'
       | 'waiting_for_confirmation'
@@ -84,7 +79,7 @@ export const logSteppedLoadCommandSkip = (
     fields: Record<string, unknown>;
   },
 ): false => {
-  const { action, mode, reasonCode, logMessage, fields } = params;
+  const { action, reasonCode, logMessage, fields } = params;
   logger.debug({
     event: 'stepped_load_command_skipped',
     reasonCode,
@@ -92,7 +87,6 @@ export const logSteppedLoadCommandSkip = (
     deviceName: action.name,
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     logContext: 'capacity',
-    actuationMode: mode,
     ...fields,
   });
   logger.debug({ event: 'executor_stepped_log_debug', msg: logMessage });
@@ -101,7 +95,6 @@ export const logSteppedLoadCommandSkip = (
 
 export type ExecuteSteppedLoadCommandParams = {
   action: ExecutableSteppedLoadDevice;
-  mode: PlanActuationMode;
   options: {
     recordPlanActuation?: boolean;
     preserveMaterializedConfirmation?: boolean;
@@ -169,7 +162,6 @@ const logAcceptedSteppedLoadCommand = (
 ): void => {
   const {
     action,
-    mode,
     desiredStep,
     transition,
     previousStepId,
@@ -203,7 +195,6 @@ const logAcceptedSteppedLoadCommand = (
     planningPowerW: desiredStep.planningPowerW,
     ...transitionFields,
     ...(commandTransport ? { commandTransport } : {}),
-    mode,
   });
 };
 
@@ -213,13 +204,12 @@ const recordAcceptedSteppedLoadPlanActuation = (
 ): void => {
   const {
     action,
-    mode,
     options,
     transition,
     now,
   } = params;
   const shouldRecordPlanActuation = options.recordPlanActuation !== false;
-  if (mode !== 'plan' || !shouldRecordPlanActuation) return;
+  if (!shouldRecordPlanActuation) return;
   if (transition?.effectiveTransition === 'step_down_while_on') {
     ctx.recordShedActuation(action.id, action.name, now);
     return;
@@ -267,7 +257,6 @@ export const executeSteppedLoadCommand = async (
 ): Promise<boolean> => {
   const {
     action,
-    mode,
     desiredStep,
     previousStepId,
   } = params;
@@ -280,13 +269,11 @@ export const executeSteppedLoadCommand = async (
       desiredStepId: desiredStep.id,
       planningPowerW,
       planningCurrentA,
-      actuationMode: mode,
       previousStepId,
     });
     if (!result.requested) {
       return logSteppedLoadCommandSkip(ctx, {
         action,
-        mode,
         reasonCode: 'command_unavailable',
         logMessage: `Capacity: skip stepped-load command for ${action.name}, `
           + `no command transport for desired step ${desiredStep.id}`,
@@ -305,7 +292,6 @@ export const executeSteppedLoadCommand = async (
       deviceName: action.name,
       desiredStepId: desiredStep.id,
       planningPowerW: desiredStep.planningPowerW,
-      mode,
     });
     logger.error({
       event: 'executor_stepped_error',

@@ -31,9 +31,6 @@ export function resolveConfirmedBinaryCommandReasonCode(
   if (pending.logContext === 'capacity_control_off') {
     return 'capacity_control_off_restore';
   }
-  if (pending.actuationMode === 'reconcile') {
-    return 'reconcile_restore';
-  }
   return pending.restoreSource ?? 'current_plan';
 }
 

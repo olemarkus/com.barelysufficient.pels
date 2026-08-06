@@ -1,7 +1,6 @@
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import { getLogger } from '../logging/logger';
 import type { ExecutableSteppedLoadDevice } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 
 const logger = getLogger('executor/stepped-load-restore-diagnostics');
 
@@ -16,7 +15,6 @@ const logger = getLogger('executor/stepped-load-restore-diagnostics');
  */
 export const logSteppedLoadRestoreBinaryUndriven = (
   action: ExecutableSteppedLoadDevice,
-  mode: PlanActuationMode,
 ): void => {
   const desiredStepNonOff = action.desired.stepId !== undefined
     && !isSteppedLoadOffStep(action.steppedLoadProfile, action.desired.stepId);
@@ -33,6 +31,5 @@ export const logSteppedLoadRestoreBinaryUndriven = (
     currentStepIsOffStep: action.current.stepIsOffStep,
     transition: action.transition?.effectiveTransition ?? null,
     binaryTarget: action.transition?.binaryTarget ?? null,
-    mode,
   });
 };

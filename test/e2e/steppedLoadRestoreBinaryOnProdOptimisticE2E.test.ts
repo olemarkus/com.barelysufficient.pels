@@ -322,7 +322,7 @@ describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-c
     // ── CYCLE 1: native step at max, plan wants restore to low. EXPECTED: a
     // max_power_* step-prep write reaches the boundary (prod's max_power_3000=1
     // at 20:00:02), binary deferred behind the pre-restore step gate.
-    await executor.applyPlanActions(buildRestoreToLowPlan('max'), 'plan');
+    await executor.applyPlanActions(buildRestoreToLowPlan('max'));
     const cycle1Calls = [...setCapabilityCallList(deviceManager)];
 
     // ── Between cycles: the native step materializes to 'low' (the executor's
@@ -346,7 +346,7 @@ describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-c
     expect(cycle2Snapshot.reportedStepId).toBe('low');
     snapshotHolder.current = cycle2Snapshot;
 
-    await executor.applyPlanActions(buildRestoreToLowPlan('low'), 'plan');
+    await executor.applyPlanActions(buildRestoreToLowPlan('low'));
 
     // ── CYCLE 3: same materialized-low, missing-onoff state, another ~5 min on.
     const cycle3Ms = cycle2Ms + 5 * 60 * 1000;
@@ -360,7 +360,7 @@ describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-c
     });
     snapshotHolder.current = cycle3Snapshot;
 
-    await executor.applyPlanActions(buildRestoreToLowPlan('low'), 'plan');
+    await executor.applyPlanActions(buildRestoreToLowPlan('low'));
 
     // ── Prod-fidelity structural assertion (true on BOTH base and fix):
     // Cycle 1 produced a max_power_* step-prep write (faithful to prod cycle 1's

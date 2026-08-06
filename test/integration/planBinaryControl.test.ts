@@ -295,7 +295,6 @@ describe('plan binary control helpers', () => {
       desired: true,
       capabilityId: 'evcharger_charging',
       logContext: 'capacity',
-      actuationMode: 'plan',
     });
 
     vi.spyOn(Date, 'now').mockReturnValue(state.pendingBinaryCommands.ev1.startedMs + 20_000);
@@ -369,7 +368,6 @@ describe('plan binary control helpers', () => {
       capabilityId: 'onoff',
       desired: false,
       logContext: 'capacity',
-      actuationMode: 'plan',
     });
     expect(state.pendingBinaryCommands.socket1).toMatchObject({
       capabilityId: 'onoff',
@@ -414,7 +412,6 @@ describe('plan binary control helpers', () => {
       capabilityId: 'onoff',
       desired: false,
       logContext: 'capacity',
-      actuationMode: 'plan',
     });
   });
 
@@ -510,7 +507,6 @@ describe('plan binary control helpers', () => {
         canSetControl: true,
       },
       logContext: 'capacity',
-      actuationMode: 'reconcile',
     })).resolves.toBe(false);
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -1229,7 +1225,6 @@ describe('plan binary control helpers', () => {
       startedMs,
       flowBackedControl: true,
       logContext: 'capacity',
-      actuationMode: 'plan',
     };
     const logDebug = vi.fn();
     const onConfirmed = vi.fn();

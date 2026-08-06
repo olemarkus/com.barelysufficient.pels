@@ -272,7 +272,7 @@ async function maybeApplyPlanChanges(
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
   try {
-    const actuation = await host.deps.planEngine.applyPlanActions(plan, 'plan');
+    const actuation = await host.deps.planEngine.applyPlanActions(plan);
     const rawDeviceWriteCount = actuation?.deviceWriteCount;
     const rawCommandRequestCount = actuation?.commandRequestCount;
     deviceWriteCount = sanitizeActuationCount(rawDeviceWriteCount);

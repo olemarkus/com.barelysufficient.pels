@@ -552,7 +552,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         desiredStepId: string;
         planningPowerW: number;
         planningCurrentA: number;
-        actuationMode?: 'plan' | 'reconcile';
         previousStepId?: string;
     }): Promise<SteppedLoadStepRequestResult> {
         return runRequestSteppedLoadStep(this.ctx, params);

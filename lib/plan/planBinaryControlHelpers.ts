@@ -34,7 +34,6 @@ export type { BinaryControlPlan };
 
 export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
 export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
-export type BinaryControlActuationMode = 'plan' | 'reconcile';
 
 /**
  * The plan layer hands one of these to the executor per cycle for each
@@ -54,7 +53,6 @@ export type BinaryControlDecision = {
   desired: boolean;
   flowBackedControl: boolean;
   logContext: BinaryControlLogContext;
-  actuationMode: BinaryControlActuationMode;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   /**
@@ -72,7 +70,6 @@ export function shouldSkipBinaryControl(params: {
   deviceId: string;
   desired: boolean;
   logContext: BinaryControlLogContext;
-  actuationMode: BinaryControlActuationMode;
   name: string;
   snapshot?: BinaryControlDecisionSnapshot;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -83,7 +80,6 @@ export function shouldSkipBinaryControl(params: {
     deviceId,
     desired,
     logContext,
-    actuationMode,
     name,
     snapshot,
     pendingBinaryCommandStore,
@@ -97,7 +93,6 @@ export function shouldSkipBinaryControl(params: {
       deviceName: name,
       desired,
       logContext,
-      actuationMode,
       hasTargets,
       capabilityId: snapshot?.controlCapabilityId ?? null,
     });
@@ -112,7 +107,6 @@ export function shouldSkipBinaryControl(params: {
       desired,
       capabilityId: controlPlan.capabilityId,
       logContext,
-      actuationMode,
     });
     return true;
   }
@@ -127,7 +121,6 @@ export function shouldSkipBinaryControl(params: {
       desired,
       capabilityId: controlPlan.capabilityId,
       logContext,
-      actuationMode,
     });
     return true;
   }
@@ -140,7 +133,6 @@ export function shouldSkipBinaryControl(params: {
       desired,
       capabilityId: controlPlan.capabilityId,
       logContext,
-      actuationMode,
     });
     return true;
   }
@@ -211,7 +203,6 @@ export function buildFlowBackedBinaryControlRequestLogMessage(params: {
   name: string;
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
-  actuationMode?: BinaryControlActuationMode;
 }): string {
   const {
     logContext,
@@ -219,15 +210,11 @@ export function buildFlowBackedBinaryControlRequestLogMessage(params: {
     name,
     reason,
     restoreSource = 'current_plan',
-    actuationMode = 'plan',
   } = params;
   if (desired) {
     const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource, actuationMode });
+    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource });
     return `${prefix}: requested turn on for ${name}${suffix}`;
-  }
-  if (actuationMode === 'reconcile') {
-    return `Capacity: requested turn off for ${name} (reconcile after drift)`;
   }
   if (reason && logContext === 'capacity') {
     return `Capacity: requested turn off for ${name} (${reason})`;
@@ -241,11 +228,9 @@ export function buildFlowBackedBinaryControlRequestLogMessage(params: {
 export function resolveBinaryRestoreSuffix(params: {
   logContext: BinaryControlLogContext;
   restoreSource: BinaryControlRestoreSource;
-  actuationMode: BinaryControlActuationMode;
 }): string {
-  const { logContext, restoreSource, actuationMode } = params;
+  const { logContext, restoreSource } = params;
   if (logContext !== 'capacity') return '';
-  if (actuationMode === 'reconcile') return ' (reconcile after drift)';
   return restoreSource === 'shed_state'
     ? ' (restored from shed state)'
     : ' (to match current plan)';
@@ -257,7 +242,6 @@ export function buildBinaryControlLogMessage(params: {
   name: string;
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
-  actuationMode?: BinaryControlActuationMode;
 }): string {
   const {
     logContext,
@@ -265,15 +249,11 @@ export function buildBinaryControlLogMessage(params: {
     name,
     reason,
     restoreSource = 'current_plan',
-    actuationMode = 'plan',
   } = params;
   if (desired) {
     const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource, actuationMode });
+    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource });
     return `${prefix}: turning on ${name}${suffix}`;
-  }
-  if (actuationMode === 'reconcile') {
-    return `Capacity: turned off ${name} (reconcile after drift)`;
   }
   if (reason && logContext === 'capacity') {
     return `Capacity: turned off ${name} (${reason})`;

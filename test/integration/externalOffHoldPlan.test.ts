@@ -285,7 +285,6 @@ describe('external-off hold — executor carve-outs', () => {
       name: 'Water heater',
       snapshot: offHeaterSnapshot,
       logContext: 'capacity',
-      mode: 'plan',
     });
     expect(applied).toBe(false);
     expect(h.setCapabilityCalls).toEqual([]);
@@ -312,7 +311,6 @@ describe('external-off hold — executor carve-outs', () => {
       name: 'Water heater',
       snapshot: offHeaterSnapshot,
       logContext: 'capacity',
-      mode: 'plan',
     })).toBe(true);
     expect(controlled.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);
   });

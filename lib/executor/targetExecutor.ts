@@ -2,12 +2,10 @@ import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
-  isPendingTargetCommandTemporarilyUnavailable,
   recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
 } from '../plan/planTargetControl';
 import type { PendingTargetCommandStatus } from '../plan/planTypes';
-import type { PlanActuationMode } from './executorTypes';
 import { getLogger } from '../logging/logger';
 import type { PlanExecutorTargetContext } from './targetExecutorContext';
 import {
@@ -30,12 +28,10 @@ type TargetCommandDispatchResult =
   | { applied: true; attemptType: 'send' | 'retry' };
 
 const resolveTargetCommandReasonCode = (params: {
-  mode: PlanActuationMode;
   isRestoring: boolean;
   attemptType: 'send' | 'retry';
-}): 'reconcile' | 'restore_from_shed' | 'retry_pending_confirmation' | 'plan_update' => {
-  const { mode, isRestoring, attemptType } = params;
-  if (mode === 'reconcile') return 'reconcile';
+}): 'restore_from_shed' | 'retry_pending_confirmation' | 'plan_update' => {
+  const { isRestoring, attemptType } = params;
   if (isRestoring) return 'restore_from_shed';
   if (attemptType === 'retry') return 'retry_pending_confirmation';
   return 'plan_update';
@@ -61,7 +57,6 @@ export const applyShedTemperaturePlan = async (
       desired: action.desired,
       observedValue: action.observedValue,
       skipContext: 'shedding',
-      actuationMode: 'plan',
     });
     if (!result.applied) return { handled: true, wrote: false };
     logger.info({
@@ -71,7 +66,6 @@ export const applyShedTemperaturePlan = async (
       capabilityId: action.targetCap,
       targetValue: action.desired,
       previousValue: action.observedValue ?? null,
-      mode: 'plan',
       attemptType: result.attemptType,
       reasonCode: 'shedding',
     });
@@ -91,10 +85,9 @@ export const applyShedTemperaturePlan = async (
 export const applyTargetUpdate = async (
   ctx: PlanExecutorTargetContext,
   action: ExecutableTargetUpdate | null,
-  mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!action) return false;
-  return applyTargetUpdatePlan(ctx, action, mode);
+  return applyTargetUpdatePlan(ctx, action);
 };
 
 export const trySetShedTemperature = async (
@@ -126,7 +119,6 @@ export const trySetShedTemperature = async (
       desired: shedTemp,
       observedValue,
       skipContext: 'shedding',
-      actuationMode: 'plan',
     });
     if (!result.applied) return { handled: result.reason === 'skipped', wrote: false };
     logger.info({
@@ -136,7 +128,6 @@ export const trySetShedTemperature = async (
       capabilityId: targetCap,
       targetValue: shedTemp,
       previousValue: observedValue ?? null,
-      mode: 'plan',
       attemptType: result.attemptType,
       reasonCode: 'shedding',
     });
@@ -161,7 +152,6 @@ export const dispatchTargetCommand = async (
     desired: number;
     observedValue?: unknown;
     skipContext: 'plan' | 'shedding' | 'overshoot';
-    actuationMode: PlanActuationMode;
   },
 ): Promise<TargetCommandDispatchResult> => {
   const {
@@ -171,7 +161,6 @@ export const dispatchTargetCommand = async (
     desired: rawDesired,
     observedValue,
     skipContext,
-    actuationMode,
   } = params;
   const target = ctx.getObservedState(deviceId)?.targets?.find((entry) => entry.id === targetCap);
   const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
@@ -183,7 +172,6 @@ export const dispatchTargetCommand = async (
     desired,
     latestObservedValue,
     skipContext,
-    actuationMode,
   });
   if (preflightResult.type === 'skip') return preflightResult.result;
   return executeTargetCommandDispatch(ctx, {
@@ -193,7 +181,6 @@ export const dispatchTargetCommand = async (
     desired,
     observedValue,
     skipContext,
-    actuationMode,
     latestObservedValue,
     decisionType: preflightResult.decisionType,
   });
@@ -202,7 +189,6 @@ export const dispatchTargetCommand = async (
 const applyTargetUpdatePlan = async (
   ctx: PlanExecutorTargetContext,
   action: ExecutableTargetUpdate,
-  mode: PlanActuationMode,
 ): Promise<boolean> => {
   try {
     const result = await dispatchTargetCommand(ctx, {
@@ -212,7 +198,6 @@ const applyTargetUpdatePlan = async (
       desired: action.desired,
       observedValue: action.observedValue,
       skipContext: 'plan',
-      actuationMode: mode,
     });
     if (!result.applied) return false;
     logger.info({
@@ -222,17 +207,15 @@ const applyTargetUpdatePlan = async (
       capabilityId: action.targetCap,
       targetValue: action.desired,
       previousValue: action.observedValue ?? null,
-      mode,
       attemptType: result.attemptType,
       reasonCode: resolveTargetCommandReasonCode({
-        mode,
         isRestoring: action.isRestoring,
         attemptType: result.attemptType,
       }),
       operatingMode: ctx.operatingMode,
     });
 
-    if (action.isRestoring && mode === 'plan') {
+    if (action.isRestoring) {
       const now = Date.now();
       ctx.recordRestoreActuation(action.deviceId, action.name, now);
       ctx.recordActivationAttemptStarted(action.deviceId, action.name, now);
@@ -257,7 +240,6 @@ const handleTargetCommandPreflight = (
     desired: number;
     latestObservedValue: unknown;
     skipContext: 'plan' | 'shedding' | 'overshoot';
-    actuationMode: PlanActuationMode;
   },
 ): { type: 'skip'; result: TargetCommandDispatchResult } | { type: 'proceed'; decisionType: 'send' | 'retry' } => {
   const {
@@ -267,7 +249,6 @@ const handleTargetCommandPreflight = (
     desired,
     latestObservedValue,
     skipContext,
-    actuationMode,
   } = params;
   if (Object.is(latestObservedValue, desired)) {
     logger.debug({
@@ -279,7 +260,6 @@ const handleTargetCommandPreflight = (
       desired,
       observedValue: latestObservedValue ?? null,
       skipContext,
-      actuationMode,
     });
     logger.debug({
       event: 'executor_target_log_debug',
@@ -288,18 +268,16 @@ const handleTargetCommandPreflight = (
     return { type: 'skip', result: { applied: false, reason: 'skipped' } };
   }
   const nowMs = Date.now();
-  const pendingBeforeDecision = ctx.state.pendingTargetCommands[deviceId];
-  const canBypassRetryState = actuationMode === 'reconcile'
-    && !isPendingTargetCommandTemporarilyUnavailable(pendingBeforeDecision);
-  const decision = canBypassRetryState
-    ? { type: 'send' as const }
-    : getPendingTargetCommandDecision({
-      state: ctx.state,
-      deviceId,
-      capabilityId: targetCap,
-      desired,
-      nowMs,
-    });
+  // Retry suppression is now unconditional. The reconcile lane used to bypass it
+  // (a re-assert had no pending-command bookkeeping of its own), which is half of
+  // how a re-assert could outrun the planner in inc_26449fb9.
+  const decision = getPendingTargetCommandDecision({
+    state: ctx.state,
+    deviceId,
+    capabilityId: targetCap,
+    desired,
+    nowMs,
+  });
   if (decision.type !== 'skip') {
     return { type: 'proceed', decisionType: decision.type };
   }
@@ -314,7 +292,6 @@ const handleTargetCommandPreflight = (
     retryCount: decision.pending.retryCount,
     remainingMs: decision.remainingMs,
     skipContext,
-    actuationMode,
   });
   if (decision.pending.status === 'temporary_unavailable') {
     logger.debug({
@@ -341,7 +318,6 @@ const executeTargetCommandDispatch = async (
     desired: number;
     observedValue?: unknown;
     skipContext: 'plan' | 'shedding' | 'overshoot';
-    actuationMode: PlanActuationMode;
     latestObservedValue: unknown;
     decisionType: 'send' | 'retry';
   },
@@ -353,7 +329,6 @@ const executeTargetCommandDispatch = async (
     desired,
     observedValue,
     skipContext,
-    actuationMode,
     latestObservedValue,
     decisionType,
   } = params;
@@ -385,7 +360,6 @@ const executeTargetCommandDispatch = async (
       capabilityId: targetCap,
       desired,
       skipContext,
-      actuationMode,
     });
     logger.info({
       event: 'executor_target_log',
