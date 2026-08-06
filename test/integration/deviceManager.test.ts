@@ -1852,7 +1852,7 @@ describe('DeviceTransport', () => {
                 deviceName: 'Heater',
                 reasonCode: 'no_snapshot_change',
                 hadChanges: false,
-                shouldReconcilePlan: false,
+                observedControlStateChanged: false,
                 rawChangeCount: 0,
                 filteredChangeCount: 0,
                 observedCapabilityIds: ['measure_power'],
@@ -1904,7 +1904,7 @@ describe('DeviceTransport', () => {
             observedSources = deviceManager.getDebugObservedSources('dev1');
             expect(observedSources?.deviceUpdate).toEqual(expect.objectContaining({
                 path: 'device_update',
-                shouldReconcilePlan: true,
+                observedControlStateChanged: true,
                 snapshot: expect.objectContaining({
                     id: 'dev1',
                     binaryControl: { on: false },
@@ -3374,9 +3374,9 @@ describe('DeviceTransport', () => {
                 event: 'device_update_processed',
                 source: 'device_update',
                 deviceId: 'dev1',
-                reasonCode: 'drift_detected',
+                reasonCode: 'control_state_changed',
                 hadChanges: true,
-                shouldReconcilePlan: true,
+                observedControlStateChanged: true,
                 rawChangeCount: 1,
                 filteredChangeCount: 1,
                 controlCapabilityId: 'onoff',

@@ -317,7 +317,7 @@ describe('device manager support helpers', () => {
       } as never),
     });
 
-    expect(result.shouldReconcilePlan).toBe(false);
+    expect(result.observedControlStateChanged).toBe(false);
     expect(capabilityAccesses).not.toContain('');
   });
 

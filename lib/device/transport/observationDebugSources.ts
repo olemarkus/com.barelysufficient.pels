@@ -76,7 +76,7 @@ export function recordDeviceUpdateObservation(params: {
         observedAt: Date.now(),
         path: 'device_update',
         snapshot: buildCurrentDebugSnapshot(latestSnapshot, deviceId),
-        shouldReconcilePlan: result.shouldReconcilePlan,
+        observedControlStateChanged: result.observedControlStateChanged,
         ...(result.changes.length > 0 ? { changes: result.changes.map((change) => ({ ...change })) } : {}),
     };
 }

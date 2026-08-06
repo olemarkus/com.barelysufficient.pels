@@ -363,7 +363,7 @@ describe('appDebugHelpers', () => {
         deviceUpdate: {
           observedAt: Date.parse('2026-03-12T10:05:10.000Z'),
           path: 'device_update',
-          shouldReconcilePlan: true,
+          observedControlStateChanged: true,
           changes: [{
             capabilityId: 'onoff',
             previousValue: 'on',
@@ -382,7 +382,7 @@ describe('appDebugHelpers', () => {
             path: 'realtime_capability',
             capabilityId: 'target_temperature',
             value: 20.5,
-            shouldReconcilePlan: true,
+            observedControlStateChanged: true,
             changes: [{
               capabilityId: 'target_temperature',
               previousValue: '18°C',
@@ -513,7 +513,7 @@ describe('appDebugHelpers', () => {
         deviceUpdate: {
           observedAt: '2026-03-12T10:05:10.000Z',
           path: 'device_update',
-          shouldReconcilePlan: true,
+          observedControlStateChanged: true,
           changes: [{
             capabilityId: 'onoff',
             previousValue: 'on',
@@ -530,7 +530,7 @@ describe('appDebugHelpers', () => {
             path: 'realtime_capability',
             capabilityId: 'target_temperature',
             value: 20.5,
-            shouldReconcilePlan: true,
+            observedControlStateChanged: true,
             changes: [{
               capabilityId: 'target_temperature',
               previousValue: '18°C',

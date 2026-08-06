@@ -124,12 +124,15 @@ Post-release executor boundary rollout:
   even when that step was already reported while off, because activation may reset a device-side
   limit. A short executor-owned activation cursor suppresses duplicate binary ON writes from a
   delayed OFF echo while still allowing a contradictory step report to be reconciled.
-- Realtime drift detection runs in the executor (`lib/executor/planExecutionDrift.ts`) using the
-  executor-facing intent/observed split. Pending binary commands suppress drift only when their
-  requested value matches the expected binary state. The transport-side `shouldReconcilePlan`
-  boolean is a snapshot-vs-snapshot change filter ("did this realtime event mutate anything
-  worth notifying wiring about?") — not drift-against-plan-intent. Wiring still consults the
-  executor drift predicate before scheduling a planner reapply.
+- Realtime drift detection runs in the executor (`lib/executor/planExecutionDrift.ts` and
+  `lib/executor/executorConvergence.ts`) using the executor-facing intent/observed split. Pending
+  binary commands suppress drift only when their requested value matches the expected binary
+  state. The transport-side `observedControlStateChanged` boolean is a snapshot-vs-snapshot change
+  filter ("did this realtime event mutate a control-relevant capability?") — a FACT about the
+  observation, not drift-against-plan-intent and not an instruction to the planner. It was called
+  `shouldReconcilePlan`, which read as a producer naming a plan operation; the producer knows which
+  capabilities are control-relevant, and nothing more. Wiring still consults the executor drift
+  predicate before scheduling a planner reapply.
 - Realtime event flow (post-PR #5 of the observer/transport split): transport translates the
   raw Homey event, observer's emitter fans out the typed `observed-state-changed` /
   `plan-reconcile-observed` events (via a dispatcher callback injected into transport at
