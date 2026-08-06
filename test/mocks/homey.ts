@@ -89,6 +89,9 @@ export class MockDevice {
   // Raw `device.zone` payload (either SDK shape: zone-id string, or
   // `{ id, name }` object). Undefined = omitted from the API payload.
   private zone: string | { id: string; name: string } | undefined;
+  // Driver identity (`ownerUri` / `driverUri` / `driverId`) as the real device
+  // API payload carries it; omitted entirely when unset.
+  private driverIdentity: { ownerUri?: string; driverUri?: string; driverId?: string } = {};
 
   constructor(
     private id: string,
@@ -279,6 +282,22 @@ export class MockDevice {
     emitMockHomeyApiDeviceUpdate(this.toHomeyApiDevice());
   }
 
+  /**
+   * Configure the driver identity the device API payload carries. Real Homey
+   * devices expose these; PELS reads them to recognise vendor wiring (e.g. the
+   * Høiax native stepped-load overlay in `nativeSteppedLoadWiring.ts`), so a
+   * mock without them cannot exercise those paths.
+   */
+  setDriverIdentity(identity: { ownerUri?: string; driverUri?: string; driverId?: string }): void {
+    // Drop explicitly-undefined keys rather than storing them: spreading those
+    // into the payload would leave `ownerUri: undefined` present, which is not
+    // what a real device API answers for an absent field and makes mock payloads
+    // noisier to diff.
+    this.driverIdentity = Object.fromEntries(
+      Object.entries(identity).filter(([, value]) => value !== undefined),
+    );
+  }
+
   /** Configure the raw `zone` value the device API payload carries (either SDK shape). */
   setZone(zone: string | { id: string; name: string } | undefined): void {
     this.zone = zone;
@@ -312,6 +331,7 @@ export class MockDevice {
       available: this.available,
       ready: true,
       ...(this.zone !== undefined ? { zone: this.zone } : {}),
+      ...this.driverIdentity,
     };
   }
 

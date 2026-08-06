@@ -179,6 +179,8 @@ export function buildOvershootStats(params: {
   blockedCandidateCount: number;
   reducibleControlledKw: number;
   blockedReducibleControlledKw: number;
+  skippedCandidateCount?: number;
+  skippedCandidateReasons?: OvershootStats['skippedCandidateReasons'];
 }): OvershootStats {
   const {
     needed,
@@ -186,6 +188,8 @@ export function buildOvershootStats(params: {
     blockedCandidateCount,
     reducibleControlledKw,
     blockedReducibleControlledKw,
+    skippedCandidateCount = 0,
+    skippedCandidateReasons = [],
   } = params;
   return {
     needed,
@@ -195,6 +199,12 @@ export function buildOvershootStats(params: {
     blockedReducibleControlledKw,
     allShedCandidatesExhausted: eligibleCandidateCount === 0,
     controlRecoverable: reducibleControlledKw > 0,
+    // Counted here so "no candidates" is falsifiable: a cycle with zero eligible
+    // candidates can now say how many controlled devices were considered and
+    // which gate stopped each. Shed-candidacy skips have no other counter — the
+    // capacity summary's blocked-device counters are all RESTORE-side holds.
+    skippedCandidateCount,
+    skippedCandidateReasons,
   };
 }
 

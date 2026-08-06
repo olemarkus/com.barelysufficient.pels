@@ -2492,6 +2492,11 @@ describe('buildSheddingPlan', () => {
       blockedReducibleControlledKw: 0,
       allShedCandidatesExhausted: true,
       controlRecoverable: false,
+      // The device is already parked at its shed setpoint, which is exactly why
+      // nothing is reducible — the counters now say so instead of reading as
+      // "no candidates" with no explanation.
+      skippedCandidateCount: 1,
+      skippedCandidateReasons: [{ reason: 'already_at_shed_temperature', count: 1 }],
     });
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, expect.closeTo(0.8, 6), expect.objectContaining({
       remainingReducibleControlledLoadW: 0,
@@ -2562,6 +2567,11 @@ describe('buildSheddingPlan', () => {
       blockedReducibleControlledKw: 0,
       allShedCandidatesExhausted: true,
       controlRecoverable: false,
+      // A `set_step` device already at its lowest ACTIVE step has no rung left:
+      // the ladder descent must not reach the off step for it, because turning
+      // it off is not the shed behaviour its owner configured.
+      skippedCandidateCount: 1,
+      skippedCandidateReasons: [{ reason: 'no_lower_step_reachable', count: 1 }],
     });
   });
 
@@ -2615,6 +2625,8 @@ describe('buildSheddingPlan', () => {
       blockedReducibleControlledKw: 0.4,
       allShedCandidatesExhausted: true,
       controlRecoverable: false,
+      skippedCandidateCount: 1,
+      skippedCandidateReasons: [{ reason: 'budget_exempt_daily_only', count: 1 }],
     });
   });
 
@@ -3308,6 +3320,8 @@ describe('buildSheddingPlan', () => {
       blockedReducibleControlledKw: 0,
       allShedCandidatesExhausted: false,
       controlRecoverable: true,
+      skippedCandidateCount: 0,
+      skippedCandidateReasons: [],
     });
     expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
@@ -3604,6 +3618,8 @@ describe('buildSheddingPlan', () => {
       blockedReducibleControlledKw: 0,
       allShedCandidatesExhausted: false,
       controlRecoverable: true,
+      skippedCandidateCount: 0,
+      skippedCandidateReasons: [],
     });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
@@ -3657,7 +3673,219 @@ describe('buildSheddingPlan', () => {
       blockedReducibleControlledKw: 0,
       allShedCandidatesExhausted: true,
       controlRecoverable: false,
+      skippedCandidateCount: 1,
+      skippedCandidateReasons: [{ reason: 'binary_confirmed_off', count: 1 }],
     });
+  });
+
+  // Field incident 2026-08-05 (`inc_26449fb9`): the house sat 526 W over the hard
+  // cap for 4.5 minutes while the only drawing controlled device — a stepped water
+  // heater at `max` — was planned `keep`. Its per-device `measure_power` was stale
+  // at the `low`-step value (1.193 kW) while it actually drew ~2.9 kW, so the
+  // `max -> medium` relief priced at exactly zero and the heater never became a
+  // candidate. Nothing recorded the drop: the incident's blocked-device counters
+  // are all restore-side holds and read zero.
+  it('sheds a stepped device whose adjacent rung prices at zero relief', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(5.04),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'heater',
+            name: 'Connected 300',
+            controllable: true,
+            controlModel: 'stepped_load',
+            selectedStepId: 'max',
+            desiredStepId: 'max',
+            measuredPowerKw: 1.193,
+            stepPowerCalibration: {
+              low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
+              medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
+              max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+            },
+            steppedLoadProfile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1250 },
+                { id: 'medium', planningPowerW: 1750 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+          }),
+        ],
+        total: 5.566,
+        softLimit: 4.727,
+        capacitySoftLimit: 4.727,
+        headroomRaw: -0.839,
+        headroom: -0.839,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 2001 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        debugStructured: vi.fn(),
+      },
+    );
+
+    // Cleared in one cycle instead of 4.5 minutes: off releases what the meter
+    // reports, which is more than the 0.84 kW deficit.
+    expect([...result.shedSet]).toEqual(['heater']);
+    expect(result.overshootStats?.skippedCandidateCount).toBe(0);
+  });
+
+  // A descent that lands on the off step is a full turn-off, not a step
+  // reduction. If it were marked preemptive it would sort ahead of every other
+  // candidate regardless of priority and then stop the selection loop
+  // (`shouldStopAfterCandidate`), stranding the rest of the deficit for a cycle.
+  it('does not treat a descent to the off step as a preemptive step-down', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(5.04),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          // Stale measurement: only `max -> off` releases anything (1.193 kW).
+          buildDevice({
+            id: 'heater',
+            name: 'Connected 300',
+            controllable: true,
+            controlModel: 'stepped_load',
+            selectedStepId: 'max',
+            desiredStepId: 'max',
+            measuredPowerKw: 1.193,
+            steppedLoadProfile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1250 },
+                { id: 'medium', planningPowerW: 1750 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+          }),
+          buildDevice({ id: 'plainA', name: 'Plain A', controllable: true, measuredPowerKw: 1 }),
+          buildDevice({ id: 'plainB', name: 'Plain B', controllable: true, measuredPowerKw: 1 }),
+        ],
+        // 3 kW of deficit — more than the heater alone can release, so the
+        // selection loop must keep going after it.
+        total: 8,
+        softLimit: 5,
+        capacitySoftLimit: 5,
+        headroomRaw: -3,
+        headroom: -3,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 2003 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        debugStructured: vi.fn(),
+      },
+    );
+
+    expect(result.shedSet.size).toBeGreaterThan(1);
+    expect([...result.shedSet]).toContain('heater');
+  });
+
+  it('records why a stepped device was skipped when no rung releases power', async () => {
+    const state = createPlanEngineState();
+    const debugStructured = vi.fn();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(5.04),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          // Same stale-measurement shape, but a `set_step` device does not
+          // descend at all — materialization recomputes its target as the
+          // adjacent rung — so the only rung priced is `medium`, which releases
+          // nothing. That is a real "cannot help", and it must now say so rather
+          // than vanish.
+          buildDevice({
+            id: 'heater',
+            name: 'Connected 300',
+            controllable: true,
+            controlModel: 'stepped_load',
+            selectedStepId: 'max',
+            desiredStepId: 'max',
+            measuredPowerKw: 1.193,
+            stepPowerCalibration: {
+              low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
+              medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
+              max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+            },
+            steppedLoadProfile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1250 },
+                { id: 'medium', planningPowerW: 1750 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+          }),
+        ],
+        total: 5.566,
+        softLimit: 4.727,
+        capacitySoftLimit: 4.727,
+        headroomRaw: -0.839,
+        headroom: -0.839,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 2002 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        debugStructured,
+      },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.overshootStats?.skippedCandidateReasons)
+      .toEqual([{ reason: 'zero_step_relief', count: 1 }]);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
+      skippedCandidateCount: 1,
+      devices: [expect.objectContaining({
+        deviceId: 'heater',
+        reasonCode: 'zero_step_relief',
+        measuredPowerKw: 1.193,
+        rungsTried: ['medium'],
+      })],
+    }));
   });
 
   it('sheds all eligible non-exempt devices through the shedding planner when hourly budget is exhausted', async () => {

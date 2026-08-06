@@ -41,6 +41,44 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **The reconcile lane can re-actuate a plan snapshot that predates the observation which
+      triggered it — PELS caused its own hard-cap breach this way.** Prod 2026-08-05,
+      `inc_26449fb9`: at 20:01:29.419 a stepped water heater announced `pels_measure_step: low`
+      (it had drifted down from PELS's desired `max`); 281 ms later the reconcile wrote
+      `max_power_3000 = "3"`, re-asserting `max` from the 20:01:24 plan — a plan built while the
+      device was still believed to be at `max`. The house went from 3839 W to 5562 W in one 10 s
+      poll, 839 W over the cap. `getLatestReconcilePlanSnapshot()` (`lib/plan/planService.ts`,
+      `getLatestReconcilePlanSnapshot`) has no revision or timestamp guard. Had the planner
+      rebuilt on that observation first, its own stepped-restore admission
+      (`lib/plan/restore/steppedRestoreAdmission.ts`, `admitSteppedRestore`) would have rejected
+      the step-up: `needed 1.81 kW` vs `available 0.89 kW`. Every plan-mode step-up in the log
+      carries a `restore_stepped_admitted` record; the 20:01:38 one carries none.
+      **Do not fix this by adding an admission check at actuation time** — the executor closing
+      an observed↔desired gap is exactly its job, and `lib/AGENTS.md` forbids executor code
+      deciding whether the planner was allowed to choose a desired state. The underlying problem
+      is three layering inversions, and the fix should address those:
+      1. The producer names a plan operation — `shouldReconcilePlan` in
+         `lib/device/transport/managerRealtimeHandlers.ts`. A producer should publish "observed
+         state changed" as a fact, not a plan verb.
+      2. The wiring layer re-derives a planner concern — `hasRealtimeDeviceReconcileDrift`
+         (`setup/appRealtimeDeviceReconcileRuntime.ts`) compares live devices against the plan
+         snapshot.
+      3. The planner hosts an apply-without-decide operation — `reconcileLatestPlanState` /
+         `performPlanReconcile` (`lib/plan/planService.ts`), documented as "re-applies the
+         EXISTING committed plan … no new decisions". The planner should build plans from its
+         inputs and know nothing about drift; converging desired with observed is
+         `lib/executor`'s charter.
+      Target shape: producer publishes observation changes as facts; the rebuild scheduler treats
+      them as ordinary planner inputs; the executor converges on (latest plan, latest
+      observation) and the `'reconcile'` actuation mode collapses into ordinary execution. Spans
+      ~20 sites across `lib/executor/**`, `lib/observer/pendingBinaryCommandTypes.ts`,
+      `lib/device/deviceTransport.ts`, `lib/plan/planState.ts` and the `setup/` reconcile wiring —
+      a multi-PR refactor. Prior art for the staleness half: `createPreparedMainReconcileFence`
+      (`setup/appInit/appHomeMembershipOptions.ts`) and the `shouldAbort` seam on
+      `performPlanReconcile`, both currently wired only to power-sample revisions.
+      *Source: prod log review 2026-08-06; the shed-selection half of the same incident is fixed
+      by the stepped-ladder descent in `lib/plan/shedding/steppedCandidates.ts`.*
+
 - [ ] **Three settings readers still gate their key-list cross-check on `undefined` alone, so
       their transient-miss protection is unreachable on a real Homey.** `settings.get()` answers
       an unset key with `null`, so in `setup/mainMeterSettings.ts:22-27` the `raw === null` early
@@ -1085,6 +1123,66 @@ program) remain deferred.*
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **`remainingActionableControlledLoadW` in the shortfall record disagrees with what shed
+      selection can act on.** The capacity summary sources it from `residualKw.shed` (= current
+      draw, `resolveResidualKwShed` in `lib/device/deviceResidualKw.ts`) while selection uses
+      step-delta relief. In `inc_26449fb9` (prod 2026-08-05) the record published
+      `remainingActionableControlledLoadW: 1193, remainingActionableControlledLoad: true` while
+      the selector independently computed 0 and shed nothing — the record asserted actionable
+      load that no lane could act on. Source it from `OvershootStats.reducibleControlledKw`
+      instead, which is the selector's own figure. Blocked on wiring `overshootStats` through:
+      `SheddingPlan.overshootStats` is currently dead — returned by `buildSheddingPlan` and never
+      read by `planBuilder.ts`; its only consumers are assertions in
+      `test/integration/planShedding.test.ts`. The per-cycle skip counters added in the
+      stepped-ladder PR (`skippedCandidateCount` / `skippedCandidateReasons`) ride the same
+      struct and would reach the incident record with it. Source: prod log review 2026-08-06. [P2]
+
+- [ ] **`resolveSteppedLoadImmediateReliefKw` caps the *to*-side by `measured`, so step relief is
+      structurally zero whenever `measured <= admission(toStep)`.** Both contributions collapse to
+      `measured` and the delta is exactly 0 regardless of the from-step, so a stepped device whose
+      power reading lags a step-up prices every adjacent rung at nothing. The ladder descent in
+      `lib/plan/shedding/steppedCandidates.ts` works around this by finding a deeper rung that
+      does relieve; the arithmetic itself is untouched. The calibration layer already detects the
+      same inconsistency — `power_calibration_sample_skipped` with `reason: "below_lower_step"`,
+      logged twice during `inc_26449fb9` — but the planner has no equivalent guard, and the
+      calibrated/nameplate fallback in `resolveSteppedCandidatePower` is unreachable whenever
+      `measuredPowerKw` is a finite number, including a stale one. Consider treating a measurement
+      that contradicts the reported step as not-evidence and falling back to the calibrated delta.
+      Deliberately not done in the ladder PR: it means trusting a reported step over the meter,
+      which is a larger judgement call than the descent (which stays meter-grounded).
+      Source: prod log review 2026-08-06. [P2]
+
+- [ ] **Materialization recomputes a stepped device's shed step instead of honouring the one the
+      planner priced, so a `set_step` device cannot descend past a zero-relief rung.**
+      `resolveSteppedLoadDirectShedStepId` (`lib/plan/planSteppedShedResolution.ts`, reached from
+      `planDevicesBase`) derives the commanded step from the device alone; the shed candidate's
+      `toStepId` never crosses the boundary — only `shedSet` membership does. For `turn_off` this
+      is harmless (the resolver answers the off step, so credited relief under-states delivery),
+      but it forces `buildSteppedShedDescentTargets` to refuse to descend for `set_step`, because
+      crediting a deeper rung the executor never commands would decrement the deficit by relief
+      that never arrives. Cost: a `set_step` device whose measured draw sits between two step
+      admission estimates — adjacent rung prices zero, deeper rung is positive — stays unshed
+      where a deeper step-down would have helped. Fixing it means letting materialization honour
+      the planner's chosen target for devices already in `shedSet`, which is not the same as
+      materialization *selecting* a device and so does not breach the shedding boundary rule —
+      but it needs care around `resolveSteppedShedCurrentDesiredStepId` and the forced
+      lowest-active-step path. Source: Codex review of PR #1996, 2026-08-06. [P2]
+
+- [ ] **A `turn_off` stepped device whose profile has no zero-power step can never be fully turned
+      off.** `getSteppedLoadOffStep` returns null for such a profile and
+      `getSteppedLoadLowestStep` then answers the lowest ACTIVE step, so both the shed ladder
+      (`buildSteppedShedDescentTargets`) and materialization
+      (`resolveSteppedLoadDirectShedStepId`) bottom out at a step that still draws. If a stale
+      measurement makes every active-step delta price at zero, the device is skipped entirely even
+      though it exposes a writable `onoff` and turning it off would release its measured draw.
+      Pre-existing — the pre-descent code reached the same outcome — and NOT fixed by routing to
+      `buildPreparedSteppedBinaryOffCandidate`, whose precondition
+      (`targetStep?.id === device.selectedStepId`) cannot hold while the device sits above its
+      lowest step. The real fix is a binary-off terminal on the ladder for a `turn_off` device
+      whose profile lacks an off step. Narrow: every profile PELS generates (native Høiax wiring,
+      EV target-power) carries an explicit `off` step, so this needs a hand-configured profile.
+      Source: Codex review of PR #1996, 2026-08-06. [P2]
 
 - [ ] **Exempt restore lane keys on the instantaneous binding source, not the latch cause.**
       `shouldPlanBudgetExemptRestores` (`lib/plan/restore/timing.ts`) opens on
@@ -2928,6 +3026,21 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       by the exempt device's runtime; most exempt devices (EVs, connected water heaters) meter.
       Candidate fix: fall back to expected power for an OBSERVED-ON meterless exempt device on
       this axis only. Source: adversarial review of PR #1956, 2026-08-02. [P3]
+
+- [ ] **The planner has no signal that a device's power reading predates PELS's own last step
+      command.** In `inc_26449fb9` (prod 2026-08-05) the water heater's `measure_power` lagged its
+      step change by ~5 minutes — through five successful snapshot refreshes at 20:02:48,
+      20:03:49, 20:04:51, 20:05:19 and 20:05:53 — reporting 1.193 kW while the whole-home meter
+      showed the device drawing ~2.9 kW. The staleness is upstream in Homey (the capability value
+      itself had not changed), not in PELS's refresh cadence, so the observer's freshness
+      tri-state correctly reports it fresh. But a reading older than the command that should have
+      changed it is weaker evidence than one taken after, and nothing expresses that today.
+      *Persona:* owner of a Høiax/stepped water heater during a capacity event. *Hypothesis:*
+      affects only stepped devices during the window between a step command and the device's next
+      power report; the ladder descent already keeps shedding correct across it, so this is about
+      better evidence, not a live defect. Candidate shape: stamp the last step-command time on the
+      snapshot and expose a producer-resolved "measurement predates last command" bit.
+      Source: prod log review 2026-08-06. [P3]
 
 ## P3 Future and Exploratory Work
 
