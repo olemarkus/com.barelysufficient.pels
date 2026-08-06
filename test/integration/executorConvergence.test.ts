@@ -117,10 +117,11 @@ describe('executorConvergence stepped device drift', () => {
     });
 
     it('does not treat target divergence as drift while a matching target command is still pending', () => {
-      // Symmetric with the binary dampener: `targetExecutor` reconcile mode
-      // bypasses pending-target retry suppression, so without this dampener a
-      // stale observation would re-fire drift every cycle until the circuit
-      // breaker tripped.
+      // Symmetric with the binary dampener: without it a stale observation would
+      // re-fire drift every cycle until the circuit breaker tripped. (This used
+      // to be load-bearing on its own, because `targetExecutor` reconcile mode
+      // bypassed pending-target retry suppression; that bypass died with the
+      // mode, so the two now agree rather than one covering for the other.)
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',

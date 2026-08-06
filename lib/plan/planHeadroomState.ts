@@ -238,8 +238,8 @@ const maybeRecordTrackedStepDown = (params: {
     });
   }
   // Tracked power changes are useful for diagnostics, but restore
-  // failure/backoff belongs to explicit planner signals such as reconcile re-apply or
-  // overshoot attribution. A normal device duty cycle must not become setback_failed here.
+  // failure/backoff belongs to explicit planner signals such as a plan rebuild's
+  // actuation or overshoot attribution. A normal device duty cycle must not become setback_failed here.
   return true;
 };
 
