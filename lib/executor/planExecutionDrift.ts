@@ -51,10 +51,10 @@ export function hasPlanDeviceExecutionDrift(params: {
   // "Leave off until turned on again": the device is off because the user turned
   // it off, and the producer only sets this bit while it is STILL observed off.
   // A plan built before the hold still says `keep`, so without this every
-  // observation would report drift, re-fire the reconcile, and trip the
+  // observation would report drift, drive another rebuild, and trip the
   // per-device circuit breaker (3 in 30 s → 60 s suppression) — which would then
   // mask GENUINE drift on that device too. The rebuild scheduled alongside the
-  // hold marks it inactive; until then there is nothing to reconcile.
+  // hold marks it inactive; until then there is nothing to converge.
   if (liveDevice.externalOffHoldActive === true) return false;
   return hasExecutableDeviceExecutionDrift({
     intent: buildExecutableDeviceIntent(planDevice),
@@ -90,10 +90,15 @@ function hasExecutableDeviceExecutionDrift(params: {
 // `pendingTargetCommand`) being set whenever the executor dispatches a command
 // in response to detected drift, and cleared on success/failure. Any future
 // actuation path that bypasses those flags would turn the new behavior into a
-// tight retry loop on unresponsive devices — `targetExecutor` reconcile mode
-// in particular bypasses pending-target retry suppression, so the
-// `pendingTarget` dampener below is what keeps drift from re-firing while a
-// target command is awaiting settlement.
+// tight retry loop on unresponsive devices.
+//
+// `targetExecutor` used to be exactly such a path: its reconcile mode bypassed
+// pending-target retry suppression, which made the `pendingTarget` dampener
+// below the only thing keeping drift from re-firing while a target command was
+// awaiting settlement. That bypass is gone with the reconcile mode, so the
+// dampener and the executor's own suppression now agree instead of one covering
+// for the other. Keep the dampener: it is what makes this predicate idempotent
+// across cycles, independent of the executor.
 function buildDriftRuntimeState(
   planDevice: PlanDevice,
   liveDevice: PlanInputDevice,
