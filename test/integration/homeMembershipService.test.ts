@@ -79,6 +79,23 @@ const homeyNoService = {
   app: {}, settings: mockHomeyInstance.settings,
 } as unknown as Homey.App['homey'];
 const noop = (): void => undefined;
+
+/**
+ * Converging main after membership settles used to be a distinct
+ * `planService.reconcileLatestPlanState()` call; it is now
+ * `rebuildPlanFromCache('home_membership_settled', shouldAbort, onAbort)`, because
+ * re-applying a committed plan without re-deciding it is exactly the lane that
+ * breached the hard cap in production (inc_26449fb9). Count those calls where
+ * these tests used to count reconciles.
+ */
+const countSettleRebuilds = (spy: { mock: { calls: unknown[][] } }): number => (
+  spy.mock.calls.filter((call) => call[0] === 'home_membership_settled').length
+);
+
+/** Ownership-generation rebuilds only — excludes the settle rebuild above. */
+const countGenerationRebuilds = (spy: { mock: { calls: unknown[][] } }): number => (
+  spy.mock.calls.filter((call) => call[0] !== 'home_membership_settled').length
+);
 const loggerMock: Logger = {
   log: noop,
   debug: noop,
@@ -3431,11 +3448,13 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       order.push('prepare');
       return true;
     });
-    const rebuildPlanFromCache = vi.fn().mockImplementation(async () => {
-      order.push('rebuild');
-      return { failed: false };
+    const rebuildPlanFromCache = vi.fn().mockImplementation(async (reason?: string) => {
+      // Converging main after membership settles is a rebuild now — it used to be
+      // a separate `reconcileLatestPlanState` call — so record which one ran to
+      // keep the ordering assertion legible.
+      order.push(reason === 'home_membership_settled' ? 'settle' : 'rebuild');
+      return { failed: false, appliedActions: false };
     });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const reconcilePrepared = vi.fn().mockResolvedValue(true);
     const timers = new TimerRegistry();
     const ctx = {
@@ -3447,7 +3466,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       powerTracker: {},
       getStructuredLogger: () => undefined,
     } as unknown as AppContext;
@@ -3481,7 +3500,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       await vi.advanceTimersByTimeAsync(2_000);
       await flushHandlerQueue();
 
-      expect(order).toEqual(['seed:true', 'seed:true', 'prepare', 'rebuild']);
+      expect(order).toEqual(['seed:true', 'seed:true', 'prepare', 'rebuild', 'settle']);
       expect(wiring.service.hasPendingOwnershipGeneration()).toBe(false);
       expect(timers.has('mainOwnershipRecovery')).toBe(false);
     } finally {
@@ -3499,7 +3518,6 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS_INITIALIZED, true);
     mockHomeyInstance.settings.unset(DEVICE_HOME_ASSIGNMENTS);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const emitter = new ObservedStateEmitter();
     const ctx = {
       homey: homeyLike,
@@ -3510,7 +3528,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -3531,9 +3549,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
       expect(wiring.service.getHomeIdForDevice('d-sub')).toBe('h_a');
       expect(wiring.service.isOwnershipReady()).toBe(true);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-      expect(rebuildPlanFromCache).toHaveBeenCalledWith('home_ownership_ready');
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBeGreaterThan(0);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(1);
       expect(ctx.timers.has('mainOwnershipRecovery')).toBe(false);
     } finally {
       wiring.teardown();
@@ -3553,7 +3571,6 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-shared');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const ctx = {
       homey: homeyLike,
       timers: new TimerRegistry(),
@@ -3563,7 +3580,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -3586,8 +3603,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       await flushHandlerQueue();
 
       expect(wiring.service.isMainHomeActuationFenced()).toBe(false);
-      expect(rebuildPlanFromCache).toHaveBeenCalledWith('home_ownership_ready');
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBeGreaterThan(0);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(1);
     } finally {
       wiring.teardown();
       vi.useRealTimers();
@@ -3608,7 +3625,6 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     const rebuildPlanFromCache = vi.fn()
       .mockResolvedValueOnce({ failed: true })
       .mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const timers = new TimerRegistry();
     const ctx = {
       homey: homeyLike,
@@ -3619,7 +3635,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       powerTracker: {},
       getStructuredLogger: () => undefined,
     } as unknown as AppContext;
@@ -3637,14 +3653,14 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       expect(timers.has('mainOwnershipRecovery')).toBe(true);
 
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-      expect(reconcileLatestPlanState).not.toHaveBeenCalled();
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(1);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(0);
       expect(wiring.service.hasPendingOwnershipGeneration()).toBe(true);
       expect(wiring.service.isMainHomeActuationFenced()).toBe(true);
 
       await vi.advanceTimersByTimeAsync(2_000);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(2);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(1);
       expect(wiring.service.hasPendingOwnershipGeneration()).toBe(false);
       expect(wiring.service.isMainHomeActuationFenced()).toBe(false);
     } finally {
@@ -3663,7 +3679,6 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     const rebuildPlanFromCache = vi.fn()
       .mockResolvedValueOnce({ failed: true })
       .mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const timers = new TimerRegistry();
     const emitter = new ObservedStateEmitter();
     const ctx = {
@@ -3675,7 +3690,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -3701,14 +3716,14 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-      expect(reconcileLatestPlanState).not.toHaveBeenCalled();
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(1);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(0);
       expect(timers.has('mainOwnershipRecovery')).toBe(true);
 
       await vi.advanceTimersByTimeAsync(2000);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-      expect(rebuildPlanFromCache).toHaveBeenLastCalledWith('home_ownership_ready');
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(2);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBeGreaterThan(0);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(1);
       expect(timers.has('mainOwnershipRecovery')).toBe(false);
     } finally {
       getSpy.mockRestore();
@@ -3724,21 +3739,23 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
     const timers = new TimerRegistry();
     const emitter = new ObservedStateEmitter();
     let wiring: ReturnType<typeof wireHomeMembership> | undefined = undefined;
     let mainReadUnavailable = true;
-    const reconcileLatestPlanState = vi.fn().mockImplementation(async () => {
-      if (reconcileLatestPlanState.mock.calls.length === 1) {
+    let settleRebuilds = 0;
+    const rebuildPlanFromCache = vi.fn().mockImplementation(async (reason?: string) => {
+      if (reason !== 'home_membership_settled') return { failed: false, appliedActions: false };
+      settleRebuilds += 1;
+      if (settleRebuilds === 1) {
         // Model the final actuator's point-of-use fence closing AFTER the
-        // recovery's pre-reconcile check. It schedules a newer recovery request
-        // even though PlanService reports the reconcile as completed.
+        // recovery's pre-convergence check. It schedules a newer recovery request
+        // even though PlanService reports the rebuild as completed.
         mainReadUnavailable = true;
         if (!wiring) throw new Error('membership wiring is not initialized');
         expect(wiring.service.isMainHomeActuationFenced()).toBe(true);
       }
-      return true;
+      return { failed: false, appliedActions: false };
     });
     const ctx = {
       homey: homeyLike,
@@ -3749,7 +3766,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -3768,15 +3785,15 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       mainReadUnavailable = false;
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(1);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(1);
       // The in-reconcile fence requested a retry. Completion must not clear it.
       expect(timers.has('mainOwnershipRecovery')).toBe(true);
 
       mainReadUnavailable = false;
       await vi.advanceTimersByTimeAsync(2000);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(2);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(2);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(2);
       expect(timers.has('mainOwnershipRecovery')).toBe(false);
     } finally {
       getSpy.mockRestore();
@@ -3793,7 +3810,6 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const prepare = vi.fn().mockResolvedValue(true);
     const reconcilePrepared = vi.fn().mockResolvedValue(true);
     let rejectNextFlush = false;
@@ -3812,7 +3828,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -3879,7 +3895,6 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       .mockImplementationOnce(() => firstPrepare)
       .mockResolvedValue(true);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
     const reconcilePrepared = vi.fn().mockResolvedValue(true);
     const timers = new TimerRegistry();
     const ctx = {
@@ -3891,7 +3906,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -3924,22 +3939,22 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       expect(wiring.service.hasPendingOwnershipGeneration()).toBe(true);
       expect(wiring.service.isMainHomeActuationFenced()).toBe(true);
       expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-      expect(reconcileLatestPlanState).not.toHaveBeenCalled();
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(0);
       expect(reconcilePrepared).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(2_000);
       await flushHandlerQueue();
 
       expect(prepare).toHaveBeenCalledTimes(2);
-      expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('home_ownership_ready');
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(1);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(1);
       expect(reconcilePrepared).toHaveBeenCalledTimes(1);
       expect(wiring.service.hasPendingOwnershipGeneration()).toBe(false);
       expect(wiring.service.isMainHomeActuationFenced()).toBe(false);
       expect(timers.has('mainOwnershipRecovery')).toBe(false);
 
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(1);
       expect(reconcilePrepared).toHaveBeenCalledTimes(1);
     } finally {
       wiring.teardown();
@@ -3956,16 +3971,17 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
     let mainSample: StableSampleRevision = { state: 'stable', revision: 1 };
     let supersedeDuringDispatch = false;
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
-    const reconcileLatestPlanState = vi.fn().mockImplementation(async (
+    const rebuildPlanFromCache = vi.fn().mockImplementation(async (
+      reason?: string,
       shouldAbort?: () => boolean,
     ) => {
+      if (reason !== 'home_membership_settled') return { failed: false, appliedActions: false };
       if (supersedeDuringDispatch) {
         supersedeDuringDispatch = false;
         expect(shouldAbort?.()).toBe(false);
         mainSample = { state: 'pending' };
       }
-      return true;
+      return { failed: false, appliedActions: false };
     });
     const prepare = vi.fn().mockResolvedValue(true);
     const reconcilePrepared = vi.fn().mockResolvedValue(true);
@@ -3980,7 +3996,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
       },
-      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      planService: { rebuildPlanFromCache },
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
@@ -4015,8 +4031,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       await vi.advanceTimersByTimeAsync(2_000);
       await flushHandlerQueue();
 
-      expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-      expect(reconcileLatestPlanState).toHaveBeenCalledTimes(2);
+      expect(countGenerationRebuilds(rebuildPlanFromCache)).toBe(2);
+      expect(countSettleRebuilds(rebuildPlanFromCache)).toBe(2);
       expect(reconcilePrepared).toHaveBeenCalledTimes(2);
       expect(flushMainShortfallSideEffect).toHaveBeenCalledOnce();
       expect(wiring.service.hasPendingOwnershipGeneration()).toBe(false);

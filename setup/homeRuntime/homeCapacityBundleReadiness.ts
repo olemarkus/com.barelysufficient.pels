@@ -64,10 +64,10 @@ const isCurrentSampleRevision = (
 };
 
 /**
- * Keep the sample fence active for the fresh rebuild itself as well as the
- * reconcile. A newer sample can arrive after planning starts but before the
- * first SDK write; fencing only the reconcile would let that stale rebuild
- * actuate before its later revision check noticed the race.
+ * Keep the sample fence active for the whole rebuild, which now both plans and
+ * actuates. A newer sample can arrive after planning starts but before the first
+ * SDK write, so the fence has to span the apply — checking the revision only
+ * afterwards would let a stale rebuild actuate before anything noticed the race.
  */
 const applyMembershipReadyPlan = async (params: {
   homeId: HomeId;
@@ -82,7 +82,25 @@ const applyMembershipReadyPlan = async (params: {
   const endPreparedReconcile = params.beginPreparedOwnershipReconcile(params.revision);
   let reconciledCurrent: boolean;
   try {
-    const outcome = await params.planService.rebuildPlanFromCache('home_membership_ready');
+    // ONE rebuild, not a rebuild followed by a reconcile. The pair existed
+    // because a rebuild whose action signature was unchanged would not actuate,
+    // so the reconcile was needed to converge the devices; the rebuild now
+    // applies whenever the executor has work outstanding, which covers it.
+    //
+    // The fence must therefore cover TEARDOWN as well as a newer sample. While
+    // this was two calls, a teardown landing between them was caught by the
+    // `isTornDown()` check after the rebuild — the rebuild itself only planned.
+    // Now the rebuild also writes, so teardown has to trip the point-of-use
+    // predicate. (The actuator seam gates on `isTornDown()` too — see
+    // `isActuationFenced` in `createHomeCapacityBundle` — but a fence the caller
+    // owns should not depend on a fence further in.)
+    let rebuildAborted = false;
+    const outcome = await params.planService.rebuildPlanFromCache(
+      'home_membership_ready',
+      () => params.isTornDown()
+        || !isCurrentSampleRevision(params.getStableSampleRevision, params.revision),
+      () => { rebuildAborted = true; },
+    );
     if (params.isTornDown()) return 'stopped';
     if (outcome.failed) {
       params.logger()?.warn({
@@ -91,13 +109,7 @@ const applyMembershipReadyPlan = async (params: {
       });
       return 'retry';
     }
-    if (!isCurrentSampleRevision(params.getStableSampleRevision, params.revision)) return 'retry';
-    let reconcileAborted = false;
-    await params.planService.reconcileLatestPlanState(
-      () => !isCurrentSampleRevision(params.getStableSampleRevision, params.revision),
-      () => { reconcileAborted = true; },
-    );
-    reconciledCurrent = !reconcileAborted
+    reconciledCurrent = !rebuildAborted
       && isCurrentSampleRevision(params.getStableSampleRevision, params.revision);
   } finally {
     endPreparedReconcile();

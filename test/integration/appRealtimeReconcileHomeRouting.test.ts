@@ -1,15 +1,16 @@
-// Integration coverage for the R7b realtime-reconcile owning-home routing
+// Integration coverage for the R7b realtime-observation owning-home routing
 // (`setup/appRealtimeDeviceReconcileRuntime.ts` +
 // `HomeRuntimeRegistry.getReconcileRouteForDevice`): an external on/off change
-// to a SUB-home load must be drift-checked and reconciled through THAT home's
-// bundle, not main's (main's plan filters sub-home members out, so main would
-// silently drop the drift). A MAIN-home device still reconciles through
-// `ctx.planService` exactly as before — the single-home path is unchanged.
+// to a SUB-home load must re-plan through THAT home's bundle, not main's (main's
+// plan filters sub-home members out, so main would silently drop it). A MAIN-home
+// device still re-plans through `ctx.planService` exactly as before — the
+// single-home path is unchanged.
 //
-// Only the reconcile targets are stubbed (the two plan services and the
-// owning-home router); the real wrapper drives its debounce timer, drift gate,
-// and flush queue. Drift is forced via a null reconcile snapshot (the wrapper
-// treats a missing snapshot as drift), so the reconcile actually fires.
+// Only the rebuild targets are stubbed (the two plan services and the
+// owning-home router); the real wrapper drives its debounce timer and flush
+// queue. There is no drift gate to satisfy any more: the wrapper requests a
+// re-plan for every control-relevant observation and lets the planner decide,
+// so the rebuild fires unconditionally.
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { scheduleAppRealtimeDeviceReconcileForApp } from '../../setup/appRealtimeDeviceReconcileRuntime';
 import { createRealtimeDeviceReconcileState } from '../../setup/appRealtimeDeviceReconcile';
@@ -31,20 +32,20 @@ type ReconcileMock = Mock<() => Promise<boolean>>;
 const makeReconcile = (): ReconcileMock => vi.fn(async (): Promise<boolean> => true);
 
 // No typed PlanService mock helper exists (see appContextTestHelpers gap); the
-// wrapper only reads `getLatestReconcilePlanSnapshot` (null → forced drift) and
-// `reconcileLatestPlanState`, so a two-method partial is the established idiom.
-const buildCtx = (mainReconcile: ReconcileMock): AppContext => createAppContextMock({
+// wrapper only reads `getLatestPlanSnapshot` (for the log's plan-expectation
+// field) and `rebuildPlanFromCache`, so a two-method partial is the established
+// idiom. The rebuild resolves an outcome whose `appliedActions` the flush reads.
+const buildCtx = (mainRebuild: ReconcileMock): AppContext => createAppContextMock({
   latestTargetSnapshot: [],
   planService: {
-    getLatestReconcilePlanSnapshot: () => null,
-    reconcileLatestPlanState: mainReconcile,
+    getLatestPlanSnapshot: () => null,
+    rebuildPlanFromCache: mainRebuild,
   } as unknown as AppContext['planService'],
 });
 
-const subHooks = (reconcile: ReconcileMock): RealtimeReconcileHooks => ({
+const subHooks = (requestRebuild: ReconcileMock): RealtimeReconcileHooks => ({
   getLatestPlanSnapshot: () => null,
-  getLiveDevices: () => [],
-  reconcile,
+  requestRebuild,
   hasPendingBinaryCommand: () => false,
   clearRecentBinaryOffCommand: () => undefined,
   rebuild: () => Promise.resolve(),
@@ -146,9 +147,6 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
     });
     const hooks: RealtimeReconcileHooks = {
       ...subHooks(subReconcile),
-      // Mirrors the planned-set filter: the observation must not disappear just
-      // because this device is absent from this cycle's plan input.
-      getLiveDevices: () => [],
       rebuild: subRebuild,
     };
 

@@ -150,7 +150,8 @@ const buildOwnershipGenerationOperations = (params: {
       let aborted = false;
       const endPreparedReconcile = beginPreparedOwnershipReconcile(sampleRevision);
       try {
-        await planService.reconcileLatestPlanState(
+        await planService.rebuildPlanFromCache(
+          'home_ownership_generation_prepared',
           () => {
             const current = getStableSampleRevision();
             return isTornDown()
@@ -397,9 +398,11 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     // membership-filtered, own-engine pending-binary plan view (NOT main's
     // `toPlanDevice`), so the drift check reads this bundle's device set exactly.
     getReconcileHooks: () => ({
-      getLatestPlanSnapshot: () => planService.getLatestReconcilePlanSnapshot(),
-      getLiveDevices: () => scope.getPlanDevices(),
-      reconcile: () => planService.reconcileLatestPlanState(),
+      getLatestPlanSnapshot: () => planService.getLatestPlanSnapshot(),
+      requestRebuild: async () => {
+        const outcome = await planService.rebuildPlanFromCache('device_observation_changed');
+        return outcome.appliedActions;
+      },
       // External-off hold: both must come from THIS bundle. Main's pending store
       // never saw this device's commands, so it would report PELS's own write as
       // an outside action; main's plan does not contain the device at all.
@@ -449,28 +452,22 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     },
     reloadCapacityScalars: () => {
       if (isTornDown()) return;
-      const wasDryRun = getScalars().dryRun;
       const next = capacityStore.read();
       setScalars(next);
       guard.setLimit(next.limitKw);
       guard.setSoftMargin(next.marginKw);
       // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
-      // ACTIVATION path (P2#2). A plain rebuild after that transition can produce
-      // the SAME action signature as the never-applied dry-run shed plan, and
-      // `maybeApplyPlanChanges` skips unchanged planned sheds (stable actuation
-      // does not cover shed actions) — so the home would stay over cap without
-      // ever issuing the already-planned command. Force the committed intent to
-      // actuate via reconcile (drift = device still ON while the plan sheds),
-      // exactly as the membership-ready edge does. Reconcile self-guards on the
-      // EFFECTIVE dry-run, so it no-ops if the boot-window membership gate still
-      // holds (the ready-edge applies it later).
-      const activatedActuation = wasDryRun && !next.dryRun;
+      // ACTIVATION path (P2#2). The rebuild after that transition can produce the
+      // SAME action signature as the never-applied dry-run shed plan, which used
+      // to skip the apply entirely (stable actuation does not cover shed actions)
+      // and leave the home over cap with its command never issued — so this path
+      // chased the rebuild with a reconcile to force the write. It no longer needs
+      // to: a planned shed against a device still observed ON is execution work
+      // outstanding, so `maybeApplyPlanChanges` applies it on the rebuild itself.
+      //
       // Direct rebuild, mirroring the main home's settings path
       // (`handleCapacityLimitChange` also bypasses the sample scheduler).
       void planService.rebuildPlanFromCache('settings:home_capacity_scalars')
-        .then((outcome) => (activatedActuation && !outcome.failed
-          ? planService.reconcileLatestPlanState()
-          : undefined))
         .catch((error: unknown) => {
           logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
         });

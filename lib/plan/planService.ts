@@ -15,11 +15,20 @@
  * settings UI and flow layer read, the `PlanStatusWriter`, and the
  * signature-deduped structured rebuild/overview logging.
  *
- * Reconcile vs rebuild: `reconcileLatestPlanState` re-applies the EXISTING
- * committed plan when live device state has drifted from planned intent (no
- * new decisions, `'reconcile'` actuation mode, skipped in dry-run), while
- * `rebuildPlanFromCache` runs the full builder pipeline and may change
- * decisions. `syncLivePlanState*` is cheaper than either: it settles pending
+ * There is ONE way to converge a device: `rebuildPlanFromCache` runs the full
+ * builder pipeline and then actuates if the plan's actions changed or the
+ * executor still has work outstanding against the plan just built. A drifting
+ * device is an ordinary planner input — it gets re-decided, not re-asserted.
+ *
+ * There used to be a second, cheaper lane (`reconcileLatestPlanState`) that
+ * re-applied the EXISTING committed plan without re-deciding it. It is gone: a
+ * plan that predates the observation which triggered it has not been decided
+ * against that observation, and re-applying one breached the hard cap in
+ * production (`TODO.md`, inc_26449fb9). Do not reintroduce an apply-without-
+ * decide path here; if a rebuild is too slow for some caller, make the rebuild
+ * cheaper.
+ *
+ * `syncLivePlanState*` is cheaper than a rebuild and remains: it settles pending
  * command bookkeeping and refreshes the published snapshot, with no actuation.
  *
  * The rebuild pipeline itself lives in `planServiceRebuild.ts` (driven through
@@ -48,7 +57,6 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
 import { buildLiveStatePlan } from './planLiveStateMerge';
-import { resolvePowerSampleFreshness } from './planPowerFreshness';
 import type {
   DevicePlan,
   PendingTargetObservationSource,
@@ -93,7 +101,6 @@ const serializePlanForUi = (
 export class PlanService {
   private latestPlanSnapshot: DevicePlan | null = null;
   private latestPlanSnapshotUpdatedAtMs: number | null = null;
-  private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastOverviewSignatureByDeviceId = new Map<string, string>();
   private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
@@ -127,8 +134,6 @@ export class PlanService {
       setLatestPlanSnapshot: (plan) => { this.latestPlanSnapshot = plan; },
       getLatestPlanSnapshotUpdatedAtMs: () => this.latestPlanSnapshotUpdatedAtMs,
       setLatestPlanSnapshotUpdatedAtMs: (ms) => { this.latestPlanSnapshotUpdatedAtMs = ms; },
-      getLatestReconcilePlanSnapshot: () => this.latestReconcilePlanSnapshot,
-      setLatestReconcilePlanSnapshot: (plan) => { this.latestReconcilePlanSnapshot = plan; },
       settleDevices: () => this.settleDevices(),
       trackChanges: (plan, metaSignature) => this.changeTracker.track(plan, metaSignature),
       updatePlanSnapshot: (plan, changes) => this.updatePlanSnapshot(plan, changes),
@@ -216,10 +221,6 @@ export class PlanService {
     return this.latestPlanSnapshotUpdatedAtMs;
   }
 
-  getLatestReconcilePlanSnapshot(): DevicePlan | null {
-    return this.latestReconcilePlanSnapshot ?? this.latestPlanSnapshot;
-  }
-
   private stampPlanGeneratedAt(plan: DevicePlan, nowMs = Date.now()): DevicePlan {
     return {
       ...plan,
@@ -231,20 +232,6 @@ export class PlanService {
     return {
       ...plan,
       generatedAtMs: basePlan.generatedAtMs,
-    };
-  }
-
-  private stampCurrentPowerFreshness(plan: DevicePlan): DevicePlan {
-    const lastTimestamp = this.deps.getLastPowerUpdate();
-    const freshness = resolvePowerSampleFreshness(
-      typeof lastTimestamp === 'number' ? { lastTimestamp } : {},
-    );
-    return {
-      ...plan,
-      meta: {
-        ...plan.meta,
-        powerFreshnessState: freshness.powerFreshnessState,
-      },
     };
   }
 
@@ -287,7 +274,6 @@ export class PlanService {
       const nowMs = Date.now();
       this.latestPlanSnapshot = refreshedPlan;
       this.latestPlanSnapshotUpdatedAtMs = nowMs;
-      this.latestReconcilePlanSnapshot = refreshedPlan;
       this.emitPlanUpdated(refreshedPlan);
       return true;
     }
@@ -306,21 +292,6 @@ export class PlanService {
     this.latestPlanSnapshotUpdatedAtMs = nowMs;
     this.emitPlanUpdated(refreshedPlan);
     return true;
-  }
-
-  // `onAbort` fires (once, before returning `false`) only when `shouldAbort`
-  // trips inside the queued body — a DISTINCT signal so a caller can tell a
-  // point-of-use abort from an ordinary no-op (both resolve `false`). Single-home
-  // callers pass neither argument and observe the unchanged boolean contract.
-  async reconcileLatestPlanState(
-    shouldAbort?: () => boolean,
-    onAbort?: () => void,
-  ): Promise<boolean> {
-    return this.enqueuePlanOperation(
-      () => this.performPlanReconcile(shouldAbort, onAbort),
-      'Failed to reconcile latest plan state',
-      false,
-    );
   }
 
   applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
@@ -367,7 +338,22 @@ export class PlanService {
     return this.deps.planEngine.syncHeadroomUsageObservation(params);
   }
 
-  async rebuildPlanFromCache(reason = 'unspecified'): Promise<PlanRebuildOutcome> {
+  /**
+   * `shouldAbort` / `onAbort` are the serialized-queue TOCTOU guard (R7b P1).
+   * This method only ENQUEUES; a caller may have validated a precondition (a
+   * sub-home ready-edge's meter-sample revision) BEFORE enqueuing, but the body
+   * runs LATER, when the queue drains, and a newer sample can land in between.
+   * `shouldAbort` is re-checked at the point of use so a now-stale request drops
+   * instead of actuating against an observation it never saw. A zeroed outcome
+   * is indistinguishable from an ordinary no-op, so `onAbort` signals the
+   * point-of-use abort DISTINCTLY — the ready-edge re-arms its latch on it (a
+   * plain no-op must NOT re-arm). Callers passing neither are unaffected.
+   */
+  async rebuildPlanFromCache(
+    reason = 'unspecified',
+    shouldAbort?: () => boolean,
+    onAbort?: () => void,
+  ): Promise<PlanRebuildOutcome> {
     // Hold the first rebuild until the warmup gate releases (snapshot ready
     // or bound elapsed). Awaiting here — before enqueuing — means the gate
     // does not block `enqueuePlanOperation` ordering and, once released,
@@ -400,6 +386,11 @@ export class PlanService {
         addPerfDuration('plan_rebuild_queue_wait_ms', waitMs);
         if (waitMs > 0) {
           incPerfCounter('plan_rebuild_queue_waited_total');
+        }
+        if (shouldAbort?.()) {
+          onAbort?.();
+          incPerfCounter('plan_rebuild_aborted_stale_total');
+          return createPlanRebuildOutcome(this.deps.getCapacityDryRun());
         }
         return performPlanRebuild(this.rebuildHost, { reason, queueWaitMs: waitMs, queueDepth });
       },
@@ -441,45 +432,6 @@ export class PlanService {
 
   private withHomeLogContext<T>(operation: () => T): T {
     return runWithContext({ homeId: this.deps.homeId }, operation);
-  }
-
-  private async performPlanReconcile(
-    shouldAbort?: () => boolean,
-    onAbort?: () => void,
-  ): Promise<boolean> {
-    // Serialized-queue TOCTOU guard: `reconcileLatestPlanState` only ENQUEUES; a
-    // caller may have validated a precondition (e.g. a sub-home ready-edge's meter
-    // -sample revision) BEFORE enqueuing, but this body runs LATER, when the queue
-    // drains — a newer sample can land in between. Re-check at the point of use,
-    // before reading/applying the committed plan, so a now-stale reconcile aborts
-    // instead of restoring load after an over-cap sample (R7b P1). A bare `false`
-    // return here is indistinguishable from an ordinary no-op, so invoke `onAbort`
-    // to signal the point-of-use abort DISTINCTLY — the ready-edge re-arms its latch
-    // and reschedules on it (a plain no-op must NOT re-arm). Single-home callers
-    // pass no predicate, so their behavior is unchanged.
-    if (shouldAbort?.()) {
-      onAbort?.();
-      return false;
-    }
-    if (this.deps.getCapacityDryRun()) return false;
-    const plannedSnapshot = this.getLatestReconcilePlanSnapshot();
-    if (!plannedSnapshot) return false;
-
-    const liveDevices = this.deps.getPlanDevices();
-    if (!this.deps.planEngine.hasExecutionWorkOutstanding(plannedSnapshot, liveDevices)) {
-      return false;
-    }
-
-    const driftedLivePlan = this.stampCurrentPowerFreshness(
-      buildLiveStatePlan(plannedSnapshot, liveDevices),
-    );
-    (this.deps.loggers?.debugStructured ?? ((p: Record<string, unknown>) => logger.debug(p)))({
-      event: 'realtime_device_drift_detected',
-      message: 'Reapplying current plan',
-    });
-    await this.applyPlanActions(driftedLivePlan, 'reconcile');
-    this.deps.schedulePostActuationRefresh?.();
-    return true;
   }
 
   private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {

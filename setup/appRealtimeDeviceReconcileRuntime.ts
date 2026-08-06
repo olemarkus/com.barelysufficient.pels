@@ -1,28 +1,22 @@
 import {
   flushRealtimeDeviceReconcileQueue,
   scheduleRealtimeDeviceReconcile,
-  toRealtimeReconcileEventPayload,
   type RealtimeDeviceReconcileEvent,
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
-import { evictMissingDeviceCacheEntries, toPlanDevice } from './appInit/toPlanDevice';
 import {
   syncExternalOffHoldForDevice,
   toExternalOffHoldObservedDevice,
 } from './externalOffHoldDetection';
 import type { ExternalOffHoldReconcileHooks } from './externalOffHoldDetection';
-import { hasPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { AppContext } from '../lib/app/appContext';
-import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
+import type { DevicePlan } from '../lib/plan/planTypes';
 import { MAIN_HOME_ID, type HomeId } from '../lib/utils/settingsKeys';
 import type { RealtimeReconcileHooks } from './homeRuntime/createHomeCapacityBundle';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
-import { getLogger } from '../lib/logging/logger';
 import { normalizeError } from '../lib/utils/errorUtils';
-
-const moduleLogger = getLogger('app/realtime-reconcile-runtime');
 
 /**
  * Structural slice of the home-runtime registry the reconcile router consumes
@@ -72,20 +66,17 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
     : `realtimeDeviceReconcile:${subHomeRoute.homeId}`;
   const targetSnapshotForEvent = perEventCache(() => ctx.latestTargetSnapshot);
   const getLatestPlanSnapshot = subHomeHooks?.getLatestPlanSnapshot
-    ?? ((): DevicePlan | null => ctx.planService?.getLatestReconcilePlanSnapshot() ?? null);
-  const getLiveDevices = subHomeHooks?.getLiveDevices ?? ((): PlanInputDevice[] => {
-    const snapshot = targetSnapshotForEvent.read();
-    evictMissingDeviceCacheEntries(ctx, snapshot);
-    return snapshot.map((device) => toPlanDevice(ctx, device));
-  });
-  const reconcile = subHomeHooks?.reconcile
-    ?? ((): Promise<boolean> => ctx.planService?.reconcileLatestPlanState() ?? Promise.resolve(false));
-  // Shared across this event's synchronous phase only: on the main path
-  // `getLiveDevices` maps the whole snapshot through `toPlanDevice`, and the hold
-  // check plus the drift gate would otherwise pay for that twice per realtime
-  // event — for every user, including the majority with nothing opted in.
+    ?? ((): DevicePlan | null => ctx.planService?.getLatestPlanSnapshot() ?? null);
+  const requestRebuild = subHomeHooks?.requestRebuild
+    ?? (async (): Promise<boolean> => {
+      const outcome = await ctx.planService?.rebuildPlanFromCache('device_observation_changed');
+      return outcome?.appliedActions === true;
+    });
+  // Shared across this event's synchronous phase only: on the main path the
+  // external-off hold check reads the whole target snapshot, and reading it twice
+  // per realtime event would cost every user — including the majority with
+  // nothing opted in.
   const planSnapshotForEvent = perEventCache(getLatestPlanSnapshot);
-  const liveDevicesForEvent = perEventCache(getLiveDevices);
   if (applyExternalOffHoldToReconcile({
     ctx,
     event,
@@ -105,10 +96,9 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
     queueKey,
     hasPendingTimer: timers.has(timerKey),
     getLatestPlanSnapshot: planSnapshotForEvent.read,
-    getLiveDevices: liveDevicesForEvent.read,
     structuredLog,
     debugStructured,
-    reconcile,
+    requestRebuild,
     onTimerFired: () => {
       timers.clear(timerKey);
     },
@@ -119,12 +109,10 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
       });
     },
   });
-  // Release before the debounced flush can run. That flush classifies each
-  // coalesced event AFTER the reconcile has executed, so a frozen "still
-  // drifting" answer would count a successful reconcile toward the three-strike
-  // circuit breaker and suppress genuine drift on the device for 60 s.
+  // Release before the debounced flush can run: the cache is scoped to this
+  // event's synchronous phase, and the flush executes later against whatever the
+  // world looks like then.
   planSnapshotForEvent.release();
-  liveDevicesForEvent.release();
   targetSnapshotForEvent.release();
   if (timer) {
     timers.registerTimeout(timerKey, timer);
@@ -217,61 +205,29 @@ function applyExternalOffHoldToReconcile(params: {
   return true;
 }
 
-export function hasRealtimeDeviceReconcileDrift(params: {
-  event: RealtimeDeviceReconcileEvent;
-  latestPlanSnapshot: DevicePlan | null;
-  liveDevices: PlanInputDevice[];
-}): boolean {
-  const {
-    event,
-    latestPlanSnapshot,
-    liveDevices,
-  } = params;
-  if (!latestPlanSnapshot) return true;
-  return hasPlanExecutionDriftForDevice({
-    plan: latestPlanSnapshot,
-    liveDevices,
-    deviceId: event.deviceId,
-  });
-}
-
-export function shouldQueueRealtimeDeviceReconcile(params: {
-  event: RealtimeDeviceReconcileEvent;
-  latestPlanSnapshot: DevicePlan | null;
-  liveDevices: PlanInputDevice[];
-  debugStructured?: StructuredDebugEmitter;
-}): boolean {
-  const {
-    event,
-    latestPlanSnapshot,
-    liveDevices,
-    debugStructured,
-  } = params;
-  const eventWithPlanExpectation = enrichRealtimeDeviceReconcileEvent(event, latestPlanSnapshot);
-  const hasDrift = hasRealtimeDeviceReconcileDrift({
-    event: eventWithPlanExpectation,
-    latestPlanSnapshot,
-    liveDevices,
-  });
-  if (hasDrift) return true;
-
-  (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
-    event: 'realtime_reconcile_skipped_no_drift',
-    ...toRealtimeReconcileEventPayload(eventWithPlanExpectation),
-  });
-  return false;
-}
-
+/**
+ * Queues a plan rebuild for a device whose observed control state moved.
+ *
+ * There is no drift gate here any more. Asking "does this device disagree with
+ * the committed plan?" made the wiring layer re-derive a planner comparison
+ * (inversion #2), and the answer was only ever used to decide whether to trigger
+ * a re-assert of that same committed plan. The producer has already filtered to
+ * control-relevant capability changes (`observedControlStateChanged`), and a
+ * rebuild re-decides from current device state and whole-home usage — including
+ * deciding to do nothing, which is the case the gate used to short-circuit.
+ *
+ * The cost of dropping the gate is bounded by the coalescing debounce plus the
+ * rebuild floor in `appRealtimeDeviceReconcile.ts`, not by the gate.
+ */
 export function scheduleAppRealtimeDeviceReconcile(params: {
   event: RealtimeDeviceReconcileEvent;
   state: RealtimeDeviceReconcileState;
   queueKey: string;
   hasPendingTimer: boolean;
   getLatestPlanSnapshot: () => DevicePlan | null;
-  getLiveDevices: () => PlanInputDevice[];
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
-  reconcile: () => Promise<boolean>;
+  requestRebuild: () => Promise<boolean>;
   onTimerFired: () => void;
   onError: (error: unknown) => void;
 }): ReturnType<typeof setTimeout> | undefined {
@@ -281,22 +237,15 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     queueKey,
     hasPendingTimer,
     getLatestPlanSnapshot,
-    getLiveDevices,
     structuredLog,
     debugStructured,
-    reconcile,
+    requestRebuild,
     onTimerFired,
     onError,
   } = params;
+  // The plan snapshot is read for the LOG field only — what the plan currently
+  // expects, so a reader can see what moved against what. No decision reads it.
   const eventWithPlanExpectation = enrichRealtimeDeviceReconcileEvent(event, getLatestPlanSnapshot());
-  if (!shouldQueueRealtimeDeviceReconcile({
-      event: eventWithPlanExpectation,
-      latestPlanSnapshot: getLatestPlanSnapshot(),
-      liveDevices: getLiveDevices(),
-      debugStructured,
-    })) {
-    return undefined;
-  }
 
   return scheduleRealtimeDeviceReconcile({
     state,
@@ -309,12 +258,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
       await flushRealtimeDeviceReconcileQueue({
         state,
         queueKey,
-        reconcile,
-        shouldRecordAttempt: (nextEvent) => hasRealtimeDeviceReconcileDrift({
-          event: nextEvent,
-          latestPlanSnapshot: getLatestPlanSnapshot(),
-          liveDevices: getLiveDevices(),
-        }),
+        requestRebuild,
         structuredLog,
         debugStructured,
       });

@@ -560,6 +560,58 @@ describe('executorConvergence stepped device drift', () => {
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
     });
+
+    // These two guard against the predicate OVER-reporting. It now gates whether a
+    // rebuild actuates (`maybeApplyPlanChanges`), so a false positive means writing
+    // to a device on every power report — the device-command hysteresis failure mode.
+    // Both cases used to be pinned at the PlanService level through the reconcile
+    // lane; the predicate is their real owner.
+    it('does not treat a power-only change as drift', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'on',
+        plannedState: 'keep',
+        currentTarget: 20,
+        plannedTarget: 20,
+        powerKw: 1,
+        expectedPowerKw: 1,
+        measuredPowerKw: 1,
+      })]);
+      // Same binary state and same target; only the power readings moved. Power is
+      // not a control axis, so there is nothing for the executor to converge.
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2',
+        name: 'Heater',
+        binaryControl: { on: true },
+        controlCapabilityId: 'onoff',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        powerKw: 2,
+        expectedPowerKw: 2,
+        measuredPowerKw: 2,
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
+    it('does not treat a target-only change as drift while a shed device is already off', () => {
+      // A `turn_off` shed settles on the binary axis alone. The setpoint the device
+      // reports while off is irrelevant, so a target change must not re-fire the shed.
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'off',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        currentTarget: 20,
+        plannedTarget: 20,
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2',
+        name: 'Heater',
+        binaryControl: { on: false },
+        controlCapabilityId: 'onoff',
+        targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
   });
 
 });
