@@ -482,10 +482,12 @@ describe('settingsUiApi', () => {
     expect(payload.hasManagedSolarDevice).toBe(true);
   });
 
-  it('keeps the power payload solar flag false on the flow power source, even with a PV device', () => {
-    // Flow reporting rejects negative watts and carries no generation field,
-    // so a flow home's solar buckets can never fill — flagging it would render
-    // an eternal "gathering" Solar card promising data that never comes.
+  it('raises the power payload solar flag on EITHER power source when a PV device exists', () => {
+    // Production is read from the Homey Energy report on both sources — directly
+    // on the homey_energy poll, and via the companion poll on flow — so a solar
+    // home's generation buckets fill either way. The flag used to be gated on
+    // the source because the flow path had no production reader at all; that is
+    // no longer a configuration that exists.
     const solarDevices = [
       { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
       { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
@@ -494,10 +496,16 @@ describe('settingsUiApi', () => {
       settings: { power_source: 'flow' },
       latestDevicesOverride: solarDevices,
     });
-    expect(getSettingsUiPowerPayload({ homey: flowHomey as never }).hasManagedSolarDevice).toBe(false);
+    expect(getSettingsUiPowerPayload({ homey: flowHomey as never }).hasManagedSolarDevice).toBe(true);
     // Unset power_source normalizes to flow (the historical read semantics).
     const unsetHomey = createHomey({ latestDevicesOverride: solarDevices });
-    expect(getSettingsUiPowerPayload({ homey: unsetHomey as never }).hasManagedSolarDevice).toBe(false);
+    expect(getSettingsUiPowerPayload({ homey: unsetHomey as never }).hasManagedSolarDevice).toBe(true);
+    // Still false without a PV device: the flag is device presence, not source.
+    const noPvHomey = createHomey({
+      settings: { power_source: 'flow' },
+      latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
+    });
+    expect(getSettingsUiPowerPayload({ homey: noPvHomey as never }).hasManagedSolarDevice).toBe(false);
   });
 
   it('hides auto-tracked observe-only battery/PV devices from the settings-UI device list', () => {

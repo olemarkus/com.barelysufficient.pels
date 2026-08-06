@@ -33,6 +33,10 @@ import { estimatePower } from '../devicePowerEstimate';
 import { startRuntimeSpan } from '../../utils/runtimeTrace';
 import { logEvSnapshotChanges, type DeviceCapabilityMap } from '../managerControl';
 import { type LiveDevicePowerWatts } from '../managerEnergy';
+export {
+  fetchLiveGenerationW,
+  type LiveGenerationRead,
+} from './managerFetch';
 import {
   fetchDevicesByIds,
   fetchDevicesWithFallback,

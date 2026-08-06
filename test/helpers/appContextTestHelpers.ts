@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { normalizePowerSource } from '../../lib/power/powerSource';
@@ -148,6 +149,17 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     timers,
     pollHomePower: async () => null,
     recordPowerSample: vi.fn(async () => undefined),
+    debugStructured: vi.fn(),
+    error: vi.fn(),
+  });
+  const generationPollSource = new GenerationPollSource({
+    getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
+    // No PV device in the default fixture, so the poll never reaches the SDK.
+    hasProductionCandidate: () => latestTargetSnapshot.some((d) => d.deviceClass === 'solarpanel'),
+    timers,
+    readGenerationW: async () => ({ state: 'resolved' as const, generationW: null }),
+    setGenerationW: vi.fn(),
+    now: () => Date.now(),
     debugStructured: vi.fn(),
     error: vi.fn(),
   });
@@ -321,6 +333,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     } as never,
     snapshotHelpers,
     homeyEnergyHelpers,
+    generationPollSource,
     deviceControlHelpers,
     timers,
   };

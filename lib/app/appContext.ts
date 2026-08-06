@@ -45,6 +45,7 @@ import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { HomeMembershipPort } from '../home/membership';
 import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
+import type { GenerationPollSource } from '../power/sources/generationPoll';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
@@ -306,6 +307,11 @@ export type AppContext = {
   snapshotWarmupGate?: SnapshotWarmupGate;
   readonly snapshotHelpers: AppSnapshotHelpers;
   readonly homeyEnergyHelpers: HomeyEnergyPollSource;
+  /**
+   * Production companion poll. Active only on the flow source, where net comes
+   * from a Flow card and nothing else reads `totalGenerated.W`.
+   */
+  readonly generationPollSource: GenerationPollSource;
   readonly deviceControlHelpers: AppDeviceControlHelpers;
   readonly timers: TimerRegistry;
 };

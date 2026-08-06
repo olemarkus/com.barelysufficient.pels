@@ -101,8 +101,10 @@ const buildFreshMeasuredDevicePowerWById = (params: {
  * Whole-home actual consumption for the managed/background split.
  *
  * `net + generation` is authoritative wherever a production reading is
- * co-sampled. Where one is NOT — any source that reports net only — a negative
- * net cannot be resolved to gross at all: the solar covering the load is
+ * co-sampled — which, since the flow source gained its production companion
+ * poll, is any home with a PV device on EITHER power source. Where one is NOT
+ * (no generator, or its reading has gone stale), a negative net cannot be
+ * resolved to gross at all: the solar covering the load is
  * invisible, and `max(0, net)` asserts the home consumed NOTHING. That is not a
  * conservative floor, it is a false statement: `resolveControlledSample` bounds
  * the split by gross, so managed load reads 0 kW and the controlled/uncontrolled
@@ -135,9 +137,15 @@ const resolveGrossConsumptionW = (params: {
   splitControlledUsage: SplitControlledUsage;
 }): number => {
   const { currentPowerW, generationW, devices, splitControlledUsage } = params;
-  if (generationW !== undefined || currentPowerW >= 0) {
-    return Math.max(0, currentPowerW + Math.max(0, generationW ?? 0));
-  }
+  const grossFromReadings = currentPowerW + Math.max(0, generationW ?? 0);
+  // Gate the fallback on the RESOLVED value, not on whether a generation term
+  // was supplied. A solar home now carries generation on every sample including
+  // `0` (night, heavy cloud), and `0` is `!== undefined` — so a presence check
+  // would send an exporting home straight back to the "consumed nothing" answer
+  // this fallback exists to prevent, on the very source that just gained
+  // production. Exporting under zero reported production is real (a battery
+  // discharging to grid after dark, a second inverter Homey cannot see).
+  if (grossFromReadings > 0 || currentPowerW >= 0) return Math.max(0, grossFromReadings);
   if (devices.length === 0) return 0;
   const { controlledKw } = splitControlledUsage({ devices, totalKw: null });
   return controlledKw !== null ? Math.max(0, controlledKw * 1000) : 0;

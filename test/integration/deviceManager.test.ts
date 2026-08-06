@@ -920,8 +920,10 @@ describe('DeviceTransport', () => {
             const sample = await dispatchingManager.refreshSnapshot();
 
             expect(setHomePowerW).toHaveBeenCalledWith(4500);
-            // Gross generation from the same payload is pushed alongside net power.
-            expect(setGenerationW).toHaveBeenCalledWith(1200);
+            // Gross generation from the same payload is pushed alongside net power,
+            // stamped with its read time (the holder is shared with the flow
+            // source's separate generation reader, whose clock differs).
+            expect(setGenerationW).toHaveBeenCalledWith(1200, expect.any(Number));
             expect(sample).toEqual({
                 powerW: 4500,
                 generationW: 1200,
@@ -961,7 +963,8 @@ describe('DeviceTransport', () => {
 
             expect(setHomePowerW).toHaveBeenCalledWith(null);
             // No generation signal in the payload -> null pushed (no-op gross-up).
-            expect(setGenerationW).toHaveBeenCalledWith(null);
+            // Still stamped: "the report carried no generation" is an observation.
+            expect(setGenerationW).toHaveBeenCalledWith(null, expect.any(Number));
         });
 
         it('does not publish empty home power evidence when live power is skipped', async () => {

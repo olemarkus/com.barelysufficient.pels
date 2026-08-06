@@ -529,6 +529,7 @@ export class AppServiceWiring {
     this.deps.timers.clearAll();
     ctx.snapshotHelpers.stop();
     ctx.homeyEnergyHelpers.stop();
+    ctx.generationPollSource.stop();
   }
 
   private stopUninitServices(): void {

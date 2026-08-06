@@ -14,24 +14,19 @@ export const normalizePowerSource = (value: unknown): PowerSource => (
   value === 'homey_energy' ? 'homey_energy' : 'flow'
 );
 
-/**
- * Whether the active source delivers a whole-home PRODUCTION reading (gross PV
- * generation) alongside net power. Homey Energy co-samples it as
- * `totalGenerated.W`; the Flow card reports net power only.
- *
- * This is the ONE place the source identity is allowed to become a capability.
- * Consumers must branch on the capability, never on the source name — a
- * downstream `=== 'homey_energy'` re-derives a fact it has no business knowing,
- * and every such check has to be revisited whenever a source gains or loses a
- * channel (exactly what happened when the Flow card started accepting signed
- * watts: half of each gate's justification silently became false).
- *
- * NET power is deliberately not modelled here — both sources deliver it, signed,
- * on equal terms.
- */
-export const deliversProductionSignal = (source: PowerSource): boolean => (
-  source === 'homey_energy'
-);
+// There is deliberately NO source→capability predicate here any more.
+//
+// `deliversProductionSignal` used to sit at this spot, answering "does this
+// source carry a whole-home PRODUCTION reading?" with `source === 'homey_energy'`.
+// Both quantities are now source-independent: net is delivered signed by both
+// sources, and production is read from the same Homey Energy report either way —
+// directly on the `homey_energy` poll, and through the companion poll
+// (`lib/power/sources/generationPoll.ts`) on `flow`.
+//
+// Production availability is therefore a RUNTIME fact — "is there a fresh
+// generation reading?" (`lib/observer/generationFreshness.ts`) — not a static
+// property of the configured source. Resolve it from the reading; do not
+// reintroduce a source-name branch to approximate it.
 
 export type PowerSourceSettingSuspectReason =
   | 'missing_existing_key'

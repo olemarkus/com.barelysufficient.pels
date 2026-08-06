@@ -460,7 +460,12 @@ export function initSettingsHandlerForApp(
     updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
-    restartHomeyEnergyPoll: () => ctx.homeyEnergyHelpers.restart(),
+    restartHomeyEnergyPoll: () => {
+      ctx.homeyEnergyHelpers.restart();
+      // The two are complementary: exactly one runs for any given source, so a
+      // source change must re-evaluate both or the home ends up with neither.
+      ctx.generationPollSource.restart();
+    },
     stopFlowPowerSampleFreshnessClock: () => stopFlowPowerSampleFreshnessClock(ctx.timers),
     syncFlowPowerSampleFreshnessClock: () => syncFlowPowerSampleFreshnessClock(
       ctx.timers,

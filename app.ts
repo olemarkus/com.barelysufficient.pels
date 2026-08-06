@@ -143,7 +143,8 @@ import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceLogPayload,
 } from './packages/contracts/src/settingsUiApi';
-import { HomeyEnergyPollSource } from './lib/power/sources/homeyEnergyPoll';
+import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
+import { createHomeyEnergyPollSource } from './setup/appInit/createHomeyEnergyPollSource';
 import {
   AppSnapshotHelpers,
   type RefreshTargetDevicesSnapshotOptions,
@@ -340,6 +341,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     // Optional AppContext member assigned by wireCurtailmentSurplus post-startup;
     // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
+    // Production for samples that do not carry their own; the factory bounds its
+    // freshness. Main home only — a sub-home must not adopt this production.
+    observedHomePower: this.observedHomePower,
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
@@ -393,15 +397,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
     recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
   });
-  public readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
-    getPowerSource: () => this.getPowerSource(),
-    timers: this.timers,
-    pollHomePower: async (authorizeFanOut) => (await this.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
-    // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
-    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
-    debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
-    error: (...args) => this.error(...args),
-  });
+  public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);
+  public readonly generationPollSource = createGenerationPollSource(this, this.observedHomePower);
   public readonly deviceControlHelpers = new AppDeviceControlHelpers({
     getProfiles: () => this.deviceControlProfiles,
     isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),
@@ -945,7 +942,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   public getCombinedHourlyPrices = (): CombinedHourlyPrice[] => this.priceCoordinator.getCombinedHourlyPrices();
   public getTimeZone = (): string => this.homey.clock.getTimezone();
-  private getPowerSource = (): PowerSource => requireConfiguredPowerSource(this.homey.settings);
+  public getPowerSource = (): PowerSource => requireConfiguredPowerSource(this.homey.settings);
   public getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
   public isCurrentHourCheap = (): boolean => this.priceCoordinator.isCurrentHourCheap();

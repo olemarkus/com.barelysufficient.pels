@@ -41,6 +41,22 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **Sparse Flow reports mint solar production and export across the gap between them.**
+      `accrueSolarSample` (`lib/power/trackerSolar.ts`) integrates the PREVIOUS held generation
+      across the whole interval to the next sample, and `MAX_SOLAR_ACCRUAL_GAP_MS` is 60 min — so
+      it never trips on a realistic Flow cadence. On the `homey_energy` source the 10 s poll keeps
+      the interval short and the error negligible; on `flow` the sample interval is whatever the
+      user's Flow emits. A home reporting on change with a dead band can go 30 minutes between
+      reports: 7 kW at 12:00, production collapses at 12:01, next report 12:30 → ~3.5 kWh of
+      production accrued that never happened, with the matching error in exported kWh. Both
+      numbers are user-visible on the Usage tab's Solar card and priced by the money lines.
+      Surfaced by Codex (P1) and `pels-runtime-reality` independently on PR #1997, which gives the
+      flow source production parity; the same accrual already backs EXPORT for shipped flow users,
+      so the two candidate fixes are not free: accrue on the generation clock (the companion poll's
+      own 10 s cadence, `lib/power/sources/generationPoll.ts`) rather than the net-sample clock, or
+      tighten the gap ceiling — which changes export accounting for homes already running on flow.
+      Persona: the prosumer on the flow source reading the Solar card (`notes/personas.md`).
+
 - [ ] **The reconcile lane can re-actuate a plan snapshot that predates the observation which
       triggered it — PELS caused its own hard-cap breach this way.** Prod 2026-08-05,
       `inc_26449fb9`: at 20:01:29.419 a stepped water heater announced `pels_measure_step: low`
