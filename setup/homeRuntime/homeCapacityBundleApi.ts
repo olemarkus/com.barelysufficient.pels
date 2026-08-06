@@ -409,7 +409,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       getLatestPlanSnapshot: () => planService.getLatestPlanSnapshot(),
       requestRebuild: async () => {
         const outcome = await planService.rebuildPlanFromCache('device_observation_changed');
-        return outcome.appliedActions;
+        return outcome.writtenDeviceIds;
       },
       // External-off hold: both must come from THIS bundle. Main's pending store
       // never saw this device's commands, so it would report PELS's own write as
@@ -470,8 +470,18 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // to skip the apply entirely (stable actuation does not cover shed actions)
       // and leave the home over cap with its command never issued — so this path
       // chased the rebuild with a reconcile to force the write. It no longer needs
-      // to: a planned shed against a device still observed ON is execution work
-      // outstanding, so `maybeApplyPlanChanges` applies it on the rebuild itself.
+      // to for a `turn_off` shed: the plan wants the device off, it is observed on,
+      // and that IS execution work outstanding, so the rebuild applies it itself.
+      //
+      // CAVEAT, because the coverage is not total: a `set_step` shed to a non-off
+      // step is NOT caught. `hasSteppedStepDrift` compares the observed step
+      // against `planDevice.selectedStepId`, which on a rebuild is the observed
+      // step (same read) — structurally equal, so step drift is always false
+      // there, and the binary axis reads `on` as expected. Such a plan still
+      // depends on `changes.actionChanged`. That hole predates this change (the
+      // deleted reconcile lane used the same predicate), and closing it means
+      // comparing against `desiredStepId` for an unexecuted shed — tracked in
+      // `TODO.md`.
       //
       // Direct rebuild, mirroring the main home's settings path
       // (`handleCapacityLimitChange` also bypasses the sample scheduler).

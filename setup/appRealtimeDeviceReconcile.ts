@@ -95,32 +95,49 @@ export function scheduleRealtimeDeviceReconcile(params: {
  * Debounce for an isolated event, throttle for a burst: whichever of the 250 ms
  * debounce and the remaining rebuild floor is longer. Coalescing means a burst
  * still collapses into ONE rebuild carrying every device that moved.
+ *
+ * The result is CLAMPED to the floor because `Date.now()` is not monotonic. An
+ * NTP step backwards by N ms makes `sinceMs` negative, which without the clamp
+ * arms the timer for `floor + N`. `hasPendingTimer` then blocks re-arming, so
+ * every later observation for this home coalesces into that stalled timer and
+ * the whole lane goes dark for an unbounded interval — one clock step, one
+ * silent home. It self-heals after the timer finally fires; the clamp means it
+ * never stalls in the first place.
  */
-function resolveRealtimeRebuildDelayMs(
+export function resolveRealtimeRebuildDelayMs(
   state: RealtimeDeviceReconcileState,
   queueKey: string,
 ): number {
   const lastRebuildAtMs = state.lastRebuildAtMsByQueue.get(queueKey);
   if (lastRebuildAtMs === undefined) return REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS;
   const sinceMs = Date.now() - lastRebuildAtMs;
-  const remainingFloorMs = REALTIME_DEVICE_REBUILD_MIN_INTERVAL_MS - sinceMs;
+  const remainingFloorMs = Math.min(
+    REALTIME_DEVICE_REBUILD_MIN_INTERVAL_MS,
+    REALTIME_DEVICE_REBUILD_MIN_INTERVAL_MS - sinceMs,
+  );
   return Math.max(REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS, remainingFloorMs);
 }
 
 /**
  * Requests ONE plan rebuild for everything that moved since the last flush.
  *
- * `requestRebuild` resolves true when the rebuild it ran actually wrote to
- * devices (`PlanRebuildOutcome.appliedActions`). That is the signal the circuit
- * breaker counts, and it is deliberately the only thing this layer knows: "did
- * the rebuild act?" is a fact about the outcome, where the old
+ * `requestRebuild` resolves the ids of the devices the rebuild actually wrote to
+ * (`PlanRebuildOutcome.writtenDeviceIds`). That is the signal the circuit breaker
+ * counts, and it is deliberately the only thing this layer knows: "which devices
+ * did the rebuild write?" is a fact about the outcome, where the old
  * `shouldRecordAttempt` asked "is this device still drifting from the plan?" —
  * a planner comparison the wiring layer had no business making (inversion #2).
+ *
+ * It must be the per-device ids and not a plan-wide boolean. One rebuild covers
+ * every device that moved, so a bare "something was written" would charge a
+ * strike to a device that merely reported a benign change while a DIFFERENT one
+ * was actuated — three of those in 30 s and that innocent device's observations
+ * are suppressed for a minute. The breaker means "we are fighting THIS device".
  */
 export async function flushRealtimeDeviceReconcileQueue(params: {
   state: RealtimeDeviceReconcileState;
   queueKey: string;
-  requestRebuild: () => Promise<boolean>;
+  requestRebuild: () => Promise<string[]>;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 }): Promise<void> {
@@ -147,16 +164,20 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   // Stamp before awaiting: the floor is about how often we START a rebuild, and
   // a long rebuild must not earn an immediate second one on completion.
   state.lastRebuildAtMsByQueue.set(queueKey, Date.now());
-  const applied = await requestRebuild();
-  if (!applied) return;
+  const writtenDeviceIds = new Set(await requestRebuild());
+  if (writtenDeviceIds.size === 0) return;
+  // Only the devices this rebuild actually wrote to are charged. A coalesced
+  // batch routinely contains devices the planner looked at and left alone.
+  const actuatedEvents = eligibleEvents.filter((event) => writtenDeviceIds.has(event.deviceId));
+  if (actuatedEvents.length === 0) return;
   (structuredLog ?? moduleLogger).info({
     event: 'realtime_observation_rebuild_applied',
-    deviceCount: eligibleEvents.length,
-    devices: eligibleEvents.map((event) => toRealtimeReconcileEventSummary(event)),
+    deviceCount: actuatedEvents.length,
+    devices: actuatedEvents.map((event) => toRealtimeReconcileEventSummary(event)),
   });
   recordRealtimeDeviceReconcileAttempts({
     state,
-    events: eligibleEvents,
+    events: actuatedEvents,
     now: Date.now(),
     structuredLog,
   });

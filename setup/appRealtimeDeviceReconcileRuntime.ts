@@ -33,7 +33,7 @@ type RealtimeReconcileRouter = {
 
 /**
  * App-flavored wrapper over {@link scheduleAppRealtimeDeviceReconcile}: binds
- * the ctx closures (plan snapshot, live plan devices, reconcile call) and the
+ * the ctx closures (plan snapshot for the log field, rebuild request) and the
  * shared `realtimeDeviceReconcile` timer-registry slot. Body extracted from
  * `AppServiceWiring.scheduleRealtimeDeviceReconcile` (which stays as a thin
  * method so emitter subscriptions and test seams keep their call site).
@@ -68,15 +68,10 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   const getLatestPlanSnapshot = subHomeHooks?.getLatestPlanSnapshot
     ?? ((): DevicePlan | null => ctx.planService?.getLatestPlanSnapshot() ?? null);
   const requestRebuild = subHomeHooks?.requestRebuild
-    ?? (async (): Promise<boolean> => {
+    ?? (async (): Promise<string[]> => {
       const outcome = await ctx.planService?.rebuildPlanFromCache('device_observation_changed');
-      return outcome?.appliedActions === true;
+      return outcome?.writtenDeviceIds ?? [];
     });
-  // Shared across this event's synchronous phase only: on the main path the
-  // external-off hold check reads the whole target snapshot, and reading it twice
-  // per realtime event would cost every user — including the majority with
-  // nothing opted in.
-  const planSnapshotForEvent = perEventCache(getLatestPlanSnapshot);
   if (applyExternalOffHoldToReconcile({
     ctx,
     event,
@@ -95,7 +90,7 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
     state,
     queueKey,
     hasPendingTimer: timers.has(timerKey),
-    getLatestPlanSnapshot: planSnapshotForEvent.read,
+    getLatestPlanSnapshot,
     structuredLog,
     debugStructured,
     requestRebuild,
@@ -112,7 +107,6 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   // Release before the debounced flush can run: the cache is scoped to this
   // event's synchronous phase, and the flush executes later against whatever the
   // world looks like then.
-  planSnapshotForEvent.release();
   targetSnapshotForEvent.release();
   if (timer) {
     timers.registerTimeout(timerKey, timer);
@@ -154,8 +148,8 @@ function buildExternalOffHoldHooks(
 }
 
 /**
- * Resolves "Leave off until turned on again" for this event, BEFORE the drift
- * gate, and reports whether the caller must stop without queuing a reconcile.
+ * Resolves "Leave off until turned on again" for this event, BEFORE anything is
+ * queued, and reports whether the caller must stop without requesting a rebuild.
  *
  * Both outcomes suppress and rebuild. `started`, because the reconcile this
  * event would queue is exactly the stale-plan ON command the hold exists to
@@ -227,7 +221,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
   getLatestPlanSnapshot: () => DevicePlan | null;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
-  requestRebuild: () => Promise<boolean>;
+  requestRebuild: () => Promise<string[]>;
   onTimerFired: () => void;
   onError: (error: unknown) => void;
 }): ReturnType<typeof setTimeout> | undefined {

@@ -28,13 +28,17 @@ import { buildPlanDevice } from '../utils/planTestUtils';
 // The reconcile debounce is 250 ms; advance past it to fire the flush.
 const RECONCILE_ADVANCE_MS = 300;
 
-type ReconcileMock = Mock<() => Promise<boolean>>;
-const makeReconcile = (): ReconcileMock => vi.fn(async (): Promise<boolean> => true);
+// Resolves the ids the rebuild wrote to. Covers every device id these tests
+// route, so the flush's per-device breaker attribution sees a realistic answer.
+type ReconcileMock = Mock<() => Promise<string[]>>;
+const makeReconcile = (): ReconcileMock => vi.fn(
+  async (): Promise<string[]> => ['sub-dev', 'main-dev', 'dev-1'],
+);
 
 // No typed PlanService mock helper exists (see appContextTestHelpers gap); the
 // wrapper only reads `getLatestPlanSnapshot` (for the log's plan-expectation
 // field) and `rebuildPlanFromCache`, so a two-method partial is the established
-// idiom. The rebuild resolves an outcome whose `appliedActions` the flush reads.
+// idiom. The rebuild resolves an outcome whose `writtenDeviceIds` the flush reads.
 const buildCtx = (mainRebuild: ReconcileMock): AppContext => createAppContextMock({
   latestTargetSnapshot: [],
   planService: {
@@ -137,8 +141,8 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
         binaryControl: { on: false },
       }],
       planService: {
-        getLatestReconcilePlanSnapshot: () => null,
-        reconcileLatestPlanState: mainReconcile,
+        getLatestPlanSnapshot: () => null,
+        rebuildPlanFromCache: mainReconcile,
       } as unknown as AppContext['planService'],
     });
     ctx.externalOffHold = createExternalOffHoldPolicy({

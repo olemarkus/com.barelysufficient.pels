@@ -170,8 +170,7 @@ type DeviceCommand =
   | { kind: 'binary'; deviceId: string; control: 'onoff' | 'evcharger_charging'; desired: boolean; flowBacked: boolean }
   | { kind: 'target'; deviceId: string; value: number; contextInfo?: string }
   | { kind: 'step';   deviceId: string; profile: SteppedLoadProfile; desiredStepId: string;
-      planningPowerW: number; planningCurrentA: number;
-      actuationMode?: 'plan' | 'reconcile'; previousStepId?: string };
+      planningPowerW: number; planningCurrentA: number; previousStepId?: string };
 ```
 
 The actuator is the **only** translator from this intent vocabulary down to the

@@ -171,7 +171,6 @@ const beginTerminalBinaryOffProvenance = (
     desired: false,
     startedMs: issuedAtMs,
     logContext: 'capacity_control_off',
-    actuationMode: 'plan',
     lifecycleRelease: true,
   } as const;
   store.record(deviceId, pendingCommand);

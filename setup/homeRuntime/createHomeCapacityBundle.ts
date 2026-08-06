@@ -145,10 +145,12 @@ export type RealtimeReconcileHooks = {
   getLatestPlanSnapshot: () => DevicePlan | null;
   /**
    * Re-plan THIS home from current device state and whole-home usage, resolving
-   * true when the rebuild actually wrote to devices. Not "re-apply this home's
-   * committed plan" — that lane is gone (see `PlanService`'s docblock).
+   * the ids of the devices the rebuild actually wrote to. Not "re-apply this
+   * home's committed plan" — that lane is gone (see `PlanService`'s docblock).
+   * Per-device, not a boolean: the realtime circuit breaker charges a strike
+   * against the device it wrote, never against everything in the batch.
    */
-  requestRebuild: () => Promise<boolean>;
+  requestRebuild: () => Promise<string[]>;
   /**
    * "Leave off until turned on again" seams, routed to THIS home. Its pending
    * commands live in this bundle's engine and its plan in this bundle's service,

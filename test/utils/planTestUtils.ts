@@ -44,7 +44,7 @@ export const resolveFixtureCurrentOn = (device: {
  * Mirror the production producer (`toPlanDevice` → `resolveObservedCurrentState`):
  * the four-valued `currentState` label is resolved ONCE from the raw observed
  * signals and carried on the plan device, so plan consumers
- * (`planDevices.resolveCurrentState`, `planReconcileState`) can trust it without
+ * (`planDevices.resolveCurrentState`, `planLiveStateMerge`) can trust it without
  * re-resolving from the raw binary axis. An explicit fixture `currentState` wins;
  * otherwise resolve from the binary axis (explicit `binaryControl`, else derived
  * from the resolved `currentOn` for a binary device) + the stepped profile +

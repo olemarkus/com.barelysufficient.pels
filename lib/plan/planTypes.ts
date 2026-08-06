@@ -583,6 +583,13 @@ export type PlanRebuildOutcome = {
   metaChanged: boolean;
   appliedActions: boolean;
   deviceWriteCount: number;
+  /**
+   * Ids of the devices this rebuild actually wrote to. `appliedActions` says
+   * only that SOMETHING was written; a consumer acting per device (the realtime
+   * circuit breaker) needs to know which, or it charges a strike to a device
+   * that merely reported a change while a different one was actuated.
+   */
+  writtenDeviceIds: string[];
   commandRequestCount: number;
   hadShedding: boolean;
   isDryRun: boolean;
