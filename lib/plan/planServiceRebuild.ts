@@ -30,6 +30,7 @@ import type { PlanServiceDeps } from './planServiceDeps';
 import type {
   DevicePlan,
   PlanChangeSet,
+  PlanInputDevice,
   PlanRebuildOutcome,
   StatusPlanChanges,
 } from './planTypes';
@@ -121,7 +122,7 @@ async function executePlanRebuild(
   isDryRun: boolean,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
-  const { plan, buildMs } = await buildPlanForRebuild(host, reason);
+  const { plan, buildMs, liveDevices } = await buildPlanForRebuild(host, reason);
   const nowMs = Date.now();
   const stampedPlan = host.stampPlanGeneratedAt(plan, nowMs);
   host.setLatestPlanSnapshot(stampedPlan);
@@ -143,6 +144,7 @@ async function executePlanRebuild(
     stampedPlan,
     changes,
     isDryRun,
+    liveDevices,
   );
   if (changes.actionChanged || !host.getLatestReconcilePlanSnapshot()) {
     host.setLatestReconcilePlanSnapshot(host.getLatestPlanSnapshot() ?? stampedPlan);
@@ -167,7 +169,7 @@ async function executePlanRebuild(
 async function buildPlanForRebuild(
   host: PlanRebuildHost,
   reason: string,
-): Promise<{ plan: DevicePlan; buildMs: number }> {
+): Promise<{ plan: DevicePlan; buildMs: number; liveDevices: PlanInputDevice[] }> {
   const { planEngine } = host.deps;
   const liveDevices = host.deps.getPlanDevices();
   planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
@@ -191,6 +193,7 @@ async function buildPlanForRebuild(
   return {
     plan,
     buildMs: Date.now() - buildStart,
+    liveDevices,
   };
 }
 
@@ -229,14 +232,43 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
   };
 }
 
+/**
+ * Actuate when the plan's actions changed, OR when the executor still has work
+ * to do against the plan we just built.
+ *
+ * The second clause is what lets a rebuild correct a device that has drifted
+ * away from decisions the rebuild did not itself change. Without it, an
+ * unchanged action signature short-circuits the apply, and the only thing left
+ * that could correct the device is the reconcile lane — which re-asserts a plan
+ * nobody re-decided against the new observation. That is how PELS breached its
+ * own hard cap (`TODO.md`, inc_26449fb9): the reconcile beat the planner to the
+ * device by 281 ms and re-asserted a step-up its own admission gate would have
+ * rejected.
+ *
+ * `liveDevices` is the SAME set the plan was built from, not a fresh read. The
+ * question being asked is "did the planner ask for something these devices are
+ * not already doing?", and a re-read would compare intent against observations
+ * the planner never saw.
+ *
+ * `shouldApplyStablePlanActions` stays alongside it rather than being subsumed:
+ * it covers cases the intent-drift predicate deliberately excludes — an
+ * uncontrolled device's restore (drift derives an expected `on` only when the
+ * binary intent is `controlled`), and the stepped command-hold / transition-phase
+ * conditions that a bare observed-vs-desired step comparison cannot express.
+ */
 async function maybeApplyPlanChanges(
   host: PlanRebuildHost,
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
+  liveDevices: PlanInputDevice[],
 ): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number; commandRequestCount: number }> {
   const shouldApplyStablePlanActions = host.deps.planEngine.shouldApplyStablePlanActions(plan);
-  if (isDryRun || (!changes.actionChanged && !shouldApplyStablePlanActions)) {
+  const hasExecutionWorkOutstanding = host.deps.planEngine.hasExecutionWorkOutstanding(plan, liveDevices);
+  if (
+    isDryRun
+    || (!changes.actionChanged && !shouldApplyStablePlanActions && !hasExecutionWorkOutstanding)
+  ) {
     return { applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0 };
   }
 
