@@ -1,6 +1,10 @@
 import { vi } from 'vitest';
-import type { DevicePlan } from '../../lib/plan/planTypes';
+import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import {
+  canRefreshPlanSnapshotFromLiveState,
+  hasPlanExecutionDriftAgainstIntent,
+} from '../../lib/executor/executorConvergence';
 
 /**
  * Default-stubbed shape of `PlanEngine` for tests. PlanService calls these
@@ -34,6 +38,20 @@ export const createMockPlanEngine = () => ({
   syncPendingBinaryCommands: vi.fn(() => false),
   prunePendingTargetCommands: vi.fn(() => false),
   shouldApplyStablePlanActions: vi.fn(() => false),
+  // These two delegate to the REAL predicates rather than returning a canned
+  // value. Before they were surfaced on PlanEngine, PlanService imported the
+  // pure functions directly, so every existing spec exercised the real
+  // convergence logic — a `vi.fn(() => false)` default here would silently
+  // switch those specs to a no-op reconcile/refresh and hide regressions. The
+  // functions are pure (no I/O, no clock), so calling them from a mock is safe.
+  hasSettledActuation: vi.fn(
+    (basePlan: DevicePlan, livePlan: DevicePlan) => canRefreshPlanSnapshotFromLiveState(basePlan, livePlan),
+  ),
+  hasExecutionWorkOutstanding: vi.fn(
+    (plannedSnapshot: DevicePlan, liveDevices: PlanInputDevice[]) => (
+      hasPlanExecutionDriftAgainstIntent(plannedSnapshot, liveDevices)
+    ),
+  ),
   decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
   evaluateHeadroomForDevice: vi.fn(() => null),
   syncHeadroomCardState: vi.fn(() => false),

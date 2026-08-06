@@ -35,7 +35,8 @@ import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
-import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planReconcileState';
+import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
+import { hasPlanExecutionDrift } from '../../lib/executor/executorConvergence';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';

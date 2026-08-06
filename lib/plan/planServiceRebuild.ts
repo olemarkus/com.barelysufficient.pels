@@ -25,7 +25,7 @@ import {
   recordPlanRebuildMetrics,
 } from './planRebuildMetrics';
 import { normalizePlanMeta } from './planStatusHelpers';
-import { buildLiveStatePlan, canRefreshPlanSnapshotFromLiveState } from './planReconcileState';
+import { buildLiveStatePlan } from './planLiveStateMerge';
 import type { PlanServiceDeps } from './planServiceDeps';
 import type {
   DevicePlan,
@@ -276,7 +276,7 @@ function refreshLatestPlanSnapshotFromSettledLiveState(host: PlanRebuildHost, ba
   const livePlan = host.deps.planEngine.decoratePlanWithPendingTargetCommands(
     buildLiveStatePlan(basePlan, host.deps.getPlanDevices()),
   );
-  if (!canRefreshPlanSnapshotFromLiveState(basePlan, livePlan)) return false;
+  if (!host.deps.planEngine.hasSettledActuation(basePlan, livePlan)) return false;
   const refreshedPlan = host.preservePlanGeneratedAt(livePlan, basePlan);
   const nowMs = Date.now();
   host.setLatestPlanSnapshot(refreshedPlan);

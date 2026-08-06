@@ -24,6 +24,10 @@ import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import type { PlanActuationMode } from '../executor/executorTypes';
 import { PlanExecutor } from '../executor/planExecutor';
 import type { PlanActuationResult, PlanExecutorDeps } from '../executor/planExecutor';
+import {
+  canRefreshPlanSnapshotFromLiveState,
+  hasPlanExecutionDriftAgainstIntent,
+} from '../executor/executorConvergence';
 import { createPlanEngineState, PlanEngineState } from './planState';
 import {
   evaluateHeadroomForDevice,
@@ -277,6 +281,34 @@ export class PlanEngine {
 
   public shouldApplyStablePlanActions(plan: DevicePlan): boolean {
     return this.executor.hasStablePlanActuation(plan);
+  }
+
+  /**
+   * Has every actuation dispatched for `basePlan` materialized in `livePlan`,
+   * so the caller may adopt the live merge as its new base snapshot?
+   *
+   * A settle question, owned by `lib/executor/executorConvergence.ts`. It is
+   * surfaced here rather than imported directly by `PlanService` because this
+   * class is the planner's only seam to the executor (`no-plan-to-executor`).
+   */
+  public hasSettledActuation(basePlan: DevicePlan, livePlan: DevicePlan): boolean {
+    return canRefreshPlanSnapshotFromLiveState(basePlan, livePlan);
+  }
+
+  /**
+   * Does any device's live observation still disagree with what `plannedSnapshot`
+   * intends for it — i.e. does the executor have work left to do?
+   *
+   * Surfaced through the same seam as {@link hasSettledActuation}. Callers must
+   * not read this as permission to RE-APPLY `plannedSnapshot`: a plan that
+   * predates the observation has not been re-decided against it. Re-deciding is
+   * a rebuild. See `TODO.md` (inc_26449fb9).
+   */
+  public hasExecutionWorkOutstanding(
+    plannedSnapshot: DevicePlan,
+    liveDevices: PlanInputDevice[],
+  ): boolean {
+    return hasPlanExecutionDriftAgainstIntent(plannedSnapshot, liveDevices);
   }
 
   public syncPendingTargetCommands(
