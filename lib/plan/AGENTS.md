@@ -1,8 +1,8 @@
 # lib/plan — Planning Engine
 
-Owns the planning step of the control flow (measurement → **planning** → execution → reconciliation):
-it turns power samples, device states, prices, and budgets into a `DevicePlan` (shed / restore /
-keep per device). Execution is `lib/executor`; reconciliation is `lib/device/deviceTransport.ts`.
+Owns the planning step of the control flow (measurement → **planning** → execution): it turns power
+samples, device states, prices, and budgets into a `DevicePlan` (shed / restore / keep per device).
+Execution — converging observed state onto that plan — is `lib/executor`.
 
 ## Map
 
@@ -48,6 +48,22 @@ keep per device). Execution is `lib/executor`; reconciliation is `lib/device/dev
   redesign it, not permission to write the clause. See
   `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
+- **The planner knows nothing about drift.** It plans from current device states and current
+  whole-home usage; whether observed still disagrees with a plan is
+  `lib/executor/executorConvergence.ts`, and `no-plan-to-executor` keeps that import out of every
+  `lib/plan` module except `planEngine.ts` — the composition root, and the single seam through which
+  the rest of the planner asks the executor anything.
+
+  A device that moved on its own is an ordinary input, so the honest answers include *"put it back"*
+  and *"leave it there and shed something else instead"*. The second one is why this matters: a lane
+  that re-applies the committed plan can only ever produce the first, and it caused a hard-cap
+  breach in production (`TODO.md`, inc_26449fb9). `PlanService` therefore has exactly one way to
+  converge a device — `rebuildPlanFromCache`. Do not add an apply-without-decide path back; if a
+  rebuild is too slow for some caller, make the rebuild cheaper.
+
+  `planLiveStateMerge.ts` is the trap adjacent to this rule: it merges observations onto a plan
+  while carrying the decision fields through untouched, so its output is by construction the OLD
+  decision seen freshly. It is for publishing snapshots, never for deciding to actuate.
 
 ## Terminology: the safe-pace family
 

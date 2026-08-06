@@ -75,44 +75,6 @@ patch releases, not release blockers; each item carries its own source/date.
       tighten the gap ceiling — which changes export accounting for homes already running on flow.
       Persona: the prosumer on the flow source reading the Solar card (`notes/personas.md`).
 
-- [ ] **The reconcile lane can re-actuate a plan snapshot that predates the observation which
-      triggered it — PELS caused its own hard-cap breach this way.** Prod 2026-08-05,
-      `inc_26449fb9`: at 20:01:29.419 a stepped water heater announced `pels_measure_step: low`
-      (it had drifted down from PELS's desired `max`); 281 ms later the reconcile wrote
-      `max_power_3000 = "3"`, re-asserting `max` from the 20:01:24 plan — a plan built while the
-      device was still believed to be at `max`. The house went from 3839 W to 5562 W in one 10 s
-      poll, 839 W over the cap. `getLatestReconcilePlanSnapshot()` (`lib/plan/planService.ts`,
-      `getLatestReconcilePlanSnapshot`) has no revision or timestamp guard. Had the planner
-      rebuilt on that observation first, its own stepped-restore admission
-      (`lib/plan/restore/steppedRestoreAdmission.ts`, `admitSteppedRestore`) would have rejected
-      the step-up: `needed 1.81 kW` vs `available 0.89 kW`. Every plan-mode step-up in the log
-      carries a `restore_stepped_admitted` record; the 20:01:38 one carries none.
-      **Do not fix this by adding an admission check at actuation time** — the executor closing
-      an observed↔desired gap is exactly its job, and `lib/AGENTS.md` forbids executor code
-      deciding whether the planner was allowed to choose a desired state. The underlying problem
-      is three layering inversions, and the fix should address those:
-      1. The producer names a plan operation — `shouldReconcilePlan` in
-         `lib/device/transport/managerRealtimeHandlers.ts`. A producer should publish "observed
-         state changed" as a fact, not a plan verb.
-      2. The wiring layer re-derives a planner concern — `hasRealtimeDeviceReconcileDrift`
-         (`setup/appRealtimeDeviceReconcileRuntime.ts`) compares live devices against the plan
-         snapshot.
-      3. The planner hosts an apply-without-decide operation — `reconcileLatestPlanState` /
-         `performPlanReconcile` (`lib/plan/planService.ts`), documented as "re-applies the
-         EXISTING committed plan … no new decisions". The planner should build plans from its
-         inputs and know nothing about drift; converging desired with observed is
-         `lib/executor`'s charter.
-      Target shape: producer publishes observation changes as facts; the rebuild scheduler treats
-      them as ordinary planner inputs; the executor converges on (latest plan, latest
-      observation) and the `'reconcile'` actuation mode collapses into ordinary execution. Spans
-      ~20 sites across `lib/executor/**`, `lib/observer/pendingBinaryCommandTypes.ts`,
-      `lib/device/deviceTransport.ts`, `lib/plan/planState.ts` and the `setup/` reconcile wiring —
-      a multi-PR refactor. Prior art for the staleness half: `createPreparedMainReconcileFence`
-      (`setup/appInit/appHomeMembershipOptions.ts`) and the `shouldAbort` seam on
-      `performPlanReconcile`, both currently wired only to power-sample revisions.
-      *Source: prod log review 2026-08-06; the shed-selection half of the same incident is fixed
-      by the stepped-ladder descent in `lib/plan/shedding/steppedCandidates.ts`.*
-
 - [ ] **Three settings readers still gate their key-list cross-check on `undefined` alone, so
       their transient-miss protection is unreachable on a real Homey.** `settings.get()` answers
       an unset key with `null`, so in `setup/mainMeterSettings.ts:22-27` the `raw === null` early
@@ -1174,6 +1136,20 @@ program) remain deferred.*
       `npm run build`) and validates only at level `debug`, so it is added CI minutes rather than a
       swap — worth measuring before adopting. Source: 2026-08-07 build-size audit, adversarial pass
       on PR #2006. [P2]
+- [ ] **`PlanEngine` is the composition root for the layer below it — the planner constructs its
+      own executor and actuator.** `lib/plan/planEngine.ts` does `new PlanExecutor(...)` and holds
+      the injected `Actuator`, so `lib/plan → lib/executor` is a structural value edge that the
+      `no-plan-to-executor` rule has to except (`pathNot: planEngine.ts`). That exception is the
+      last hole in the boundary: every other planner module now reaches the executor only through
+      this class, and the drift/convergence predicates live on the far side of it.
+      Inverting it means the wiring layer constructing the executor and handing the planner a
+      narrow port, which touches `setup/appInit/createPlanEngine.ts` and every engine-facade method
+      that currently forwards (`applyPlanActions`, `handleShortfall`, `hasSettledActuation`,
+      `hasExecutionWorkOutstanding`, …). Worth doing, not urgent: the boundary is enforced
+      everywhere else, and the excepted edge is one file that a reviewer can see.
+      *Source: the drift/reconcile layering train (2026-08-06); noted while closing the three
+      inversions behind `inc_26449fb9`.*
+
 - [ ] **`remainingActionableControlledLoadW` in the shortfall record disagrees with what shed
       selection can act on.** The capacity summary sources it from `residualKw.shed` (= current
       draw, `resolveResidualKwShed` in `lib/device/deviceResidualKw.ts`) while selection uses
@@ -1871,8 +1847,8 @@ program) remain deferred.*
       finishing train, area-config invariants PR. [P2]
 - [ ] **`isMeterSourceAuthorizedForExecution` is a query that performs a command.** In
       `setup/homeRuntime/createHomeCapacityBundle.ts`, a predicate named `is…Authorized` calls
-      `scheduleSourceActuationRetry()` — registering a timer that later runs `rebuildPlanFromCache` +
-      `reconcileLatestPlanState`, and mutating the back-off attempt counter. Merely ASKING whether the
+      `scheduleSourceActuationRetry()` — registering a timer that later runs `rebuildPlanFromCache`,
+      and mutating the back-off attempt counter. Merely ASKING whether the
       source is authorized therefore schedules device writes. PR 5a hit this: the per-home read seam
       resolved `dryRunEffective` through the scope and armed recovery from a UI read. The fix there
       forked the source predicate (`resolveEffectiveDryRun` takes it as a parameter; control passes the
