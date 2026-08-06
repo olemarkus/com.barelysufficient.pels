@@ -76,7 +76,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 
 | Module | Purpose |
 |--------|---------|
-| `lib/plan/` | Core planning engine: builds, executes, and reconciles device plans |
+| `lib/plan/` | Core planning engine: builds device plans and owns when to rebuild. Knows nothing about drift |
 | `lib/device/` | Observed device state and actuation transport (`DeviceTransport`) |
 | `lib/observer/` | Observation freshness/trust, idle classification, pending binary commands |
 | `lib/executor/` | Executes desired-state transitions (pending/retry/materialization) |
@@ -175,11 +175,12 @@ npm run ci:checks           # Full static analysis suite (all lints + typecheck 
 
 ## Control Flow
 
-1. **Measurement** — Power samples come from one of two modes: with `power_source = homey_energy`, the app polls Homey Energy every 10 seconds; with `power_source = flow`, samples are driven by incoming Flow events and may arrive at irregular intervals.
-2. **Planning** — `PlanEngine` reads power, device states, and (optionally) prices → outputs a `DevicePlan` (shed / restore / keep per device).
-3. **Execution** — `PlanExecutor` applies targets (setTemperature, on/off, stepped dimming).
-4. **Reconciliation** — `DeviceTransport` (`lib/device/deviceTransport.ts`) syncs Homey state back, detects external changes.
-5. **Adjustment** — Next cycle adapts to actual measured results.
+1. **Measurement** — Power samples come from one of two modes: with `power_source = homey_energy`, the app polls Homey Energy every 10 seconds; with `power_source = flow`, samples are driven by incoming Flow events and may arrive at irregular intervals. `DeviceTransport` (`lib/device/deviceTransport.ts`) observes device state alongside it, and publishes a control-relevant change as a fact (`observedControlStateChanged`) — never as an instruction to the planner.
+2. **Planning** — `PlanEngine` reads power, device states, and (optionally) prices → outputs a `DevicePlan` (shed / restore / keep per device). A power sample and an observed device change are both ordinary inputs here; each triggers a rebuild, and the planner decides afresh.
+3. **Execution** — `PlanExecutor` converges observed state onto the plan's desired state: it applies targets (setTemperature, on/off, stepped dimming) whenever the two disagree. There is one actuation path — no privileged mode that re-applies a committed plan without re-deciding it.
+4. **Adjustment** — Next cycle adapts to actual measured results.
+
+**There is no separate reconciliation phase.** There used to be: a device whose observed state changed was compared against the committed plan and that plan was re-applied. A plan built before the observation has not been decided against it, and re-applying one caused a hard-cap breach in production (`TODO.md`, inc_26449fb9 — the re-assert beat the re-decide by 281 ms and wrote a step-up its own admission gate would have rejected). Drift is now just a changed input: the planner may decide to put the device back, *or* to leave it where it landed and shed something else. Do not reintroduce an apply-without-decide path.
 
 Key timing:
 - Shed cooldown: 60 seconds minimum between shed operations.

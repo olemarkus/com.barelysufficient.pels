@@ -131,14 +131,23 @@ Post-release executor boundary rollout:
   filter ("did this realtime event mutate a control-relevant capability?") — a FACT about the
   observation, not drift-against-plan-intent and not an instruction to the planner. It was called
   `shouldReconcilePlan`, which read as a producer naming a plan operation; the producer knows which
-  capabilities are control-relevant, and nothing more. Wiring still consults the executor drift
-  predicate before scheduling a planner reapply.
+  capabilities are control-relevant, and nothing more.
 - Realtime event flow (post-PR #5 of the observer/transport split): transport translates the
   raw Homey event, observer's emitter fans out the typed `observed-state-changed` /
   `plan-reconcile-observed` events (via a dispatcher callback injected into transport at
-  construction time so transport never imports observer), wiring (`lib/app/`) subscribes to
-  the observer-owned emitter and consults the executor's drift predicate before requesting
-  a planner rebuild. See `notes/state-management/observer-transport-split.md`.
+  construction time so transport never imports observer), and wiring (`setup/`) requests a plan
+  REBUILD for the owning home. See `notes/state-management/observer-transport-split.md`.
+
+  The wiring layer no longer runs a drift gate of its own. It used to compare the device against the
+  committed plan and, on disagreement, ask `PlanService` to re-apply that plan — which meant the
+  answer was only ever used to decide whether to re-assert a decision made before the observation.
+  That lane caused a hard-cap breach in production (inc_26449fb9). Consulting a planner comparison
+  from `setup/` was the second of the three layering inversions behind it; the others were the
+  producer naming a plan operation, and the planner hosting an apply-without-decide operation.
+
+  What bounds the cost now is the producer's control-relevance filter plus the coalescing debounce
+  and the 2 s rebuild floor in `setup/appRealtimeDeviceReconcile.ts` — not a gate that guesses
+  whether the planner would have anything to say.
 - Transitional stepped-load action adapters may still use planner-effective step fields as command
   baselines, such as a previous step id for request metadata. Materialization and binary restore
   readiness must still come from reported/admitted snapshot evidence.
@@ -540,18 +549,27 @@ During that window, PELS should:
 - avoid declaring drift too early
 - avoid retry loops caused by a too-short pending timeout
 
-## Practical Rules For Reconcile Work
+## Practical Rules For Convergence Work
 
-When changing reconcile logic, prefer these rules:
+There is one lane: an observation triggers a plan REBUILD, and the rebuild actuates when the
+executor still has work outstanding against the plan it just built. The old second lane —
+re-applying the committed plan without re-deciding it — is gone (see inc_26449fb9 above).
 
-1. Drift should compare observed state against intended plan state, not only against the last stored snapshot value.
-2. Realtime updates should update the observed view before drift evaluation uses that field.
-3. Reapply should target the plan state, not the observed transition direction.
+When changing convergence logic, prefer these rules:
+
+1. Convergence compares observed state against the plan's intended state, not against the last
+   stored snapshot value.
+2. Realtime updates must update the observed view before convergence evaluation reads that field.
+3. An observation is a planner INPUT, not an actuation trigger. If a device moved, re-plan; do not
+   re-assert. The planner is entitled to answer "leave it where it landed and shed something else",
+   and a re-assert can never reach that answer.
 4. Logs should distinguish:
    - observed transition
    - planned target
    - commanded/pending target
-5. If an equivalent command is already pending, suppress duplicate reapply unless retry policy explicitly allows it.
+5. If an equivalent command is already pending, suppress the duplicate. Retry suppression and
+   cooldown stamping are unconditional — there is no mode or flag that exempts a write, because the
+   exemption is what let a re-assert outrun the planner's admission gate.
 
 ## Practical Rules For Refresh Merging
 

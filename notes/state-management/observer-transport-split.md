@@ -212,9 +212,10 @@ events directly via its own EventEmitter; post-PR observer owns the emitter
 (`lib/observer/observedStateEvents.ts`, class `ObservedStateEmitter`) and
 transport routes the events through it via a dispatcher callback bag
 (`observedStateDispatcher`) injected at construction time. Same pattern as
-PR #4's `pendingPredicate`. The transport-side `shouldReconcilePlan` boolean
-stays inside transport — it is a snapshot-vs-snapshot change filter, not
-drift-against-plan-intent.
+PR #4's `pendingPredicate`. The transport-side control-relevance boolean stays
+inside transport — it is a snapshot-vs-snapshot change filter, not
+drift-against-plan-intent. (Since renamed `observedControlStateChanged`; it was
+`shouldReconcilePlan`, a producer naming a plan operation.)
 
 ## Cruiser rule changes
 
@@ -293,12 +294,17 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    Drift detection against plan intent already lived in
    `lib/executor/planExecutionDrift.ts` since PR #1b — wiring's
    `appRealtimeDeviceReconcileRuntime.ts` consults that predicate before
-   scheduling a planner reapply. The reapply trigger
-   (`scheduleAppRealtimeDeviceReconcile` → `planRebuildScheduler.request`)
-   stays in wiring. No drift conditions changed; only the location of the
-   post-translation event emitter moved. The transport-side
-   `shouldReconcilePlan` boolean stays in transport as a snapshot-vs-snapshot
-   change-significance filter — it is not drift-against-plan-intent.)
+   scheduling a planner reapply. The trigger
+   (`scheduleAppRealtimeDeviceReconcile`) stays in wiring. No drift conditions
+   changed; only the location of the post-translation event emitter moved. The
+   transport-side control-relevance boolean stays in transport as a
+   snapshot-vs-snapshot change-significance filter — it is not
+   drift-against-plan-intent.
+
+   Superseded in part by the drift/reconcile layering train (2026-08-06): the
+   wiring layer no longer consults a drift predicate at all, and the trigger
+   requests a plan REBUILD rather than a reapply. The boolean is now
+   `observedControlStateChanged`. See `README.md` in this directory.)
 
 ## Secondary cleanups surfaced during review
 
