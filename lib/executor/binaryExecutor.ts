@@ -19,7 +19,6 @@ import type {
   ExecutableReleaseIntent,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import {
   runBinaryControl,
   skipRestoreForSurplusPosture,
@@ -40,7 +39,6 @@ export const applyBinaryRestore = async (
   ctx: PlanExecutorBinaryContext,
   intent: ExecutableBinaryIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
-  mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent || intent.kind !== 'restore' || intent.source !== 'controlled') return false;
   const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
@@ -50,7 +48,6 @@ export const applyBinaryRestore = async (
       deviceId: intent.deviceId,
       name: intent.name,
       logContext: 'capacity',
-      mode,
     });
     return false;
   }
@@ -60,14 +57,12 @@ export const applyBinaryRestore = async (
     deviceId: intent.deviceId,
     name: intent.name,
     logContext: 'capacity',
-    mode,
   })) return false;
   return applyBinaryRestoreWithSnapshot(ctx, {
     deviceId: intent.deviceId,
     name: intent.name,
     snapshot,
     logContext: 'capacity',
-    mode,
   });
 };
 
@@ -90,7 +85,6 @@ export const applyUncontrolledBinaryRestore = async (
       deviceId: intent.deviceId,
       name: intent.name,
       logContext: 'capacity_control_off',
-      mode: 'plan',
     });
     return false;
   }
@@ -100,7 +94,6 @@ export const applyUncontrolledBinaryRestore = async (
     deviceId: intent.deviceId,
     name: intent.name,
     logContext: 'capacity_control_off',
-    mode: 'plan',
   })) return false;
   return applyCapacityControlOffRestoreWithSnapshot(ctx, {
     deviceId: intent.deviceId,
@@ -172,7 +165,6 @@ export const applyDeferredBinaryCommand = async (
   ctx: PlanExecutorBinaryContext,
   intent: ExecutableReleaseIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
-  mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent) return false;
   if (intent.kind === 'shed_release') return false;
@@ -209,14 +201,12 @@ export const applyDeferredBinaryCommand = async (
     deviceId: intent.deviceId,
     name: intent.name,
     logContext: 'capacity',
-    mode,
   })) return false;
   return applyBinaryRestoreWithSnapshot(ctx, {
     deviceId: intent.deviceId,
     name: intent.name,
     snapshot,
     logContext: 'capacity',
-    mode,
   });
 };
 
@@ -238,7 +228,6 @@ const recordDirectBinaryShedActuation = (
     deviceName: name,
     capabilityId,
     desired: false,
-    mode: 'plan',
     reasonCode: resolveBinaryShedReasonCode(reason, lifecycleRelease),
   });
   selectShedActuationRecorder({
@@ -280,7 +269,6 @@ const turnOffDevice = async (
       deviceName: name,
       desired: false,
       logContext: 'capacity',
-      actuationMode: 'plan',
       hasTargets: hasTarget,
       capabilityId: snapshotEntry?.controlCapabilityId ?? null,
     });
@@ -299,7 +287,6 @@ const turnOffDevice = async (
       snapshot: snapshotEntry,
       logContext: 'capacity',
       reason,
-      actuationMode: 'plan',
       lifecycleRelease,
     });
     if (!outcome.applied) return false;

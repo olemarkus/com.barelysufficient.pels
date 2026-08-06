@@ -304,7 +304,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed,
         snapshot: heater,
-        mode: 'plan',
         deps,
       });
 
@@ -329,7 +328,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryState: 'off' }),
         snapshot: refreshedSnapshot,
-        mode: 'plan',
         deps,
       });
 
@@ -381,7 +379,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed,
         snapshot: racedSnap,
-        mode: 'plan',
         deps,
       });
       // Either the pending-binary-command guard or the already-off / pending
@@ -414,7 +411,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed,
         snapshot: thermostat,
-        mode: 'plan',
         deps,
       });
       expect(firstResult).toBe(true);
@@ -442,7 +438,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed: refreshedObserved,
         snapshot: thermostat,
-        mode: 'plan',
         deps,
       });
       expect(secondResult).toBe(false);
@@ -481,7 +476,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed: initialObserved,
         snapshot: thermostat,
-        mode: 'plan',
         deps,
       });
       expect(firstResult).toBe(true);
@@ -506,7 +500,6 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         steppedLoadIntent: null,
         observed: staleObserved,
         snapshot: thermostat,
-        mode: 'plan',
         deps,
       });
       const tempWrites = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'target_temperature');

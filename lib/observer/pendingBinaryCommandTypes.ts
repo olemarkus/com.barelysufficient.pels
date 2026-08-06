@@ -42,7 +42,6 @@ export type CommunicationModel = 'local' | 'cloud' | undefined;
 
 export type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
 export type PendingBinaryCommandRestoreSource = 'shed_state' | 'current_plan';
-export type PendingBinaryCommandActuationMode = 'plan' | 'reconcile';
 
 export type PendingBinaryCommand = {
   capabilityId: BinaryControlCapabilityId;
@@ -52,7 +51,6 @@ export type PendingBinaryCommand = {
   flowBackedControl?: boolean;
   logContext?: PendingBinaryCommandLogContext;
   restoreSource?: PendingBinaryCommandRestoreSource;
-  actuationMode?: PendingBinaryCommandActuationMode;
   reason?: string;
   /**
    * True when this pending command was issued by the smart-task lifecycle-end

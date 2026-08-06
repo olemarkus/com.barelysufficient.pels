@@ -193,7 +193,6 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
     desiredStepId: string;
     planningPowerW: number;
     planningCurrentA: number;
-    actuationMode?: 'plan' | 'reconcile';
     previousStepId?: string;
 }): Promise<SteppedLoadStepRequestResult> {
     const {
@@ -202,7 +201,6 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
         desiredStepId,
         planningPowerW,
         planningCurrentA,
-        actuationMode,
         previousStepId,
     } = params;
     const snapshot = ctx.latestSnapshotById.get(deviceId);
@@ -240,7 +238,6 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
                 planningPowerW,
                 commandTransport: 'flow',
                 timeoutMs: FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS,
-                ...(actuationMode ? { mode: actuationMode } : {}),
             });
             return { requested: false, reason: 'flow_trigger_timeout' };
         }
@@ -255,7 +252,6 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
             desiredStepId,
             planningPowerW,
             commandTransport: 'flow',
-            ...(actuationMode ? { mode: actuationMode } : {}),
             err: normalizedError,
         });
         return { requested: false };

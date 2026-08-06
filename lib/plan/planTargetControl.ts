@@ -329,12 +329,6 @@ function formatObservedTarget(value: unknown): string {
   return String(value);
 }
 
-export function isPendingTargetCommandTemporarilyUnavailable(
-  pending: PendingTargetCommandState | undefined,
-): boolean {
-  return pending?.status === 'temporary_unavailable';
-}
-
 function handleConfirmedPendingTargetObservation(params: {
   state: PlanEngineState;
   deviceId: string;

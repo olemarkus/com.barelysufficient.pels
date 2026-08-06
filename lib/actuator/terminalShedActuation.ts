@@ -166,7 +166,6 @@ const applySetStepShed = async (
     desiredStepId: targetStep.id,
     planningPowerW: targetStep.planningPowerW,
     planningCurrentA: command.planningCurrentA,
-    actuationMode: 'plan',
     previousStepId,
   });
   if (!outcome.requested) return false;

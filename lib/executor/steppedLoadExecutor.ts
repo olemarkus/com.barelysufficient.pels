@@ -10,7 +10,6 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import { getLogger } from '../logging/logger';
 import {
   executeSteppedLoadCommand,
@@ -60,14 +59,12 @@ const suppressRecentSteppedBinaryRestore = (
   params: {
     action: ExecutableSteppedLoadDevice;
     snapshot: ExecutorDeviceSnapshot | undefined;
-    mode: PlanActuationMode;
     effectiveCurrentOn: boolean | null;
   },
 ): boolean => {
   const {
     action,
     snapshot,
-    mode,
     effectiveCurrentOn,
   } = params;
   if (
@@ -77,7 +74,6 @@ const suppressRecentSteppedBinaryRestore = (
   ) return false;
   logSteppedLoadRestoreSkip(ctx, {
     action,
-    mode,
     reasonCode: 'recent_binary_restore_attempt',
   });
   return true;
@@ -86,7 +82,6 @@ const suppressRecentSteppedBinaryRestore = (
 export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
-  mode: PlanActuationMode,
   snapshot?: ExecutorDeviceSnapshot,
   options: {
     recordPlanActuation?: boolean;
@@ -103,7 +98,6 @@ export const applySteppedLoadCommand = async (
       event: 'stepped_load_command_skipped',
       deviceId: action.id,
       deviceName: action.name,
-      mode,
       reasonCode: PLAN_REASON_CODES.externalOffHold,
     });
     return false;
@@ -118,7 +112,6 @@ export const applySteppedLoadCommand = async (
   if (!desiredStep) {
     return logSteppedLoadCommandSkip(ctx, {
       action,
-      mode,
       reasonCode: 'missing_step',
       logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `desired step ${commandStepId} is not in profile`,
@@ -127,11 +120,10 @@ export const applySteppedLoadCommand = async (
   }
   if (
     options.force !== true
-    && maybeLogSteppedLoadCommandPendingSkip(ctx, action, mode, commandStepId)
+    && maybeLogSteppedLoadCommandPendingSkip(ctx, action, commandStepId)
   ) return false;
   return executeSteppedLoadCommand(ctx, {
     action,
-    mode,
     options,
     desiredStep,
     transition: action.transition,
@@ -143,7 +135,6 @@ export const applySteppedLoadCommand = async (
 export type ApplySteppedLoadRestoreParams = {
   action: ExecutableSteppedLoadDevice;
   snapshot: ExecutorDeviceSnapshot | undefined;
-  mode: PlanActuationMode;
   hasShedDevices: boolean;
 };
 
@@ -154,12 +145,11 @@ export const applySteppedLoadRestore = async (
   const {
     action,
     snapshot,
-    mode,
     hasShedDevices,
   } = params;
   const name = action.name;
   if (action.desired.on !== true) {
-    logSteppedLoadRestoreBinaryUndriven(action, mode);
+    logSteppedLoadRestoreBinaryUndriven(action);
     return NOT_RESTORED;
   }
   const {
@@ -177,7 +167,6 @@ export const applySteppedLoadRestore = async (
   if (shouldDeferRestoreForAttempt) {
     logSteppedLoadRestoreAttemptSkip(ctx, {
       action,
-      mode,
       matchingRestoreAttempt,
     });
     return NOT_RESTORED;
@@ -191,7 +180,6 @@ export const applySteppedLoadRestore = async (
     if (stepNeedsAdjustment) return NOT_RESTORED;
     logSteppedLoadRestoreSkip(ctx, {
       action,
-      mode,
       reasonCode: 'no_keep_violation',
     });
     return NOT_RESTORED;
@@ -208,13 +196,11 @@ export const applySteppedLoadRestore = async (
   if (suppressRecentSteppedBinaryRestore(ctx, {
     action,
     snapshot,
-    mode,
     effectiveCurrentOn,
   })) return { ready: true, wroteBinary: false };
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
     action,
     snapshot,
-    mode,
     stepNeedsAdjustment,
   });
   if (binaryRestoreSkip === false) return NOT_RESTORED;
@@ -228,7 +214,6 @@ export const applySteppedLoadRestore = async (
   const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, {
     action,
     snapshot,
-    mode,
     name,
     onoffViolated: isBinaryObservedOff(snapshot),
     stepViolated,
@@ -249,10 +234,8 @@ const recordSteppedShedOffActuation = (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   snapshot: ExecutorDeviceSnapshot,
-  mode: PlanActuationMode,
   reassertOverObservedOff: boolean,
 ): void => {
-  if (mode !== 'plan') return;
   if (!reassertOverObservedOff) {
     // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
     // recorder): this stamps the shed *cooldown*, which must fire regardless of actuation channel.
@@ -264,7 +247,6 @@ const recordSteppedShedOffActuation = (
     deviceId: action.id,
     deviceName: action.name,
     capabilityId: snapshot.controlCapabilityId ?? 'onoff',
-    mode,
   });
 };
 
@@ -272,7 +254,6 @@ export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   snapshot: ExecutorDeviceSnapshot | undefined,
-  mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (action.desired.on !== false) return false;
   const atOffStep = action.current.stepIsOffStep;
@@ -295,18 +276,16 @@ export const applySteppedLoadShedOff = async (
       desired: false,
       snapshot,
       logContext: 'capacity',
-      actuationMode: mode,
     });
     if (!outcome.applied) return false;
-    recordSteppedShedOffActuation(ctx, action, snapshot, mode, reassertOverObservedOff);
+    recordSteppedShedOffActuation(ctx, action, snapshot, reassertOverObservedOff);
     logger.info({
       event: 'binary_command_applied',
       deviceId: action.id,
       deviceName: name,
       capabilityId: snapshot.controlCapabilityId ?? 'onoff',
       desired: false,
-      mode,
-      reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'full_shed_to_off',
+      reasonCode: 'full_shed_to_off',
     });
     logger.info({
       event: 'stepped_load_binary_transition_applied',
@@ -316,8 +295,7 @@ export const applySteppedLoadShedOff = async (
       effectiveTransition: 'full_shed_to_off',
       stepPreparationPurpose: atOffStep ? null : 'prepare_for_off',
       transitionPhase: 'binary_transition',
-      mode,
-      reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'full_shed_to_off',
+      reasonCode: 'full_shed_to_off',
     });
     return true;
   } catch (error) {

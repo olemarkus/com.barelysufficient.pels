@@ -1,14 +1,12 @@
 import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
-  recordActivationSetbackForDevice,
 } from '../plan/planExecutorSupport';
 import {
   getEvRestoreBlockReason,
 } from '../plan/planBinaryControl';
 import { getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import {
   type PlanExecutorBinaryContext,
   runBinaryControl,
@@ -25,7 +23,6 @@ export const canApplyRestoreSnapshot = (
     deviceId: string;
     name: string;
     logContext: 'capacity' | 'capacity_control_off';
-    mode: PlanActuationMode;
   },
 ): boolean => {
   const {
@@ -33,7 +30,6 @@ export const canApplyRestoreSnapshot = (
     deviceId,
     name,
     logContext,
-    mode,
   } = params;
   if (!snapshot) {
     logger.debug({
@@ -42,7 +38,6 @@ export const canApplyRestoreSnapshot = (
       deviceId,
       deviceName: name,
       logContext,
-      actuationMode: mode,
     });
     if (logContext === 'capacity') {
       logger.debug({
@@ -61,7 +56,6 @@ export const canApplyRestoreSnapshot = (
       deviceId,
       deviceName: name,
       logContext,
-      actuationMode: mode,
     });
     if (logContext === 'capacity') {
       logger.debug({
@@ -81,14 +75,12 @@ export const applyBinaryRestoreWithSnapshot = async (
     name: string;
     snapshot: ExecutorDeviceSnapshot;
     logContext: 'capacity';
-    mode: PlanActuationMode;
   },
 ): Promise<boolean> => {
   const {
     deviceId,
     name,
     snapshot,
-    mode,
   } = params;
   // "Leave off until turned on again", at the FUNNEL: every controlled-restore
   // lane ends here — the plan lane, and the smart-task deferred `binary_restore`
@@ -103,7 +95,6 @@ export const applyBinaryRestoreWithSnapshot = async (
       deviceId,
       deviceName: name,
       logContext: 'capacity',
-      actuationMode: mode,
     });
     logger.debug({ event: 'executor_binary_log_debug', msg: `Capacity: skip restoring ${name}, already in progress` });
     return false;
@@ -119,7 +110,6 @@ export const applyBinaryRestoreWithSnapshot = async (
         snapshot,
         logContext: 'capacity',
         restoreSource: ctx.getRestoreLogSource(deviceId),
-        actuationMode: mode,
       });
       if (!outcome.applied) return false;
       if (!outcome.flowBacked) {
@@ -129,10 +119,9 @@ export const applyBinaryRestoreWithSnapshot = async (
           deviceName: name,
           capabilityId: snapshot.controlCapabilityId ?? 'onoff',
           desired: true,
-          mode,
-          reasonCode: mode === 'reconcile' ? 'reconcile_restore' : ctx.getRestoreLogSource(deviceId),
+          reasonCode: ctx.getRestoreLogSource(deviceId),
         });
-        recordBinaryRestoreActuation(ctx, { deviceId, name, mode });
+        recordBinaryRestoreActuation(ctx, { deviceId, name });
         ctx.state.clearPendingSwapTarget(deviceId);
       }
       return true;
@@ -180,7 +169,6 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
       desired: true,
       snapshot,
       logContext: 'capacity_control_off',
-      actuationMode: 'plan',
     });
     if (!outcome.applied) return false;
     if (!outcome.flowBacked) {
@@ -190,7 +178,6 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
         deviceName: name,
         capabilityId: snapshot.controlCapabilityId ?? 'onoff',
         desired: true,
-        mode: 'plan',
         reasonCode: 'capacity_control_off_restore',
       });
       ctx.state.clearDeviceShed(deviceId);
@@ -208,27 +195,20 @@ const recordBinaryRestoreActuation = (
   params: {
     deviceId: string;
     name: string;
-    mode: PlanActuationMode;
   },
 ): void => {
-  const { deviceId, name, mode } = params;
-  if (mode === 'plan') {
-    const now = Date.now();
-    ctx.recordRestoreActuation(deviceId, name, now);
-    recordActivationAttemptStarted({
-      state: ctx.state,
-      diagnostics: ctx.deviceDiagnostics,
-      deviceId,
-      name,
-      nowTs: now,
-    });
-  } else if (mode === 'reconcile') {
-    recordActivationSetbackForDevice({
-      state: ctx.state,
-      diagnostics: ctx.deviceDiagnostics,
-      deviceId,
-      name,
-      nowTs: Date.now(),
-    });
-  }
+  const { deviceId, name } = params;
+  // Unconditional: every restore actuation stamps the 60-300 s restore cooldown
+  // and opens an activation attempt. Only `mode === 'plan'` used to, so a
+  // reconcile-driven restore armed no cooldown at all — the other half of how a
+  // re-assert could outrun the planner in inc_26449fb9.
+  const now = Date.now();
+  ctx.recordRestoreActuation(deviceId, name, now);
+  recordActivationAttemptStarted({
+    state: ctx.state,
+    diagnostics: ctx.deviceDiagnostics,
+    deviceId,
+    name,
+    nowTs: now,
+  });
 };

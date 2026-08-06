@@ -862,7 +862,7 @@ describe('native stepped-load wiring', () => {
     });
 
     expect(action).not.toBeNull();
-    const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
+    const wrote = await applySteppedLoadCommand(ctx, action!);
 
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
@@ -871,7 +871,6 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'medium',
       planningPowerW: 1750,
       planningCurrentA: 0,
-      actuationMode: 'plan',
       previousStepId: 'max',
     });
     expect(trigger).not.toHaveBeenCalled();
@@ -913,7 +912,7 @@ describe('native stepped-load wiring', () => {
     });
 
     expect(action).not.toBeNull();
-    expect(await applySteppedLoadCommand(ctx, action!, 'plan')).toBe(false);
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
     expect(requestSteppedLoadStep).not.toHaveBeenCalled();
   });
 
@@ -973,7 +972,7 @@ describe('native stepped-load wiring', () => {
     });
 
     expect(action).not.toBeNull();
-    const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
+    const wrote = await applySteppedLoadCommand(ctx, action!);
 
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
@@ -982,7 +981,6 @@ describe('native stepped-load wiring', () => {
       desiredStepId: '6a',
       planningPowerW: 1380,
       planningCurrentA: 0,
-      actuationMode: 'plan',
       previousStepId: '8a',
     });
     expect(trigger).toHaveBeenCalledWith({
@@ -1066,7 +1064,7 @@ describe('native stepped-load wiring', () => {
     });
 
     expect(action).not.toBeNull();
-    const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
+    const wrote = await applySteppedLoadCommand(ctx, action!);
 
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
@@ -1075,7 +1073,6 @@ describe('native stepped-load wiring', () => {
       desiredStepId: '6a',
       planningPowerW: 4140,
       planningCurrentA: 4140 / (230 * 3),
-      actuationMode: 'plan',
       previousStepId: '16a',
     });
     expect(trigger).toHaveBeenCalledWith({
@@ -1318,7 +1315,6 @@ describe('native stepped-load wiring', () => {
       planningPowerW: 1380,
       planningCurrentA: 0,
       previousStepId: '8a',
-      actuationMode: 'plan',
     }))
       .resolves.toEqual({ requested: true, transport: 'flow' });
 
@@ -1362,7 +1358,6 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         planningCurrentA: 0,
         previousStepId: 'low',
-        actuationMode: 'plan',
       }))
         .resolves.toEqual({ requested: true, transport: 'flow' });
 
@@ -1413,7 +1408,6 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'medium',
       planningPowerW: 1750,
       planningCurrentA: 0,
-      actuationMode: 'reconcile',
     }))
       .resolves.toEqual({ requested: false });
 
@@ -1425,7 +1419,6 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'medium',
       planningPowerW: 1750,
       commandTransport: 'flow',
-      mode: 'reconcile',
       err: expect.objectContaining({
         message: 'trigger failed',
       }),
@@ -1464,7 +1457,6 @@ describe('native stepped-load wiring', () => {
         desiredStepId: 'medium',
         planningPowerW: 1750,
         planningCurrentA: 0,
-        actuationMode: 'plan',
       });
       await vi.advanceTimersByTimeAsync(10_000);
 
@@ -1481,7 +1473,6 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         commandTransport: 'flow',
         timeoutMs: 10_000,
-        mode: 'plan',
       }));
     } finally {
       vi.useRealTimers();

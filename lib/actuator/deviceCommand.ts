@@ -47,7 +47,6 @@ export type DeviceCommand =
     desiredStepId: string;
     planningPowerW: number;
     planningCurrentA: number;
-    actuationMode?: 'plan' | 'reconcile';
     previousStepId?: string;
   };
 
@@ -71,7 +70,6 @@ export type ActuatorTransport = {
     desiredStepId: string;
     planningPowerW: number;
     planningCurrentA: number;
-    actuationMode?: 'plan' | 'reconcile';
     previousStepId?: string;
   }) => Promise<SteppedLoadStepRequestResult>;
 };

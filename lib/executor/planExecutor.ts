@@ -16,7 +16,6 @@ import type { ObservedDeviceState } from '../../packages/contracts/src/types';
  */
 export type PlanExecutorDeviceTransport = DeviceObservation;
 import type { ExecutorDeviceSnapshot } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
@@ -250,7 +249,6 @@ export class PlanExecutor {
       deviceName: liveDevice.name,
       capabilityId: pending.capabilityId,
       desired: pending.desired,
-      mode: pending.actuationMode ?? 'plan',
       reasonCode: resolveConfirmedBinaryCommandReasonCode(pending),
     });
 
@@ -260,7 +258,7 @@ export class PlanExecutor {
         // (`surplusOnlyShedByDevice`) is cleared in lockstep with the decision clock.
         this.state.clearDeviceShed(deviceId);
         this.state.clearShedDecision(deviceId);
-      } else if (pending.actuationMode !== 'reconcile') {
+      } else {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
         recordActivationAttemptStarted({
           state: this.state,
@@ -422,12 +420,12 @@ export class PlanExecutor {
     await this.shortfallExecutor.handleShortfallCleared();
   }
 
-  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
+  public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) return { deviceWriteCount: 0, commandRequestCount: 0 };
 
     this.controlPersistenceBatchDepth += 1;
     try {
-      return await dispatchPlanActions(this.getDispatchCore(), plan, mode);
+      return await dispatchPlanActions(this.getDispatchCore(), plan);
     } finally {
       this.controlPersistenceBatchDepth = Math.max(0, this.controlPersistenceBatchDepth - 1);
       this.flushLastControlledPersistence();

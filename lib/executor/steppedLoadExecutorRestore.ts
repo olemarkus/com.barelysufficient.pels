@@ -6,7 +6,6 @@ import {
 import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
-  recordActivationSetbackForDevice,
 } from '../plan/planExecutorSupport';
 import { decideAndDispatchBinaryControl } from './binaryControlDispatch';
 import { skipRestoreForExternalOffHold } from './binaryControlShared';
@@ -14,7 +13,6 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import { getLogger } from '../logging/logger';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
 
@@ -24,7 +22,6 @@ export const logSteppedLoadRestoreSkip = (
   _ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
-    mode: PlanActuationMode;
     reasonCode:
       | 'no_keep_violation'
       | 'waiting_for_confirmation'
@@ -38,7 +35,6 @@ export const logSteppedLoadRestoreSkip = (
 ): false => {
   const {
     action,
-    mode,
     reasonCode,
     desiredStepId,
   } = params;
@@ -49,7 +45,6 @@ export const logSteppedLoadRestoreSkip = (
     deviceId: action.id,
     deviceName: action.name,
     logContext: 'capacity',
-    actuationMode: mode,
   });
   return false;
 };
@@ -88,18 +83,15 @@ export const logSteppedLoadRestoreAttemptSkip = (
   ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
-    mode: PlanActuationMode;
     matchingRestoreAttempt: NonNullable<ExecutableSteppedLoadDevice['matchingRestoreAttempt']>;
   },
 ): false => {
   const {
     action,
-    mode,
     matchingRestoreAttempt,
   } = params;
   return logSteppedLoadRestoreSkip(ctx, {
     action,
-    mode,
     reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
       ? 'waiting_for_confirmation'
       : 'retry_backoff',
@@ -112,27 +104,23 @@ export const maybeSkipSteppedLoadRestoreBinary = (
   params: {
     action: ExecutableSteppedLoadDevice;
     snapshot: ExecutorDeviceSnapshot | undefined;
-    mode: PlanActuationMode;
     stepNeedsAdjustment: boolean;
   },
 ): false | null => {
   const {
     action,
     snapshot,
-    mode,
     stepNeedsAdjustment,
   } = params;
   if (!snapshot) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
-      mode,
       reasonCode: 'missing_snapshot',
     });
   }
   if (!canTurnOnDevice(snapshot)) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
-      mode,
       reasonCode: 'not_setable',
     });
   }
@@ -140,14 +128,12 @@ export const maybeSkipSteppedLoadRestoreBinary = (
   if (ctx.state.pendingRestores.has(action.id)) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
-      mode,
       reasonCode: 'already_in_progress',
     });
   }
   if (snapshotOn !== false && !stepNeedsAdjustment) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
-      mode,
       reasonCode: 'no_keep_violation',
     });
   }
@@ -167,11 +153,10 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
   params: {
     action: ExecutableSteppedLoadDevice;
     snapshot: ExecutorDeviceSnapshot;
-    mode: PlanActuationMode;
     name: string;
   },
 ): Promise<boolean> => {
-  const { action, snapshot, mode, name } = params;
+  const { action, snapshot, name } = params;
   // Dual-control devices (a stepper that also carries a binary handle) are
   // eligible for "Leave off until turned on again", and this lane dispatches a
   // binary ON outside `applyBinaryRestoreWithSnapshot` — so it needs the same
@@ -185,7 +170,6 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
     snapshot,
     logContext: 'capacity',
     restoreSource: ctx.getRestoreLogSource(action.id),
-    actuationMode: mode,
   });
   return outcome.applied;
 };
@@ -195,7 +179,6 @@ export const executeSteppedLoadRestoreBinary = async (
   params: {
     action: ExecutableSteppedLoadDevice;
     snapshot: ExecutorDeviceSnapshot;
-    mode: PlanActuationMode;
     name: string;
     onoffViolated: boolean;
     stepViolated: boolean;
@@ -204,7 +187,6 @@ export const executeSteppedLoadRestoreBinary = async (
   const {
     action,
     snapshot,
-    mode,
     name,
     onoffViolated,
     stepViolated,
@@ -214,7 +196,6 @@ export const executeSteppedLoadRestoreBinary = async (
     const applied = await dispatchSteppedLoadRestoreBinaryCommand(ctx, {
       action,
       snapshot,
-      mode,
       name,
     });
     if (!applied) return false;
@@ -227,7 +208,6 @@ export const executeSteppedLoadRestoreBinary = async (
       effectiveTransition: 'restore_from_off_at_low',
       stepPreparationPurpose: null,
       transitionPhase: 'binary_transition',
-      mode,
       onoffViolated,
       stepViolated,
       // Step evidence present when activation began. This is diagnostic only;
@@ -237,27 +217,18 @@ export const executeSteppedLoadRestoreBinary = async (
         : null,
       reasonCode: 'keep_invariant',
     });
-    if (mode === 'plan') {
-      const now = Date.now();
-      // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
-      // recorder): this stamps the restore *cooldown*, which must fire regardless of actuation channel.
-      ctx.recordRestoreActuation(action.id, name, now);
-      recordActivationAttemptStarted({
-        state: ctx.state,
-        diagnostics: ctx.deviceDiagnostics,
-        deviceId: action.id,
-        name,
-        nowTs: now,
-      });
-    } else if (mode === 'reconcile') {
-      recordActivationSetbackForDevice({
-        state: ctx.state,
-        diagnostics: ctx.deviceDiagnostics,
-        deviceId: action.id,
-        name,
-        nowTs: Date.now(),
-      });
-    }
+    const now = Date.now();
+    // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
+    // recorder): this stamps the restore *cooldown*, which must fire regardless of actuation channel.
+    // Unconditional since the reconcile lane was removed — see binaryRestoreHelpers.
+    ctx.recordRestoreActuation(action.id, name, now);
+    recordActivationAttemptStarted({
+      state: ctx.state,
+      diagnostics: ctx.deviceDiagnostics,
+      deviceId: action.id,
+      name,
+      nowTs: now,
+    });
     return true;
   } catch (error) {
     logger.error({

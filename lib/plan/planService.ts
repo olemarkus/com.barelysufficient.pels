@@ -70,7 +70,6 @@ import type {
   HeadroomForDeviceDecision,
   HeadroomUsageObservation,
 } from './planHeadroomDevice';
-import type { PlanActuationMode } from '../executor/executorTypes';
 import type { PlanActuationResult } from '../executor/planExecutor';
 import { PlanChangeTracker } from './planChangeTracker';
 import { emitDeviceOverviewTransitions } from './planOverviewEmit';
@@ -294,8 +293,8 @@ export class PlanService {
     return true;
   }
 
-  applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
-    return this.withHomeLogContext(() => this.deps.planEngine.applyPlanActions(plan, mode));
+  applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
+    return this.withHomeLogContext(() => this.deps.planEngine.applyPlanActions(plan));
   }
 
   applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<void> {

@@ -9,7 +9,6 @@ import {
   type ActivationAttemptSource,
   closeActivationAttemptForShed,
   recordActivationAttemptStart,
-  recordActivationSetback,
 } from './admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
@@ -186,23 +185,6 @@ export const recordActivationAttemptStarted = (params: {
     state: params.state,
     deviceId: params.deviceId,
     source: params.source ?? 'pels_restore',
-    nowTs: params.nowTs,
-  });
-  if (result.transition) {
-    params.diagnostics?.recordActivationTransition(result.transition, { name: params.name });
-  }
-};
-
-export const recordActivationSetbackForDevice = (params: {
-  state: PlanEngineState;
-  diagnostics: DeviceDiagnosticsRecorder | undefined;
-  deviceId: string;
-  name: string;
-  nowTs: number;
-}): void => {
-  const result = recordActivationSetback({
-    state: params.state,
-    deviceId: params.deviceId,
     nowTs: params.nowTs,
   });
   if (result.transition) {

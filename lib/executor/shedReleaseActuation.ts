@@ -23,7 +23,6 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
-import type { PlanActuationMode } from './executorTypes';
 import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
@@ -64,14 +63,13 @@ export const applyShedReleaseIntent = async (params: {
   steppedLoadIntent: ExecutableSteppedLoadIntent | null;
   observed: ExecutableObservedDeviceState | undefined;
   snapshot: Pick<DeviceDescriptor, 'controlCapabilityId'> | undefined;
-  mode: PlanActuationMode;
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
-  const { intent, steppedLoadIntent, observed, snapshot, mode, deps } = params;
+  const { intent, steppedLoadIntent, observed, snapshot, deps } = params;
   if (intent.kind !== 'shed_release') return false;
   const behavior = deps.getShedBehavior(intent.deviceId);
   if (behavior.action === 'set_temperature' && behavior.temperature !== null) {
-    return applyShedReleaseTemperature({ intent, shedTemperature: behavior.temperature, observed, mode, deps });
+    return applyShedReleaseTemperature({ intent, shedTemperature: behavior.temperature, observed, deps });
   }
   // Stepped-only devices (no `onoff`/`evcharger_charging` capability) cannot route through
   // the binary off path: re-project a shed-purpose stepped action at apply time and dispatch
@@ -85,7 +83,6 @@ export const applyShedReleaseIntent = async (params: {
       intent,
       steppedLoadIntent,
       observed,
-      mode,
       deps,
     });
     if (handled) return true;
@@ -97,10 +94,9 @@ const applyShedReleaseTemperature = async (params: {
   intent: ExecutableReleaseIntent;
   shedTemperature: number;
   observed: ExecutableObservedDeviceState | undefined;
-  mode: PlanActuationMode;
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
-  const { intent, shedTemperature, observed, mode, deps } = params;
+  const { intent, shedTemperature, observed, deps } = params;
   const target = observed?.target;
   if (!target) return false;
   if (typeof target.observedValue === 'number' && target.observedValue === shedTemperature) return false;
@@ -111,8 +107,8 @@ const applyShedReleaseTemperature = async (params: {
     desired: shedTemperature,
     observedValue: target.observedValue,
     isRestoring: false,
-  }, mode);
-  if (wrote && mode === 'plan') {
+  });
+  if (wrote) {
     // applyTargetUpdate only records on the restore axis. Mirror trySetShedTemperature's
     // diagnostics: the per-device `pels_shed` event must fire for the release write so
     // forensic traces and per-device actuation counters stay accurate.
@@ -259,11 +255,10 @@ const applyShedReleaseSteppedLoad = async (params: {
   intent: ExecutableReleaseIntent;
   steppedLoadIntent: ExecutableSteppedLoadIntent;
   observed: ExecutableObservedDeviceState | undefined;
-  mode: PlanActuationMode;
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
   const {
-    intent, steppedLoadIntent, observed, mode, deps,
+    intent, steppedLoadIntent, observed, deps,
   } = params;
   const profile = steppedLoadIntent.steppedLoadProfile;
   const targetStep = resolveProducerShedReleaseStep(intent, profile);
@@ -320,8 +315,8 @@ const applyShedReleaseSteppedLoad = async (params: {
     targetStep,
     currentStepId,
   });
-  const wrote = await applySteppedLoadCommand(deps.buildSteppedExecutorContext(), action, mode);
-  if (wrote && mode === 'plan') {
+  const wrote = await applySteppedLoadCommand(deps.buildSteppedExecutorContext(), action);
+  if (wrote) {
     // applySteppedLoadCommand only records `pels_shed` when the transition is
     // `step_down_while_on`; the synthesized release action carries `transition: null` so
     // we record explicitly here.

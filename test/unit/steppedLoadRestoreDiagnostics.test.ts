@@ -44,7 +44,6 @@ describe('logSteppedLoadRestoreBinaryUndriven', () => {
         desiredStepId: 'low',
         transition: { effectiveTransition: 'steady', binaryTarget: null } as ExecutableSteppedLoadDevice['transition'],
       }),
-      'plan',
     );
     expect(capture.findEvent('stepped_load_restore_binary_undriven')).toMatchObject({
       reasonCode: 'desired_on_not_true',
@@ -54,17 +53,16 @@ describe('logSteppedLoadRestoreBinaryUndriven', () => {
       desiredStepId: 'low',
       transition: 'steady',
       binaryTarget: null,
-      mode: 'plan',
     });
   });
 
   it('does not log when the device is observed on', () => {
-    logSteppedLoadRestoreBinaryUndriven(buildAction({ currentOn: true, desiredStepId: 'low' }), 'plan');
+    logSteppedLoadRestoreBinaryUndriven(buildAction({ currentOn: true, desiredStepId: 'low' }));
     expect(capture.findEvent('stepped_load_restore_binary_undriven')).toBeUndefined();
   });
 
   it('does not log when the desired step is the off step', () => {
-    logSteppedLoadRestoreBinaryUndriven(buildAction({ currentOn: false, desiredStepId: 'off' }), 'plan');
+    logSteppedLoadRestoreBinaryUndriven(buildAction({ currentOn: false, desiredStepId: 'off' }));
     expect(capture.findEvent('stepped_load_restore_binary_undriven')).toBeUndefined();
   });
 });

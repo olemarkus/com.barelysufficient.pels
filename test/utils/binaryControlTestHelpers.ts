@@ -6,7 +6,6 @@ import {
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import type {
-  BinaryControlActuationMode,
   BinaryControlLogContext,
   BinaryControlRestoreSource,
 } from '../../lib/plan/planBinaryControlHelpers';
@@ -44,11 +43,10 @@ export async function runBinaryControlCycle(params: {
   logContext: BinaryControlLogContext;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
-  actuationMode?: BinaryControlActuationMode;
 }): Promise<boolean> {
   const {
     state, deviceManager, triggerFlowBackedBinaryControl,
-    deviceId, name, desired, snapshot, logContext, restoreSource, reason, actuationMode,
+    deviceId, name, desired, snapshot, logContext, restoreSource, reason,
   } = params;
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
   const decision = decideBinaryControl({
@@ -61,7 +59,6 @@ export async function runBinaryControlCycle(params: {
     logContext,
     restoreSource,
     reason,
-    actuationMode,
   });
   if (!decision) return false;
   const rejectMissingTrigger = () => Promise.reject(new Error('Flow-backed control trigger is unavailable'));

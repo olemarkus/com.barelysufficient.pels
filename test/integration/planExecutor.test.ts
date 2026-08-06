@@ -803,7 +803,6 @@ describe('PlanExecutor restore logging', () => {
       capabilityId: 'onoff',
       desired: false,
       logContext: 'capacity',
-      actuationMode: 'plan',
     }));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',
@@ -949,7 +948,6 @@ describe('PlanExecutor restore logging', () => {
       startedMs: Date.now(),
       flowBackedControl: true,
       logContext: 'capacity',
-      actuationMode: 'plan',
       lifecycleRelease: true,
     };
 
@@ -988,7 +986,12 @@ describe('PlanExecutor restore logging', () => {
     }));
   });
 
-  it('does not start a new restore cycle when reconcile turns a device back on', async () => {
+  // Every restore actuation stamps the 60-300 s restore cooldown and opens an
+  // activation attempt. This used to be gated on `mode === 'plan'`, so a
+  // reconcile-driven restore armed no cooldown at all and instead recorded an
+  // activation SETBACK — half of how a re-assert could outrun the planner in
+  // inc_26449fb9. There is one actuation path now, and it always stamps.
+  it('starts a restore cycle whenever it turns a device back on', async () => {
     const state = createPlanEngineState();
     state.lastRestoreMs = Date.now() - 30_000;
     state.lastDeviceRestoreMs['dev-1'] = state.lastRestoreMs;
@@ -996,35 +999,13 @@ describe('PlanExecutor restore logging', () => {
     const previousDeviceRestoreMs = state.lastDeviceRestoreMs['dev-1'];
     const { executor, deviceManager, state: nextState } = buildExecutor(state);
 
-    await executor.applyPlanActions(buildPlan(), 'reconcile');
+    await executor.applyPlanActions(buildPlan());
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_succeeded',
-      msg: 'Capacity: turning on Heater (reconcile after drift)',
-    }));
-    expect(nextState.lastRestoreMs).toBe(previousLastRestoreMs);
-    expect(nextState.lastDeviceRestoreMs['dev-1']).toBe(previousDeviceRestoreMs);
-    expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
-  });
-
-  it('records an activation setback when reconcile has to reapply a fresh restore attempt', async () => {
-    const state = createPlanEngineState();
-    const now = Date.now();
-    state.lastRestoreMs = now - 5_000;
-    state.lastDeviceRestoreMs['dev-1'] = now - 5_000;
-    state.activationAttemptByDevice['dev-1'] = {
-      startedMs: now - 5_000,
-      source: 'pels_restore',
-    };
-    const { executor, deviceManager, state: nextState } = buildExecutor(state);
-
-    await executor.applyPlanActions(buildPlan(), 'reconcile');
-
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(nextState.lastRestoreMs).toBeGreaterThan(previousLastRestoreMs);
+    expect(nextState.lastDeviceRestoreMs['dev-1']).toBeGreaterThan(previousDeviceRestoreMs);
     expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
-      lastSetbackMs: expect.any(Number),
-      penaltyLevel: 1,
+      startedMs: expect.any(Number),
     }));
   });
 
@@ -1114,7 +1095,6 @@ describe('PlanExecutor restore logging', () => {
       capabilityId: 'target_temperature',
       targetValue: 23,
       previousValue: 16,
-      mode: 'plan',
       attemptType: 'send',
       reasonCode: 'restore_from_shed',
       operatingMode: 'Home',
@@ -1178,7 +1158,6 @@ describe('PlanExecutor pending target commands', () => {
       capabilityId: 'target_temperature',
       targetValue: 23,
       previousValue: 18,
-      mode: 'plan',
       attemptType: 'retry',
       reasonCode: 'retry_pending_confirmation',
       operatingMode: 'Home',
@@ -1233,7 +1212,6 @@ describe('PlanExecutor pending target commands', () => {
       capabilityId: 'target_temperature',
       desired: 23,
       skipContext: 'plan',
-      actuationMode: 'plan',
     }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_skipped',
@@ -1242,7 +1220,6 @@ describe('PlanExecutor pending target commands', () => {
       capabilityId: 'target_temperature',
       desired: 23,
       skipContext: 'plan',
-      actuationMode: 'plan',
     }));
   });
 
@@ -1260,7 +1237,6 @@ describe('PlanExecutor pending target commands', () => {
       deviceId: 'dev-1',
       deviceName: 'Heater',
       logContext: 'capacity',
-      actuationMode: 'plan',
     }));
   });
 
@@ -1315,7 +1291,7 @@ describe('PlanExecutor pending target commands', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
-  it('tags reconcile target updates in the user-visible log', async () => {
+  it('tags plan-driven target updates in the user-visible log', async () => {
     const state = createPlanEngineState();
     const { executor, deviceManager } = buildExecutor(state, [
       {
@@ -1329,7 +1305,7 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await executor.applyPlanActions(buildTargetPlan(), 'reconcile');
+    await executor.applyPlanActions(buildTargetPlan());
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -1338,9 +1314,8 @@ describe('PlanExecutor pending target commands', () => {
       capabilityId: 'target_temperature',
       targetValue: 23,
       previousValue: 18,
-      mode: 'reconcile',
       attemptType: 'send',
-      reasonCode: 'reconcile',
+      reasonCode: 'plan_update',
       operatingMode: 'Home',
     }));
   });
@@ -1413,13 +1388,16 @@ describe('PlanExecutor pending target commands', () => {
       capabilityId: 'target_temperature',
       targetValue: 15,
       previousValue: 22,
-      mode: 'plan',
       attemptType: 'send',
       reasonCode: 'shedding',
     }));
   });
 
-  it('bypasses pending target retry backoff for reconcile-driven drift correction', async () => {
+  // Retry backoff is now respected unconditionally. `mode === 'reconcile'` used to
+  // bypass it (a re-assert had no pending-command bookkeeping of its own), which is
+  // half of how a re-assert could outrun the planner in inc_26449fb9. A pending
+  // command still inside its backoff window must suppress the write.
+  it('respects pending target retry backoff instead of writing again immediately', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
       capabilityId: 'target_temperature',
@@ -1445,22 +1423,13 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await executor.applyPlanActions(buildTargetPlan(28, 23), 'reconcile');
+    await executor.applyPlanActions(buildTargetPlan(28, 23));
 
-    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'target_command_applied',
-      deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
-      targetValue: 23,
-      previousValue: 28,
-      mode: 'reconcile',
-      reasonCode: 'reconcile',
-    }));
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    // The pending entry is left untouched — no attempt was made, so nothing to count.
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
       desired: 23,
-      retryCount: 1,
+      retryCount: 0,
     });
   });
 
@@ -1513,7 +1482,6 @@ describe('PlanExecutor pending target commands', () => {
       capabilityId: 'target_temperature',
       targetValue: 23,
       previousValue: 25,
-      mode: 'plan',
       attemptType: 'retry',
       reasonCode: 'retry_pending_confirmation',
     }));
@@ -2694,7 +2662,6 @@ describe('PlanExecutor stepped loads', () => {
       hasTargets: false,
       capabilityId: null,
       logContext: 'capacity',
-      actuationMode: 'plan',
     }));
 
     const missingCapabilitySnapshot = [
@@ -2724,7 +2691,6 @@ describe('PlanExecutor stepped loads', () => {
       hasTargets: true,
       capabilityId: null,
       logContext: 'capacity',
-      actuationMode: 'plan',
     }));
   });
 
@@ -2998,7 +2964,6 @@ describe('PlanExecutor stepped loads', () => {
       effectiveTransition: 'step_down_while_on',
       desiredStepId: 'low',
       previousStepId: 'max',
-      mode: 'plan',
     }));
   });
 
@@ -3265,7 +3230,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'low',
       reportedStepId: 'low',
     }));
-    await executor.applyPlanActions(livePlan, 'reconcile');
+    await executor.applyPlanActions(livePlan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -3294,7 +3259,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       undefined,
       buildSnapshot({ binaryControl: { on: false } }),
     );
-    await executor.applyPlanActions(livePlan, 'reconcile');
+    await executor.applyPlanActions(livePlan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -3311,7 +3276,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
-    await executor.applyPlanActions(livePlan, 'reconcile');
+    await executor.applyPlanActions(livePlan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -3328,7 +3293,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       effectiveTransition: 'restore_from_off_at_low',
       binaryTarget: true,
       transitionPhase: 'post_activation',
-      mode: 'reconcile',
     }));
   });
 
@@ -3344,7 +3308,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) }),
     );
 
-    await expect(executor.applyPlanActions(plan, 'reconcile')).resolves.toEqual({
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     });
@@ -3384,7 +3348,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       },
     });
 
-    await executor.applyPlanActions(plan, 'plan');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -3413,7 +3377,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     // Step command should be issued to move from off -> low
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3441,7 +3405,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'max',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'max', previous_step_id: 'low' }),
@@ -3472,21 +3436,19 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       stepCommandStatus: 'pending',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_skipped',
       reasonCode: 'waiting_for_confirmation',
       deviceId: 'dev-1',
-      actuationMode: 'reconcile',
     }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'waiting_for_confirmation',
       desiredStepId: 'max',
       deviceId: 'dev-1',
-      actuationMode: 'reconcile',
     }));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
@@ -3516,20 +3478,18 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       nextStepCommandRetryAtMs: now + 30_000,
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_skipped',
       reasonCode: 'retry_backoff',
       deviceId: 'dev-1',
-      actuationMode: 'reconcile',
     }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'retry_backoff',
       deviceId: 'dev-1',
-      actuationMode: 'reconcile',
     }));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
@@ -3549,7 +3509,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -3557,7 +3517,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       event: 'restore_command_skipped',
       reasonCode: 'missing_snapshot',
       deviceId: 'dev-1',
-      actuationMode: 'reconcile',
     }));
   });
 
@@ -3577,7 +3536,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     // Step command follows binary activation in the same cycle.
@@ -3604,7 +3563,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -3627,7 +3586,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -3652,7 +3611,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -3723,7 +3682,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
-    await executor.applyPlanActions(livePlan, 'reconcile');
+    await executor.applyPlanActions(livePlan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -3739,7 +3698,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       stepPreparationPurpose: null,
       effectiveTransition: 'step_down_while_on',
       binaryTarget: null,
-      mode: 'reconcile',
     }));
   });
 
@@ -3764,7 +3722,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
-    await executor.applyPlanActions(livePlan, 'reconcile');
+    await executor.applyPlanActions(livePlan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3813,7 +3771,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3859,7 +3817,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -3869,7 +3827,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', desiredStepId: 'max' });
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -3901,7 +3859,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -3947,7 +3905,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     await executor.applyPlanActions(
       { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('medium')] },
-      'reconcile',
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -3962,7 +3919,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(
       { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('max')] },
-      'reconcile',
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4010,18 +3966,18 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    await executor.applyPlanActions(blockedPlan, 'reconcile');
+    await executor.applyPlanActions(blockedPlan);
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
     debugStructured.mockClear();
     deviceManager.setCapability.mockClear();
-    await executor.applyPlanActions(admittedPlan, 'reconcile');
+    await executor.applyPlanActions(admittedPlan);
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
 
     debugStructured.mockClear();
-    await executor.applyPlanActions(blockedPlan, 'reconcile');
+    await executor.applyPlanActions(blockedPlan);
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -4083,7 +4039,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    await executor.applyPlanActions(plan, 'reconcile');
+    await executor.applyPlanActions(plan);
 
     // Restore must NOT be gated by the phantom shed-1.
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
@@ -4101,7 +4057,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_shed_intent_dropped',
       reasonCode: 'underspecified_set_step',
-      actuationMode: 'reconcile',
       deviceId: 'shed-1',
     }));
   });

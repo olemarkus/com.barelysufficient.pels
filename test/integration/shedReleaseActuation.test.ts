@@ -97,7 +97,6 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: null,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -111,7 +110,6 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: null,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(true);
@@ -128,7 +126,6 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: null,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
-      mode: 'plan',
       deps,
     });
     expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledWith(
@@ -150,7 +147,6 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: null,
       observed: buildObserved({ binaryControl: { on: false }, observedBinaryState: 'off' }),
       snapshot: { id: 'dev-1', binaryControl: { on: false }, controlCapabilityId: 'onoff' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -167,7 +163,6 @@ describe('applyShedReleaseIntent', () => {
       // 'unknown' is an off-union sentinel for "no trusted observation yet".
       observed: buildObserved({ observedBinaryState: 'unknown' as ExecutableObservedDeviceState['observedBinaryState'] }),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -191,7 +186,6 @@ describe('applyShedReleaseIntent', () => {
         target: { targetCap: 'target_temperature', observedValue: 22 },
       }),
       snapshot: { id: 'dev-1' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(true);
@@ -221,31 +215,10 @@ describe('applyShedReleaseIntent', () => {
         target: { targetCap: 'target_temperature', observedValue: 18 },
       }),
       snapshot: { id: 'dev-1' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
     expect(mockedApplyTargetUpdate).not.toHaveBeenCalled();
-    expect(recordReleaseShedActuation).not.toHaveBeenCalled();
-  });
-
-  it('does not record a pels_shed event in reconcile mode (release writes are plan-only)', async () => {
-    const recordReleaseShedActuation = vi.fn();
-    const deps = buildDeps(
-      { action: 'set_temperature', temperature: 18, stepId: null },
-      { recordReleaseShedActuation },
-    );
-    const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
-      steppedLoadIntent: null,
-      observed: buildObserved({
-        target: { targetCap: 'target_temperature', observedValue: 22 },
-      }),
-      snapshot: { id: 'dev-1' } as never,
-      mode: 'reconcile',
-      deps,
-    });
-    expect(result).toBe(true);
     expect(recordReleaseShedActuation).not.toHaveBeenCalled();
   });
 
@@ -258,7 +231,6 @@ describe('applyShedReleaseIntent', () => {
         target: { targetCap: 'target_temperature', observedValue: 18 },
       }),
       snapshot: { id: 'dev-1' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -272,7 +244,6 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(true);
@@ -304,7 +275,6 @@ describe('applyShedReleaseIntent', () => {
         binaryControl: { on: false },
         controlCapabilityId: 'evcharger_charging',
       } as never,
-      mode: 'plan',
       deps,
     });
     // Routed to the binary path (device has a control capability), which is
@@ -327,7 +297,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'high' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(true);
@@ -356,7 +325,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'high' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(true);
@@ -374,7 +342,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'high' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -390,7 +357,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'low' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -406,7 +372,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'low' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -420,7 +385,6 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: null,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -437,7 +401,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: undefined },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -453,7 +416,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -474,7 +436,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'high' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);
@@ -492,7 +453,6 @@ describe('applyShedReleaseIntent', () => {
         steppedLoad: { on: true, stepId: 'high' },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
-      mode: 'plan',
       deps,
     });
     expect(result).toBe(false);

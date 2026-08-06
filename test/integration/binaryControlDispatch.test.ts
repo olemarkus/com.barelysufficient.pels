@@ -137,7 +137,6 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
       desired: true,
       flowBackedControl: false,
       logContext: 'capacity',
-      actuationMode: 'plan',
       restoreSource: undefined,
       reason: undefined,
     });
@@ -212,7 +211,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         desired: true,
         flowBackedControl: false,
         logContext: 'capacity',
-        actuationMode: 'plan',
       },
       transport,
       snapshot: snapshot({
@@ -228,7 +226,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
       capabilityId: 'onoff',
       desired: true,
       flowBackedControl: false,
-      actuationMode: 'plan',
     });
     expect(logCapture.findEvent('binary_command_succeeded')).toMatchObject({
       deviceName: 'Socket',
@@ -253,7 +250,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         desired: false,
         flowBackedControl: true,
         logContext: 'capacity',
-        actuationMode: 'plan',
       },
       transport,
       snapshot: snapshot({
@@ -275,7 +271,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
       capabilityId: 'onoff',
       desired: false,
       logContext: 'capacity',
-      actuationMode: 'plan',
     });
     expect(state.pendingBinaryCommands.socket1).toMatchObject({
       capabilityId: 'onoff',
@@ -332,7 +327,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         desired: false,
         flowBackedControl: true,
         logContext: 'capacity',
-        actuationMode: 'plan',
       },
       transport,
       snapshot: snapshot({
@@ -363,7 +357,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         desired: true,
         flowBackedControl: false,
         logContext: 'capacity',
-        actuationMode: 'plan',
       },
       transport,
       snapshot: snapshot({
@@ -395,7 +388,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         desired: true,
         flowBackedControl: true,
         logContext: 'capacity',
-        actuationMode: 'plan',
       },
       transport,
       snapshot: snapshot({

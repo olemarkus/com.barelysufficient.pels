@@ -245,7 +245,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     expect(snapshot.evCharging).toBe(true);
 
     // Cycle 1: the planner holds the charging charger — the ONE real shed.
-    await executor.applyPlanActions(buildHeldShedPlan(snapshot), 'plan');
+    await executor.applyPlanActions(buildHeldShedPlan(snapshot));
     const offWritesAfterCycle1 = setCapability.mock.calls
       .filter((call) => call[1] === 'evcharger_charging' && call[2] === false).length;
     expect(offWritesAfterCycle1).toBe(1);
@@ -277,7 +277,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     for (let cycle = 2; cycle <= CYCLES; cycle += 1) {
       vi.advanceTimersByTime(CYCLE_MS);
       snapshot = parseChargerSnapshot({ charging, nowMs: Date.now() }, logger);
-      await executor.applyPlanActions(buildHeldShedPlan(snapshot), 'plan');
+      await executor.applyPlanActions(buildHeldShedPlan(snapshot));
     }
 
     // CORRECT behaviour 1: no re-writes to the already-off charger. On the

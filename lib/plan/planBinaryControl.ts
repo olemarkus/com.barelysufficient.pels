@@ -1,7 +1,6 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
-  type BinaryControlActuationMode,
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
@@ -45,13 +44,12 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   logContext: BinaryControlLogContext;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
-  actuationMode?: BinaryControlActuationMode;
   lifecycleRelease?: boolean;
 }): BinaryControlDecision | null {
   const {
     pendingBinaryCommandStore, deviceObservation,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
-    actuationMode = 'plan', lifecycleRelease,
+    lifecycleRelease,
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (shouldSkipBinaryControl({
@@ -60,7 +58,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     deviceId,
     desired,
     logContext,
-    actuationMode,
     name,
     snapshot,
     pendingBinaryCommandStore,
@@ -78,7 +75,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     desired,
     flowBackedControl,
     logContext,
-    actuationMode,
     restoreSource,
     reason,
     ...(lifecycleRelease ? { lifecycleRelease: true } : {}),

@@ -21,7 +21,6 @@ import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
-import type { PlanActuationMode } from '../executor/executorTypes';
 import { PlanExecutor } from '../executor/planExecutor';
 import type { PlanActuationResult, PlanExecutorDeps } from '../executor/planExecutor';
 import {
@@ -275,8 +274,8 @@ export class PlanEngine {
     return this.executor.handleShortfallCleared();
   }
 
-  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
-    return this.executor.applyPlanActions(plan, mode);
+  public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
+    return this.executor.applyPlanActions(plan);
   }
 
   public shouldApplyStablePlanActions(plan: DevicePlan): boolean {
