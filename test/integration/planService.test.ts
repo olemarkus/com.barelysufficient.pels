@@ -2923,7 +2923,11 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves reconcile drift across detail-only rebuilds', async () => {
+  // A rebuild whose ACTION signature is unchanged must still actuate when the
+  // device has drifted away from what that plan wants. Before the apply gate
+  // widened, this case fell through to the reconcile lane, which re-asserted a
+  // plan built against the older observation — the shape behind inc_26449fb9.
+  it('actuates on a detail-only rebuild when the device drifted from plan intent', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const liveDeviceBase = {
       id: 'dev-1',
@@ -2990,9 +2994,23 @@ describe('PlanService', () => {
       binaryControlObservation: buildBinaryObservation('onoff', false),
     })) as PlanInputDevice];
 
+    // The rebuild itself now closes the gap: plan says keep/on, device reads
+    // off, so the executor has work outstanding even though no decision moved.
     await service.rebuildPlanFromCache('detail_only_live_off');
-    expect(applyPlanActions).not.toHaveBeenCalled();
+    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          plannedState: 'keep',
+          plannedTarget: 20,
+        }),
+      ],
+    }), 'plan');
+    applyPlanActions.mockClear();
 
+    // And because the rebuild already converged it, the reconcile lane has
+    // nothing left to re-assert — it is now redundant rather than load-bearing.
     await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
     expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
       devices: [
