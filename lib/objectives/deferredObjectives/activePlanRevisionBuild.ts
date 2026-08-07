@@ -10,6 +10,7 @@
  */
 import type {
   DeferredObjectiveActivePlanHourV1,
+  DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
@@ -30,7 +31,10 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRescuePermissions } from './settings';
-import { resolveProjectedFinishAtMs } from './activePlanSchedule';
+import {
+  buildReservationSegmentsFromHorizonPlan,
+  resolveProjectedFinishAtMs,
+} from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature } from './activePlanSignature';
 
@@ -303,6 +307,7 @@ export const buildRevision = (params: {
   // and re-mislabel a genuine Nordpool publish as `schedule_revised`. Undefined
   // for the first revision (no prior watermark to preserve).
   previousPricesUpTo?: number | null;
+  previousReservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
 }): DeferredObjectiveActivePlanRevisionV1 => {
   // Callers only invoke buildRevision after `buildHoursFromHorizonPlan` returned
   // non-null, which guarantees `horizonPlan` is present.
@@ -336,6 +341,11 @@ export const buildRevision = (params: {
   // to format it so the hero meta line and any downstream consumer (flow
   // tokens) agree on the rounding/unit conventions.
   const estimatedDurationText = formatEstimatedDuration(energyNeededKWh, planningSpeedKw);
+  const reservationSegments = buildReservationSegmentsFromHorizonPlan({
+    diag: params.diag,
+    effectiveHours: params.hours,
+    previousSegments: params.previousReservationSegments,
+  });
   return {
     revision: params.revision,
     revisedAtMs: params.nowMs,
@@ -345,6 +355,7 @@ export const buildRevision = (params: {
     ),
     reason: params.reason,
     hours: params.hours,
+    reservationSegments,
     // Round to milliWh to match `plannedKWh`. Without rounding,
     // floating-point accumulation in the kWh/unit-band integrator (or the
     // simple multiply on the unbanded path) can produce ~1e-15 kWh drift
@@ -369,6 +380,12 @@ export const buildRevision = (params: {
     ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
+    ...(typeof params.diag.devicePriority === 'number' && Number.isFinite(params.diag.devicePriority)
+      ? { devicePriority: params.diag.devicePriority }
+      : {}),
+    ...(params.diag.allocationContextSignature
+      ? { allocationContextSignature: params.diag.allocationContextSignature }
+      : {}),
   };
 };
 

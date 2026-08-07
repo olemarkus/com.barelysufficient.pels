@@ -22,6 +22,7 @@ export type DeferredObjectiveHorizonStatusDetail =
   | 'invalid_deadline'
   | 'invalid_energy'
   | 'invalid_now'
+  | 'limited_by_higher_priority_task'
   | 'missing_active_step'
   | 'no_bucket_capacity'
   | 'planned_using_deadline_reserve'
@@ -60,10 +61,18 @@ export type DeferredObjective = {
 export type DeferredObjectiveStep = {
   id: string;
   usefulPowerKw: number;
+  // Optional for backward-compatible callers; normalization falls back to
+  // useful power when no distinct admission calibration is available.
+  admissionPowerKw?: number;
 };
 
 export type DeferredObjectiveHorizonBucket = {
   id: string;
+  // Stable id of the unsplit price/budget bucket. Priority coordination may
+  // split one source hour at higher-task reservation boundaries so physical
+  // power remains exact within each interval; allocation and persisted claims
+  // still use this source id for price joins and topology identity.
+  sourceBucketId?: string;
   startMs: number;
   endMs: number;
   // Raw per-bucket price in the source currency (øre, EUR, eurocent, … — the
@@ -84,6 +93,14 @@ export type DeferredObjectiveHorizonBucket = {
   // Optional/backward-compat: missing means "no forecast" and the floor stays at
   // min step.
   reservedHeadroomKw?: number;
+  // Higher-priority useful-energy claims retain their actual coverage so a
+  // current/deadline-split segment subtracts the overlap after the base hourly
+  // budget is prorated, avoiding a second proration of the higher task's kWh.
+  higherPriorityEnergyReservations?: ReadonlyArray<{
+    startMs: number;
+    endMs: number;
+    plannedKWh: number;
+  }>;
 };
 
 export type DeferredObjectiveHorizonInput = {
@@ -128,6 +145,7 @@ export type DeferredObjectivePlannedBucket = {
   current: boolean;
   usefulEnergyCapacityKWh: number;
   plannedUsefulEnergyKWh: number;
+  plannedAdmissionPowerKw?: number;
 };
 
 export type DeferredObjectiveCurrentBucketPlan = {

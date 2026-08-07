@@ -9,13 +9,13 @@ import {
   emitDeferredObjectiveDiagnostics,
   type DeferredObjectiveDiagnostic,
 } from './diagnosticsBridge';
-import { ConcurrentEligibleTaskTracker } from './concurrentEligibleTasks';
 import { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
 import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveSettingsV1 } from './settings';
 import type { IdleClassification } from '../../../packages/shared-domain/src/idleClassificationCopy';
+import { PriorityAllocationTracker } from './priorityAllocation';
 
 type StallClassification = IdleClassification | undefined;
 
@@ -36,10 +36,7 @@ type StallClassification = IdleClassification | undefined;
  * The planner still computes its own evaluation per plan cycle for the
  * *decoration* (admission / target overrides) it applies to `PlanInputDevice`s
  * — that stays synchronous with planning. This emitter therefore owns its own
- * `ConcurrentEligibleTaskTracker`: the cross-cycle grace-window smoothing is
- * per-evaluator. The emitter's count and the planner's decoration count can
- * differ transiently during an SDK snapshot flicker; both self-heal within the
- * grace window, and only this side feeds the UI.
+ * own evaluation snapshot; only this side feeds the UI and persisted records.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
@@ -108,7 +105,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
 };
 
 export class DeferredObjectiveLifecycleEmitter {
-  private readonly concurrentEligibleTracker = new ConcurrentEligibleTaskTracker();
+  private readonly priorityAllocationTracker = new PriorityAllocationTracker();
 
   constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {}
 
@@ -136,7 +133,7 @@ export class DeferredObjectiveLifecycleEmitter {
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
       activePlans,
       hardCapKw: this.deps.getHardCapKw(),
-      concurrentEligibleTracker: this.concurrentEligibleTracker,
+      priorityAllocationTracker: this.priorityAllocationTracker,
       isDeviceInSubHome: this.deps.isDeviceInSubHome,
       // Resolve the user-facing status to `satisfied` for parked/stalled devices
       // so the status chip, notifications, Flows (active-plan recorder) and the

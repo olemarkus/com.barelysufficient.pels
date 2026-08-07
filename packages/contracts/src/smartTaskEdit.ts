@@ -100,8 +100,8 @@ export type SettingsUiSmartTaskRejectReason =
   // the surface refreshes rather than offering a retry.
   | 'task_not_found';
 
-// Preview response: the in-isolation plan estimate plus the resolved deadline
-// and pre-formatted local labels so the browser doesn't re-derive them.
+// Preview response: the priority-coordinated plan estimate plus the resolved
+// deadline and pre-formatted local labels so the browser doesn't re-derive them.
 export type SettingsUiSmartTaskPreviewResponse = {
   ok: true;
   deadlineAtMs: number;

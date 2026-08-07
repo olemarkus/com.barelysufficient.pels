@@ -9,6 +9,7 @@ import {
   resolvePriceHorizonAvailableUpToMs,
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
+  type DeferredObjectivePriorityReservation,
   type PriceHorizonEntry,
 } from './policyHorizon';
 import type { DeferredObjectiveSettingsEntry } from './settings';
@@ -88,7 +89,7 @@ export const buildFreshDiagnostic = (params: {
   aheadOfHourMilestone: boolean;
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
   hardCapKw?: number | null;
-  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
+  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs, deviceId, objective, device, base, progress, policyHorizon, deadlineAtMs,
@@ -114,11 +115,7 @@ export const buildFreshDiagnostic = (params: {
     // rescueReplan.ts. Lower number = more important on PELS's planSort scale;
     // `=== 1` is the only safe v1 floor for the reserved-headroom forecast.
     devicePriority: device.priority,
-    // Producer-resolved equal-share allocator for the reserved-headroom forecast
-    // when more than one priority-1 fully-reserved task shares the cycle. The
-    // exempt rebuild reuses it so the rebuilt buckets carry the same divided
-    // forecast as the baseline buckets above.
-    concurrentEligibleCount: params.concurrentEligibleCount,
+    higherPriorityReservations: params.higherPriorityReservations,
   });
 
   // Stamp the price-availability watermark from the SOURCE price horizon (not the

@@ -135,11 +135,10 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
   planner adapts `PlanInputDevice → ObjectiveDeviceInput` at the call boundary. `planTypes` does
   not reference `deferredObjectives`, so there is no cycle through the type edge once the import is
   redirected. The `power/tracker` import is the allowed power↔objectives cycle.
-- **`concurrentEligibleCount` is a controller-owned per-bucket RESOLVER, not a flat input.** It is
-  a stateful `ConcurrentEligibleTaskTracker` (cross-cycle grace map, per-bucket deadline filter)
-  returning `(bucketStartMs) => number`. The controller owns the tracker + closure; the seam
-  carries stateful bucket-parameterized logic, not a scalar — so it must ride the decorated-input
-  channel, not be flattened to a number.
+- **Priority coordination is controller-owned.** A stateful `PriorityAllocationTracker` keeps
+  device ordering stable across transient SDK snapshot gaps. The batch diagnostics bridge plans
+  tasks in that order and carries exact higher-task admission-power/useful-energy reservations to
+  the next task; no cross-device capacity fact is pushed into the ordinary planner contract.
 - **The lifecycle state machinery already exists** — this is relocation + re-clocking + dependency
   inversion, not new machinery.
 
@@ -174,7 +173,7 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    reads committed plans via `resolveCommittedHours` for its decoration, so promoting them is
    decoration-relevant and must not lag a clock tick. The clock only *clears* an ended task's
    plan (via `onDeadlinePassed → disable`), phase-separated from planBuilder's commit. The emitter
-   owns its own `ConcurrentEligibleTaskTracker` + the watermark closure; it is the sole writer to
+   owns its own `PriorityAllocationTracker` + the watermark closure; it is the sole writer to
    the plan-history recorder. Fixes the `power_source = flow` lag with no two-loop staleness — the
    decoration (admission/overrides/active-plan commit) stays synchronous per plan cycle; the full
    decoration relocation is PR-D (step 5). The planner still imports the subsystem for the
@@ -203,7 +202,7 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
      `lib/executor`.
    - **PR-D2 (done):** the 4 admission appliers + the objective eval moved onto the
      `DeferredObjectiveDecorationController` (`lib/objectives/deferredObjectives/`). It owns the
-     `ConcurrentEligibleTaskTracker` and exposes `decorate({devices, dailyBudgetSnapshot, nowTs})
+     `PriorityAllocationTracker` and exposes `decorate({devices, dailyBudgetSnapshot, nowTs})
      → DeferredDecorationBundle` (bundle + `DeferredReleaseIntent` + the input type live in
      `@pels/planner-types`). The controller is constructed in the **app-wiring layer**
      (`lib/app/appInit.ts`) and injected into the engine as the opaque `decorateDeferredObjectives`
@@ -262,9 +261,9 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
 3. **`controllable === false` gate** — RESOLVED: the terminal release only touches cap-off
    (`isCapacityControlEnabled === false`) devices; cap-on stays on the planner's lane. No
    contention. The transitional cap-off ending is handled by the gated disarm.
-4. **Decoration vs facts boundary** — RESOLVED: `concurrentEligibleCount` stays a controller-owned
-   stateful resolver (`ConcurrentEligibleTaskTracker`) inside the decoration channel; no cross-device
-   capacity fact had to cross as data — the planner imports nothing smart-task.
+4. **Decoration vs facts boundary** — RESOLVED: priority ordering and the higher-task reservation
+   ledger stay controller-owned (`PriorityAllocationTracker` + batch diagnostics) inside the
+   decoration channel; the ordinary planner imports nothing smart-task.
 5. **Peer dep-cruiser rule** — RESOLVED differently: the subsystem stayed in `lib/objectives` (no new
    `lib/smartTasks/` peer), covered by the existing `no-objectives-to-peer-except-power` rule.
 

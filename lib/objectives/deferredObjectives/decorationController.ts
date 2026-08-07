@@ -15,13 +15,13 @@ import {
   buildDeferredTargetOverrides,
   type DeferredAdmissionDecision,
 } from './admission';
-import { ConcurrentEligibleTaskTracker } from './concurrentEligibleTasks';
 import { buildDeferredObjectiveDiagnostics } from './diagnosticsBridge';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectiveSettingsV1 } from './settings';
+import { PriorityAllocationTracker } from './priorityAllocation';
 
 export type DeferredObjectiveDecorationControllerDeps = {
-  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1 | undefined;
   getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getTimeZone?: () => string;
   getPowerTracker: () => PowerTrackerState;
@@ -54,16 +54,7 @@ export type DeferredObjectiveDecorationControllerDeps = {
  * planner does not thread smart-task concerns through its own dependency surface.
  */
 export class DeferredObjectiveDecorationController {
-  // Stateful tracker for the priority-1 fully-reserved smart-task count. Held
-  // on the controller so its grace-window state (devices observed within the
-  // last `ELIGIBILITY_ABANDON_GRACE_MS`) survives across plan cycles — without
-  // that, a transient SDK-side device-snapshot eviction flickers the count down
-  // for one cycle and survivor diagnostics oscillate `on_track` ↔
-  // `at_risk: feasible_above_floor`. Not persisted across PELS restarts; on
-  // restart the first cycle rebuilds the map, accepting one potential flicker
-  // window in exchange for keeping the eligibility model off the settings
-  // contract.
-  private readonly concurrentEligibleTracker = new ConcurrentEligibleTaskTracker();
+  private readonly priorityAllocationTracker = new PriorityAllocationTracker();
 
   constructor(private readonly deps: DeferredObjectiveDecorationControllerDeps) {}
 
@@ -111,7 +102,7 @@ export class DeferredObjectiveDecorationController {
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
         hardCapKw: this.deps.getHardCapKw(),
-        concurrentEligibleTracker: this.concurrentEligibleTracker,
+        priorityAllocationTracker: this.priorityAllocationTracker,
         isDeviceInSubHome: this.deps.isDeviceInSubHome,
       });
     } finally {

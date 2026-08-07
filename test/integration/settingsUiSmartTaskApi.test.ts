@@ -163,6 +163,17 @@ describe('previewSettingsUiSmartTask', () => {
     expect(candidate.rescue).toBeUndefined();
   });
 
+  it('does not migrate settings or write markers through the public preview handler', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
+    const writes: string[] = [];
+    settings.on('set', (key: string) => writes.push(`set:${key}`));
+    settings.on('unset', (key: string) => writes.push(`unset:${key}`));
+
+    expect(previewSettingsUiSmartTask({ homey, body: updateBody() })).toMatchObject({ ok: true });
+    expect(writes).toEqual([]);
+  });
+
   it('merges the stored rescue permissions into the previewed candidate', () => {
     // The save path sends a rescue-less candidate and the upsert's `preserve`
     // default keeps the task's standing permissions — the preview must

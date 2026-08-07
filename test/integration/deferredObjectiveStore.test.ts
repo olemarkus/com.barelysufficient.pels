@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import {
+  afterEach, describe, expect, it, vi,
+} from 'vitest';
 import {
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   clearObjectiveForDevice,
+  createTrustedDeferredObjectiveSettingsReader,
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
+  readDeferredObjectiveRoster,
   readObjectiveForDevice,
   writeObjectiveForDevice,
   type ObjectiveSettingsStore,
@@ -18,6 +22,11 @@ import type {
 } from '../../lib/objectives/deferredObjectives/settings';
 
 const DEADLINE_MS = Date.UTC(2026, 0, 1, 18, 0, 0);
+const HOUR_MS = 60 * 60 * 1000;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const evEntry: DeferredObjectiveSettingsEntry = {
   enabled: true,
@@ -115,6 +124,76 @@ describe('objectiveStore round-trips', () => {
     // Next clean read recovers the entry.
     store.forceEmptyKeys = false;
     expect(readAllObjectives(store)).toEqual(blob({ 'ev-1': evEntry }));
+  });
+});
+
+describe('readDeferredObjectiveRoster', () => {
+  it('fails closed while a legacy plural blob still awaits migration', () => {
+    const store = new FakeStore();
+    store.set('capacity_limit_kw', 5);
+    store.set(DEFERRED_OBJECTIVES_SETTINGS, blob({ 'ev-1': evEntry }));
+
+    expect(readDeferredObjectiveRoster(store)).toEqual({ status: 'unavailable' });
+  });
+
+  it.each([
+    ['null', null],
+    ['a string', 'deferred_objective.ev-1'],
+    ['a mixed array', ['capacity_limit_kw', 42]],
+  ])('fails closed when getKeys returns %s', (_label, malformedKeys) => {
+    const store = new FakeStore();
+    Object.defineProperty(store, 'getKeys', { value: () => malformedKeys });
+
+    expect(readDeferredObjectiveRoster(store)).toEqual({ status: 'unavailable' });
+  });
+
+  it('fails closed when getKeys throws', () => {
+    const store = new FakeStore();
+    Object.defineProperty(store, 'getKeys', { value: () => { throw new Error('SDK read failed'); } });
+
+    expect(readDeferredObjectiveRoster(store)).toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('createTrustedDeferredObjectiveSettingsReader', () => {
+  it('retains the last trusted roster when a listed task becomes unreadable', () => {
+    const store = new FakeStore();
+    store.set(DEFERRED_OBJECTIVES_PERKEY_MIGRATED, true);
+    writeObjectiveForDevice(store, 'ev-1', evEntry);
+    const read = createTrustedDeferredObjectiveSettingsReader(store);
+
+    expect(read()).toEqual(blob({ 'ev-1': evEntry }));
+    store.set(keyFor('ev-1'), { enabled: 'temporarily-malformed' });
+    expect(read()).toEqual(blob({ 'ev-1': evEntry }));
+  });
+
+  it('expires an unreadable roster after the abandon-grace window and recovers on a healthy read', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(0);
+    const store = new FakeStore();
+    store.set(DEFERRED_OBJECTIVES_PERKEY_MIGRATED, true);
+    writeObjectiveForDevice(store, 'ev-1', evEntry);
+    const read = createTrustedDeferredObjectiveSettingsReader(store);
+
+    expect(read()).toEqual(blob({ 'ev-1': evEntry }));
+    vi.setSystemTime(HOUR_MS);
+    store.set(keyFor('ev-1'), { enabled: 'persistently-malformed' });
+    expect(read()).toBeUndefined();
+
+    const recovered = { ...evEntry, targetPercent: 90 };
+    writeObjectiveForDevice(store, 'ev-1', recovered);
+    expect(read()).toEqual(blob({ 'ev-1': recovered }));
+  });
+
+  it('stays unavailable before the first trusted roster and later recovers', () => {
+    const store = new FakeStore();
+    writeObjectiveForDevice(store, 'ev-1', evEntry);
+    store.forceEmptyKeys = true;
+    const read = createTrustedDeferredObjectiveSettingsReader(store);
+
+    expect(read()).toBeUndefined();
+    store.forceEmptyKeys = false;
+    expect(read()).toEqual(blob({ 'ev-1': evEntry }));
   });
 });
 

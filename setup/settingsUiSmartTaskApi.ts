@@ -20,6 +20,7 @@ import {
   mapSmartTaskAppReason,
   migrateBlobToPerKeyIfNeeded,
   parseSmartTaskCandidateRequest,
+  readDeferredObjectiveRoster,
   readObjectiveForDevice,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
@@ -98,13 +99,26 @@ const rejectForHomeScope = (
 //   draft and declare a still-live task "ended"
 //   (`feedback_homey_sdk_unreliable`).
 //
-// Runs the same migrate-first guard as the other objective-write lanes so a
-// legacy-blob task is not misread as absent.
+// Write callers migrate first. Preview callers use the trusted roster reader
+// instead: an unconsumed legacy blob becomes retryable `write_conflict`, never
+// a false absence and never a migration write from a read-only endpoint.
 const gateEditableTask = (
   homey: Homey.App['homey'],
   deviceId: string,
+  migrate: boolean,
 ): { editable: true; entry: DeferredObjectiveSettingsEntry }
   | { editable: false; reason: 'task_not_found' | 'write_conflict' } => {
+  if (!migrate) {
+    const roster = readDeferredObjectiveRoster(homey.settings);
+    if (roster.status === 'unavailable') return { editable: false, reason: 'write_conflict' };
+    const entry = roster.settings.objectivesByDeviceId[deviceId];
+    if (entry !== undefined) {
+      return entry.enabled && entry.deadlineAtMs > Date.now()
+        ? { editable: true, entry }
+        : { editable: false, reason: 'task_not_found' };
+    }
+    return { editable: false, reason: 'task_not_found' };
+  }
   migrateBlobToPerKeyIfNeeded(homey.settings);
   const entry = readObjectiveForDevice(homey.settings, deviceId);
   if (entry !== undefined) {
@@ -127,7 +141,9 @@ export const previewSettingsUiSmartTask = (
   // Call app methods on `homey.app` (not via an extracted const): they rely on
   // their `this` (`this.latestTargetSnapshot`, …).
   if (typeof app?.previewDeferredObjectivePlan !== 'function') return previewReject('unavailable');
-  const gate = gateEditableTask(homey, request.deviceId);
+  // Preview is read-only all the way to the public handler. In particular it
+  // does not opportunistically migrate settings or write the migration marker.
+  const gate = gateEditableTask(homey, request.deviceId, false);
   if (!gate.editable) return previewReject(gate.reason);
   if (typeof app.resolveSmartTaskHomeScope !== 'function') return previewReject('unavailable');
   const scopeReject = rejectForHomeScope(app.resolveSmartTaskHomeScope(request.deviceId));
@@ -168,7 +184,7 @@ export const updateSettingsUiSmartTask = (
   if (!request) return updateReject('invalid_request');
   const app = getApp(homey);
   if (typeof app?.createDeferredObjective !== 'function') return updateReject('unavailable');
-  const gate = gateEditableTask(homey, request.deviceId);
+  const gate = gateEditableTask(homey, request.deviceId, true);
   if (!gate.editable) return updateReject(gate.reason);
   if (typeof app.resolveSmartTaskHomeScope !== 'function') return updateReject('unavailable');
   const scopeReject = rejectForHomeScope(app.resolveSmartTaskHomeScope(request.deviceId));

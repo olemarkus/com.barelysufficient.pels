@@ -4,6 +4,19 @@ import type { DeferredObjectiveHorizonBucket } from './types';
 
 export type { PriceHorizonEntry };
 
+export type DeferredObjectivePriorityReservation = {
+  deviceId: string;
+  // Stable claim identity used only to detect topology changes. Useful energy
+  // and trimmed interval bounds may drift while the same source bucket remains
+  // claimed, so neither belongs in the coordination signature.
+  topologyKey: string;
+  startsAtMs: number;
+  admissionPowerKw: number;
+  plannedKWh: number;
+  exemptFromBudget: boolean;
+  energySegments: Array<{ startMs: number; endMs: number; plannedKWh: number }>;
+};
+
 export type DeferredObjectivePolicyHorizonUnavailableReason =
   | 'objective_price_feature_disabled'
   | 'objective_missing_price_horizon';
@@ -27,13 +40,13 @@ export type DeferredObjectivePolicyHorizonResult =
     reasonCode: DeferredObjectivePolicyHorizonUnavailableReason;
   };
 
-// Per-bucket capacity assumes this objective claims first call on the bucket's
-// budget headroom (per-bucket allowed kWh minus the daily-budget's forecasted
-// background load). True for priority-1 devices; lower-priority devices won't
-// actually get that headroom, but we apply the same math everywhere for now.
-// Revisit once lower-priority shedding lands at the daily-budget layer.
+// Per-bucket capacity starts from the household budget after forecast background
+// use. The diagnostics coordinator visits smart tasks in priority order and
+// subtracts the exact physical and energy claims already made by higher-priority
+// tasks before this source bucket is handed to the allocator.
 type PolicyBucketSource = {
   id: string;
+  sourceBucketId: string;
   startMs: number;
   endMs: number;
   price: number;
@@ -98,22 +111,9 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // promote its committed floor step. Optional: missing → no forecast → the planner
   // stays on the min-step floor.
   hardCapKw?: number | null;
-  // Number of priority-1 fully-reserved smart tasks that could share this
-  // bucket's reserved headroom. The producer divides `reservedHeadroomKw` by
-  // this count (equal-share allocation) before publishing it to the planner,
-  // so two competing tasks each see their fair fraction rather than both
-  // promoting their committed floor to the full forecast. The consumer
-  // (`horizonPlanner.resolveFloorStep`) reads one flat per-bucket value and
-  // stays unaware of sibling tasks — see
-  // `feedback_layering_resolution_in_producer`. Defaults to `1` (legacy /
-  // single-task behavior). Values `<= 0` or non-finite are treated as `1`.
-  //
-  // A function form lets the count vary per bucket: a task whose deadline
-  // sits inside the horizon stops sharing the headroom on later buckets
-  // where it is no longer eligible (see "over-counts in late-horizon
-  // buckets" TODO entry). The number form is preserved for legacy callers
-  // and tests; the function receives the bucket's UTC start ms.
-  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
+  // Hourly claims already made by higher-priority smart tasks. Physical power
+  // is always deducted; planned energy is deducted only for non-exempt tasks.
+  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
 }): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
@@ -123,7 +123,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     dailyBudgetSnapshot,
     exemptFromBudget = false,
     hardCapKw = null,
-    concurrentEligibleCount = 1,
+    higherPriorityReservations = [],
   } = params;
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');
@@ -138,7 +138,12 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     return unavailable('objective_missing_price_horizon');
   }
   return {
-    buckets: mapPolicyBuckets(sourceBuckets, exemptFromBudget, hardCapKw, concurrentEligibleCount),
+    buckets: mapPolicyBuckets(
+      splitPolicyBucketsAtReservationBoundaries(sourceBuckets, higherPriorityReservations),
+      exemptFromBudget,
+      hardCapKw,
+      higherPriorityReservations,
+    ),
     horizonBucketCount: sourceBuckets.length,
     dailyBudgetExhaustedBucketCount: countDailyBudgetExhausted(sourceBuckets),
     reasonCode: null,
@@ -299,6 +304,7 @@ const collectPriceBuckets = (params: {
       // offsets it carries the same `:30`/`:45` instant, preserving the
       // downstream `sourceBucketId` cost join in both cases.
       id: new Date(startMs).toISOString(),
+      sourceBucketId: new Date(startMs).toISOString(),
       startMs,
       endMs,
       price: entry.price,
@@ -419,6 +425,7 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
     const backgroundKWh = finiteOrNull(plannedUncontrolledKWh[index]);
     return [{
       id: startIso,
+      sourceBucketId: startIso,
       startMs,
       endMs,
       price,
@@ -504,22 +511,19 @@ const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
   hardCapKw: number | null,
-  concurrentEligibleCount: number | ((bucketStartMs: number) => number),
+  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
 ): DeferredObjectiveHorizonBucket[] => {
-  // Resolve the eligible count per bucket so a task that drops out of
-  // eligibility mid-horizon (its deadline passes) stops dividing the
-  // reserved headroom on later buckets. Number callers collapse to a
-  // constant share regardless of bucket start.
-  const shareForBucket = (bucketStartMs: number): number => (
-    typeof concurrentEligibleCount === 'function'
-      ? resolveEligibleShare(concurrentEligibleCount(bucketStartMs))
-      : resolveEligibleShare(concurrentEligibleCount)
-  );
   return buckets.map((bucket) => {
+    const higher = resolveReservationsForBucket(bucket, higherPriorityReservations);
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
-    const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw, shareForBucket(bucket.startMs));
+    const reservedHeadroomKw = resolveReservedHeadroomKw(
+      bucket,
+      hardCapKw,
+      higher?.admissionPowerKw ?? 0,
+    );
     return {
       id: bucket.id,
+      sourceBucketId: bucket.sourceBucketId,
       startMs: bucket.startMs,
       endMs: bucket.endMs,
       // Raw price is the sole price signal. The allocator fills hours
@@ -529,38 +533,100 @@ const mapPolicyBuckets = (
       price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),
+      ...(higher && higher.energySegments.length > 0
+        ? { higherPriorityEnergyReservations: higher.energySegments }
+        : {}),
     };
   });
 };
 
-// Treat non-positive / non-finite eligible counts as `1` (single task) so a
-// caller mis-passing zero never produces `NaN`/`Infinity` headroom. The
-// single-task value preserves legacy behaviour exactly. Equal-share allocation
-// is the v1 rule — see the `concurrentEligibleCount` doc in
-// `buildDeferredObjectivePolicyHorizon` and the TODO entry that motivated this.
-const resolveEligibleShare = (concurrentEligibleCount: number): number => (
-  Number.isFinite(concurrentEligibleCount) && concurrentEligibleCount >= 1
-    ? 1 / concurrentEligibleCount
-    : 1
-);
+const prorateNullableEnergy = (
+  value: number | null,
+  fraction: number,
+): number | null => value === null ? null : value * fraction;
 
-// Reserved physical headroom for a fully-reserved smart task in this bucket:
-// `(hardCapKw − gross background load) ÷ concurrentEligibleCount`. The
-// per-bucket forecast (hardCap minus the non-PELS-managed forecast) is divided
-// equally across the eligible top-priority fully-reserved tasks so two such
-// tasks don't both promote their committed floor to the *full* forecast and
-// double-book the reserved slot in diagnostic verdicts. Equal-share allocation
-// is the simplest fair v1 rule: it is symmetric across tasks (no deadline tie-
-// breaking subtlety), stable across plan cycles unless the eligible-set count
-// changes, and conservative — over-counting eligibility (e.g. counting a task
-// that has nothing to do this cycle) just keeps everyone closer to the
-// min-step floor, which is the safer direction. Clamped at 0. Returns null
-// when either physical input is missing so the planner falls back to the
-// min-step floor.
+// A source price hour is not necessarily a single physical-capacity interval:
+// a higher-priority task may reserve different steps for different parts of
+// that hour. Split at every exact claim boundary before deriving kW headroom so
+// a lower-priority task can use the genuinely-free remainder instead of seeing
+// the highest step flattened across the whole hour. Energy-valued forecast
+// fields are prorated; price and the stable source identity remain unchanged.
+const splitPolicyBucketsAtReservationBoundaries = (
+  buckets: readonly PolicyBucketSource[],
+  reservations: readonly DeferredObjectivePriorityReservation[],
+): PolicyBucketSource[] => buckets.flatMap((bucket) => {
+  const boundaries = new Set<number>([bucket.startMs, bucket.endMs]);
+  for (const reservation of reservations) {
+    for (const segment of reservation.energySegments) {
+      if (!overlapsBucket(bucket, segment)) continue;
+      if (segment.startMs > bucket.startMs && segment.startMs < bucket.endMs) {
+        boundaries.add(segment.startMs);
+      }
+      if (segment.endMs > bucket.startMs && segment.endMs < bucket.endMs) {
+        boundaries.add(segment.endMs);
+      }
+    }
+  }
+  const ordered = [...boundaries].sort((left, right) => left - right);
+  if (ordered.length === 2) return [bucket];
+  const originalDurationMs = bucket.endMs - bucket.startMs;
+  return ordered.slice(0, -1).map((startMs, index) => {
+    const endMs = ordered[index + 1]!;
+    const fraction = (endMs - startMs) / originalDurationMs;
+    return {
+      ...bucket,
+      id: `${bucket.id}:${startMs}-${endMs}`,
+      startMs,
+      endMs,
+      backgroundKWh: prorateNullableEnergy(bucket.backgroundKWh, fraction),
+      grossBackgroundKWh: prorateNullableEnergy(bucket.grossBackgroundKWh, fraction),
+      perBucketBudgetKWh: prorateNullableEnergy(bucket.perBucketBudgetKWh, fraction),
+    };
+  });
+});
+
+type HourReservation = {
+  admissionPowerKw: number;
+  energySegments: Array<{ startMs: number; endMs: number; plannedKWh: number }>;
+};
+
+const overlapsBucket = (
+  bucket: Pick<PolicyBucketSource, 'startMs' | 'endMs'>,
+  segment: { startMs: number; endMs: number },
+): boolean => segment.startMs < bucket.endMs && segment.endMs > bucket.startMs;
+
+const resolveReservationsForBucket = (
+  bucket: PolicyBucketSource,
+  reservations: readonly DeferredObjectivePriorityReservation[],
+): HourReservation | undefined => {
+  const admissionByDeviceId = new Map<string, number>();
+  const energySegments: HourReservation['energySegments'] = [];
+  for (const reservation of reservations) {
+    const overlappingSegments = reservation.energySegments
+      .filter((segment) => overlapsBucket(bucket, segment));
+    if (overlappingSegments.length === 0) continue;
+    admissionByDeviceId.set(
+      reservation.deviceId,
+      Math.max(admissionByDeviceId.get(reservation.deviceId) ?? 0, reservation.admissionPowerKw),
+    );
+    if (!reservation.exemptFromBudget) {
+      for (const segment of overlappingSegments) energySegments.push(segment);
+    }
+  }
+  if (admissionByDeviceId.size === 0) return undefined;
+  return {
+    admissionPowerKw: [...admissionByDeviceId.values()].reduce((sum, powerKw) => sum + powerKw, 0),
+    energySegments,
+  };
+};
+
+// Residual physical room after gross background and every higher-priority
+// smart-task step reservation. Clamped at zero; null means the physical inputs
+// were unavailable and the planner falls back to its existing live guards.
 const resolveReservedHeadroomKw = (
   bucket: PolicyBucketSource,
   hardCapKw: number | null,
-  sharePerTask: number,
+  higherPriorityAdmissionPowerKw: number,
 ): number | null => {
   if (hardCapKw === null || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return null;
   const physicalBackgroundKWh = bucket.grossBackgroundKWh ?? bucket.backgroundKWh;
@@ -568,7 +634,7 @@ const resolveReservedHeadroomKw = (
   const durationHours = (bucket.endMs - bucket.startMs) / (60 * 60 * 1000);
   if (durationHours <= 0) return null;
   const uncontrolledKw = Math.max(0, physicalBackgroundKWh / durationHours);
-  return Math.max(0, hardCapKw - uncontrolledKw) * sharePerTask;
+  return Math.max(0, hardCapKw - uncontrolledKw - Math.max(0, higherPriorityAdmissionPowerKw));
 };
 
 const resolveMaxUsefulEnergyKWh = (

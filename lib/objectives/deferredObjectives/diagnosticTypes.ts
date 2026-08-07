@@ -136,6 +136,15 @@ type BaseDeferredObjectiveDiagnostic = {
   // identically; `expectedStepId` is null while it is set.
   liveStepsUnavailable?: true;
   horizonPlan?: DeferredObjectiveHorizonPlan;
+  // Resolved device priority used by the batch allocator. Persisted with fresh
+  // revisions so ordering survives a restart where this device is temporarily
+  // absent from the first SDK snapshot.
+  devicePriority?: number;
+  // Batch-allocation provenance. The recorder persists the signature on fresh
+  // revisions and may replace (rather than floor-merge) a lower-priority
+  // commitment when higher-priority claims changed its future schedule.
+  allocationContextSignature?: string;
+  replaceCommitment?: true;
   // True only while the current bucket is a planned bucket for a smart task whose "exempt
   // from budget" rescue permission is active. Admission consumes this flat flag to set the
   // device's existing `budgetExempt` for that bucket; idle/background cycles stay normal.

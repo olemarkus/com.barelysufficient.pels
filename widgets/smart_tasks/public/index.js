@@ -86,10 +86,9 @@
     scheduledLabel: "Scheduled",
     energyLabel: "Energy",
     costLabel: "Cost",
-    // The estimate is computed in isolation for this one candidate — surface the
-    // caveat honestly rather than implying a guarantee (the
-    // `DeferredObjectivePlanPreview` contract documents the same in-isolation
-    // direction-of-error). Kept short for the 320–480 px widget.
+    // The estimate coordinates against the current higher-priority roster, but
+    // future prices, measurements, and task edits can still move it. Keep the
+    // caveat short for the 320–480 px widget.
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
     createButton: "Create smart task",
     backButton: "Back",
@@ -140,13 +139,12 @@
     extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
     limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
-    // Shown in the preview when the in-isolation projection returns a real planner
+    // Shown in the preview when the coordinated projection returns a real planner
     // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
     // `at_risk` (might not). Surfaced as a prominent warning so a user never
     // commits an unreachable ready-by believing it is fine. The estimate
-    // UNDERSTATES this risk (it projects the candidate in isolation — see the
-    // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
-    // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
+    // can still change with future measurements and re-plans, so the copy is a
+    // plain warning, not a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
     // projection gap rather than a feasibility verdict.
     cannotMeet: "Cannot finish \u2014 not enough usable time before this ready-by time.",
     atRisk: "At risk \u2014 this may need most of the available window."
@@ -162,6 +160,7 @@
     missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
     price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
     progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
+    settings_unavailable: "Can\u2019t preview this yet \u2014 PELS couldn\u2019t read Smart tasks. Try again.",
     unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
   };
   var resolveBuildingPlanChipTone = () => "info";

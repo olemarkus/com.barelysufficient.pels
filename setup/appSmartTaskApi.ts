@@ -13,7 +13,9 @@ import {
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import {
   hasOpenDeferredObjective,
+  buildUnavailableDeferredObjectivePlanEstimate,
   migrateBlobToPerKeyIfNeeded,
+  readDeferredObjectiveRoster,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
   readObjectiveForDevice,
@@ -30,7 +32,11 @@ import {
   type CancelDeferredObjectiveOutcome,
 } from './appInit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
-import { mapObjectiveWriteRefusalReason, resolveSmartTaskHomeScope } from './appInit/smartTaskHomeScope';
+import {
+  isSmartTaskDeviceInMainHome,
+  mapObjectiveWriteRefusalReason,
+  resolveSmartTaskHomeScope,
+} from './appInit/smartTaskHomeScope';
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import { getLogger } from '../lib/logging/logger';
@@ -54,6 +60,11 @@ export type SmartTaskWriteResult = WidgetObjectiveWriteResult;
  * from `setup/**` is an auto-import trap.
  */
 type SmartTaskWriteRejectReason = Extract<WidgetObjectiveWriteResult, { ok: false }>['reason'];
+
+type StoredObjectiveState = {
+  entry: DeferredObjectiveSettingsEntry | undefined;
+  absenceTrustworthy: boolean;
+};
 
 /**
  * Rebuild-reason tag for a write that did not name its own lane: the widget
@@ -113,6 +124,22 @@ export class AppSmartTaskApi {
     return service.getSnapshot();
   }
 
+  private requirePlanService(): NonNullable<AppContext['planService']> {
+    const service = this.ctx.planService;
+    if (!service) {
+      throw new Error('PlanService must be initialized before previewing a smart task.');
+    }
+    return service;
+  }
+
+  private requireActivePlanRecorder(): NonNullable<AppContext['deferredObjectiveActivePlanRecorder']> {
+    const recorder = this.ctx.deferredObjectiveActivePlanRecorder;
+    if (!recorder) {
+      throw new Error('DeferredObjectiveActivePlanRecorder must be initialized before previewing a smart task.');
+    }
+    return recorder;
+  }
+
   // Only stepped-load devices (EV chargers + stepped thermal) can honour the
   // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
   // which the boost resolvers gate on `isSteppedLoad`; a binary on/off device has
@@ -143,12 +170,12 @@ export class AppSmartTaskApi {
   // runtime honours it — has no pairing to revoke, so it survives a goal-only
   // edit that names all three permissions.
   private establishedLimitGrantSurvives(
-    deviceId: string,
+    storedState: StoredObjectiveState,
     requestedExemptFromBudget: DeferredObjectiveRescueMode | undefined,
   ): boolean {
-    const stored = readObjectiveForDevice(this.ctx.homey.settings, deviceId);
+    const stored = storedState.entry;
     const standsOrUnknown = stored === undefined
-      ? !objectiveAbsenceIsTrustworthy(this.ctx.homey.settings, deviceId)
+      ? !storedState.absenceTrustworthy
       : stored.rescue?.limitLowerPriorityDevices !== undefined;
     if (!standsOrUnknown) return false;
     const revokesStoredPairing = stored?.rescue?.exemptFromBudget === 'always'
@@ -209,9 +236,9 @@ export class AppSmartTaskApi {
   // permanently revoke an effective permission: the destructive-reset-on-a-
   // transient-read pattern `notes/persisted-settings-state.md` exists to prevent.
   //
-  // Resolved HERE rather than threaded in from each caller so both lanes reach
-  // the same verdict by construction (preview ≡ persist) and no future caller
-  // can forget to pass it.
+  // Preview threads in the entry from its already-trusted whole-roster read;
+  // write lanes resolve the same classified state locally. That keeps a thrown
+  // preview read on the explicit settings-unavailable path.
   //
   // For an ESTABLISHED grant, the budget-exemption conjunct is enforced only as
   // a revocation TRANSITION: a stored `'always'` pairing revoked by this request
@@ -225,10 +252,12 @@ export class AppSmartTaskApi {
     deviceId: string,
     device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
     candidate: DeferredObjectivePlanPreviewCandidate,
+    storedState?: StoredObjectiveState,
   ): DeferredObjectivePlanPreviewCandidate {
     const rescue = candidate.rescue;
     if (!rescue?.limitLowerPriorityDevices) return candidate;
-    if (this.establishedLimitGrantSurvives(deviceId, rescue.exemptFromBudget)) return candidate;
+    const existing = storedState ?? this.readStoredObjectiveState(deviceId);
+    if (this.establishedLimitGrantSurvives(existing, rescue.exemptFromBudget)) return candidate;
     const eligible = device !== undefined
       && this.deviceSupportsLimitLowerPriority(device)
       && rescue.exemptFromBudget === 'always';
@@ -255,6 +284,19 @@ export class AppSmartTaskApi {
     };
   }
 
+  private readStoredObjectiveState(deviceId: string): StoredObjectiveState {
+    try {
+      const entry = readObjectiveForDevice(this.ctx.homey.settings, deviceId);
+      return {
+        entry,
+        absenceTrustworthy: entry !== undefined
+          || objectiveAbsenceIsTrustworthy(this.ctx.homey.settings, deviceId),
+      };
+    } catch {
+      return { entry: undefined, absenceTrustworthy: false };
+    }
+  }
+
   // Preview the plan the starvation rescue would actually persist. A rescue only
   // ever runs on a device WITHOUT an existing smart task (`getStarvedRescueDevices`
   // excludes task-having devices), so there is no merge: the fresh candidate IS
@@ -275,7 +317,7 @@ export class AppSmartTaskApi {
     };
   }
 
-  // Instant, in-isolation estimate of the plan the planner WOULD produce for a
+  // Instant, priority-coordinated estimate of the plan the planner WOULD produce for a
   // candidate deferred objective that is not persisted. Gathers the same plan-
   // cycle context the live recorder runs against (device snapshot, power
   // tracker, daily-budget snapshot, hard cap, prices) so the projection stays
@@ -285,18 +327,27 @@ export class AppSmartTaskApi {
   // device is projected through `toPlanDevice`, a pure read projection with no
   // live-state mutation.
   //
-  // NOT A GUARANTEE — and specifically OPTIMISTIC about headroom: the
-  // projection assumes the candidate has the price bucket's reserved headroom
-  // to ITSELF (it passes `activePlans: null` and lets `concurrentEligibleCount`
-  // default to 1). When other reserved sibling tasks are competing for the same
-  // buckets, the live plan may schedule fewer or later hours than this estimate
-  // shows, so the divergence is toward overstating availability / understating
-  // `cannot_meet` risk. A UI must present this as an estimate, never a
-  // commitment.
+  // NOT A GUARANTEE: the projection includes the current smart-task roster and
+  // settled higher-priority commitments, but it does not reserve or mutate the
+  // live plan. A UI must present it as an estimate.
   public previewDeferredObjectivePlan(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): DeferredObjectivePlanPreviewEstimate {
+    // Preserve every boot-window invariant before classifying a transient
+    // settings read. Missing services are wiring errors, not an empty plan.
+    const dailyBudgetSnapshot = this.requireDailyBudgetSnapshot();
+    const priceRateLabel = this.requirePriceRateLabel();
+    const planService = this.requirePlanService();
+    const activePlanRecorder = this.requireActivePlanRecorder();
+    const roster = readDeferredObjectiveRoster(this.ctx.homey.settings);
+    if (roster.status === 'unavailable') {
+      return buildUnavailableDeferredObjectivePlanEstimate({
+        reason: 'settings_unavailable',
+        candidate,
+        includeGrantedRescuePermissions: false,
+      });
+    }
     // The settings-UI device list spans managed devices AND unmanaged-but-
     // eligible picker devices (see `getSettingsUiDevices`). A preview is most
     // useful precisely for a candidate that is not managed yet, so fall back to
@@ -306,7 +357,15 @@ export class AppSmartTaskApi {
       ?? this.ctx.getUiPickerDevices().find((device) => device.id === deviceId);
     // Gate opt-in extra permissions the same way the create lane does, so the
     // preview reflects exactly what would persist (preview ≡ persist).
-    const gatedCandidate = this.gateCandidateExtraPermissions(deviceId, snapshotDevice, candidate);
+    const gatedCandidate = this.gateCandidateExtraPermissions(deviceId, snapshotDevice, candidate, {
+      entry: roster.settings.objectivesByDeviceId[deviceId],
+      absenceTrustworthy: true,
+    });
+    const planDevices = planService.getPlanDevices();
+    const candidateDevice = snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined;
+    const devices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
+      ? [...planDevices, candidateDevice]
+      : planDevices;
     return previewDeferredObjectivePlan({
       nowMs: this.ctx.getNow().getTime(),
       timeZone: this.ctx.getTimeZone(),
@@ -317,15 +376,19 @@ export class AppSmartTaskApi {
       // pure read projection (no live-state mutation), so the preview is
       // read-only by construction. Undefined when the device is in neither
       // snapshot → projection comes back `unavailable`.
-      device: snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined,
+      device: candidateDevice,
+      devices,
+      settings: roster.settings,
+      activePlans: activePlanRecorder.getActivePlansSnapshot(),
+      isDeviceInSubHome: (id) => !isSmartTaskDeviceInMainHome(this.ctx, id),
       powerTracker: this.ctx.powerTracker,
-      dailyBudgetSnapshot: this.requireDailyBudgetSnapshot(),
+      dailyBudgetSnapshot,
       buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),
       priceOptimizationEnabled: this.ctx.priceOptimizationEnabled,
       hardCapKw: this.ctx.capacitySettings.limitKw,
       // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
       // converts it to a money unit for the total `costEstimate`.
-      priceRateLabel: this.requirePriceRateLabel(),
+      priceRateLabel,
     });
   }
 

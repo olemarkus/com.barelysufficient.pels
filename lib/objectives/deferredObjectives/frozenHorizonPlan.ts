@@ -70,6 +70,7 @@ const buildFrozenPlannedBuckets = (
   current: hour.startsAtMs === currentHourStartMs,
   usefulEnergyCapacityKWh: hour.plannedKWh,
   plannedUsefulEnergyKWh: hour.plannedKWh,
+  plannedAdmissionPowerKw: hour.plannedAdmissionPowerKw ?? 0,
 }));
 
 // Price-deferral release, reusing the SAME frozen `cheaperHourAhead` the producer

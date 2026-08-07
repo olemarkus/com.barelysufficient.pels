@@ -4,19 +4,11 @@
 // `lib/`; the status union below mirrors `DeferredObjectiveHorizonStatus` in
 // `lib/objectives/deferredObjectives/types` and must stay in sync with it.
 //
-// IMPORTANT: every numeric field here is an *estimate*. It is computed in
-// isolation for a single candidate objective at one instant — it ignores
-// future re-plans and competition with other objectives, and is therefore not
-// a guarantee.
-//
-// The divergence has a KNOWN DIRECTION: the estimate assumes the candidate has
-// the price bucket's reserved headroom entirely to itself (the backend projects
-// it as a single task with no committed sibling plans). When other reserved
-// tasks are competing for the same buckets, the live plan may schedule
-// fewer/later hours than this shows — so the estimate tends to OVERSTATE
-// available headroom and UNDERSTATE `cannot_meet` risk. A UI must therefore
-// present this as an estimate, never as a commitment. The runtime doc comment
-// on `previewDeferredObjectivePlan` carries the same caveat for backend callers.
+// IMPORTANT: every numeric field here is an *estimate*. When the caller supplies
+// the live roster, higher-priority smart tasks are planned first and the
+// candidate sees their remaining capacity; the estimate still cannot predict
+// future measurements, re-plans, or device response, so it is not a guarantee.
+// Legacy callers that omit the roster retain the isolated projection mode.
 
 import type { DeferredObjectiveSettingsEntry } from './deferredObjectiveSettings.js';
 
@@ -59,6 +51,7 @@ export type DeferredObjectivePlanPreviewUnavailableReason =
   | 'missing_reading'
   | 'price_feature_disabled'
   | 'progress_stale'
+  | 'settings_unavailable'
   | 'unknown';
 
 // One scheduled charging hour in the projected plan. `startsAtMs` is an
@@ -130,13 +123,12 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // as a shape (no y-axis values), so a rate label has nothing to label. Add one
   // when/if the chart grows axis values.
   priceSeries?: DeferredObjectivePlanPreviewPricePoint[];
-  // At-cap honesty flag. The preview is computed IN ISOLATION and is OPTIMISTIC
-  // about headroom (see the file-header caveat): it assumes the candidate owns
-  // the reserved headroom and ignores the physical hard cap pressure the live
-  // house is under right now. `atCapNow` is true when the candidate's plan would
+  // At-cap honesty flag. Even a coordinated preview cannot promise that the
+  // measured house load will leave the planned capacity available right now.
+  // `atCapNow` is true when the candidate's plan would
   // run the device in the CURRENT clock hour BUT the measured whole-home draw is
-  // already at/above the configured hard cap — so the in-isolation "runs now"
-  // shown above OVERSTATES what can physically run until something frees up. It
+  // already at/above the configured hard cap — so the projected "runs now"
+  // can overstate what physically runs until something frees up. It
   // is a FACTUAL signal (measured draw vs the physical cap), NOT a prompt to
   // raise the cap (the cap is physical). Absent when there is no usable
   // measured-draw / hard-cap reading, or the current hour is not scheduled.

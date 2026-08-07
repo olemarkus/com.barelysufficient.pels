@@ -26,7 +26,11 @@ const plainOnOff: ObjectiveDeviceInput = { id: 'x', name: 'Plain', expectedPower
 
 describe('lib/objectives de-kind — capability-only EV takes the EV branch', () => {
   it('resolveObjectiveSteps emits a charge step for a capability-only EV', () => {
-    expect(resolveObjectiveSteps(capabilityOnlyEv())).toEqual([{ id: 'charge', usefulPowerKw: 7 }]);
+    expect(resolveObjectiveSteps(capabilityOnlyEv())).toEqual([{
+      id: 'charge',
+      usefulPowerKw: 7,
+      admissionPowerKw: 7,
+    }]);
     expect(resolveObjectiveSteps(plainOnOff)).toEqual([]);
   });
 

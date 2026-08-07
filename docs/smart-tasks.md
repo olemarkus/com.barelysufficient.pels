@@ -47,6 +47,8 @@ For each active task, PELS evaluates:
 
 The Smart task plan chooses hours before the ready-by time. If prices are available for the whole window, cheaper hours are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
 
+When several Smart tasks want the same hour, PELS plans the highest-priority device first. The next task uses only the power and hourly budget still available: it may share the hour when both devices fit, move to another hour, or warn that it cannot finish. Give the devices different priorities when their order matters.
+
 ![Smart task plan showing selected hours before a ready-by time](screenshots/deadline-plan/480.png)
 *Figure 1. A Smart task plan answers two questions on two charts: when the device will run and at what price, and whether it will reach its target in time. Tap or drag across the hours for a per-hour readout.*
 

@@ -16,6 +16,11 @@ import type {
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import {
+  buildPriorityReservations,
+  buildTaskAllocationContextSignature,
+} from '../../lib/objectives/deferredObjectives/priorityAllocation';
+import { buildReservationSegmentsFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 
 // Legacy persisted revisions predate the `energyNeededKWh`/`planStatus` fields;
 // the backfill path tolerates their absence. Cast each legacy fixture revision
@@ -162,6 +167,256 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
+  it('persists admission power and the allocation-context signature on a revision', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    const diagnostic = makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 4,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      devicePriority: 2,
+      allocationContextSignature: 'ctx-1',
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 1.8 })]),
+    });
+    recorder.observe([diagnostic], 0);
+    recorder.flushIfDirty();
+
+    expect(persist.saved()?.plansByDeviceId.dev?.latest).toMatchObject({
+      devicePriority: 2,
+      allocationContextSignature: 'ctx-1',
+      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.8 }],
+      reservationSegments: [{
+        startMs: 2 * HOUR_MS,
+        endMs: 3 * HOUR_MS,
+        plannedKWh: 1.5,
+        plannedAdmissionPowerKw: 1.8,
+      }],
+    });
+  });
+
+  it('round-trips exact fractional-grid reservations and reuses them after restart', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    const firstStartMs = 2 * HOUR_MS + 5 * 60 * 1000;
+    const splitMs = 2 * HOUR_MS + 30 * 60 * 1000;
+    const secondEndMs = 3 * HOUR_MS + 30 * 60 * 1000;
+    const diagnostic = makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 4,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(firstStartMs, 0.4, {
+          endMs: splitMs,
+          durationHours: 25 / 60,
+          plannedAdmissionPowerKw: 1,
+          sourceBucketId: 'fractional-source',
+        }),
+        makeBucket(splitMs, 0.5, {
+          endMs: secondEndMs,
+          plannedAdmissionPowerKw: 2,
+          sourceBucketId: 'fractional-source',
+        }),
+      ]),
+    });
+    recorder.observe([diagnostic], 0);
+    recorder.flushIfDirty();
+
+    const normalized = normalizeDeferredObjectiveActivePlans(persist.saved());
+    const latest = normalized.plansByDeviceId.dev?.latest;
+    expect(latest?.hours).toHaveLength(1);
+    expect(latest?.reservationSegments).toEqual([
+      {
+        startMs: firstStartMs,
+        endMs: splitMs,
+        plannedKWh: 0.4,
+        plannedAdmissionPowerKw: 1,
+        sourceBucketId: 'fractional-source',
+      },
+      {
+        startMs: splitMs,
+        endMs: secondEndMs,
+        plannedKWh: 0.5,
+        plannedAdmissionPowerKw: 2,
+        sourceBucketId: 'fractional-source',
+      },
+    ]);
+
+    const objective = {
+      enabled: true,
+      kind: 'temperature' as const,
+      enforcement: 'soft' as const,
+      targetTemperatureC: 65,
+      deadlineAtMs: 6 * HOUR_MS,
+    };
+    const freshReservations = buildPriorityReservations({
+      diagnostic,
+      objective,
+      device: undefined,
+      activePlans: null,
+      hardCapKw: 10,
+    });
+    expect(freshReservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
+    const reservations = buildPriorityReservations({
+      diagnostic: makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        status: 'unknown',
+        reasonCode: 'objective_missing_device',
+        horizonPlan: undefined,
+      }),
+      objective,
+      device: undefined,
+      activePlans: normalized,
+      hardCapKw: 10,
+    });
+    expect(reservations.flatMap((reservation) => reservation.energySegments)).toEqual([
+      { startMs: firstStartMs, endMs: splitMs, plannedKWh: 0.4 },
+      { startMs: splitMs, endMs: secondEndMs, plannedKWh: 0.5 },
+    ]);
+    expect(reservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
+  });
+
+  it('persists a higher live admission step within the same committed hour', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    const hourStartMs = 2 * HOUR_MS;
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 4,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(hourStartMs, 1, { plannedAdmissionPowerKw: 1 }),
+      ]),
+    })], 0);
+
+    const lateStartMs = hourStartMs + SETTLE_OFFSET_MS;
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 4,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(lateStartMs, 2 / 60, {
+          endMs: hourStartMs + HOUR_MS,
+          durationHours: 2 / 60,
+          plannedAdmissionPowerKw: 2,
+          sourceBucketId: `s-${hourStartMs}`,
+        }),
+      ]),
+    })], lateStartMs);
+    recorder.flushIfDirty();
+
+    const saved = persist.saved();
+    expect(saved?.plansByDeviceId.dev?.latest).toMatchObject({
+      revision: 2,
+      hours: [{ startsAtMs: hourStartMs, plannedKWh: 1, plannedAdmissionPowerKw: 2 }],
+      reservationSegments: [{
+        startMs: hourStartMs,
+        endMs: hourStartMs + HOUR_MS,
+        plannedKWh: 1,
+        plannedAdmissionPowerKw: 2,
+        sourceBucketId: `s-${hourStartMs}`,
+      }],
+    });
+
+    const objective = {
+      enabled: true,
+      kind: 'temperature' as const,
+      enforcement: 'soft' as const,
+      targetTemperatureC: 65,
+      deadlineAtMs: 6 * HOUR_MS,
+    };
+    const normalized = normalizeDeferredObjectiveActivePlans(saved);
+    expect(normalized.plansByDeviceId.dev).toBeDefined();
+    const restartReservations = buildPriorityReservations({
+      diagnostic: makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        status: 'unknown',
+        reasonCode: 'objective_missing_device',
+        horizonPlan: undefined,
+      }),
+      objective,
+      device: undefined,
+      activePlans: normalized,
+      hardCapKw: 10,
+    });
+    expect(restartReservations).toMatchObject([{ admissionPowerKw: 2 }]);
+  });
+
+  it('gives a legacy full-hour floor a full-hour reservation shape on a late settle', () => {
+    const hourStartMs = 2 * HOUR_MS;
+    const lateStartMs = hourStartMs + SETTLE_OFFSET_MS;
+    const diagnostic = makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(lateStartMs, 2 / 60, {
+          endMs: hourStartMs + HOUR_MS,
+          durationHours: 2 / 60,
+          plannedAdmissionPowerKw: 1,
+          sourceBucketId: `s-${hourStartMs}`,
+        }),
+      ]),
+    });
+
+    expect(buildReservationSegmentsFromHorizonPlan({
+      diag: diagnostic,
+      effectiveHours: [{
+        startsAtMs: hourStartMs,
+        plannedKWh: 1,
+        plannedAdmissionPowerKw: 1,
+      }],
+    })).toEqual([{
+      startMs: hourStartMs,
+      endMs: hourStartMs + HOUR_MS,
+      plannedKWh: 1,
+      plannedAdmissionPowerKw: 1,
+    }]);
+  });
+
+  it('immediately replaces a lower commitment when its allocation context changes', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      allocationContextSignature: 'ctx-before',
+      horizonPlan: makeHorizon(
+        [makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 1.5 })],
+        { pricesAvailableUpToMs: 6 * HOUR_MS },
+      ),
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      allocationContextSignature: 'ctx-after',
+      replaceCommitment: true,
+      horizonPlan: makeHorizon(
+        [makeBucket(3 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 1.5 })],
+        { pricesAvailableUpToMs: 6 * HOUR_MS },
+      ),
+    })], 1_000);
+    recorder.flushIfDirty();
+
+    expect(persist.saved()?.plansByDeviceId.dev?.latest).toMatchObject({
+      revision: 2,
+      reason: 'schedule_revised',
+      allocationContextSignature: 'ctx-after',
+      hours: [{ startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.5 }],
+    });
+    expect(persist.saved()?.plansByDeviceId.dev?.commitment?.hours).toEqual(
+      persist.saved()?.plansByDeviceId.dev?.latest?.hours,
+    );
+  });
+
   it('persists energyExpectedKWh only when it differs from the buffered energyNeededKWh', () => {
     // horizonPlan.energyNeededKWh = 4.5 (sum of buckets). A lower expected
     // figure means a buffer is booked → persist it for the UI range.
@@ -3542,6 +3797,67 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(normalized.plansByDeviceId.dev?.commitment).toEqual(commitment);
     });
 
+    it('round-trips priority-allocation power, priority, and context signatures', () => {
+      const hours = [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 2 }];
+      const reservationSegments = [{
+        startMs: 2 * HOUR_MS + 30 * 60 * 1000,
+        endMs: 3 * HOUR_MS + 30 * 60 * 1000,
+        plannedKWh: 1.5,
+        plannedAdmissionPowerKw: 2,
+      }];
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({
+              hours,
+              reservationSegments,
+              devicePriority: 2,
+              allocationContextSignature: 'priority-context',
+            }),
+            commitment: { committedAtMs: HOUR_MS, hours },
+          },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest).toMatchObject({
+        devicePriority: 2,
+        allocationContextSignature: 'priority-context',
+        hours,
+        reservationSegments,
+      });
+      expect(normalized.plansByDeviceId.dev?.commitment?.hours).toEqual(hours);
+    });
+
+    it.each([
+      ['non-positive admission power', { hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 0 }] }],
+      ['a non-finite device priority', { devicePriority: Number.POSITIVE_INFINITY }],
+      ['an empty allocation context', { allocationContextSignature: '' }],
+      ['an inverted reservation segment', {
+        reservationSegments: [{
+          startMs: 3 * HOUR_MS,
+          endMs: 2 * HOUR_MS,
+          plannedKWh: 1,
+          plannedAdmissionPowerKw: 1,
+        }],
+      }],
+      ['an empty reservation source bucket id', {
+        reservationSegments: [{
+          startMs: 2 * HOUR_MS,
+          endMs: 3 * HOUR_MS,
+          plannedKWh: 1,
+          plannedAdmissionPowerKw: 1,
+          sourceBucketId: '',
+        }],
+      }],
+    ])('drops a persisted plan with %s', (_label, revisionOverrides) => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: { dev: basePlan(revisionOverrides) },
+      };
+      expect(normalizeDeferredObjectiveActivePlans(persisted).plansByDeviceId.dev).toBeUndefined();
+    });
+
     it('drops a committed plan without a latest revision', () => {
       // Runtime consumers read committed active plans through a coherent accessor:
       // `commitment` is the execution envelope, while `latest` carries the
@@ -4160,6 +4476,48 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         3 * HOUR_MS + SETTLE_OFFSET_MS,
       );
       expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(3);
+    });
+
+    it('does not bypass the settle gate as a source bucket trims forward', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      const signatureAt = (startMs: number): string => buildTaskAllocationContextSignature({
+        rosterSignature: 'stable-priority-prefix',
+        higherPriorityReservations: [{
+          deviceId: 'higher',
+          topologyKey: 'source-hour-2',
+          startsAtMs: 2 * HOUR_MS,
+          admissionPowerKw: 2,
+          plannedKWh: 1,
+          exemptFromBudget: false,
+          energySegments: [{ startMs, endMs: 3 * HOUR_MS, plannedKWh: 1 }],
+        }],
+      });
+      const firstSignature = signatureAt(2 * HOUR_MS + SETTLE_OFFSET_MS);
+      const trimmedSignature = signatureAt(2 * HOUR_MS + SETTLE_OFFSET_MS + 60_000);
+      expect(trimmedSignature).toBe(firstSignature);
+      const coordinated = (hours: number, allocationContextSignature: string): DeferredObjectiveDiagnostic => makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        allocationContextSignature,
+        replaceCommitment: true,
+        horizonPlan: makeHorizon(
+          Array.from({ length: hours }, (_, index) => makeBucket((2 + index) * HOUR_MS, 1.5)),
+        ),
+      });
+
+      recorder.observe([coordinated(3, firstSignature)], HOUR_MS);
+      recorder.observe([coordinated(4, firstSignature)], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+
+      // Higher-task delivery can move the live residual again at :59, but the
+      // structural priority prefix is unchanged and the :58 write already
+      // consumed this hour's settle slot.
+      recorder.observe(
+        [coordinated(5, trimmedSignature)],
+        2 * HOUR_MS + SETTLE_OFFSET_MS + 60_000,
+      );
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
     });
 
     it('revises a user objective edit immediately, even mid-hour (bypasses the gate)', () => {

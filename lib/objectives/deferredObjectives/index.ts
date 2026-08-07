@@ -41,9 +41,11 @@ export {
   type ObjectiveWriteOutcome,
 } from './objectiveWrite';
 export {
+  createTrustedDeferredObjectiveSettingsReader,
   hasOpenDeferredObjective,
   migrateBlobToPerKeyIfNeeded,
   objectiveKeyListIsTrustworthy,
+  readDeferredObjectiveRoster,
   readAllObjectives,
   readObjectiveForDevice,
   writeObjectiveForDevice,
@@ -59,7 +61,10 @@ export {
   type SmartTaskWriteOrigin,
 } from './smartTaskCandidateRequest';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
-export { previewDeferredObjectivePlan } from './planPreview';
+export {
+  buildUnavailableDeferredObjectivePlanEstimate,
+  previewDeferredObjectivePlan,
+} from './planPreview';
 export type {
   DeferredObjectivePlanPreviewCandidate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
@@ -67,6 +72,7 @@ export {
   ConcurrentEligibleTaskTracker,
   ELIGIBILITY_ABANDON_GRACE_MS,
 } from './concurrentEligibleTasks';
+export { PriorityAllocationTracker } from './priorityAllocation';
 export {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,

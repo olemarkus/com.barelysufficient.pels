@@ -1,8 +1,9 @@
 import type {
   DeferredObjectiveActivePlanHourV1,
+  DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import { isMeaningfullyCheaper } from './bucketAllocation';
 import { roundKWh } from './activePlanMath';
 
@@ -22,22 +23,35 @@ export const buildHoursFromHorizonPlan = (
   // mid-hour. The Settings UI keys planned usage by hour-aligned price-horizon
   // start timestamps, so floor each bucket to its containing hour and sum
   // segments that collapse into the same hour.
-  const byHour = new Map<number, { plannedKWh: number; earliestStartMs: number }>();
+  const byHour = new Map<number, {
+    plannedKWh: number;
+    plannedAdmissionPowerKw: number;
+    earliestStartMs: number;
+  }>();
   for (const bucket of horizonPlan.plannedBuckets) {
     if (bucket.plannedUsefulEnergyKWh <= 0) continue;
     const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
     const existing = byHour.get(hourStart);
     if (existing) {
       existing.plannedKWh += bucket.plannedUsefulEnergyKWh;
+      existing.plannedAdmissionPowerKw = Math.max(
+        existing.plannedAdmissionPowerKw,
+        bucket.plannedAdmissionPowerKw ?? 0,
+      );
       existing.earliestStartMs = Math.min(existing.earliestStartMs, bucket.startMs);
     } else {
-      byHour.set(hourStart, { plannedKWh: bucket.plannedUsefulEnergyKWh, earliestStartMs: bucket.startMs });
+      byHour.set(hourStart, {
+        plannedKWh: bucket.plannedUsefulEnergyKWh,
+        plannedAdmissionPowerKw: bucket.plannedAdmissionPowerKw ?? 0,
+        earliestStartMs: bucket.startMs,
+      });
     }
   }
   const hours = [...byHour.entries()]
-    .map(([startsAtMs, { plannedKWh, earliestStartMs }]) => ({
+    .map(([startsAtMs, { plannedKWh, plannedAdmissionPowerKw, earliestStartMs }]) => ({
       startsAtMs,
       plannedKWh: roundKWh(plannedKWh),
+      ...(plannedAdmissionPowerKw > 0 ? { plannedAdmissionPowerKw } : {}),
       // When the earliest bucket folded into this hour starts after the hour
       // boundary, the planner trimmed it to `nowMs` (the current hour on a
       // mid-hour cycle), so `plannedKWh` is already only the post-trim
@@ -52,6 +66,133 @@ export const buildHoursFromHorizonPlan = (
   // win the Math.max, which raises the cumulative for downstream hours). The
   // recorder calls `stampUnitMilestones` on the merged `effectiveHours` instead.
   return hours;
+};
+
+const segmentHourStart = (segment: Pick<DeferredObjectiveActivePlanReservationSegmentV1, 'startMs'>): number => (
+  Math.floor(segment.startMs / ONE_HOUR_MS) * ONE_HOUR_MS
+);
+
+export const buildLiveReservationSegments = (
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanReservationSegmentV1[] => (
+  (diag.horizonPlan?.plannedBuckets ?? []).flatMap((bucket) => {
+    if (bucket.plannedUsefulEnergyKWh <= PLANNED_EPSILON_KWH) return [];
+    const durationHours = (bucket.endMs - bucket.startMs) / ONE_HOUR_MS;
+    if (durationHours <= 0) return [];
+    const admissionPowerKw = bucket.plannedAdmissionPowerKw ?? (
+      bucket.plannedUsefulEnergyKWh / durationHours
+    );
+    if (!Number.isFinite(admissionPowerKw) || admissionPowerKw <= 0) return [];
+    return [{
+      startMs: bucket.startMs,
+      endMs: bucket.endMs,
+      plannedKWh: bucket.plannedUsefulEnergyKWh,
+      plannedAdmissionPowerKw: admissionPowerKw,
+      sourceBucketId: bucket.sourceBucketId,
+    }];
+  })
+);
+
+const scaleSegmentsToHour = (params: {
+  segments: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
+  hour: DeferredObjectiveActivePlanHourV1;
+}): DeferredObjectiveActivePlanReservationSegmentV1[] => {
+  const totalKWh = params.segments.reduce((sum, segment) => sum + segment.plannedKWh, 0);
+  if (totalKWh <= 0 || params.hour.plannedKWh <= PLANNED_EPSILON_KWH) return [];
+  return params.segments.map((segment) => ({
+    ...segment,
+    plannedKWh: segment.plannedKWh * params.hour.plannedKWh / totalKWh,
+  }));
+};
+
+const totalSegmentKWh = (
+  segments: readonly DeferredObjectiveActivePlanReservationSegmentV1[],
+): number => segments.reduce((sum, segment) => sum + segment.plannedKWh, 0);
+
+const segmentsOverlap = (
+  left: DeferredObjectiveActivePlanReservationSegmentV1,
+  right: DeferredObjectiveActivePlanReservationSegmentV1,
+): boolean => left.startMs < right.endMs && left.endMs > right.startMs;
+
+const overlayLiveAdmissionPower = (params: {
+  previous: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
+  live: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
+}): DeferredObjectiveActivePlanReservationSegmentV1[] => params.previous.map((previous) => {
+  let matchingLiveAdmissionPowerKw = 0;
+  for (const live of params.live) {
+    const sameSource = previous.sourceBucketId === undefined
+      || live.sourceBucketId === undefined
+      || previous.sourceBucketId === live.sourceBucketId;
+    if (!sameSource || !segmentsOverlap(previous, live)) continue;
+    matchingLiveAdmissionPowerKw = Math.max(
+      matchingLiveAdmissionPowerKw,
+      live.plannedAdmissionPowerKw,
+    );
+  }
+  return matchingLiveAdmissionPowerKw > previous.plannedAdmissionPowerKw
+    ? { ...previous, plannedAdmissionPowerKw: matchingLiveAdmissionPowerKw }
+    : previous;
+});
+
+const selectExactSegmentsForHour = (params: {
+  hour: DeferredObjectiveActivePlanHourV1;
+  live: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
+  previous: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
+}): readonly DeferredObjectiveActivePlanReservationSegmentV1[] => {
+  if (params.live.length === 0) return params.previous;
+  if (params.previous.length === 0) {
+    // A legacy hour may carry a full-hour commitment floor but have no exact
+    // segment shape yet. A late-hour live plan covers only the remaining
+    // minutes; scaling the full floor into that short interval would fabricate
+    // an extreme physical claim. Fall through to the synthetic full-hour shape
+    // when the live energy cannot represent the committed floor.
+    return params.hour.plannedKWh > totalSegmentKWh(params.live) + PLANNED_EPSILON_KWH
+      ? []
+      : params.live;
+  }
+  const liveDistance = Math.abs(totalSegmentKWh(params.live) - params.hour.plannedKWh);
+  const previousDistance = Math.abs(totalSegmentKWh(params.previous) - params.hour.plannedKWh);
+  // A tie means the commitment floor did not need new topology. Retaining the
+  // prior exact shape avoids turning the moving current-hour trim into a new
+  // persisted physical claim on every settle. Fresh admission power is still
+  // authoritative for the unelapsed overlap: a step increase must immediately
+  // reserve the larger physical draw for lower-priority tasks and restarts.
+  return previousDistance <= liveDistance
+    ? overlayLiveAdmissionPower({ previous: params.previous, live: params.live })
+    : params.live;
+};
+
+// Persist the allocator's exact source-bucket geometry alongside the legacy
+// hour-aligned schedule. `effectiveHours` may carry a commitment floor, so its
+// authoritative per-hour kWh is projected onto whichever exact topology won
+// that floor; every segment keeps its own physical admission power. If the live
+// plan dropped a floored hour entirely, retain that hour's prior exact topology;
+// only legacy revisions with no exact shape fall back to a clipped synthetic
+// hour segment whose hourly admission is necessarily conservative.
+export const buildReservationSegmentsFromHorizonPlan = (params: {
+  diag: DeferredObjectiveDiagnostic;
+  effectiveHours: readonly DeferredObjectiveActivePlanHourV1[];
+  previousSegments?: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
+}): DeferredObjectiveActivePlanReservationSegmentV1[] => {
+  const liveSegments = buildLiveReservationSegments(params.diag);
+  const previousSegments = params.previousSegments ?? [];
+  return params.effectiveHours.flatMap((hour) => {
+    if (hour.plannedKWh <= PLANNED_EPSILON_KWH) return [];
+    const liveForHour = liveSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
+    const previousForHour = previousSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
+    const exactSegments = selectExactSegmentsForHour({
+      hour,
+      live: liveForHour,
+      previous: previousForHour,
+    });
+    if (exactSegments.length > 0) return scaleSegmentsToHour({ segments: exactSegments, hour });
+    const startMs = hour.coversFromMs ?? hour.startsAtMs;
+    const endMs = Math.min(hour.startsAtMs + ONE_HOUR_MS, params.diag.deadlineAtMs ?? Number.POSITIVE_INFINITY);
+    if (endMs <= startMs) return [];
+    const durationHours = (endMs - startMs) / ONE_HOUR_MS;
+    const admissionPowerKw = hour.plannedAdmissionPowerKw ?? hour.plannedKWh / durationHours;
+    return [{ startMs, endMs, plannedKWh: hour.plannedKWh, plannedAdmissionPowerKw: admissionPowerKw }];
+  });
 };
 
 // Resolve the anchor (measured value at this revision) and the kWh-per-unit rate
@@ -234,7 +375,73 @@ export const sameHourSchedule = (
   return true;
 };
 
-// Merge live horizon hours into the existing commitment.
+// Coordination-sensitive equality. Lower-priority commitments may need a
+// rewrite even when their hour set is unchanged: a higher task can alter the
+// kWh left in an hour or the physical step reservation lower tasks expose to
+// tasks behind them.
+export const samePriorityAllocation = (
+  a: readonly DeferredObjectiveActivePlanHourV1[],
+  b: readonly DeferredObjectiveActivePlanHourV1[],
+): boolean => {
+  if (!sameHourSchedule(a, b)) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]!.plannedKWh !== b[i]!.plannedKWh) return false;
+    if ((a[i]!.plannedAdmissionPowerKw ?? 0) !== (b[i]!.plannedAdmissionPowerKw ?? 0)) return false;
+  }
+  return true;
+};
+
+const sameAdmissionAllocation = (
+  a: readonly DeferredObjectiveActivePlanHourV1[],
+  b: readonly DeferredObjectiveActivePlanHourV1[],
+): boolean => {
+  if (!sameHourSchedule(a, b)) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if ((a[i]!.plannedAdmissionPowerKw ?? 0) !== (b[i]!.plannedAdmissionPowerKw ?? 0)) return false;
+  }
+  return true;
+};
+
+export const resolveCoordinatedScheduleUpdate = (params: {
+  diag: DeferredObjectiveDiagnostic;
+  objectiveChanged: boolean;
+  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
+  latest: DeferredObjectiveActivePlanRevisionV1;
+  liveHours: DeferredObjectiveActivePlanHourV1[];
+  nowMs: number;
+  metadataDrifted: boolean;
+}): {
+  replaceCommitment: boolean;
+  effectiveHours: DeferredObjectiveActivePlanHourV1[];
+  scheduleChanged: boolean;
+  metadataDriftedWithinSchedule: boolean;
+} => {
+  const replaceCommitment = [
+    params.objectiveChanged,
+    params.diag.replaceCommitment === true,
+  ].includes(true);
+  const mergedHours = replaceCommitment
+    ? params.liveHours
+    : mergeHoursPreservingCommitment(params.committedHours, params.liveHours, params.nowMs);
+  const effectiveHours = stampCheaperHourAhead(
+    stampUnitMilestones(mergedHours, params.diag, params.nowMs),
+    params.diag,
+  );
+  const scheduleChanged = !sameHourSchedule(params.latest.hours, effectiveHours);
+  const priorityAllocationChanged = !samePriorityAllocation(params.latest.hours, effectiveHours);
+  const coordinatedAllocationChanged = !sameAdmissionAllocation(params.latest.hours, effectiveHours)
+    || (params.diag.replaceCommitment === true && priorityAllocationChanged);
+  const metadataDriftedWithinSchedule = !scheduleChanged && [
+    params.latest.allocationContextSignature !== params.diag.allocationContextSignature,
+    coordinatedAllocationChanged,
+    params.metadataDrifted,
+  ].includes(true);
+  return { replaceCommitment, effectiveHours, scheduleChanged, metadataDriftedWithinSchedule };
+};
+
+// Merge live horizon hours into the existing commitment. The recorder bypasses
+// this helper for an explicit priority-coordination replacement; all ordinary
+// replan paths retain the no-shrink rules below.
 //
 // The committed schedule is the task's contract (which hour-aligned hours it
 // will run). Each plan cycle the live horizon plan is merged in.
@@ -327,7 +534,12 @@ export const mergeHoursPreservingCommitment = (
     // progress), the committed full-hour coverage is the correct one to keep so
     // the chart still prorates the elapsed part. When the live hour strictly
     // wins (fresh/grown), it keeps its own coverage.
-    return c.plannedKWh >= liveHour.plannedKWh ? { ...c } : liveHour;
+    const winner = c.plannedKWh >= liveHour.plannedKWh ? { ...c } : liveHour;
+    const plannedAdmissionPowerKw = Math.max(
+      c.plannedAdmissionPowerKw ?? 0,
+      liveHour.plannedAdmissionPowerKw ?? 0,
+    );
+    return plannedAdmissionPowerKw > 0 ? { ...winner, plannedAdmissionPowerKw } : winner;
   });
   // Elapsed hours (`startsAtMs < currentHourStart`) are re-added as floors. In
   // production the planner trims the live plan's current bucket start to

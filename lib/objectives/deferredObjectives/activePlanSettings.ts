@@ -1,6 +1,7 @@
 import type {
   DeferredObjectiveActivePlanCommitmentV1,
   DeferredObjectiveActivePlanHourV1,
+  DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanStatusV1,
@@ -91,14 +92,35 @@ const isReason = (value: unknown): value is DeferredObjectiveActivePlanRevisionR
   && VALID_REASONS.has(value as DeferredObjectiveActivePlanRevisionReason)
 );
 
+const isOptionalFinitePositive = (value: unknown): boolean => (
+  value === undefined || (isFiniteNumber(value) && value > 0)
+);
+
 const isPlanHour = (value: unknown): value is DeferredObjectiveActivePlanHourV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  return isFiniteNumber(v.startsAtMs) && isFiniteNumber(v.plannedKWh);
+  return isFiniteNumber(v.startsAtMs)
+    && isFiniteNumber(v.plannedKWh)
+    && isOptionalFinitePositive(v.plannedAdmissionPowerKw);
 };
 
-const isOptionalFinitePositive = (value: unknown): boolean => (
-  value === undefined || (isFiniteNumber(value) && value > 0)
+const isReservationSegment = (
+  value: unknown,
+): value is DeferredObjectiveActivePlanReservationSegmentV1 => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.startMs)
+    && isFiniteNumber(v.endMs)
+    && v.endMs > v.startMs
+    && isFiniteNumber(v.plannedKWh)
+    && v.plannedKWh > 0
+    && isFiniteNumber(v.plannedAdmissionPowerKw)
+    && v.plannedAdmissionPowerKw > 0
+    && isOptionalNonEmptyString(v.sourceBucketId);
+};
+
+const isOptionalReservationSegments = (value: unknown): boolean => (
+  value === undefined || (Array.isArray(value) && value.every(isReservationSegment))
 );
 
 const isOptionalNonEmptyString = (value: unknown): boolean => (
@@ -192,6 +214,9 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isReason(v.reason)
     && Array.isArray(v.hours)
     && v.hours.every(isPlanHour)
+    && isOptionalReservationSegments(v.reservationSegments)
+    && (v.devicePriority === undefined || isFiniteNumber(v.devicePriority))
+    && isOptionalNonEmptyString(v.allocationContextSignature)
     && hasValidRevisionEnergyFields(v)
     && hasValidRevisionDurationFields(v);
 };

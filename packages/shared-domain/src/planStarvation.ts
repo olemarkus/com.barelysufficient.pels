@@ -99,8 +99,8 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // truer than "Ready by".
   byLabel: 'By',
   energyLabel: 'Energy',
-  // Same in-isolation caveat the create widget uses — the estimate ignores
-  // re-plans and competing tasks.
+  // Same estimate caveat the create widget uses — the projection includes the
+  // current priority roster, but future prices and task changes can re-plan it.
   estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
   // Heading for the read-only "what this grants" summary on the confirm sheet.
   // Must stay character-identical to `SMART_TASK_EXTRA_PERMISSIONS_TITLE` in
@@ -113,7 +113,7 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // three permissions (`buildRescueCandidate`), and the per-device gate decides
   // which of them survive to be listed here.
   extraPermissionsTitle: 'Extra permissions',
-  // Factual at-cap honesty signal. The in-isolation preview can show the device
+  // Factual at-cap honesty signal. The coordinated preview can show the device
   // running now, but if the house is already pressed against the physical hard
   // cap there is no room until something frees up. Names the real measured
   // fact (at the hard cap), NOT a prompt to raise it — the hard cap is not a

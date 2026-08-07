@@ -3,6 +3,7 @@ import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
+  type DeferredObjectivePriorityReservation,
   type PriceHorizonEntry,
 } from './policyHorizon';
 import { resolveCommittedHours } from './resolveCommittedHours';
@@ -68,17 +69,7 @@ export const resolveHorizonPlanWithRescue = (params: {
   // displaced, which is only true at priority 1. Non-top-priority tasks stay on
   // the min-step floor even with both rescue permissions set.
   devicePriority?: number;
-  // Count of priority-1 fully-reserved smart tasks competing for the same
-  // reserved headroom this cycle (this task included). The exempt rebuild
-  // threads it onto the policy-horizon producer so per-bucket
-  // `reservedHeadroomKw` is divided equally across sibling tasks rather than
-  // each producer publishing the full forecast independently. Defaults to `1`
-  // so single-task callers and partial-rescue callers keep legacy behaviour.
-  //
-  // A function form lets the count drop on late-horizon buckets where one
-  // of the eligible tasks has already passed its deadline — see
-  // `concurrentEligibleCount` in `buildDeferredObjectivePolicyHorizon`.
-  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
+  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
 }): RescueHorizonResult => {
   const {
     nowMs,
@@ -145,7 +136,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     dailyBudgetSnapshot,
     exemptFromBudget: true,
     hardCapKw: params.hardCapKw,
-    concurrentEligibleCount: params.concurrentEligibleCount,
+    higherPriorityReservations: params.higherPriorityReservations,
   });
   if (exemptHorizon.reasonCode) {
     // Exempt rebuild failed — fall back to the budget-capped baseline and its real count.

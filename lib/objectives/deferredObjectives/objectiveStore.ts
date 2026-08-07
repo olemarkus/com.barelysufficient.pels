@@ -35,6 +35,12 @@ export type ObjectiveSettingsStore = {
   getKeys(): string[];
 };
 
+// Mirror the one-hour abandon window used by the smart-task active-plan,
+// history, and priority caches. A transient settings gap keeps the last trusted
+// roster, but a persistent outage must eventually stop stale tasks from driving
+// lifecycle and control decisions.
+const TRUSTED_ROSTER_ABANDON_GRACE_MS = 60 * 60 * 1000;
+
 // Singular + dot, deliberately DISTINCT from the plural blob key
 // `deferred_objectives` so a prefix scan never collides with the frozen blob
 // (the blob key has no trailing dot, so it is not matched by the prefix).
@@ -125,6 +131,56 @@ export const readAllObjectives = (store: ObjectiveSettingsStore): DeferredObject
     result.objectivesByDeviceId[deviceId] = entry;
   }
   return result;
+};
+
+export type DeferredObjectiveRosterRead = {
+  status: 'resolved';
+  settings: DeferredObjectiveSettingsV1;
+} | {
+  status: 'unavailable';
+};
+
+/**
+ * Read the whole objective roster for a decision that must not mistake an SDK
+ * read gap for an empty home. The key list is sampled exactly once; an empty or
+ * thrown list, or an unreadable listed objective value, becomes an explicit
+ * unavailable result instead of an optimistic empty roster.
+ */
+export const readDeferredObjectiveRoster = (
+  store: ObjectiveSettingsStore,
+): DeferredObjectiveRosterRead => {
+  let rawKeys: unknown;
+  try {
+    // Homey's SDK typing promises `string[]`, but this is an external boundary:
+    // runtime failures have returned nullish and malformed values as well as
+    // throwing. Classify the actual value before any array operation.
+    rawKeys = store.getKeys();
+  } catch {
+    return { status: 'unavailable' };
+  }
+  if (!Array.isArray(rawKeys) || !rawKeys.every((key) => typeof key === 'string')) {
+    return { status: 'unavailable' };
+  }
+  const keys = rawKeys;
+  if (keys.length === 0) return { status: 'unavailable' };
+  // The plural blob is the unconsumed source of the per-key migration. A
+  // read-only caller must not migrate it, but it also must not report a partial
+  // per-key roster that silently omits tasks still waiting in that blob.
+  if (keys.includes(DEFERRED_OBJECTIVES_SETTINGS)) return { status: 'unavailable' };
+  const settings = createEmptyDeferredObjectiveSettings();
+  try {
+    for (const key of keys) {
+      if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) continue;
+      const deviceId = deviceIdFromKey(key).trim();
+      if (!deviceId) return { status: 'unavailable' };
+      const entry = normalizeDeferredObjectiveSettingsEntry(store.get(key));
+      if (!entry) return { status: 'unavailable' };
+      settings.objectivesByDeviceId[deviceId] = entry;
+    }
+  } catch {
+    return { status: 'unavailable' };
+  }
+  return { status: 'resolved', settings };
 };
 
 /** Persist one device's objective under its own key. */
@@ -244,4 +300,41 @@ export const migrateBlobToPerKeyIfNeeded = (store: ObjectiveSettingsStore): void
   }
   store.unset(DEFERRED_OBJECTIVES_SETTINGS);
   store.set(DEFERRED_OBJECTIVES_PERKEY_MIGRATED, true);
+};
+
+/**
+ * Runtime roster reader for control decisions. A healthy read replaces the
+ * cached semantic settings snapshot; a thrown/malformed/partial SDK read keeps
+ * the last trusted roster for one abandon-grace window. A persistent outage
+ * then resolves to explicit unavailability (`undefined`) until a healthy read
+ * recovers. Before the first trusted snapshot, unavailability is explicit
+ * immediately so callers skip the cycle instead of treating the home as having
+ * no tasks.
+ */
+export const createTrustedDeferredObjectiveSettingsReader = (
+  store: ObjectiveSettingsStore,
+): (() => DeferredObjectiveSettingsV1 | undefined) => {
+  let lastTrusted: DeferredObjectiveSettingsV1 | undefined;
+  let lastTrustedAtMs: number | undefined;
+  const readUnavailable = (): DeferredObjectiveSettingsV1 | undefined => {
+    if (lastTrusted === undefined || lastTrustedAtMs === undefined) return undefined;
+    const nowMs = Date.now();
+    if (!Number.isFinite(nowMs)) return undefined;
+    return nowMs - lastTrustedAtMs < TRUSTED_ROSTER_ABANDON_GRACE_MS
+      ? lastTrusted
+      : undefined;
+  };
+  return () => {
+    try {
+      migrateBlobToPerKeyIfNeeded(store);
+    } catch {
+      return readUnavailable();
+    }
+    const roster = readDeferredObjectiveRoster(store);
+    if (roster.status === 'unavailable') return readUnavailable();
+    const nowMs = Date.now();
+    lastTrustedAtMs = Number.isFinite(nowMs) ? nowMs : undefined;
+    lastTrusted = roster.settings;
+    return lastTrusted;
+  };
 };

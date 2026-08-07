@@ -37,6 +37,7 @@ const FLOOR_SHORTFALL_CAUSE_BY_REASON: Record<string, DeferredObjectiveActivePla
   limited_by_daily_budget: 'budget',
   feasible_above_floor: 'step_power',
   estimate_uncertain: 'estimate',
+  limited_by_higher_priority_task: 'time_capacity',
   target_cannot_be_met: 'time_capacity',
 };
 

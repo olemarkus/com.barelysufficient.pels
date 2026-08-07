@@ -14,7 +14,7 @@ import { isRuntimePlannedDevice } from '../appDeviceSupport';
  * — the decoration controller's diagnostics honesty (`createPlanEngine`).
  *
  * Smart tasks are planned against the MAIN home's meter budget (hard cap,
- * daily-budget overlay, concurrent-eligible sharing), so a device in a
+ * daily-budget overlay, priority-ordered reservations), so a device in a
  * separate-meter sub-home is out of scope. This predicate deliberately answers
  * durable MEMBERSHIP only: provisional/global authority fences must not look
  * like relocation, because lifecycle consumers negate this result to diagnose

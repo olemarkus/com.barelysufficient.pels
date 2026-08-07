@@ -29,11 +29,10 @@ export type CreateSmartTaskDevice = {
   goalStep: number;
   defaultGoal: number;
   currentValue: number | null;
-  // Whether the "May limit lower-priority devices" toggle would ACTUALLY change
-  // this device's plan — true only for a stepped-load device at top priority
-  // (priority 1), the only context the planner's reserved-headroom promotion
-  // (`fullyReserved`) honours. Gated on effect so the compose screen never
-  // offers a permission that would be a no-op for this device. The budget-exempt
+  // Whether the "May limit lower-priority devices" toggle can affect this
+  // device — true for stepped loads, whose higher step can displace strictly
+  // lower-priority demand. Gated on effect so the compose screen never offers
+  // a permission that would be a no-op for a binary device. The budget-exempt
   // toggle has no such gate (any device can exceed the soft daily budget).
   supportsLimitLowerPriority: boolean;
 };
@@ -62,8 +61,8 @@ export type CreateSmartTaskDevicesPayload = {
 // Re-exported under the widget-local names so widget code keeps one import home.
 export type CreateSmartTaskCandidateRequest = SmartTaskCandidateRequest;
 
-// Preview response: the in-isolation plan estimate plus the resolved deadline
-// and a pre-formatted local deadline label so the browser doesn't re-derive it.
+// Preview response: the priority-coordinated plan estimate plus the resolved
+// deadline and a pre-formatted local label so the browser doesn't re-derive it.
 export type CreateSmartTaskPreviewResponse = {
   ok: true;
   deadlineAtMs: number;
