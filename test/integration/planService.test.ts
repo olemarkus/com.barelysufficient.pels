@@ -3021,7 +3021,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
           currentTarget: 20,
           plannedState: 'keep',
