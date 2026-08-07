@@ -18,7 +18,6 @@ const starvation = (
 ): SettingsUiPlanDeviceStarvation => ({
   isStarved: true,
   accumulatedMs,
-  startedAtMs: Date.UTC(2026, 7, 2, 12, 0, 0),
 });
 
 describe('resolveHeldCardReasonLine', () => {
@@ -32,7 +31,7 @@ describe('resolveHeldCardReasonLine', () => {
     // hold computes it, and the `dailyBudget` re-attribution carries it across.
     it('states the shortfall for a re-attributed budget hold', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8 },
+        reason: { code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.8 },
       })).toBe('Waiting to resume — 0.8 kW more needed');
     });
 
@@ -47,7 +46,6 @@ describe('resolveHeldCardReasonLine', () => {
           penaltyExtraKw: null,
           swapReserveKw: null,
           effectiveAvailableKw: null,
-          swapTargetName: null,
         },
       })).toBe('Waiting to resume — 0.9 kW more needed');
     });
@@ -71,7 +69,7 @@ describe('resolveHeldCardReasonLine', () => {
     // whose line is time-based instead of a kW figure.
     it('renders time-based copy for an exhausted hourly budget, never a kW', () => {
       const line = resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+        reason: { code: PLAN_REASON_CODES.hourlyBudget },
       });
       expect(line).toBe("Waiting to resume — this hour's budget is spent");
       expect(line).not.toMatch(/kW more needed/);
@@ -81,7 +79,7 @@ describe('resolveHeldCardReasonLine', () => {
     // step-up is not waiting to "resume".
     it('says "increase" for the hourly line on a step-up denial', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+        reason: { code: PLAN_REASON_CODES.hourlyBudget },
         verb: 'increase',
       })).toBe("Waiting to increase — this hour's budget is spent");
     });
@@ -94,17 +92,21 @@ describe('resolveHeldCardReasonLine', () => {
     describe('a named reservation is the more specific cause', () => {
       it('names the holder instead of the bare waiting line', () => {
         expect(resolveHeldCardReasonLine({
-          reason: { code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater' },
+          reason: { code: PLAN_REASON_CODES.capacity, reserveHolderName: 'Water heater' },
         })).toBe('Waiting so Water heater can start');
       });
 
-      // The generic form: a reservation IS the blocker but the holder could not
-      // be named. `null` must stay distinguishable from absent, or this falls
-      // through to the gap branch and reads as a bare wait.
-      it('uses the generic sentence when the holder cannot be named', () => {
+      // A reservation the producer could not NAME is no longer representable:
+      // the annotation is attached only on the `blocked_by_reserve` branch, which
+      // needs a live claiming reserve, and every reserve carries a required
+      // `deviceName`. So junk on this field at the snapshot boundary is treated as
+      // "no reservation is the blocker" and falls through to the gap branch,
+      // rather than being promoted to a state the contract does not admit.
+      it('falls through to the gap when the holder field is not a usable name', () => {
         expect(resolveHeldCardReasonLine({
-          reason: { code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: null },
-        })).toBe('Waiting so a scheduled device can start');
+          reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 0.8 } as never,
+          verb: 'resume',
+        })).toBe('Waiting to resume — 0.8 kW more needed');
       });
 
       // Beats the starvation fallback: a device held long enough to be flagged,
@@ -112,8 +114,8 @@ describe('resolveHeldCardReasonLine', () => {
       // than by the vaguer "Waiting for available power".
       it('outranks the starvation fallback', () => {
         expect(resolveHeldCardReasonLine({
-          reason: { code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater' },
-          starvation: { isStarved: true, accumulatedMs: 7_200_000, startedAtMs: 1 },
+          reason: { code: PLAN_REASON_CODES.capacity, reserveHolderName: 'Water heater' },
+          starvation: { isStarved: true, accumulatedMs: 7_200_000},
         })).toBe('Waiting so Water heater can start');
       });
 
@@ -122,8 +124,8 @@ describe('resolveHeldCardReasonLine', () => {
       // must never form around it.
       it('takes no elapsed-hold stem', () => {
         const line = resolveHeldCardReasonLine({
-          reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, reserveHolderName: 'EV charger' },
-          starvation: { isStarved: true, accumulatedMs: 7_200_000, startedAtMs: 1 },
+          reason: { code: PLAN_REASON_CODES.dailyBudget, reserveHolderName: 'EV charger' },
+          starvation: { isStarved: true, accumulatedMs: 7_200_000},
         });
         expect(line).toBe('Waiting so EV charger can start');
         expect(line).not.toMatch(/^Held /);
@@ -159,7 +161,7 @@ describe('resolveHeldCardReasonLine', () => {
     });
 
     it('falls back when a budget hold carries no shortfall', () => {
-      expect(resolveHeldCardReasonLine({ reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null } }))
+      expect(resolveHeldCardReasonLine({ reason: { code: PLAN_REASON_CODES.dailyBudget } }))
         .toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
     });
   });
@@ -169,13 +171,13 @@ describe('resolveHeldCardReasonLine', () => {
   describe('non-power holds keep their own cause', () => {
     it('keeps the smart-task wait', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null },
+        reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
       })).toBe('Waiting for cheaper hours');
     });
 
     it('keeps the solar-surplus posture', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+        reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
       })).toBe('Waiting for solar surplus');
     });
 
@@ -221,7 +223,7 @@ describe('resolveHeldCardReasonLine', () => {
   describe('starvation decoration', () => {
     it('keeps the shortfall and states how long the device has been held', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8 },
+        reason: { code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.8 },
         starvation: starvation(2 * 60 * 60 * 1000),
       })).toBe(`Held 2${NBSP}h — 0.8 kW more needed`);
     });
@@ -241,7 +243,7 @@ describe('resolveHeldCardReasonLine', () => {
     // "Held 45 min" describes the hold, not the transition being denied.
     it('drops the verb distinction once starved', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.capacity, detail: null, shortfallKw: 0.3 },
+        reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 0.3 },
         starvation: starvation(45 * 60 * 1000),
         verb: 'increase',
       })).toBe(`Held 45${NBSP}min — 0.3 kW more needed`);
@@ -249,7 +251,7 @@ describe('resolveHeldCardReasonLine', () => {
 
     it('decorates the spent-hour line, which still carries no kW', () => {
       const line = resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+        reason: { code: PLAN_REASON_CODES.hourlyBudget },
         starvation: starvation(75 * 60 * 1000),
       });
       expect(line).toBe(`Held 1${NBSP}h${NBSP}15${NBSP}min — this hour's budget is spent`);
@@ -258,7 +260,7 @@ describe('resolveHeldCardReasonLine', () => {
 
     it('uses the plain held copy when no shortfall is available', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+        reason: { code: PLAN_REASON_CODES.capacity },
         starvation: starvation(),
       })).toBe('Waiting for available power');
     });
@@ -330,7 +332,7 @@ describe('resolveHeldCardReasonLine', () => {
   describe('the stepped variant only changes the verb', () => {
     it('says "increase" for a running device denied a step up', () => {
       expect(resolveHeldCardReasonLine({
-        reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.3 },
+        reason: { code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.3 },
         verb: 'increase',
       })).toBe('Waiting to increase — 0.3 kW more needed');
     });

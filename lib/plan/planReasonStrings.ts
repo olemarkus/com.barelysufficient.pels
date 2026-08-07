@@ -25,7 +25,6 @@ export type PlanReasonDecision =
     penaltyExtraKw?: number;
     swapReserveKw?: number;
     effectiveAvailableKw?: number;
-    swapTargetName?: string;
   } }
   | { code: 'restore_pending'; remainingSec: number; countdownTiming?: CountdownReasonTiming }
   | { code: 'shortfall'; neededKw: number; headroomKw: number };
@@ -104,16 +103,6 @@ export function buildMeterSettlingReason(
   );
 }
 
-export function buildRestoreNeedReason(neededKw: number, headroomKw: number): DeviceReason {
-  return {
-    code: PLAN_REASON_CODES.restoreNeed,
-    fromTarget: null,
-    toTarget: null,
-    needKw: neededKw,
-    headroomKw,
-  };
-}
-
 export function buildRestoreHeadroomReason(params: {
   neededKw: number;
   availableKw: number;
@@ -122,7 +111,6 @@ export function buildRestoreHeadroomReason(params: {
   penaltyExtraKw?: number;
   swapReserveKw?: number;
   effectiveAvailableKw?: number;
-  swapTargetName?: string;
 }): DeviceReason {
   return {
     code: PLAN_REASON_CODES.insufficientHeadroom,
@@ -133,7 +121,6 @@ export function buildRestoreHeadroomReason(params: {
     penaltyExtraKw: params.penaltyExtraKw ?? null,
     swapReserveKw: params.swapReserveKw ?? null,
     effectiveAvailableKw: params.effectiveAvailableKw ?? null,
-    swapTargetName: params.swapTargetName ?? null,
   };
 }
 

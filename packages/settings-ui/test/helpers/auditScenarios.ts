@@ -262,7 +262,7 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
       controllable: true,
       expectedPowerKw: 2.0,
       measuredPowerKw: 2.1,
-      reason: { code: 'capacity', detail: 'capacity shortfall' },
+      reason: { code: 'capacity' },
       shedAction: 'turn_off',
     },
     {
@@ -274,7 +274,7 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
       controllable: true,
       expectedPowerKw: 7.2,
       measuredPowerKw: 6.8,
-      reason: { code: 'capacity', detail: 'capacity shortfall' },
+      reason: { code: 'capacity' },
       shedAction: 'turn_off',
     },
   ];
@@ -441,7 +441,7 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
           budgetExempt: false,
           expectedPowerKw: 0.5,
           measuredPowerKw: 0.5,
-          reason: { code: 'daily_budget', detail: null },
+          reason: { code: 'daily_budget' },
           shedAction: 'turn_off',
         },
       ],

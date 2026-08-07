@@ -22,7 +22,6 @@ export const fixtureDeviceReason = (reason: string | undefined): DeviceReason =>
 export const insufficientHeadroomFixtureReason = (params: {
   needKw: number;
   availableKw: number;
-  swapTargetName?: string;
 }): DeviceReason => ({
   code: PLAN_REASON_CODES.insufficientHeadroom,
   needKw: params.needKw,
@@ -32,5 +31,4 @@ export const insufficientHeadroomFixtureReason = (params: {
   penaltyExtraKw: null,
   swapReserveKw: null,
   effectiveAvailableKw: null,
-  swapTargetName: params.swapTargetName ?? null,
 });

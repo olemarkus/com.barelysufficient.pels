@@ -86,7 +86,6 @@ describe('resolveTemperatureReasonLine', () => {
         minimumRequiredPostReserveMarginKw: 0.25,
         penaltyExtraKw: null,
         swapReserveKw: null,
-        swapTargetName: null,
       },
     })).toBe('Waiting to resume — 1.3 kW more needed');
   });
@@ -128,7 +127,7 @@ describe('resolveTemperatureReasonLine', () => {
       plannedState: 'shed',
       currentTemperature: 20.2,
       plannedTarget: 21,
-      reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 },
+      reason: { code: 'daily_budget', shortfallKw: 0.8 },
     })).toBe('Waiting to resume — 0.8 kW more needed');
   });
 
@@ -138,7 +137,7 @@ describe('resolveTemperatureReasonLine', () => {
       plannedState: 'shed',
       currentTemperature: 20.2,
       plannedTarget: 21,
-      reason: { code: 'daily_budget', detail: null },
+      reason: { code: 'daily_budget' },
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
   });
 
@@ -150,11 +149,11 @@ describe('resolveTemperatureReasonLine', () => {
   // ceiling attribution.
   it('never attributes a ceiling on a card', () => {
     const lines = ([
-      { code: 'capacity', detail: null },
-      { code: 'capacity', detail: null, shortfallKw: 1.1 },
-      { code: 'hourly_budget', detail: null },
-      { code: 'daily_budget', detail: null },
-      { code: 'daily_budget', detail: null, shortfallKw: 0.5 },
+      { code: 'capacity' },
+      { code: 'capacity', shortfallKw: 1.1 },
+      { code: 'hourly_budget' },
+      { code: 'daily_budget' },
+      { code: 'daily_budget', shortfallKw: 0.5 },
     ] as const).map((reason) => resolveTemperatureReasonLine({
       currentState: 'off',
       plannedState: 'shed',
@@ -181,7 +180,7 @@ describe('resolveTemperatureReasonLine', () => {
       plannedState: 'shed',
       currentTemperature: 20.2,
       plannedTarget: 21,
-      reason: { code: 'deferred_objective_avoid', detail: null },
+      reason: { code: 'deferred_objective_avoid' },
     })).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
   });
 
@@ -212,7 +211,7 @@ describe('resolveTemperatureReasonLine', () => {
       currentTemperature: 20.3,
       currentTarget: 22,
       shedAction: 'turn_off',
-      reason: { code: 'daily_budget', detail: null, shortfallKw: 1.2 },
+      reason: { code: 'daily_budget', shortfallKw: 1.2 },
     })).toBe('Waiting to resume — 1.2 kW more needed');
   });
 
@@ -223,7 +222,7 @@ describe('resolveTemperatureReasonLine', () => {
       currentTemperature: 20.3,
       currentTarget: 22,
       shedAction: 'turn_off',
-      reason: { code: 'capacity', detail: null },
+      reason: { code: 'capacity' },
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
   });
 });

@@ -87,17 +87,24 @@ const readReasonCode = (reason: unknown): string | undefined => {
 // The display-only holder name a ceiling hold carries when admission declined
 // solely on a startup reservation (`ReserveHolder`, `planReasonSemanticsCore.ts`).
 // `undefined` means "no reservation is the blocker" and the ladder falls through
-// to the gap; `null` means one IS, but the holder could not be named — a real
-// state the generic sentence covers, so the two must stay distinguishable.
+// to the gap.
 //
-// Read defensively for the same reason `readReasonCode` is: the reason arrives
-// here untyped across the settings-UI snapshot boundary, so a non-string on this
-// field is treated as absent rather than interpolated into the sentence.
-const readReserveHolderName = (reason: unknown): string | null | undefined => {
+// Two states, not three. A reservation whose holder could not be NAMED used to
+// be a third — it is not a state any producer can build: the annotation is
+// attached only on the `blocked_by_reserve` branch, which needs a live claiming
+// reserve, and every reserve carries a required `deviceName`.
+//
+// The guard itself stays, and is not the same thing as that state: this is the
+// settings-UI snapshot boundary, and the reason arrives here as `unknown`, so
+// classifying untrusted input is this function's job (root `AGENTS.md`,
+// "Validation belongs at the boundary"). What changed is where junk lands —
+// anything that is not a non-empty string is now "no reservation is the
+// blocker", the same honest fallthrough a missing key gets, instead of being
+// promoted to a semantic state the runtime type no longer admits.
+const readReserveHolderName = (reason: unknown): string | undefined => {
   if (typeof reason !== 'object' || reason === null) return undefined;
   if (!('reserveHolderName' in reason)) return undefined;
   const name = (reason as { reserveHolderName?: unknown }).reserveHolderName;
-  if (name === null) return null;
   return typeof name === 'string' && name !== '' ? name : undefined;
 };
 

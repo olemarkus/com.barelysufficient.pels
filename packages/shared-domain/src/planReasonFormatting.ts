@@ -13,15 +13,15 @@ import {
 } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 
+// The two reasons that still carry free text. The five ceiling/hold codes that
+// used to sit here (`hourlyBudget`, `dailyBudget`, `capacity`,
+// `deferredObjectiveAvoid`, `awaitingSolarSurplus`) lost their `detail` slot:
+// every producer passed `null`, so their text is fixed and they now render from
+// the static group below.
 type DetailReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.keep }
-  | { code: typeof PLAN_REASON_CODES.hourlyBudget }
-  | { code: typeof PLAN_REASON_CODES.dailyBudget }
   | { code: typeof PLAN_REASON_CODES.inactive }
-  | { code: typeof PLAN_REASON_CODES.capacity }
-  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
-  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
 >;
 
 type TimedReason = Extract<
@@ -33,6 +33,10 @@ type TimedReason = Extract<
   | { code: typeof PLAN_REASON_CODES.restorePending }
 >;
 
+// Reasons whose whole text is fixed by the code. `dailyBudget`/`capacity` still
+// carry the per-cycle `shortfallKw`/`reserveHolderName` annotations, but neither
+// appears in this text — the card ladder reads them directly
+// (`planCardReasonLine.ts`).
 type StaticReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
@@ -41,6 +45,11 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
+  | { code: typeof PLAN_REASON_CODES.hourlyBudget }
+  | { code: typeof PLAN_REASON_CODES.dailyBudget }
+  | { code: typeof PLAN_REASON_CODES.capacity }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
 >;
 
 function formatSignedKw(value: number, digits: number): string {
@@ -53,17 +62,22 @@ function formatRemainingSec(remainingSec: number): number {
   return Math.max(0, Math.trunc(remainingSec));
 }
 
-function formatShedReason(base: string, detail: string | null): string {
-  return detail ? `${base} ${detail}` : base;
-}
+const STATIC_REASON_CODES = new Set<string>([
+  PLAN_REASON_CODES.restoreThrottled,
+  PLAN_REASON_CODES.waitingForOtherDevices,
+  PLAN_REASON_CODES.externalOffHold,
+  PLAN_REASON_CODES.neutralStartupHold,
+  PLAN_REASON_CODES.startupStabilization,
+  PLAN_REASON_CODES.capacityControlOff,
+  PLAN_REASON_CODES.hourlyBudget,
+  PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.deferredObjectiveAvoid,
+  PLAN_REASON_CODES.awaitingSolarSurplus,
+]);
 
 function isStaticReason(reason: DeviceReason): reason is StaticReason {
-  return reason.code === PLAN_REASON_CODES.restoreThrottled
-    || reason.code === PLAN_REASON_CODES.waitingForOtherDevices
-    || reason.code === PLAN_REASON_CODES.externalOffHold
-    || reason.code === PLAN_REASON_CODES.neutralStartupHold
-    || reason.code === PLAN_REASON_CODES.startupStabilization
-    || reason.code === PLAN_REASON_CODES.capacityControlOff;
+  return STATIC_REASON_CODES.has(reason.code);
 }
 
 function formatStaticReason(reason: StaticReason): string {
@@ -80,6 +94,16 @@ function formatStaticReason(reason: StaticReason): string {
       return 'startup stabilization';
     case PLAN_REASON_CODES.capacityControlOff:
       return 'capacity control off';
+    case PLAN_REASON_CODES.hourlyBudget:
+      return 'shed due to hourly budget';
+    case PLAN_REASON_CODES.dailyBudget:
+      return 'shed due to daily budget';
+    case PLAN_REASON_CODES.capacity:
+      return 'shed due to capacity';
+    case PLAN_REASON_CODES.deferredObjectiveAvoid:
+      return 'waiting for cheaper hours';
+    case PLAN_REASON_CODES.awaitingSolarSurplus:
+      return 'waiting for solar surplus';
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -89,30 +113,15 @@ function formatStaticReason(reason: StaticReason): string {
 
 function isDetailReason(reason: DeviceReason): reason is DetailReason {
   return reason.code === PLAN_REASON_CODES.keep
-    || reason.code === PLAN_REASON_CODES.hourlyBudget
-    || reason.code === PLAN_REASON_CODES.dailyBudget
-    || reason.code === PLAN_REASON_CODES.inactive
-    || reason.code === PLAN_REASON_CODES.capacity
-    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
-    || reason.code === PLAN_REASON_CODES.awaitingSolarSurplus;
+    || reason.code === PLAN_REASON_CODES.inactive;
 }
 
 function formatDetailReason(reason: DetailReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.keep:
       return reason.detail ? `keep (${reason.detail})` : 'keep';
-    case PLAN_REASON_CODES.hourlyBudget:
-      return formatShedReason('shed due to hourly budget', reason.detail);
-    case PLAN_REASON_CODES.dailyBudget:
-      return formatShedReason('shed due to daily budget', reason.detail);
     case PLAN_REASON_CODES.inactive:
-      return reason.detail ? `inactive (${reason.detail})` : 'inactive';
-    case PLAN_REASON_CODES.capacity:
-      return formatShedReason('shed due to capacity', reason.detail);
-    case PLAN_REASON_CODES.deferredObjectiveAvoid:
-      return formatShedReason('waiting for cheaper hours', reason.detail);
-    case PLAN_REASON_CODES.awaitingSolarSurplus:
-      return formatShedReason('waiting for solar surplus', reason.detail);
+      return `inactive (${reason.detail})`;
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -149,17 +158,12 @@ function formatTimedReason(reason: TimedReason): string {
 }
 
 function formatRestoreNeed(reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>): string {
-  if (reason.fromTarget !== null && reason.toTarget !== null) {
-    return `restore ${reason.fromTarget} -> ${reason.toTarget} (need ${formatSignedKw(reason.needKw, 2)}kW)`;
-  }
-  const headroom = reason.headroomKw === null ? 'unknown' : formatSignedKw(reason.headroomKw, 2);
-  return `restore (need ${formatSignedKw(reason.needKw, 2)}kW, headroom ${headroom}kW)`;
+  return `restore ${reason.fromTarget} -> ${reason.toTarget} (need ${formatSignedKw(reason.needKw, 2)}kW)`;
 }
 
 function formatShortfall(reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.shortfall }>): string {
-  if (reason.needKw === null && reason.headroomKw === null) return 'shortfall';
-  const headroom = reason.headroomKw === null ? 'unknown' : formatSignedKw(reason.headroomKw, 2);
-  return `shortfall (need ${formatSignedKw(reason.needKw ?? 0, 2)}kW, headroom ${headroom}kW)`;
+  return `shortfall (need ${formatSignedKw(reason.needKw, 2)}kW, `
+    + `headroom ${formatSignedKw(reason.headroomKw, 2)}kW)`;
 }
 
 function formatNeedSummary(
@@ -194,9 +198,7 @@ function formatPostReserveMarginSummary(
 function formatInsufficientHeadroom(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
 ): string {
-  const prefix = reason.swapTargetName
-    ? `insufficient headroom to swap for ${reason.swapTargetName}`
-    : 'insufficient headroom to restore';
+  const prefix = 'insufficient headroom to restore';
   const needSummary = formatNeedSummary(reason);
   const availableSummary = `available ${formatSignedKw(reason.availableKw, 2)}kW`;
   const effectiveSummary = formatEffectiveSummary(reason);
@@ -217,7 +219,16 @@ function formatInsufficientHeadroom(
 // The three reasons whose whole payload is "who is this for": swap source, swap target, and a
 // startup reservation. Grouped so each formatter handles them in one branch instead of three
 // switch cases — same shape as the isStaticReason / isDetailReason / isTimedReason groups above.
-type TargetNameReason = Extract<DeviceReason, { targetName: string | null }>;
+// Only `swapPending` still admits a missing name — a swap whose target has not
+// been resolved yet is a real, load-bearing state (`executableTargetProjection`,
+// `planDecisionSemantics`). `swappedOut` and `reservedForStart` always name a
+// device, so their fallbacks are gone.
+type TargetNameReason = Extract<
+  DeviceReason,
+  | { code: typeof PLAN_REASON_CODES.swapPending }
+  | { code: typeof PLAN_REASON_CODES.swappedOut }
+  | { code: typeof PLAN_REASON_CODES.reservedForStart }
+>;
 
 const TARGET_NAME_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.swapPending,
@@ -234,9 +245,9 @@ function formatTargetNameReason(reason: TargetNameReason): string {
     case PLAN_REASON_CODES.swapPending:
       return reason.targetName ? `swap pending (${reason.targetName})` : 'swap pending';
     case PLAN_REASON_CODES.reservedForStart:
-      return `startup power reserved for ${reason.targetName ?? 'unknown'}`;
+      return `startup power reserved for ${reason.targetName}`;
     default:
-      return `swapped out for ${reason.targetName ?? 'unknown'}`;
+      return `swapped out for ${reason.targetName}`;
   }
 }
 
@@ -251,9 +262,7 @@ function formatTargetNameReasonUserFacing(reason: TargetNameReason): string {
       // same sentence (`planStateLabels.ts`).
       return formatReservedForStartStatus(reason.targetName);
     default:
-      return reason.targetName
-        ? `Limited so ${reason.targetName} can run`
-        : 'Limited so another device can run';
+      return `Limited so ${reason.targetName} can run`;
   }
 }
 
@@ -296,13 +305,11 @@ function normalizeDetailSentence(detail: string): string {
   return detail.length > 0 ? `${detail.charAt(0).toUpperCase()}${detail.slice(1)}` : detail;
 }
 
-function appendUserDetail(text: string, detail: string | null | undefined): string {
-  return detail ? `${text}. ${normalizeDetailSentence(detail)}` : text;
-}
-
-function formatNeedAvailableSuffix(needKw: number, availableKw: number | null): string | null {
-  if (!Number.isFinite(needKw)) return null;
-  if (availableKw === null || !Number.isFinite(availableKw)) return null;
+// Finiteness-guarded, not null-guarded: its one caller now holds two required
+// `number`s, so absence is gone — but a `NaN`/`Infinity` arriving from a snapshot
+// is still worth declining rather than rendering as "needs NaN kW".
+function formatNeedAvailableSuffix(needKw: number, availableKw: number): string | null {
+  if (!Number.isFinite(needKw) || !Number.isFinite(availableKw)) return null;
   // Clamp negative headroom to 0 kW so users do not see confusing minus signs;
   // negative values mean the system is already over the limit.
   const safeAvailable = Math.max(0, availableKw);
@@ -356,17 +363,22 @@ export function resolveRestoreShortfallKw(reason: unknown): number | null {
     return ceilToDisplayKw(minimumRequiredKw - postReserveMarginKw);
   }
   if (r['code'] === PLAN_REASON_CODES.shortfall) {
-    return ceilToDisplayKw((readFiniteNumber(r['needKw']) ?? 0) - (readFiniteNumber(r['headroomKw']) ?? 0));
+    // Both are required `number` on the reason type; a snapshot missing either is
+    // malformed, so derive nothing rather than treating an absent figure as 0 —
+    // that fabricated a full-need gap out of half a reason.
+    const needKw = readFiniteNumber(r['needKw']);
+    const headroomKw = readFiniteNumber(r['headroomKw']);
+    if (needKw === null || headroomKw === null) return null;
+    return ceilToDisplayKw(needKw - headroomKw);
   }
   return null;
 }
 
 export function formatShortfallReason(opts: {
-  needKw: number | null;
-  headroomKw: number | null;
+  needKw: number;
+  headroomKw: number;
 }): string {
   const base = 'Manual action needed. Hard cap may be exceeded.';
-  if (opts.needKw === null || opts.headroomKw === null) return base;
   const suffix = formatNeedAvailableSuffix(opts.needKw, opts.headroomKw);
   return suffix ? `Manual action needed. ${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}.` : base;
 }
@@ -446,11 +458,7 @@ export function resolveSurplusHoldReportedLoadText(params: {
 function formatRestoreNeedUserFacing(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>,
 ): string {
-  if (reason.fromTarget !== null && reason.toTarget !== null) {
-    return `Raising target ${reason.fromTarget} to ${reason.toTarget}`;
-  }
-  const suffix = formatNeedAvailableSuffix(reason.needKw, reason.headroomKw);
-  return suffix ? `Waiting to resume — ${suffix}` : 'Waiting for available power';
+  return `Raising target ${reason.fromTarget} to ${reason.toTarget}`;
 }
 
 function formatInsufficientHeadroomUserFacing(
@@ -463,10 +471,6 @@ function formatInsufficientHeadroomUserFacing(
   // `resolveRestoreShortfallKw`).
   const shortfallKw = resolveRestoreShortfallKw(reason);
   const suffix = shortfallKw !== null ? `${shortfallKw.toFixed(1)} kW more needed` : null;
-  if (reason.swapTargetName) {
-    const base = `Not enough available power to make room for ${reason.swapTargetName}`;
-    return suffix ? `${base} — ${suffix}` : base;
-  }
   return suffix ? `Not enough available power to resume — ${suffix}` : 'Not enough available power to resume';
 }
 
@@ -492,6 +496,18 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
       return 'Waiting after startup';
     case PLAN_REASON_CODES.capacityControlOff:
       return 'Power-limit control off';
+    // Same strings as the card ladder (`resolveHeldCardReasonLine`) so the
+    // activity log and the card cannot drift.
+    case PLAN_REASON_CODES.hourlyBudget:
+      return PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS;
+    case PLAN_REASON_CODES.dailyBudget:
+      return PLAN_STATE_DAILY_BUDGET_STATUS;
+    case PLAN_REASON_CODES.capacity:
+      return PLAN_STATE_CAPACITY_STATUS;
+    case PLAN_REASON_CODES.deferredObjectiveAvoid:
+      return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
+    case PLAN_REASON_CODES.awaitingSolarSurplus:
+      return PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS;
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -503,21 +519,8 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.keep:
       return reason.detail ? normalizeDetailSentence(reason.detail) : '';
-    case PLAN_REASON_CODES.hourlyBudget:
-      // Same string as the card ladder (`resolveHeldCardReasonLine`) so the
-      // activity log and the card cannot drift. The detail suffix is kept for
-      // the rare producer-supplied context.
-      return appendUserDetail(PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS, reason.detail);
-    case PLAN_REASON_CODES.dailyBudget:
-      return appendUserDetail(PLAN_STATE_DAILY_BUDGET_STATUS, reason.detail);
     case PLAN_REASON_CODES.inactive:
-      return reason.detail ? `Off for now (${reason.detail})` : 'Off for now';
-    case PLAN_REASON_CODES.capacity:
-      return appendUserDetail(PLAN_STATE_CAPACITY_STATUS, reason.detail);
-    case PLAN_REASON_CODES.deferredObjectiveAvoid:
-      return appendUserDetail(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS, reason.detail);
-    case PLAN_REASON_CODES.awaitingSolarSurplus:
-      return appendUserDetail(PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS, reason.detail);
+      return `Off for now (${reason.detail})`;
     default: {
       const exhaustive: never = reason;
       return exhaustive;

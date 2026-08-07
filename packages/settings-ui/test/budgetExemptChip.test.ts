@@ -31,7 +31,6 @@ const heldBackStarvation = (
 ): SettingsUiPlanDeviceStarvation => ({
   isStarved: true,
   accumulatedMs: 5 * 60_000,
-  startedAtMs: 0,
   ...overrides,
 });
 
@@ -87,7 +86,7 @@ describe('BudgetExemptChip', () => {
   // lower-priority load up to — never above — the hard cap, so it clears room for
   // a capacity-held device without touching the cap.
   it('renders for a device held on the capacity ceiling', () => {
-    const dev = buildDevice({ reason: { code: PLAN_REASON_CODES.capacity, detail: null } });
+    const dev = buildDevice({ reason: { code: PLAN_REASON_CODES.capacity } });
     expect(renderChip(dev).querySelector('button')).not.toBeNull();
   });
 
@@ -333,7 +332,7 @@ describe('held-card reason line states what the device needs', () => {
 
   it('states the hold duration and the shortfall, not a ceiling', () => {
     const dev = buildDevice({
-      reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8 },
+      reason: { code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.8 },
     });
     const reason = renderCard(dev).querySelector('.plan-card__reason')?.textContent ?? '';
     expect(reason).toContain('0.8 kW more needed');
@@ -347,14 +346,14 @@ describe('held-card reason line states what the device needs', () => {
   it('reads identically whichever ceiling is binding', () => {
     const lineFor = (code: typeof PLAN_REASON_CODES.capacity | typeof PLAN_REASON_CODES.dailyBudget): string => (
       renderCard(buildDevice({
-        reason: { code, detail: null, shortfallKw: 0.8 },
+        reason: { code, shortfallKw: 0.8 },
       })).querySelector('.plan-card__reason')?.textContent ?? ''
     );
     expect(lineFor(PLAN_REASON_CODES.capacity)).toBe(lineFor(PLAN_REASON_CODES.dailyBudget));
   });
 
   it('offers the rescue chip on a capacity-held card too', () => {
-    const dev = buildDevice({ reason: { code: PLAN_REASON_CODES.capacity, detail: null } });
+    const dev = buildDevice({ reason: { code: PLAN_REASON_CODES.capacity } });
     expect(renderCard(dev).querySelector('button')).not.toBeNull();
   });
 });

@@ -32,7 +32,8 @@ integration gaps should still follow this note.
 >   a capacity-bound cycle flipped its badge, its copy, and its rescue button
 >   with nothing about the device having changed. The granular counting cause
 >   survives and still feeds device detail and the `device_starvation_*` logs;
->   the overview carries `isStarved`, `accumulatedMs`, and `startedAtMs` only.
+>   the overview carries `isStarved` and `accumulatedMs` only (`startedAtMs` was
+>   removed 2026-08-07 — it had no reader on any surface).
 
 > **v2 — user-initiated budget-exempt rescue (shipped).** The v1 DETECTION model
 > below is unchanged: the planner still never auto-mitigates starvation. What v2

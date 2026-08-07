@@ -72,7 +72,7 @@ const applyProdHeldState = async (page: Page) => {
           currentTarget: 22,
           measuredPowerKw: 0,
           expectedPowerKw: 1.14,
-          reason: { code: 'daily_budget', detail: null, shortfallKw: 0.9 },
+          reason: { code: 'daily_budget', shortfallKw: 0.9 },
         },
       ],
     });

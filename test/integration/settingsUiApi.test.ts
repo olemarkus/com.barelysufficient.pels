@@ -716,7 +716,6 @@ describe('settingsUiApi', () => {
         starvation: {
           isStarved: true,
           accumulatedMs: 1_800_000,
-          startedAtMs: 1234,
         },
         reason: fixtureDeviceReason('shed due to capacity')!,
       }],

@@ -82,7 +82,7 @@ export function resolveShedReason(
   // before the hour rolls over. Its own reason code renders time-based copy on
   // the card instead of a kW gap, which would be dishonest here.
   if (hourlyBudgetExhausted) {
-    return { code: PLAN_REASON_CODES.hourlyBudget, detail: null };
+    return { code: PLAN_REASON_CODES.hourlyBudget };
   }
   // `daily` is only the BINDING soft limit — when capacity is breached too, total
   // is over both and capacity is the constraint actually doing the work. Naming
@@ -93,7 +93,7 @@ export function resolveShedReason(
   // cannot help: releasing a budget exemption does not create capacity headroom
   // (the same reasoning `planDiagnostics.ts` applies to capacity-bound holds).
   if (limitSource === 'daily' && !capacityBreached) {
-    return { code: PLAN_REASON_CODES.dailyBudget, detail: null };
+    return { code: PLAN_REASON_CODES.dailyBudget };
   }
-  return { code: PLAN_REASON_CODES.capacity, detail: null };
+  return { code: PLAN_REASON_CODES.capacity };
 }

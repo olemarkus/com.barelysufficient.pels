@@ -97,7 +97,7 @@ describe('resolveCeilingShortfall', () => {
         capacityAvailableKw: 2.0,
         headroomReserves: [{ deviceId: 'other', deviceName: 'Water heater', priority: 1, kw: 1.5 }],
       }),
-    })).toEqual({ kind: 'blocked_by_reserve' });
+    })).toEqual({ kind: 'blocked_by_reserve', holderName: 'Water heater' });
   });
 
   // Per-axis discipline (`RestoreHeadroomLedger.availableFor`): a budget-exempt

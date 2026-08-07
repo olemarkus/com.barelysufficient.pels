@@ -858,7 +858,7 @@ describe('native stepped-load wiring', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-      reason: { code: 'capacity', detail: 'over capacity' },
+      reason: { code: 'capacity' },
     });
 
     expect(action).not.toBeNull();
@@ -968,7 +968,7 @@ describe('native stepped-load wiring', () => {
       selectedStepId: '8a',
       desiredStepId: '6a',
       shedAction: 'set_step',
-      reason: { code: 'capacity', detail: 'over capacity' },
+      reason: { code: 'capacity' },
     });
 
     expect(action).not.toBeNull();
@@ -1060,7 +1060,7 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       shedAction: 'set_step',
-      reason: { code: 'capacity', detail: 'over capacity' },
+      reason: { code: 'capacity' },
     });
 
     expect(action).not.toBeNull();

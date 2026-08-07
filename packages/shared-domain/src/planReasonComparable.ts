@@ -8,25 +8,44 @@ type ComparablePlanReasonBase = {
   code: PlanReasonCode;
 };
 
+/**
+ * The stable comparison representation of a `DeviceReason` — what a transition
+ * signature is built from, never what a user sees.
+ *
+ * OWNERSHIP: `buildComparableDeviceReason` below is the only producer; callers
+ * pass it a reason and compare the JSON, they do not assemble one. The invariant
+ * consumers rely on is STABILITY: two reasons that mean the same thing for the
+ * owner must compare equal, so continuously-drifting figures are deliberately
+ * excluded (see the `shortfallKw` rationale below) while a fact that changes
+ * only on a real transition — a holder's name — is folded in. That distinction
+ * is about churn frequency, not about whether a field is display-only.
+ *
+ * It gates the per-device activity-log ring buffer (`planOverviewEmit.ts`) and
+ * the restore-debug dedupe, so a field that flips every plan cycle would evict
+ * the transitions the buffer exists to keep.
+ */
 export type ComparablePlanReason =
   | ComparablePlanReasonBase
-  | (ComparablePlanReasonBase & { detail: string | null; reserveHolderName?: string | null })
-  | (ComparablePlanReasonBase & { targetName: string | null; reserveHolderName?: string | null })
+  | (ComparablePlanReasonBase & { detail: string | null })
+  | (ComparablePlanReasonBase & { reserveHolderName?: string })
+  | (ComparablePlanReasonBase & { targetName: string | null; reserveHolderName?: string })
   | (ComparablePlanReasonBase & {
-    fromTarget: string | null;
-    toTarget: string | null;
+    fromTarget: string;
+    toTarget: string;
     needW: number;
-    headroomW: number | null;
   })
+  // The admission quartet is non-null because `quantizeKwToW`'s
+  // `(number) => number` overload answers the four required `number` fields on
+  // the reason. Only the three genuinely-optional condition figures stay
+  // nullable.
   | (ComparablePlanReasonBase & {
     needW: number;
-    availableW: number | null;
-    postReserveMarginW: number | null;
-    minimumRequiredPostReserveMarginW: number | null;
+    availableW: number;
+    postReserveMarginW: number;
+    minimumRequiredPostReserveMarginW: number;
     penaltyExtraW: number | null;
     swapReserveW: number | null;
     effectiveAvailableW: number | null;
-    swapTargetName: string | null;
   })
   | (ComparablePlanReasonBase & {
     fromStep: string;
@@ -61,15 +80,14 @@ export type ComparablePlanReason =
 // card could keep "Waiting so X can start" — or fail to start showing it — until
 // something unrelated moved the signature. Do not "restore consistency" by
 // dropping it to match `shortfallKw`; they are excluded/included on frequency.
+// The two reasons that still carry free text; `hourlyBudget`,
+// `deferredObjectiveAvoid` and `awaitingSolarSurplus` lost their `detail` slot
+// (no producer ever filled it) and are now compared on the code alone, while
+// `dailyBudget`/`capacity` moved to the holder-only group below.
 type DetailComparableReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.keep }
   | { code: typeof PLAN_REASON_CODES.inactive }
-  | { code: typeof PLAN_REASON_CODES.hourlyBudget }
-  | { code: typeof PLAN_REASON_CODES.dailyBudget }
-  | { code: typeof PLAN_REASON_CODES.capacity }
-  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
-  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
 >;
 
 const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
@@ -86,6 +104,9 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.neutralStartupHold,
   PLAN_REASON_CODES.startupStabilization,
   PLAN_REASON_CODES.capacityControlOff,
+  PLAN_REASON_CODES.hourlyBudget,
+  PLAN_REASON_CODES.deferredObjectiveAvoid,
+  PLAN_REASON_CODES.awaitingSolarSurplus,
 ]);
 
 type CodeOnlyReason = Extract<
@@ -103,10 +124,29 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
+  | { code: typeof PLAN_REASON_CODES.hourlyBudget }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
 >;
 
 function isCodeOnlyReason(reason: DeviceReason): reason is CodeOnlyReason {
   return CODE_ONLY_REASONS.has(reason.code);
+}
+
+// The two ceiling holds that carry the per-cycle `reserveHolderName` annotation
+// but no text of their own. They must NOT fall into `CODE_ONLY_REASONS`: the
+// holder's name is deliberately folded into the signature (see the note above),
+// and comparing them on the code alone would let a card keep — or fail to start
+// showing — "Waiting so X can start" until an unrelated field moved.
+type HolderOnlyComparableReason = Extract<
+  DeviceReason,
+  | { code: typeof PLAN_REASON_CODES.dailyBudget }
+  | { code: typeof PLAN_REASON_CODES.capacity }
+>;
+
+function isHolderOnlyComparableReason(reason: DeviceReason): reason is HolderOnlyComparableReason {
+  return reason.code === PLAN_REASON_CODES.dailyBudget
+    || reason.code === PLAN_REASON_CODES.capacity;
 }
 
 /**
@@ -127,12 +167,7 @@ function quantizeKwToW(value: number | null): number | null {
 
 function isDetailComparableReason(reason: DeviceReason): reason is DetailComparableReason {
   return reason.code === PLAN_REASON_CODES.keep
-    || reason.code === PLAN_REASON_CODES.inactive
-    || reason.code === PLAN_REASON_CODES.hourlyBudget
-    || reason.code === PLAN_REASON_CODES.dailyBudget
-    || reason.code === PLAN_REASON_CODES.capacity
-    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
-    || reason.code === PLAN_REASON_CODES.awaitingSolarSurplus;
+    || reason.code === PLAN_REASON_CODES.inactive;
 }
 
 // Folds the holder in only when the reason actually carries it, so a reason
@@ -147,9 +182,8 @@ function withReserveHolder<T extends ComparablePlanReason>(comparable: T, reason
 export function buildComparableDeviceReason(reason: DeviceReason | undefined): ComparablePlanReason {
   if (!reason) return { code: PLAN_REASON_CODES.none };
   if (isCodeOnlyReason(reason)) return { code: reason.code };
-  if (isDetailComparableReason(reason)) {
-    return withReserveHolder({ code: reason.code, detail: reason.detail }, reason);
-  }
+  if (isDetailComparableReason(reason)) return { code: reason.code, detail: reason.detail };
+  if (isHolderOnlyComparableReason(reason)) return withReserveHolder({ code: reason.code }, reason);
 
   switch (reason.code) {
     case PLAN_REASON_CODES.swapPending:
@@ -162,7 +196,6 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         fromTarget: reason.fromTarget,
         toTarget: reason.toTarget,
         needW: quantizeKwToW(reason.needKw),
-        headroomW: quantizeKwToW(reason.headroomKw),
       };
     case PLAN_REASON_CODES.insufficientHeadroom:
       return {
@@ -174,7 +207,6 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         penaltyExtraW: quantizeKwToW(reason.penaltyExtraKw),
         swapReserveW: quantizeKwToW(reason.swapReserveKw),
         effectiveAvailableW: quantizeKwToW(reason.effectiveAvailableKw),
-        swapTargetName: reason.swapTargetName,
       };
     case PLAN_REASON_CODES.shedInvariant:
       return {

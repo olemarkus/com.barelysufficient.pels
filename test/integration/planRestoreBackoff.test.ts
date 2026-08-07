@@ -1681,7 +1681,7 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           binaryControl: { on: false },
           plannedState: 'shed',
-          reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+          reason: { code: PLAN_REASON_CODES.hourlyBudget },
           selectedStepId: 'off',
           desiredStepId: 'low',
           lastDesiredStepId: 'low',

@@ -227,7 +227,7 @@ export function planRestoreForDevice(params: {
       deviceMap,
       dev,
       phase,
-      reason: buildReservedForStartReason({ dev, reserves: headroomReserves }),
+      reason: buildReservedForStartReason(reserved.holderName),
       availableHeadroom,
       restoreDebugKey,
       restoredOneThisCycle,

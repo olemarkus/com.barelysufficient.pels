@@ -303,6 +303,12 @@ because that stage cannot tell a materialized shed from an in-flight one and
 `reservedForStart` builds no actuation intent. The owner never sees the
 difference; only the executor and the starvation classifier do.
 
+Both routes always NAME the device, so there is no anonymous variant of this
+sentence. `Waiting so a scheduled device can start` was removed 2026-08-07 with
+the nullable holder name — do not reintroduce it. Both carriers are built only
+from a `blocked_by_reserve` admission, which is reached only when a reserve
+actually claims against the device, and every reserve carries the holder's name.
+
 **Retired 2026-08-02 — do not reintroduce on a card:** `Turned off by PELS`,
 `Lowered by PELS`, `Limited by the hard cap`, `Limited by today's daily budget`,
 `Limited — this hour is near the hard cap`, `Making room for higher-priority

@@ -171,10 +171,13 @@ export type SettingsUiPlanPendingTargetCommand = {
 // it. The granular `DeviceDiagnosticsStarvationCountingCause` — which does carry
 // real diagnostic value — is unaffected and still reaches device detail and the
 // `device_starvation_*` logs.
+// `startedAtMs` was removed 2026-08-07: nothing in `lib/`, `setup/` or
+// `packages/` ever read it. The surfaces that show a hold's age render
+// `accumulatedMs` (the time actually spent starved), which is not the same
+// quantity — an episode start says nothing about how much of it counted.
 export type SettingsUiPlanDeviceStarvation = {
   isStarved: boolean;
   accumulatedMs: number;
-  startedAtMs: number | null;
 };
 
 export type SettingsUiPlanSteppedLoadState = {

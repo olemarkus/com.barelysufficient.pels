@@ -30,7 +30,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
 
-const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null };
+const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 
 // ─── Candidacy: resolveSurplusOnlyPosture ─────────────────────────────────────
 
@@ -383,7 +383,7 @@ describe('awaitingSolarSurplus reason adoption', () => {
   it('never overwrites a fresh capacity shed decision', () => {
     const result = normalizeHeld({
       dev: heldDevice(),
-      shedReasons: new Map([['dev', { code: PLAN_REASON_CODES.capacity, detail: null } as DeviceReason]]),
+      shedReasons: new Map([['dev', { code: PLAN_REASON_CODES.capacity } as DeviceReason]]),
     });
     expect(result.reason.code).toBe(PLAN_REASON_CODES.capacity);
   });

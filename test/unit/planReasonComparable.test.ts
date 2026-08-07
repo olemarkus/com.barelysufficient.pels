@@ -10,21 +10,19 @@ describe('buildComparableDeviceReason', () => {
       fromTarget: 'low',
       toTarget: 'high',
       needKw: overrides.needKw ?? 1.234,
-      headroomKw: overrides.headroomKw === undefined ? 0.8 : overrides.headroomKw,
     } as const);
 
-    it('quantizes need and headroom into integer watts', () => {
+    it('quantizes need into integer watts', () => {
       const comparable = buildComparableDeviceReason(baseReason());
       expect(comparable).toMatchObject({
         code: PLAN_REASON_CODES.restoreNeed,
         needW: 1200,
-        headroomW: 800,
       });
     });
 
     it('treats sub-100 W jitter as the same comparable', () => {
-      const a = buildComparableDeviceReason(baseReason({ needKw: 1.234, headroomKw: 0.812 }));
-      const b = buildComparableDeviceReason(baseReason({ needKw: 1.241, headroomKw: 0.798 }));
+      const a = buildComparableDeviceReason(baseReason({ needKw: 1.234 }));
+      const b = buildComparableDeviceReason(baseReason({ needKw: 1.241 }));
       expect(a).toEqual(b);
     });
 
@@ -34,10 +32,6 @@ describe('buildComparableDeviceReason', () => {
       expect(a).not.toEqual(b);
     });
 
-    it('preserves null headroom', () => {
-      const comparable = buildComparableDeviceReason(baseReason({ headroomKw: null }));
-      expect(comparable).toMatchObject({ headroomW: null });
-    });
   });
 
   describe('insufficientHeadroom kW quantization', () => {
@@ -60,7 +54,6 @@ describe('buildComparableDeviceReason', () => {
       penaltyExtraKw: overrides.penaltyExtraKw === undefined ? 0.05 : overrides.penaltyExtraKw,
       swapReserveKw: overrides.swapReserveKw === undefined ? 0.3 : overrides.swapReserveKw,
       effectiveAvailableKw: overrides.effectiveAvailableKw === undefined ? 1.5 : overrides.effectiveAvailableKw,
-      swapTargetName: 'other',
     } as const);
 
     it('quantizes every kW field to integer watts at 100 W resolution', () => {
@@ -118,18 +111,18 @@ describe('buildComparableDeviceReason', () => {
   describe('the reservation holder IS part of the comparable', () => {
     it('distinguishes a reserve-blocked hold from a plain one', () => {
       const blocked = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater',
+        code: PLAN_REASON_CODES.capacity, reserveHolderName: 'Water heater',
       });
-      const plain = buildComparableDeviceReason({ code: PLAN_REASON_CODES.capacity, detail: null });
+      const plain = buildComparableDeviceReason({ code: PLAN_REASON_CODES.capacity });
       expect(blocked).not.toEqual(plain);
     });
 
     it('moves when the holder changes', () => {
       const first = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater',
+        code: PLAN_REASON_CODES.capacity, reserveHolderName: 'Water heater',
       });
       const second = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'EV charger',
+        code: PLAN_REASON_CODES.capacity, reserveHolderName: 'EV charger',
       });
       expect(first).not.toEqual(second);
     });
@@ -146,8 +139,8 @@ describe('buildComparableDeviceReason', () => {
     // Absent must stay byte-identical to the pre-existing shape, or shipping
     // this field would have flipped every signature once and flushed the rings.
     it('leaves the shape untouched when no reservation is involved', () => {
-      expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.capacity, detail: null }))
-        .toEqual({ code: PLAN_REASON_CODES.capacity, detail: null });
+      expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.capacity }))
+        .toEqual({ code: PLAN_REASON_CODES.capacity });
       expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.swappedOut, targetName: 'Heater' }))
         .toEqual({ code: PLAN_REASON_CODES.swappedOut, targetName: 'Heater' });
     });
@@ -156,12 +149,12 @@ describe('buildComparableDeviceReason', () => {
   describe('display-only shortfall stays out of the comparable', () => {
     it('compares a daily-budget hold on detail alone, whatever kW it carries', () => {
       const withGap = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8,
+        code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.8,
       });
       const withoutGap = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.dailyBudget, detail: null,
+        code: PLAN_REASON_CODES.dailyBudget,
       });
-      expect(withGap).toEqual({ code: PLAN_REASON_CODES.dailyBudget, detail: null });
+      expect(withGap).toEqual({ code: PLAN_REASON_CODES.dailyBudget });
       expect(withGap).toEqual(withoutGap);
     });
 
@@ -169,10 +162,10 @@ describe('buildComparableDeviceReason', () => {
     // moves, the displayed gap steps a whole 0.1 kW — and the signature must not.
     it('is unchanged when the displayed kW steps between cycles', () => {
       const cycleOne = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 0.8,
+        code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.8,
       });
       const cycleTwo = buildComparableDeviceReason({
-        code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: 1.3,
+        code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 1.3,
       });
       expect(cycleOne).toEqual(cycleTwo);
     });

@@ -152,6 +152,14 @@ function buildSwapCandidateDecisionText(params: {
 
   if (ready) return formatDeviceReason({ code: PLAN_REASON_CODES.swappedOut, targetName });
 
+  // No swap-target clause in the reject text. `insufficientHeadroom` used to
+  // carry a `swapTargetName` purely to prefix this one string, and the name it
+  // stated is `dev.name` — the same value the enclosing debug payload already
+  // logs as `deviceName`, one field away (`lib/plan/restore/swap.ts`). Carrying a
+  // slot on every device's reason to duplicate a sibling log field is not worth a
+  // permanently-null field in the plan contract, so the slot is gone and the text
+  // reads as the plain restore-side rejection it is; `restoreType: 'swap'` and
+  // `shedNames` still identify it as the swap path.
   const baseText = formatDeviceReason(buildRestoreHeadroomReason({
     neededKw,
     availableKw,
@@ -159,7 +167,6 @@ function buildSwapCandidateDecisionText(params: {
     swapReserveKw: SWAP_RESTORE_RESERVE_KW,
     postReserveMarginKw,
     minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-    swapTargetName: targetName,
   }));
 
   return shedNames ? `${baseText} from ${shedNames}` : baseText;

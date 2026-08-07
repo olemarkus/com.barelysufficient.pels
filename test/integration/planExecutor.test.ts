@@ -3351,7 +3351,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         penaltyExtraKw: null,
         swapReserveKw: null,
         effectiveAvailableKw: null,
-        swapTargetName: null,
       },
     });
 

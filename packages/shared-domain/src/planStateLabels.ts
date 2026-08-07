@@ -116,8 +116,15 @@ export const PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS = 'Waiting for cheaper h
 // reason normalization could not safely change the code — see `ReserveHolder` in
 // `planReasonSemanticsCore.ts`. Both render identically, which is the point: the
 // owner reads one sentence for one situation.
-export const formatReservedForStartStatus = (targetName: string | null): string => (
-  targetName ? `Waiting so ${targetName} can start` : 'Waiting so a scheduled device can start'
+//
+// The holder is always nameable, so there is no anonymous variant. Both carriers
+// are built only from a `blocked_by_reserve` admission, which is reached only
+// when a reserve actually claims against the device, and every `HeadroomReserve`
+// carries a required `deviceName`. The retired
+// `'Waiting so a scheduled device can start'` fallback described a state no
+// producer could create.
+export const formatReservedForStartStatus = (targetName: string): string => (
+  `Waiting so ${targetName} can start`
 );
 
 // Status line for a binary dump load held off by its opted-in "Run on solar

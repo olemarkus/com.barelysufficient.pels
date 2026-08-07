@@ -34,7 +34,7 @@ type PendingRestoreDelay = {
 // decision a producer actually made.
 const CAPACITY_FALLBACK_REASON: PlanReasonDecision = {
   code: 'existing',
-  reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+  reason: { code: PLAN_REASON_CODES.capacity },
 };
 
 // The reason a producer decided for this device — a fresh shed entry, or a

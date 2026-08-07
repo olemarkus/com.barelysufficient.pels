@@ -22,7 +22,6 @@ import {
   resolveCeilingShortfall,
   type CeilingShortfallInputs,
 } from './planReasonShortfall';
-import { resolveReserveHolderName } from './admission';
 import { isSwapTargetPendingReason } from '../planContract/planDecisionSemantics';
 
 // Public entry point. The shed-temperature hold decision table and the plan
@@ -48,7 +47,7 @@ function buildBaseReason(
 ): DeviceReason {
   const classifiedReason = classifyPlanReason(dev.reason);
   const keepReason = shouldNormalizeReason(classifiedReason) ? null : classifiedReason.reason;
-  const resolved = shedReasons.get(dev.id) ?? keepReason ?? { code: PLAN_REASON_CODES.capacity, detail: null };
+  const resolved = shedReasons.get(dev.id) ?? keepReason ?? { code: PLAN_REASON_CODES.capacity };
   // Shared fold with `normalizeDeviceReason` — the full rationale (carry-forward
   // capacity, budget-bound restore holds, the prod-2026-07-25 breach carve-out)
   // lives on `resolveDailyBindingReattribution`.
@@ -316,10 +315,7 @@ function finalizeCeilingReason(params: {
   // cannot tell a materialized shed from an in-flight one. See `ReserveHolder`
   // in `planReasonSemanticsCore.ts` for the full account.
   if (resolution.kind === 'blocked_by_reserve') {
-    return withReason(attachReserveHolder(
-      stripCycleAnnotations(folded),
-      resolveReserveHolderName({ dev, reserves: admissionInputs.headroomReserves }),
-    ));
+    return withReason(attachReserveHolder(stripCycleAnnotations(folded), resolution.holderName));
   }
   if (resolution.kind === 'no_gap') return withReason(stripCycleAnnotations(folded));
   return withReason(attachShortfall(stripCycleAnnotations(folded), resolution.shortfallKw));
@@ -346,8 +342,8 @@ function stripCycleAnnotations(reason: DeviceReason): DeviceReason {
   const hasHolder = 'reserveHolderName' in reason && reason.reserveHolderName !== undefined;
   if (!hasShortfall && !hasHolder) return reason;
   const { shortfallKw: _kw, reserveHolderName: _holder, ...rest } = reason as DeviceReason & {
-    shortfallKw?: number | null;
-    reserveHolderName?: string | null;
+    shortfallKw?: number;
+    reserveHolderName?: string;
   };
   return rest as DeviceReason;
 }
@@ -376,7 +372,7 @@ function resolveHourlyFold(params: {
   if (hourlyBudgetExhausted) {
     if (dev.reason.code === PLAN_REASON_CODES.hourlyBudget) return dev.reason;
     if (HOURLY_FOLD_REASON_CODES.has(dev.reason.code)) {
-      return { code: PLAN_REASON_CODES.hourlyBudget, detail: null };
+      return { code: PLAN_REASON_CODES.hourlyBudget };
     }
     return dev.reason;
   }
@@ -384,15 +380,15 @@ function resolveHourlyFold(params: {
   if (shedReasonFresh) return dev.reason;
   const daily = softLimitSource === 'daily' && !capacityBreached && dev.budgetExempt !== true;
   return daily
-    ? { code: PLAN_REASON_CODES.dailyBudget, detail: null }
-    : { code: PLAN_REASON_CODES.capacity, detail: null };
+    ? { code: PLAN_REASON_CODES.dailyBudget }
+    : { code: PLAN_REASON_CODES.capacity };
 }
 
 // Sibling of `attachShortfall` for the reserve carve-out. Same four carrier
 // variants, same per-variant narrowing, and the same display-only contract — the
 // two fields are mutually exclusive because the branch that attaches this one is
 // precisely the branch where no gap figure exists.
-function attachReserveHolder(reason: DeviceReason, reserveHolderName: string | null): DeviceReason {
+function attachReserveHolder(reason: DeviceReason, reserveHolderName: string): DeviceReason {
   switch (reason.code) {
     case PLAN_REASON_CODES.capacity:
     case PLAN_REASON_CODES.dailyBudget:
@@ -506,7 +502,7 @@ function normalizeDeviceReason(params: {
   // hide. Active state-machine reasons (cooldown handled above) similarly
   // pass through.
   if (deferredObjectiveAvoidDeviceIds?.has(dev.id) && shouldAdoptDeferredAvoidFraming(currentReason, baseReason)) {
-    return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null } };
+    return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid } };
   }
 
   const dailyReattribution = resolveDailyBindingReattribution({
@@ -608,7 +604,12 @@ function resolveDailyBindingReattribution(params: {
   const reattribute = (reasonCode === PLAN_REASON_CODES.capacity && !shedReasonFresh)
     || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetReleasableHeadroomHold);
   if (!reattribute) return null;
-  return { code: PLAN_REASON_CODES.dailyBudget, detail: null, shortfallKw: sourceShortfallKw };
+  // Absence is the missing KEY, not a `null` value: `shortfallKw` is `?: number`
+  // and `stripCycleAnnotations` expresses "no number this cycle" by deleting it.
+  return {
+    code: PLAN_REASON_CODES.dailyBudget,
+    ...(sourceShortfallKw === null ? {} : { shortfallKw: sourceShortfallKw }),
+  };
 }
 
 // Surplus dump-load framing: a device the standing "Run on solar surplus" hold

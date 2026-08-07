@@ -123,7 +123,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   it('logs the card line for a held device', () => {
     const event = buildOverviewEventForDevice(buildPlanDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
-      reason: { code: 'daily_budget', detail: null, shortfallKw: 0.9 },
+      reason: { code: 'daily_budget', shortfallKw: 0.9 },
     }), overview);
     expect(event['cardReasonText']).toBe('Waiting to resume — 0.9 kW more needed');
   });
@@ -136,7 +136,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   it('logs the reservation holder for a reserve-blocked device', () => {
     const event = buildOverviewEventForDevice(buildPlanDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
-      reason: { code: 'capacity', detail: null, reserveHolderName: 'Water heater' },
+      reason: { code: 'capacity', reserveHolderName: 'Water heater' },
     }), overview);
     expect(event['cardReasonText']).toBe('Waiting so Water heater can start');
   });

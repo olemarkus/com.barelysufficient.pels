@@ -137,7 +137,10 @@ export function buildCeilingShortfallInputs(params: {
  */
 export type CeilingShortfallResolution =
   | { kind: 'gap'; shortfallKw: number }
-  | { kind: 'blocked_by_reserve' }
+  // Carries the holder's name from the admission that produced it, so the caller
+  // attaches a name it was handed rather than re-deriving one it would then have
+  // to null-check.
+  | { kind: 'blocked_by_reserve'; holderName: string }
   | { kind: 'no_gap' };
 
 // The smaller (honest) gap wins; see `CeilingShortfallResolution` for the two
@@ -158,7 +161,9 @@ export function resolveCeilingShortfall(params: {
     neededKw,
     reserves: inputs.headroomReserves,
   });
-  if (reserved.kind === 'blocked_by_reserve') return { kind: 'blocked_by_reserve' };
+  if (reserved.kind === 'blocked_by_reserve') {
+    return { kind: 'blocked_by_reserve', holderName: reserved.holderName };
+  }
   const plainGapKw = RESTORE_ADMISSION_FLOOR_KW - reserved.admission.postReserveMarginKw;
 
   // Swap-aware gap, off the reservation-adjusted base (the restore lane hands

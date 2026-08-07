@@ -9,7 +9,6 @@ describe('planStarvation', () => {
     expect(formatStarvationBadge({
       isStarved: false,
       accumulatedMs: 0,
-      startedAtMs: null,
     })).toBeNull();
     expect(formatStarvationReason(undefined)).toBeNull();
   });
@@ -22,7 +21,6 @@ describe('planStarvation', () => {
     const starvation = {
       isStarved: true,
       accumulatedMs: 23 * 60 * 1000,
-      startedAtMs: Date.UTC(2026, 3, 20, 11, 0, 0),
     };
 
     expect(formatStarvationBadge(starvation)).toEqual({
@@ -37,7 +35,6 @@ describe('planStarvation', () => {
     const badge = formatStarvationBadge({
       isStarved: true,
       accumulatedMs: 12 * 60 * 1000,
-      startedAtMs: null,
     });
     expect(badge).not.toBeNull();
     expect(`${badge!.label} ${badge!.tooltip}`.toLowerCase()).not.toMatch(/budget|hard cap/);

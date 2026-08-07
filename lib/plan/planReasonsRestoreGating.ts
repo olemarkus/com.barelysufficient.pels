@@ -308,7 +308,7 @@ export function resolveRestoreDecision(params: {
     if (observedAtShedFloor !== true && baseShedReason !== undefined) {
       return { type: 'hold', reason: baseShedReason };
     }
-    const reservedReason = buildReservedForStartReason({ dev, reserves: headroomReserves });
+    const reservedReason = buildReservedForStartReason(reserved.holderName);
     emitRestoreRejectedDebug({
       state,
       restoreDebugKey,

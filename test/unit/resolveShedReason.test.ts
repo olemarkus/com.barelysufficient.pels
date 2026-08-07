@@ -14,25 +14,21 @@ describe('resolveShedReason', () => {
   it('names the daily budget when it binds and capacity is not breached', () => {
     expect(resolveShedReason('daily', false)).toEqual({
       code: PLAN_REASON_CODES.dailyBudget,
-      detail: null,
     });
   });
 
   it('names capacity when the daily budget binds but capacity is ALSO breached', () => {
     expect(resolveShedReason('daily', true)).toEqual({
       code: PLAN_REASON_CODES.capacity,
-      detail: null,
     });
   });
 
   it('names capacity when capacity is the binding limit', () => {
     expect(resolveShedReason('capacity', false)).toEqual({
       code: PLAN_REASON_CODES.capacity,
-      detail: null,
     });
     expect(resolveShedReason('capacity', true)).toEqual({
       code: PLAN_REASON_CODES.capacity,
-      detail: null,
     });
   });
 
@@ -43,11 +39,9 @@ describe('resolveShedReason', () => {
   it('names the hourly budget when the hour is exhausted, whatever else binds', () => {
     expect(resolveShedReason('daily', false, true)).toEqual({
       code: PLAN_REASON_CODES.hourlyBudget,
-      detail: null,
     });
     expect(resolveShedReason('capacity', true, true)).toEqual({
       code: PLAN_REASON_CODES.hourlyBudget,
-      detail: null,
     });
   });
 });

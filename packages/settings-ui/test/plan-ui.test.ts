@@ -958,7 +958,6 @@ describe('Redesign plan UI', () => {
             starvation: {
               isStarved: true,
               accumulatedMs: 23 * 60 * 1000,
-              startedAtMs: Date.UTC(2026, 3, 20, 11, 0, 0),
             },
           },
         ],
