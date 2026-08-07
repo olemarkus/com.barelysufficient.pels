@@ -2,7 +2,6 @@ export const PLAN_REASON_CODES = {
   none: 'none',
   keep: 'keep',
   restoreNeed: 'restore_need',
-  setTarget: 'set_target',
   swapPending: 'swap_pending',
   swappedOut: 'swapped_out',
   hourlyBudget: 'hourly_budget',
@@ -13,7 +12,6 @@ export const PLAN_REASON_CODES = {
   meterSettling: 'meter_settling',
   activationBackoff: 'activation_backoff',
   restorePending: 'restore_pending',
-  headroomCooldown: 'headroom_cooldown',
   restoreThrottled: 'restore_throttled',
   waitingForOtherDevices: 'waiting_for_other_devices',
   insufficientHeadroom: 'insufficient_headroom',
@@ -88,8 +86,11 @@ type AdmissionShortfall = { shortfallKw?: number | null };
 // either way; the executor and the starvation classifier see no change.
 type ReserveHolder = { reserveHolderName?: string | null };
 
+// `PLAN_REASON_CODES.none` is deliberately NOT a member: `reason` is a required
+// `DeviceReason` on `DevicePlanDevice`, so nothing can fall through to it. The
+// constant survives for `ComparablePlanReason`, which uses it as its
+// absent-reason marker.
 export type DeviceReason =
-  | { code: typeof PLAN_REASON_CODES.none }
   | { code: typeof PLAN_REASON_CODES.keep; detail: string | null }
   | {
     code: typeof PLAN_REASON_CODES.restoreNeed;
@@ -98,7 +99,6 @@ export type DeviceReason =
     needKw: number;
     headroomKw: number | null;
   }
-  | { code: typeof PLAN_REASON_CODES.setTarget; targetText: string }
   // The swap PRODUCERS (`lib/plan/swap/candidates.ts`, `lib/plan/restore/swap.ts`,
   // `lib/plan/swap/blocking.ts`) must still never pin their own admission numbers
   // here — those belong to the device being swapped IN, and stating them on the
@@ -118,13 +118,6 @@ export type DeviceReason =
   | ({ code: typeof PLAN_REASON_CODES.meterSettling; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.activationBackoff; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.restorePending; remainingSec: number } & CountdownReasonTiming)
-  | ({
-    code: typeof PLAN_REASON_CODES.headroomCooldown;
-    kind: 'recent_pels_shed' | 'recent_pels_restore' | 'usage_step_down';
-    remainingSec: number;
-    fromKw: number | null;
-    toKw: number | null;
-  } & CountdownReasonTiming)
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
   // Nullable iff a live producer can genuinely omit the field. The admission
@@ -178,7 +171,6 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.none]: 'unknown',
   [PLAN_REASON_CODES.keep]: 'keep',
   [PLAN_REASON_CODES.restoreNeed]: 'restore',
-  [PLAN_REASON_CODES.setTarget]: 'set target',
   [PLAN_REASON_CODES.swapPending]: 'swap pending',
   [PLAN_REASON_CODES.swappedOut]: 'swapped out',
   [PLAN_REASON_CODES.hourlyBudget]: 'hourly budget',
@@ -189,7 +181,6 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.meterSettling]: 'meter settling',
   [PLAN_REASON_CODES.activationBackoff]: 'activation backoff',
   [PLAN_REASON_CODES.restorePending]: 'restore pending',
-  [PLAN_REASON_CODES.headroomCooldown]: 'headroom cooldown',
   [PLAN_REASON_CODES.restoreThrottled]: 'restore throttled',
   [PLAN_REASON_CODES.waitingForOtherDevices]: 'waiting for other devices',
   [PLAN_REASON_CODES.insufficientHeadroom]: 'insufficient headroom',

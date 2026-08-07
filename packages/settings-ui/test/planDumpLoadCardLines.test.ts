@@ -28,7 +28,7 @@ const buildDumpLoad = (overrides: Partial<PlanDeviceSnapshot> = {}): PlanDeviceS
   name: 'Pool Pump',
   controlModel: 'binary_power',
   controllable: true,
-  reason: { code: PLAN_REASON_CODES.none },
+  reason: { code: PLAN_REASON_CODES.keep, detail: null },
   ...overrides,
 } as PlanDeviceSnapshot);
 

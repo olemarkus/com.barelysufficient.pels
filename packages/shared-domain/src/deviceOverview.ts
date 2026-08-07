@@ -2,7 +2,6 @@ import type { BinaryControlCapabilityId, EvChargingState } from '../../contracts
 import {
   buildComparableDeviceReason,
   formatDeviceReasonUserFacing,
-  PLAN_REASON_CODES,
   type DeviceReason,
 } from './planReasonSemantics';
 import {
@@ -300,9 +299,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   }
 
   const statusMsg = appendOverviewStatus(
-    device.reason.code === PLAN_REASON_CODES.none
-      ? DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER
-      : formatDeviceReasonUserFacing(device.reason),
+    formatDeviceReasonUserFacing(device.reason),
     formatEvSocStatus(device.stateOfCharge),
   );
 

@@ -35,7 +35,6 @@ type TimedReason = Extract<
 
 type StaticReason = Extract<
   DeviceReason,
-  | { code: typeof PLAN_REASON_CODES.none }
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
@@ -59,8 +58,7 @@ function formatShedReason(base: string, detail: string | null): string {
 }
 
 function isStaticReason(reason: DeviceReason): reason is StaticReason {
-  return reason.code === PLAN_REASON_CODES.none
-    || reason.code === PLAN_REASON_CODES.restoreThrottled
+  return reason.code === PLAN_REASON_CODES.restoreThrottled
     || reason.code === PLAN_REASON_CODES.waitingForOtherDevices
     || reason.code === PLAN_REASON_CODES.externalOffHold
     || reason.code === PLAN_REASON_CODES.neutralStartupHold
@@ -70,8 +68,6 @@ function isStaticReason(reason: DeviceReason): reason is StaticReason {
 
 function formatStaticReason(reason: StaticReason): string {
   switch (reason.code) {
-    case PLAN_REASON_CODES.none:
-      return '';
     case PLAN_REASON_CODES.restoreThrottled:
       return 'restore throttled';
     case PLAN_REASON_CODES.waitingForOtherDevices:
@@ -164,21 +160,6 @@ function formatShortfall(reason: Extract<DeviceReason, { code: typeof PLAN_REASO
   if (reason.needKw === null && reason.headroomKw === null) return 'shortfall';
   const headroom = reason.headroomKw === null ? 'unknown' : formatSignedKw(reason.headroomKw, 2);
   return `shortfall (need ${formatSignedKw(reason.needKw ?? 0, 2)}kW, headroom ${headroom}kW)`;
-}
-
-function formatHeadroomCooldown(
-  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.headroomCooldown }>,
-): string {
-  const remainingSec = formatRemainingSec(reason.remainingSec);
-  if (reason.kind === 'recent_pels_shed') {
-    return `headroom cooldown (${remainingSec}s remaining; recent PELS shed)`;
-  }
-  if (reason.kind === 'recent_pels_restore') {
-    return `headroom cooldown (${remainingSec}s remaining; recent PELS restore)`;
-  }
-  const fromKw = reason.fromKw === null ? 'unknown' : formatSignedKw(reason.fromKw, 2);
-  const toKw = reason.toKw === null ? 'unknown' : formatSignedKw(reason.toKw, 2);
-  return `headroom cooldown (${remainingSec}s remaining; usage step down from ${fromKw}kW to ${toKw}kW)`;
 }
 
 function formatNeedSummary(
@@ -285,12 +266,8 @@ export function formatDeviceReason(reason: DeviceReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreNeed:
       return formatRestoreNeed(reason);
-    case PLAN_REASON_CODES.setTarget:
-      return `set to ${reason.targetText}`;
     case PLAN_REASON_CODES.shortfall:
       return formatShortfall(reason);
-    case PLAN_REASON_CODES.headroomCooldown:
-      return formatHeadroomCooldown(reason);
     case PLAN_REASON_CODES.insufficientHeadroom:
       return formatInsufficientHeadroom(reason);
     case PLAN_REASON_CODES.shedInvariant:
@@ -503,8 +480,6 @@ const TIMED_REASON_LABELS = {
 
 function formatStaticReasonUserFacing(reason: StaticReason): string {
   switch (reason.code) {
-    case PLAN_REASON_CODES.none:
-      return '';
     case PLAN_REASON_CODES.restoreThrottled:
       return 'Delaying restart to avoid rapid cycling';
     case PLAN_REASON_CODES.waitingForOtherDevices:
@@ -593,12 +568,8 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreNeed:
       return formatRestoreNeedUserFacing(reason);
-    case PLAN_REASON_CODES.setTarget:
-      return `Changing target to ${reason.targetText}`;
     case PLAN_REASON_CODES.shortfall:
       return formatShortfallReason({ needKw: reason.needKw, headroomKw: reason.headroomKw });
-    case PLAN_REASON_CODES.headroomCooldown:
-      return 'Waiting for power reading to stabilise';
     case PLAN_REASON_CODES.insufficientHeadroom:
       return formatInsufficientHeadroomUserFacing(reason);
     case PLAN_REASON_CODES.shedInvariant:

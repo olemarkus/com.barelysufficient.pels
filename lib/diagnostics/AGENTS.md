@@ -28,6 +28,6 @@ Design-of-record: `notes/starvation/README.md`; intended-target model also in `l
 
 **Counting causes:** `shed due to capacity`, `shed due to daily budget`, `shed due to hourly budget`, shortfall, swap pending/out, insufficient headroom, shedding active.
 
-**Pause reasons (cannot start starvation; pause a latched episode):** cooldown, headroom cooldown, restore throttled, activation backoff, inactive, keep, restore, deferred_objective_avoid.
+**Pause reasons (cannot start starvation; pause a latched episode):** cooldown, restore throttled, activation backoff, inactive, keep, restore, deferred_objective_avoid.
 
 **Does not add starvation time:** invalid/stale observations, long sample gaps, any non-counting hold, capacity control off.

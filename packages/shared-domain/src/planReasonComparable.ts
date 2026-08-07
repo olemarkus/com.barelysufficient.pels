@@ -8,17 +8,10 @@ type ComparablePlanReasonBase = {
   code: PlanReasonCode;
 };
 
-type ComparableTextReason = ComparablePlanReasonBase & {
-  text: string;
-};
-
 export type ComparablePlanReason =
   | ComparablePlanReasonBase
   | (ComparablePlanReasonBase & { detail: string | null; reserveHolderName?: string | null })
   | (ComparablePlanReasonBase & { targetName: string | null; reserveHolderName?: string | null })
-  | (ComparablePlanReasonBase & {
-    kind: 'recent_pels_shed' | 'recent_pels_restore' | 'usage_step_down';
-  })
   | (ComparablePlanReasonBase & {
     fromTarget: string | null;
     toTarget: string | null;
@@ -40,8 +33,7 @@ export type ComparablePlanReason =
     toStep: string;
     shedDeviceCount: number;
     maxStep: string;
-  })
-  | ComparableTextReason;
+  });
 
 // `dailyBudget` and `capacity` stay here — compared on `detail` alone — even
 // though they carry a `shortfallKw` the card renders (as do the swap variants
@@ -164,8 +156,6 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
     case PLAN_REASON_CODES.swappedOut:
     case PLAN_REASON_CODES.reservedForStart:
       return withReserveHolder({ code: reason.code, targetName: reason.targetName }, reason);
-    case PLAN_REASON_CODES.headroomCooldown:
-      return { code: reason.code, kind: reason.kind };
     case PLAN_REASON_CODES.restoreNeed:
       return {
         code: reason.code,
@@ -186,8 +176,6 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         effectiveAvailableW: quantizeKwToW(reason.effectiveAvailableKw),
         swapTargetName: reason.swapTargetName,
       };
-    case PLAN_REASON_CODES.setTarget:
-      return { code: reason.code, text: reason.targetText };
     case PLAN_REASON_CODES.shedInvariant:
       return {
         code: reason.code,

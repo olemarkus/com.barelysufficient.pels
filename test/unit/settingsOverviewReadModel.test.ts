@@ -9,7 +9,7 @@ import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 describe('settingsOverviewReadModel', () => {
   it('projects capacity and effective hour budgets for settings overview', () => {
     const device = buildPlanDevice({
-      reason: { code: PLAN_REASON_CODES.none },
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
 
     const readModel = buildSettingsOverviewReadModel({
@@ -45,9 +45,10 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it('excludes auto-tracked observe-only role devices (battery / solar) from the overview devices', () => {
-    const heater = buildPlanDevice({ id: 'heater', deviceClass: 'heater', reason: { code: PLAN_REASON_CODES.none } });
-    const battery = buildPlanDevice({ id: 'home-battery', deviceClass: 'battery', reason: { code: PLAN_REASON_CODES.none } });
-    const solar = buildPlanDevice({ id: 'solar', deviceClass: 'solarpanel', reason: { code: PLAN_REASON_CODES.none } });
+    const keepReason = { code: PLAN_REASON_CODES.keep, detail: null } as const;
+    const heater = buildPlanDevice({ id: 'heater', deviceClass: 'heater', reason: keepReason });
+    const battery = buildPlanDevice({ id: 'home-battery', deviceClass: 'battery', reason: keepReason });
+    const solar = buildPlanDevice({ id: 'solar', deviceClass: 'solarpanel', reason: keepReason });
 
     const readModel = buildSettingsOverviewReadModel({
       meta: {
@@ -71,7 +72,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('uses daily budget allocation as the effective hour budget when tighter', () => {
     const device = buildPlanDevice({
-      reason: { code: PLAN_REASON_CODES.none },
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
 
     const readModel = buildSettingsOverviewReadModel({

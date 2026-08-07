@@ -98,8 +98,7 @@ export const isSteppedTransit = (device: {
 );
 
 const isSettlingReason = (code: string): boolean => (
-  code === PLAN_REASON_CODES.headroomCooldown
-  || code === PLAN_REASON_CODES.meterSettling
+  code === PLAN_REASON_CODES.meterSettling
   || code === PLAN_REASON_CODES.cooldownRestore
   || code === PLAN_REASON_CODES.cooldownShedding
   || code === PLAN_REASON_CODES.activationBackoff
@@ -124,7 +123,6 @@ const isAtTargetStep = (device: SteppedDevice): boolean => {
 // rendering their countdown / status text even at-target.
 const isHeadroomCheckSettlingReason = (code: string): boolean => (
   code === PLAN_REASON_CODES.meterSettling
-  || code === PLAN_REASON_CODES.headroomCooldown
 );
 
 // ─── Status line ──────────────────────────────────────────────────────────────
@@ -138,13 +136,6 @@ const resolveElapsedAgoText = (countdownStartedAtMs: number | undefined, nowMs: 
 };
 
 const resolveSettlingStatusLine = (reason: DeviceReason, nowMs: number): string | null => {
-  if (reason.code === PLAN_REASON_CODES.headroomCooldown) {
-    if (reason.kind === 'recent_pels_restore') {
-      const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-      return `Resumed ${ago} — checking power reading`;
-    }
-    return `Limited — will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
-  }
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
     const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
     return `Resumed ${ago} — checking power reading`;

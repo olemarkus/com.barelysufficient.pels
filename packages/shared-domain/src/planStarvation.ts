@@ -1,7 +1,4 @@
-import type {
-  SettingsUiPlanDeviceSnapshot,
-  SettingsUiPlanDeviceStarvation,
-} from '../../contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope';
 // From the lean write-strings module (NOT deadlineLabels.ts) so the rescue
 // widget bundles don't drag the full smart-task copy module in.
@@ -392,16 +389,3 @@ export const formatStarvationRescueArmedCaption = (deadlineLabel: string | undef
   return `${consequence} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} ${deadlineLabel}`;
 };
 
-export const summarizeStarvation = (
-  devices: Array<Pick<SettingsUiPlanDeviceSnapshot, 'starvation'>> | null | undefined,
-): string | null => {
-  if (!Array.isArray(devices) || devices.length === 0) return null;
-  const count = devices
-    .map((device) => device.starvation)
-    .filter((starvation): starvation is SettingsUiPlanDeviceStarvation => (
-      Boolean(starvation?.isStarved)
-    ))
-    .length;
-  if (count === 0) return null;
-  return count === 1 ? '1 device limited' : `${count} devices limited`;
-};

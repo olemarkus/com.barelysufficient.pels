@@ -3,8 +3,7 @@ import type { ClassifiedPlanReason } from './planReasonStrings';
 export function shouldNormalizeReason(reason: ClassifiedPlanReason): boolean {
   return reason.code === 'none'
     || reason.code === 'keep'
-    || reason.code === 'restore_need'
-    || reason.code === 'set_target';
+    || reason.code === 'restore_need';
 }
 
 export function isSwapReason(reason: ClassifiedPlanReason): boolean {

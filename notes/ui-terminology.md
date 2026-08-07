@@ -1259,7 +1259,7 @@ The Overview hero does not chip the mode — see
 2. **Units in labels.** `Hard cap (kW)`, `Daily budget (kWh)`, `Cheap-hour boost (°C)`.
 3. **No abbreviations in visible labels.** No bare `Cap`, no `delta`.
 4. **Chips are short; reason lines are longer.** Chip: `Limited`. Reason: `by today's daily budget`.
-5. **No internal planner terms in normal live status.** `backoff`, `invariant`, `shortfall`, `swap`, `headroom cooldown` belong in advanced diagnostics only.
+5. **No internal planner terms in normal live status.** `backoff`, `invariant`, `shortfall`, `swap` belong in advanced diagnostics only.
 6. **Don't rename established user-facing terms unless the change is clearly better.** Confusion from renaming has a cost too. `Budget`, `Managed`/`Unmanaged`, `Capacity`, `Priority`, `Mode` stay.
 
 ## Hard cap is an hourly ceiling

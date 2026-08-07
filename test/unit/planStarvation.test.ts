@@ -1,7 +1,6 @@
 import {
   formatStarvationBadge,
   formatStarvationReason,
-  summarizeStarvation,
 } from '../../packages/shared-domain/src/planStarvation';
 
 describe('planStarvation', () => {
@@ -42,42 +41,5 @@ describe('planStarvation', () => {
     });
     expect(badge).not.toBeNull();
     expect(`${badge!.label} ${badge!.tooltip}`.toLowerCase()).not.toMatch(/budget|hard cap/);
-  });
-
-  it('summarizes all starved devices in the hero', () => {
-    expect(summarizeStarvation([
-      { starvation: undefined },
-      {
-        starvation: {
-          isStarved: true,
-          accumulatedMs: 20 * 60 * 1000,
-          startedAtMs: null,
-        },
-      },
-      {
-        starvation: {
-          isStarved: true,
-          accumulatedMs: 20 * 60 * 1000,
-          startedAtMs: null,
-        },
-      },
-    ])).toBe('2 devices limited');
-
-    expect(summarizeStarvation([
-      {
-        starvation: {
-          isStarved: true,
-          accumulatedMs: 20 * 60 * 1000,
-          startedAtMs: null,
-        },
-      },
-      {
-        starvation: {
-          isStarved: true,
-          accumulatedMs: 10 * 60 * 1000,
-          startedAtMs: null,
-        },
-      },
-    ])).toBe('2 devices limited');
   });
 });
