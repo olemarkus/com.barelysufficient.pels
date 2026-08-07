@@ -67,26 +67,19 @@ export type PlanContext = {
    * no companion flag to remember, and no way to spend an untrustworthy number
    * by forgetting to check one.
    *
-   * This is the field every planning consumer takes. `total` above is the raw
-   * reading and `powerKnown` below is the freshness fact; neither is a planning
-   * input. Before 2026-08-07 consumers received the raw pair and re-derived
-   * trust themselves (`resolvePlanningTotalPower`, deleted with this field),
-   * which is the consumer-side provenance branch the root AGENTS.md rule
-   * forbids: "Downstream layers may then assume the typed invariant holds; they
-   * must not re-validate or branch on the input's source/provenance."
+   * This is the field every consumer takes. `total` above is the raw reading and
+   * `powerFreshnessState` below is the freshness fact the UI renders; neither is
+   * a planning input. Before 2026-08-07 consumers received the raw total plus a
+   * `powerKnown` boolean and re-derived trust themselves
+   * (`resolvePlanningTotalPower`, deleted with that flag), which is the
+   * consumer-side provenance branch the root AGENTS.md rule forbids:
+   * "Downstream layers may then assume the typed invariant holds; they must not
+   * re-validate or branch on the input's source/provenance."
+   *
+   * The boolean is now a local inside this function — derived, used to resolve
+   * the axes, and never exported.
    */
   planningTotalKw: number | null;
-  /**
-   * DISPLAY ONLY: whether this cycle had a trustworthy reading at all. The
-   * settings UI renders freshness as its subject (the `Live` chip, the sample
-   * age), so the fact itself is legitimate there.
-   *
-   * Do NOT branch on this to decide whether some other number can be trusted —
-   * take `planningTotalKw` and read its absence. The remaining display-side
-   * consumers still re-derive `powerNowKw` from this plus three other fields;
-   * that is the follow-up.
-   */
-  powerKnown: boolean;
   hasLivePowerSample: boolean;
   powerSampleAgeMs: number | null;
   powerFreshnessState: PowerFreshnessState;
@@ -218,7 +211,6 @@ export function buildPlanContext(params: {
     total,
     // Resolved once, here, so no consumer re-derives it from the raw pair.
     planningTotalKw: powerKnown ? total : null,
-    powerKnown,
     hasLivePowerSample: freshness.hasLivePowerSample,
     powerSampleAgeMs: freshness.powerSampleAgeMs,
     powerFreshnessState: freshness.powerFreshnessState,

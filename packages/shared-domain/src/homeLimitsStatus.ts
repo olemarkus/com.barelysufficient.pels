@@ -67,7 +67,7 @@ export const HOME_LIMITS_STATUS_CHIP_ACTIVE = 'Active';
 /** No status blob yet — a freshly created area that hasn't produced a plan. */
 export const HOME_LIMITS_STATUS_PENDING = 'PELS hasn’t reported on this meter area yet.';
 /**
- * A blob exists but carries no live power reading (`powerKnown`/live sample
+ * A blob exists but carries no live power reading (`powerNowKw` absent
  * false). PELS can't claim it is under the cap without a current draw, so the
  * calm active-idle line is withheld until a reading lands.
  */
@@ -154,19 +154,40 @@ export const resolveHomeLimitsStatus = (
 
   const controlledKw = toFiniteNumber(record.controlledKw);
   const uncontrolledKw = toFiniteNumber(record.uncontrolledKw);
-  const powerKnown = record.powerKnown === true;
-  const hasLiveSample = record.hasLivePowerSample === true;
   // Prefer the whole-area meter total the blob carries: a meter area can report
   // a live total while per-device attribution (controlledKw/uncontrolledKw) is
   // absent, in which case the parts sum is null but a real draw exists. Fall back
   // to summing the parts only when the total is missing. Gate the COMPUTED sum
   // too: two large finite operands can overflow to Infinity, which must read as
   // "unknown", never "Infinity kW".
-  const partsSumKw = controlledKw !== null && uncontrolledKw !== null ? controlledKw + uncontrolledKw : null;
-  const totalKw = toFiniteNumber(record.totalKw) ?? partsSumKw;
-  const powerNowKw = powerKnown && hasLiveSample && totalKw !== null && Number.isFinite(totalKw)
-    ? totalKw
+  const partsSumKw = controlledKw !== null && uncontrolledKw !== null
+    ? toFiniteNumber(controlledKw + uncontrolledKw)
     : null;
+  const totalKw = toFiniteNumber(record.totalKw) ?? partsSumKw;
+  // "Power now" is the producer's own resolved figure (`powerNowKw`,
+  // `planBuilderMeta`), displayed as given. It used to be recomposed here from
+  // `powerKnown && hasLivePowerSample && totalKw !== null &&
+  // Number.isFinite(totalKw)` — the consumer-side provenance branch the root
+  // AGENTS.md rule forbids, and one that could render `—` for a blob that
+  // carried the canonical value, because the resolved figure was consulted as a
+  // presence flag rather than shown.
+  //
+  // `hasLivePowerSample` was redundant in that chain: `powerKnown` was
+  // `freshness === 'fresh' && total !== null`, which already implied it. The
+  // finiteness checks were NOT — they survive above. The read of
+  // `record.totalKw` is untrusted input off the settings store, and the parts sum
+  // is a COMPUTED value two finite operands can overflow (`MAX_VALUE +
+  // MAX_VALUE` → Infinity, which must read as unknown, never "Infinity kW"), so
+  // that gate lives where the sum is made.
+  const resolvedKw = toFiniteNumber(record.powerNowKw);
+  // LEGACY BLOBS ONLY: those written before `powerNowKw` existed (2026-08-08)
+  // carry the `powerKnown` flag and the composed total instead. Kept so an
+  // upgrade does not blank the card until the next status write, and because the
+  // parts-sum fallback above is documented behaviour for a meter area with
+  // attribution but no total. Both can go once no persisted blob predates the
+  // field.
+  const legacyKw = record.powerKnown === true ? totalKw : null;
+  const powerNowKw = resolvedKw ?? legacyKw;
   return {
     posture,
     powerNowKw,

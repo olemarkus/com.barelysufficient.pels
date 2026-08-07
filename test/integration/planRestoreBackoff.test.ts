@@ -56,7 +56,6 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   devices: [],
   desiredForMode: {},
   total: 0,
-  powerKnown: true,
   planningTotalKw: 0,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
@@ -2347,7 +2346,6 @@ describe('restore admission — headroom and penalty gates', () => {
   const freshBatchContext = (headroomKw: number): PlanContext => buildContext({
     headroomRaw: headroomKw,
     headroom: headroomKw,
-    powerKnown: true,
     hasLivePowerSample: true,
     powerSampleAgeMs: 1_000,
     powerFreshnessState: 'fresh',
@@ -2479,7 +2477,6 @@ describe('restore admission — headroom and penalty gates', () => {
       context: buildContext({
         headroomRaw: 5,
         headroom: 5,
-        powerKnown: false,
         planningTotalKw: null,
         hasLivePowerSample: false,
         powerSampleAgeMs: 61_000,

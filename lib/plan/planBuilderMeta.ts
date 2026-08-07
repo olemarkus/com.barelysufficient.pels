@@ -60,7 +60,10 @@ export function buildPlanMeta(params: {
     projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
     headroomKw: context.headroom,
-    powerKnown: context.powerKnown,
+    // The measured whole-home draw, or `null` when this cycle had none. The
+    // single resolved figure every status/display consumer reads — it replaced
+    // a `powerKnown` boolean that each of them recombined with a raw total.
+    powerNowKw: context.planningTotalKw,
     hasLivePowerSample: context.hasLivePowerSample,
     powerSampleAgeMs: context.powerSampleAgeMs,
     powerFreshnessState: context.powerFreshnessState,
@@ -172,7 +175,10 @@ export function buildPlanContextHeadroomLogFields(
     totalKw: context.total,
     softLimitKw: context.softLimit,
     softHeadroomKw: context.headroom,
-    powerKnown: context.powerKnown,
+    // The measured whole-home draw, or `null` when this cycle had none. The
+    // single resolved figure every status/display consumer reads — it replaced
+    // a `powerKnown` boolean that each of them recombined with a raw total.
+    powerNowKw: context.planningTotalKw,
     hasLivePowerSample: context.hasLivePowerSample,
     powerSampleAgeMs: context.powerSampleAgeMs,
     powerFreshnessState: context.powerFreshnessState,

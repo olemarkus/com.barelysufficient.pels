@@ -40,11 +40,12 @@ const buildDevice = (
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
   const total = overrides.total ?? null;
-  const powerKnown = overrides.powerKnown ?? (typeof total === 'number' && Number.isFinite(total));
+  const powerKnown = overrides.planningTotalKw !== undefined
+    ? overrides.planningTotalKw !== null
+    : (typeof total === 'number' && Number.isFinite(total));
   return {
     devices: [],
     desiredForMode: {},
-    planningTotalKw: powerKnown ? total : null,
     hasLivePowerSample: overrides.hasLivePowerSample ?? powerKnown,
     powerSampleAgeMs: overrides.powerSampleAgeMs ?? (powerKnown ? 0 : null),
     powerFreshnessState: overrides.powerFreshnessState ?? (powerKnown ? 'fresh' : 'stale_hold'),
@@ -65,7 +66,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
     currentHourPriceLevel: { cheap: false, expensive: false },
     ...overrides,
     total,
-    powerKnown,
+    planningTotalKw: powerKnown ? total : null,
   };
 };
 
@@ -264,7 +265,6 @@ describe('buildSheddingPlan', () => {
         }),
       ],
       total: 6.2,
-      powerKnown: false,
       planningTotalKw: null,
       hasLivePowerSample: false,
       powerSampleAgeMs: 2 * 60 * 1000,

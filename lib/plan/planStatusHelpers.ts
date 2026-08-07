@@ -156,11 +156,11 @@ export const buildPelsStatusInputKey = (params: {
   combinedPrices: unknown;
   lastPowerUpdate: number | null;
   powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
-  powerKnown?: boolean;
+  powerNowKw?: number | null;
   dryRunEffective?: boolean;
 }): string => {
   const {
-    changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate, powerFreshnessState, powerKnown, dryRunEffective,
+    changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate, powerFreshnessState, powerNowKw, dryRunEffective,
   } = params;
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
@@ -168,7 +168,11 @@ export const buildPelsStatusInputKey = (params: {
   const priceKey = resolveStatusPriceKey({ isCheap, isExpensive, combinedPrices });
   const lastPowerUpdateKey = lastPowerUpdate === null ? 'null' : String(lastPowerUpdate);
   const freshnessKey = powerFreshnessState ?? 'none';
-  const powerKnownKey = powerKnown === true ? 'known' : 'unknown';
+  // PRESENCE only, not the value: the figure moves every sample and would bust
+  // the status cache on each one. What must bust it is the transition between
+  // having a measurement and not — which `freshnessKey` alone misses, because a
+  // fresh tracker with a null total (an in-place meter swap) is still 'fresh'.
+  const powerNowKey = powerNowKw === null || powerNowKw === undefined ? 'unknown' : 'known';
   // Fold the effective dry-run in so a posture flip (membership becoming ready,
   // or the persisted flag toggled) busts the cache and forces a status write.
   const dryRunKey = resolveDryRunKey(dryRunEffective);
@@ -179,7 +183,7 @@ export const buildPelsStatusInputKey = (params: {
     priceKey,
     lastPowerUpdateKey,
     freshnessKey,
-    powerKnownKey,
+    powerNowKey,
     dryRunKey,
   ].join('|');
 };

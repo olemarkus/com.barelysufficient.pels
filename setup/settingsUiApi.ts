@@ -168,7 +168,7 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     headroomKw?: number;
     lastPowerUpdate?: number | null;
     priceLevel?: string | null;
-    powerKnown?: boolean;
+    powerNowKw?: number | null;
     hasLivePowerSample?: boolean;
     powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
   } | null;

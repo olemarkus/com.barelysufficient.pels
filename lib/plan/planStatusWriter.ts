@@ -95,7 +95,7 @@ export class PlanStatusWriter {
       combinedPrices,
       lastPowerUpdate,
       powerFreshnessState: plan.meta.powerFreshnessState,
-      powerKnown: plan.meta.powerKnown,
+      powerNowKw: plan.meta.powerNowKw,
       dryRunEffective,
     });
     const result = this.resolveStatusResult({

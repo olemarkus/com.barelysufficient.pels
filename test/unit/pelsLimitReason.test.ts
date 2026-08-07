@@ -24,14 +24,15 @@ describe('pels status limit reason', () => {
     softLimitSource: 'capacity' | 'daily' | 'both';
     reason: string | DeviceReason;
     headroomKw?: number;
-    powerKnown?: boolean;
+    /** The producer-resolved measured draw; `null` means this cycle had none. */
+    powerNowKw?: number | null;
   }): DevicePlan => ({
     meta: {
       totalKw: 4.2,
       softLimitKw: 6,
       softLimitSource: params.softLimitSource,
       headroomKw: params.headroomKw ?? 1.8,
-      powerKnown: params.powerKnown ?? true,
+      powerNowKw: params.powerNowKw === undefined ? 4.2 : params.powerNowKw,
     },
     devices: [
       {
@@ -97,7 +98,9 @@ describe('pels status limit reason', () => {
       softLimitSource: 'capacity',
       reason: 'keep',
       headroomKw: -1,
-      powerKnown: false,
+      // No measurement this cycle, so the -1 is the fail-closed SENTINEL, not a
+      // real negative headroom — the status must not read it as a limit.
+      powerNowKw: null,
     });
 
     const { status } = buildPelsStatus({
@@ -233,7 +236,6 @@ describe('pels status projected-over-hard-cap flag', () => {
       usedKWh: 1.9,
       minutesRemaining: 28,
       hardCapLimitKw: 4.5,
-      powerKnown: true,
     });
     expect(status.projectedOverHardCap).toBe(true);
   });
@@ -249,7 +251,6 @@ describe('pels status projected-over-hard-cap flag', () => {
       usedKWh: 1.9,
       minutesRemaining: 28,
       hardCapLimitKw: 5.0,
-      powerKnown: true,
     });
     expect(status.projectedOverHardCap).toBe(false);
   });
@@ -263,7 +264,6 @@ describe('pels status projected-over-hard-cap flag', () => {
       usedKWh: 1.9,
       minutesRemaining: 30,
       hardCapLimitKw: 4.5,
-      powerKnown: true,
     });
     expect(status.projectedOverHardCap).toBe(false);
   });
@@ -273,7 +273,6 @@ describe('pels status projected-over-hard-cap flag', () => {
       totalKw: 5.2,
       softLimitKw: 5.5,
       headroomKw: 0.3,
-      powerKnown: true,
     });
     expect(status.projectedOverHardCap).toBe(false);
   });
@@ -281,7 +280,7 @@ describe('pels status projected-over-hard-cap flag', () => {
 
 describe('pels status effective dry-run posture (R7b, per-home Limits card)', () => {
   const emptyPlan: DevicePlan = {
-    meta: { totalKw: 0, softLimitKw: 6, headroomKw: 1, powerKnown: true },
+    meta: { totalKw: 0, softLimitKw: 6, headroomKw: 1, powerNowKw: 0 },
     devices: [],
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
@@ -308,7 +307,7 @@ describe('pels status effective dry-run posture (R7b, per-home Limits card)', ()
 
 describe('pels status whole-area total (per-home Limits "Power now")', () => {
   const drawPlan: DevicePlan = {
-    meta: { totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8, powerKnown: true },
+    meta: { totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8, powerNowKw: 5.2 },
     devices: [],
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({

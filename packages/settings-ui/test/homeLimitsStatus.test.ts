@@ -39,7 +39,7 @@ describe('homeScopedSettingsKey mirror', () => {
 describe('resolveHomeLimitsStatus boundary shaping', () => {
   it('resolves power now from managed + background when a live sample exists', () => {
     const status = resolveHomeLimitsStatus(
-      { controlledKw: 2, uncontrolledKw: 1.4, powerKnown: true, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
+      { controlledKw: 2, uncontrolledKw: 1.4, powerNowKw: 3.4, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
     );
     expect(status.powerNowKw).toBeCloseTo(3.4);
@@ -52,7 +52,7 @@ describe('resolveHomeLimitsStatus boundary shaping', () => {
     // omitted (no per-device power attribution). "Power now" must come from the
     // total, not read missing/zero.
     const status = resolveHomeLimitsStatus(
-      { totalKw: 5.2, powerKnown: true, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
+      { totalKw: 5.2, powerNowKw: 5.2, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
     );
     expect(status.powerNowKw).toBeCloseTo(5.2);
@@ -61,35 +61,41 @@ describe('resolveHomeLimitsStatus boundary shaping', () => {
   it('prefers the area total over the parts sum, falling back to parts when the total is junk', () => {
     // Total present → used verbatim.
     expect(resolveHomeLimitsStatus(
-      { totalKw: 6, controlledKw: 2, uncontrolledKw: 1, powerKnown: true, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
+      { totalKw: 6, controlledKw: 2, uncontrolledKw: 1, powerNowKw: 6, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
     ).powerNowKw).toBeCloseTo(6);
     // Non-finite total → fall back to the controlled + background sum.
     expect(resolveHomeLimitsStatus(
-      { totalKw: Number.POSITIVE_INFINITY, controlledKw: 2, uncontrolledKw: 1, powerKnown: true, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
+      { totalKw: Number.POSITIVE_INFINITY, controlledKw: 2, uncontrolledKw: 1, powerNowKw: 3, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
     ).powerNowKw).toBeCloseTo(3);
   });
 
-  it('keeps the total unknown without a live sample (no confident draw)', () => {
-    // A total is present but there is no live sample — Power now stays unknown.
+  it('keeps the total unknown without a measurement (no confident draw)', () => {
+    // A total is present but the producer resolved no measurement this cycle, so
+    // Power now stays unknown. This pinned `powerKnown: true` + `hasLivePowerSample:
+    // false` until 2026-08-07 — a pair the producer could not emit, since
+    // `powerKnown` was `freshness === 'fresh' && total !== null` and therefore
+    // already implied a live sample.
     const status = resolveHomeLimitsStatus(
-      { totalKw: 5.2, powerKnown: true, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
+      { totalKw: 5.2, powerNowKw: null, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
     );
     expect(status.powerNowKw).toBeNull();
   });
 
-  it('drops power to null without a live sample (never sums a partial reading)', () => {
+  it('drops power to null without a measurement (never sums a partial reading)', () => {
     const status = resolveHomeLimitsStatus(
-      { controlledKw: 2, uncontrolledKw: 1, powerKnown: true, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
+      { controlledKw: 2, uncontrolledKw: 1, powerNowKw: null, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
     );
     expect(status.hasStatus).toBe(true);
     expect(status.powerNowKw).toBeNull();
   });
 
-  it('renders unknown (never "Infinity kW") when the power sum overflows to Infinity', () => {
+  // LEGACY-BLOB path: the parts sum is only composed when the blob carries no
+  // producer-resolved `powerNowKw`, so that is where the overflow guard lives.
+  it('renders unknown (never "Infinity kW") when the legacy power sum overflows', () => {
     const status = resolveHomeLimitsStatus(
       {
         controlledKw: Number.MAX_VALUE, uncontrolledKw: Number.MAX_VALUE,
@@ -101,7 +107,7 @@ describe('resolveHomeLimitsStatus boundary shaping', () => {
     expect(formatHomeLimitsKw(status.powerNowKw)).toBe('—');
   });
 
-  it('gates a NaN power operand out of the resolved value (valid blob otherwise)', () => {
+  it('gates a NaN operand out of the legacy composed value (valid blob otherwise)', () => {
     const status = resolveHomeLimitsStatus(
       { controlledKw: Number.NaN, uncontrolledKw: 1, powerKnown: true, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none' },
       { dryRun: false, hardCapKw: 8 },
@@ -109,6 +115,25 @@ describe('resolveHomeLimitsStatus boundary shaping', () => {
     expect(status.hasStatus).toBe(true);
     expect(status.powerNowKw).toBeNull();
     expect(status.limitedDeviceCount).toBe(0);
+  });
+
+  // The bug this replaced: the resolved figure was used only as a presence flag
+  // while the recomposed legacy total was displayed, so a blob carrying the
+  // canonical value could still render `—` when those legacy fields were absent.
+  it('displays the producer-resolved figure even with no legacy fields at all', () => {
+    const status = resolveHomeLimitsStatus(
+      { powerNowKw: 4.7, devicesOff: 0, limitReason: 'none' },
+      { dryRun: false, hardCapKw: 8 },
+    );
+    expect(status.powerNowKw).toBeCloseTo(4.7);
+  });
+
+  it('prefers the resolved figure over a disagreeing legacy total', () => {
+    const status = resolveHomeLimitsStatus(
+      { totalKw: 9.9, powerNowKw: 4.7, devicesOff: 0, limitReason: 'none' },
+      { dryRun: false, hardCapKw: 8 },
+    );
+    expect(status.powerNowKw).toBeCloseTo(4.7);
   });
 
   it('treats a missing blob as no status (posture + cap still resolve)', () => {
@@ -167,7 +192,7 @@ describe('posture chip + state line copy', () => {
   it('names the shortfall consequence over the limiting count when active', () => {
     const line = composeHomeLimitsStateLine(
       resolveHomeLimitsStatus(
-        { limitReason: 'hourly', devicesOff: 3, capacityShortfall: true, powerKnown: true, hasLivePowerSample: true, controlledKw: 1, uncontrolledKw: 1 },
+        { limitReason: 'hourly', devicesOff: 3, capacityShortfall: true, powerNowKw: 2, hasLivePowerSample: true, controlledKw: 1, uncontrolledKw: 1 },
         { dryRun: false, hardCapKw: 8 },
       ),
     );
@@ -215,18 +240,18 @@ describe('posture chip + state line copy', () => {
 
   it('confirms the calm active + simulating idle lines', () => {
     expect(composeHomeLimitsStateLine(resolveHomeLimitsStatus(
-      { limitReason: 'none', devicesOff: 0, powerKnown: true, hasLivePowerSample: true, controlledKw: 1, uncontrolledKw: 1 },
+      { limitReason: 'none', devicesOff: 0, powerNowKw: 2, hasLivePowerSample: true, controlledKw: 1, uncontrolledKw: 1 },
       { dryRun: false, hardCapKw: 8 },
     ))).toBe(HOME_LIMITS_STATUS_ACTIVE_IDLE);
     expect(composeHomeLimitsStateLine(resolveHomeLimitsStatus({ limitReason: 'none', devicesOff: 0 }, { dryRun: true, hardCapKw: 8 })))
       .toBe(HOME_LIMITS_STATUS_SIMULATING_IDLE);
   });
 
-  it('withholds the "within the cap" claim when no live power reading exists (powerKnown false)', () => {
+  it('withholds the "within the cap" claim when no live power reading exists', () => {
     // A blob can be well-formed (device count + reason) yet carry no current
     // draw. PELS must not assert compliance without a reading — codex P2.
     const line = composeHomeLimitsStateLine(resolveHomeLimitsStatus(
-      { limitReason: 'none', devicesOff: 0, powerKnown: false, hasLivePowerSample: false },
+      { limitReason: 'none', devicesOff: 0, powerNowKw: null, hasLivePowerSample: false },
       { dryRun: false, hardCapKw: 8 },
     ));
     expect(line).toBe(HOME_LIMITS_STATUS_AWAITING_READING);
@@ -249,7 +274,7 @@ describe('effective dry-run posture from the blob (R7b)', () => {
 
   it('shows Active when the blob confirms effective live control', () => {
     const status = resolveHomeLimitsStatus(
-      { limitReason: 'none', devicesOff: 0, dryRunEffective: false, powerKnown: true, hasLivePowerSample: true, controlledKw: 1, uncontrolledKw: 1 },
+      { limitReason: 'none', devicesOff: 0, dryRunEffective: false, powerNowKw: 2, hasLivePowerSample: true, controlledKw: 1, uncontrolledKw: 1 },
       { dryRun: true, hardCapKw: 8 },
     );
     expect(status.posture).toBe('active');

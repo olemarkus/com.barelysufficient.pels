@@ -175,7 +175,7 @@ describe('budget-bound restore holds through the full plan build', () => {
     expect(first.meta.softLimitSource).toBe('daily');
 
     expect(third.meta.softLimitSource).toBe('daily');
-    expect(third.meta.powerKnown).toBe(true);
+    expect(third.meta.powerNowKw).not.toBeNull();
     expect(thirdDevice.plannedState).toBe('shed');
     expect(thirdDevice.reason.code).toBe(PLAN_REASON_CODES.dailyBudget);
 

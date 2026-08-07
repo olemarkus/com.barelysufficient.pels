@@ -1612,22 +1612,6 @@ program) remain deferred.*
       framing when `powerKnown` is false. Source: pels-runtime-reality on the 2026-08-01
       budget-hold re-attribution. [P2]
 
-- [ ] **The display path still re-derives a trustworthy power figure from four fields.**
-      *Persona:* maintainer (`notes/personas.md`) touching the hero or the per-home limit rows.
-      *Hypothesis:* the planning layer stopped branching on `context.powerKnown` on 2026-08-07
-      (it takes the producer-resolved `context.planningTotalKw`, whose absence is the semantic),
-      but the display path was deliberately left for a follow-up. `homeLimitsStatus.ts` still
-      computes `powerKnown && hasLiveSample && totalKw !== null && Number.isFinite(totalKw)` —
-      four checks re-deriving one already-resolved fact — and `pelsStatus.ts` gates two status
-      claims on `plan.meta.powerKnown === true` beside a raw `headroomKw`. Resolve `powerNowKw`
-      at the producer, narrow the `packages/contracts` field, and the flag can stop being set
-      at all.
-      *Why it's needed:* it is the same consumer-side provenance branch the root AGENTS.md rule
-      forbids, and the one place where the fail-closed `-1` headroom sentinel can still be
-      rendered as if it were a measurement. Keeping a freshness SIGNAL for the UI is correct —
-      the `Live` chip and sample age are its subject; re-deriving a number from it is not.
-      Source: powerKnown producer-resolution refactor, PR 1 of 2, 2026-08-07. [P2]
-
 - [ ] **A stale reservation holder outlives a power-unknown window on the card.**
       *Persona:* owner (`notes/personas.md`) reading a held device card during a meter hiccup.
       *Hypothesis:* `finalizeCeilingReason` (`lib/plan/planReasons.ts`) returns early without

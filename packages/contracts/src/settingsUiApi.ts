@@ -194,7 +194,7 @@ export type SettingsUiPlanMetaSnapshot = {
   projectedExemptKw?: number | null;
   softLimitSource?: 'capacity' | 'daily' | 'both';
   headroomKw?: number;
-  powerKnown?: boolean;
+  powerNowKw?: number | null;
   hasLivePowerSample?: boolean;
   powerSampleAgeMs?: number | null;
   powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
@@ -350,6 +350,8 @@ export type SettingsUiPowerStatus = {
   headroomKw?: number;
   lastPowerUpdate?: number | null;
   priceLevel?: string | null;
+  powerNowKw?: number | null;
+  /** Back-compat for external `pels_status` readers; derived from `powerNowKw`. */
   powerKnown?: boolean;
   hasLivePowerSample?: boolean;
   powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';

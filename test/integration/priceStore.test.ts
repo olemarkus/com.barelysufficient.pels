@@ -202,7 +202,6 @@ describe('readPriceStore + buildPelsStatus integration', () => {
         softLimitKw: 5,
         softLimitSource: 'capacity',
         headroomKw: 5,
-        powerKnown: true,
       },
       devices: [],
     };

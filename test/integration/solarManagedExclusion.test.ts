@@ -66,7 +66,6 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   desiredForMode: { [HEATER_ID]: 21 },
   total: 3,
   planningTotalKw: 3,
-  powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
   powerFreshnessState: 'fresh',

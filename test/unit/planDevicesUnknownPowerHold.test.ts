@@ -28,7 +28,6 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   desiredForMode: {},
   total: 3,
   planningTotalKw: 3,
-  powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
   powerFreshnessState: 'fresh',
@@ -86,7 +85,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
       context: {
         ...buildContext([heater(params.targetValue)]),
         desiredForMode: { tank: params.modeTarget },
-        powerKnown: params.powerKnown,
         planningTotalKw: params.powerKnown ? 3 : null,
         // The two readings `powerKnown === false` is derived from; kept
         // consistent so the fixture cannot pass on a contradictory context.
@@ -154,7 +152,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', unit: '°C', min: 5, max: 35 }],
         })]),
         desiredForMode: { tank: 22 },
-        powerKnown: false,
         planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold',
@@ -184,7 +181,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 18.6, unit: '°C', min: 5, max: 35, step: 1 }],
         })]),
         desiredForMode: { tank: 22 },
-        powerKnown: false,
         planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold',
@@ -216,7 +212,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
         desiredForMode: { tank: 20 },
-        powerKnown,
         ...(powerKnown ? {} : {
           total: null,
           // The field the hold actually reads. Before 2026-08-07 this fixture set
@@ -255,7 +250,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
         desiredForMode: { tank: 20 },
-        powerKnown: false,
         planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold' as const,
@@ -283,7 +277,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
           deadlineFloorTargetC: 60,
         })]),
         desiredForMode: { tank: 55 },
-        powerKnown: false,
         planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold',

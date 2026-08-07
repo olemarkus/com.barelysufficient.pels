@@ -25,7 +25,7 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   marginError: null,
   reactionKw: '6.7 kW',
   status: resolveHomeLimitsStatus(
-    { controlledKw: 2, uncontrolledKw: 1, powerKnown: true, hasLivePowerSample: true, devicesOff: 1, limitReason: 'hourly' },
+    { controlledKw: 2, uncontrolledKw: 1, powerNowKw: 3, hasLivePowerSample: true, devicesOff: 1, limitReason: 'hourly' },
     { dryRun: true, hardCapKw: 7 },
   ),
   onHardCapInput: noop,
