@@ -30,8 +30,9 @@ type PlanStatusWriterDeps = {
   homey: { flow: FlowPort };
   writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
   getCombinedPrices: () => unknown;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  // Both current-hour flags from ONE combined-series build; asking the two
+  // predicates separately rebuilt the uncached series twice per status compute.
+  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   getLastPowerUpdate: () => number | null;
   /**
    * When set, the effective (membership-gated) dry-run this bundle actuates on,
@@ -84,8 +85,7 @@ export class PlanStatusWriter {
 
   private compute(plan: DevicePlan, changes?: StatusPlanChanges): PelsStatusComputation {
     const combinedPrices = this.deps.getCombinedPrices();
-    const isCheap = this.deps.isCurrentHourCheap();
-    const isExpensive = this.deps.isCurrentHourExpensive();
+    const { cheap: isCheap, expensive: isExpensive } = this.deps.getCurrentHourPriceLevel();
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
     const dryRunEffective = this.deps.getEffectiveDryRun?.();
     const inputKey = buildPelsStatusInputKey({

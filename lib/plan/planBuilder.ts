@@ -65,8 +65,8 @@ export type PlanBuilderDeps = {
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  // Producer-resolved: both current-hour flags from ONE combined-series build.
+  getCurrentHourPriceLevel: () => CurrentHourPriceLevel;
   // Producer-resolved inferred curtailed-surplus term for the surplus allocator
   // (zero-export homes); forwarded untouched to the per-device prep pass.
   getInferredSurplusKw?: () => number | null;
@@ -305,10 +305,10 @@ export class PlanBuilder {
     if (!this.deps.getPriceOptimizationEnabled()) return NO_CURRENT_HOUR_PRICE_LEVEL;
     const settings = this.priceOptimizationSettings;
     if (!devices.some((dev) => settings[dev.id]?.enabled === true)) return NO_CURRENT_HOUR_PRICE_LEVEL;
-    return {
-      cheap: this.deps.isCurrentHourCheap(),
-      expensive: this.deps.isCurrentHourExpensive(),
-    };
+    // One combined-series build for both flags — see
+    // `PriceService.getCurrentHourPriceLevel`. Asking the two predicates
+    // separately rebuilt the whole series twice for one question.
+    return this.deps.getCurrentHourPriceLevel();
   }
 
   private async buildContextAndShedding(

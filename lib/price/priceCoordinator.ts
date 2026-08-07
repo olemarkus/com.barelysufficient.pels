@@ -309,6 +309,11 @@ export class PriceCoordinator {
     return this.priceService.isCurrentHourCheap();
   }
 
+  /** Both flags from one combined-series build — see `PriceService.getCurrentHourPriceLevel`. */
+  getCurrentHourPriceLevel(): { cheap: boolean; expensive: boolean } {
+    return this.priceService.getCurrentHourPriceLevel();
+  }
+
   isCurrentHourExpensive(): boolean {
     return this.priceService.isCurrentHourExpensive();
   }

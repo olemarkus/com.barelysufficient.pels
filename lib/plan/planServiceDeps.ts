@@ -106,8 +106,9 @@ export type PlanServiceDeps = {
    * `pels_status` blob stays byte-identical.
    */
   getStatusEffectiveDryRun?: () => boolean;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  // Both current-hour price flags from ONE combined-series build; see
+  // `PriceService.getCurrentHourPriceLevel`.
+  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   getCombinedPrices: () => unknown;
   getLastPowerUpdate: () => number | null;
   schedulePostActuationRefresh?: () => void;

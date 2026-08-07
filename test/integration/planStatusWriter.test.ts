@@ -49,8 +49,7 @@ const makeWriter = (initialDryRun: boolean | undefined, mainHome: boolean): Harn
     homey: { flow: stubFlow() },
     writePelsStatus: writeSpy,
     getCombinedPrices: () => null,
-    isCurrentHourCheap: () => false,
-    isCurrentHourExpensive: () => false,
+    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
     getLastPowerUpdate: () => lastPowerUpdate,
     // The main home wires no getEffectiveDryRun; sub-homes supply one.
     getEffectiveDryRun: mainHome ? undefined : () => dryRun as boolean,

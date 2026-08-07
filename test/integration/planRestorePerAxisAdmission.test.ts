@@ -121,8 +121,7 @@ const buildBuilder = (params: {
   getModeDeviceTargets: () => ({}),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
+  getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   // Thermostat outranks the heater so the restore pass evaluates it FIRST:

@@ -338,8 +338,7 @@ function buildSubHomeScope(params: {
     // no surplus term, no smart-task decoration (absent = identity), no
     // dynamic-soft-limit override.
     getPriceOptimizationEnabled: () => false,
-    isCurrentHourCheap: () => false,
-    isCurrentHourExpensive: () => false,
+    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
     getInferredSurplusKw: () => null,
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,

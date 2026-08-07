@@ -1,5 +1,6 @@
 import { calculateElectricitySupport, getRegionalPricingRules } from './priceComponents';
 import { getZonedParts } from '../utils/dateUtils';
+import { NORWAY_PRICE_MODEL } from '../utils/settingsKeys';
 import {
   DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH,
   getNorgesprisMonthlyCapForTariffGroup,
@@ -8,6 +9,47 @@ import {
 import type { CombinedHourlyPrice } from './priceTypes';
 
 export type NorwayPriceModel = 'stromstotte' | 'norgespris';
+
+/** The Norway-scheme settings the combined-series build reads, with their defaults applied. */
+export type NorwaySchemeSettings = {
+  priceArea: string;
+  countyCode: string;
+  organizationNumber: string | null;
+  tariffGroup: string;
+  norwayPriceModel: NorwayPriceModel;
+};
+
+const stringOr = (value: unknown, fallback: string): string => (
+  typeof value === 'string' && value ? value : fallback
+);
+
+/**
+ * Reads and defaults the Norway-scheme settings in one place, mirroring
+ * `readExportPriceConfig`'s `{ getRaw }` shape so `PriceService` stays a caller
+ * rather than an owner of these keys.
+ *
+ * NOTE for anyone adding a cache over the combined series: these four keys
+ * (`price_area`, `nettleie_*`) have no entry in `lib/utils/settingsHandlers.ts`,
+ * so changing them fires no `updateCombinedPrices()`. The live re-read on every
+ * build is what makes a price-area or grid-operator change take effect. See
+ * `TODO.md` under the plan-rebuild CPU entry.
+ */
+export const readNorwaySchemeSettings = (read: {
+  getRaw: (key: string) => unknown;
+}): NorwaySchemeSettings => {
+  // One read per key: this runs on the combined-series build, which is the hot
+  // path the surrounding change exists to make cheaper.
+  const organizationNumber = read.getRaw('nettleie_orgnr');
+  return {
+    priceArea: stringOr(read.getRaw('price_area'), 'NO1'),
+    countyCode: stringOr(read.getRaw('nettleie_fylke'), '03'),
+    // Empty string means "not configured", same as absent — the grid-tariff
+    // fetch keys its skip on `null`.
+    organizationNumber: typeof organizationNumber === 'string' && organizationNumber ? organizationNumber : null,
+    tariffGroup: stringOr(read.getRaw('nettleie_tariffgruppe'), 'Husholdning'),
+    norwayPriceModel: read.getRaw(NORWAY_PRICE_MODEL) === 'norgespris' ? 'norgespris' : 'stromstotte',
+  };
+};
 
 type SpotEntry = {
   startsAt: string;
