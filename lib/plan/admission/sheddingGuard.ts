@@ -155,16 +155,12 @@ export function countRemainingCandidates(params: {
     .length;
 }
 
-export function resolvePlanningTotalPower(total: number | null, powerKnown: boolean): number | null {
-  return powerKnown ? total : null;
-}
-
 export async function updateGuardState(params: {
   headroom: number;
-  powerKnown: boolean;
   overshootActionable: boolean;
   capacitySoftLimit: number;
-  total: number | null;
+  /** `context.planningTotalKw` — already resolved; `null` means no trustworthy total. */
+  planningTotalKw: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
@@ -173,28 +169,26 @@ export async function updateGuardState(params: {
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
-    powerKnown,
     overshootActionable,
     capacitySoftLimit,
-    total,
+    planningTotalKw,
     devices,
     shedSet,
     softLimitSource,
     getShedBehavior,
     capacityGuard,
   } = params;
-  const planningTotal = resolvePlanningTotalPower(total, powerKnown);
   const remainingCandidates = countRemainingCandidates({
     devices,
     shedSet,
     headroom,
     limitSource: softLimitSource,
-    total: planningTotal,
+    total: planningTotalKw,
     capacitySoftLimit,
     getShedBehavior,
   });
   const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
-  const deficitKw = computeShortfallDeficitKw(planningTotal, shortfallThreshold);
+  const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThreshold);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
     await capacityGuard?.setSheddingActive(true);
@@ -206,7 +200,7 @@ export async function updateGuardState(params: {
         deficitKw,
         devices,
         shedSet,
-        total: planningTotal,
+        total: planningTotalKw,
         limitSource: softLimitSource,
         capacitySoftLimit,
         getShedBehavior,
@@ -229,7 +223,7 @@ export async function updateGuardState(params: {
       deficitKw,
       devices,
       shedSet,
-      total: planningTotal,
+      total: planningTotalKw,
       limitSource: softLimitSource,
       capacitySoftLimit,
       getShedBehavior,

@@ -27,6 +27,7 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
   desiredForMode: {},
   total: 3,
+  planningTotalKw: 3,
   powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
@@ -86,6 +87,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
         ...buildContext([heater(params.targetValue)]),
         desiredForMode: { tank: params.modeTarget },
         powerKnown: params.powerKnown,
+        planningTotalKw: params.powerKnown ? 3 : null,
         // The two readings `powerKnown === false` is derived from; kept
         // consistent so the fixture cannot pass on a contradictory context.
         ...(params.powerKnown ? {} : { total: null, powerFreshnessState: 'stale_hold' as const }),
@@ -153,6 +155,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
         })]),
         desiredForMode: { tank: 22 },
         powerKnown: false,
+        planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold',
       },
@@ -182,6 +185,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
         })]),
         desiredForMode: { tank: 22 },
         powerKnown: false,
+        planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold',
       },
@@ -213,7 +217,15 @@ describe('unknown power holds a load-adding mode-target change', () => {
         })]),
         desiredForMode: { tank: 20 },
         powerKnown,
-        ...(powerKnown ? {} : { total: null, powerFreshnessState: 'stale_hold' as const }),
+        ...(powerKnown ? {} : {
+          total: null,
+          // The field the hold actually reads. Before 2026-08-07 this fixture set
+          // `powerKnown: false` alone and the stale companion number stayed
+          // inherited — the two-correlated-fields hazard the resolved field exists
+          // to remove.
+          planningTotalKw: null,
+          powerFreshnessState: 'stale_hold' as const,
+        }),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),
@@ -244,6 +256,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
         })]),
         desiredForMode: { tank: 20 },
         powerKnown: false,
+        planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold' as const,
       },
@@ -271,6 +284,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
         })]),
         desiredForMode: { tank: 55 },
         powerKnown: false,
+        planningTotalKw: null,
         total: null,
         powerFreshnessState: 'stale_hold',
       },

@@ -33,6 +33,7 @@ const buildContext = (
   devices: [device],
   desiredForMode,
   total: 4,
+  planningTotalKw: powerFreshnessState === 'fresh' ? 4 : null,
   powerKnown: powerFreshnessState === 'fresh',
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,

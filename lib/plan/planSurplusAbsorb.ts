@@ -191,7 +191,6 @@ export function resolveSurplusEligibility(params: {
   devices: PlanInputDevice[];
   state: PlanEngineState;
   signedNetKw: number | null;
-  powerKnown: boolean;
   // Producer-resolved inferred curtailed-surplus term (kW); null/undefined when
   // absent or currently suppressed. Folded into the pool as max(0, term) — it can
   // only ever ENLARGE the pool, and the `powerOk` gate below is unaffected: a
@@ -243,7 +242,9 @@ export function resolveSurplusEligibility(params: {
 
   if (willing.length === 0) return;
 
-  const powerOk = params.powerKnown && isFiniteNumber(params.signedNetKw);
+  // `signedNetKw` is already null when this cycle had no trustworthy total, so
+  // finiteness is the only check left — there is no provenance to re-derive.
+  const powerOk = isFiniteNumber(params.signedNetKw);
   const hardOff = isHardOffCondition(powerOk, params.signedNetKw);
   if (!powerOk) {
     // Power unknown/stale: no surplus to allocate — let every willing device release.

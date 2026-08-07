@@ -44,6 +44,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
   return {
     devices: [],
     desiredForMode: {},
+    planningTotalKw: powerKnown ? total : null,
     hasLivePowerSample: overrides.hasLivePowerSample ?? powerKnown,
     powerSampleAgeMs: overrides.powerSampleAgeMs ?? (powerKnown ? 0 : null),
     powerFreshnessState: overrides.powerFreshnessState ?? (powerKnown ? 'fresh' : 'stale_hold'),
@@ -264,6 +265,7 @@ describe('buildSheddingPlan', () => {
       ],
       total: 6.2,
       powerKnown: false,
+      planningTotalKw: null,
       hasLivePowerSample: false,
       powerSampleAgeMs: 2 * 60 * 1000,
       powerFreshnessState: 'stale_hold',

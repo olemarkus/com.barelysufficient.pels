@@ -353,7 +353,7 @@ export class PlanBuilder {
     this.syncConfirmedRestoreAttributionAttempts(
       devices,
       this.powerTracker.lastTimestamp ?? null,
-      context.powerKnown && context.headroom >= 0,
+      context.planningTotalKw !== null && context.headroom >= 0,
     );
 
     const sheddingPlan = await trackPlanStageAsync(

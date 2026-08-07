@@ -3,7 +3,7 @@ import type { PlanEngineState } from '../planState';
 import type { PlanContext } from '../planContext';
 
 import { isCapacityBreached } from '../planRemainingSheddableLoad';
-import { updateGuardState, resolvePlanningTotalPower } from '../admission';
+import { updateGuardState } from '../admission';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
   type PlanSheddingResult,
@@ -25,7 +25,6 @@ export async function buildSheddingPlan(
   deps: SheddingDeps,
   overshootActionable = context.headroom < 0,
 ): Promise<SheddingPlan> {
-  const planningTotal = resolvePlanningTotalPower(context.total, context.powerKnown);
   const {
     shedSet,
     shedReasons,
@@ -38,10 +37,9 @@ export async function buildSheddingPlan(
   const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
-    powerKnown: context.powerKnown,
+    planningTotalKw: context.planningTotalKw,
     overshootActionable: sheddingActionable,
     capacitySoftLimit: context.capacitySoftLimit,
-    total: planningTotal,
     devices: context.devices,
     shedSet,
     softLimitSource: sheddingLimitSource,
@@ -93,7 +91,6 @@ function planShedding(
   const nowTs = Date.now();
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
-  const planningTotal = resolvePlanningTotalPower(context.total, context.powerKnown);
   const needed = Math.max(0, -context.headroom);
   const measurementDecision = resolveSameMeasurementSheddingDecision({
     state,
@@ -101,14 +98,14 @@ function planShedding(
     measurementPowerW,
     neededKw: needed,
     nowTs,
-    allowEscalation: isCapacityBreached(planningTotal, context.capacitySoftLimit),
+    allowEscalation: isCapacityBreached(context.planningTotalKw, context.capacitySoftLimit),
   });
 
   const candidateParams: ShedCandidateParams = {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
     limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
-    total: planningTotal,
+    total: context.planningTotalKw,
     capacitySoftLimit: context.capacitySoftLimit,
     state,
     deps,

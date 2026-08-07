@@ -22,6 +22,7 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext
   desiredForMode: {},
   total: 6,
   powerKnown: true,
+  planningTotalKw: 6,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
   powerFreshnessState: 'fresh',

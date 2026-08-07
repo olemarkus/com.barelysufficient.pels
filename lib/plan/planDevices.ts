@@ -118,7 +118,7 @@ export function buildInitialPlanDevices(params: {
       dev,
       desiredForMode: context.desiredForMode,
       supportsTemperature,
-      powerKnown: context.powerKnown,
+      planningTotalKw: context.planningTotalKw,
       currentHourPriceLevel: context.currentHourPriceLevel,
       state,
       deps,
@@ -204,8 +204,8 @@ function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
   supportsTemperature: boolean;
-  /** `context.powerKnown`: a fresh sample AND a non-null meter total. */
-  powerKnown: boolean;
+  /** `context.planningTotalKw`: the usable meter total, or `null` when none is trustworthy. */
+  planningTotalKw: number | null;
   /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
   currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
@@ -215,7 +215,7 @@ function resolvePlannedTarget(params: {
     dev,
     desiredForMode,
     supportsTemperature,
-    powerKnown,
+    planningTotalKw,
     currentHourPriceLevel,
     state,
     deps,
@@ -258,7 +258,7 @@ function resolvePlannedTarget(params: {
       dev,
       config: deps.getPriceOptimizationSettings()[dev.id],
       observedTarget: target?.value,
-      powerKnown,
+      planningTotalKw,
       currentHourPriceLevel,
       state,
       deps,
@@ -343,7 +343,7 @@ function resolveModulatedSeedTargets(
  *
  * The hold stops a load-ADDING setpoint change while this home's draw is
  * unknown. Every other way the planner adds load is gated on headroom, which is
- * 0 or negative whenever `powerKnown` is false — but a mode target is issued as
+ * 0 or negative whenever no trustworthy total exists — but a mode target is issued as
  * an ordinary `target_update`, so it consults neither headroom nor the restore
  * cooldowns / startup stabilization (`isTargetRestore` in
  * `lib/executor/executableTargetProjection.ts` only matches an observed value
@@ -382,12 +382,12 @@ function applyModeSeedModulation(params: {
    * absence is the only unusable state and this seam must not re-narrow.
    */
   observedTarget: number | undefined;
-  powerKnown: boolean;
+  planningTotalKw: number | null;
   currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ModeSeedModulation {
-  const { seedValue, dev, config, observedTarget, powerKnown, currentHourPriceLevel, state, deps } = params;
+  const { seedValue, dev, config, observedTarget, planningTotalKw, currentHourPriceLevel, state, deps } = params;
   const pricedTarget = deps.getPriceOptimizationEnabled() && config?.enabled
     ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel)
     : seedValue;
@@ -398,7 +398,7 @@ function applyModeSeedModulation(params: {
     config,
     state,
   });
-  const holds = !powerKnown && deps.holdsModeTargetRaisesWhilePowerUnknown?.() === true;
+  const holds = planningTotalKw === null && deps.holdsModeTargetRaisesWhilePowerUnknown?.() === true;
   if (!holds) return { kind: 'value', plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
   if (observedTarget === undefined) {
     return { kind: 'hold_no_observation' };

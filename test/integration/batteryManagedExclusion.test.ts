@@ -74,6 +74,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   devices,
   desiredForMode: { [HEATER_ID]: 21 },
   total: 3,
+  planningTotalKw: 3,
   powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
@@ -209,7 +210,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       devices: [batteryInputDevice()],
       state,
       signedNetKw: -3, // 3 kW export available
-      powerKnown: true,
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),

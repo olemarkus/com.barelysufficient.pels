@@ -78,8 +78,9 @@ export function runSurplusPass(params: {
   resolveSurplusEligibility({
     devices: context.devices,
     state,
-    signedNetKw: context.total,
-    powerKnown: context.powerKnown,
+    // Producer-resolved: `null` when no trustworthy total exists this cycle, so
+    // the allocator has no untrusted number to guard against.
+    signedNetKw: context.planningTotalKw,
     inferredSurplusKw: params.getInferredSurplusKw?.() ?? null,
     excludeIds,
     getConfig: params.getConfig,

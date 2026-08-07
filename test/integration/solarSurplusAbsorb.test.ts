@@ -55,6 +55,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
   ],
   desiredForMode: { [DEVICE_ID]: MODE_C },
   total: signedNetKw,
+  planningTotalKw: signedNetKw,
   powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
@@ -104,8 +105,7 @@ const buildDevices = (params: {
   resolveSurplusEligibility({
     devices: params.context.devices,
     state: params.state,
-    signedNetKw: params.context.total,
-    powerKnown: params.context.powerKnown,
+    signedNetKw: params.context.planningTotalKw,
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
     getPriority: params.deps.getPriorityForDevice,
   });
@@ -161,6 +161,7 @@ const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
     context: {
       ...buildContext(0),
       total: null,
+      planningTotalKw: null,
       powerKnown: false,
       hasLivePowerSample: false,
       powerFreshnessState: 'stale_hold',
@@ -350,7 +351,8 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       const context: PlanContext = {
         ...buildContext(signedNetKw),
         ...(powerKnown ? {} : {
-          total: null, powerKnown: false, hasLivePowerSample: false, powerFreshnessState: 'stale_hold' as const,
+          total: null, planningTotalKw: null, powerKnown: false,
+          hasLivePowerSample: false, powerFreshnessState: 'stale_hold' as const,
         }),
       };
       // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
@@ -359,8 +361,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       resolveSurplusEligibility({
         devices: context.devices,
         state,
-        signedNetKw: context.total,
-        powerKnown: context.powerKnown,
+        signedNetKw: context.planningTotalKw,
         inferredSurplusKw,
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         getPriority: deps(true).getPriorityForDevice,
