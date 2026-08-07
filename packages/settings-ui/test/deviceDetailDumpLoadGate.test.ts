@@ -100,6 +100,9 @@ const mockSiblings = () => {
 type OpenPanelParams = {
   hasManagedSolarDevice: boolean;
   hasExhibitedExport?: boolean;
+  /** Defaults to "solar present ⇒ pool reachable", the ordinary home. Set it
+   *  explicitly to cover the divergence: solar on the roof, no reachable pool. */
+  surplusPoolReachable?: boolean;
   device: TargetDeviceSnapshot;
   managed?: boolean;
   controllable?: boolean;
@@ -123,6 +126,8 @@ const openPanel = async (params: OpenPanelParams) => {
     : {};
   state.hasManagedSolarDevice = params.hasManagedSolarDevice;
   state.hasExhibitedExport = params.hasExhibitedExport ?? false;
+  state.surplusPoolReachable = params.surplusPoolReachable
+    ?? (params.hasManagedSolarDevice || params.hasExhibitedExport === true);
   state.capacityPriorities = { Home: { [deviceId]: 1 } };
   state.modeTargets = { Home: {} };
   state.activeMode = 'Home';
@@ -241,6 +246,31 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
     expect(dumpLoadRow()?.hidden).toBe(false);
     expect(dumpLoadSwitch()?.selected).toBe(true);
     expect(dumpLoadSwitch()?.disabled).toBe(false);
+  });
+
+  it('hides the row on a solar home whose surplus pool can never open', async () => {
+    // Solar present, but no surplus can ever be allocated — the flow install
+    // whose Flow predates signed watts. The runtime declines the posture, so
+    // the toggle must decline with it.
+    await openPanel({
+      hasManagedSolarDevice: true,
+      surplusPoolReachable: false,
+      device: buildBinaryDevice(),
+    });
+    expect(dumpLoadRow()?.hidden).toBe(true);
+  });
+
+  it('keeps the row visible for an already opted-in device so the setting can be cleared', async () => {
+    // Escape hatch, and it matters more than it used to: an install that opted
+    // in before the pool-reachability gate existed still needs to see and turn
+    // off the setting.
+    await openPanel({
+      hasManagedSolarDevice: true,
+      surplusPoolReachable: false,
+      device: buildBinaryDevice(),
+      surplusWilling: true,
+    });
+    expect(dumpLoadRow()?.hidden).toBe(false);
   });
 
   it('still hides the row for a non-opted-in device when the solar device disappears', async () => {

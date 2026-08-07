@@ -18,6 +18,7 @@ import {
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
+import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
@@ -110,18 +111,22 @@ export function isExternalOffHeldForDevice(ctx: AppContext, deviceId: string): b
  * it; nothing downstream re-reads the blob. `surplusOnly` is a per-cycle derived
  * posture, not persisted state.
  *
- * NOT gated on the power source. It was, on the premise that "on the flow power
- * source no surplus signal exists (the flow boundary rejects negative watts and
- * carries no generation channel)" — the first half of which stopped being true
- * when that card began accepting signed watts, and the second half of which was
- * never load-bearing: the measured surplus pool is `-signedNetKw`
- * (`composeSurplusPool`) and reads no generation term. Only the INFERRED
- * curtailment term needs production, and it stays dormant without one by
- * construction (`CurtailmentSurplusEstimator`), so a source that reports net
- * only simply contributes nothing to that half of the pool.
+ * Gated on whether the home's surplus pool can EVER open
+ * (`resolveSurplusPoolReachable`), not on the power source. The source-name gate
+ * this replaces reasoned from "the flow boundary rejects negative watts", which
+ * stopped being true when that card began accepting signed watts — but deleting
+ * it outright re-opened the trap it had been holding shut. Stamping the posture
+ * where no surplus can arrive does not leave a device merely idle: the standing
+ * hold keeps it OFF indefinitely, with no time-based escape and no UI recourse.
+ * Every flow install whose Flow predates signed watts is in exactly that state,
+ * through no fault of its own.
  *
- * The removed gate also aborted this producer cycle on a suspect settings read
- * (`requireConfiguredPowerSource` throws). That abort existed to stop a
+ * The evidence is read fresh each cycle from the whole-home tracker and the
+ * curtailment estimator, so a home that starts sending signed net earns the
+ * posture on its own once export accrues — no restart, no settings change.
+ *
+ * The removed source gate also aborted this producer cycle on a suspect settings
+ * read (`requireConfiguredPowerSource` throws). That abort existed to stop a
  * transient read stamping an authoritative Flow posture — a hazard that only
  * existed because the posture depended on the source. It no longer does, so
  * there is nothing left for the abort to protect.
@@ -154,6 +159,15 @@ function resolveSurplusPostureForDevice(params: {
     plainBinaryControlModel,
     controllable,
     managed,
+    surplusPoolReachable: resolveSurplusPoolReachable({
+      tracker: ctx.powerTracker,
+      // Absent only until the post-startup wiring runs. False is the better
+      // default (a wrongly-stamped device is held off indefinitely, while an
+      // unstamped one is merely turned on from grid headroom by the generic
+      // restore lane) — but it is not free, so the underlying evidence is
+      // persisted rather than re-earned each boot.
+      curtailmentCanContribute: ctx.canContributeCurtailmentSurplus?.() === true,
+    }),
   });
 }
 

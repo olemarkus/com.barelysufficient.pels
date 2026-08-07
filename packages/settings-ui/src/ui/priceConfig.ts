@@ -122,11 +122,14 @@ const renderElectricityPrices = () => {
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     showPriceAwareDevicesLink: false,
     // Prosumer gate: any home that exhibits solar — a managed solar device OR
-    // material exhibited grid export (a meter-only / string-inverter home; the
-    // export signal is source-gated to homey_energy in the producer, so a flow
-    // home reduces to the managed-device branch and is unchanged) — OR an
-    // already-enabled export config, so an enabled user is never stranded behind
-    // the gate. Moves in lockstep with the surplus-toggle gate.
+    // material exhibited grid export (a meter-only / string-inverter home) — OR
+    // an already-enabled export config, so an enabled user is never stranded
+    // behind the gate. Source-blind: both power sources report signed net, so a
+    // flow home exhibits export on the same evidence as a Homey Energy one.
+    //
+    // NOT in lockstep with the surplus-toggle gate any more: that one asks the
+    // narrower "can the surplus POOL open" question (`surplusPoolReachable`),
+    // while a fixed feed-in amount needs no pool at all.
     showExportSection: resolveHomeExhibitsSolar() || configState.exportPriceEnabled,
     exportPriceEnabled: configState.exportPriceEnabled,
     exportSpotFactor: configState.exportSpotFactor,

@@ -20,6 +20,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
+  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
 
@@ -62,6 +63,14 @@ const seedSettings = (surplusWilling: boolean) => {
   // price-response off, zero deltas, only surplusWilling carries meaning.
   mockHomeyInstance.settings.set('price_optimization_settings', {
     [DEVICE]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling },
+  });
+  // A home that has exported before — the persisted evidence that makes the
+  // surplus pool reachable, and therefore the precondition for the posture being
+  // stamped at all (`resolveSurplusPoolReachable`). It is also the only state in
+  // which the settings UI offers the opt-in this test seeds, so a run without it
+  // would be testing a home that could not have reached this configuration.
+  mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {
+    exportBuckets: { '2026-01-14T11:00:00.000Z': 2 },
   });
 };
 

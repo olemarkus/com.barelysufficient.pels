@@ -23,7 +23,7 @@ import {
 } from '../deviceControlProfiles.ts';
 import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
-import { resolveHomeExhibitsSolar, state } from '../state.ts';
+import { resolveSurplusControlAvailable, state } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
 import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
 import {
@@ -174,12 +174,11 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
   setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, controlState);
   if (deviceDetailSurplusOptRow) {
-    // The surplus control is solar-only: hide the whole row unless the home exhibits solar
-    // (a tracked solar/PV device OR material grid export from a meter-only PV inverter) AND
-    // this is a temperature device (the only kind that can self-consume by raising a
-    // setpoint). On a non-solar home or a non-temperature device it is hidden outright
-    // rather than shown disabled, so it never clutters a home that cannot export.
-    deviceDetailSurplusOptRow.hidden = !(resolveHomeExhibitsSolar() && controlState.canControlTemperature);
+    // Hidden outright rather than shown disabled, so the control never clutters
+    // a home where the surplus engine has nothing to allocate.
+    //
+    deviceDetailSurplusOptRow.hidden
+      = !(surplusControlVisibleFor(deviceId) && controlState.canControlTemperature);
   }
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
@@ -289,6 +288,19 @@ const refreshOpenDeviceDetail = () => {
     isSteppedLoadControlModel,
   });
 };
+
+/**
+ * Whether the "Use solar surplus" control may be shown for a device: the home's
+ * surplus pool must be able to open at all, OR the device is already opted in.
+ *
+ * The escape hatch mirrors the binary sibling in `solarSurplus.ts`. Without it,
+ * an install that opted in before the pool-reachability gate existed keeps a
+ * live stored setting with no surface to see or clear it.
+ */
+const surplusControlVisibleFor = (deviceId: string): boolean => (
+  resolveSurplusControlAvailable()
+  || state.priceOptimizationSettings[deviceId]?.surplusWilling === true
+);
 
 export const openDeviceDetail = (deviceId: string) => {
   const device = getDeviceById(deviceId);

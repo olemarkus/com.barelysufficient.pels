@@ -1,8 +1,9 @@
-// The per-device "Use solar surplus" control is solar-only: it must be HIDDEN unless the
-// home exhibits solar — a tracked solar/PV device (state.hasManagedSolarDevice) OR a
-// meter-only PV home that has exhibited material grid export (state.hasExhibitedExport) —
-// AND the device is a temperature device. This keeps it out of the no-solar majority's
-// panels and off devices (EV / on-off) that cannot self-consume by raising a setpoint.
+// The per-device "Use solar surplus" control must be HIDDEN unless the home's surplus
+// POOL can actually open (state.surplusPoolReachable) AND the device is a temperature
+// device. That keeps it out of the no-solar majority's panels, off devices (EV / on-off)
+// that cannot self-consume by raising a setpoint, and — the case the pool flag adds — out
+// of homes with solar whose net never goes negative, where the runtime declines the
+// posture and the toggle would switch on a feature that cannot engage.
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
@@ -88,6 +89,9 @@ const mockSiblings = () => {
 const openPanel = async (params: {
   hasManagedSolarDevice: boolean;
   hasExhibitedExport?: boolean;
+  /** Defaults to "solar present ⇒ pool reachable", the ordinary home. Set it
+   *  explicitly to cover the divergence: solar on the roof, no reachable pool. */
+  surplusPoolReachable?: boolean;
   device: TargetDeviceSnapshot;
   surplusWilling?: boolean;
 }) => {
@@ -105,6 +109,8 @@ const openPanel = async (params: {
     : {};
   state.hasManagedSolarDevice = params.hasManagedSolarDevice;
   state.hasExhibitedExport = params.hasExhibitedExport ?? false;
+  state.surplusPoolReachable = params.surplusPoolReachable
+    ?? (params.hasManagedSolarDevice || params.hasExhibitedExport === true);
   state.capacityPriorities = { Home: { 'heater-1': 1 } };
   state.modeTargets = { Home: { 'heater-1': 20 } };
   state.activeMode = 'Home';
@@ -154,8 +160,31 @@ describe('device detail "Use solar surplus" gating', () => {
     expect(surplusSection()?.style.display).toBe('block');
   });
 
-  it('keeps the surplus section hidden when the toggle is on but no solar device is present', async () => {
-    await openPanel({ hasManagedSolarDevice: false, device: buildDevice(), surplusWilling: true });
-    expect(surplusSection()?.style.display).toBe('none');
+  it('shows the surplus fields whenever the toggle is on, even with no reachable pool', async () => {
+    // The escape hatch, mirrored from the row: reachability decides whether the
+    // opt-in is OFFERED, but an install that opted in before the gate existed
+    // must still be able to see and clear what it stored. Gating the fields
+    // again here would leave an invisible persisted setting.
+    await openPanel({
+      hasManagedSolarDevice: false,
+      surplusPoolReachable: false,
+      device: buildDevice(),
+      surplusWilling: true,
+    });
+    expect(surplusRow()?.hidden).toBe(false);
+    expect(surplusSection()?.style.display).toBe('block');
+  });
+
+  it('hides the row on a solar home whose surplus pool can never open', async () => {
+    // Solar on the roof, but the whole-home net never goes negative — the state
+    // every flow install whose Flow predates signed watts is in. The runtime
+    // declines the `surplusOnly` posture there, so offering the toggle would
+    // sell a feature that cannot engage.
+    await openPanel({
+      hasManagedSolarDevice: true,
+      surplusPoolReachable: false,
+      device: buildDevice(),
+    });
+    expect(surplusRow()?.hidden).toBe(true);
   });
 });

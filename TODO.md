@@ -41,6 +41,24 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **Solar-surplus reachability is derived from RESETTABLE accounting, so "Reset usage history"
+      can drop a dump load's surplus posture.** `resolveSurplusPoolReachable`
+      (`packages/shared-domain/src/solar/surplusPoolReachable.ts`) reads its export half from the
+      tracker's export families, and `resetSettingsUiPowerStatsForApp`
+      (`setup/settingsUiAppRuntime.ts:222-225`) clears `exportDailyTotals` outright and prunes
+      `exportBuckets` to the current hour. A signed-net Flow home whose owner resets usage history
+      outside an exporting hour therefore loses both disjuncts (the curtailment estimator is dormant
+      on flow), the opted-in dump load loses its `surplusOnly` stamp, and the generic managed-binary
+      restore lane starts running it from the grid. It re-arms on the next negative sample, so this
+      is not the permanent trap the posture gate exists to prevent — but on a home whose dump-load
+      draw exceeds its PV surplus, the load itself can keep net non-negative and hold the evidence
+      shut. The same shape makes the predicate lapse on 30-day/365-day retention pruning after a long
+      export-free stretch. Fix: persist the feed's proven signed-export CAPABILITY separately from
+      the accounting history, exactly as the curtailment half now persists its armed latch
+      (`CurtailmentPersistedHoldState.armed`) — a monotone bit that a history reset and a retention
+      prune both leave alone. Source: Codex P1 on PR #2012, verified against the reset path.
+      *Persona:* prosumer on the flow source who has opted a dump load into solar surplus.
+
 - [ ] **Sparse Flow reports mint solar production and export across the gap between them.**
       `accrueSolarSample` (`lib/power/trackerSolar.ts`) integrates the PREVIOUS held generation
       across the whole interval to the next sample, and `MAX_SOLAR_ACCRUAL_GAP_MS` is 60 min — so
@@ -1980,13 +1998,6 @@ program) remain deferred.*
       until deadline handling safely disarms it without a command. Add a reason-bearing durable-exclusion
       seam and dedicated source diagnostic so status/history explain the task's real scope before it ends.
       P2. Source: runtime-reality review of PR #1873, 2026-07-23.
-
-- [ ] **(surplus-posture) `resolveSurplusPostureForDevice` reads `POWER_SOURCE` on the plan path (caller
-      discipline).** *Persona:* maintainer. *Hypothesis:* `toPlanDevice`'s surplus-posture helper reads the
-      power-source setting directly rather than receiving a producer-resolved bit; harmless today (sub-homes
-      pass `surplusPostureEnabled: false` so the read is short-circuited), but it is a consumer reading a
-      settings source on the hot plan path — a layering smell to resolve at the boundary and pass inward. P3.
-      Source: R7b fix-round-2 layering read, 2026-07-19.
 
 - [ ] **Sub-home per-poll CPU scaling: decorate once per poll instead of per-bundle.**
       *Persona:* multi-home owner on a busy Homey with several sub-homes. *Hypothesis:* `latestTargetSnapshot`

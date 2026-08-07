@@ -1629,6 +1629,10 @@
       // A sub-meter has its own export accounting; default false, per-area
       // override when a spec seeds it.
       hasExhibitedExport: settings[`ui_devices_has_exhibited_export:${scope.homeId}`] ?? false,
+      // Hardcoded false in the producer for ANY sub-home: its bundle binds
+      // `getInferredSurplusKw: () => null`, is fenced out of the posture, and
+      // gets empty price-opt settings, so neither surplus modality can act.
+      surplusPoolReachable: false,
       homeScope: { state: 'resolved', homeId: scope.homeId },
     };
   };
@@ -1678,6 +1682,12 @@
       // meter-only PV case (no tracked device, but exhibited grid export).
       hasManagedSolarDevice: settings.ui_devices_has_managed_solar ?? true,
       hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
+      // Whether the surplus ENGINE can act — a strictly narrower question than
+      // having solar, and the one that gates the "Use solar surplus" control
+      // (`resolveSurplusPoolReachable`). This fixture home exports, so it is
+      // true by default; a spec seeds false for the home that has panels but
+      // whose whole-home net never goes negative.
+      surplusPoolReachable: settings.ui_devices_surplus_pool_reachable ?? true,
     }),
     'GET /ui_plan': (_body, query) => scopedPlanHandler(query, {
       plan: buildPlanPayload(),
@@ -1705,6 +1715,7 @@
       devices: settings.target_devices_snapshot,
       hasManagedSolarDevice: settings.ui_devices_has_managed_solar ?? true,
       hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
+      surplusPoolReachable: settings.ui_devices_surplus_pool_reachable ?? true,
     }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),

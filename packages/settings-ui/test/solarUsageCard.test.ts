@@ -39,7 +39,67 @@ const renderToContainer = (props: ReturnType<typeof resolveProps>) => {
   return container;
 };
 
+// Production measured, export never recorded — the state every flow install
+// whose Flow predates signed watts lands in on upgrade.
+const productionOnlyTracker = {
+  generationBuckets: { [iso(H0)]: 2, [iso(H0 - 24 * HOUR_MS)]: 3 },
+  exportBuckets: {},
+};
+
 describe('resolveSolarUsageCardProps + SolarUsageCard', () => {
+  describe('no export ever measured', () => {
+    it('keeps the numbers but qualifies them with a source-neutral note', () => {
+      // Deliberately NOT hidden. With no export observed, "Used at home" IS
+      // everything produced, so the arithmetic is honest for the data PELS
+      // holds — and the shortfall, if there is one, is a configuration the
+      // owner can fix. A blank space would say neither.
+      const props = resolveProps({ tracker: productionOnlyTracker });
+      expect(props?.layout).toBe('full');
+      expect(props?.showNoExportMeasuredNote).toBe(true);
+
+      const container = renderToContainer(props);
+      const note = container.querySelector('#solar-usage-no-export');
+      expect(note?.textContent).toContain('No export measured');
+      // Source-neutral: the render gate is source-blind, so a zero-export
+      // inverter on the Power meter source lands here honestly and must not be
+      // told to reconfigure a Flow card it does not use.
+      expect(note?.textContent).toContain('turns negative');
+      expect(note?.textContent).not.toContain('Flow card');
+      expect(container.textContent).toContain('Used at home');
+    });
+
+    it('renders the note above the money block it qualifies', () => {
+      // It caveats both "Used at home · 100%" and the avoided figure derived
+      // from that same self-use pool. Below the history rows it would be read
+      // last at 320 px, or not at all.
+      const container = renderToContainer(resolveProps({ tracker: productionOnlyTracker }));
+      const note = container.querySelector('#solar-usage-no-export');
+      const money = container.querySelector('#solar-usage-money');
+      expect(note).not.toBeNull();
+      expect(money).not.toBeNull();
+      expect(note!.compareDocumentPosition(money!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('drops the note once ANY export is on record, below the materiality floor', () => {
+      // The note is about whether net has EVER gone negative — proof the feed
+      // can express export at all — not about how much. That is a different
+      // question from `hasMaterialExhibitedExport`'s 1 kWh gate.
+      const props = resolveProps({
+        tracker: { ...productionOnlyTracker, exportBuckets: { [iso(H0)]: 0.02 } },
+      });
+      expect(props?.showNoExportMeasuredNote).toBe(false);
+      expect(renderToContainer(props).querySelector('#solar-usage-no-export')).toBeNull();
+    });
+
+    it('stays off the export-only layout, which has export by definition', () => {
+      const props = resolveProps({
+        tracker: { generationBuckets: {}, exportBuckets: { [iso(H0)]: 2 } },
+      });
+      expect(props?.layout).toBe('export-only');
+      expect(props?.showNoExportMeasuredNote).toBe(false);
+    });
+  });
+
   it('full money tier: today metrics, avoided + earned lines, previous-days grid', () => {
     const props = resolveProps();
     expect(props?.layout).toBe('full');

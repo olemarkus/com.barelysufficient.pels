@@ -29,6 +29,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
+  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
 
@@ -59,6 +60,14 @@ const seedSettings = (surplusWilling: boolean) => {
   // price-response off, zero deltas, only surplusWilling carries meaning.
   mockHomeyInstance.settings.set('price_optimization_settings', {
     [DEVICE]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling },
+  });
+  // A home that has exported before — the persisted evidence that makes the
+  // surplus pool reachable, and therefore the precondition for the posture being
+  // stamped at all (`resolveSurplusPoolReachable`). It is also the only state in
+  // which the settings UI offers the opt-in this test seeds, so a run without it
+  // would be testing a home that could not have reached this configuration.
+  mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {
+    exportBuckets: { '2026-01-14T11:00:00.000Z': 2 },
   });
 };
 
@@ -153,6 +162,50 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     await reportForPolls(1500, 30);
     await drainPending();
     expect(onoffPuts(putSpy)).not.toContain(true);
+  });
+
+  it('never holds a willing pump off when the home has NEVER exported', async () => {
+    // The upgrade regression, at the SDK seam. A flow install whose Flow predates
+    // signed watts reports only non-negative watts, so the whole-home net never
+    // goes negative: measured export is impossible and the curtailment estimator
+    // stays dormant. The surplus pool is <= 0 forever.
+    //
+    // Without the reachability gate the posture is stamped anyway and the
+    // standing hold turns this pump OFF and keeps it off for good — no
+    // time-based escape, no UI recourse. It must keep running instead.
+    const device = await buildPump(true);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    seedSettings(true);
+    // The distinguishing fact: no export has ever been recorded.
+    mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {});
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp({ preserveStartupRestoreStabilization: true });
+    await app.onInit();
+    await reportForPolls(1500, 30);
+    await drainPending();
+    expect(onoffPuts(putSpy)).not.toContain(false);
+  });
+
+  it('arms the posture as soon as the home reports its first export', async () => {
+    // The other half of the gate: the same install after the owner fixes their
+    // Flow to send `import − export`. One negative sample is enough evidence
+    // that the feed can express export — waiting for the 1 kWh export-price
+    // floor would leave the feature apparently dead for ~20 minutes.
+    const device = await buildPump(true);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    seedSettings(true);
+    mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {});
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp({ preserveStartupRestoreStabilization: true });
+    await app.onInit();
+    // A brief export, far under 1 kWh, then back to importing: the pool is now
+    // known to be reachable, so the hold applies and the pump is turned off.
+    await reportForPolls(-2000, 3);
+    await reportForPolls(1500, 30);
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    expect(onoffPuts(putSpy)).toContain(false);
   });
 
   it('never holds a non-willing on/off device off (no posture, no hold)', async () => {

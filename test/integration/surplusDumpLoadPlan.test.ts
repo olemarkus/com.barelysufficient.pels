@@ -524,11 +524,18 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     ...overrides,
   }) as TargetDeviceSnapshot;
 
-  // The producer gates `surplusOnly` to the metered power source; seed it so these
-  // candidacy specs isolate the modality/managed/controllable predicates (the
-  // source gate itself is covered by the dedicated flow-source spec below).
+  // The producer also gates `surplusOnly` on the home's surplus pool being
+  // reachable; seed export history so these candidacy specs isolate the
+  // modality/managed/controllable predicates (reachability has its own specs
+  // below).
+  // The tracker a home that has exported carries — the persisted evidence that
+  // makes the surplus pool reachable, and so the precondition for the posture
+  // being stamped at all.
+  const exportedBefore = { exportDailyTotals: { '2026-08-05': 4 } };
+
   it('stamps surplusOnly for a willing managed binary device', () => {
     const ctx = createAppContextMock({
+      powerTracker: exportedBefore,
       priceOptimizationSettings: {
         [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
       },
@@ -538,24 +545,45 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
   });
 
-  it('stamps surplusOnly on the flow power source too — the posture is source-independent', () => {
-    // The gate here used to be `power_source === 'homey_energy'`, justified by
-    // "no surplus signal can arrive on flow". That rested on the Flow card
-    // rejecting negative watts; it no longer does, and the measured surplus pool
-    // is `-signedNetKw` with no production term (`composeSurplusPool`). Only the
-    // INFERRED curtailment term needs generation, and it stays dormant without
-    // one by construction — so a net-only source simply contributes nothing to
-    // that half of the pool rather than being unable to have a surplus at all.
+  // ── Pool reachability: the gate that keeps a dump load out of a hold it can
+  // never leave. The posture is SOURCE-independent — a flow home reporting
+  // `import − export` is stamped on exactly the same evidence as a Homey Energy
+  // one — but it is not unconditional.
+  const willingCtxOnSource = (source: string, powerTracker?: typeof exportedBefore) => {
     const ctx = createAppContextMock({
+      ...(powerTracker ? { powerTracker } : {}),
       priceOptimizationSettings: {
         [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
       },
     });
     vi.mocked(ctx.homey.settings.get).mockImplementation(
-      (key: string) => (key === POWER_SOURCE ? 'flow' : undefined),
+      (key: string) => (key === POWER_SOURCE ? source : undefined),
     );
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
+    return ctx;
+  };
+
+  it('stamps surplusOnly on the flow power source once the home has exhibited export', () => {
+    const ctx = willingCtxOnSource('flow', exportedBefore);
+    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
+  });
+
+  it('does NOT stamp when no surplus can ever arrive — the held-off-forever regression', () => {
+    // The upgrade case: a flow install whose Flow predates signed watts. Net is
+    // never negative, so measured export is impossible; the curtailment
+    // estimator is dormant, so the inferred term is null. The pool is <= 0
+    // forever, and a stamped device would sit in `awaiting_solar_surplus`
+    // permanently with no time-based escape. Leaving it unstamped lets it run.
+    const ctx = willingCtxOnSource('flow');
+    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBeUndefined();
+  });
+
+  it('stamps on a contributing curtailment estimator with no export at all', () => {
+    // The zero-export home: the inverter throttles so net pins ~0 and measured
+    // export never appears. Gating on export alone would trap this home too.
+    const ctx = willingCtxOnSource('homey_energy');
+    ctx.canContributeCurtailmentSurplus = () => true;
     expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
   });
 
@@ -582,6 +610,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     // non-binary controlModel) is NOT a dump-load candidate, even if willing.
     const willingCtx = () => {
       const ctx = createAppContextMock({
+        powerTracker: exportedBefore,
         priceOptimizationSettings: {
           [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
         },

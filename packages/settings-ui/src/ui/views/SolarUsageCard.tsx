@@ -29,6 +29,19 @@ const EXPORT_PRICE_HINT = 'Add an export price under Settings → Electricity pr
 const GATHERING_BODY = 'Watching your solar production. Numbers appear after the first hour with sun.';
 const EXPORT_ONLY_NOTE = 'Your meter reports export only — production is not measured.';
 const BATTERY_EXPORT_NOTE = 'Exported can be higher than produced when a battery sends stored power to the grid.';
+// Shown when production is measured but export never has been. PELS derives
+// "Used at home" faithfully from what it was given — with no export observed,
+// self-use IS everything produced — but on a home that does export, that answer
+// is only as good as the reading PELS receives.
+//
+// Source-NEUTRAL on purpose, because the gate that shows it is: a zero-export
+// inverter on the Power meter source hits this state honestly, and telling that
+// owner to reconfigure a Flow card they do not use would name a control they do
+// not have. It points at the observable fact instead — the reading has to turn
+// negative — which is the same check on either source. The opening conditional
+// carries the rest: a home that genuinely never exports simply reads past it.
+const NO_EXPORT_MEASURED_NOTE = 'No export measured. If your home sends power to the grid, check that '
+  + 'the whole-home power reading PELS gets turns negative while you export.';
 
 export type SolarMoneyBlock = {
   /** "≈ 12.40 kr" (optionally "… · some hours unpriced") — null hides the avoided line. */
@@ -54,6 +67,9 @@ export type SolarUsageCardProps = {
   money: SolarMoneyBlock | null;
   /** Some displayed day exported more than it produced (battery home). */
   showBatteryExportNote: boolean;
+  /** Production is measured but no export ever has been — the numbers are only
+   *  as good as the whole-home net the home reports. */
+  showNoExportMeasuredNote: boolean;
 };
 
 const formatKWh = (kWh: number): string => `${kWh.toFixed(1)} kWh`;
@@ -141,7 +157,9 @@ const HistoryRows = ({ layout, history }: { layout: 'full' | 'export-only'; hist
   );
 };
 
-export const SolarUsageCard = ({ layout, today, history, money, showBatteryExportNote }: SolarUsageCardProps) => (
+export const SolarUsageCard = ({
+  layout, today, history, money, showBatteryExportNote, showNoExportMeasuredNote,
+}: SolarUsageCardProps) => (
   <section class="pels-surface-card usage-card" id="solar-usage-card" aria-labelledby="solar-usage-title">
     <MdElevation aria-hidden="true" />
     <div class="usage-card__header">
@@ -159,6 +177,14 @@ export const SolarUsageCard = ({ layout, today, history, money, showBatteryExpor
     ) : (
       <>
         <TodayMetrics layout={layout} today={today} />
+        {/* Above the money block, deliberately: it qualifies the "Used at home"
+            percentage AND the avoided figure computed from that same self-use
+            pool. At 320 px a note below the history is read last, or not at
+            all. `BATTERY_EXPORT_NOTE` stays at the bottom by contrast — it
+            explains an oddity the reader has already seen in the rows. */}
+        {showNoExportMeasuredNote && (
+          <p class="pels-card-supporting" id="solar-usage-no-export">{NO_EXPORT_MEASURED_NOTE}</p>
+        )}
         {money !== null && <MoneyBlock money={money} />}
         <HistoryRows layout={layout} history={history} />
         {layout === 'export-only' && <p class="pels-card-supporting">{EXPORT_ONLY_NOTE}</p>}
