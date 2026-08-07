@@ -42,7 +42,6 @@ export const PLAN_REASON_CODES = {
   // nothing was turned off to create the reservation. Lands on a device that is off and waiting to
   // resume, and on an active stepped device denied a step-up.
   reservedForStart: 'reserved_for_start',
-  other: 'other',
 } as const;
 
 export type PlanReasonCode = typeof PLAN_REASON_CODES[keyof typeof PLAN_REASON_CODES];
@@ -153,8 +152,7 @@ export type DeviceReason =
   // would admit this device THROUGH a reservation is dominated by the holder's
   // reserved block, so it states another device's quantity as this one's. The
   // honest line names the holder.
-  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string | null }
-  | { code: typeof PLAN_REASON_CODES.other; text: string };
+  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string | null };
 
 const REASON_LABELS = {
   [PLAN_REASON_CODES.none]: 'unknown',
@@ -185,7 +183,6 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',
   [PLAN_REASON_CODES.shedInvariant]: 'shed invariant',
   [PLAN_REASON_CODES.reservedForStart]: 'reserved for start',
-  [PLAN_REASON_CODES.other]: 'other',
 } as const satisfies Record<PlanReasonCode, string>;
 
 export function getPlanReasonLabel(code: PlanReasonCode): string {

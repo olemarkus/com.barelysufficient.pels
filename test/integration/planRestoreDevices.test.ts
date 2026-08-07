@@ -352,11 +352,11 @@ describe('plan restore device helpers', () => {
         startupStabilizationRemainingSec: null,
       },
       setDevice,
-      reasonOverride: (device) => ({ code: 'other', text: `blocked ${device.id}` }),
+      reasonOverride: (device) => ({ code: 'inactive', detail: `blocked ${device.id}` }),
     });
     expect(setDevice).toHaveBeenCalledWith(
       'dev2',
-      expect.objectContaining({ reason: { code: 'other', text: 'blocked dev2' } }),
+      expect.objectContaining({ reason: { code: 'inactive', detail: 'blocked dev2' } }),
     );
   });
 

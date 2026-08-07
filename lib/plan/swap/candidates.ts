@@ -9,7 +9,6 @@ import { buildRestoreHeadroomReason } from '../planReasonStrings';
 import {
   formatDeviceReason,
   PLAN_REASON_CODES,
-  type DeviceReason,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 
 function isViableSwapCandidate(
@@ -57,7 +56,14 @@ export function buildSwapCandidates(params: {
   displayPostReserveMarginKw: number;
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
-  reason: DeviceReason;
+  // The already-formatted decision sentence for the swap-rejection log lines
+  // (`lib/plan/restore/swap.ts`). A STRING, not a `DeviceReason`: this value is
+  // never a device's reason and never reaches a card. It used to be one — the
+  // "with victims" case wrapped the formatted text back into a
+  // `{ code: 'other', text }` object purely so both call sites could unwrap it
+  // with `formatDeviceReason`, and that round-trip was the only producer of the
+  // `other` code anywhere in the runtime.
+  decisionText: string;
 } {
   const {
     dev,
@@ -100,7 +106,7 @@ export function buildSwapCandidates(params: {
     availableKw: displayEffectiveHeadroomKw,
     neededKw: needed,
   });
-  const reason = buildSwapCandidateReason({
+  const decisionText = buildSwapCandidateDecisionText({
     ready,
     targetName: dev.name,
     neededKw: needed,
@@ -121,11 +127,11 @@ export function buildSwapCandidates(params: {
     displayPostReserveMarginKw: displayAdmission.postReserveMarginKw,
     admission,
     reserveKw: SWAP_RESTORE_RESERVE_KW,
-    reason,
+    decisionText,
   };
 }
 
-function buildSwapCandidateReason(params: {
+function buildSwapCandidateDecisionText(params: {
   ready: boolean;
   targetName: string;
   neededKw: number;
@@ -133,7 +139,7 @@ function buildSwapCandidateReason(params: {
   effectiveAvailableKw: number;
   postReserveMarginKw: number;
   shedNames: string;
-}): DeviceReason {
+}): string {
   const {
     ready,
     targetName,
@@ -144,9 +150,9 @@ function buildSwapCandidateReason(params: {
     shedNames,
   } = params;
 
-  if (ready) return { code: PLAN_REASON_CODES.swappedOut, targetName };
+  if (ready) return formatDeviceReason({ code: PLAN_REASON_CODES.swappedOut, targetName });
 
-  const baseReason = buildRestoreHeadroomReason({
+  const baseText = formatDeviceReason(buildRestoreHeadroomReason({
     neededKw,
     availableKw,
     effectiveAvailableKw,
@@ -154,12 +160,7 @@ function buildSwapCandidateReason(params: {
     postReserveMarginKw,
     minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
     swapTargetName: targetName,
-  });
+  }));
 
-  if (!shedNames) return baseReason;
-
-  return {
-    code: PLAN_REASON_CODES.other,
-    text: `${formatDeviceReason(baseReason)} from ${shedNames}`,
-  };
+  return shedNames ? `${baseText} from ${shedNames}` : baseText;
 }

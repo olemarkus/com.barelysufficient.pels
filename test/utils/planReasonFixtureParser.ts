@@ -202,10 +202,12 @@ function parseKnownReason(trimmed: string): DeviceReason | null {
   return null;
 }
 
-// Unknown text falls to `other`, exactly as the shipped parser did — a fixture
-// label the grammar does not cover is a diagnostic carrier, not a failure.
+// An unrecognised label becomes `none`. It used to become `other` — a carrier
+// holding the raw text — but that code left the contract on 2026-08-07 once its
+// only runtime producer (the swap-candidate log round-trip) was removed, and a
+// fixture vocabulary is not a reason to keep a variant alive in the shared type.
 export function buildFixturePlanReason(reason: string | undefined): DeviceReason {
   const trimmed = normalizeReasonText(reason);
   if (!trimmed) return { code: PLAN_REASON_CODES.none };
-  return parseKnownReason(trimmed) ?? { code: PLAN_REASON_CODES.other, text: trimmed };
+  return parseKnownReason(trimmed) ?? { code: PLAN_REASON_CODES.none };
 }
