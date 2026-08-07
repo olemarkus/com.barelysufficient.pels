@@ -297,8 +297,6 @@ export function formatDeviceReason(reason: DeviceReason): string {
     case PLAN_REASON_CODES.shedInvariant:
       return `shed invariant: ${reason.fromStep} -> ${reason.toStep} blocked `
         + `(${reason.shedDeviceCount} device(s) shed, max step: ${reason.maxStep})`;
-    case PLAN_REASON_CODES.other:
-      return reason.text;
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -606,8 +604,6 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
       return formatInsufficientHeadroomUserFacing(reason);
     case PLAN_REASON_CODES.shedInvariant:
       return formatShedInvariantUserFacing(reason);
-    case PLAN_REASON_CODES.other:
-      return reason.text;
     default: {
       const exhaustive: never = reason;
       return exhaustive;

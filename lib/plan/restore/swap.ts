@@ -1,6 +1,6 @@
 import { getLogger } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
-import { formatDeviceReason, PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import {
   buildRequestedTargetFromDeviceUpdate,
@@ -208,7 +208,7 @@ function rejectSwapRestoreWithCandidates(params: {
     deviceId: dev.id,
     deviceName: dev.name,
     phase,
-    reason: formatDeviceReason(swap.reason),
+    reason: swap.decisionText,
     estimatedPowerKw: restoreNeed.devPower,
     powerSource: resolveRestorePowerSource(dev),
     neededKw: restoreNeed.needed,
@@ -219,7 +219,7 @@ function rejectSwapRestoreWithCandidates(params: {
     swapReserveKw: swap.reserveKw,
     decision: 'rejected',
     rejectionReason: 'insufficient_headroom',
-    decisionReason: formatDeviceReason(swap.reason),
+    decisionReason: swap.decisionText,
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
@@ -232,7 +232,7 @@ function rejectSwapRestoreWithCandidates(params: {
     deviceId: dev.id,
     deviceName: dev.name,
     phase,
-    reason: formatDeviceReason(swap.reason),
+    reason: swap.decisionText,
     estimatedPowerKw: restoreNeed.devPower,
     powerSource: resolveRestorePowerSource(dev),
     neededKw: restoreNeed.needed,
@@ -243,7 +243,7 @@ function rejectSwapRestoreWithCandidates(params: {
     swapReserveKw: swap.reserveKw,
     decision: 'rejected',
     rejectionReason: 'insufficient_headroom',
-    decisionReason: formatDeviceReason(swap.reason),
+    decisionReason: swap.decisionText,
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });

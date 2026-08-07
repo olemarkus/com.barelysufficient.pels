@@ -175,8 +175,6 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         shedDeviceCount: reason.shedDeviceCount,
         maxStep: reason.maxStep,
       };
-    case PLAN_REASON_CODES.other:
-      return { code: reason.code, text: reason.text };
     default: {
       const exhaustive: never = reason;
       return exhaustive;

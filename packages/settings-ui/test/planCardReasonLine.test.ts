@@ -252,13 +252,17 @@ describe('resolveHeldCardReasonLine', () => {
       expect(line).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
     });
 
-    // `other` is a diagnostic carrier: `lib/plan/swap/candidates.ts` fills its
-    // text from the LOG formatter, so passing it through would put planner
-    // jargon ("insufficient headroom to restore …") on a card.
-    it('never renders the diagnostic `other` reason text', () => {
+    // `other` was a diagnostic carrier whose text came from the LOG formatter;
+    // rendering it would have put planner jargon on a card. The code left the
+    // contract on 2026-08-07 with its only producer (the swap-candidate log
+    // round-trip), but a snapshot minted by an OLDER build can still carry one,
+    // so the guard has to hold for a foreign code that arrives with prose in
+    // tow. Written as a bare string on purpose — `PLAN_REASON_CODES` no longer
+    // has this member, which is the point.
+    it('never renders prose carried by a code this build does not know', () => {
       const line = resolveHeldCardReasonLine({
         reason: {
-          code: PLAN_REASON_CODES.other,
+          code: 'other',
           text: 'restore blocked: insufficient headroom (need 1.36kW, available 1.03kW) from Bathroom, Hallway',
         },
       });

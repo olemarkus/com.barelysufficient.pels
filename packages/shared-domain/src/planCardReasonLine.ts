@@ -68,21 +68,19 @@ export const isCeilingHoldReasonCode = (code: string | undefined): boolean => (
 // this build does not know (an older/newer runtime, a hand-built fixture) would
 // therefore put an object where a string belongs, and the card renders blank.
 // Only known codes reach the formatter; anything else takes the fallback.
+// This set used to carry a second clause excluding the `other` code, because
+// `lib/plan/swap/candidates.ts` built an `other` reason whose text came from the
+// LOG formatter ("insufficient headroom (need 1.36kW, …) from Bathroom,
+// Hallway") and `formatDeviceReasonUserFacing` would return it verbatim onto a
+// card. That reason never actually reached a device — the swap candidate's value
+// only ever fed two log payloads — and the code was removed with the round-trip
+// (2026-08-07), so the exclusion has nothing left to exclude.
 const KNOWN_REASON_CODES: ReadonlySet<string> = new Set(Object.values(PLAN_REASON_CODES));
-
-// `other` is a DIAGNOSTIC carrier, not user-facing copy: `lib/plan/swap/candidates.ts`
-// builds its text from `formatDeviceReason` — the log formatter — so it reads
-// "restore blocked: insufficient headroom (need 1.36kW, …) from Bathroom, Hallway".
-// `formatDeviceReasonUserFacing` returns that verbatim, which would put planner
-// jargon straight on a card. Treated as unknown so it takes the fallback.
-const isCardRenderableCode = (code: string): boolean => (
-  KNOWN_REASON_CODES.has(code) && code !== PLAN_REASON_CODES.other
-);
 
 const readReasonCode = (reason: unknown): string | undefined => {
   if (typeof reason !== 'object' || reason === null) return undefined;
   const code = (reason as { code?: unknown }).code;
-  return typeof code === 'string' && isCardRenderableCode(code) ? code : undefined;
+  return typeof code === 'string' && KNOWN_REASON_CODES.has(code) ? code : undefined;
 };
 
 // `increase` is the stepped card's variant: the device is running but was denied
