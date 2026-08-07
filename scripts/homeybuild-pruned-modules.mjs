@@ -15,4 +15,9 @@ export const prunedNodeModules = [
   'lit',
   'lit-element',
   'lit-html',
+  // Bundler-only, like @material/lit above: packages/settings-ui declares it as
+  // a runtime dependency so Homey's production install pulls it in, but esbuild
+  // inlines preact into settings/script.js and the widget bundles. Nothing in
+  // the packaged app resolves it from node_modules — it was 2.0 MB of ballast.
+  'preact',
 ];

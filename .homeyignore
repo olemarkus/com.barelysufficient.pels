@@ -12,6 +12,12 @@ tmp/
 /*.jpeg
 /*.gif
 /*.webp
+# The same walks also write whole directories of PNGs. Unlike the loose files
+# above these are never rejected by check-homey-packaging (it only scans the
+# build root), so without these entries they ride along into the package and
+# grow it with every UI walk.
+screenshots/
+docs-shots/
 
 test/
 tests/
@@ -77,6 +83,7 @@ vitest.config.perf.mts
 vitest-env.d.ts
 tsconfig.json
 tsconfig.runtime-unused.json
+tsconfig.tests.json
 tsconfig.widgets.json
 knip.json
 localscripts/
@@ -86,8 +93,11 @@ pr-*-feedback.*
 CLAUDE.md
 README.no.txt
 
-# Build artifacts not needed at runtime: sourcemaps and type declarations.
-# Node never reads .d.ts at runtime, and sourcemaps are pure dead weight
-# (socket.io/engine.io/pino ship ~1.3 MB of .map files alone).
-**/*.map
-**/*.d.ts
+# Sourcemaps and .d.ts files are NOT excluded here, deliberately. Every one of
+# them lives under node_modules, and Homey installs production dependencies
+# into .homeybuild/ *after* applying this file — so a `**/*.map` rule here
+# matches nothing and silently ships ~2.7 MB. scripts/sanitize-homey-build.mjs
+# deletes them instead; it is the only step that runs after that install.
+# Treat the node_modules/ entries above the same way: they document intent and
+# feed scripts/check-homeybuild-requires.mjs, but scripts/homeybuild-pruned-
+# modules.mjs is what actually guarantees a package is gone.
