@@ -34,7 +34,6 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.shedInvariant, label: 'shed invariant' },
   { code: PLAN_REASON_CODES.reservedForStart, label: 'startup power reserved' },
   { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
-  { code: PLAN_REASON_CODES.headroomCooldown, label: 'headroom cooldown' },
   { code: PLAN_REASON_CODES.capacityControlOff, label: 'capacity control off' },
 ] as const;
 

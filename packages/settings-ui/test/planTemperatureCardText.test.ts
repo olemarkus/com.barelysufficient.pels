@@ -14,7 +14,7 @@ describe('resolveTemperatureLine', () => {
       currentTemperature: 20.2,
       currentTarget: 21,
       plannedTarget: 21,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBe('20.2 °C · target 21 °C');
   });
 
@@ -23,7 +23,7 @@ describe('resolveTemperatureLine', () => {
       currentTemperature: 20.2,
       currentTarget: 18,
       plannedTarget: 21,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBe('20.2 °C · target 18 °C → 21 °C');
   });
 
@@ -31,7 +31,7 @@ describe('resolveTemperatureLine', () => {
     expect(resolveTemperatureLine({
       currentTarget: 21,
       plannedTarget: 21,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBe('target 21 °C · sensor unavailable');
   });
 
@@ -39,14 +39,14 @@ describe('resolveTemperatureLine', () => {
     expect(resolveTemperatureLine({
       currentTemperature: 20.3,
       currentTarget: 22,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBe('20.3 °C · target 22 °C');
   });
 
   it('reports the sensor unavailable when only the external target is known', () => {
     expect(resolveTemperatureLine({
       currentTarget: 22,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBe('target 22 °C · sensor unavailable');
   });
 
@@ -55,13 +55,13 @@ describe('resolveTemperatureLine', () => {
       currentTemperature: Number.NaN,
       currentTarget: 22,
       plannedTarget: undefined,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBe('target 22 °C · sensor unavailable');
     expect(resolveTemperatureLine({
       currentTemperature: 20,
       currentTarget: Number.POSITIVE_INFINITY,
       plannedTarget: Number.NaN,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBeNull();
   });
 });
@@ -97,7 +97,7 @@ describe('resolveTemperatureReasonLine', () => {
       plannedState: 'inactive',
       currentTemperature: 20.2,
       plannedTarget: 21,
-      reason: { code: 'none' },
+      reason: { code: 'keep', detail: null },
     })).toBeNull();
   });
 
@@ -196,7 +196,7 @@ describe('resolveTemperatureReasonLine', () => {
       plannedState: 'shed' as const,
       currentTemperature: 22.8,
       plannedTarget: 20,
-      reason: { code: 'none' as const },
+      reason: { code: 'keep' as const, detail: null },
     };
     expect(resolveTemperatureReasonLine(unattributed)).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
     expect(resolveTemperatureReasonLine(unattributed, true)).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);

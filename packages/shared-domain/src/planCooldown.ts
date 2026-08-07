@@ -18,7 +18,6 @@ const COOLDOWN_BASE_SEC: Record<string, number> = {
   [PLAN_REASON_CODES.meterSettling]: 10,
   [PLAN_REASON_CODES.activationBackoff]: 60,
   [PLAN_REASON_CODES.restorePending]: 60,
-  [PLAN_REASON_CODES.headroomCooldown]: 300,
 };
 
 const readReasonCode = (reason: unknown): string | null => {
@@ -50,15 +49,3 @@ export const resolveCooldownRemainingSec = (device: CooldownDevice): number | nu
   return null;
 };
 
-export const hasActiveCooldown = (device: CooldownDevice): boolean => (
-  resolveCooldownRemainingSec(device) !== null
-);
-
-export const summarizeCooldowns = (
-  devices: Array<CooldownDevice> | null | undefined,
-): string | null => {
-  if (!Array.isArray(devices) || devices.length === 0) return null;
-  const count = devices.filter(hasActiveCooldown).length;
-  if (count === 0) return null;
-  return count === 1 ? '1 cooling down' : `${count} cooling down`;
-};

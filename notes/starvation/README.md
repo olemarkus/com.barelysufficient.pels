@@ -260,7 +260,6 @@ Each eligible plan sample must normalize into:
 `pauseReason` must be one of:
 
 - `cooldown`
-- `headroom_cooldown`
 - `restore_throttled`
 - `activation_backoff`
 - `inactive`
@@ -394,7 +393,6 @@ not add counted time; on a latched episode they pause accumulation (the device i
 not being limited right now) while retaining the original counting cause:
 
 - `cooldown (...)`
-- `headroom cooldown (...)`
 - `restore throttled`
 - activation backoff
 - `inactive (...)`

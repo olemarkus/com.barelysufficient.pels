@@ -12,7 +12,6 @@ export type DeviceDiagnosticsStarvationCountingCause =
 
 export type DeviceDiagnosticsStarvationPauseReason =
   | 'cooldown'
-  | 'headroom_cooldown'
   | 'restore_throttled'
   | 'activation_backoff'
   | 'inactive'

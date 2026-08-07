@@ -29,7 +29,6 @@ const KEEP_REASON = /^keep(?: \((.+)\))?$/;
 const RESTORE_NEED_REASON = (
   /^restore(?: ([^(]+?) -> ([^(]+?))? \(need (-?\d+(?:\.\d+)?)kW(?:, headroom (unknown|-?\d+(?:\.\d+)?)kW)?\)$/
 );
-const SET_TARGET_REASON = /^set to (.+)$/;
 const SWAP_PENDING_REASON = /^swap pending(?: \((.+)\))?$/;
 const SWAPPED_OUT_REASON = /^swapped out for (.+)$/;
 const HOURLY_BUDGET_REASON = /^shed due to hourly budget(?: (.+))?$/;
@@ -42,12 +41,6 @@ const COOLDOWN_RESTORE_REASON = /^cooldown \(restore, (\d+)s remaining\)$/;
 const METER_SETTLING_REASON = /^meter settling \((\d+)s remaining\)$/;
 const ACTIVATION_BACKOFF_REASON = /^activation backoff \((\d+)s remaining\)$/;
 const RESTORE_PENDING_REASON = /^restore pending \((\d+)s remaining\)$/;
-const HEADROOM_COOLDOWN_RECENT_REASON = /^headroom cooldown \((\d+)s remaining; recent PELS (shed|restore)\)$/;
-const HEADROOM_COOLDOWN_STEP_DOWN_REASON = new RegExp(
-  '^headroom cooldown \\((\\d+)s remaining; '
-    + 'usage step down from (unknown|-?\\d+(?:\\.\\d+)?)kW to '
-    + '(unknown|-?\\d+(?:\\.\\d+)?)kW\\)$',
-);
 const INACTIVE_REASON = /^inactive(?: \((.+)\))?$/;
 const CAPACITY_REASON = /^shed due to capacity(?: (.+))?$/;
 const SHED_INVARIANT_REASON = (
@@ -101,10 +94,6 @@ const REGEX_REASON_PARSERS: ReasonParser[] = [
   parseRestoreNeedReason,
   parseShortfallReason,
   (trimmed) => {
-    const match = SET_TARGET_REASON.exec(trimmed);
-    return match ? { code: PLAN_REASON_CODES.setTarget, targetText: match[1] } : null;
-  },
-  (trimmed) => {
     const match = SWAP_PENDING_REASON.exec(trimmed);
     return match ? { code: PLAN_REASON_CODES.swapPending, targetName: match[1] ?? null } : null;
   },
@@ -139,28 +128,6 @@ const REGEX_REASON_PARSERS: ReasonParser[] = [
   (trimmed) => {
     const match = RESTORE_PENDING_REASON.exec(trimmed);
     return match ? { code: PLAN_REASON_CODES.restorePending, remainingSec: Number(match[1]) } : null;
-  },
-  (trimmed) => {
-    const match = HEADROOM_COOLDOWN_RECENT_REASON.exec(trimmed);
-    if (!match) return null;
-    return {
-      code: PLAN_REASON_CODES.headroomCooldown,
-      kind: match[2] === 'shed' ? 'recent_pels_shed' : 'recent_pels_restore',
-      remainingSec: Number(match[1]),
-      fromKw: null,
-      toKw: null,
-    };
-  },
-  (trimmed) => {
-    const match = HEADROOM_COOLDOWN_STEP_DOWN_REASON.exec(trimmed);
-    if (!match) return null;
-    return {
-      code: PLAN_REASON_CODES.headroomCooldown,
-      kind: 'usage_step_down',
-      remainingSec: Number(match[1]),
-      fromKw: parseNumber(match[2]),
-      toKw: parseNumber(match[3]),
-    };
   },
   (trimmed) => {
     const match = INACTIVE_REASON.exec(trimmed);
@@ -219,7 +186,9 @@ function parseKnownReason(trimmed: string): DeviceReason | null {
 // directly, as `planDiagnostics.test.ts` does for a deliberately foreign code).
 export function buildFixturePlanReason(reason: string | undefined): DeviceReason {
   const trimmed = normalizeReasonText(reason);
-  if (!trimmed) return { code: PLAN_REASON_CODES.none };
+  // An absent label means "nothing is holding this device" — which on a live
+  // plan is `keep`, not the retired `none` marker.
+  if (!trimmed) return { code: PLAN_REASON_CODES.keep, detail: null };
   const parsed = parseKnownReason(trimmed);
   if (!parsed) {
     throw new Error(

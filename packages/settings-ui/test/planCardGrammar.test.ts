@@ -20,7 +20,7 @@ describe('resolveIntentStateKind', () => {
     })).toBe('held');
     // Countdown holds that gate a resume on available power are held too.
     expect(resolveIntentStateKind({
-      kind: 'idle', reasonCode: 'headroom_cooldown', starved: false,
+      kind: 'idle', reasonCode: 'cooldown_shedding', starved: false,
     })).toBe('held');
   });
 
@@ -191,7 +191,7 @@ describe('isHoldReasonCode', () => {
       'insufficient_headroom', 'shortfall', 'waiting_for_other_devices', 'restore_throttled',
       'swap_pending', 'swapped_out', 'capacity', 'hourly_budget', 'daily_budget',
       'shed_invariant', 'deferred_objective_avoid', 'awaiting_solar_surplus',
-      'headroom_cooldown', 'cooldown_shedding',
+      'cooldown_shedding',
     ]) {
       expect(isHoldReasonCode(code)).toBe(true);
     }

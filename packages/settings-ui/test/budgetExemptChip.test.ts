@@ -38,7 +38,7 @@ const heldBackStarvation = (
 const buildDevice = (overrides: Partial<PlanDeviceSnapshot> = {}): PlanDeviceSnapshot => ({
   id: 'heater-1',
   name: 'Termostat Synne',
-  reason: { code: PLAN_REASON_CODES.none },
+  reason: { code: PLAN_REASON_CODES.keep, detail: null },
   starvation: heldBackStarvation(),
   ...overrides,
 } as PlanDeviceSnapshot);

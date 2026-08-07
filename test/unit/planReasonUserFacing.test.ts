@@ -96,17 +96,6 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Waiting for power meter to stabilise (10s)',
     },
     {
-      label: 'headroom cooldown maps to the power-reading-stabilise label',
-      reason: {
-        code: PLAN_REASON_CODES.headroomCooldown,
-        kind: 'recent_pels_shed',
-        remainingSec: 30,
-        fromKw: null,
-        toKw: null,
-      },
-      expected: 'Waiting for power reading to stabilise',
-    },
-    {
       label: 'activation backoff maps to the delaying-restart label',
       reason: { code: PLAN_REASON_CODES.activationBackoff, remainingSec: 60 },
       expected: 'Delaying restart after recent failed attempt (60s)',
@@ -215,11 +204,6 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Waiting after startup',
     },
     {
-      label: 'none reason yields an empty status string',
-      reason: { code: PLAN_REASON_CODES.none },
-      expected: '',
-    },
-    {
       label: 'keep reason without detail yields an empty status string',
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
       expected: '',
@@ -265,11 +249,6 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       label: 'neutral startup hold maps to the left-off label',
       reason: { code: PLAN_REASON_CODES.neutralStartupHold },
       expected: 'Left off after startup',
-    },
-    {
-      label: 'set target names the new target',
-      reason: { code: PLAN_REASON_CODES.setTarget, targetText: '21 °C' },
-      expected: 'Changing target to 21 °C',
     },
   ];
 

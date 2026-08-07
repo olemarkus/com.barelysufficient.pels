@@ -18,7 +18,6 @@ export type PlanStarvationPauseReason =
   | 'restore'
   | 'restore_throttled'
   | 'activation_backoff'
-  | 'headroom_cooldown'
   | 'keep'
   | 'inactive'
   | 'deferred_objective_avoid'
@@ -58,7 +57,6 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.cooldownRestore,
   PLAN_REASON_CODES.cooldownShedding,
-  PLAN_REASON_CODES.headroomCooldown,
   PLAN_REASON_CODES.insufficientHeadroom,
   PLAN_REASON_CODES.meterSettling,
   PLAN_REASON_CODES.restorePending,
@@ -90,7 +88,6 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.cooldownShedding,
   PLAN_REASON_CODES.cooldownRestore,
   PLAN_REASON_CODES.meterSettling,
-  PLAN_REASON_CODES.headroomCooldown,
   PLAN_REASON_CODES.restorePending,
 ]);
 
@@ -154,9 +151,6 @@ export const isShedInvariantBlockedReason = (reason: DeviceReason): boolean => (
 );
 
 export function resolveStarvationSuppressionSemantics(reason: DeviceReason): PlanStarvationSuppressionSemantics {
-  if (reason.code === PLAN_REASON_CODES.headroomCooldown) {
-    return { state: 'paused', countingCause: null, pauseReason: 'headroom_cooldown' };
-  }
   if (STARVATION_COOLDOWN_PAUSE_REASON_CODES.has(reason.code)) {
     return { state: 'paused', countingCause: null, pauseReason: 'cooldown' };
   }

@@ -146,7 +146,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' }],
   ])('logs null for %s, which renders no reason line', (_label, state) => {
     const event = buildOverviewEventForDevice(buildPlanDevice({
-      id: 'dev', ...state, reason: { code: 'none' },
+      id: 'dev', ...state, reason: { code: 'keep', detail: null },
     }), overview);
     expect(event['cardReasonText']).toBeNull();
   });

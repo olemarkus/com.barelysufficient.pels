@@ -328,12 +328,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'unknown',
       plannedState: 'keep',
-      reason: { code: PLAN_REASON_CODES.none },
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
     })).toEqual({
       powerMsg: 'unknown',
       stateMsg: 'State unknown',
       usageMsg: 'Unknown',
-      statusMsg: 'Waiting for available power',
+      statusMsg: '',
     });
   });
 });
@@ -423,29 +423,6 @@ describe('device overview transition signatures', () => {
 
     expect(buildDeviceOverviewTransitionSignature(restoreCooldown))
       .toBe(buildDeviceOverviewTransitionSignature(restoreCooldownTick));
-  });
-
-  it('preserves semantic recent-PELS headroom-cooldown changes while ignoring countdown decay', () => {
-    const base = {
-      currentState: 'on',
-      plannedState: 'keep',
-      reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
-    };
-    const countdownOnly = {
-      currentState: 'on',
-      plannedState: 'keep',
-      reason: r('headroom cooldown (30s remaining; recent PELS shed)'),
-    };
-    const sourceChanged = {
-      currentState: 'on',
-      plannedState: 'keep',
-      reason: r('headroom cooldown (30s remaining; recent PELS restore)'),
-    };
-
-    expect(buildDeviceOverviewTransitionSignature(base))
-      .toBe(buildDeviceOverviewTransitionSignature(countdownOnly));
-    expect(buildDeviceOverviewTransitionSignature(base))
-      .not.toBe(buildDeviceOverviewTransitionSignature(sourceChanged));
   });
 
   it('ignores shortfall jitter in overview transition signatures', () => {

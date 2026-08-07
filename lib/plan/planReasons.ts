@@ -3,6 +3,7 @@ import {
   PLAN_REASON_CODES,
   resolveRestoreShortfallKw,
   type DeviceReason,
+  type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { computeBaseRestoreNeed } from './restore/accounting';
 import {
@@ -572,7 +573,10 @@ function normalizeDeviceReason(params: {
 // through this fold. Pinned in `test/unit/planDecisionSemantics.test.ts`; if
 // budget holds ever ride keep-state devices, revisit that set deliberately.
 function resolveDailyBindingReattribution(params: {
-  reasonCode: DeviceReason['code'];
+  // `PlanReasonCode`, not `DeviceReason['code']`: the caller passes a
+  // `ClassifiedPlanReason` code, whose `none` absent-marker is not a
+  // `DeviceReason` member. It simply matches no branch below.
+  reasonCode: PlanReasonCode;
   // Admission shortfall read off the reason being re-attributed, so the
   // re-labelled hold keeps the kW the card renders. `null` for the
   // carry-forward `capacity` shape, which never had admission metrics.

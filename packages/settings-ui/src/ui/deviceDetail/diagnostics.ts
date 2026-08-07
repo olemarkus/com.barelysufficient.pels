@@ -123,7 +123,6 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   insufficient_headroom: STARVATION_WAITING_FOR_POWER_COPY,
   shedding_active: 'PELS is limiting devices',
   cooldown: 'Waiting before retrying',
-  headroom_cooldown: 'Waiting for power reading to stabilise',
   restore_throttled: 'Delaying restart after recent failed attempt',
   activation_backoff: 'Delaying restart after recent failed attempt',
   inactive: 'No active service block',

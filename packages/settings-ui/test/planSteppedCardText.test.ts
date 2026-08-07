@@ -37,7 +37,7 @@ const profileWithOff: SteppedLoadProfile = {
 };
 
 const baseDevice = {
-  reason: { code: 'none' as const },
+  reason: { code: 'keep' as const, detail: null },
 };
 
 const steppedLoad = (
@@ -240,49 +240,7 @@ describe('resolveSteppedStatusLine', () => {
     });
   });
 
-  describe('settling — headroom cooldown', () => {
-    it('returns elapsed text for recent_pels_restore kind', () => {
-      const result = resolveSteppedStatusLine(
-        {
-          ...baseDevice,
-          currentState: 'on',
-          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
-          reason: {
-            code: 'headroom_cooldown',
-            kind: 'recent_pels_restore',
-            remainingSec: 25,
-            fromKw: null,
-            toKw: null,
-            countdownStartedAtMs: NOW_MS - 10_000,
-          },
-        },
-        profile,
-        NOW_MS,
-      );
-      expect(result).toBe('Resumed 10s ago — checking power reading');
-    });
-
-    it('returns countdown for recent_pels_shed kind', () => {
-      const result = resolveSteppedStatusLine(
-        {
-          ...baseDevice,
-          currentState: 'on',
-          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
-          reason: {
-            code: 'headroom_cooldown',
-            kind: 'recent_pels_shed',
-            remainingSec: 42,
-            fromKw: null,
-            toKw: null,
-            countdownStartedAtMs: NOW_MS - 5_000,
-          },
-        },
-        profile,
-        NOW_MS,
-      );
-      expect(result).toBe('Limited — will try to resume in 42s if power is available');
-    });
-
+  describe('settling — cooldowns', () => {
     it('returns elapsed text for cooldownRestore reason', () => {
       const result = resolveSteppedStatusLine(
         {
@@ -332,27 +290,6 @@ describe('resolveSteppedStatusLine', () => {
           currentState: 'on',
           steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
           reason: { code: 'meter_settling', remainingSec: 14 },
-        },
-        profile,
-        NOW_MS,
-      );
-      expect(result).toBeNull();
-    });
-
-    it('returns null (quiet) when reported step equals target step and reason is headroomCooldown', () => {
-      const result = resolveSteppedStatusLine(
-        {
-          ...baseDevice,
-          currentState: 'on',
-          steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
-          reason: {
-            code: 'headroom_cooldown',
-            kind: 'recent_pels_shed',
-            remainingSec: 30,
-            fromKw: null,
-            toKw: null,
-            countdownStartedAtMs: NOW_MS - 5_000,
-          },
         },
         profile,
         NOW_MS,
@@ -680,7 +617,7 @@ describe('resolveSteppedStatusLine', () => {
           ...baseDevice,
           currentState: 'on',
           steppedLoad: steppedLoad({ reportedStepId: 'max', targetStepId: 'low' }),
-          reason: { code: 'none' },
+          reason: { code: 'keep', detail: null },
         },
         profile,
         NOW_MS,

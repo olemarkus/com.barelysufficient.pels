@@ -308,8 +308,6 @@ The **"Is there available power for device?"** Flow condition answers "Can this 
 
 PELS never reports available power against a zero or unknown estimate — the answer is always grounded in a real number.
 
-When the card is held by cooldown, diagnostics may show a `headroom cooldown (...)` reason. The user-facing status line frames this as waiting for the power reading to stabilise.
-
 ### Thermostats and Water Heaters
 
 PELS is purpose-built for devices with thermal mass — rooms, tanks, floor loops — where short pauses do not move the temperature. That is exactly the load profile that dominates a winter peak hour, which is why PELS makes the biggest difference here.
