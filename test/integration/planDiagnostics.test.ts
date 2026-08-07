@@ -14,6 +14,7 @@ import type {
 import { buildPlanInputDevice, buildPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   DEVICE_DIAGNOSTICS_STATE_KEY,
   DeviceDiagnosticsService,
@@ -575,7 +576,10 @@ describe('plan diagnostics observations', () => {
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 18,
-        reason: r('waiting for moon phase alignment'),
+        // A code this build does not know — the whole point of the test. Cast at
+        // the boundary rather than routed through the fixture grammar, which now
+        // rejects labels it cannot parse into a complete reason.
+        reason: { code: 'waiting_for_moon_phase_alignment' } as unknown as DeviceReason,
         controllable: true,
         available: true,
         currentTemperature: 18,

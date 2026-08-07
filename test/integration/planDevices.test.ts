@@ -983,7 +983,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1005,7 +1005,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1029,7 +1029,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1052,7 +1052,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1077,7 +1077,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });

@@ -66,7 +66,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
-const SHED_REASON = fixtureDeviceReason('limited_by_daily_budget')!;
+const SHED_REASON = fixtureDeviceReason('shed due to daily budget')!;
 const DEVICE_ID = 'elbillader-1';
 const START_ISO = '2026-07-26T20:55:00.000Z';
 const CYCLE_MS = 35_000; // prod rebuild cadence during the incident
