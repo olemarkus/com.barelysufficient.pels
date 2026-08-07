@@ -92,6 +92,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   headroomRaw: -1, // overshooting, so shedding WOULD fire for an eligible device
   headroom: -1,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
   ...overrides,
 });
 
@@ -124,8 +125,6 @@ const emptyRestoreResult: RestorePlanResult = {
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
@@ -157,23 +156,21 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     // temperature target, so `resolvePlannedTarget` returns undefined regardless of
     // the price hour. Drive the REAL builder with price-opt ENABLED and a (nonsensical)
     // price-opt config for the battery, in BOTH a cheap and an expensive hour.
-    const priceDeps = (cheap: boolean, expensive: boolean): PlanDevicesDeps => ({
+    const priceDeps: PlanDevicesDeps = {
       ...defaultDeps,
       getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => ({
         [BATTERY_ID]: { enabled: true, cheapDelta: 3, expensiveDelta: 3 },
       }),
-      isCurrentHourCheap: () => cheap,
-      isCurrentHourExpensive: () => expensive,
-    });
+    };
     for (const [cheap, expensive] of [[true, false], [false, true]] as const) {
       const [battery] = buildInitialPlanDevices({
-        context: buildContext([batteryInputDevice()]),
+        context: buildContext([batteryInputDevice()], { currentHourPriceLevel: { cheap, expensive } }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deps: priceDeps(cheap, expensive),
+        deps: priceDeps,
       });
       expect(battery.plannedState).toBe('keep');
       expect(isTemperaturePlanDevice(battery)).toBe(false);
@@ -257,8 +254,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       restoreResult: emptyRestoreResult,
       priceOptimizationEnabled: false,
       priceOptimizationSettings: {},
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
       getObservationStale: () => false,
     });
     const batteryObservation = observations.find((o) => o.deviceId === BATTERY_ID);

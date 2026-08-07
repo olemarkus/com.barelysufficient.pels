@@ -39,6 +39,7 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext
   headroomRaw: headroom,
   headroom,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
 });
 
 const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuard: CapacityGuard) => ({

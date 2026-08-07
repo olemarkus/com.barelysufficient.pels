@@ -45,13 +45,12 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   headroomRaw: -1,
   headroom: -1,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
 });
 
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

@@ -27,6 +27,7 @@ const buildContext = (
   desiredForMode: Record<string, number> = {},
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
   powerFreshnessState: PlanContext['powerFreshnessState'] = 'fresh',
+  currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = { cheap: false, expensive: false },
 ): PlanContext => ({
   devices: [device],
   desiredForMode,
@@ -51,6 +52,7 @@ const buildContext = (
   headroomRaw: 1,
   headroom: 1,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel,
 });
 
 const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): RestorePlanResult => ({
@@ -101,8 +103,7 @@ const buildObservation = (params: {
   powerFreshnessState?: PlanContext['powerFreshnessState'];
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  isCurrentHourCheap?: () => boolean;
-  isCurrentHourExpensive?: () => boolean;
+  currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
   // Observer-resolved staleness for the device (defaults fresh). Drives the
   // diagnostics freshness gate exactly as the production observer dep does.
   getObservationStale?: (deviceId: string) => boolean;
@@ -112,6 +113,7 @@ const buildObservation = (params: {
     params.desiredForMode,
     params.softLimitSource,
     params.powerFreshnessState,
+    params.currentHourPriceLevel,
   ),
   getObservationStale: params.getObservationStale ?? (() => false),
   // Production always stamps the plan device's `deviceType` from the snapshot, so
@@ -122,8 +124,6 @@ const buildObservation = (params: {
   restoreResult: buildRestoreResult(params.restoreResult),
   priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
   priceOptimizationSettings: params.priceOptimizationSettings ?? {},
-  isCurrentHourCheap: params.isCurrentHourCheap ?? (() => false),
-  isCurrentHourExpensive: params.isCurrentHourExpensive ?? (() => false),
 })[0];
 
 describe('plan diagnostics observations', () => {
@@ -465,7 +465,7 @@ describe('plan diagnostics observations', () => {
       desiredForMode: { 'heater-1': 20 },
       priceOptimizationEnabled: true,
       priceOptimizationSettings: { 'heater-1': { enabled: true, cheapDelta: 4, expensiveDelta: -4 } },
-      isCurrentHourCheap: () => true,
+      currentHourPriceLevel: { cheap: true, expensive: false },
     });
 
     expect(observation.desiredStateSummary).toBe('24.0C');

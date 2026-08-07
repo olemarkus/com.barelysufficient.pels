@@ -42,6 +42,7 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   headroomRaw: 1,
   headroom: 1,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
 });
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
@@ -269,8 +270,6 @@ describe('P1 bug proofs', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands),

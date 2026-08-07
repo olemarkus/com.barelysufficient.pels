@@ -83,6 +83,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   headroomRaw: -1,
   headroom: -1,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
   ...overrides,
 });
 
@@ -113,8 +114,6 @@ const emptyRestoreResult: RestorePlanResult = {
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
@@ -213,8 +212,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       restoreResult: emptyRestoreResult,
       priceOptimizationEnabled: false,
       priceOptimizationSettings: {},
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
       getObservationStale: () => false,
     });
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);
