@@ -7,7 +7,7 @@ import type {
 } from '../diagnostics/deviceDiagnosticsService';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
-import type { PlanContext } from './planContext';
+import type { CurrentHourPriceLevel, PlanContext } from './planContext';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
@@ -40,8 +40,6 @@ type BuildDeviceDiagnosticsObservationsParams = {
   restoreResult: RestorePlanResult;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
   // Observer-resolved per-device staleness, supplied by the producer/wiring layer
   // (createPlanEngine wires `isDeviceObservationStale(ctx.getObservedState(id))`).
   // The starvation freshness gate must source from the observer, NOT a plan-device
@@ -68,8 +66,9 @@ export const buildDeviceDiagnosticsObservations = (
     budgetReleasableHeadroomHold: params.context.budgetReleasableHeadroomHold,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     priceOptimizationSettings: params.priceOptimizationSettings,
-    isCurrentHourCheap: params.isCurrentHourCheap,
-    isCurrentHourExpensive: params.isCurrentHourExpensive,
+    // Producer-resolved once per build (see `CurrentHourPriceLevel`) — this loop
+    // must not ask the price service per device.
+    currentHourPriceLevel: params.context.currentHourPriceLevel,
     // Freshness is observer-resolved (not read off the plan device); a stale
     // observation is gated out of starvation counting downstream.
     observationFresh: !params.getObservationStale(device.id),
@@ -268,8 +267,7 @@ const buildDiagnosticsObservation = (params: {
   budgetReleasableHeadroomHold: boolean;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  currentHourPriceLevel: CurrentHourPriceLevel;
   observationFresh: boolean;
 }): DeviceDiagnosticsPlanObservation => {
   const {
@@ -280,8 +278,7 @@ const buildDiagnosticsObservation = (params: {
     budgetReleasableHeadroomHold,
     priceOptimizationEnabled,
     priceOptimizationSettings,
-    isCurrentHourCheap,
-    isCurrentHourExpensive,
+    currentHourPriceLevel,
     observationFresh,
   } = params;
   const isEv = isEvLikeDevice(device, inputDevice);
@@ -291,8 +288,7 @@ const buildDiagnosticsObservation = (params: {
     inputDevice,
     priceOptimizationEnabled,
     priceOptimizationSettings,
-    isCurrentHourCheap,
-    isCurrentHourExpensive,
+    currentHourPriceLevel,
   });
   const currentTarget = isTemperaturePlanDevice(device) && typeof device.currentTarget === 'number'
     ? device.currentTarget
@@ -358,16 +354,14 @@ const resolveDesiredTemperatureTarget = (params: {
   inputDevice?: PlanInputDevice;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  currentHourPriceLevel: CurrentHourPriceLevel;
 }): number | null => {
   const {
     desiredForMode,
     inputDevice,
     priceOptimizationEnabled,
     priceOptimizationSettings,
-    isCurrentHourCheap,
-    isCurrentHourExpensive,
+    currentHourPriceLevel,
   } = params;
   if (!inputDevice || !Array.isArray(inputDevice.targets) || inputDevice.targets.length === 0) {
     return null;
@@ -384,9 +378,9 @@ const resolveDesiredTemperatureTarget = (params: {
   let desiredTarget = Number(desired);
   const priceOptConfig = priceOptimizationSettings[inputDevice.id];
   if (priceOptimizationEnabled && priceOptConfig?.enabled) {
-    if (isCurrentHourCheap() && priceOptConfig.cheapDelta) {
+    if (currentHourPriceLevel.cheap && priceOptConfig.cheapDelta) {
       desiredTarget += priceOptConfig.cheapDelta;
-    } else if (isCurrentHourExpensive() && priceOptConfig.expensiveDelta) {
+    } else if (currentHourPriceLevel.expensive && priceOptConfig.expensiveDelta) {
       desiredTarget += priceOptConfig.expensiveDelta;
     }
   }

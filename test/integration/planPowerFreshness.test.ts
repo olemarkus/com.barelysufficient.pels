@@ -52,6 +52,7 @@ describe('power sample freshness policy', () => {
       softLimitSource: 'capacity',
       desiredForMode: {},
       hourlyBudgetExhausted: false,
+      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
     expect(context.powerKnown).toBe(true);
@@ -75,6 +76,7 @@ describe('power sample freshness policy', () => {
       softLimitSource: 'capacity',
       desiredForMode: {},
       hourlyBudgetExhausted: false,
+      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
     expect(staleHoldContext.powerKnown).toBe(false);
@@ -96,6 +98,7 @@ describe('power sample freshness policy', () => {
       softLimitSource: 'capacity',
       desiredForMode: {},
       hourlyBudgetExhausted: false,
+      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
     expect(startupContext.powerFreshnessState).toBe('stale_hold');
@@ -116,6 +119,7 @@ describe('power sample freshness policy', () => {
       softLimitSource: 'capacity',
       desiredForMode: {},
       hourlyBudgetExhausted: false,
+      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
     expect(context.powerFreshnessState).toBe('stale_fail_closed');
@@ -147,6 +151,7 @@ describe('per-axis admission headroom resolution', () => {
     capacitySettings: { limitKw: 6, marginKw: 0.2 },
     desiredForMode: {},
     hourlyBudgetExhausted: false,
+    currentHourPriceLevel: { cheap: false, expensive: false },
     softLimit: 2.2,
     capacitySoftLimit: 10,
     dailySoftLimit: 2.2,
@@ -216,6 +221,7 @@ describe('per-axis admission headroom resolution', () => {
       ...baseParams,
       softLimit: 0,
       hourlyBudgetExhausted: true,
+      currentHourPriceLevel: { cheap: false, expensive: false },
       devices: [],
       capacityGuard,
       powerTracker: { lastTimestamp: Date.now() - 1000 },

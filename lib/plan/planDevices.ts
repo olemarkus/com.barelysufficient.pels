@@ -2,7 +2,7 @@ import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes'
 import { isEvPlanDevice } from './planEvDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
+import type { CurrentHourPriceLevel, PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
 import {
   resolveSteppedLoadDirectShedStepId,
@@ -46,8 +46,6 @@ const logger = getLogger('plan/devices');
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   // Producer-resolved inferred curtailed-surplus term (kW) for the surplus
@@ -121,6 +119,7 @@ export function buildInitialPlanDevices(params: {
       desiredForMode: context.desiredForMode,
       supportsTemperature,
       powerKnown: context.powerKnown,
+      currentHourPriceLevel: context.currentHourPriceLevel,
       state,
       deps,
     });
@@ -207,6 +206,8 @@ function resolvePlannedTarget(params: {
   supportsTemperature: boolean;
   /** `context.powerKnown`: a fresh sample AND a non-null meter total. */
   powerKnown: boolean;
+  /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
+  currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ResolvedPlannedTarget {
@@ -215,6 +216,7 @@ function resolvePlannedTarget(params: {
     desiredForMode,
     supportsTemperature,
     powerKnown,
+    currentHourPriceLevel,
     state,
     deps,
   } = params;
@@ -257,6 +259,7 @@ function resolvePlannedTarget(params: {
       config: deps.getPriceOptimizationSettings()[dev.id],
       observedTarget: target?.value,
       powerKnown,
+      currentHourPriceLevel,
       state,
       deps,
     })
@@ -380,12 +383,13 @@ function applyModeSeedModulation(params: {
    */
   observedTarget: number | undefined;
   powerKnown: boolean;
+  currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ModeSeedModulation {
-  const { seedValue, dev, config, observedTarget, powerKnown, state, deps } = params;
+  const { seedValue, dev, config, observedTarget, powerKnown, currentHourPriceLevel, state, deps } = params;
   const pricedTarget = deps.getPriceOptimizationEnabled() && config?.enabled
-    ? applyPriceOptimizationDelta(seedValue, config, deps)
+    ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel)
     : seedValue;
   const surplusTarget = applySurplusAbsorbDelta({
     baseTarget: seedValue,
@@ -444,12 +448,12 @@ function resolveTemperatureSeed(
 function applyPriceOptimizationDelta(
   target: number,
   config: { cheapDelta: number; expensiveDelta: number },
-  deps: Pick<PlanDevicesDeps, 'isCurrentHourCheap' | 'isCurrentHourExpensive'>,
+  priceLevel: CurrentHourPriceLevel,
 ): number {
-  if (deps.isCurrentHourCheap() && config.cheapDelta) {
+  if (priceLevel.cheap && config.cheapDelta) {
     return target + config.cheapDelta;
   }
-  if (deps.isCurrentHourExpensive() && config.expensiveDelta) {
+  if (priceLevel.expensive && config.expensiveDelta) {
     return target + config.expensiveDelta;
   }
   return target;

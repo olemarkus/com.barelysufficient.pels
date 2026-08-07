@@ -87,6 +87,7 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   headroomRaw: -1,
   headroom: -1,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
 });
 
 // Shared empty pending-binary-command store for the many cases that do not
@@ -99,8 +100,6 @@ const pendingStoreFor = (state: PlanEngineState) =>
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: emptyPendingStore,
@@ -326,8 +325,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -373,8 +370,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -422,8 +417,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -472,8 +465,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -512,8 +503,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -556,8 +545,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -589,8 +576,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -622,8 +607,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: pendingStoreFor(state),
@@ -649,8 +632,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -672,8 +653,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -702,8 +681,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: pendingStoreFor(state),
@@ -736,8 +713,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -771,8 +746,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -807,8 +780,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -840,8 +811,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -877,8 +846,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -913,8 +880,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -949,8 +914,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -980,8 +943,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        isCurrentHourCheap: () => false,
-        isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -1002,8 +963,6 @@ describe('buildInitialPlanDevices', () => {
 const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevicesDeps => ({
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: emptyPendingStore,
@@ -1276,7 +1235,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('lifts plannedTarget to the deadline target when it exceeds the mode target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), desiredForMode: { tank: 50 } },
+        context: {
+          ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]),
+          desiredForMode: { tank: 50 },
+          currentHourPriceLevel: { cheap: true, expensive: false },
+        },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1309,7 +1272,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         guardInShortfall: false,
         deps: {
           ...defaultDeps,
-          isCurrentHourCheap: () => true,
           getPriceOptimizationEnabled: () => true,
           getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: 0 } }),
         },
@@ -1321,14 +1283,17 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('lets mode + cheap delta win when the result still exceeds the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })]), desiredForMode: { tank: 55 } },
+        context: {
+          ...buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })]),
+          desiredForMode: { tank: 55 },
+          currentHourPriceLevel: { cheap: true, expensive: false },
+        },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
         deps: {
           ...defaultDeps,
-          isCurrentHourCheap: () => true,
           getPriceOptimizationEnabled: () => true,
           getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: 0 } }),
         },
@@ -1491,14 +1456,17 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('does not apply price-opt delta when the seed comes from the current-target fallback', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        context: {
+          ...buildContext([tempInputDevice()]),
+          desiredForMode: {},
+          currentHourPriceLevel: { cheap: true, expensive: false },
+        },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
         deps: {
           ...defaultDeps,
-          isCurrentHourCheap: () => true,
           getPriceOptimizationEnabled: () => true,
           getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: -1 } }),
           getOperatingMode: () => 'home',

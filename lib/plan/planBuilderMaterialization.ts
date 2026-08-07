@@ -51,8 +51,6 @@ import { trackPlanStage } from './planStageTiming';
 export type PlanMaterializationDeps = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   getInferredSurplusKw?: () => number | null;
@@ -100,8 +98,6 @@ export class PlanMaterializationStages {
       deps: {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        isCurrentHourCheap: () => this.deps.isCurrentHourCheap(),
-        isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
         getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
         getInferredSurplusKw: this.deps.getInferredSurplusKw,
@@ -267,8 +263,6 @@ export class PlanMaterializationStages {
         restoreResult: params.restoreResult,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         priceOptimizationSettings: this.priceOptimizationSettings,
-        isCurrentHourCheap: () => this.deps.isCurrentHourCheap(),
-        isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
         // No staleness dep wired (e.g. tests) ⇒ treat every device as fresh, so the
         // freshness gate is a no-op and starvation counts as before.
         getObservationStale: this.deps.getObservationStale ?? (() => false),

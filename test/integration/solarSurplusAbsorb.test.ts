@@ -73,13 +73,12 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
   headroomRaw: 12,
   headroom: 12,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
 });
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({
     [DEVICE_ID]: {

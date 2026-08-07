@@ -18,6 +18,45 @@ export type DailyBudgetContext = {
 
 export type SoftLimitSource = 'capacity' | 'daily';
 
+/**
+ * Producer-resolved cheap/expensive classification of the current hour, for the
+ * price-optimization deltas only.
+ *
+ * Resolved ONCE per plan build (`buildPlanContext`) instead of per device.
+ * Resolving it in the consumer cost ~25 ms a time on a Homey Pro — every
+ * `isCurrentHourCheap()` rebuilds the whole combined price series from settings
+ * (`PriceService.getCombinedHourlyPrices`, uncached: ~12 settings reads, one
+ * `Intl.DateTimeFormat.formatToParts` per spot hour, a full grid-tariff pass) —
+ * and the two per-device loops asked it 52 times per rebuild between them, which
+ * was ~1.28 s of the ~1.29 s plan build in production. The answer cannot change
+ * within a cycle, so one resolution per build is the same answer for 1/26th of
+ * the cost.
+ *
+ * Both flags are false when nothing in the build can spend a price delta —
+ * price optimization switched off, or no admitted device configured for it. That
+ * is the consumers' own combined `priceOptimizationEnabled && config?.enabled`
+ * guard, hoisted (see `PlanBuilder.resolveCurrentHourPriceLevel`), so a home that
+ * cannot use a level never pays to resolve one. Both halves matter: the global
+ * switch defaults ON on an unset key, so gating on it alone would charge a fresh
+ * install two price-series rebuilds per plan rebuild for a delta no device
+ * receives.
+ *
+ * The consumers still check the switch themselves, and the build is async, so a
+ * switch flipped ON mid-build leaves this cycle unmodulated rather than
+ * half-modulated; the settings write schedules its own rebuild, which resolves
+ * the level and applies the delta. Deliberate: one snapshot of the switch per
+ * build beats two reads that can disagree between devices.
+ *
+ * The two are NOT mutually exclusive: `getPriceLevelFlags` classifies on
+ * `price <= low` and `price >= high`, so at `price_threshold_percent` 0 a price
+ * exactly on the average is both. Consumers keep the cheap-first precedence they
+ * had when they asked per device.
+ */
+export type CurrentHourPriceLevel = {
+  cheap: boolean;
+  expensive: boolean;
+};
+
 export type PlanContext = {
   devices: PlanInputDevice[];
   desiredForMode: Record<string, number>;
@@ -67,6 +106,9 @@ export type PlanContext = {
   headroomRaw: number;
   headroom: number;
   restoreMarginPlanning: number;
+  // See `CurrentHourPriceLevel`: resolved once per build, read per device by the
+  // materialization and diagnostics loops.
+  currentHourPriceLevel: CurrentHourPriceLevel;
   dailyBudget?: DailyBudgetContext;
 };
 
@@ -83,6 +125,9 @@ export function buildPlanContext(params: {
   softLimitSource: SoftLimitSource;
   desiredForMode: Record<string, number>;
   hourlyBudgetExhausted: boolean;
+  // Already resolved by the caller (see `CurrentHourPriceLevel`) — this builder
+  // stays free of price dependencies.
+  currentHourPriceLevel: CurrentHourPriceLevel;
   dailyBudget?: DailyBudgetContext;
 }): PlanContext {
   const {
@@ -98,6 +143,7 @@ export function buildPlanContext(params: {
     softLimitSource,
     desiredForMode,
     hourlyBudgetExhausted,
+    currentHourPriceLevel,
     dailyBudget,
   } = params;
 
@@ -167,6 +213,7 @@ export function buildPlanContext(params: {
     headroomRaw,
     headroom,
     restoreMarginPlanning: Math.max(0.1, capacitySettings.marginKw || 0),
+    currentHourPriceLevel,
     dailyBudget,
   };
 }

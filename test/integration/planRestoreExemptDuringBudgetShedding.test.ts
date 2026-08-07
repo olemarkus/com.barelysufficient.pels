@@ -39,6 +39,7 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   headroomRaw: -0.8,
   headroom: -0.8,
   restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: { cheap: false, expensive: false },
   powerKnown: true,
   powerFreshnessState: 'fresh',
   ...overrides,

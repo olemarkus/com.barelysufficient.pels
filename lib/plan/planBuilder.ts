@@ -27,7 +27,12 @@ import type { PowerTrackerState } from '../power/tracker';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
-import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
+import {
+  buildPlanContext,
+  type CurrentHourPriceLevel,
+  type PlanContext,
+  type SoftLimitSource,
+} from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { sumBudgetExemptProjectedUsageKw } from './planUsage';
@@ -98,6 +103,10 @@ export type PlanBuilderDeps = {
   logDebug: (...args: unknown[]) => void;
 };
 const SOFT_LIMIT_EPSILON = 1e-3;
+
+// Neither cheap nor expensive: what `resolveCurrentHourPriceLevel` answers when
+// nothing in this build can spend a price delta, so no price call is made.
+const NO_CURRENT_HOUR_PRICE_LEVEL: CurrentHourPriceLevel = { cheap: false, expensive: false };
 
 type DailySoftLimitResolution = {
   dailySoftLimitKw: number;
@@ -274,6 +283,34 @@ export class PlanBuilder {
     };
   }
 
+  /**
+   * The one place this build asks the price service what kind of hour it is.
+   * See `CurrentHourPriceLevel` for why it is resolved here rather than in the
+   * per-device loops that read it.
+   *
+   * Resolves ONLY when some admitted device could actually spend the answer —
+   * both consumer guards are `priceOptimizationEnabled && config?.enabled`, so
+   * this reproduces their combined zero-call case rather than just the master
+   * switch. The per-device half is load-bearing, not belt-and-braces: the global
+   * switch reads `homey.settings.get(PRICE_OPTIMIZATION_ENABLED) !== false`, so
+   * an unset key defaults it ON while the device map is still empty — a fresh
+   * install would otherwise pay two full price-series rebuilds (~50 ms) on every
+   * power-triggered rebuild for a delta no device is configured to receive.
+   *
+   * The device scan is a superset of what the loops need (it ignores modality and
+   * the mode seed), which is the safe direction: never fewer resolutions than a
+   * consumer will read.
+   */
+  private resolveCurrentHourPriceLevel(devices: PlanInputDevice[]): CurrentHourPriceLevel {
+    if (!this.deps.getPriceOptimizationEnabled()) return NO_CURRENT_HOUR_PRICE_LEVEL;
+    const settings = this.priceOptimizationSettings;
+    if (!devices.some((dev) => settings[dev.id]?.enabled === true)) return NO_CURRENT_HOUR_PRICE_LEVEL;
+    return {
+      cheap: this.deps.isCurrentHourCheap(),
+      expensive: this.deps.isCurrentHourExpensive(),
+    };
+  }
+
   private async buildContextAndShedding(
     devices: PlanInputDevice[],
     nowTs: number,
@@ -303,6 +340,7 @@ export class PlanBuilder {
       softLimitSource,
       desiredForMode,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
+      currentHourPriceLevel: this.resolveCurrentHourPriceLevel(devices),
       dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
     }));
     this.logPowerFreshness(context);

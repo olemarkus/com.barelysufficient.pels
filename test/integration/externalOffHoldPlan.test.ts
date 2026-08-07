@@ -154,13 +154,12 @@ describe('external-off hold — plan-device propagation', () => {
     headroomRaw: 5,
     headroom: 5,
     restoreMarginPlanning: 0.2,
+    currentHourPriceLevel: { cheap: false, expensive: false },
   });
 
   const deps: PlanDevicesDeps = {
     getPriorityForDevice: () => 100,
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-    isCurrentHourCheap: () => false,
-    isCurrentHourExpensive: () => false,
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

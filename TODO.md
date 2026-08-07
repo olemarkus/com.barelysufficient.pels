@@ -3660,6 +3660,25 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       fixed by the rebuild-scheduler unactionable throttle. What remains here is the raw build latency
       (reactivity), not crash survival — memoize per-device `getPriorityForDevice`/`getShedBehavior` within
       a build and skip deferred-objective decoration when no objectives are enabled.
+      *Update (2026-08-07):* the raw build latency was profiled against production perf counters and was
+      almost entirely one call. `plan_devices_setup_ms` (640 ms) and `plan_observe_diag_ms` (637 ms) were
+      99 % of a 1293 ms build, while `plan_devices_base_ms` — the same 13-device loop without price calls —
+      was 5 ms. Both loops asked `isCurrentHourCheap()`/`isCurrentHourExpensive()` **per device** (26 calls
+      each, 52 per rebuild), and each call rebuilds the whole combined price series from settings
+      (`PriceService.getCombinedHourlyPrices`, uncached: ~12 settings reads, one `Intl.formatToParts` per
+      spot hour, a 360-entry grid-tariff pass) at ~25 ms a time. The level is now producer-resolved once per
+      build onto `PlanContext.currentHourPriceLevel`, pinned by
+      `test/integration/planPriceLevelResolvedOncePerBuild.test.ts`.
+      Natural experiment confirming the attribution: between 2026-08-01 19:00Z and 2026-08-02 14:41Z
+      thermostat target control was silently off (the never-written-key bug fixed by `f163bd912`), no device
+      reached the price branch, and `buildMs` fell from ~1290 ms to ~40 ms; `plan_rebuild_status_ms` (2 price
+      calls, unconditional) stayed flat at ~92 ms across both boundaries.
+      *Still open here:* memoize `PriceService.getCombinedHourlyPrices` itself — 16 call sites still pay the
+      full rebuild, including the ~92 ms `plan_rebuild_status_ms` stage — plus the per-device
+      `getPriorityForDevice`/`getShedBehavior` memo and the no-objectives decoration skip above. Needs a
+      cache key over the hour plus every settings input the series reads, invalidated at the single
+      `updateCombinedPrices()` funnel; a naive hour-scoped cache would serve stale prices after a settings
+      change.
 - [ ] **Add a CPU-pressure circuit breaker that throttles plan rebuilds before Homey's watchdog fires.**
       *Persona:* every persona — the app surviving CPU pressure instead of crash-looping.
       *Hypothesis:* Homey's `cpuwarn` signal (`lib/diagnostics/resourceWarnings.ts`) is logged but never
