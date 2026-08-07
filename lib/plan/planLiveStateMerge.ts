@@ -17,13 +17,23 @@ import {
 
 /**
  * Merges live observations onto a plan snapshot, producing a refreshed snapshot
- * for publication and for use as the next build's base. Only OBSERVED fields
- * are overwritten (`currentState`, `selectedStepId`, `powerKw`, `currentOn`,
- * `currentTarget`, …); the decision fields (`plannedState`, `shedAction`,
- * `desiredStepId`, `plannedTarget`) are carried through untouched, because this
- * is a projection, not a re-plan.
+ * for publication and for use as the next build's base. Observed fields are
+ * overwritten (`currentState`, `selectedStepId`, `powerKw`, `currentOn`,
+ * `currentTarget`, …); the decisions — `plannedState`, `shedAction`,
+ * `plannedTarget` — are carried through, because this is a projection, not a
+ * re-plan.
  *
- * That asymmetry is the reason this module must never grow a "should we
+ * TWO deliberate exceptions, both about not letting a stale reference become a
+ * command:
+ * - `desiredStepId` is clamped DOWN by `clampShedDesiredStepId` when a shed
+ *   device has already reached or passed its planned step. Left alone, the stale
+ *   intermediate value reads as a step-UP and the executor restores the device.
+ * - The step command-history fields (`lastDesiredStepId`,
+ *   `lastStepCommandIssuedAt`, `stepCommandRetryCount`,
+ *   `nextStepCommandRetryAtMs`) prefer the live values. They are execution
+ *   bookkeeping, not decisions; the freshest copy is the correct one.
+ *
+ * The asymmetry is the reason this module must never grow a "should we
  * re-actuate?" predicate: its output is by construction the OLD decision seen
  * freshly, so acting on it would re-assert a plan nobody re-decided. Whether
  * observed still disagrees with intent is `lib/executor/executorConvergence.ts`.
