@@ -1162,6 +1162,19 @@ program) remain deferred.*
       arriving at its vocabulary, and `lib/executor` now has two drift dialects. Convert it to the
       executable intent/observed split. *Source: pels-layering-guardian on the same train.*
 
+- [ ] **A rejected actuator write no longer accrues a realtime circuit-breaker strike.** The
+      breaker now counts `PlanRebuildOutcome.writtenDeviceIds`, which lists devices the rebuild
+      SUCCEEDED in writing or requesting. Before, the reconcile lane reported success once it had
+      attempted a correction, so a device that kept drifting was charged even when the SDK write
+      failed. Now a rejected binary or stepped command contributes no id and
+      `flushRealtimeDeviceReconcileQueue` returns before recording an attempt
+      (`setup/appRealtimeDeviceReconcile.ts`). If Homey repeatedly rejects a command while the
+      device (or another automation) keeps emitting control-state changes, every event drives
+      another rebuild and another failed write while the three-strike breaker stays empty —
+      sustained SDK and CPU churn with nothing to stop it. Attribute attempted-but-rejected writes
+      too, which needs the dispatch layer to distinguish "did not try" from "tried and was
+      refused". *Source: Codex review of the drift/reconcile layering train, 2026-08-07.*
+
 - [ ] **The external-off-hold rebuild bypasses the observation lane's debounce and rebuild floor.**
       `applyExternalOffHoldToReconcile` calls `hooks.rebuild(...)` directly
       (`setup/appRealtimeDeviceReconcileRuntime.ts`), so one realtime→rebuild path is throttled and
