@@ -128,6 +128,19 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     expect(event['cardReasonText']).toBe('Waiting to resume — 0.9 kW more needed');
   });
 
+  // Card/log parity for the reservation hold: support reads the same sentence
+  // the owner saw, which is the whole point of this field
+  // (`feedback_ui_text_shared_with_logs`). The reason code stays `capacity`, so
+  // this also pins that the holder's NAME — not a changed code — is what carries
+  // the line.
+  it('logs the reservation holder for a reserve-blocked device', () => {
+    const event = buildOverviewEventForDevice(buildPlanDevice({
+      id: 'dev', plannedState: 'shed', currentState: 'off',
+      reason: { code: 'capacity', detail: null, reserveHolderName: 'Water heater' },
+    }), overview);
+    expect(event['cardReasonText']).toBe('Waiting so Water heater can start');
+  });
+
   it.each([
     ['a running device', { plannedState: 'keep' as const, currentState: 'on' }],
     ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' }],

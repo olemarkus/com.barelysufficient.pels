@@ -263,15 +263,33 @@ export function resolveReserveAdmission(params: {
  * important reservation currently claiming power ahead of it. Byte-stable across plan cycles —
  * it carries only the holder's name, no kW figures — so a card built from it does not churn.
  */
-export function buildReservedForStartReason(params: {
+/**
+ * The device whose reservation is standing in this device's way — the most important
+ * claiming reserve (lowest priority number). `null` when nothing claims against it.
+ *
+ * Exported because the holder's NAME is needed in two places that must not disagree:
+ * `buildReservedForStartReason` below (the restore/hold lane, which may change the reason
+ * CODE because it knows the shed has materialized), and `finalizeCeilingReason`
+ * (`lib/plan/planReasons.ts`), which may only attach the name as a display field — it
+ * cannot tell a materialized shed from an in-flight one, and `reservedForStart` builds no
+ * actuation intent. One selection rule, so the two lanes always name the same device.
+ */
+export function resolveReserveHolderName(params: {
   dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
   reserves: readonly HeadroomReserve[];
-}): DeviceReason {
+}): string | null {
   let holder: HeadroomReserve | null = null;
   for (const reserve of claimingReserves(params.dev, params.reserves)) {
     if (holder === null || reserve.priority < holder.priority) holder = reserve;
   }
-  return { code: PLAN_REASON_CODES.reservedForStart, targetName: holder?.deviceName ?? null };
+  return holder?.deviceName ?? null;
+}
+
+export function buildReservedForStartReason(params: {
+  dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
+  reserves: readonly HeadroomReserve[];
+}): DeviceReason {
+  return { code: PLAN_REASON_CODES.reservedForStart, targetName: resolveReserveHolderName(params) };
 }
 
 /**

@@ -86,6 +86,62 @@ describe('resolveHeldCardReasonLine', () => {
       })).toBe("Waiting to increase — this hour's budget is spent");
     });
 
+    // A ceiling hold whose ONLY blocker is a named startup reservation. The
+    // reason code stays actuating (`capacity`) because reason normalization
+    // cannot safely switch to `reservedForStart` — see `ReserveHolder` in
+    // `planReasonSemanticsCore.ts` — so the holder rides along as a display
+    // field and the card says who it is waiting for.
+    describe('a named reservation is the more specific cause', () => {
+      it('names the holder instead of the bare waiting line', () => {
+        expect(resolveHeldCardReasonLine({
+          reason: { code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater' },
+        })).toBe('Waiting so Water heater can start');
+      });
+
+      // The generic form: a reservation IS the blocker but the holder could not
+      // be named. `null` must stay distinguishable from absent, or this falls
+      // through to the gap branch and reads as a bare wait.
+      it('uses the generic sentence when the holder cannot be named', () => {
+        expect(resolveHeldCardReasonLine({
+          reason: { code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: null },
+        })).toBe('Waiting so a scheduled device can start');
+      });
+
+      // Beats the starvation fallback: a device held long enough to be flagged,
+      // whose real blocker is a named reservation, is better served by the name
+      // than by the vaguer "Waiting for available power".
+      it('outranks the starvation fallback', () => {
+        expect(resolveHeldCardReasonLine({
+          reason: { code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater' },
+          starvation: { isStarved: true, accumulatedMs: 7_200_000, startedAtMs: 1 },
+        })).toBe('Waiting so Water heater can start');
+      });
+
+      // NO starved decoration. This is a cause line like the smart-task and
+      // solar holds, not a `<stem> — <need>` line, so the "Held 2 h — …" stem
+      // must never form around it.
+      it('takes no elapsed-hold stem', () => {
+        const line = resolveHeldCardReasonLine({
+          reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null, reserveHolderName: 'EV charger' },
+          starvation: { isStarved: true, accumulatedMs: 7_200_000, startedAtMs: 1 },
+        });
+        expect(line).toBe('Waiting so EV charger can start');
+        expect(line).not.toMatch(/^Held /);
+      });
+
+      // Swap holds carry the field too — the reservation is what blocks
+      // admission now, whatever the swap framing says.
+      it('applies to swap holds as well', () => {
+        expect(resolveHeldCardReasonLine({
+          reason: {
+            code: PLAN_REASON_CODES.swappedOut,
+            targetName: 'Heater',
+            reserveHolderName: 'Water heater',
+          },
+        })).toBe('Waiting so Water heater can start');
+      });
+    });
+
     // Bare fallback survivors: a ceiling carrier without an attached number
     // means the arithmetic honestly declined — a reserve block, admission
     // passing this cycle, or the exhausted hour on a swap hold.

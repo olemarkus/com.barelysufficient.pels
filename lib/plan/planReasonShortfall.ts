@@ -91,17 +91,35 @@ export function buildCeilingShortfallInputs(params: {
 //    `needed − victimDraw − available + margins` — what must still appear
 //    before PELS can act, not what the user must free by hand.
 //
-// The smaller (honest) gap wins. `null` when no number is honest:
-//  - the reserve carve-out (`blocked_by_reserve`): raw power suffices but is
-//    promised to a device about to start — a gap through the reservation would
-//    state the holder's quantity as this device's;
-//  - `admitted` / swap-ready: the device would pass now, so the hold is a
-//    transient (cooldown/ordering), not a power gap;
-//  - a gap that rounds to nothing.
-export function resolveCeilingShortfallKw(params: {
+/**
+ * Why the resolution ended where it did. The two no-number outcomes are NOT the
+ * same fact and must not collapse into a bare `null`:
+ *
+ *  - `blocked_by_reserve` — raw power suffices; it is promised to a named device
+ *    about to start. A gap through the reservation would state the HOLDER's
+ *    quantity as this device's, so no kW is honest — but there IS an honest
+ *    sentence, and the caller can only write it if it learns the cause here.
+ *    Collapsing this into `null` is what left the card on the bare "Waiting to
+ *    resume" whenever the restore lane had not run (fixed 2026-08-07).
+ *  - `no_gap` — `admitted`/swap-ready, or a gap that rounds to nothing: the
+ *    device would pass now, so the hold is a transient (cooldown, ordering),
+ *    not a power gap. Nothing more specific to say.
+ *
+ * Resolution belongs in the producer (`docs/architecture.md`): this module owns
+ * the admission arithmetic, so it reports the outcome rather than handing back a
+ * number the consumer would have to reverse-engineer a cause from.
+ */
+export type CeilingShortfallResolution =
+  | { kind: 'gap'; shortfallKw: number }
+  | { kind: 'blocked_by_reserve' }
+  | { kind: 'no_gap' };
+
+// The smaller (honest) gap wins; see `CeilingShortfallResolution` for the two
+// outcomes that carry no number.
+export function resolveCeilingShortfall(params: {
   dev: DevicePlanDevice;
   inputs: CeilingShortfallInputs;
-}): number | null {
+}): CeilingShortfallResolution {
   const { dev, inputs } = params;
   const neededKw = computeBaseRestoreNeed(dev).needed;
   const reserved = resolveReserveAdmission({
@@ -110,7 +128,7 @@ export function resolveCeilingShortfallKw(params: {
     neededKw,
     reserves: inputs.headroomReserves,
   });
-  if (reserved.kind === 'blocked_by_reserve') return null;
+  if (reserved.kind === 'blocked_by_reserve') return { kind: 'blocked_by_reserve' };
   const plainGapKw = RESTORE_ADMISSION_FLOOR_KW - reserved.admission.postReserveMarginKw;
 
   // Swap-aware gap, off the reservation-adjusted base (the restore lane hands
@@ -129,5 +147,6 @@ export function resolveCeilingShortfallKw(params: {
   const gapKw = swap.toShed.length > 0
     ? Math.min(plainGapKw, RESTORE_ADMISSION_FLOOR_KW - swap.displayPostReserveMarginKw)
     : plainGapKw;
-  return ceilToDisplayKw(gapKw);
+  const shortfallKw = ceilToDisplayKw(gapKw);
+  return shortfallKw === null ? { kind: 'no_gap' } : { kind: 'gap', shortfallKw };
 }

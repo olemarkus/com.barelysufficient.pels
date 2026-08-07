@@ -620,14 +620,56 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     expect(device?.reason).toEqual({ code: 'swap_pending', targetName: null });
   });
 
-  it('attaches nothing when the device is blocked only by a startup reservation', () => {
+  // Raw power suffices; it is promised to a device about to start. No kW is
+  // honest (the gap would be the HOLDER's block), so the holder's NAME is
+  // attached instead and the card names who it is waiting for.
+  //
+  // The reason CODE must stay `capacity`. `reservedForStart` — the honest code —
+  // is in `RESTORE_ADMISSION_HOLD_REASON_CODES` and builds no actuation intent;
+  // only the restore lane may switch to it, because only that lane knows the shed
+  // has materialized (`planHeadroomReserve.test.ts` § "keeps asserting the floor
+  // while the shed has not materialized" is the guard). This stage runs on every
+  // shed device without that fact, so it changes the copy, not the code.
+  it('names the reservation holder without changing the actuating reason code', () => {
     const [device] = normalize({
       devices: [heldDevice()],
       capacityAvailableKw: 2.0,
       headroomReserves: [{ deviceId: 'other', deviceName: 'Water heater', priority: 1, kw: 1.5 }],
     });
+    expect(device?.reason).toEqual({
+      code: 'capacity',
+      detail: null,
+      reserveHolderName: 'Water heater',
+    });
+    // Mutually exclusive with the gap: no kW may ride along.
+    expect(device?.reason).not.toHaveProperty('shortfallKw');
+  });
+
+  // The annotation must not outlive the arithmetic that produced it. A holder
+  // carried from a reserve-blocked cycle would keep saying "Waiting so X can
+  // start" after X's reservation ended — and because the card ladder reads the
+  // holder before the gap, it would also HIDE the kW this cycle resolved.
+  it('drops a carried holder once the reservation stops blocking', () => {
+    const [device] = normalize({
+      devices: [heldDevice({
+        reason: { code: 'capacity', detail: null, reserveHolderName: 'Water heater' },
+      })],
+      capacityAvailableKw: 0.5,
+    });
+    expect(device?.reason).toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+    expect(device?.reason).not.toHaveProperty('reserveHolderName');
+  });
+
+  it('drops a carried holder when admission would now pass', () => {
+    const [device] = normalize({
+      devices: [heldDevice({
+        reason: { code: 'capacity', detail: null, reserveHolderName: 'Water heater' },
+      })],
+      capacityAvailableKw: 2.0,
+    });
     expect(device?.reason).toEqual({ code: 'capacity', detail: null });
   });
+
 
   it('reads the capacity axis for a budget-exempt device', () => {
     const [exempt, bound] = normalize({

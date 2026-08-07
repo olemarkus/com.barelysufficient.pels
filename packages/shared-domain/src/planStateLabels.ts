@@ -104,6 +104,22 @@ export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = "Waiting to resume — 
 // `lib/plan/planReasons.ts` from the deferred-objective admission decisions.
 export const PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS = 'Waiting for cheaper hours';
 
+// Status line for a device standing down so a more important device's reserved
+// startup block stays intact. Not "Limited": nothing was switched off to build
+// the reservation — PELS is keeping power free until the scheduled device has
+// started.
+//
+// One home for the sentence because TWO producers reach it, and they must not
+// drift (`feedback_ui_text_shared_with_logs`): the `reservedForStart` reason code
+// (via `formatDeviceReasonUserFacing`, which serves device detail and the runtime
+// log), and the display-only `reserveHolderName` a ceiling hold carries when
+// reason normalization could not safely change the code — see `ReserveHolder` in
+// `planReasonSemanticsCore.ts`. Both render identically, which is the point: the
+// owner reads one sentence for one situation.
+export const formatReservedForStartStatus = (targetName: string | null): string => (
+  targetName ? `Waiting so ${targetName} can start` : 'Waiting so a scheduled device can start'
+);
+
 // Status line for a binary dump load held off by its opted-in "Run on solar
 // surplus" posture (reason code `awaitingSolarSurplus`). The device's baseline
 // is OFF; PELS turns it on only while the home exports enough solar to cover
