@@ -46,9 +46,8 @@ import { buildActivePlanLifecycleFields } from './activePlanLifecycleFields';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import {
   buildHoursFromHorizonPlan,
-  mergeHoursPreservingCommitment,
+  resolveCoordinatedScheduleUpdate,
   resolveProjectedFinishAtMs,
-  sameHourSchedule,
   shouldFireNotification,
   stampCheaperHourAhead,
   stampUnitMilestones,
@@ -284,7 +283,8 @@ export class DeferredObjectiveActivePlanRecorder {
     // written (`markReplanSettled` after a truthy write), so a no-op `:58` cycle
     // doesn't starve a real change later in the same `:58` window.
     const objectiveChanged = compareObjectiveSignatures(backfilled.objectiveSignature, signature).changed;
-    if (!this.isReplanDueThisCycle(diag, objectiveChanged, nowMs)) {
+    const allocationContextChanged = backfilled.latest?.allocationContextSignature !== diag.allocationContextSignature;
+    if (!this.isReplanDueThisCycle(diag, [objectiveChanged, allocationContextChanged].includes(true), nowMs)) {
       publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
       return;
     }
@@ -548,9 +548,8 @@ export class DeferredObjectiveActivePlanRecorder {
     // names the Flow permission change, not a generic objective edit.
     const sigDiff = compareObjectiveSignatures(current.objectiveSignature, signature);
     const objectiveChanged = sigDiff.changed;
-    // When the objective signature changes, the previous commitment is
-    // discarded and the live `hours` become the new commitment. Otherwise
-    // we merge live into commitment so per-cycle growth (within-hour drift
+    // Coordination changes replace the commitment with the live residual schedule. Otherwise we
+    // merge live into commitment so per-cycle growth (within-hour drift
     // or phase-2 expansion) extends the commitment while the existing
     // committed kWh is preserved as a floor against transient shrinkage —
     // see `mergeHoursPreservingCommitment` for the merge rules.
@@ -560,13 +559,13 @@ export class DeferredObjectiveActivePlanRecorder {
     // or downstream milestones understate the target and the gate mis-releases.
     // Both stamps freeze per hour at the booking revision and carry through later
     // merges via `{ ...c }`. See `stampUnitMilestones` / `stampCheaperHourAhead`.
-    const mergedHours = objectiveChanged
-      ? hours
-      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours, nowMs);
-    const effectiveHours = stampCheaperHourAhead(stampUnitMilestones(mergedHours, diag, nowMs), diag);
-    // Schedule change = user-visible "new plan" (set of charging hours).
-    // Drives the `deadline_plan_changed` flow trigger.
-    const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
+    const scheduleUpdate = resolveCoordinatedScheduleUpdate({
+      diag, objectiveChanged, latest, nowMs,
+      committedHours: current.commitment?.hours ?? [],
+      liveHours: hours,
+      metadataDrifted: hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag }),
+    });
+    const { replaceCommitment, effectiveHours, scheduleChanged, metadataDriftedWithinSchedule } = scheduleUpdate;
     // Same charging hours but consumer-visible status fields drifted — see
     // `hasMetadataDriftedWithinSchedule` for the field list. Covers
     // `planStatus` transitions (drives the "Can't fully meet" chip) and
@@ -574,8 +573,6 @@ export class DeferredObjectiveActivePlanRecorder {
     // explanation). Per-cycle drift in `plannedKWh` / `energyNeededKWh` is
     // intentionally excluded to keep settings I/O budget in check on actively
     // charging EVs.
-    const metadataDriftedWithinSchedule = !scheduleChanged
-      && hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag });
     // Any kwhPerUnitSource change is a replan trigger so persisted metadata
     // (`kwhPerUnitSource`, `energyNeededKWh`, `planStatus`) cannot go stale
     // when the bucket allocation happens to be byte-identical across a source
@@ -612,9 +609,9 @@ export class DeferredObjectiveActivePlanRecorder {
       measuredDeviation,
       pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
     });
-    const nextRevision = latest.revision + 1;
     const revision = buildRevision({
-      diag, hours: effectiveHours, revision: nextRevision, reason, nowMs,
+      diag, hours: effectiveHours, revision: latest.revision + 1, reason, nowMs,
+      previousReservationSegments: replaceCommitment ? undefined : latest.reservationSegments,
       previousPricesUpTo: latest.computedFromPricesUpTo,
     });
     const provenance = resolveProvenance(diag);
@@ -658,7 +655,7 @@ export class DeferredObjectiveActivePlanRecorder {
       // original `committedAtMs`) so within-schedule metadata drift doesn't
       // visibly reshape the commitment timestamp.
       commitment: resolveCommitment({
-        objectiveChanged,
+        objectiveChanged: replaceCommitment,
         scheduleChanged,
         effectiveHours,
         previous: current.commitment,
@@ -701,7 +698,7 @@ export class DeferredObjectiveActivePlanRecorder {
     this.emit({
       event: 'active_plan_revision_written',
       deviceId: diag.deviceId,
-      revision: nextRevision,
+      revision: revision.revision,
       reason,
       hourCount: effectiveHours.length,
       ...buildActivePlanLifecycleFields(diag, current.startedAtMs),

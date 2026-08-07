@@ -1,5 +1,13 @@
 import type { DeferredObjectiveStep } from './types';
 
+export const resolveStepAdmissionPowerKw = (step: DeferredObjectiveStep): number => (
+  typeof step.admissionPowerKw === 'number'
+    && Number.isFinite(step.admissionPowerKw)
+    && step.admissionPowerKw >= 0
+    ? step.admissionPowerKw
+    : step.usefulPowerKw
+);
+
 export const normalizeObjectiveSteps = (
   steps: DeferredObjectiveStep[],
 ): DeferredObjectiveStep[] => (
@@ -13,6 +21,7 @@ export const normalizeObjectiveSteps = (
     .map((step) => ({
       id: step.id.trim(),
       usefulPowerKw: step.usefulPowerKw,
+      admissionPowerKw: resolveStepAdmissionPowerKw(step),
     }))
     .sort((left, right) => left.usefulPowerKw - right.usefulPowerKw || left.id.localeCompare(right.id))
 );

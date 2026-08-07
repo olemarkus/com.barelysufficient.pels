@@ -25,8 +25,8 @@ export type StarvationRescueRequest = {
   deadlineAtMs?: number;
 };
 
-// Preview response: the in-isolation plan estimate plus the resolved near-term
-// deadline and a pre-formatted local deadline label (server-side, app timezone).
+// Preview response: the priority-coordinated plan estimate plus the resolved
+// near-term deadline and a pre-formatted local label (server-side, app timezone).
 export type StarvationRescuePreviewResponse = {
   ok: true;
   deadlineAtMs: number;

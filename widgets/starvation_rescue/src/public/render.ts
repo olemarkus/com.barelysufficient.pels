@@ -263,7 +263,7 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const projectable = isProjectable(response);
   const estimated = response.estimate.status !== 'unavailable';
   setLine(targets.confirmCostEl, projectable ? formatCostLine(response.estimate) : null);
-  // Factual at-cap honesty signal: the in-isolation preview can show the device
+  // Factual at-cap honesty signal: the coordinated preview can show the device
   // running now, but the backend flags `atCapNow` when the measured whole-home
   // draw is already at the physical limit, so power may have to wait for room.
   // Names the measured fact, never a prompt to raise the (physical) limit.

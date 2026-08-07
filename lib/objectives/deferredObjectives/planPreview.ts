@@ -10,10 +10,12 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/price/priceUnitLabel';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
+import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
 import {
   buildDeferredObjectiveDiagnostic,
+  buildDeferredObjectiveDiagnostics,
   type BuildPriceHorizon,
   type DeferredObjectiveDiagnostic,
 } from './diagnosticsBridge';
@@ -21,7 +23,7 @@ import {
   buildDeferredObjectivePolicyBucketPrices,
   buildDeferredObjectivePolicyWindowPrices,
 } from './policyHorizon';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from './settings';
 
 export type PreviewDeferredObjectivePlanParams = {
   nowMs: number;
@@ -40,6 +42,12 @@ export type PreviewDeferredObjectivePlanParams = {
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   hardCapKw: number | null;
+  // Existing main-home planning inputs and objectives make the preview
+  // priority-aware. Optional for backward-compatible isolated callers.
+  devices?: ObjectiveDeviceInput[];
+  settings?: DeferredObjectiveSettingsV1;
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  isDeviceInSubHome?: (deviceId: string) => boolean;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
   // attached to the (total) `costEstimate`, so a UI never renders a total as a
@@ -48,9 +56,10 @@ export type PreviewDeferredObjectivePlanParams = {
 };
 
 /**
- * Instant, in-isolation estimate of the plan the planner WOULD produce for a
- * CANDIDATE deferred objective that is NOT persisted — ignores future re-plans
- * and competition with other objectives; not a guarantee.
+ * Instant estimate of the plan the planner WOULD produce for a candidate that
+ * is not persisted. When the caller supplies the live device/objective roster,
+ * higher-priority tasks are allocated first and the candidate sees only their
+ * residual capacity; legacy callers without that roster retain isolation mode.
  *
  * Fidelity comes from reuse, not re-implementation: this builds a diagnostic
  * through the exact `buildDeferredObjectiveDiagnostic` pipeline the live plan
@@ -58,20 +67,20 @@ export type PreviewDeferredObjectivePlanParams = {
  * `resolveObjectiveSteps` → `buildDeferredObjectivePolicyHorizon` →
  * `resolveHorizonPlanWithRescue`), then derives the schedule and finish with
  * the same `buildHoursFromHorizonPlan` / `resolveProjectedFinishAtMs` helpers
- * the active-plan recorder calls. The candidate carries no committed schedule
- * and is projected as a single task (no concurrent-eligible share), so the
- * estimate is the fresh-plan view.
+ * the active-plan recorder calls. The candidate is always solved fresh; higher
+ * tasks may keep their settled commitments. Preview never mutates them.
  */
 export const previewDeferredObjectivePlan = (
   params: PreviewDeferredObjectivePlanParams,
 ): DeferredObjectivePlanPreviewEstimate => {
-  const diag = buildDeferredObjectiveDiagnostic({
+  const objective = withEnabled(params.candidate);
+  const isolated = (): DeferredObjectiveDiagnostic => buildDeferredObjectiveDiagnostic({
     nowMs: params.nowMs,
     timeZone: params.timeZone,
     deviceId: params.deviceId,
     // The diagnostic pipeline reads an enabled `DeferredObjectiveSettingsEntry`;
     // a preview is implicitly enabled, so seed `enabled: true`.
-    objective: withEnabled(params.candidate),
+    objective,
     device: params.device,
     powerTracker: params.powerTracker,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
@@ -81,9 +90,31 @@ export const previewDeferredObjectivePlan = (
     // allocation — this is deliberately the fresh-optimizer view.
     activePlans: null,
     hardCapKw: params.hardCapKw,
-    // Omit concurrentEligibleCount: an in-isolation preview sees the full
-    // single-task reserved-headroom share (the producer defaults to 1).
   });
+  const settings = params.settings;
+  const coordinated = settings && params.devices
+    ? buildDeferredObjectiveDiagnostics({
+      nowMs: params.nowMs,
+      timeZone: params.timeZone,
+      devices: params.devices,
+      settings: {
+        ...settings,
+        objectivesByDeviceId: {
+          ...settings.objectivesByDeviceId,
+          [params.deviceId]: objective,
+        },
+      },
+      powerTracker: params.powerTracker,
+      dailyBudgetSnapshot: params.dailyBudgetSnapshot,
+      buildPriceHorizon: params.buildPriceHorizon,
+      priceOptimizationEnabled: params.priceOptimizationEnabled,
+      activePlans: params.activePlans ?? null,
+      hardCapKw: params.hardCapKw,
+      isDeviceInSubHome: params.isDeviceInSubHome,
+      forceFreshDeviceId: params.deviceId,
+    }).find((diagnostic) => diagnostic.deviceId === params.deviceId)
+    : undefined;
+  const diag = coordinated ?? isolated();
   return buildEstimateFromDiagnostic({
     diag,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
@@ -116,6 +147,26 @@ const resolveGrantedRescuePermissions = (
   };
 };
 
+export const buildUnavailableDeferredObjectivePlanEstimate = (params: {
+  reason: DeferredObjectivePlanPreviewUnavailableReason;
+  candidate: DeferredObjectivePlanPreviewCandidate;
+  includeGrantedRescuePermissions?: boolean;
+}): DeferredObjectivePlanPreviewEstimate => {
+  const grantedRescuePermissions = params.includeGrantedRescuePermissions === false
+    ? undefined
+    : resolveGrantedRescuePermissions(params.candidate.rescue);
+  return {
+    status: 'unavailable',
+    unavailableReason: params.reason,
+    scheduledHours: [],
+    projectedFinishAtMs: null,
+    energyEstimateKWh: null,
+    energyExpectedKWh: null,
+    costEstimate: null,
+    ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
+  };
+};
+
 const ONE_HOUR_MS = 60 * 60 * 1000;
 // A measured-draw sample older than this is treated as too stale to make an
 // at-cap claim against. PELS polls every ~10s (homey_energy) or on flow events;
@@ -123,14 +174,14 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // assert "at cap right now" off a long-dead reading.
 const AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1000;
 // Fraction of the hard cap the measured draw must reach to count as "at cap".
-// The preview is in-isolation optimistic about headroom; only flag when the
-// house is genuinely pressed against the physical ceiling, not merely busy.
+// The preview cannot promise live capacity; only flag when the house is
+// genuinely pressed against the physical ceiling, not merely busy.
 const AT_CAP_THRESHOLD = 0.98;
 
 // Factual at-cap signal: is the candidate scheduled to run in the CURRENT clock
 // hour while the measured whole-home draw is already at/above the physical hard
-// cap? The in-isolation estimate is optimistic about headroom and cannot see the
-// live cap pressure, so this corrects its "runs now" implication with a measured
+// cap? The schedule estimate cannot promise live capacity, so this corrects its
+// "runs now" implication with a measured
 // fact (draw vs cap), NEVER a suggestion to raise the cap (the cap is physical).
 // Returns undefined when the inputs can't support the claim (no scheduled current
 // hour, no/zero hard cap, or no fresh measured sample) so the UI omits the line

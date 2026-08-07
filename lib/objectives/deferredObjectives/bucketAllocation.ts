@@ -4,6 +4,7 @@ import type {
   DeferredObjectivePlannedBucket,
   DeferredObjectiveStep,
 } from './types';
+import { resolveStepAdmissionPowerKw } from './stepSelection';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -94,6 +95,7 @@ const priceFillBand = (
 
 type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
 | 'plannedUsefulEnergyKWh'
+| 'plannedAdmissionPowerKw'
 | 'usefulEnergyCapacityKWh'
 > & {
   usefulEnergyCapKWh: number;
@@ -489,22 +491,45 @@ const buildBucketSegment = (params: {
     segmentDurationMs: endMs - startMs,
     originalDurationMs,
   });
+  const higherPriorityReservedKWh = resolveOverlappingReservedEnergyKWh({
+    reservations: bucket.higherPriorityEnergyReservations,
+    startMs,
+    endMs,
+  });
   // `reservedHeadroomKw` is a per-source-bucket rate forecast (kW), not an
   // integral — segment splits inherit the same rate. The per-hour ceiling
   // applies it as `rate × segmentDurationHours` so the primary/reserve
   // split still respects the hour-aligned forecast.
   return {
     id: segmentId,
-    sourceBucketId: bucket.id,
+    sourceBucketId: bucket.sourceBucketId ?? bucket.id,
     startMs,
     endMs,
     durationHours,
     price: normalizePrice(bucket.price),
     reserve,
     current: startMs <= nowMs && endMs > nowMs,
-    usefulEnergyCapKWh,
+    usefulEnergyCapKWh: Math.max(0, usefulEnergyCapKWh - higherPriorityReservedKWh),
     reservedHeadroomKw: normalizeReservedHeadroomKw(bucket.reservedHeadroomKw),
   };
+};
+
+const resolveOverlappingReservedEnergyKWh = (params: {
+  reservations: DeferredObjectiveHorizonBucket['higherPriorityEnergyReservations'];
+  startMs: number;
+  endMs: number;
+}): number => {
+  let reservedKWh = 0;
+  for (const reservation of params.reservations ?? []) {
+    const durationMs = reservation.endMs - reservation.startMs;
+    if (durationMs <= 0 || reservation.plannedKWh <= 0) continue;
+    const overlapMs = Math.max(
+      0,
+      Math.min(params.endMs, reservation.endMs) - Math.max(params.startMs, reservation.startMs),
+    );
+    reservedKWh += reservation.plannedKWh * (overlapMs / durationMs);
+  }
+  return reservedKWh;
 };
 
 // Preserve finite prices, including negatives: a negative price (paid to
@@ -623,6 +648,10 @@ const resolveBucketStepCapacityKWh = (
   bucket: NormalizedBucket,
   step: DeferredObjectiveStep,
 ): number => {
+  const admissionPowerKw = resolveStepAdmissionPowerKw(step);
+  if (bucket.reservedHeadroomKw !== undefined && admissionPowerKw > bucket.reservedHeadroomKw) {
+    return 0;
+  }
   const stepCapacityKWh = step.usefulPowerKw * bucket.durationHours;
   const headroomCapKWh = bucket.reservedHeadroomKw === undefined
     ? Number.POSITIVE_INFINITY
@@ -640,16 +669,21 @@ const buildPlannedBuckets = (params: {
     stepForBucket,
     plannedByBucketId,
   } = params;
-  return buckets.map((bucket) => ({
-    id: bucket.id,
-    sourceBucketId: bucket.sourceBucketId,
-    startMs: bucket.startMs,
-    endMs: bucket.endMs,
-    durationHours: bucket.durationHours,
-    price: bucket.price,
-    reserve: bucket.reserve,
-    current: bucket.current,
-    usefulEnergyCapacityKWh: resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket)),
-    plannedUsefulEnergyKWh: plannedByBucketId.get(bucket.id) ?? 0,
-  }));
+  return buckets.map((bucket) => {
+    const step = stepForBucket(bucket);
+    const plannedUsefulEnergyKWh = plannedByBucketId.get(bucket.id) ?? 0;
+    return {
+      id: bucket.id,
+      sourceBucketId: bucket.sourceBucketId,
+      startMs: bucket.startMs,
+      endMs: bucket.endMs,
+      durationHours: bucket.durationHours,
+      price: bucket.price,
+      reserve: bucket.reserve,
+      current: bucket.current,
+      usefulEnergyCapacityKWh: resolveBucketStepCapacityKWh(bucket, step),
+      plannedUsefulEnergyKWh,
+      plannedAdmissionPowerKw: plannedUsefulEnergyKWh > 0 ? resolveStepAdmissionPowerKw(step) : 0,
+    };
+  });
 };

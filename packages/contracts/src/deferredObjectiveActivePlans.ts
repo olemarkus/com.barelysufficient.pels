@@ -51,7 +51,8 @@ export type DeferredObjectiveActivePlanSpeedMode = 'auto' | 'learning';
 // Mirrors the planner's `statusDetail` mapping in
 // `lib/objectives/deferredObjectives/floorShortfallCause.ts` (`limited_by_daily_budget`
 // → `budget`, `feasible_above_floor` → `step_power`, `estimate_uncertain` →
-// `estimate`, `target_cannot_be_met` → `time_capacity`, anything else → `none`).
+// `estimate`, `limited_by_higher_priority_task` / `target_cannot_be_met` →
+// `time_capacity`, anything else → `none`).
 // Persisted so the hero copy resolver can route a `cannot_meet` / `at_risk` plan
 // to the budget-bound recourse (`Open Budget`) without re-deriving cause from
 // `dailyBudgetExhaustedBucketCount` — which fails on the per-bucket background
@@ -99,6 +100,11 @@ export type DeferredObjectiveActivePlanInFlightHourOpeningV1 = {
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
   plannedKWh: number;
+  // Physical step draw reserved for this booked source hour. Distinct from
+  // `plannedKWh`: calibrated admission power protects lower-priority smart-task
+  // planning even when useful delivery power is lower. Optional for persisted
+  // plans written before priority-aware allocation shipped.
+  plannedAdmissionPowerKw?: number;
   // Actual coverage start of this hour's booked energy, when it is a sub-hour
   // span `[coversFromMs, hourEnd]` rather than the full hour. Set only for the
   // current hour at a mid-hour revision: the horizon planner trims that
@@ -151,12 +157,32 @@ export type DeferredObjectiveActivePlanStatusV1 =
   | 'on_track'
   | 'satisfied';
 
+// Exact source-bucket claim made by a priority-aware allocation. Unlike the
+// hour-aligned `hours` presentation/commitment shape, these segments retain a
+// fractional-offset price grid (for example 01:30–02:30) and deadline clipping.
+// Lower-priority tasks consume this shape after a freeze or restart so the
+// original physical and useful-energy reservation cannot move to a synthetic
+// epoch hour. Optional on revisions for backward compatibility.
+export type DeferredObjectiveActivePlanReservationSegmentV1 = {
+  startMs: number;
+  endMs: number;
+  plannedKWh: number;
+  plannedAdmissionPowerKw: number;
+  // Stable identity of the price-horizon bucket that produced this segment.
+  // A current bucket's `startMs` is trimmed forward on each planning cycle,
+  // while this id stays fixed; priority coordination uses it to distinguish a
+  // real claim-topology change from the passage of time. Optional for plans
+  // persisted before exact source-bucket identity shipped.
+  sourceBucketId?: string;
+};
+
 export type DeferredObjectiveActivePlanRevisionV1 = {
   revision: number;
   revisedAtMs: number;
   computedFromPricesUpTo: number | null;
   reason: DeferredObjectiveActivePlanRevisionReason;
   hours: DeferredObjectiveActivePlanHourV1[];
+  reservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
   // Total energy the planner thinks is required to meet the deadline. Lets the
   // UI render a meaningful timeline even when allocated hours sum to zero
   // (e.g. `cannot_meet` against a sub-second remaining bucket) and without
@@ -219,6 +245,15 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // Lives on the revision so all surfaces format consistently with the math
   // the planner actually used. Optional for backward compatibility.
   estimatedDurationText?: string;
+  // Resolved device priority used when this revision was allocated. Optional
+  // for backward compatibility; it lets the coordinator restore ordering on a
+  // restart even when the device is absent from the first SDK snapshot.
+  devicePriority?: number;
+  // Stable signature of the smart-task prefix, order, objective settings, and
+  // higher-task claim topology used for this allocation. A mismatch forces an
+  // immediate coordinated replan; ordinary higher-task energy/rate drift on an
+  // unchanged set of claimed intervals still obeys the hourly settle gate.
+  allocationContextSignature?: string;
 };
 
 export type DeferredObjectiveActivePlanPendingReason =
@@ -341,10 +376,10 @@ export type DeferredObjectiveActivePlanV1 = {
   // `hasLearnedRateDeviated` in `activePlanRecorder.ts`.
   initialKwhPerUnit?: number;
   // First full-horizon allocation accepted for this objective. Runtime uses
-  // this as the committed schedule envelope on later plan cycles; fresh
-  // optimizer output may update diagnostics, but it must not move the selected
-  // hours unless the user abandons/replaces the objective. Optional so older
-  // persisted plans continue to load as legacy advisory plans.
+  // this as the committed schedule envelope on later plan cycles. Ordinary
+  // optimizer churn cannot move it; a coordinated higher-priority smart-task
+  // allocation may replace its current/future hours explicitly. Optional so
+  // older persisted plans continue to load as legacy advisory plans.
   commitment?: DeferredObjectiveActivePlanCommitmentV1;
   // ── Persisted postmortem in-flight anchors ─────────────────────────────────
   // The plan-history recorder's hour-rollover detector tracks an in-memory

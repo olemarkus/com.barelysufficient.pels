@@ -14,8 +14,7 @@ import {
   DeferredObjectiveLifecycleEmitter,
 } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
 import {
-  migrateBlobToPerKeyIfNeeded,
-  readAllObjectives,
+  createTrustedDeferredObjectiveSettingsReader,
 } from '../../lib/objectives/deferredObjectives';
 import {
   applyShedBehavior,
@@ -391,7 +390,9 @@ export const handleDeferredDeadlineReached = (
  * this clock — the recorder gates replan revisions to once per hour at `:58`
  * (a first revision is immediate). The clock also CLEARS an ended task's plan via
  * `onDeadlinePassed → disableDeferredObjectiveInSettings`. Do not reintroduce a
- * second `ConcurrentEligibleTaskTracker` on the decoration side.
+ * second active-plan WRITER on the decoration side. Lifecycle and decoration
+ * intentionally keep separate `PriorityAllocationTracker` caches because each
+ * evaluator owns its own SDK-snapshot grace state.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
@@ -399,14 +400,14 @@ export function createDeferredObjectiveLifecycleEmitter(
   ctx: AppContext,
 ): DeferredObjectiveLifecycleEmitter {
   let lastWatermarkPersistMs = 0;
+  const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   return new DeferredObjectiveLifecycleEmitter({
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done),
       // so retrying on the clock tick makes legacy objectives visible within
       // seconds instead of staying invisible until the next app restart.
-      migrateBlobToPerKeyIfNeeded(ctx.homey.settings);
-      return readAllObjectives(ctx.homey.settings);
+      return readTrustedObjectiveSettings();
     },
     getTimeZone: () => ctx.getTimeZone(),
     getDevices: () => ctx.planService?.getPlanDevices() ?? [],

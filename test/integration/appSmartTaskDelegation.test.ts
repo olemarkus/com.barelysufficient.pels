@@ -6,8 +6,9 @@
  * wrong collaborator, or to the wrong method, would compile and fail silently —
  * these assert each one reaches the intended body through the real app object.
  *
- * Only the two deferred-objective recorders (the outward seam) are stubbed; the
- * app instance and both collaborators are real.
+ * The deferred-objective recorders (the outward seam), plus preview-only boot
+ * dependencies in the invariant tests, are stubbed; the app instance and both
+ * collaborators are real.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -129,6 +130,17 @@ describe('PelsApp smart-task delegation stubs', () => {
 });
 
 describe('AppSmartTaskApi boot-window invariants', () => {
+  const wirePreviewDependencies = (
+    app: ReturnType<typeof buildAppWithRecorders>,
+  ): ReturnType<typeof buildAppWithRecorders> => Object.assign(app, {
+    priceCoordinator: {
+      getPriceUnitLabel: () => 'NOK/kWh',
+      getPriceOptimizationEnabled: () => true,
+    },
+    dailyBudgetService: { getSnapshot: () => null },
+    planService: { getPlanDevices: () => [] },
+  });
+
   // `AppContext` types `dailyBudgetService` optional while `PelsApp` declares it
   // definite, so the `?.getSnapshot() ?? null` that came across from `app.ts`
   // turned from vestigial into load-bearing on extraction. `getSnapshot()`
@@ -154,5 +166,79 @@ describe('AppSmartTaskApi boot-window invariants', () => {
       targetTemperatureC: 65,
       deadlineAtMs: 5_000,
     })).toThrow(/DailyBudgetService must be initialized/);
+  });
+
+  it('does not run settings migration or write markers while previewing', () => {
+    const app = wirePreviewDependencies(buildAppWithRecorders());
+    app.homey.settings.set('unrelated_setting', true);
+    const writes: string[] = [];
+    app.homey.settings.on('set', (key: string) => writes.push(`set:${key}`));
+    app.homey.settings.on('unset', (key: string) => writes.push(`unset:${key}`));
+
+    const estimate = app.previewDeferredObjectivePlan(DEVICE_ID, {
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
+      deadlineAtMs: Date.now() + 5_000,
+    });
+
+    expect(estimate).toMatchObject({ status: 'unavailable', unavailableReason: 'missing_device' });
+    expect(writes).toEqual([]);
+  });
+
+  it('throws instead of previewing without the live plan service', () => {
+    const app = wirePreviewDependencies(buildAppWithRecorders());
+    Object.assign(app, { planService: undefined });
+
+    expect(() => app.previewDeferredObjectivePlan(DEVICE_ID, {
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
+      deadlineAtMs: Date.now() + 5_000,
+    })).toThrow(/PlanService must be initialized/);
+  });
+
+  it('throws instead of previewing without the active-plan recorder', () => {
+    const app = wirePreviewDependencies(buildAppWithRecorders());
+    app.deferredObjectiveActivePlanRecorder = undefined;
+
+    expect(() => app.previewDeferredObjectivePlan(DEVICE_ID, {
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
+      deadlineAtMs: Date.now() + 5_000,
+    })).toThrow(/DeferredObjectiveActivePlanRecorder must be initialized/);
+  });
+
+  it('fails closed when the objective key list is transiently empty', () => {
+    const app = wirePreviewDependencies(buildAppWithRecorders());
+    app.homey.settings.set('unrelated_setting', true);
+    app.homey.settings.set(`deferred_objective.${DEVICE_ID}`, {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 60,
+      deadlineAtMs: Date.now() + 60_000,
+    });
+    app.homey.settings.getKeys = () => [];
+    const writes: string[] = [];
+    app.homey.settings.on('set', (key: string) => writes.push(`set:${key}`));
+    app.homey.settings.on('unset', (key: string) => writes.push(`unset:${key}`));
+
+    const estimate = app.previewDeferredObjectivePlan(DEVICE_ID, {
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
+      deadlineAtMs: Date.now() + 5_000,
+      rescue: {
+        exemptFromBudget: 'always',
+        limitLowerPriorityDevices: 'always',
+        pauseLowerPriorityDevices: 'always',
+      },
+    });
+
+    expect(estimate).toMatchObject({ status: 'unavailable', unavailableReason: 'settings_unavailable' });
+    expect(estimate.grantedRescuePermissions).toBeUndefined();
+    expect(writes).toEqual([]);
   });
 });

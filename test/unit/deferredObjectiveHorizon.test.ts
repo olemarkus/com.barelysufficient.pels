@@ -411,13 +411,7 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(0.9);
   });
 
-  it('caps the per-hour fill at reservedHeadroomKw × duration when below step capacity', () => {
-    // Per-hour ceiling stacks three caps: step capacity, daily-budget
-    // pacing slice, and forecast hard-cap headroom. With the floor step
-    // at min (low = 1 kW useful) and bucket reservedHeadroomKw at 0.4 kW,
-    // the allocator must place at most 0.4 kWh in that hour — committing
-    // a full 1 kWh would over-promise against the physical headroom
-    // forecast and the executor would hit the hard cap.
+  it('skips an hour when the step admission power exceeds reserved headroom', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -432,11 +426,11 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    // h0 capped at headroom (0.4); h1 fills the residual (1.1) up to its
-    // step capacity (1 kWh); h2 absorbs the remainder (0.1).
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(0.4);
+    // A 1 kW step cannot physically run in 0.4 kW of room. The later two
+    // buckets carry the full 1.5 kWh instead.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.5);
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(1.5);
   });
 
@@ -463,6 +457,27 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+  });
+
+  it('subtracts higher-priority energy after prorating a partial current hour', () => {
+    const halfwayMs = NOW_MS + (HOUR_MS / 2);
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: halfwayMs,
+      objective: objective({ energyNeededKWh: 0.5, deadlineAtMs: NOW_MS + HOUR_MS }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'preferred', {
+        maxUsefulEnergyKWh: 2,
+        higherPriorityEnergyReservations: [{
+          startMs: halfwayMs,
+          endMs: NOW_MS + HOUR_MS,
+          plannedKWh: 0.5,
+        }],
+      })],
+    });
+
+    // Base 2 kWh/hour prorates to 1 kWh for the remaining half-hour, then the
+    // higher task's 0.5 kWh remaining-span claim leaves exactly 0.5 kWh.
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(0.5);
   });
 
   it('runs the fresh optimizer when committed is false regardless of committedHours', () => {
@@ -794,14 +809,7 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(16);
   });
 
-  it('caps each bucket at reservedHeadroomKw × duration when forecast headroom is below the floor step', () => {
-    // headroom = 0.5 — less than min step (1 kW). Promotion picks the
-    // rightmost step that fits, defaulting to the min step when even it
-    // doesn't. With the per-hour cap honouring reservedHeadroomKw, each
-    // bucket can place only 0.5 kWh — the executor would breach the hard
-    // cap if we committed a full 1 kWh and reality only had 0.5 kW of
-    // hard-cap headroom. Need 4 kWh in 4h → 4 × 0.5 = 2 kWh placed, 2 kWh
-    // unplanned; even climb at max=3 stays capped at 0.5 → cannot_meet.
+  it('books no bucket when forecast headroom is below the floor step admission power', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -814,19 +822,17 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.status).toBe('cannot_meet');
-    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
-    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(0.5);
-    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plan.plannedUsefulEnergyKWh).toBe(0);
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBe(0);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(4);
   });
 
   it('promotes generous-headroom buckets to higher steps while tight-headroom buckets stay at min step', () => {
     // 7 generous buckets (headroom 4) + 1 tight (headroom 0.5). Per-bucket
     // promotion: generous buckets commit at the highest active step that
     // fits 4 kW = `max` (3 kW); the tight bucket has no step that fits 0.5
-    // kW (even low = 1 kW exceeds it), so it falls back to `activeSteps[0]`
-    // = low. Per-hour cap then enforces the actual per-bucket headroom on
-    // top: generous buckets place min(3, ∞, 4) = 3 kWh; tight bucket places
-    // min(1, ∞, 0.5) = 0.5 kWh. 7 × 3 + 0.5 = 21.5 kWh capacity against 18
+    // kW (even low = 1 kW exceeds it), so the tight bucket cannot be booked.
+    // Generous buckets place 3 kWh each. 7 × 3 = 21 kWh capacity against 18
     // kWh need → on_track. (Pre-per-bucket behaviour: a single tight bucket
     // held the whole horizon to min step and the task degraded to at_risk;
     // per-bucket promotion eliminates that pessimism.)
@@ -843,8 +849,7 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.status).toBe('on_track');
-    // Tight bucket (h2) capped at headroom = 0.5 kWh.
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.5);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
     // Generous bucket (h0) gets the full max-step capacity = 3 kWh.
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(3);
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(18);

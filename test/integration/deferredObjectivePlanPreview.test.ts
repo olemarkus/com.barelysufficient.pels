@@ -258,6 +258,9 @@ const buildSettings = (params: {
 
 type PreviewContext = {
   device: PlanInputDevice | undefined;
+  devices?: PlanInputDevice[];
+  settings?: DeferredObjectiveSettingsV1;
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
@@ -278,6 +281,9 @@ const runPreview = (params: {
   deviceId: params.deviceId,
   candidate: params.candidate,
   device: params.ctx.device,
+  devices: params.ctx.devices,
+  settings: params.ctx.settings,
+  activePlans: params.ctx.activePlans,
   powerTracker: params.ctx.powerTracker,
   dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
   priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
@@ -313,6 +319,43 @@ const temperatureCandidate = (
 } as DeferredObjectivePlanPreviewCandidate);
 
 describe('previewDeferredObjectivePlan', () => {
+  it('plans a lower-priority candidate against higher-priority smart-task reservations', () => {
+    const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
+    const candidate = evCandidate({ deadlineAtMs });
+    const highDevice = buildEvDevice({ priority: 1 });
+    const lowDevice = buildEvDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
+    const profile = buildEvPowerTracker().objectiveProfiles?.['ev-1'];
+    const snapshot = buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) });
+    const estimate = runPreview({
+      deviceId: 'ev-2',
+      candidate,
+      ctx: {
+        device: lowDevice,
+        devices: [highDevice, lowDevice],
+        settings: buildSettings({ deviceId: 'ev-1', candidate }),
+        powerTracker: buildEvPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
+        dailyBudgetSnapshot: snapshot,
+        priceOptimizationEnabled: true,
+        hardCapKw: 1.5,
+      },
+    });
+    const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [highDevice],
+      settings: buildSettings({ deviceId: 'ev-1', candidate }),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: snapshot,
+      priceOptimizationEnabled: true,
+      activePlans: null,
+      hardCapKw: 1.5,
+    });
+    const highHours = new Set((buildHoursFromHorizonPlan(highDiagnostic!) ?? []).map((hour) => hour.startsAtMs));
+
+    expect(estimate.status).toBe('at_risk');
+    expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
+  });
+
   it('projects an on-track EV candidate with scheduled hours, finish, energy, and cost', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),

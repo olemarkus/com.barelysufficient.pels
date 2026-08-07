@@ -21,6 +21,7 @@ import {
 } from './diagnosticProgress';
 import {
   type DeferredObjectivePolicyHorizonResult,
+  type DeferredObjectivePriorityReservation,
   type PriceHorizonEntry,
 } from './policyHorizon';
 import type {
@@ -28,9 +29,12 @@ import type {
   DeferredObjectiveSettingsV1,
 } from './settings';
 import {
-  ConcurrentEligibleTaskTracker,
-  resolveConcurrentEligibleCount,
-} from './concurrentEligibleTasks';
+  buildAllocationContextSignature,
+  buildPriorityReservations,
+  buildTaskAllocationContextSignature,
+  orderDeferredObjectives,
+  type PriorityAllocationTracker,
+} from './priorityAllocation';
 import {
   classificationImpliesStallSatisfied,
   type IdleClassification,
@@ -83,15 +87,10 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
-  // Optional stateful tracker that remembers each eligible device across
-  // cycles so a transient SDK-side device-snapshot eviction does not flicker
-  // the eligibility count downward for one cycle (`feedback_homey_sdk_unreliable`).
-  // The tracker also caches each task's deadline so per-bucket counts can drop
-  // tasks once their deadline has passed (late-horizon buckets). Callers that
-  // omit it fall back to a one-shot count, which is fine for tests but lets
-  // verdicts flicker in production — see the rationale on
-  // `ConcurrentEligibleTaskTracker`.
-  concurrentEligibleTracker?: ConcurrentEligibleTaskTracker;
+  priorityAllocationTracker?: PriorityAllocationTracker;
+  // Preview-only override: solve the candidate fresh while allowing tasks
+  // ahead of it to keep their settled commitments.
+  forceFreshDeviceId?: string;
   // Idle-classifier reader. When provided, the live (user-facing) status is
   // resolved to `satisfied` for devices parked in a stall classification so the
   // status chip, notifications and Flows agree with the postmortem recorder
@@ -108,40 +107,156 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   isDeviceInSubHome?: (deviceId: string) => boolean;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
-  // Resolve the priority-1 fully-reserved smart-task count once per cycle so
-  // the per-task `policyHorizon` producer can split each bucket's reserved
-  // headroom equally across siblings instead of each eligible task promoting
-  // to the full forecast and double-booking the slot. With a tracker present
-  // we hand the producer a per-bucket resolver so a task whose deadline has
-  // passed mid-horizon stops counting in later buckets' denominators; without
-  // one we fall back to the legacy one-shot count.
-  const concurrentEligibleCount = resolveConcurrentEligibleCount({
-    settings: params.settings,
-    deviceById,
+  params.priorityAllocationTracker?.observe({
+    devices: params.devices,
     nowMs: params.nowMs,
-    tracker: params.concurrentEligibleTracker,
-    // Multi-home v1: a relocated (sub-home) task never plans, so it must not
-    // stay in the denominator shrinking main tasks' reserved shares.
     isDeviceInSubHome: params.isDeviceInSubHome,
   });
-  return Object.entries(params.settings.objectivesByDeviceId)
-    .flatMap(([deviceId, objective]) => {
-      if (!objective.enabled) return [];
-      const diagnostic = buildDeferredObjectiveDiagnostic({
+  const ordered = orderDeferredObjectives({
+    settings: params.settings,
+    deviceById,
+    isDeviceInSubHome: params.isDeviceInSubHome,
+    tracker: params.priorityAllocationTracker,
+    activePlans: params.activePlans,
+    nowMs: params.nowMs,
+  });
+  const reservations: DeferredObjectivePriorityReservation[] = [];
+  let higherTaskBootstrapped = false;
+  const diagnostics = ordered.map(({
+    deviceId,
+    objective,
+    device,
+    priority,
+    reservationEligible,
+  }, index) => {
+    // Only this task and the tasks ahead of it can affect its allocation. A
+    // lower-priority task being added, removed, or edited must not churn an
+    // already-committed higher-priority schedule.
+    const rosterSignature = buildAllocationContextSignature(ordered.slice(0, index + 1));
+    const allocationContextSignature = buildTaskAllocationContextSignature({
+      rosterSignature,
+      higherPriorityReservations: reservations,
+    });
+    const latestSignature = params.activePlans?.plansByDeviceId[deviceId]
+      ?.latest?.allocationContextSignature;
+    // Legacy single-task revisions have no coordination signature, but their
+    // frozen commitment is still safe to serve until the ordinary :58 settle.
+    // A legacy task behind an actual higher claim must replan immediately so an
+    // old equal-share commitment cannot overbook the residual slot.
+    const allocationContextChanged = latestSignature === undefined
+      ? reservations.length > 0
+      : latestSignature !== allocationContextSignature;
+    // Ordinary priority-context drift settles at `:58`, but two one-shot
+    // bootstrap cases must coordinate the whole affected prefix immediately:
+    // (1) a higher task just allocated fresh and made its first physical claim;
+    // leaving lower commitments frozen would double-book that claim, and (2) a
+    // legacy lower revision has no coordination signature and therefore predates
+    // residual allocation entirely. These are bootstrap/migration reseeds, not a
+    // second per-cycle allocator clock. The preview-only candidate override is
+    // also explicitly fresh because it is never written by the recorder.
+    const forceFreshAllocation = shouldForceFreshAllocation(
+      higherTaskBootstrapped,
+      latestSignature === undefined && reservations.length > 0,
+      params.forceFreshDeviceId === deviceId,
+    );
+    const diagnostic = buildDeferredObjectiveDiagnostic({
+      ...params,
+      deviceId,
+      objective,
+      device,
+      higherPriorityReservations: reservations,
+      forceFreshAllocation,
+    });
+    const contentionResolved = resolveHigherPriorityContentionStatus({
+      diagnostic,
+      higherPriorityReservations: reservations,
+      buildWithoutReservations: () => buildDeferredObjectiveDiagnostic({
+        ...params,
+        deviceId,
+        objective,
+        device,
+        higherPriorityReservations: [],
+        forceFreshAllocation: true,
+      }),
+    });
+    const freshAllocation = contentionResolved.horizonPlan !== undefined
+      && contentionResolved.horizonPlan.frozenRead !== true;
+    const coordinated: DeferredObjectiveDiagnostic = {
+      ...contentionResolved,
+      devicePriority: priority,
+      allocationContextSignature,
+      ...(freshAllocation && (allocationContextChanged || reservations.length > 0)
+        ? { replaceCommitment: true as const }
+        : {}),
+    };
+    if (reservationEligible) {
+      const previousReservationCount = reservations.length;
+      reservations.push(...buildPriorityReservations({
+        diagnostic: coordinated,
+        objective,
+        device,
+        activePlans: params.activePlans,
+        hardCapKw: params.hardCapKw,
+      }));
+      if (freshAllocation && reservations.length > previousReservationCount) {
+        higherTaskBootstrapped = true;
+      }
+    }
+    return resolveExternalOffReportedStatus(resolveStallReportedStatus(
+      coordinated,
+      params.getStallClassification?.(deviceId),
+      hasEstablishedActivePlan(params.activePlans, deviceId, coordinated.deadlineAtMs),
+    ), device);
+  });
+  // Sub-home objectives remain visible as explicit unknown diagnostics but do
+  // not participate in the main home's allocation context or reservation ledger.
+  diagnostics.push(...Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => (
+    objective.enabled && params.isDeviceInSubHome?.(deviceId) === true
+      ? [buildDeferredObjectiveDiagnostic({
         ...params,
         deviceId,
         objective,
         device: deviceById.get(deviceId),
-        concurrentEligibleCount,
-        deviceInSubHome: params.isDeviceInSubHome?.(deviceId) === true,
-      });
-      const device = deviceById.get(deviceId);
-      return [resolveExternalOffReportedStatus(resolveStallReportedStatus(
-        diagnostic,
-        params.getStallClassification?.(deviceId),
-        hasEstablishedActivePlan(params.activePlans, deviceId, diagnostic.deadlineAtMs),
-      ), device)];
-    });
+        deviceInSubHome: true,
+      })]
+      : []
+  )));
+  return diagnostics;
+};
+
+const shouldForceFreshAllocation = (
+  higherTaskBootstrapped: boolean, legacyCommitmentNeedsMigration: boolean, previewForced: boolean,
+): boolean => [higherTaskBootstrapped, legacyCommitmentNeedsMigration, previewForced].includes(true);
+
+const CONTENTION_EPSILON_KWH = 0.001;
+
+const resolveHigherPriorityContentionStatus = (params: {
+  diagnostic: DeferredObjectiveDiagnostic;
+  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
+  buildWithoutReservations: () => DeferredObjectiveDiagnostic;
+}): DeferredObjectiveDiagnostic => {
+  const plan = params.diagnostic.horizonPlan;
+  if (
+    params.higherPriorityReservations.length === 0
+    || !plan
+    || plan.frozenRead
+    || plan.unplannedUsefulEnergyKWh <= CONTENTION_EPSILON_KWH
+  ) return params.diagnostic;
+  const control = params.buildWithoutReservations();
+  if ((control.horizonPlan?.unplannedUsefulEnergyKWh ?? Number.POSITIVE_INFINITY) > CONTENTION_EPSILON_KWH) {
+    return params.diagnostic;
+  }
+  const horizonPlan = {
+    ...plan,
+    status: 'at_risk' as const,
+    statusDetail: 'limited_by_higher_priority_task' as const,
+  };
+  return {
+    ...params.diagnostic,
+    status: 'at_risk',
+    reasonCode: 'limited_by_higher_priority_task',
+    horizonPlan,
+  };
 };
 
 // True once the active-plan recorder has committed a `latest` revision for this
@@ -266,12 +381,9 @@ export const emitDeferredObjectiveDiagnostics = (params: {
   }
 };
 
-// Exported so the plan-preview composition (`previewDeferredObjectivePlan`)
-// can build a diagnostic for a single CANDIDATE objective through the exact
-// same pipeline the live cycle uses — guaranteeing the preview's horizon plan
-// matches what the planner would produce. Preview callers omit `activePlans`
-// (a candidate has no committed schedule) and `concurrentEligibleCount` (it is
-// projected in isolation, so it sees the single-task share).
+// Exported for focused single-objective callers. The plan-preview composition
+// uses the batch bridge when a live roster is available so higher-priority
+// tasks reserve first; legacy isolated preview callers still use this leaf.
 export const buildDeferredObjectiveDiagnostic = (params: {
   nowMs: number;
   timeZone: string;
@@ -284,7 +396,8 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
-  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
+  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
+  forceFreshAllocation?: boolean;
   // Producer-resolved multi-home flag (see `buildDeferredObjectiveDiagnostics`):
   // `true` short-circuits to the dedicated `objective_device_in_sub_home`
   // unknown diagnostic BEFORE the missing-device check — with the planner
@@ -348,7 +461,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
       dailyBudgetSnapshot,
       activePlans,
       hardCapKw: params.hardCapKw,
-      concurrentEligibleCount: params.concurrentEligibleCount,
+      higherPriorityReservations: params.higherPriorityReservations,
     });
   }
 
@@ -371,7 +484,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     priceHorizon,
     dailyBudgetSnapshot,
     hardCapKw: params.hardCapKw,
-    concurrentEligibleCount: params.concurrentEligibleCount,
+    higherPriorityReservations: params.higherPriorityReservations,
   });
   // Price optimization turned OFF is a deliberate config state, not a transient data
   // gap: the deferred objective is price-dependent, so it goes inactive (the device
@@ -383,8 +496,11 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
   }
   const horizonAvailable = rawPolicyHorizon.reasonCode === null;
-  const replan = !frozenFallback || (isPastHourSettleMark(nowMs) && horizonAvailable);
-  if (replan && rawPolicyHorizon.reasonCode !== null) {
+  const replanRequested = params.forceFreshAllocation === true
+    || !frozenFallback
+    || isPastHourSettleMark(nowMs);
+  const replan = replanRequested && horizonAvailable;
+  if (!frozenFallback && rawPolicyHorizon.reasonCode !== null) {
     // Bootstrap (or empty/all-elapsed commitment) with no usable horizon (transient
     // `objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
     return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
@@ -406,7 +522,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     dailyBudgetSnapshot,
     activePlans,
     hardCapKw: params.hardCapKw,
-    concurrentEligibleCount: params.concurrentEligibleCount,
+    higherPriorityReservations: params.higherPriorityReservations,
     // Serve frozen unless we are re-planning; `replan` already required the horizon
     // to be available, so the fresh path always has a usable `policyHorizon`.
     frozenRead: replan ? null : frozenFallback,
@@ -448,7 +564,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
-  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
+  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
   frozenRead?: FrozenReadInputs | null;
   frozenFallback?: FrozenReadInputs | null;
 }): DeferredObjectiveDiagnostic => {
@@ -573,6 +689,6 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     aheadOfHourMilestone,
     profileEnergy,
     hardCapKw: params.hardCapKw,
-    concurrentEligibleCount: params.concurrentEligibleCount,
+    higherPriorityReservations: params.higherPriorityReservations,
   });
 };

@@ -52,6 +52,19 @@ describe('mergeHoursPreservingCommitment', () => {
     ]);
   });
 
+  it('keeps the larger physical admission reservation when energy-floor hours merge', () => {
+    const merged = mergeHoursPreservingCommitment(
+      [{ startsAtMs: TEN, plannedKWh: 0.65, plannedAdmissionPowerKw: 1 }],
+      [{ startsAtMs: TEN, plannedKWh: 0.4, plannedAdmissionPowerKw: 1.4 }],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([{
+      startsAtMs: TEN,
+      plannedKWh: 0.65,
+      plannedAdmissionPowerKw: 1.4,
+    }]);
+  });
+
   it('clears coversFromMs when a full-hour committed floor wins the overlap', () => {
     // A future hour was committed full (no coversFromMs) and is now current,
     // where the live plan re-allocates it trimmed (coversFromMs, smaller

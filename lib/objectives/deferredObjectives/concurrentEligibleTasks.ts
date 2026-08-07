@@ -1,6 +1,11 @@
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from './settings';
 
+// Deprecated compatibility implementation for callers/tests that still import
+// the former equal-share allocator. Runtime planning no longer consumes these
+// counts; `PriorityAllocationTracker` plus exact higher-task reservations owns
+// coordination now. The grace constant remains shared during the transition.
+
 // Survive one full cooldown window of transient SDK misses before dropping a
 // task from the eligible-task count. Without this window, a single Homey SDK
 // snapshot eviction (`feedback_homey_sdk_unreliable`) drops the task from
@@ -51,13 +56,12 @@ type EligibilityEntry = {
   deadlineAtMs: number;
 };
 
-// Counts the priority-1 fully-reserved smart tasks present this cycle so the
-// per-task `policyHorizon` producer can split each bucket's reserved headroom
-// equally instead of every eligible task promoting to the full forecast
-// (which double-books the reserved slot in diagnostic verdicts). The class
-// preserves a small in-memory map of "last cycle each device was seen
-// eligible" so a transient SDK-side device-snapshot eviction does not flicker
-// the count downward for one cycle — see `ELIGIBILITY_ABANDON_GRACE_MS`.
+// Historical equal-share tracker retained for compatibility with direct
+// callers. It preserves a small in-memory map of "last cycle each device was
+// seen eligible" so a transient SDK-side device-snapshot eviction does not
+// flicker the count downward for one cycle — see
+// `ELIGIBILITY_ABANDON_GRACE_MS`. Current runtime planning uses ordered exact
+// reservations in `priorityAllocation.ts` instead.
 //
 // Lossy-restart contract: the grace map is **not persisted**. After a PELS
 // restart it rebuilds from the first observed cycle, so a restart immediately
@@ -67,7 +71,6 @@ type EligibilityEntry = {
 // single-cycle verdict oscillation, identical to today's behaviour, only on
 // the first cycle after restart instead of an arbitrary cycle.
 //
-// See the equal-share rationale in `policyHorizon.resolveReservedHeadroomKw`.
 export class ConcurrentEligibleTaskTracker {
   private lastSeenByDeviceId = new Map<string, EligibilityEntry>();
 
@@ -132,9 +135,7 @@ export class ConcurrentEligibleTaskTracker {
 
 // Legacy free-function helper. Observes + counts in a single call against an
 // ephemeral tracker so callers that don't need the grace window or per-bucket
-// counts (currently only tests) keep their previous one-shot semantics. New
-// runtime callers should hold a `ConcurrentEligibleTaskTracker` instance so
-// the grace map survives across cycles.
+// counts keep their previous one-shot semantics.
 export const countConcurrentEligibleTasks = (params: {
   settings: DeferredObjectiveSettingsV1;
   deviceById: Map<string, ObjectiveDeviceInput>;
@@ -145,11 +146,8 @@ export const countConcurrentEligibleTasks = (params: {
   return tracker.count({ nowMs: 0 });
 };
 
-// Diagnostics-bridge helper: when a tracker is provided, observe this cycle
-// and hand back a per-bucket resolver so deadlines that expire mid-horizon
-// drop out of the denominator on later buckets. Without a tracker we fall
-// back to the legacy one-shot count — fine for tests but lets the verdict
-// flicker in production (see TODO `Eligibility-count flicker hardening`).
+// Historical helper retained for callers that still need the former
+// per-bucket count API. Runtime diagnostics no longer use it.
 export const resolveConcurrentEligibleCount = (params: {
   settings: DeferredObjectiveSettingsV1;
   deviceById: Map<string, ObjectiveDeviceInput>;

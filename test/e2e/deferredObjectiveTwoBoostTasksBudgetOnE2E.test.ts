@@ -1,9 +1,7 @@
-// SDK-boundary e2e (createApp) — CHARACTERIZATION: how TWO stepped devices stored
-// with the SAME priority, each carrying a smart task with BOTH standing permissions
-// (boost = limit-lower-priority, AND exempt-from-budget), behave when they compete
-// for a NARROW hard-cap headroom, with mixed prices and the daily budget ON. The
-// settings port resolves the stored priority tie to a strict order, so one tank is
-// the deterministic winner — this test pins that arbitration end-to-end.
+// SDK-boundary e2e (createApp): two stepped smart tasks compete for narrow
+// physical capacity. The settings port resolves the stored tie to a strict
+// priority order, and the deferred-objective allocator reserves the winner's
+// hourly step before planning the lower task.
 //
 // THE RULE THIS TEST FOLLOWS (notes/testing-taxonomy.md): nothing internal is
 // mocked, the scenario is driven ONLY at the Homey SDK boundary (mock devices,
@@ -11,23 +9,10 @@
 // persisted learned rate), the cycle is driven by the SDK timers, and the
 // behaviour is OBSERVED ONLY through structured logs at the Homey logging seam.
 //
-// What it documents (verified deterministic):
-//  1. Both boost tasks ENGAGE and BYPASS the shed invariant. A lower-priority
-//     device is held shed (its restore load dwarfs any headroom); without boost
-//     the shed invariant would reject each tank's escalation. With boost, BOTH
-//     tanks get `restore_stepped_admitted` (`blockedByShedInvariant: false`).
-//  2. Exempt lifts the daily-budget cap for both (`budgetExemptApplied: true`),
-//     so the binding per-hour constraint is the PHYSICAL hard cap, not the soft
-//     daily-budget slice.
-//  3. Under the narrow hard cap they CONTEND: both at their low step already fill
-//     the cap to within one small step, so the restore lane admits ONE escalation
-//     at a time (the other waits on its meter-settling window) — they take turns,
-//     never both stepping up in the same cycle.
-//  4. The stored priorities tie both tanks; the settings port breaks the tie into a
-//     strict order (deviceId asc → tank_a wins). Under the narrow cap the winner
-//     takes the headroom and reaches target (`on_track`) while the loser, on second
-//     pick, only partly progresses (`at_risk`) — instead of an equal-priority split
-//     leaving both `cannot_meet`.
+// The higher task owns the current-hour reservation and may boost past the shed
+// invariant. The lower task is not admitted into that occupied hour; it plans
+// only against later residual slots and honestly reports that it cannot meet
+// this deliberately tight deadline.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
@@ -112,6 +97,7 @@ type SteppedEvent = {
 type DeferredDiag = {
   deviceId?: string;
   status?: string;
+  reasonCode?: string;
   budgetExemptApplied?: boolean;
   limitLowerPriorityApplied?: boolean;
 };
@@ -146,7 +132,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     vi.useRealTimers();
   });
 
-  it('both tasks boost past the shed invariant and take turns; the priority-tie winner meets target, the loser is at risk', async () => {
+  it('reserves the winner first and keeps the lower task out of the occupied hour', async () => {
     vi.setSystemTime(new Date(DAY + 30 * 60 * 1000));
     mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan', 'diagnostics', 'deferred_objectives']);
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -223,44 +209,44 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
       [...diags].reverse().find((d) => d.deviceId === id)
     );
 
-    // (1) BOTH boost tasks bypass the shed invariant — each is admitted to escalate
-    // past its low step DESPITE the lower-priority device being shed.
+    // The priority winner may boost past the shed invariant. The lower smart
+    // task has no current-hour reservation: its ordinary temperature demand
+    // can still reach the restore lane, but it cannot use the smart-task bypass.
     expect(admittedFor(TANK_A)).toMatchObject({ toStepId: '2000w', blockedByShedInvariant: false });
-    expect(admittedFor(TANK_B)).toMatchObject({ toStepId: '2000w', blockedByShedInvariant: false });
-    // ...and the shed invariant never rejected either of them.
+    expect(admittedFor(TANK_B)).toBeUndefined();
     expect(shedInvariantRejectFor(TANK_A)).toBeUndefined();
-    expect(shedInvariantRejectFor(TANK_B)).toBeUndefined();
+    expect(shedInvariantRejectFor(TANK_B)).toMatchObject({
+      requestedStepId: '2000w',
+      blockedByShedInvariant: true,
+    });
 
-    // (2) Both tasks are exempt and carry the boost permission; the daily-budget
-    // slice is lifted (so the hard cap — not the budget — is the binding limit).
-    for (const id of [TANK_A, TANK_B]) {
-      expect(lastDiag(id)).toMatchObject({ budgetExemptApplied: true, limitLowerPriorityApplied: true });
-    }
+    // Exemption applies only while the task is actually booked in the current
+    // hour. The lower task retains its permission but does not consume budget or
+    // physical capacity in this slot.
+    expect(lastDiag(TANK_A)).toMatchObject({ budgetExemptApplied: true, limitLowerPriorityApplied: true });
+    expect(lastDiag(TANK_B)).toMatchObject({ budgetExemptApplied: false, limitLowerPriorityApplied: true });
 
     // (3) The lower-priority device stays shed — the boost tasks never let it back
     // on; it is rejected for restore every cycle it tries.
     expect(lowerRejected.length).toBeGreaterThan(0);
 
-    // (4) They take turns under the narrow hard cap: the restore lane serializes
-    // escalations (one per cycle), so while one tank is admitted the OTHER waits on
-    // its meter-settling window (`restore_stepped_rejected` / `meter_settling`)
-    // rather than escalating simultaneously. Both are admitted over the run.
+    // The restore lane never alternates the two smart tasks: only the booked
+    // higher task appears in admitted events.
     const admitOrder = stepped
       .filter((e) => e.event === 'restore_stepped_admitted')
       .map((e) => e.deviceId);
     expect(admitOrder).toContain(TANK_A);
-    expect(admitOrder).toContain(TANK_B);
-    const meterSettlingWait = stepped.some(
-      (e) => e.event === 'restore_stepped_rejected' && e.rejectionReason === 'meter_settling',
-    );
-    expect(meterSettlingWait).toBe(true);
+    expect(admitOrder).not.toContain(TANK_B);
 
     // (5) The stored priorities tie both tanks at 1; the settings port resolves that
     // tie to a strict order (deviceId asc → tank_a wins rank 1, tank_b rank 2), so
     // the deterministic winner takes the scarce headroom. tank_a reaches `on_track`;
-    // tank_b, on second pick of what remains under the narrow cap, lands `at_risk`
-    // rather than both fair-splitting into `cannot_meet`.
+    // tank_b gets only the residual schedule, which is insufficient for this
+    // deliberately tight runtime scene.
     expect(lastDiag(TANK_A)?.status).toBe('on_track');
-    expect(lastDiag(TANK_B)?.status).toBe('at_risk');
+    expect(lastDiag(TANK_B)).toMatchObject({
+      status: 'cannot_meet',
+      reasonCode: 'target_cannot_be_met',
+    });
   });
 });

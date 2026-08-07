@@ -35,7 +35,7 @@ describe('buildFrozenHorizonPlan', () => {
     const plan = build({
       planStatus: 'at_risk',
       committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 2 },
+        { startsAtMs: NOW_MS, plannedKWh: 2, plannedAdmissionPowerKw: 2.4 },
         { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
       ],
     });
@@ -50,6 +50,7 @@ describe('buildFrozenHorizonPlan', () => {
       new Date(NOW_MS + 2 * HOUR_MS).toISOString(),
     ]);
     expect(plan.plannedBuckets.find((b) => b.current)?.startMs).toBe(NOW_MS);
+    expect(plan.plannedBuckets.find((b) => b.current)?.plannedAdmissionPowerKw).toBe(2.4);
     expect(plan.plannedUsefulEnergyKWh).toBe(3);
   });
 

@@ -7,9 +7,10 @@ outside planned hours, and raise the planned setpoint to the deadline target whi
 normal budget, capacity, priority, cooldown, and admission gates. EV pause/resume admission and
 actuation are also shipped (`admission.ts` emits `binary_restore`/`binary_release` intents;
 `lib/executor/binaryExecutor.ts` applies them) — see `notes/ev-ready-by/README.md` for the user-
-facing slice. Multi-objective contention and richer step escalation remain future work in this
-note. Energy-based milestones and the
-priority-adjusted horizon-planning detail are deferred and moved to
+facing slice. Multi-objective contention is shipped: objectives are allocated in device-priority
+order, and each lower task receives only the physical power and useful-energy capacity left by the
+tasks ahead of it. Richer step escalation remains future work in this note. Energy-based milestones and the
+remaining horizon-planning detail are tracked in
 [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md).
 
 The first concrete runtime slice started as a diagnostics-only EV SoC objective bridge because PELS
@@ -149,8 +150,8 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
   `buildBasePlanDevice` overwrites `plannedTarget` with the shed temperature when the device is
   in the shed-set.
 
-Cap-on temperature admission and contention across multiple deferred objectives are still future
-work. EV pause/resume admission shipped — see `notes/ev-ready-by/README.md`.
+Cap-on temperature admission is still future work. Priority-ordered contention across multiple
+deferred objectives and EV pause/resume admission are shipped — see `notes/ev-ready-by/README.md`.
 
 EV admission has one additional safety gate beyond the temperature path: `binary_restore` intents
 are dropped by `planBuilder.attachDeferredReleaseIntents` when
@@ -877,9 +878,11 @@ one wins) while preserving deadline margin. Status resolves from the result usin
 on every relevant plan cycle and emits its current-bucket recommendation as
 `expectedStepId`.
 
-The priority-adjusted horizon model and the energy-based milestone framework are deferred — see
-[`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md). What
-shipped covers the same intent ("let soft objectives wait through expensive hours"): the
+Priority-adjusted horizon allocation is shipped: higher-priority tasks reserve their exact
+physical step and useful-energy intervals before lower-priority tasks are planned. The broader
+energy-based milestone framework remains tracked in
+[`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md). The
+existing price behavior covers the same intent ("let soft objectives wait through expensive hours"): the
 cheapest-first allocation simply books no energy into the relatively expensive current hour, so the
 device idles there, and the status stays `on_track` — running in a comparatively pricier hour was
 never a risk. The deadline-reserve margin still guards the final hour.

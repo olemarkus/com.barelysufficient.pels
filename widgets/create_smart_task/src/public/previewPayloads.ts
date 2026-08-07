@@ -11,7 +11,7 @@ import type { CreateSmartTaskDevicesPayload } from '../createSmartTaskWidgetType
 // scroll" case the two-device default never renders.
 //
 // `supportsLimitLowerPriority` follows the gate-on-effect rule: true only for a
-// stepped-load device at top priority. The EV chargers carry it so the preview
+// stepped-load device. The EV chargers carry it so the preview
 // exercises the limit-lower-priority toggle; thermostats/water heaters leave it
 // off (the common non-stepped case) so the preview also shows the budget-only
 // disclosure.

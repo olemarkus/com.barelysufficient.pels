@@ -9,6 +9,7 @@ import {
 import {
   getActiveObjectiveSteps,
   normalizeObjectiveSteps,
+  resolveStepAdmissionPowerKw,
   selectMinimumStepForEnergy,
 } from './stepSelection';
 import { resolveColdStartReleaseEligible } from './coldStartRelease';
@@ -330,7 +331,7 @@ const resolveStepForBucket = (
   // the min step when even it does not.
   let promotedIndex = 0;
   for (let i = 1; i < activeSteps.length; i += 1) {
-    if (activeSteps[i].usefulPowerKw <= headroom) {
+    if (resolveStepAdmissionPowerKw(activeSteps[i]) <= headroom) {
       promotedIndex = i;
     }
   }

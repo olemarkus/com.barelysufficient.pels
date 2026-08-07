@@ -39,9 +39,8 @@ import { buildHomePlanDevices } from './planDevicePrePass';
 import { createObjectivePriceHorizonBuilder } from '../appInit/objectivePriceHorizon';
 import { isSmartTaskDeviceInMainHome } from '../appInit/smartTaskHomeScope';
 import {
+  createTrustedDeferredObjectiveSettingsReader,
   DeferredObjectiveDecorationController,
-  migrateBlobToPerKeyIfNeeded,
-  readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import {
@@ -176,6 +175,7 @@ export type HomeScope = {
  */
 export function buildMainHomeScope(ctx: AppContext): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
+  const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
   // opaque `decorateDeferredObjectives` closure below, keeping the planner — and
@@ -189,8 +189,7 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // migration: idempotent + marker-gated (a cheap single `get` once done), so
       // retrying on the plan cycle makes legacy objectives visible within seconds
       // instead of staying invisible (planner + UI) until the next app restart.
-      migrateBlobToPerKeyIfNeeded(ctx.homey.settings);
-      return readAllObjectives(ctx.homey.settings);
+      return readTrustedObjectiveSettings();
     },
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null

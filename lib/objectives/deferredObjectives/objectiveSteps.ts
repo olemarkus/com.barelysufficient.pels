@@ -6,6 +6,17 @@ import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { firstPositiveFinite } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
 
+const resolveAdmissionPowerKw = (
+  device: ObjectiveDeviceInput,
+  stepId: string,
+  fallbackKw: number,
+): number => {
+  const calibrated = device.stepPowerCalibration?.[stepId]?.admissionPowerKw;
+  return typeof calibrated === 'number' && Number.isFinite(calibrated) && calibrated > 0
+    ? calibrated
+    : fallbackKw;
+};
+
 // Resolves the per-objective step list the horizon planner consumes. Stepped
 // devices expose their full ladder via `steppedLoadProfile`; EV chargers and
 // thermal devices without stepped controls route through the same calibrated
@@ -17,19 +28,31 @@ import type { DeferredObjectiveStep } from './types';
 export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObjectiveStep[] => {
   const profile = device.steppedLoadProfile;
   if (profile) {
-    return sortSteppedLoadSteps(profile.steps).map((step) => ({
-      id: step.id,
-      usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, step.planningPowerW / 1000),
-    }));
+    return sortSteppedLoadSteps(profile.steps).map((step) => {
+      const nameplateKw = step.planningPowerW / 1000;
+      return {
+        id: step.id,
+        usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, nameplateKw),
+        admissionPowerKw: resolveAdmissionPowerKw(device, step.id, nameplateKw),
+      };
+    });
   }
   const planning = device.planningPowerKw;
   if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
-    return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning) }];
+    return [{
+      id: 'charge',
+      usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning),
+      admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', planning),
+    }];
   }
   if (isEvDevice(device)) {
     const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
     if (expected !== null) {
-      return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected) }];
+      return [{
+        id: 'charge',
+        usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected),
+        admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', expected),
+      }];
     }
   }
   // Thermal-without-stepped-controls fallback: emit one synthetic "charge"
@@ -51,7 +74,11 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   if (isTemperatureControlDevice(device)) {
     const expected = firstPositiveFinite([device.measuredPowerKw, device.expectedPowerKw, device.powerKw]);
     if (expected !== null) {
-      return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected) }];
+      return [{
+        id: 'charge',
+        usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected),
+        admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', expected),
+      }];
     }
   }
   return [];
