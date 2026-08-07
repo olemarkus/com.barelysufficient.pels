@@ -48,6 +48,5 @@ export {
 export type { HeadroomReserve } from './headroomReserve';
 
 export {
-  resolvePlanningTotalPower,
   updateGuardState,
 } from './sheddingGuard';

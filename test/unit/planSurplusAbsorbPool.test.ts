@@ -42,8 +42,7 @@ const resolve = (params: {
   resolveSurplusEligibility({
     devices: params.devices ?? [buildDevice()],
     state: params.state,
-    signedNetKw: params.signedNetKw,
-    powerKnown: params.powerKnown ?? true,
+    signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
     inferredSurplusKw: params.inferredSurplusKw,
     getConfig: () => surplusConfig,
     getPriority: params.getPriority ?? (() => 100),

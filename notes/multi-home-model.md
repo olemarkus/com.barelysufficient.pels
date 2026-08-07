@@ -226,9 +226,12 @@ modulate a `kind: 'mode'` seed and both require a per-device config entry.
 Binding those targets live for a sub-home also opened a LOAD-ADDING write, so
 one more per-home posture rides alongside them: **`holdsModeTargetRaisesWhile
 PowerUnknown`** (sub-homes `true`, main `false`). When it is on and
-`context.powerKnown` is false, a load-adding mode-target change is held at the
+`context.planningTotalKw` is `null` — the producer-resolved "no trustworthy
+meter total this cycle" — a load-adding mode-target change is held at the
 device's own current setpoint (`applyModeSeedModulation`,
-`lib/plan/planDevices.ts`).
+`lib/plan/planDevices.ts`). It read the `context.powerKnown` flag until
+2026-08-07; the resolved field replaced it so the condition is the absence of
+the number rather than a boolean beside one that can disagree with it.
 
 A mode target is the one load-adding thing the planner commands as an ordinary
 `target_update`, so it consults neither headroom — 0 or negative whenever power
@@ -256,9 +259,9 @@ load-bearing in these ways:
 - **Honest to the planner.** The mode target stays present, so the device is not
   routed through `resolveMissingModeTargetSeed` — no false `missing_mode_target`
   diagnostics and no grace-window `skip` dropping the device from the plan.
-- **Freshness-based, not "never sampled".** `powerKnown` re-closes on every
-  stale window, so an area meter that reports once and then dies stops earning
-  raises.
+- **Freshness-based, not "never sampled".** `planningTotalKw` returns to `null`
+  on every stale window, so an area meter that reports once and then dies stops
+  earning raises.
 
 Because the hold deliberately lets heat-device lowerings through, those
 lowerings must actually reach a silent-meter area: every suffixed area-catalog

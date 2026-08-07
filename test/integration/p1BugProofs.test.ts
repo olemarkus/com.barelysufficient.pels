@@ -24,6 +24,7 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   devices,
   desiredForMode: {},
   total: 1.25,
+  planningTotalKw: 1.25,
   powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
@@ -116,10 +117,9 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       headroom: -0.05,
-      powerKnown: true,
       overshootActionable: true,
       capacitySoftLimit: 5,
-      total: 5.05,
+      planningTotalKw: 5.05,
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
@@ -128,10 +128,9 @@ describe('P1 bug proofs', () => {
     });
     await updateGuardState({
       headroom: 0.21,
-      powerKnown: true,
       overshootActionable: false,
       capacitySoftLimit: 5,
-      total: 4.79,
+      planningTotalKw: 4.79,
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
@@ -140,10 +139,9 @@ describe('P1 bug proofs', () => {
     });
     await updateGuardState({
       headroom: -0.05,
-      powerKnown: true,
       overshootActionable: true,
       capacitySoftLimit: 5,
-      total: 5.05,
+      planningTotalKw: 5.05,
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
@@ -167,10 +165,9 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       headroom: -1,
-      powerKnown: true,
       overshootActionable: true,
       capacitySoftLimit: 5,
-      total: 6,
+      planningTotalKw: 6,
       devices: [
         withBinaryDiscriminant({
           id: 'shed',

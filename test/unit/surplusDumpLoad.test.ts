@@ -221,8 +221,7 @@ const allocatorPass = (params: {
 }) => resolveSurplusEligibility({
   devices: params.devices,
   state: params.state,
-  signedNetKw: params.signedNetKw,
-  powerKnown: params.powerKnown ?? true,
+  signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
   excludeIds: params.excludeIds,
   getConfig: (deviceId) => params.configs?.[deviceId],
   getPriority: (deviceId) => params.priorities?.[deviceId] ?? 100,
