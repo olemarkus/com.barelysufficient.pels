@@ -45,7 +45,7 @@ describe('dump-load Overview card lines', () => {
     const card = renderCard(buildDumpLoad({
       currentState: 'off',
       plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     }));
     expect(card.querySelector('.plan-card__reason')?.textContent)
       .toBe(PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS);
@@ -70,7 +70,7 @@ describe('dump-load Overview card lines', () => {
       currentState: 'off',
       plannedState: 'shed',
       surplusAbsorbActive: true,
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     }));
     expect(card.querySelector('.plan-card__reason')?.textContent)
       .toBe(PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS);
@@ -95,7 +95,7 @@ describe('dump-load Overview card lines', () => {
       currentState: 'on',
       plannedState: 'shed',
       measuredPowerKw: 1.0,
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     }));
     const reason = card.querySelector('.plan-card__reason')?.textContent ?? '';
     expect(reason).toBe('Still reporting 1.0 kW — switching off to wait for solar surplus');
@@ -109,7 +109,7 @@ describe('dump-load Overview card lines', () => {
       currentState: 'on',
       plannedState: 'shed',
       measuredPowerKw: 1.0,
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     }), true);
     const reason = card.querySelector('.plan-card__reason')?.textContent ?? '';
     expect(reason).toBe('Still reporting 1.0 kW — would switch off to wait for solar surplus (simulation)');

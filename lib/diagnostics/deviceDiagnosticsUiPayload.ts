@@ -106,7 +106,6 @@ export const getOverviewStarvation = (
   return {
     isStarved: true,
     accumulatedMs: live.starvation.starvedAccumulatedMs,
-    startedAtMs: live.starvation.starvationEpisodeStartedAt ?? null,
   };
 };
 

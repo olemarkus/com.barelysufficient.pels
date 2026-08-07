@@ -70,7 +70,7 @@ export function admitSteppedRestore(params: {
     if (reserved.kind === 'blocked_by_reserve') {
       setRestorePlanDevice(deviceMap, dev.id, {
         ...(isOffSteppedRestoreCandidate(dev) ? buildOffSteppedRestoreShedUpdate(dev) : {}),
-        reason: buildReservedForStartReason({ dev, reserves: headroomReserves }),
+        reason: buildReservedForStartReason(reserved.holderName),
       });
       return { availableHeadroom, restoredOneThisCycle: false };
     }
@@ -94,7 +94,6 @@ export function admitSteppedRestore(params: {
             fromTarget: dev.selectedStepId ?? 'unknown',
             toTarget: nextStep.id,
             needKw: needed,
-            headroomKw: null,
           },
         },
         rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
@@ -114,7 +113,6 @@ export function admitSteppedRestore(params: {
       fromTarget: dev.selectedStepId ?? 'unknown',
       toTarget: nextStep.id,
       needKw: needed,
-      headroomKw: null,
     },
   });
   emitRestoreDebugEventOnChange({

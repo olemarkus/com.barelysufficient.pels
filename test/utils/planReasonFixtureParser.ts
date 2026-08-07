@@ -26,23 +26,16 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 
 const KEEP_REASON = /^keep(?: \((.+)\))?$/;
-const RESTORE_NEED_REASON = (
-  /^restore(?: ([^(]+?) -> ([^(]+?))? \(need (-?\d+(?:\.\d+)?)kW(?:, headroom (unknown|-?\d+(?:\.\d+)?)kW)?\)$/
-);
+const RESTORE_NEED_REASON = /^restore ([^(]+?) -> ([^(]+?) \(need (-?\d+(?:\.\d+)?)kW\)$/;
 const SWAP_PENDING_REASON = /^swap pending(?: \((.+)\))?$/;
 const SWAPPED_OUT_REASON = /^swapped out for (.+)$/;
-const HOURLY_BUDGET_REASON = /^shed due to hourly budget(?: (.+))?$/;
-const DAILY_BUDGET_REASON = /^shed due to daily budget(?: (.+))?$/;
-const SHORTFALL_REASON = (
-  /^shortfall(?: \(need (-?\d+(?:\.\d+)?)kW, headroom (unknown|-?\d+(?:\.\d+)?)kW\))?$/
-);
+const SHORTFALL_REASON = /^shortfall \(need (-?\d+(?:\.\d+)?)kW, headroom (-?\d+(?:\.\d+)?)kW\)$/;
 const COOLDOWN_SHEDDING_REASON = /^cooldown \(shedding, (\d+)s remaining\)$/;
 const COOLDOWN_RESTORE_REASON = /^cooldown \(restore, (\d+)s remaining\)$/;
 const METER_SETTLING_REASON = /^meter settling \((\d+)s remaining\)$/;
 const ACTIVATION_BACKOFF_REASON = /^activation backoff \((\d+)s remaining\)$/;
 const RESTORE_PENDING_REASON = /^restore pending \((\d+)s remaining\)$/;
-const INACTIVE_REASON = /^inactive(?: \((.+)\))?$/;
-const CAPACITY_REASON = /^shed due to capacity(?: (.+))?$/;
+const INACTIVE_REASON = /^inactive \((.+)\)$/;
 const SHED_INVARIANT_REASON = (
   /^shed invariant: (.+) -> (.+) blocked \((\d+) device\(s\) shed, max step: (.+)\)$/
 );
@@ -53,12 +46,6 @@ function normalizeReasonText(reason: string | undefined): string | null {
   if (typeof reason !== 'string') return null;
   const trimmed = reason.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function parseNumber(value: string | undefined): number | null {
-  if (!value || value === 'unknown') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseKeepReason(trimmed: string): DeviceReason | null {
@@ -72,10 +59,9 @@ function parseRestoreNeedReason(trimmed: string): DeviceReason | null {
   if (!match) return null;
   return {
     code: PLAN_REASON_CODES.restoreNeed,
-    fromTarget: match[1] ?? null,
-    toTarget: match[2] ?? null,
+    fromTarget: match[1],
+    toTarget: match[2],
     needKw: Number(match[3]),
-    headroomKw: parseNumber(match[4]),
   };
 }
 
@@ -84,8 +70,8 @@ function parseShortfallReason(trimmed: string): DeviceReason | null {
   if (!match) return null;
   return {
     code: PLAN_REASON_CODES.shortfall,
-    needKw: parseNumber(match[1]),
-    headroomKw: parseNumber(match[2]),
+    needKw: Number(match[1]),
+    headroomKw: Number(match[2]),
   };
 }
 
@@ -100,14 +86,6 @@ const REGEX_REASON_PARSERS: ReasonParser[] = [
   (trimmed) => {
     const match = SWAPPED_OUT_REASON.exec(trimmed);
     return match ? { code: PLAN_REASON_CODES.swappedOut, targetName: match[1] } : null;
-  },
-  (trimmed) => {
-    const match = HOURLY_BUDGET_REASON.exec(trimmed);
-    return match ? { code: PLAN_REASON_CODES.hourlyBudget, detail: match[1] ?? null } : null;
-  },
-  (trimmed) => {
-    const match = DAILY_BUDGET_REASON.exec(trimmed);
-    return match ? { code: PLAN_REASON_CODES.dailyBudget, detail: match[1] ?? null } : null;
   },
   (trimmed) => {
     const match = COOLDOWN_SHEDDING_REASON.exec(trimmed);
@@ -131,11 +109,7 @@ const REGEX_REASON_PARSERS: ReasonParser[] = [
   },
   (trimmed) => {
     const match = INACTIVE_REASON.exec(trimmed);
-    return match ? { code: PLAN_REASON_CODES.inactive, detail: match[1] ?? null } : null;
-  },
-  (trimmed) => {
-    const match = CAPACITY_REASON.exec(trimmed);
-    return match ? { code: PLAN_REASON_CODES.capacity, detail: match[1] ?? null } : null;
+    return match ? { code: PLAN_REASON_CODES.inactive, detail: match[1] } : null;
   },
   (trimmed) => {
     const match = SHED_INVARIANT_REASON.exec(trimmed);
@@ -156,6 +130,14 @@ const EXACT_REASON_PARSERS: Record<string, DeviceReason> = {
   'left off': { code: PLAN_REASON_CODES.neutralStartupHold },
   'startup stabilization': { code: PLAN_REASON_CODES.startupStabilization },
   'capacity control off': { code: PLAN_REASON_CODES.capacityControlOff },
+  // The four ceiling/hold codes lost their `detail` slot, so their prose is now
+  // exact rather than a prefix with an optional trailing clause.
+  'shed due to hourly budget': { code: PLAN_REASON_CODES.hourlyBudget },
+  'shed due to daily budget': { code: PLAN_REASON_CODES.dailyBudget },
+  'shed due to capacity': { code: PLAN_REASON_CODES.capacity },
+  'waiting for cheaper hours': { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
+  'waiting for solar surplus': { code: PLAN_REASON_CODES.awaitingSolarSurplus },
+  'staying off until turned on again': { code: PLAN_REASON_CODES.externalOffHold },
 };
 
 function parseKnownReason(trimmed: string): DeviceReason | null {

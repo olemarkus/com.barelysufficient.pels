@@ -211,7 +211,19 @@ export function resolveClaimedReserveKw(params: {
  */
 export type ReserveAdmission =
   | { kind: 'admitted'; admission: RestoreAdmissionMetrics; effectiveHeadroomKw: number; reservedKw: number }
-  | { kind: 'blocked_by_reserve'; admission: RestoreAdmissionMetrics; effectiveHeadroomKw: number; reservedKw: number }
+  // Carries the holder's NAME, resolved here rather than re-derived by each
+  // caller: this is the only branch on which a holder is guaranteed to exist
+  // (it needs `claimedKw > 0`, i.e. a live claiming reserve), so resolving it in
+  // the producer is what lets `reservedForStart.targetName` and
+  // `reserveHolderName` be non-nullable downstream. Resolution belongs in the
+  // producer (`docs/architecture.md`).
+  | {
+    kind: 'blocked_by_reserve';
+    admission: RestoreAdmissionMetrics;
+    effectiveHeadroomKw: number;
+    reservedKw: number;
+    holderName: string;
+  }
   | { kind: 'insufficient'; admission: RestoreAdmissionMetrics; effectiveHeadroomKw: number; reservedKw: number };
 
 export function resolveReserveAdmission(params: {
@@ -239,9 +251,14 @@ export function resolveReserveAdmission(params: {
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
     return { kind: 'admitted', admission, effectiveHeadroomKw, reservedKw };
   }
-  // Branch on the claim itself, not on whether the two headroom figures happen to differ: with
-  // `availableHeadroom === 0` and a live claim they are equal, and the reservation would go unnamed.
-  if (claimedKw > 0) {
+  // Branch on the claiming reserve itself, not on whether the two headroom figures happen to
+  // differ: with `availableHeadroom === 0` and a live claim they are equal, and the reservation
+  // would go unnamed. Holding the RESERVE (rather than testing `claimedKw > 0`) is what makes
+  // `holderName` non-nullable structurally instead of by argument — the two predicates are
+  // equivalent today only because `resolveStartupPowerKw` declines to reserve a non-positive
+  // figure, and a future zero-kW reserve would leave the claim unnamed under the sum test.
+  const holder = resolveClaimingReserveHolder({ dev, reserves });
+  if (holder !== null) {
     const rawAdmission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw });
     if (rawAdmission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
       // Deliberately carries NO kW shortfall. This branch means raw power is
@@ -253,7 +270,13 @@ export function resolveReserveAdmission(params: {
       // more needed". That states another device's quantity as this one's, the
       // same error `swapPending`/`swappedOut` avoid by not carrying the field.
       // The honest line here names the holder ("Waiting so X can start").
-      return { kind: 'blocked_by_reserve', admission: rawAdmission, effectiveHeadroomKw, reservedKw };
+      return {
+        kind: 'blocked_by_reserve',
+        admission: rawAdmission,
+        effectiveHeadroomKw,
+        reservedKw,
+        holderName: holder.deviceName,
+      };
     }
     return { kind: 'insufficient', admission: rawAdmission, effectiveHeadroomKw, reservedKw };
   }
@@ -261,37 +284,31 @@ export function resolveReserveAdmission(params: {
 }
 
 /**
- * The reason a device that could otherwise have been admitted is standing down: the most
- * important reservation currently claiming power ahead of it. Byte-stable across plan cycles —
- * it carries only the holder's name, no kW figures — so a card built from it does not churn.
- */
-/**
- * The device whose reservation is standing in this device's way — the most important
- * claiming reserve (lowest priority number). `null` when nothing claims against it.
+ * The reservation standing in this device's way — the most important claiming reserve (lowest
+ * priority number). `null` when nothing claims against it. Byte-stable across plan cycles: the
+ * name it yields carries no kW figures, so a card built from it does not churn.
  *
- * Exported because the holder's NAME is needed in two places that must not disagree:
- * `buildReservedForStartReason` below (the restore/hold lane, which may change the reason
- * CODE because it knows the shed has materialized), and `finalizeCeilingReason`
- * (`lib/plan/planReasons.ts`), which may only attach the name as a display field — it
- * cannot tell a materialized shed from an in-flight one, and `reservedForStart` builds no
- * actuation intent. One selection rule, so the two lanes always name the same device.
+ * Private on purpose. The holder is resolved ONCE, on the `blocked_by_reserve` branch of
+ * `resolveReserveAdmission`, and travels on that result — so the two lanes that name the holder
+ * cannot disagree, and neither has to re-derive (or re-null-check) it. Those lanes are
+ * `buildReservedForStartReason` below (the restore/hold lane, which may change the reason CODE
+ * because it knows the shed has materialized) and `finalizeCeilingReason`
+ * (`lib/plan/planReasons.ts`), which may only attach the name as a display field — it cannot tell
+ * a materialized shed from an in-flight one, and `reservedForStart` builds no actuation intent.
  */
-export function resolveReserveHolderName(params: {
+function resolveClaimingReserveHolder(params: {
   dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
   reserves: readonly HeadroomReserve[];
-}): string | null {
+}): HeadroomReserve | null {
   let holder: HeadroomReserve | null = null;
   for (const reserve of claimingReserves(params.dev, params.reserves)) {
     if (holder === null || reserve.priority < holder.priority) holder = reserve;
   }
-  return holder?.deviceName ?? null;
+  return holder;
 }
 
-export function buildReservedForStartReason(params: {
-  dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
-  reserves: readonly HeadroomReserve[];
-}): DeviceReason {
-  return { code: PLAN_REASON_CODES.reservedForStart, targetName: resolveReserveHolderName(params) };
+export function buildReservedForStartReason(holderName: string): DeviceReason {
+  return { code: PLAN_REASON_CODES.reservedForStart, targetName: holderName };
 }
 
 /**

@@ -60,7 +60,7 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
     controllable: true,
     measuredPowerKw: 0.5,
     reason: params.plannedState === 'shed'
-      ? { code: 'capacity', detail: null }
+      ? { code: 'capacity' }
       : { code: 'keep', detail: null },
   }],
 });

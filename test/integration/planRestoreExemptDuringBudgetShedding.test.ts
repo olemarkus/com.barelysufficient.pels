@@ -75,7 +75,7 @@ const offThermostat = () => buildPlanDevice({
   priority: 5,
   currentState: 'off',
   plannedState: 'shed',
-  reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null },
+  reason: { code: PLAN_REASON_CODES.dailyBudget },
   controllable: true,
   powerKw: 1,
 });

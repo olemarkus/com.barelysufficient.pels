@@ -147,7 +147,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');
-    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null });
+    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
     // The hold is a standing decision: the plan-less-safe stamp is written.
     expect(h.state.surplusOnlyShedByDevice[PUMP]).toBe(true);
     expect(h.state.shedDecidedMs[PUMP]).toBeDefined();
@@ -190,7 +190,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');
-    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null });
+    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
     // Exempt: a plan whose only shed is this surplus hold has no capacity-shed posture.
     expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
   });
@@ -253,7 +253,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const held = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     const pump = deviceOf(held, PUMP);
     expect(pump?.plannedState).toBe('shed');
-    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null });
+    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
     expect(intentOf(held, PUMP)?.kind).not.toBe('restore');
     // The bug is real: eligibility is still LATCHED (release pending), so a bare
     // `eligible === true` check would have suppressed the hold.
@@ -273,7 +273,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');
-    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null });
+    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
     expect(intentOf(plan, PUMP)?.kind).toBe('shed');
     expect(h.state.surplusOnlyShedByDevice[PUMP]).toBe(true);
   });
@@ -282,7 +282,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const h = makeHarness({ totalKw: -2, powerSampleAgeMs: 10 * 60_000 });
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     expect(deviceOf(plan, PUMP)?.plannedState).toBe('shed');
-    expect(deviceOf(plan, PUMP)?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null });
+    expect(deviceOf(plan, PUMP)?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
   });
 
   it('lets a fresh capacity shed decision win the reason while the pump is eligible and running', async () => {
@@ -372,7 +372,7 @@ describe('surplus-held devices are never swap candidates', () => {
       id: PUMP,
       name: 'Pool pump',
       plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
       measuredPowerKw: PUMP_DRAW_KW,
       priority: 9,
     });

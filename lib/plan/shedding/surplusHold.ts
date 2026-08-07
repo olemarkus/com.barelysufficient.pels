@@ -66,7 +66,7 @@ export function resolveSurplusHold(params: {
     if (params.excludeIds.has(device.id)) continue;
     if (isEligibleAndRunnable(device, params.state.surplusEligibilityByDevice[device.id])) continue;
     holdIds.add(device.id);
-    reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null });
+    reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingSolarSurplus });
   }
   return { holdIds, reasonById };
 }

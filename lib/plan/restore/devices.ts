@@ -214,7 +214,7 @@ export function markOffDevicesStayOff(params: {
       setDevice(dev.id, { plannedState: 'inactive', reason: inactiveReason });
       continue;
     }
-    const defaultReason = dev.reason ?? { code: PLAN_REASON_CODES.capacity, detail: null };
+    const defaultReason = dev.reason;
     const nextReason = reasonOverride
       ? reasonOverride(dev)
       : resolveOffDeviceReason(timing, defaultReason, getLastControlledMs?.(dev.id));

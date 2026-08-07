@@ -1,10 +1,7 @@
-import {
-  formatDeviceReason,
-  PLAN_REASON_CODES,
-} from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { computeBaseRestoreNeed } from './restore/accounting';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
-import { buildRestoreNeedReason, buildShortfallReason } from './planReasonStrings';
+import { buildShortfallReason } from './planReasonStrings';
 import { getInactiveReason, getEvRestoreStateBlockReason } from './restore/devices';
 import { isEvPhysicallyUnplugged } from '../device/deviceActionProjection';
 import type { DevicePlanDevice } from './planTypes';
@@ -65,9 +62,5 @@ export function applyOffStateReason(params: {
   return {
     ...planDevice,
     reason: { code: PLAN_REASON_CODES.keep, detail: null },
-    candidateReasons: {
-      ...planDevice.candidateReasons,
-      offStateAnalysis: formatDeviceReason(buildRestoreNeedReason(need, headroomRaw)),
-    },
   };
 }

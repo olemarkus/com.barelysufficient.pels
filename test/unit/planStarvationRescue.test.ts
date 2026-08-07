@@ -207,7 +207,6 @@ describe('starvation-rescue shared helpers', () => {
     ): SettingsUiPlanDeviceStarvation => ({
       isStarved: true,
       accumulatedMs: 5 * 60_000,
-      startedAtMs: 0,
       ...overrides,
     });
 

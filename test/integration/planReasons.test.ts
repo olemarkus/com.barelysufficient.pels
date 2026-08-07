@@ -31,7 +31,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
-        reason: fixtureDeviceReason('restore (need 1.20kW)')!,
+        reason: fixtureDeviceReason('restore low -> high (need 1.20kW)')!,
       })],
       shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to hourly budget')!]]),
       guardInShortfall: false,
@@ -280,7 +280,7 @@ describe('normalizeShedReasons', () => {
         plannedState: 'shed',
         reason: fixtureDeviceReason('keep')!,
       })],
-      shedReasons: new Map([['dev-fresh', { code: 'capacity', detail: null }]]),
+      shedReasons: new Map([['dev-fresh', { code: 'capacity' }]]),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: false,
@@ -469,7 +469,7 @@ describe('normalizeShedReasons', () => {
   });
 
   // ── Finding A on #1817: surplus hold survives the plan-wide shed cooldown ──
-  const AWAITING = { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null };
+  const AWAITING = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 
   it('keeps a surplus-held device on awaiting_solar_surplus during an active shed cooldown', () => {
     // A dump load held for surplus, but the plan-wide shed cooldown is active and an
@@ -556,7 +556,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     plannedState: 'shed',
     priority: 3,
     residualKw: { shed: 0, restore: { kw: 1.0, source: 'planning' } },
-    reason: { code: 'capacity', detail: null },
+    reason: { code: 'capacity' },
     ...overrides,
   });
 
@@ -597,7 +597,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   it('attaches the admission gap to a carry-forward capacity hold', () => {
     // gap = 0.25 − (0.5 − 1.2 − 0.25) = 1.2 kW
     const [device] = normalize({ devices: [heldDevice()], capacityAvailableKw: 0.5 });
-    expect(device?.reason).toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 1.2 });
   });
 
   it('attaches THIS device\'s own gap to a swap victim', () => {
@@ -614,24 +614,24 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   // transient overshoot dip while the true gap was 1.3 kW).
   it('replaces a carried producer shortfall with the fresh per-cycle gap', () => {
     const [device] = normalize({
-      devices: [heldDevice({ reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } })],
+      devices: [heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })],
       capacityAvailableKw: 0.5,
     });
-    expect(device?.reason).toEqual({ code: 'daily_budget', detail: null, shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'daily_budget', shortfallKw: 1.2 });
   });
 
   it('strips a carried shortfall the fresh arithmetic would no longer produce', () => {
     // available 2.0 → admission passes → no number is honest this cycle.
     const [device] = normalize({
-      devices: [heldDevice({ reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } })],
+      devices: [heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })],
       capacityAvailableKw: 2.0,
     });
-    expect(device?.reason).toEqual({ code: 'daily_budget', detail: null });
+    expect(device?.reason).toEqual({ code: 'daily_budget' });
   });
 
   it('keeps the producer number only when the per-axis inputs are absent', () => {
     const [device] = normalizeShedReasons({
-      planDevices: [heldDevice({ reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } })],
+      planDevices: [heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })],
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0.5,
@@ -639,7 +639,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
     });
-    expect(device?.reason).toEqual({ code: 'daily_budget', detail: null, shortfallKw: 0.8 });
+    expect(device?.reason).toEqual({ code: 'daily_budget', shortfallKw: 0.8 });
   });
 
   // A pending swap TARGET's relief is already committed (its sources are
@@ -718,7 +718,6 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     });
     expect(device?.reason).toEqual({
       code: 'capacity',
-      detail: null,
       reserveHolderName: 'Water heater',
     });
     // Mutually exclusive with the gap: no kW may ride along.
@@ -732,22 +731,22 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   it('drops a carried holder once the reservation stops blocking', () => {
     const [device] = normalize({
       devices: [heldDevice({
-        reason: { code: 'capacity', detail: null, reserveHolderName: 'Water heater' },
+        reason: { code: 'capacity', reserveHolderName: 'Water heater' },
       })],
       capacityAvailableKw: 0.5,
     });
-    expect(device?.reason).toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 1.2 });
     expect(device?.reason).not.toHaveProperty('reserveHolderName');
   });
 
   it('drops a carried holder when admission would now pass', () => {
     const [device] = normalize({
       devices: [heldDevice({
-        reason: { code: 'capacity', detail: null, reserveHolderName: 'Water heater' },
+        reason: { code: 'capacity', reserveHolderName: 'Water heater' },
       })],
       capacityAvailableKw: 2.0,
     });
-    expect(device?.reason).toEqual({ code: 'capacity', detail: null });
+    expect(device?.reason).toEqual({ code: 'capacity' });
   });
 
 
@@ -763,8 +762,8 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     // Capacity axis admits the exempt device → no gap to state; the bare line
     // is honest. The non-exempt sibling gates on min(cap, budget):
     // gap = 0.25 − (0.1 − 1.2 − 0.25) = 1.6 kW.
-    expect(exempt?.reason).toEqual({ code: 'capacity', detail: null });
-    expect(bound?.reason).toEqual({ code: 'capacity', detail: null, shortfallKw: 1.6 });
+    expect(exempt?.reason).toEqual({ code: 'capacity' });
+    expect(bound?.reason).toEqual({ code: 'capacity', shortfallKw: 1.6 });
   });
 
   // Prod repro (2026-08-02): pace 0.55 kW, draw 1.54 kW → available −0.99 kW,
@@ -773,7 +772,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     const devices = normalize({
       devices: [1, 2, 3, 4, 5].map((n) => heldDevice({
         id: `held-${n}`,
-        reason: { code: 'daily_budget', detail: null },
+        reason: { code: 'daily_budget' },
       })),
       capacityAvailableKw: 20.27 - 1.54,
       budgetAvailableKw: -0.99,
@@ -781,7 +780,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     });
     for (const device of devices) {
       // gap = 0.25 − (−0.99 − 1.2 − 0.25) = 2.69 → 2.7 kW on the display grid.
-      expect(device.reason).toEqual({ code: 'daily_budget', detail: null, shortfallKw: 2.7 });
+      expect(device.reason).toEqual({ code: 'daily_budget', shortfallKw: 2.7 });
     }
   });
 
@@ -789,15 +788,15 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     it('folds ceiling holds to hourlyBudget with no kW while the hour is spent', () => {
       const devices = normalize({
         devices: [
-          heldDevice({ id: 'cap-dev', reason: { code: 'capacity', detail: null } }),
-          heldDevice({ id: 'daily-dev', reason: { code: 'daily_budget', detail: null, shortfallKw: 0.8 } }),
+          heldDevice({ id: 'cap-dev', reason: { code: 'capacity' } }),
+          heldDevice({ id: 'daily-dev', reason: { code: 'daily_budget', shortfallKw: 0.8 } }),
           heldDevice({ id: 'swap-dev', reason: { code: 'swapped_out', targetName: 'Water heater' } }),
         ],
         capacityAvailableKw: 0.5,
         hourlyBudgetExhausted: true,
       });
-      expect(devices[0]?.reason).toEqual({ code: 'hourly_budget', detail: null });
-      expect(devices[1]?.reason).toEqual({ code: 'hourly_budget', detail: null });
+      expect(devices[0]?.reason).toEqual({ code: 'hourly_budget' });
+      expect(devices[1]?.reason).toEqual({ code: 'hourly_budget' });
       // Swap holds keep their framing but render bare: spent kWh cannot be
       // un-spent, so a kW figure would be dishonest for them too — the attach
       // is suspended (and any carried number stripped) for the whole hour.
@@ -815,7 +814,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
         budgetExempt?: boolean;
       }) => normalize({
         devices: [heldDevice({
-          reason: { code: 'hourly_budget', detail: null },
+          reason: { code: 'hourly_budget' },
           budgetExempt: params.budgetExempt ?? false,
         })],
         capacityAvailableKw: 0.5,
@@ -824,32 +823,20 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       })[0];
 
       expect(roll({ softLimitSource: 'daily' })?.reason)
-        .toEqual({ code: 'daily_budget', detail: null, shortfallKw: 1.2 });
+        .toEqual({ code: 'daily_budget', shortfallKw: 1.2 });
       expect(roll({ softLimitSource: 'daily', capacityBreached: true })?.reason)
-        .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+        .toEqual({ code: 'capacity', shortfallKw: 1.2 });
       // Per-axis admission evaluates an exempt candidate on capacity, so its
       // hold is a capacity hold — never a budget label next to a "Budget exempt" chip.
       expect(roll({ softLimitSource: 'daily', budgetExempt: true })?.reason)
-        .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+        .toEqual({ code: 'capacity', shortfallKw: 1.2 });
       expect(roll({ softLimitSource: 'capacity' })?.reason)
-        .toEqual({ code: 'capacity', detail: null, shortfallKw: 1.2 });
+        .toEqual({ code: 'capacity', shortfallKw: 1.2 });
     });
   });
 });
 
 describe('finalizePlanDevices', () => {
-  it('strips candidate reasons before returning finalized plan devices', () => {
-    const finalized = finalizePlanDevices([buildPlanDevice({
-      plannedState: 'keep',
-      reason: fixtureDeviceReason('keep')!,
-      candidateReasons: {
-        offStateAnalysis: 'restore (need 1.20kW, headroom 0.30kW)',
-      },
-    })]);
-
-    expect(finalized.planDevices[0]).not.toHaveProperty('candidateReasons');
-  });
-
   it('requires finalized devices to carry a structured reason contract', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
@@ -861,7 +848,7 @@ describe('finalizePlanDevices', () => {
   it('throws in tests when a final reason/state pair is not allowed', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: fixtureDeviceReason('restore (need 1.20kW, headroom 0.30kW)')!,
+      reason: fixtureDeviceReason('restore low -> high (need 1.20kW)')!,
     })])).toThrow(/Invalid plan reason pair/);
   });
 
@@ -897,7 +884,7 @@ describe('finalizePlanDevices', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
       surplusOnly: true,
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     })])).not.toThrow();
   });
 
@@ -906,7 +893,7 @@ describe('finalizePlanDevices', () => {
     // classification if it appears on a non-dump-load device.
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     })])).toThrow(/Invalid plan reason pair|surplusOnly/);
   });
 });
@@ -1140,7 +1127,7 @@ describe('applyShedTemperatureHold', () => {
           plannedTarget: 16,
           shedAction: 'set_temperature',
           shedTemperature: 16,
-          reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+          reason: { code: PLAN_REASON_CODES.capacity },
         }), true)],
         state,
         shedReasons: params.shedReasons ?? new Map(),

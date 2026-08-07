@@ -57,14 +57,17 @@ export type CountdownReasonTiming = {
 // reason normalization (`finalizeCeilingReason`, `lib/plan/planReasons.ts`)
 // from the current per-axis availability — fresh wins over any number a
 // producer attached earlier, because carry-forward states would otherwise pin
-// a snapshot on the card while the pace moves. `null`/absent when the
-// arithmetic declined this cycle (reserve carve-out, admission would pass, the
-// exhausted hour, or a gap that rounds to nothing).
+// a snapshot on the card while the pace moves. ABSENT when the arithmetic
+// declined this cycle (reserve carve-out, admission would pass, the exhausted
+// hour, or a gap that rounds to nothing) — absence is expressed by DELETING the
+// key (`stripCycleAnnotations`, `lib/plan/planReasons.ts`), never by writing
+// `null`, so the optionality is the whole of it. `attachShortfall` is the sole
+// producer and always writes a `number`.
 //
 // Pre-rounded on purpose: the stored value then changes only when the DISPLAYED
 // number changes, so a kW that jitters every plan cycle cannot churn the
 // overview transition signature (see `buildComparableDeviceReason`).
-type AdmissionShortfall = { shortfallKw?: number | null };
+type AdmissionShortfall = { shortfallKw?: number };
 
 // The device whose startup reservation is standing in this device's way, when
 // admission declined for THAT reason and no other. Mutually exclusive with
@@ -84,20 +87,53 @@ type AdmissionShortfall = { shortfallKw?: number | null };
 // every shed device without that fact, so it carries the holder's NAME beside an
 // unchanged, still-actuating ceiling code. The card reads the same sentence
 // either way; the executor and the starvation classifier see no change.
-type ReserveHolder = { reserveHolderName?: string | null };
+//
+// Optional but never `null`: the key is deleted each cycle by
+// `stripCycleAnnotations` and re-attached only on the `blocked_by_reserve`
+// branch, which exists only when a reserve actually claims against this device
+// — so a holder is always nameable there (`HeadroomReserve.deviceName` is a
+// required `string`). "Blocked by a reservation nobody can name" is not a state
+// any producer can build.
+type ReserveHolder = { reserveHolderName?: string };
 
-// `PLAN_REASON_CODES.none` is deliberately NOT a member: `reason` is a required
-// `DeviceReason` on `DevicePlanDevice`, so nothing can fall through to it. The
-// constant survives for `ComparablePlanReason`, which uses it as its
-// absent-reason marker.
+/**
+ * Why the planner decided what it decided about one device — the contract the
+ * planner produces and every consumer (cards, device detail, the activity log,
+ * the executor's hold classification) reads.
+ *
+ * OWNERSHIP: `lib/plan` producers mint these; nothing downstream constructs one.
+ * A variant's required fields are guaranteed by its producer, so consumers read
+ * them directly and never re-validate — see "Validation belongs at the boundary"
+ * in the root `AGENTS.md`, and its consumer-side dual, "Resolution belongs in
+ * the producer" (`docs/architecture.md`). A field is nullable here ONLY where a
+ * live producer can genuinely omit it; the settings UI, which receives these
+ * across a version boundary, discriminates them at its own snapshot seam
+ * (`planSnapshotParse.ts`) rather than defending inside the formatters.
+ *
+ * `PLAN_REASON_CODES.none` is deliberately NOT a member: `reason` is a required
+ * `DeviceReason` on `DevicePlanDevice`, so nothing can fall through to it. The
+ * constant survives for `ComparablePlanReason`, which uses it as its
+ * absent-reason marker.
+ *
+ * User-facing rendering: `packages/shared-domain/src/planCardReasonLine.ts`
+ * (the one card ladder) and `notes/ui-terminology.md`.
+ */
 export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.keep; detail: string | null }
+  // A stepped device climbing from one step to another. BOTH targets are always
+  // named: the only two producers are the stepped restore admission's admitted
+  // and swap-admitted branches (`lib/plan/restore/steppedRestoreAdmission.ts`),
+  // which pass the observed step (or the literal `'unknown'`) and the step being
+  // climbed to. The target-less shape existed solely for `buildRestoreNeedReason`,
+  // a helper whose one output was formatted straight into the planner-debug
+  // `candidateReasons.offStateAnalysis` field and never reached a device; both
+  // were deleted 2026-08-07, and with them the `headroomKw` slot — no producer
+  // ever set it to anything but `null`.
   | {
     code: typeof PLAN_REASON_CODES.restoreNeed;
-    fromTarget: string | null;
-    toTarget: string | null;
+    fromTarget: string;
+    toTarget: string;
     needKw: number;
-    headroomKw: number | null;
   }
   // The swap PRODUCERS (`lib/plan/swap/candidates.ts`, `lib/plan/restore/swap.ts`,
   // `lib/plan/swap/blocking.ts`) must still never pin their own admission numbers
@@ -106,13 +142,26 @@ export type DeviceReason =
   // `shortfallKw` these variants carry is attached post hoc at reason
   // normalization (`finalizeCeilingReason`), computed from THIS device's own
   // need against the current pace.
+  //
+  // `swapPending` keeps a nullable `targetName` — genuinely both: the null gates
+  // real behaviour in `lib/executor/executableTargetProjection.ts` and
+  // `lib/planContract/planDecisionSemantics.ts` (a swap whose target is not yet
+  // resolved). `swappedOut` does not: its sole device-attached producer
+  // (`lib/plan/restore/swap.ts`) passes `dev.name`.
   | ({ code: typeof PLAN_REASON_CODES.swapPending; targetName: string | null } & AdmissionShortfall & ReserveHolder)
-  | ({ code: typeof PLAN_REASON_CODES.swappedOut; targetName: string | null } & AdmissionShortfall & ReserveHolder)
+  | ({ code: typeof PLAN_REASON_CODES.swappedOut; targetName: string } & AdmissionShortfall & ReserveHolder)
   // Never a carrier: the hour's kWh is spent, so no amount of freed power admits
   // the device before the hour rolls over — the card renders time-based copy.
-  | { code: typeof PLAN_REASON_CODES.hourlyBudget; detail: string | null }
-  | ({ code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null } & AdmissionShortfall & ReserveHolder)
-  | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number | null; headroomKw: number | null }
+  //
+  // No `detail` slot, here or on the four ceiling/hold codes below. Every
+  // producer passed a literal `null` — the slot was pure ceremony, and its
+  // truthy rendering arms (` ${detail}` in the log format, `. ${Detail}` in the
+  // user-facing one) were unreachable. `awaitingSolarSurplus` already documented
+  // "deliberately carries NO detail" above while declaring one; it now matches
+  // `externalOffHold`, which never had a slot.
+  | { code: typeof PLAN_REASON_CODES.hourlyBudget }
+  | ({ code: typeof PLAN_REASON_CODES.dailyBudget } & AdmissionShortfall & ReserveHolder)
+  | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number; headroomKw: number }
   | ({ code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.meterSettling; remainingSec: number } & CountdownReasonTiming)
@@ -132,9 +181,13 @@ export type DeviceReason =
   // fallback in `resolveRestoreShortfallKw`. Do not widen them back: a null
   // here means "we could not measure admission", which no producer can say.
   //
-  // The remaining four ARE genuinely optional — they describe conditions that
-  // may not be in play at all: an activation penalty (`penaltyExtraKw`), and
-  // the swap path's reserve/effective figures and target name.
+  // The remaining three ARE genuinely optional — they describe conditions that
+  // may not be in play at all: an activation penalty (`penaltyExtraKw`) and the
+  // swap path's reserve/effective figures. `swapTargetName` used to sit beside
+  // them and did NOT belong: no device-attached producer ever set it. Its one
+  // non-null site (`lib/plan/swap/candidates.ts`) formats the reason straight to
+  // a debug string, so the name is now composed there — and that log event
+  // already carries `deviceId`/`deviceName` for the same device.
   | {
     code: typeof PLAN_REASON_CODES.insufficientHeadroom;
     needKw: number;
@@ -144,12 +197,14 @@ export type DeviceReason =
     penaltyExtraKw: number | null;
     swapReserveKw: number | null;
     effectiveAvailableKw: number | null;
-    swapTargetName: string | null;
   }
-  | { code: typeof PLAN_REASON_CODES.inactive; detail: string | null }
-  | ({ code: typeof PLAN_REASON_CODES.capacity; detail: string | null } & AdmissionShortfall & ReserveHolder)
-  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid; detail: string | null }
-  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus; detail: string | null }
+  // Always carries its cause: both producers (`lib/plan/planOffStateReason.ts`,
+  // `lib/plan/restore/devices.ts`) build this reason INSIDE a truthiness guard on
+  // the string they are about to put here.
+  | { code: typeof PLAN_REASON_CODES.inactive; detail: string }
+  | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
@@ -164,8 +219,11 @@ export type DeviceReason =
   // Also not a carrier, for the same reason as the swap holds above: the gap that
   // would admit this device THROUGH a reservation is dominated by the holder's
   // reserved block, so it states another device's quantity as this one's. The
-  // honest line names the holder.
-  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string | null };
+  // honest line names the holder — and it can always name one: this reason is
+  // built only from a `blocked_by_reserve` admission, which is reached only with
+  // a live claiming reserve, and `HeadroomReserve.deviceName` is a required
+  // `string`.
+  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string };
 
 const REASON_LABELS = {
   [PLAN_REASON_CODES.none]: 'unknown',

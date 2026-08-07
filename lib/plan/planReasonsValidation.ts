@@ -85,11 +85,6 @@ const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.externalOffHold, label: 'external off hold' },
 ] as const;
 
-function stripCandidateReasons(dev: DevicePlanDevice): DevicePlanDevice {
-  const { candidateReasons: _candidateReasons, ...snapshotDevice } = dev;
-  return snapshotDevice;
-}
-
 function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] {
   switch (plannedState) {
     case 'keep':
@@ -166,7 +161,7 @@ export function finalizePlanDevices(
   planDevices: DevicePlanDevice[];
   lastPlannedShedIds: Set<string>;
 } {
-  const sorted = sortByPriorityAsc(planDevices).map(stripCandidateReasons);
+  const sorted = sortByPriorityAsc(planDevices);
   const issues = sorted
     .map(validatePlanReasonPair)
     .filter((issue): issue is PlanReasonPairValidationIssue => issue !== null);

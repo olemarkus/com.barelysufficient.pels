@@ -150,7 +150,7 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
     evBoostActive: false,
     budgetExempt: false,
   };
-  const heldBackStarved = { isStarved: true, accumulatedMs: 60_000, startedAtMs: 0 };
+  const heldBackStarved = { isStarved: true, accumulatedMs: 60_000};
 
   it('rescue action wins the ladder, but never under simulation', () => {
     expect(resolvePlanCardStatusChip({

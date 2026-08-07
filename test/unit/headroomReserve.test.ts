@@ -365,18 +365,21 @@ describe('resolveReserveAdmission', () => {
 });
 
 describe('buildReservedForStartReason', () => {
+  // Holder SELECTION now lives on the admission result (`blocked_by_reserve`
+  // carries `holderName`), which is the only branch that can guarantee one
+  // exists — so the "names nobody" case it used to cover is gone with the
+  // nullable `targetName`.
   it('names the most important device holding power ahead of this one', () => {
-    expect(buildReservedForStartReason({
+    const result = resolveReserveAdmission({
       dev: { id: 'thermostat', priority: 10 },
+      availableHeadroom: RESTORE_ADMISSION_FLOOR_KW + 0.25,
+      neededKw: 0,
       reserves: [reserve('charger', 3, 1.4), reserve('heater', 1, 1.25)],
-    })).toEqual({ code: PLAN_REASON_CODES.reservedForStart, targetName: 'heater' });
-  });
-
-  it('names nobody when no reserve outranks the device', () => {
-    expect(buildReservedForStartReason({
-      dev: { id: 'heater', priority: 1 },
-      reserves: [reserve('thermostat', 10, 1.25)],
-    })).toEqual({ code: PLAN_REASON_CODES.reservedForStart, targetName: null });
+    });
+    expect(result.kind).toBe('blocked_by_reserve');
+    const holderName = result.kind === 'blocked_by_reserve' ? result.holderName : null;
+    expect(buildReservedForStartReason(holderName ?? ''))
+      .toEqual({ code: PLAN_REASON_CODES.reservedForStart, targetName: 'heater' });
   });
 
   // Carries the holder's name and NOTHING numeric, on purpose. A gap that would
@@ -384,10 +387,7 @@ describe('buildReservedForStartReason', () => {
   // reserved block, so surfacing one states another device's quantity as this
   // one's — the error the swap reasons avoid the same way.
   it('carries no kW figure, so the card cannot state another device’s reserve as this one’s need', () => {
-    const reason = buildReservedForStartReason({
-      dev: { id: 'heater', priority: 1 },
-      reserves: [reserve('thermostat', 10, 1.25)],
-    });
+    const reason = buildReservedForStartReason('thermostat');
     expect(Object.keys(reason).sort()).toEqual(['code', 'targetName']);
     expect(resolveRestoreShortfallKw(reason)).toBeNull();
   });

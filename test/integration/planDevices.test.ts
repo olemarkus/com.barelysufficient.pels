@@ -788,7 +788,6 @@ describe('buildInitialPlanDevices', () => {
 
     expect(planDevice.plannedState).toBe('keep');
     expect(reasonText(planDevice.reason)).toBe('keep');
-    expect(planDevice.candidateReasons?.offStateAnalysis).toBe('restore (need 1.20kW, headroom -1.00kW)');
   });
 
   it('forces already-shed off stepped devices to keep the off-step during shortfall', () => {

@@ -27,19 +27,19 @@ describe('formatShortfallReason', () => {
       .toBe('Manual action needed. Needs 1.2 kW, 0.0 kW available.');
   });
 
-  it('falls back to the bare label when need or headroom are unknown', () => {
-    expect(formatShortfallReason({ needKw: null, headroomKw: null }))
+  // Absence is gone with the nullable `shortfall` figures; a non-finite number
+  // arriving from a snapshot is a different (and still live) concern.
+  it('falls back to the bare label when a figure is not finite', () => {
+    expect(formatShortfallReason({ needKw: Number.NaN, headroomKw: 0.15 }))
       .toBe('Manual action needed. Hard cap may be exceeded.');
-    expect(formatShortfallReason({ needKw: 1.2, headroomKw: null }))
-      .toBe('Manual action needed. Hard cap may be exceeded.');
-    expect(formatShortfallReason({ needKw: null, headroomKw: 0.15 }))
+    expect(formatShortfallReason({ needKw: 1.2, headroomKw: Number.POSITIVE_INFINITY }))
       .toBe('Manual action needed. Hard cap may be exceeded.');
   });
 
   it('never leaks the internal "shortfall" or "headroom" terms', () => {
     const labels = [
       formatShortfallReason({ needKw: 1.2, headroomKw: 0.15 }),
-      formatShortfallReason({ needKw: null, headroomKw: null }),
+      formatShortfallReason({ needKw: Number.NaN, headroomKw: Number.NaN }),
       formatShortfallReason({ needKw: 1.2, headroomKw: -0.5 }),
     ];
     for (const label of labels) {
@@ -56,28 +56,23 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Manual action needed. Needs 1.2 kW, 0.1 kW available.',
     },
     {
-      label: 'shortfall reason without numbers maps to the bare label',
-      reason: { code: PLAN_REASON_CODES.shortfall, needKw: null, headroomKw: null },
-      expected: 'Manual action needed. Hard cap may be exceeded.',
-    },
-    {
       label: 'capacity shed maps to the hard-cap label',
-      reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+      reason: { code: PLAN_REASON_CODES.capacity },
       expected: PLAN_STATE_CAPACITY_STATUS,
     },
     {
       label: 'daily budget shed maps to the today\'s daily-budget label',
-      reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null },
+      reason: { code: PLAN_REASON_CODES.dailyBudget },
       expected: PLAN_STATE_DAILY_BUDGET_STATUS,
     },
     {
       label: 'hourly budget shed maps to the next-hour budget line',
-      reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+      reason: { code: PLAN_REASON_CODES.hourlyBudget },
       expected: PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
     },
     {
       label: 'deferred objective avoid maps to the waiting-for-cheaper-hours label',
-      reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null },
+      reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
       expected: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
     },
     {
@@ -179,24 +174,8 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         penaltyExtraKw: null,
         swapReserveKw: null,
         effectiveAvailableKw: null,
-        swapTargetName: null,
       },
       expected: 'Not enough available power to resume — 1.0 kW more needed',
-    },
-    {
-      label: 'insufficient headroom for swap names the target',
-      reason: {
-        code: PLAN_REASON_CODES.insufficientHeadroom,
-        needKw: 2,
-        availableKw: 1,
-        postReserveMarginKw: -0.75,
-        minimumRequiredPostReserveMarginKw: 0.25,
-        penaltyExtraKw: null,
-        swapReserveKw: null,
-        effectiveAvailableKw: null,
-        swapTargetName: 'Water Heater',
-      },
-      expected: 'Not enough available power to make room for Water Heater — 1.0 kW more needed',
     },
     {
       label: 'startup stabilization maps to the waiting-after-startup label',
@@ -219,24 +198,12 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Off for now (charger is unplugged)',
     },
     {
-      label: 'restore need without targets falls back to waiting copy with kW details',
-      reason: {
-        code: PLAN_REASON_CODES.restoreNeed,
-        fromTarget: null,
-        toTarget: null,
-        needKw: 1.2,
-        headroomKw: 0.3,
-      },
-      expected: 'Waiting to resume — needs 1.2 kW, 0.3 kW available',
-    },
-    {
       label: 'restore need with targets describes the transition',
       reason: {
         code: PLAN_REASON_CODES.restoreNeed,
         fromTarget: 'low',
         toTarget: 'high',
         needKw: 1.2,
-        headroomKw: 0.3,
       },
       expected: 'Raising target low to high',
     },
@@ -379,7 +346,7 @@ describe('readDeviceReasonDetail', () => {
   });
 
   it('narrows a DeviceReason from the snapshot boundary without an `as` cast', () => {
-    const reason: DeviceReason = { code: PLAN_REASON_CODES.capacity, detail: 'over budget' };
+    const reason: DeviceReason = { code: PLAN_REASON_CODES.keep, detail: 'over budget' };
     // Treat `reason` as `unknown` to match the snapshot-boundary call site.
     expect(readDeviceReasonDetail(reason as unknown)).toBe('over budget');
   });

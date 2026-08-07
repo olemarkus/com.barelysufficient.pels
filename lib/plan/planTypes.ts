@@ -39,10 +39,6 @@ export type PendingTargetCommandSummary = {
   lastObservedSource?: PendingTargetObservationSource;
 };
 
-export type PlanCandidateReasons = {
-  offStateAnalysis?: string;
-};
-
 export type ShedBehavior = {
   action: ShedAction;
   temperature?: number;
@@ -457,8 +453,6 @@ type DevicePlanDeviceBase = {
   measuredPowerKw?: number;
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.
   reason: DeviceReason;
-  // Planner-only debug metadata. This must be stripped before the final plan snapshot is written.
-  candidateReasons?: PlanCandidateReasons;
   zone?: string;
   controllable?: boolean;
   budgetExempt?: boolean;
@@ -491,6 +485,14 @@ type DevicePlanDeviceBase = {
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
+  // The shed triple, materialized as a unit by `materializeShedSnapshotFields`
+  // (`lib/plan/planActionMaterialization.ts`) at both producers
+  // (`lib/plan/planDevicesBase.ts`, `lib/plan/restore/marking.ts`), so in
+  // practice all three are always present together. They stay optional anyway:
+  // every consumer gates on `typeof x === 'number'` / a `shedAction` equality,
+  // so `undefined` and `null` are indistinguishable here and requiring them
+  // would delete no branch — and requiring only one of the three would make the
+  // triple less coherent, not more. Tighten all three together or not at all.
   shedAction?: ShedAction;
   shedTemperature?: number | null;
   releaseShedStepId?: string | null;

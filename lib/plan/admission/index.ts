@@ -41,7 +41,6 @@ export type { RestoreAdmissionMetrics } from './reserve';
 
 export {
   buildReservedForStartReason,
-  resolveReserveHolderName,
   resolveHeadroomReserves,
   resolveReserveAdmission,
 } from './headroomReserve';

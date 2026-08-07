@@ -153,7 +153,10 @@ describe('buildSwapCandidates', () => {
     });
 
     expect(result.ready).toBe(false);
-    expect(result.decisionText).toContain('insufficient headroom to swap for Off Heater after reserves');
+    // The reject text no longer names the swap target: `insufficient_headroom` lost
+    // its `swapTargetName` slot (no device-attached producer ever set it), and the
+    // enclosing debug payload already logs the same device as `deviceName`.
+    expect(result.decisionText).toContain('insufficient headroom to restore after reserves');
     expect(result.decisionText).toContain('effective 1.30kW after 0.30kW swap reserve');
     expect(result.decisionText).toContain('post-reserve margin 0.050kW < 0.250kW');
   });

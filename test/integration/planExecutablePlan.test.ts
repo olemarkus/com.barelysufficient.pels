@@ -255,7 +255,7 @@ describe('planExecutablePlan', () => {
           id: 'pool-pump',
           plannedState: 'shed',
           surplusOnly: true,
-          reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+          reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
         }),
       ]);
       expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);

@@ -782,7 +782,6 @@ describe('PlanService', () => {
         getOverviewStarvation: vi.fn(() => ({
           isStarved: true,
           accumulatedMs: 30 * 60 * 1000,
-          startedAtMs: 1_234,
         })),
       },
     });
@@ -857,7 +856,6 @@ describe('PlanService', () => {
           starvation: {
             isStarved: true,
             accumulatedMs: 30 * 60 * 1000,
-            startedAtMs: 1_234,
           },
         }),
       ],

@@ -72,12 +72,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'inactive',
-      reason: r('inactive'),
+      reason: r('inactive (charger is unplugged)'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
       usageMsg: 'Unknown',
-      statusMsg: 'Off for now',
+      statusMsg: 'Off for now (charger is unplugged)',
     });
   });
 
@@ -116,8 +116,8 @@ describe('device overview formatter', () => {
         percent: 42,
         status: 'stale',
       },
-      reason: r('inactive'),
-    }).statusMsg).toBe('Off for now — EV battery: 42 %, stale');
+      reason: r('inactive (charger is unplugged)'),
+    }).statusMsg).toBe('Off for now (charger is unplugged) — EV battery: 42 %, stale');
   });
 
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {
@@ -455,10 +455,10 @@ describe('device overview transition signatures', () => {
       reason,
     });
     const carriers = [
-      [{ code: 'capacity', detail: null, shortfallKw: 1.2 }, { code: 'capacity', detail: null, shortfallKw: 2.7 }],
+      [{ code: 'capacity', shortfallKw: 1.2 }, { code: 'capacity', shortfallKw: 2.7 }],
       [
-        { code: 'daily_budget', detail: null, shortfallKw: 0.8 },
-        { code: 'daily_budget', detail: null, shortfallKw: 1.1 },
+        { code: 'daily_budget', shortfallKw: 0.8 },
+        { code: 'daily_budget', shortfallKw: 1.1 },
       ],
       [
         { code: 'swapped_out', targetName: 'Water heater', shortfallKw: 0.7 },
