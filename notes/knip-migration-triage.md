@@ -1,41 +1,63 @@
-# Knip migration — triage state (WIP)
+# Knip — config shape and the entry-point trap
 
-Replacing the custom `scripts/check-dead-code.mjs` (madge + ts-prune) with maintained **knip**.
+`npm run deadcode:check` runs **knip** (it replaced the custom madge + ts-prune
+`scripts/check-dead-code.mjs`). The migration is complete; this note records the
+two config traps that cost real detection coverage, so nobody re-introduces them.
 
-## Config (done — `knip.json`)
-Monorepo: knip auto-detects npm `workspaces`, so each `packages/*` is its own workspace.
-`contracts`/`shared-domain` are consumed via deep **relative** imports (`../../packages/contracts/src/…`),
-not the `@pels/*` package name, so their workspaces use `entry: ["src/**/*.ts"]` (every file is a
-consumable entry). This dropped findings from **67 → 31** unused exports.
+## Trap 1 — `entry: ["src/**/*.ts"]` disables a whole workspace
 
-## Remaining to reach green (the completion)
-1. **Delete 31 genuinely-dead exports** — verified dead via "0 `import` statements" (knip-correct;
-   orphaned imperative builders from the JSX consolidation). Notable: `components.ts` keeps the live
-   builders (createIconToggle/createToggleGroup/createSwitchField/createDragHandle) but loses 8 dead
-   ones (createDeviceRow, createMetaLine, createUsageBar, createCheckboxLabel, createNumberInput,
-   createSelectInput, createField, renderList); `dom.ts` loses 6 dead element refs + 1 type; plus
-   scattered helpers (loadPriceOptimizationSettings, formatSignedKWh, getCommandableNowReason, …).
-2. **Delete 3 dead files**: test/mocks/echarts-subpath-shim.ts, test/utils/loggersMock.ts
-   (vitest-env.d.ts is ambient — keep/ignore, verify tsconfig).
-3. **Deps**: remove `madge` + `ts-prune` (replaced); `ignoreBinaries: [homey, zsh]`;
-   `ignoreDependencies: [@types/homey]` (ambient) + declare/ignore `homey-api`, `playwright`
-   (used in scripts). Fix 2 `unresolved imports` in test files (tsconfig resolution) + 9 duplicate
-   exports (aliased — alias-collapse or ignore).
-4. **Swap**: `deadcode:check` → `knip`; delete `scripts/check-dead-code.mjs`.
+`contracts` / `shared-domain` are consumed via deep **relative** imports
+(`../../packages/shared-domain/src/…`), not the `@pels/*` package name. The
+migration papered over that by declaring every file in those workspaces an entry
+point. It looked like progress (findings dropped 67 → 31), but an entry point is
+by definition reachable: **knip can never report an unused export in a workspace
+whose entry glob matches every file.** `shared-domain` sat in that blind spot
+until 2026-08-07, and 21 dead exports had accumulated behind it.
 
-Each deletion is import-verified safe; re-run `npx knip` + `npm run build` after each batch.
+`shared-domain` now declares `"entry": []` — the root workspace's own entries
+(runtime, tests, widgets) reach into it through those relative imports, which is
+exactly what makes an unreached export a real finding.
 
-## Update — discoveries during completion (must inform the careful pass)
-- **`echarts-subpath-shim.ts` is NOT dead** — referenced as a vitest `moduleNameMapper`
-  resolve path (config, not import). knip false-positive → `ignore` it, don't delete.
-  (`loggersMock.ts` IS dead → deleted.)
-- **The old script carries a curated "parked" list** (`check-dead-code.mjs`, 40+ entries) of
-  exports the team intentionally keeps despite being unimported (e.g. `getCommandableNowReason`
-  "parked until chunk-6", the timezone/dateUtils helpers, many
-  `format*`/smart-task helpers). The migration MUST preserve these (mark `@public` JSDoc, which
-  knip honours) — NOT delete them.
-- So the 31 split: ~5 parked (→ `@public`), ~26 genuinely-dead orphaned builders (→ delete after
-  per-symbol config/html/dynamic-ref verification, as several had non-import refs only in the old
-  ignore list). 9 duplicate exports are intentional alias pairs (→ disable knip `duplicates` rule
-  or `@public`). Do this as a dedicated pass with `npx knip` + `npm run build` + full test suite
-  between batches; do not rush.
+**`packages/contracts` still carries the all-files entry glob** and therefore is
+still blind; emptying it surfaces ~31 candidates (mostly `settingsKeys` /
+`settingsUiApi` constants). That is its own triage pass, not a config tweak.
+
+## Trap 2 — a workspace block that npm doesn't know about is silently ignored
+
+`widgets/*` and `docs` were declared as knip workspaces, but npm workspaces are
+`packages/*` only and neither directory has a `package.json`, so knip dropped
+both blocks and said so — `widgets/* — Remove from workspaces` — in the
+*Configuration hints* section, which is easy to read as cosmetic. Combined with
+`!widgets/**` in the root `project`, five widget trees were outside the graph
+entirely, so every shared-domain symbol consumed only from a widget would have
+reported as a false positive the moment trap 1 was fixed (22 of them did).
+
+Widgets and docs are now plain root-workspace entries
+(`widgets/*/src/**/*.ts`, `docs/.vitepress/**/*.{ts,mts}`) with no `!widgets/**`
+/ `!docs/**` exclusion, so their imports pull the rest of the graph in.
+
+**Keep the hint list empty.** Both traps announced themselves there. Stale
+entries (`vitest-env.d.ts` in `ignore`, `zsh` in `ignoreBinaries`) have been
+removed for that reason — a hint section nobody reads is a hint section that
+hides the next real defect.
+
+## Suppression mechanism
+
+Knip honours the `@public` JSDoc tag. It is the repo's mechanism for an export
+that is deliberately kept without an importer; every use carries a one-line
+reason. Current holders:
+
+- `lib/utils/dateUtils.ts`, `lib/utils/settingsKeys.ts`,
+  `packages/shared-domain/src/commandableNow.ts` — curated "parked" entries
+  inherited from the old `check-dead-code.mjs` list.
+- `packages/settings-ui/src/ui/utils.ts` — test-only API.
+- `packages/shared-domain/src/price/flowPriceUtils.ts`,
+  `packages/shared-domain/src/utils/dateUtils.ts` — **twin files.** Each is a
+  hand-maintained copy of a `lib/` module that the settings UI cannot import
+  (`.dependency-cruiser.cjs` `no-settings-ui-to-runtime`, severity error). An
+  export with no importer in the browser-safe copy is tagged rather than
+  deleted, so the two sides stay patchable as one diff. Both files carry a
+  `TWIN FILE` header note.
+
+Also still true: `test/mocks/echarts-subpath-shim.ts` is referenced as a vitest
+`moduleNameMapper` resolve path, not an import — it stays in `ignore`.

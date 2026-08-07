@@ -1,3 +1,11 @@
+// TWIN FILE — this module exists twice, identical apart from the import
+// specifier: `lib/price/flowPriceUtils.ts` (runtime) and
+// `packages/shared-domain/src/price/flowPriceUtils.ts` (browser-safe, consumed
+// by the settings UI). Consolidating would violate `.dependency-cruiser.cjs`'s
+// `no-settings-ui-to-runtime` rule (error), which forbids settings-ui → `lib/**`.
+// The copies are kept in step BY HAND — no sync script, no CI check — so apply
+// every change to both. An export with no importer in one copy carries
+// `@public` there so knip does not report it; do not delete it from one side.
 import {
   buildLocalDayBuckets,
   getDateKeyStartMs,
@@ -155,6 +163,7 @@ export const getExpectedFlowHours = (dateKey: string, timeZone: string): number[
   }, []);
 };
 
+/** @public — no importer in this copy; see the twin note at the top of the file. */
 export const parseFlowPricePayloadInput = (
   raw: unknown,
   context: { dateKey: string; timeZone: string },
@@ -233,6 +242,7 @@ export const getMissingFlowHours = (
     .filter((hour) => !Number.isFinite(pricesByHour[String(hour)]))
 );
 
+/** @public — no importer in this copy; see the twin note at the top of the file. */
 export const buildFlowEntries = (payload: FlowPricePayload, timeZone: string): FlowHourlyPrice[] => {
   const daySlots = buildFlowDaySlots(payload.dateKey, timeZone);
   const exactSlotPrices = new Map<string, number>(

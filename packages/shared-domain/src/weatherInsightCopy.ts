@@ -420,7 +420,6 @@ export const WEATHER_BUTTON_CHANGE_IN_SETTINGS = 'Change in Settings';
 
 // ── States S1–S3 + error ───────────────────────────────────────────────────
 
-export const WEATHER_SETUP_TITLE = WEATHER_INSIGHT_TITLE;
 export const WEATHER_SETUP_BODY = 'PELS can learn how outside temperature drives your daily usage, '
   + 'and predict tomorrow’s total. Pick the device that measures outdoor temperature to start.';
 export const WEATHER_SETUP_BUTTON = 'Choose temperature device';

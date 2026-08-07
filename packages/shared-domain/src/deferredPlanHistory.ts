@@ -404,7 +404,6 @@ export const formatPlanHistoryMissedReason = (
 export {
   formatPlanHistoryPostmortem,
   type DeferredPlanHistoryPostmortem,
-  type DeferredPlanHistoryPostmortemVariant,
 } from './deferredPlanHistoryPostmortem';
 
 // Composes the secondary line shared by the Succeeded receipt and the Missed
@@ -630,7 +629,6 @@ export {
   resolveHistoryDetailChartData,
   historyDetailChartLabels,
   type DeferredPlanHistoryChartData,
-  type DeferredPlanHistoryChartMode,
   type DeferredPlanHistoryChartPoint,
   type HistoryDetailChartLabels,
 } from './deferredPlanHistoryChartData';

@@ -1306,8 +1306,6 @@ export const resolveSmartTaskListStatus = (params: {
   return 'on_track';
 };
 
-export type DeadlinePlanCompletedReason = 'deadline_passed';
-
 // Whether tomorrow's prices arrive via a user-managed Flow (`external_flow`,
 // the `flow` price scheme) or via PELS' own fetcher (`managed`, e.g. Norway
 // spot or Homey Energy). `unknown` is the safe fallback when scheme can't be

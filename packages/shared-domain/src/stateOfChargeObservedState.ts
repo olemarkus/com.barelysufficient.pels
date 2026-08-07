@@ -1,24 +1,18 @@
 import type {
   StateOfChargeObservedFields,
   StateOfChargeObservedProbe,
-  TargetDeviceSnapshot,
 } from '../../contracts/src/types';
-
-/**
- * A device snapshot that has an observed state-of-charge bag. On this narrowed
- * shape `stateOfCharge` is a guaranteed `DeviceStateOfChargeSnapshot` (never
- * `undefined`), so consumers read the bag without re-handling the absent case.
- * NB the bag's own `status`/`percent` semantics are NOT proven by the guard —
- * consumers still gate on `status === 'fresh'` etc. after narrowing.
- */
-export type StateOfChargeObservedSnapshot = TargetDeviceSnapshot & StateOfChargeObservedFields;
 
 /**
  * Type guard: the device has an observed state-of-charge bag. The
  * observer-snapshot twin of the plan layer's `isEvPlanDevice.stateOfCharge`
  * read — a consumer must test/narrow through this before reading
  * `stateOfCharge`; the field is omitted from the base snapshot types, so this
- * guard (or an already-narrowed value) is the only typed way to reach it.
+ * guard (or an already-narrowed value) is the only typed way to reach it. On
+ * the narrowed shape `stateOfCharge` is a guaranteed
+ * `DeviceStateOfChargeSnapshot` (never `undefined`), though the bag's own
+ * `status`/`percent` semantics are NOT proven — consumers still gate on
+ * `status === 'fresh'` etc. after narrowing.
  *
  * Generic over the carrier so it narrows `TargetDeviceSnapshot`,
  * `DecoratedDeviceSnapshot`, and probe-widened owner shapes alike. Lives in

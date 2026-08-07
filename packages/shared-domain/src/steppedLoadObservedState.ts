@@ -6,19 +6,14 @@ import type {
 } from '../../contracts/src/types';
 
 /**
- * A device snapshot that is a stepped load. On this narrowed shape
- * `steppedLoadProfile` is a guaranteed `SteppedLoadProfile` (never `undefined`),
- * so consumers read it (and the optional `targetPowerConfig`) without re-handling
- * the absent case.
- */
-export type SteppedLoadSnapshot<T> = T & SteppedLoadDescriptorFields;
-
-/**
  * Type guard: the snapshot is a stepped load. The snapshot-shaped twin of
  * `lib/plan`'s `isSteppedLoadDevice` (which narrows plan-layer devices) — a
  * consumer must test/narrow through this before reading `steppedLoadProfile` /
  * `targetPowerConfig`; the fields are omitted from the base snapshot types, so
  * this guard (or an already-narrowed value) is the only typed way to reach them.
+ * On the narrowed shape `steppedLoadProfile` is a guaranteed
+ * `SteppedLoadProfile` (never `undefined`), so consumers read it (and the
+ * optional `targetPowerConfig`) without re-handling the absent case.
  *
  * `steppedLoadProfile.model` is always `'stepped_load'`, so presence is the kind:
  * the `=== 'stepped_load'` check matches `isSteppedLoadDevice` exactly and stays
@@ -34,17 +29,11 @@ export const isSteppedLoadSnapshot = <T extends SteppedLoadDescriptorProbe>(
 );
 
 /**
- * A device snapshot that has reported a step. On this narrowed shape
- * `reportedStepId` is a guaranteed `string`.
- */
-export type ReportedStepSnapshot<T> = T & ReportedStepObservedFields;
-
-/**
- * Type guard: the snapshot carries an observed `reportedStepId`. PRESENCE-ONLY,
- * like the other observed-state guards: a non-stepped device never reports a step,
- * and a stepped device carries it only once a native/flow report lands, so a
- * consumer narrows on presence rather than device kind. Browser-safe and generic
- * over the carrier.
+ * Type guard: the snapshot carries an observed `reportedStepId`, a guaranteed
+ * `string` on the narrowed shape. PRESENCE-ONLY, like the other observed-state
+ * guards: a non-stepped device never reports a step, and a stepped device
+ * carries it only once a native/flow report lands, so a consumer narrows on
+ * presence rather than device kind. Browser-safe and generic over the carrier.
  */
 export const hasObservedReportedStep = <T extends ReportedStepObservedProbe>(
   snapshot: T,

@@ -176,12 +176,6 @@ export const scaleRawCostToDisplay = (rawCost: number, divisor: number): number 
   rawCost / (Number.isFinite(divisor) && divisor > 0 ? divisor : 1)
 );
 
-// Display currency for the week roll-up — `unit` is the suffix (`kr`), `divisor`
-// scales the raw minor-unit `totalCost` sum to that currency. A small bundle so
-// the heading producer passes one cost param (mirrors the settings-UI
-// `CostDisplay`, which the shared-domain layer may not import).
-export type WeekCostDisplay = { unit: string; divisor: number };
-
 // Recording-era price-display default for history entries that predate the
 // persisted `costDisplay` field. Every such entry accumulated `totalCost` in
 // the default Norwegian Nordpool scheme — raw øre summed per hour — so labelling
