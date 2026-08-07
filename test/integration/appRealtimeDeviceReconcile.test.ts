@@ -148,6 +148,7 @@ describe('appRealtimeDeviceReconcile', () => {
         { deviceId: 'dev-1', deviceName: 'Heater 1', capabilityId: 'onoff' },
         { deviceId: 'dev-2', deviceName: 'Heater 2', capabilityId: 'onoff' },
       ],
+      writtenDeviceIds: ['dev-1', 'dev-2'],
     });
   });
 
@@ -173,7 +174,32 @@ describe('appRealtimeDeviceReconcile', () => {
       event: 'realtime_observation_rebuild_applied',
       deviceCount: 1,
       devices: [{ deviceId: 'dev-2', deviceName: 'Heater 2', capabilityId: 'onoff' }],
+      writtenDeviceIds: ['dev-2'],
     });
+  });
+
+  // An observation from A can legitimately make the planner leave A alone and
+  // actuate B. Intersecting the log with the batch lost that write from the
+  // record entirely — the rebuild acted and nothing said so.
+  it('logs a write to a device outside the triggering batch, without charging it', async () => {
+    const state = createRealtimeDeviceReconcileState();
+    const structuredLog = createInfoLoggerMock();
+    queueEvent(state, { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+
+    await flushRealtimeDeviceReconcileQueue({
+      state,
+      queueKey: QUEUE_KEY,
+      requestRebuild: vi.fn().mockResolvedValue(['dev-99']),
+      structuredLog,
+    });
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'realtime_observation_rebuild_applied',
+      writtenDeviceIds: ['dev-99'],
+    }));
+    // dev-99 never reported anything, so it is not fighting us — no strike.
+    expect(state.circuitState.get('dev-99')).toBeUndefined();
+    expect(state.circuitState.get('dev-1')).toBeUndefined();
   });
 
   it('does not log or record attempts when the rebuild wrote nothing', async () => {

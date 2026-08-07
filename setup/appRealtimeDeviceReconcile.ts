@@ -164,20 +164,31 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   // Stamp before awaiting: the floor is about how often we START a rebuild, and
   // a long rebuild must not earn an immediate second one on completion.
   state.lastRebuildAtMsByQueue.set(queueKey, Date.now());
-  const writtenDeviceIds = new Set(await requestRebuild());
-  if (writtenDeviceIds.size === 0) return;
-  // Only the devices this rebuild actually wrote to are charged. A coalesced
-  // batch routinely contains devices the planner looked at and left alone.
-  const actuatedEvents = eligibleEvents.filter((event) => writtenDeviceIds.has(event.deviceId));
-  if (actuatedEvents.length === 0) return;
+  const writtenDeviceIds = await requestRebuild();
+  if (writtenDeviceIds.length === 0) return;
+
+  // The log and the breaker answer different questions, so they take different
+  // sets. An observation from device A can legitimately make the planner leave A
+  // alone and actuate device B instead — B is a real write and belongs in the
+  // log, but B never reported anything, so charging it a strike would suppress a
+  // device that was not fighting us. Intersecting both, as this first did, loses
+  // the log line entirely for exactly that case: the rebuild acted and nothing
+  // said so.
+  const chargeableEvents = eligibleEvents.filter(
+    (event) => writtenDeviceIds.includes(event.deviceId),
+  );
   (structuredLog ?? moduleLogger).info({
     event: 'realtime_observation_rebuild_applied',
-    deviceCount: actuatedEvents.length,
-    devices: actuatedEvents.map((event) => toRealtimeReconcileEventSummary(event)),
+    deviceCount: writtenDeviceIds.length,
+    devices: chargeableEvents.map((event) => toRealtimeReconcileEventSummary(event)),
+    // Everything the rebuild wrote, including devices outside this batch.
+    writtenDeviceIds,
   });
+
+  if (chargeableEvents.length === 0) return;
   recordRealtimeDeviceReconcileAttempts({
     state,
-    events: actuatedEvents,
+    events: chargeableEvents,
     now: Date.now(),
     structuredLog,
   });
