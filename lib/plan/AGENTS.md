@@ -48,11 +48,21 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   redesign it, not permission to write the clause. See
   `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
-- **The planner knows nothing about drift.** It plans from current device states and current
-  whole-home usage; whether observed still disagrees with a plan is
-  `lib/executor/executorConvergence.ts`, and `no-plan-to-executor` keeps that import out of every
-  `lib/plan` module except `planEngine.ts` — the composition root, and the single seam through which
-  the rest of the planner asks the executor anything.
+- **The planner does not JUDGE drift; it does still ask one question about it.** Whether observed
+  disagrees with intent is computed in `lib/executor/executorConvergence.ts` (whole-plan) and
+  `lib/executor/planExecutionDrift.ts` (per device), and
+  `no-plan-to-executor` keeps that import out of every `lib/plan` module except `planEngine.ts` —
+  the composition root, and the single seam through which the rest of the planner asks the executor
+  anything.
+
+  Be precise about what that buys, because the honest version is weaker than "the planner knows
+  nothing about drift": `planServiceRebuild.maybeApplyPlanChanges` still READS a drift verdict
+  (through `planEngine.hasExecutionWorkOutstanding`) to decide whether a rebuild that changed no
+  decisions should actuate anyway. That is a cost optimization, not a decision — the plan it would
+  apply is the one just built from these very observations — but it is a drift question on the
+  planner's side of the wall, and the boundary is about imports until it is gone. Removing it means
+  actuating unconditionally on every non-dry-run rebuild and letting the executor no-op per device;
+  see the P2 in `TODO.md`.
 
   A device that moved on its own is an ordinary input, so the honest answers include *"put it back"*
   and *"leave it there and shed something else instead"*. The second one is why this matters: a lane

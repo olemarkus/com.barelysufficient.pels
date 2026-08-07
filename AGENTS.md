@@ -76,7 +76,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 
 | Module | Purpose |
 |--------|---------|
-| `lib/plan/` | Core planning engine: builds device plans and owns when to rebuild. Knows nothing about drift |
+| `lib/plan/` | Core planning engine: builds device plans and owns when to rebuild. Does not judge drift — see `lib/plan/AGENTS.md` for the one question it does ask |
 | `lib/device/` | Observed device state and actuation transport (`DeviceTransport`) |
 | `lib/observer/` | Observation freshness/trust, idle classification, pending binary commands |
 | `lib/executor/` | Executes desired-state transitions (pending/retry/materialization) |
