@@ -566,6 +566,60 @@ describe('executorConvergence stepped device drift', () => {
     // to a device on every power report — the device-command hysteresis failure mode.
     // Both cases used to be pinned at the PlanService level through the reconcile
     // lane; the predicate is their real owner.
+    // REGRESSION (Codex review, P0): an already-shed stepped load that raises
+    // ITSELF one rung must still be seen as work outstanding.
+    //
+    // The deleted reconcile lane caught this because it compared the COMMITTED
+    // plan's `selectedStepId` ('low') against the live step ('max'). The rebuild
+    // lane cannot: the fresh plan copies the live step into `selectedStepId`, so
+    // comparing the two is comparing a value against itself. With
+    // `plannedState: 'shed'` also disqualifying `hasStableSteppedLoadStepActuation`
+    // and the action signature excluding `selectedStepId`, every gate reads false
+    // and the device stays above its planned shed step — over the cap, which is
+    // the failure class this whole train exists to remove.
+    it('treats a shed device sitting above its desired step as drift', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        plannedState: 'shed',
+        shedAction: 'set_step',
+        // What the rebuild produces: current = the live step, desired = the shed target.
+        currentState: 'on',
+        selectedStepId: 'max',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-1',
+        name: 'Tank',
+        binaryControl: { on: true },
+        selectedStepId: 'max',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
+    });
+
+    it('does not treat a shed device already at its desired step as drift', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        plannedState: 'shed',
+        shedAction: 'set_step',
+        currentState: 'on',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-1',
+        name: 'Tank',
+        binaryControl: { on: true },
+        selectedStepId: 'low',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
     it('does not treat a power-only change as drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'on',

@@ -148,9 +148,15 @@ const buildOwnershipGenerationOperations = (params: {
     ),
     reconcilePreparedOwnershipGeneration: async (sampleRevision) => {
       let aborted = false;
+      // A full rebuild can FAIL where the decision-free reconcile it replaced
+      // could only no-op, and `rebuildPlanFromCache` contains planner errors and
+      // resolves `{failed:true}` instead of throwing. Treat that as
+      // not-converged, or the generation finalizes and side effects flush as
+      // though the prepared actions had been applied.
+      let failed: boolean;
       const endPreparedReconcile = beginPreparedOwnershipReconcile(sampleRevision);
       try {
-        await planService.rebuildPlanFromCache(
+        const outcome = await planService.rebuildPlanFromCache(
           'home_ownership_generation_prepared',
           () => {
             const current = getStableSampleRevision();
@@ -160,11 +166,13 @@ const buildOwnershipGenerationOperations = (params: {
           },
           () => { aborted = true; },
         );
+        failed = outcome.failed;
       } finally {
         endPreparedReconcile();
       }
       const stable = getStableSampleRevision();
       const current = !aborted
+        && !failed
         && !isTornDown()
         && stable.state === 'stable'
         && stable.revision === sampleRevision;

@@ -197,7 +197,7 @@ function hasExecutableSteppedLoadExecutionDrift(
   if (hasBinaryStateDrift({ expectedBinaryState, observed, pendingBinary: runtime.pendingBinary })) {
     return true;
   }
-  return hasSteppedStepDrift(observed, plannedCurrentStepId);
+  return hasSteppedStepDrift(intent, observed, runtime, plannedCurrentStepId);
 }
 
 function hasBinaryStateDrift(params: {
@@ -244,13 +244,51 @@ function isPendingBinaryCommandMatchingExpected(
   return (pending.desired ? 'on' : 'off') === expectedBinaryState;
 }
 
+/**
+ * Two different comparisons, because `plannedCurrentStepId` means different
+ * things depending on where the plan came from.
+ *
+ * For an UNEXECUTED `set_step` shed the question is "is the device at the step
+ * the plan wants?", so compare the observed step against the DESIRED one.
+ * Comparing against `plannedCurrentStepId` cannot answer it on the rebuild path:
+ * that field is the producer-resolved effective step, copied from the same live
+ * read the observation came from, so it equals the observed step by
+ * construction. The deleted reconcile lane got away with it only because its
+ * plan was the older COMMITTED one, whose step still held the pre-drift value.
+ *
+ * Without this, an already-shed stepped load that raises itself a rung stops
+ * converging: the step axis compares a value against itself, the binary axis
+ * sees the expected `on`, `hasStableSteppedLoadStepActuation` disqualifies
+ * `plannedState: 'shed'`, and the action signature ignores `selectedStepId`.
+ * Every gate reads false and the device sits above its shed step — over the cap.
+ *
+ * Otherwise (a keep, or a shed on another axis) the observed-vs-effective
+ * comparison is still the right staleness check.
+ */
 function hasSteppedStepDrift(
+  intent: ExecutableSteppedLoadIntent,
   observed: ExecutableObservedDeviceState,
+  runtime: DriftRuntimeState,
   plannedCurrentStepId: string | undefined,
 ): boolean {
   const observedStepId = observed.steppedLoad?.stepId;
   if (observedStepId === undefined) return false;
+  const desiredShedStepId = resolveUnexecutedShedStepId(intent);
+  if (desiredShedStepId !== undefined) {
+    // A step command already in flight owns the gap; re-reporting drift here
+    // would re-fire every cycle until it settles.
+    if (runtime.pendingStep.kind === 'pending') return false;
+    return desiredShedStepId !== observedStepId;
+  }
   return plannedCurrentStepId !== observedStepId;
+}
+
+/** The step a `set_step` shed wants, when that shed has not materialized yet. */
+function resolveUnexecutedShedStepId(
+  intent: ExecutableSteppedLoadIntent,
+): string | undefined {
+  if (intent.purpose !== 'shed' || intent.shedAction !== 'set_step') return undefined;
+  return intent.desired.stepId ?? intent.desired.plannedStepId;
 }
 
 function isSteppedBinaryTransitionInFlight(
