@@ -10,14 +10,12 @@
         "flowCards/**/*.ts",
         "setup/**/*.ts",
         "scripts/**/*.mjs",
-        "test/**/*.test.ts",
-        "test/**/*.integration.test.ts"
+        "widgets/*/src/**/*.ts",
+        "docs/.vitepress/**/*.{ts,mts}"
       ],
       "project": [
         "**/*.{ts,mts,cts}",
-        "!packages/**",
-        "!widgets/**",
-        "!docs/**"
+        "!packages/**"
       ]
     },
     "packages/contracts": {
@@ -29,9 +27,7 @@
       ]
     },
     "packages/shared-domain": {
-      "entry": [
-        "src/**/*.ts"
-      ],
+      "entry": [],
       "project": [
         "src/**/*.ts"
       ]
@@ -43,22 +39,6 @@
       ],
       "project": [
         "src/**/*.{ts,tsx}"
-      ]
-    },
-    "widgets/*": {
-      "entry": [
-        "src/**/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts"
-      ]
-    },
-    "docs": {
-      "entry": [
-        ".vitepress/**/*.{ts,mts}"
-      ],
-      "project": [
-        ".vitepress/**/*.{ts,mts}"
       ]
     }
   },
@@ -75,7 +55,6 @@
   "ignore": [
     "test/mocks/echarts-subpath-shim.ts",
     "test/mocks/homey.ts",
-    "vitest-env.d.ts",
     "scripts/lib/change-impact.d.mts",
     "scripts/lib/run-parallel.d.mts",
     "scripts/with-validation-lock.d.mts"
@@ -87,8 +66,7 @@
     "lint-staged"
   ],
   "ignoreBinaries": [
-    "homey",
-    "zsh"
+    "homey"
   ],
   "ignoreExportsUsedInFile": true,
   "rules": {

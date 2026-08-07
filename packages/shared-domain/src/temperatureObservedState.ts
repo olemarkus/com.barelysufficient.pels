@@ -1,23 +1,17 @@
 import type {
-  TargetDeviceSnapshot,
   TemperatureObservedFields,
   TemperatureObservedProbe,
 } from '../../contracts/src/types';
-
-/**
- * A device snapshot that has an observed current temperature. On this narrowed
- * shape `currentTemperature` is a guaranteed `number` (never `undefined`) and,
- * by the producer invariant, finite — so consumers read it without re-handling
- * the absent case or re-checking `Number.isFinite`.
- */
-export type TemperatureObservedSnapshot = TargetDeviceSnapshot & TemperatureObservedFields;
 
 /**
  * Type guard: the device has an observed current temperature. The
  * observer-snapshot twin of the plan layer's `isTemperaturePlanDevice` — a
  * consumer must test/narrow through this before reading `currentTemperature`;
  * the field is omitted from the base snapshot types, so this guard (or an
- * already-narrowed value) is the only typed way to reach it.
+ * already-narrowed value) is the only typed way to reach it. On the narrowed
+ * shape `currentTemperature` is a guaranteed `number` (never `undefined`) and,
+ * by the producer invariant, finite — so consumers read it without re-handling
+ * the absent case or re-checking `Number.isFinite`.
  *
  * Generic over the carrier so it narrows `TargetDeviceSnapshot`,
  * `DecoratedDeviceSnapshot`, and probe-widened owner shapes alike. Lives in

@@ -474,7 +474,6 @@ const resolveEvCarExceptionLabel = (
   return null;
 };
 
-export { capitalize as capitalizeStepLabel };
 // Re-exported for existing importers; the definition now lives in
 // `steppedStepLabel.ts` so `planReasonFormatting.ts` can use it without a cycle.
 export { formatStepDisplayLabel } from './steppedStepLabel';

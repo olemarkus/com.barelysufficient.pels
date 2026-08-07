@@ -8,7 +8,10 @@
 //   Daily budget       → `Off` (muted) while the feature is disabled
 //   Electricity prices → `Awaiting prices` (warn) while no price covers now
 //
-// Strings live here so a runtime log can quote the exact chip a user saw.
+// Only the Simulation chip's label is dynamic, so only its strings live here
+// (a runtime log can then quote the exact chip a user saw). The Daily-budget
+// and Electricity-prices chips carry fixed text in the hub markup
+// (`settings-ui/public/index.html`) and the sync module only flips `hidden`.
 import { resolvePriceLevelChip } from './priceLevelChips';
 import type { SimulationPosture } from './simulationPosture';
 
@@ -22,11 +25,6 @@ export const SETTINGS_HUB_SIMULATION_ON_CHIP = 'On';
  * word (chip rules: chips stay short, the pages carry the detail).
  */
 export const SETTINGS_HUB_SIMULATION_PARTLY_ON_CHIP = 'Partly on';
-export const SETTINGS_HUB_BUDGET_OFF_CHIP = 'Off';
-// The Electricity-prices panel's own no-usable-price wording (its "Right now"
-// tier renders `Awaiting prices` in exactly this state) — the chip reuses it
-// so the hub teaser and the panel tell one story.
-export const SETTINGS_HUB_PRICES_AWAITING_CHIP = 'Awaiting prices';
 
 // The price feed counts as broken when the current price level is neither a
 // chip-worthy exception (cheap/expensive) nor an explicit `normal` — i.e. the

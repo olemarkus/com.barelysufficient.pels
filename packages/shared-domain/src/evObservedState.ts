@@ -1,13 +1,5 @@
-import type { EvObservedFields, EvObservedProbe, TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { EvObservedFields, EvObservedProbe } from '../../contracts/src/types';
 import { isEvDevice } from './commandableNow';
-
-/**
- * A device snapshot that is BOTH an EV charger AND has a resolved plug-state.
- * On this narrowed shape `evChargingState` is a guaranteed `EvChargingState`
- * (never `undefined`), so consumers branch on a known value without re-handling
- * the absent case.
- */
-export type EvObservedSnapshot = TargetDeviceSnapshot & EvObservedFields;
 
 /**
  * Type guard: the device is an EV charger whose plug-state has been observed
@@ -15,7 +7,10 @@ export type EvObservedSnapshot = TargetDeviceSnapshot & EvObservedFields;
  * trusted state yet). The observer-snapshot twin of `isEvPlanDevice` — a
  * consumer must test/narrow through this before reading `evChargingState`;
  * the field is omitted from the base snapshot types, so this guard (or an
- * already-narrowed value) is the only typed way to reach it.
+ * already-narrowed value) is the only typed way to reach it. On the narrowed
+ * shape `evChargingState` is a guaranteed `EvChargingState` (never
+ * `undefined`), so consumers branch on a known value without re-handling the
+ * absent case.
  *
  * Generic over the carrier so it narrows `TargetDeviceSnapshot`,
  * `DecoratedDeviceSnapshot`, and probe-widened owner shapes alike. Lives in

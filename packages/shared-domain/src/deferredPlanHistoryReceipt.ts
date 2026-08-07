@@ -97,14 +97,8 @@ const MINUTE_MS = 60 * 1000;
 // sibling modules so this file stays under the 500-LOC eslint cap. Re-export
 // their public symbols here so every consumer (runtime + the smart_tasks
 // widget) keeps importing from this single entry point.
-export {
-  groupPlanHistoryByIsoWeek,
-  type PlanHistoryWeekGroup,
-} from './deferredPlanHistoryIsoWeekArchive';
-export {
-  resolvePlanHistory7DayHitRateStrip,
-  type PlanHistory7DayHitRateStrip,
-} from './deferredPlanHistory7DayStrip';
+export { groupPlanHistoryByIsoWeek } from './deferredPlanHistoryIsoWeekArchive';
+export { resolvePlanHistory7DayHitRateStrip } from './deferredPlanHistory7DayStrip';
 
 // ─── Receipt timeline (Succeeded shape) ───────────────────────────────────────
 

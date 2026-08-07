@@ -4,18 +4,13 @@ import type {
 } from '../../contracts/src/types';
 
 /**
- * A device snapshot that has an observed measured-power reading. On this narrowed
- * shape `measuredPowerKw` is a guaranteed `number` (never `undefined`), so
- * consumers read it without re-handling the absent case. `measuredPowerObservedAtMs`
- * stays optional — the staleness-sensitive consumer checks it independently.
- */
-export type MeasuredPowerObservedSnapshot<T> = T & MeasuredPowerObservedFields;
-
-/**
  * Type guard: the device has an observed measured-power reading. A consumer must
  * test/narrow through this before reading `measuredPowerKw`; the fields are
  * omitted from the base snapshot types, so this guard (or an already-narrowed
- * value) is the only typed way to reach them.
+ * value) is the only typed way to reach them. On the narrowed shape
+ * `measuredPowerKw` is a guaranteed `number` (never `undefined`), while
+ * `measuredPowerObservedAtMs` stays optional — the staleness-sensitive consumer
+ * checks it independently.
  *
  * Generic over the carrier so it narrows `TargetDeviceSnapshot`,
  * `DecoratedDeviceSnapshot`, and probe-widened owner shapes alike. Lives in

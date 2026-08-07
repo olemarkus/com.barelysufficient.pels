@@ -1,3 +1,11 @@
+// TWIN FILE — the browser-safe counterpart of `lib/utils/dateUtils.ts`
+// (runtime). The settings UI consumes this copy because
+// `.dependency-cruiser.cjs`'s `no-settings-ui-to-runtime` rule (error) forbids
+// settings-ui → `lib/**`, so the duplication is structural. The copies are kept
+// in step BY HAND — no sync script, no CI check — and have already drifted (the
+// runtime copy caches its `Intl.DateTimeFormat` instances; this one carries
+// `formatDayFirstInTimeZone`). An export with no importer in one copy carries
+// `@public` there so knip does not report it; do not delete it from one side.
 const timeZoneOffsetErrorLogged = new Set<string>();
 const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -25,6 +33,7 @@ export function truncateToUtcHour(timestamp: number): number {
     );
 }
 
+/** @public — no importer in this copy; see the twin note at the top of the file. */
 export function getHourBucketKey(nowMs: number = Date.now()): string {
     const hourStart = truncateToUtcHour(nowMs);
     return new Date(hourStart).toISOString();
@@ -187,6 +196,7 @@ export function formatTimeInTimeZone(date: Date, options: Intl.DateTimeFormatOpt
     return date.toLocaleTimeString([], { timeZone, ...options });
 }
 
+/** @public — no importer in this copy; see the twin note at the top of the file. */
 export function getHourStartInTimeZone(date: Date, timeZone: string): number {
     const { year, month, day, hour } = getZonedParts(date, timeZone);
     const utcHour = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
