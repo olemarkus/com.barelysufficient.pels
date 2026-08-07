@@ -946,6 +946,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
   public isCurrentHourCheap = (): boolean => this.priceCoordinator.isCurrentHourCheap();
+  // Both flags from ONE combined-series build; the series is uncached, so asking
+  // the two predicates separately rebuilt it twice per plan cycle.
+  public getCurrentHourPriceLevel = (): { cheap: boolean; expensive: boolean } => (
+    this.priceCoordinator.getCurrentHourPriceLevel()
+  );
   public isCurrentHourExpensive = (): boolean => this.priceCoordinator.isCurrentHourExpensive();
   public getCurrentHourPriceInfo = (): string => this.priceCoordinator.getCurrentHourPriceInfo();
   storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {

@@ -61,8 +61,7 @@ const makeBuilder = (params: {
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),
-    isCurrentHourCheap: () => false,
-    isCurrentHourExpensive: () => false,
+    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() }),
     getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).

@@ -9,7 +9,6 @@ import {
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
-  NORWAY_PRICE_MODEL,
   PRICE_SCHEME,
 } from '../utils/settingsKeys';
 import {
@@ -49,11 +48,19 @@ import {
   getCurrentMonthUsageKwh,
   getHourlyUsageEstimateKwh,
 } from './priceServiceNorgespris';
-import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
+import {
+  buildCombinedHourlyPricesNorway,
+  readNorwaySchemeSettings,
+  type NorwaySchemeSettings,
+} from './priceServiceNorway';
 import { applyExportPrices, readExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
-import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
+import {
+  getCurrentHourPrice,
+  isCurrentHourAtLevel,
+  resolveCurrentHourPriceLevel,
+} from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { PriceDataStore } from './priceDataStore';
@@ -156,7 +163,7 @@ export default class PriceService {
       await this.refreshHomeyEnergyPrices(forceRefresh);
       return;
     }
-    const priceArea = this.getPriceArea();
+    const priceArea = this.norwaySchemeSettings.priceArea;
     const cachedArea = this.priceDataStore.readSpotPriceArea();
     const today = new Date();
     const dates = getSpotPriceDates(today);
@@ -200,7 +207,7 @@ export default class PriceService {
       this.sinks.debugStructured({ event: 'grid_tariff_refresh_skipped', reason: 'non_norway_scheme' });
       return;
     }
-    const settings = this.getGridTariffSettings();
+    const settings = this.norwaySchemeSettings;
     if (!settings.organizationNumber) {
       this.sinks.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
       return;
@@ -335,9 +342,8 @@ export default class PriceService {
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
-    const priceArea = this.getPriceArea();
-    const gridTariffSettings = this.getGridTariffSettings();
-    const norwayPriceModel = this.getNorwayPriceModel();
+    const settings = this.norwaySchemeSettings;
+    const { priceArea, norwayPriceModel } = settings;
     const timeZone = this.getTimeZone();
     const currentMonthKey = getDateKeyInTimeZone(new Date(), timeZone).slice(0, 7);
     return buildCombinedHourlyPricesNorway({
@@ -345,8 +351,8 @@ export default class PriceService {
       gridTariffData: this.priceDataStore.readNettleie(),
       providerSurchargeIncVat: this.getNumberSetting('provider_surcharge', 0),
       priceArea,
-      countyCode: gridTariffSettings.countyCode,
-      tariffGroup: gridTariffSettings.tariffGroup,
+      countyCode: settings.countyCode,
+      tariffGroup: settings.tariffGroup,
       norwayPriceModel,
       monthUsageKwh: norwayPriceModel === 'norgespris' ? getCurrentMonthUsageKwh(this.homey, this.getTimeZone()) : 0,
       hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris' ? getHourlyUsageEstimateKwh(this.homey) : 0,
@@ -453,6 +459,30 @@ export default class PriceService {
     return this.isCurrentHourAtLevel('expensive');
   }
 
+  /**
+   * Both current-hour classifications from a SINGLE combined-series build.
+   *
+   * `getCombinedHourlyPrices()` is uncached — every call re-reads ~12 settings,
+   * runs one `Intl.DateTimeFormat.formatToParts` per spot hour, and walks the
+   * whole grid-tariff table (~25 ms on a Homey Pro). Callers that need both
+   * flags — the plan builder's per-cycle price level and the status writer —
+   * were paying that twice for one question. Use this instead of calling
+   * `isCurrentHourCheap()` and `isCurrentHourExpensive()` back to back.
+   *
+   * A cache inside `getCombinedHourlyPrices` would be the bigger win, but it is
+   * not currently safe: `price_area` and the `nettleie_*` keys are written by
+   * the settings UI and are NOT on any `updateCombinedPrices()` invalidation
+   * path (see `lib/utils/settingsHandlers.ts`), so the live rebuild is what
+   * keeps a price-area or grid-operator change visible. See `TODO.md`.
+   */
+  getCurrentHourPriceLevel(): { cheap: boolean; expensive: boolean } {
+    return resolveCurrentHourPriceLevel({
+      prices: this.getCombinedHourlyPrices(),
+      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
+      minDiff: this.getNumberSetting('price_min_diff_ore', 0),
+    });
+  }
+
   getCurrentHourPriceInfo(): string {
     const current = getCurrentHourPrice(this.getCombinedHourlyPrices());
     if (!current) return 'price unknown';
@@ -461,27 +491,8 @@ export default class PriceService {
       : formatFlowPriceInfo(current, this.getPriceUnitLabel());
   }
 
-  private getPriceArea(): string {
-    const priceAreaSetting = this.getSettingValue('price_area');
-    return typeof priceAreaSetting === 'string' && priceAreaSetting ? priceAreaSetting : 'NO1';
-  }
-
-  private getGridTariffSettings(): { countyCode: string; organizationNumber: string | null; tariffGroup: string } {
-    const countySetting = this.getSettingValue('nettleie_fylke');
-    const countyCode = typeof countySetting === 'string' && countySetting ? countySetting : '03';
-    const organizationSetting = this.getSettingValue('nettleie_orgnr');
-    const organizationNumber = typeof organizationSetting === 'string' && organizationSetting
-      ? organizationSetting
-      : null;
-    const tariffGroupSetting = this.getSettingValue('nettleie_tariffgruppe');
-    const tariffGroup = typeof tariffGroupSetting === 'string' && tariffGroupSetting
-      ? tariffGroupSetting
-      : 'Husholdning';
-    return { countyCode, organizationNumber, tariffGroup };
-  }
-
-  private getNorwayPriceModel(): 'stromstotte' | 'norgespris' {
-    return this.getSettingValue(NORWAY_PRICE_MODEL) === 'norgespris' ? 'norgespris' : 'stromstotte';
+  private get norwaySchemeSettings(): NorwaySchemeSettings {
+    return readNorwaySchemeSettings({ getRaw: (key) => this.getSettingValue(key) });
   }
 
   private isCurrentHourAtLevel(level: 'cheap' | 'expensive'): boolean {

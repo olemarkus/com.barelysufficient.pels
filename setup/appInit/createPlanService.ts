@@ -102,8 +102,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // Policy closures from the scope (main: live ctx reads, byte-identical;
     // sub-home bundles: constant false — capacity-only status, no price levels
     // driving plan behavior).
-    isCurrentHourCheap: scope.isCurrentHourCheap,
-    isCurrentHourExpensive: scope.isCurrentHourExpensive,
+    getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
     // Scope-owned combined-price read: main reads via the combined-prices reader
     // (so a legacy V1 payload is migrated to V2 on first read; otherwise
     // hasPrices()/hasCombinedPrices() would return false during the post-upgrade

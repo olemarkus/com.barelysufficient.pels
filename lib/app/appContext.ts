@@ -112,8 +112,15 @@ export type AppContext = {
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
   getCurrentPriceLevel: () => PriceLevel;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  /**
+   * Both current-hour price flags from ONE combined-series build — see
+   * `PriceService.getCurrentHourPriceLevel`. Replaces the separate
+   * `isCurrentHourCheap`/`isCurrentHourExpensive` wiring fields: every consumer
+   * through this context wanted both, and the two predicates rebuilt the
+   * uncached series once each. The single-flag accessors still exist on
+   * `PriceCoordinator`/`PriceService` for callers that genuinely need one.
+   */
+  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   areFlowBackedCardsAvailable: () => boolean;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;

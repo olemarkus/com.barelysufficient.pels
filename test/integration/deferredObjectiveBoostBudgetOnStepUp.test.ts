@@ -257,8 +257,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => true,
     getPriceOptimizationSettings: () => ({}),
-    isCurrentHourCheap: () => false,
-    isCurrentHourExpensive: () => false,
+    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
     getPowerTracker: () => powerTracker,
     // Daily budget ON: the per-hour budget slice is the binding soft limit.
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(nowMs),

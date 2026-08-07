@@ -3701,12 +3701,28 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       thermostat target control was silently off (the never-written-key bug fixed by `f163bd912`), no device
       reached the price branch, and `buildMs` fell from ~1290 ms to ~40 ms; `plan_rebuild_status_ms` (2 price
       calls, unconditional) stayed flat at ~92 ms across both boundaries.
-      *Still open here:* memoize `PriceService.getCombinedHourlyPrices` itself — 16 call sites still pay the
-      full rebuild, including the ~92 ms `plan_rebuild_status_ms` stage — plus the per-device
-      `getPriorityForDevice`/`getShedBehavior` memo and the no-objectives decoration skip above. Needs a
-      cache key over the hour plus every settings input the series reads, invalidated at the single
-      `updateCombinedPrices()` funnel; a naive hour-scoped cache would serve stale prices after a settings
-      change.
+      *Update (2026-08-07), second pass:* the two remaining hot callers each built the series **twice** —
+      `isCurrentHourCheap()` and `isCurrentHourExpensive()` are separate predicates, and `getPriceLevelFlags`
+      already computes both from one pass. `PriceService.getCurrentHourPriceLevel()` now answers both from a
+      single build, used by `PlanBuilder.resolveCurrentHourPriceLevel` and `PlanStatusWriter.compute`, so a
+      rebuild went from 4 series builds to 2 (~50 ms). Pinned by
+      `test/integration/priceLevelSingleSeriesBuild.test.ts`.
+      *Memoizing `getCombinedHourlyPrices` is DECIDED AGAINST for now — do not attempt it as specified.* An
+      invalidation-based cache is unsafe today: `price_area`, `nettleie_fylke`, `nettleie_orgnr`, and
+      `nettleie_tariffgruppe` are written by the settings UI (`packages/settings-ui/src/ui/priceConfig.ts`)
+      but have **no** entry in the `lib/utils/settingsHandlers.ts` routing table, so nothing calls
+      `updateCombinedPrices()` when they change. The live rebuild on every read is precisely what keeps a
+      price-area or grid-operator change visible; a cache invalidated at that funnel would serve stale
+      prices. Precondition for revisiting: route those four keys through `refreshPriceDerivedState` first
+      (a behaviour change of its own — it makes them trigger a plan rebuild), then the funnel is complete
+      enough to invalidate against. Remaining cost without it is ~2 builds (~50 ms) per rebuild.
+      *Still open here:* `PriceOptimizer.applyPriceOptimization` (`lib/price/priceOptimizer.ts`) still spends
+      up to 3 series builds per pass — `isCurrentHourCheap()`, `isCurrentHourExpensive()` (both reached
+      whenever `getCurrentLevel()` is not already CHEAP/EXPENSIVE), and its own `getCombinedHourlyPrices()`.
+      Same fix as above, but it needs `getCurrentHourPriceLevel` added to the `priceStatus` port, so it was
+      left out of the hot-path change. Low value on its own: the optimizer runs hourly, not per rebuild
+      (~75 ms/hour). Plus the per-device `getPriorityForDevice`/`getShedBehavior` memo and the no-objectives
+      decoration skip above.
 - [ ] **Add a CPU-pressure circuit breaker that throttles plan rebuilds before Homey's watchdog fires.**
       *Persona:* every persona — the app surviving CPU pressure instead of crash-looping.
       *Hypothesis:* Homey's `cpuwarn` signal (`lib/diagnostics/resourceWarnings.ts`) is logged but never

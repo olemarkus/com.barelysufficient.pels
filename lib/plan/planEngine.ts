@@ -90,8 +90,9 @@ export type PlanEngineDeps = {
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  // Both current-hour price flags from ONE combined-series build (the series is
+  // uncached; two predicate calls rebuilt it twice).
+  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   // Producer-resolved inferred curtailed-surplus term (kW) for the surplus
   // allocator's pool (zero-export homes). Wired at setup from the curtailment
   // estimator (`lib/solar/curtailmentSurplus.ts`) as a flat late-bound getter;
@@ -207,8 +208,7 @@ export class PlanEngine {
       getModeDeviceTargets: deps.getModeDeviceTargets,
       getPriceOptimizationEnabled: deps.getPriceOptimizationEnabled,
       getPriceOptimizationSettings: deps.getPriceOptimizationSettings,
-      isCurrentHourCheap: deps.isCurrentHourCheap,
-      isCurrentHourExpensive: deps.isCurrentHourExpensive,
+      getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getInferredSurplusKw: deps.getInferredSurplusKw,
       getPowerTracker: deps.getPowerTracker,
       getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,

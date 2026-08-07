@@ -86,8 +86,9 @@ export type HomeScope = {
   // Main binds live ctx reads; sub-home scopes bind disabled constants so
   // their engines collapse to pure capacity control.
   getPriceOptimizationEnabled: () => boolean;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
+  // Both current-hour price flags from ONE combined-series build; see
+  // `PriceService.getCurrentHourPriceLevel`.
+  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   /** Inferred curtailed-surplus term for the surplus allocator; null disables. */
   getInferredSurplusKw: () => number | null;
   // Policy stragglers lifted onto the scope so a sub-home's capacity-only engine
@@ -242,8 +243,7 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       ctx.homey.settings.set(homeScopedSettingsKey(PELS_STATUS, homeId), status)
     ),
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
-    isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
+    getCurrentHourPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     // Late-bound closure: the curtailment estimator is wired post-startup
     // (`wireCurtailmentSurplus`), after the engine exists — until then the
     // context getter reads null (fail-closed).

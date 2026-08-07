@@ -62,8 +62,7 @@ describe('Price level flow cards', () => {
   it('emits price_level_changed with state when level flips', () => {
     const app = createApp();
     (app as any).priceCoordinator = {
-      isCurrentHourCheap: () => true,
-      isCurrentHourExpensive: () => false,
+      getCurrentHourPriceLevel: () => ({ cheap: true, expensive: false }),
     };
     (app as any).registerFlowCards();
     mockHomeyInstance.settings.set('combined_prices', {
@@ -82,8 +81,7 @@ describe('Price level flow cards', () => {
       planEngine: {} as any,
       getPlanDevices: () => [],
       getCapacityDryRun: () => true,
-      isCurrentHourCheap: () => true,
-      isCurrentHourExpensive: () => false,
+      getCurrentHourPriceLevel: () => ({ cheap: true, expensive: false }),
       getCombinedPrices: () => mockHomeyInstance.settings.get('combined_prices'),
       getLastPowerUpdate: () => null,
     });

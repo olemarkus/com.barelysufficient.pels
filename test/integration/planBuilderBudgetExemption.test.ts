@@ -133,8 +133,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
+      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 3,
@@ -202,8 +201,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
+      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 1.8,
@@ -250,8 +248,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
+      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({
         buckets: {
           [lastSampleHourIso]: 9,
