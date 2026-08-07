@@ -14,8 +14,8 @@ type ComparableTextReason = ComparablePlanReasonBase & {
 
 export type ComparablePlanReason =
   | ComparablePlanReasonBase
-  | (ComparablePlanReasonBase & { detail: string | null })
-  | (ComparablePlanReasonBase & { targetName: string | null })
+  | (ComparablePlanReasonBase & { detail: string | null; reserveHolderName?: string | null })
+  | (ComparablePlanReasonBase & { targetName: string | null; reserveHolderName?: string | null })
   | (ComparablePlanReasonBase & {
     kind: 'recent_pels_shed' | 'recent_pels_restore' | 'usage_step_down';
   })
@@ -59,6 +59,16 @@ export type ComparablePlanReason =
 // `test/unit/deviceOverview.test.ts`. The card still shows a current number
 // because `normalizePlanMeta` rounds `totalKw`/`softLimitKw` to 0.1 kW and any
 // change there already pushes the whole plan to the UI.
+//
+// `reserveHolderName` — the OTHER display-only annotation `finalizeCeilingReason`
+// attaches — is folded in, and the difference is the churn, not the fact that
+// both are display-only. The exclusion above is earned by a number that moves
+// with `softLimitKw − totalKw` every cycle; a holder's NAME changes only when the
+// reserving device changes or its reservation lifts, which is a real transition
+// worth one ring-buffer row and worth a `plan_updated`. Leaving it out meant a
+// card could keep "Waiting so X can start" — or fail to start showing it — until
+// something unrelated moved the signature. Do not "restore consistency" by
+// dropping it to match `shortfallKw`; they are excluded/included on frequency.
 type DetailComparableReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.keep }
@@ -133,16 +143,27 @@ function isDetailComparableReason(reason: DeviceReason): reason is DetailCompara
     || reason.code === PLAN_REASON_CODES.awaitingSolarSurplus;
 }
 
+// Folds the holder in only when the reason actually carries it, so a reason
+// without a reservation annotation keeps its previous comparable shape byte for
+// byte — an always-present `reserveHolderName: undefined` would change every
+// existing signature the first time this shipped and flush every ring buffer.
+function withReserveHolder<T extends ComparablePlanReason>(comparable: T, reason: DeviceReason): T {
+  if (!('reserveHolderName' in reason) || reason.reserveHolderName === undefined) return comparable;
+  return { ...comparable, reserveHolderName: reason.reserveHolderName };
+}
+
 export function buildComparableDeviceReason(reason: DeviceReason | undefined): ComparablePlanReason {
   if (!reason) return { code: PLAN_REASON_CODES.none };
   if (isCodeOnlyReason(reason)) return { code: reason.code };
-  if (isDetailComparableReason(reason)) return { code: reason.code, detail: reason.detail };
+  if (isDetailComparableReason(reason)) {
+    return withReserveHolder({ code: reason.code, detail: reason.detail }, reason);
+  }
 
   switch (reason.code) {
     case PLAN_REASON_CODES.swapPending:
     case PLAN_REASON_CODES.swappedOut:
     case PLAN_REASON_CODES.reservedForStart:
-      return { code: reason.code, targetName: reason.targetName };
+      return withReserveHolder({ code: reason.code, targetName: reason.targetName }, reason);
     case PLAN_REASON_CODES.headroomCooldown:
       return { code: reason.code, kind: reason.kind };
     case PLAN_REASON_CODES.restoreNeed:

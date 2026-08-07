@@ -9,6 +9,7 @@ import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  formatReservedForStartStatus,
 } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 
@@ -265,11 +266,9 @@ function formatTargetNameReasonUserFacing(reason: TargetNameReason): string {
         ? `Making room for higher-priority device (${reason.targetName})`
         : 'Making room for higher-priority device';
     case PLAN_REASON_CODES.reservedForStart:
-      // Not "Limited": nothing was switched off to build this reservation. The device is already
-      // off and PELS is simply keeping the power free until the scheduled device has started.
-      return reason.targetName
-        ? `Waiting so ${reason.targetName} can start`
-        : 'Waiting so a scheduled device can start';
+      // Shared with the card ladder's `reserveHolderName` branch — same situation,
+      // same sentence (`planStateLabels.ts`).
+      return formatReservedForStartStatus(reason.targetName);
     default:
       return reason.targetName
         ? `Limited so ${reason.targetName} can run`

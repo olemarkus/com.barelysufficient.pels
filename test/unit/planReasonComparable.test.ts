@@ -110,6 +110,49 @@ describe('buildComparableDeviceReason', () => {
   // Same rule the repo already enforces for `shortfall` via CODE_ONLY_REASONS
   // ("ignores shortfall jitter in overview transition signatures",
   // test/unit/deviceOverview.test.ts).
+  // The holder is display-only like `shortfallKw`, and IS folded in — the
+  // exclusion below is earned by churn, not by the display-only label. A holder
+  // changes only when the reserving device changes or its reservation lifts, so
+  // it is a real transition; leaving it out let a card keep (or fail to start
+  // showing) "Waiting so X can start" until something unrelated moved.
+  describe('the reservation holder IS part of the comparable', () => {
+    it('distinguishes a reserve-blocked hold from a plain one', () => {
+      const blocked = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater',
+      });
+      const plain = buildComparableDeviceReason({ code: PLAN_REASON_CODES.capacity, detail: null });
+      expect(blocked).not.toEqual(plain);
+    });
+
+    it('moves when the holder changes', () => {
+      const first = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'Water heater',
+      });
+      const second = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.capacity, detail: null, reserveHolderName: 'EV charger',
+      });
+      expect(first).not.toEqual(second);
+    });
+
+    it('folds into swap comparables too', () => {
+      const blocked = buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.swappedOut, targetName: 'Heater', reserveHolderName: 'Water heater',
+      });
+      expect(blocked).toEqual({
+        code: PLAN_REASON_CODES.swappedOut, targetName: 'Heater', reserveHolderName: 'Water heater',
+      });
+    });
+
+    // Absent must stay byte-identical to the pre-existing shape, or shipping
+    // this field would have flipped every signature once and flushed the rings.
+    it('leaves the shape untouched when no reservation is involved', () => {
+      expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.capacity, detail: null }))
+        .toEqual({ code: PLAN_REASON_CODES.capacity, detail: null });
+      expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.swappedOut, targetName: 'Heater' }))
+        .toEqual({ code: PLAN_REASON_CODES.swappedOut, targetName: 'Heater' });
+    });
+  });
+
   describe('display-only shortfall stays out of the comparable', () => {
     it('compares a daily-budget hold on detail alone, whatever kW it carries', () => {
       const withGap = buildComparableDeviceReason({

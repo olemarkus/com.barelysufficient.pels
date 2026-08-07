@@ -18,9 +18,10 @@ import {
   shouldNormalizeReason,
 } from './planReasonsShared';
 import {
-  resolveCeilingShortfallKw,
+  resolveCeilingShortfall,
   type CeilingShortfallInputs,
 } from './planReasonShortfall';
+import { resolveReserveHolderName } from './admission';
 import { isSwapTargetPendingReason } from '../planContract/planDecisionSemantics';
 
 // Public entry point. The shed-temperature hold decision table and the plan
@@ -281,7 +282,7 @@ function finalizeCeilingReason(params: {
     dev, shedReasonFresh, hourlyBudgetExhausted, softLimitSource, capacityBreached,
   });
   if (hourlyBudgetExhausted || folded.code === PLAN_REASON_CODES.hourlyBudget) {
-    return withReason(stripShortfall(folded));
+    return withReason(stripCycleAnnotations(folded));
   }
 
   if (!admissionInputs || !SHORTFALL_ATTACH_REASON_CODES.has(folded.code)) {
@@ -292,18 +293,55 @@ function finalizeCeilingReason(params: {
   // turn-off, so they are absent from the swap surface and the computed gap
   // would state the full plain deficit that the in-flight swap is about to
   // cover. No number is honest for the one or two cycles this shape lives.
+  //
+  // MUST stay ABOVE the attach below. This return does not strip, so it is safe
+  // only because nothing can have annotated this shape yet — the guard runs
+  // first, so a null-target `swapPending` never acquires a `reserveHolderName`
+  // to go stale. Move it below the attach and the carried-holder bug this
+  // function strips for everywhere else reappears here alone.
   if (isSwapTargetPendingReason(folded)) return withReason(folded);
-  const shortfallKw = resolveCeilingShortfallKw({ dev, inputs: admissionInputs });
-  if (shortfallKw === null) return withReason(stripShortfall(folded));
-  return withReason(attachShortfall(folded, shortfallKw));
+  const resolution = resolveCeilingShortfall({ dev, inputs: admissionInputs });
+  // Admission declined ONLY because the power is promised to a device about to
+  // start. No kW is honest (the gap would be the HOLDER's quantity), but the
+  // holder's name is — so the card can say who, instead of falling to the bare
+  // waiting line. The reason CODE deliberately does not change to
+  // `reservedForStart`: that code builds no actuation intent, and this stage
+  // cannot tell a materialized shed from an in-flight one. See `ReserveHolder`
+  // in `planReasonSemanticsCore.ts` for the full account.
+  if (resolution.kind === 'blocked_by_reserve') {
+    return withReason(attachReserveHolder(
+      stripCycleAnnotations(folded),
+      resolveReserveHolderName({ dev, reserves: admissionInputs.headroomReserves }),
+    ));
+  }
+  if (resolution.kind === 'no_gap') return withReason(stripCycleAnnotations(folded));
+  return withReason(attachShortfall(stripCycleAnnotations(folded), resolution.shortfallKw));
 }
 
-// Inverse of `attachShortfall` for the states where no number is honest this
-// cycle: a carried `shortfallKw` from an earlier rejection must not outlive the
-// arithmetic that would no longer produce it.
-function stripShortfall(reason: DeviceReason): DeviceReason {
-  if (!('shortfallKw' in reason) || reason.shortfallKw === undefined) return reason;
-  const { shortfallKw: _dropped, ...rest } = reason;
+// Inverse of BOTH attach helpers: the per-cycle display annotations a ceiling
+// hold may carry. Neither may outlive the arithmetic that produced it — a
+// `shortfallKw` minted at an earlier rejection would pin a stale number on the
+// card while the pace moves, and a `reserveHolderName` from a reserve-blocked
+// cycle would keep saying "Waiting so X can start" after X's reservation ended,
+// hiding the kW the current cycle actually resolved (the card ladder reads the
+// holder first, as the more specific cause).
+//
+// Stripping BOTH on every path, then re-attaching at most one, is what makes
+// their mutual exclusivity structural instead of a convention two branches have
+// to remember.
+//
+// Object identity is preserved when there is nothing to drop: `withReason`
+// compares against `dev.reason` to avoid minting a new object, and reason
+// byte-stability is what keeps a rebuild storm from re-emitting an unchanged
+// plan (`awaitingSolarSurplus` in `planReasonSemanticsCore.ts`, f1550cea).
+function stripCycleAnnotations(reason: DeviceReason): DeviceReason {
+  const hasShortfall = 'shortfallKw' in reason && reason.shortfallKw !== undefined;
+  const hasHolder = 'reserveHolderName' in reason && reason.reserveHolderName !== undefined;
+  if (!hasShortfall && !hasHolder) return reason;
+  const { shortfallKw: _kw, reserveHolderName: _holder, ...rest } = reason as DeviceReason & {
+    shortfallKw?: number | null;
+    reserveHolderName?: string | null;
+  };
   return rest as DeviceReason;
 }
 
@@ -341,6 +379,23 @@ function resolveHourlyFold(params: {
   return daily
     ? { code: PLAN_REASON_CODES.dailyBudget, detail: null }
     : { code: PLAN_REASON_CODES.capacity, detail: null };
+}
+
+// Sibling of `attachShortfall` for the reserve carve-out. Same four carrier
+// variants, same per-variant narrowing, and the same display-only contract — the
+// two fields are mutually exclusive because the branch that attaches this one is
+// precisely the branch where no gap figure exists.
+function attachReserveHolder(reason: DeviceReason, reserveHolderName: string | null): DeviceReason {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.capacity:
+    case PLAN_REASON_CODES.dailyBudget:
+      return { ...reason, reserveHolderName };
+    case PLAN_REASON_CODES.swapPending:
+    case PLAN_REASON_CODES.swappedOut:
+      return { ...reason, reserveHolderName };
+    default:
+      return reason;
+  }
 }
 
 // Per-variant narrowing for the spread — the union type only accepts

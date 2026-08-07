@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildCeilingShortfallInputs,
-  resolveCeilingShortfallKw,
+  resolveCeilingShortfall,
 } from '../../lib/plan/planReasonShortfall';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
@@ -39,11 +39,20 @@ const inputs = (params: {
   restoredThisCycle: params.restoredThisCycle ?? new Set(),
 });
 
-describe('resolveCeilingShortfallKw', () => {
+// Unwraps to the kW for the arithmetic cases below. The two no-number outcomes
+// (`blocked_by_reserve` vs `no_gap`) are asserted on `kind` directly rather than
+// through this helper: distinguishing them is the whole reason the resolver
+// returns a discriminated result instead of `number | null`.
+const gapKw = (params: Parameters<typeof resolveCeilingShortfall>[0]): number | null => {
+  const resolution = resolveCeilingShortfall(params);
+  return resolution.kind === 'gap' ? resolution.shortfallKw : null;
+};
+
+describe('resolveCeilingShortfall', () => {
   it('computes the admission gap FLOOR − (available − needed − RESERVE)', () => {
     // available 0.5, needed 1.2 → postReserveMargin = 0.5 − 1.2 − 0.25 = −0.95
     // → gap = 0.25 − (−0.95) = 1.2 kW, exact on the display grid.
-    expect(resolveCeilingShortfallKw({
+    expect(gapKw({
       dev: heldDevice(),
       inputs: inputs({ capacityAvailableKw: 0.5 }),
     })).toBe(1.2);
@@ -52,32 +61,35 @@ describe('resolveCeilingShortfallKw', () => {
   it('ceils to the 0.1 kW display step, never floors', () => {
     // available 1.16 → gap = 0.25 − (1.16 − 1.2 − 0.25) = 0.54 → renders 0.6:
     // rounding down would invite freeing 0.5 kW and still being short.
-    expect(resolveCeilingShortfallKw({
+    expect(gapKw({
       dev: heldDevice(),
       inputs: inputs({ capacityAvailableKw: 1.16 }),
     })).toBe(0.6);
   });
 
-  it('returns null when admission would pass — the hold is not a power gap', () => {
+  it('reports no_gap when admission would pass — the hold is not a power gap', () => {
     // available 2.0 → postReserveMargin 0.55 ≥ 0.25 floor.
-    expect(resolveCeilingShortfallKw({
+    expect(resolveCeilingShortfall({
       dev: heldDevice(),
       inputs: inputs({ capacityAvailableKw: 2.0 }),
-    })).toBeNull();
+    })).toEqual({ kind: 'no_gap' });
   });
 
   // The reserve carve-out: raw power suffices but is promised to a more
-  // important device about to start. A gap "through" the reservation would
-  // state the holder's block as this device's number — the card names the
-  // holder instead (`reservedForStart` copy), so no kW here.
-  it('returns null when blocked only by a startup reservation', () => {
-    expect(resolveCeilingShortfallKw({
+  // important device about to start. A gap "through" the reservation would state
+  // the holder's block as this device's number, so no kW here — but the outcome
+  // must stay DISTINGUISHABLE from `no_gap`, because the caller writes a
+  // different line for it (the holder's name, `finalizeCeilingReason`). Merging
+  // the two into a bare `null` is what left those cards on the generic waiting
+  // line whenever the restore lane had not run.
+  it('reports blocked_by_reserve, not no_gap, when only a startup reservation blocks', () => {
+    expect(resolveCeilingShortfall({
       dev: heldDevice(),
       inputs: inputs({
         capacityAvailableKw: 2.0,
         headroomReserves: [{ deviceId: 'other', deviceName: 'Water heater', priority: 1, kw: 1.5 }],
       }),
-    })).toBeNull();
+    })).toEqual({ kind: 'blocked_by_reserve' });
   });
 
   // Per-axis discipline (`RestoreHeadroomLedger.availableFor`): a budget-exempt
@@ -85,12 +97,12 @@ describe('resolveCeilingShortfallKw', () => {
   // manufacture a gap for it — while a non-exempt sibling reads min(cap, budget).
   it('reads the capacity axis for a budget-exempt device and the min for others', () => {
     const axes = { capacityAvailableKw: 2.0, budgetAvailableKw: 0.1 };
-    expect(resolveCeilingShortfallKw({
+    expect(gapKw({
       dev: heldDevice({ budgetExempt: true }),
       inputs: inputs(axes),
     })).toBeNull();
     // gap = 0.25 − (0.1 − 1.2 − 0.25) = 1.6 kW
-    expect(resolveCeilingShortfallKw({
+    expect(gapKw({
       dev: heldDevice({ budgetExempt: false }),
       inputs: inputs(axes),
     })).toBe(1.6);
@@ -114,28 +126,28 @@ describe('resolveCeilingShortfallKw', () => {
       // Plain gap: 0.25 − (0.5 − 1.2 − 0.25) = 1.2. Swap potential:
       // 0.5 + 1.0 = 1.5 → effective 1.2 after the 0.3 swap reserve →
       // post = 1.2 − 1.2 − 0.25 = −0.25 → gap = 0.5 kW.
-      expect(resolveCeilingShortfallKw({
+      expect(gapKw({
         dev: heldDevice(),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim()] }),
       })).toBe(0.5);
     });
 
     it('returns null when the swap alone would admit the device', () => {
-      expect(resolveCeilingShortfallKw({
+      expect(gapKw({
         dev: heldDevice(),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ measuredPowerKw: 2.5 })] }),
       })).toBeNull();
     });
 
     it('ignores a HIGHER-priority running device — it cannot be swapped out', () => {
-      expect(resolveCeilingShortfallKw({
+      expect(gapKw({
         dev: heldDevice(),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ priority: 1 })] }),
       })).toBe(1.2);
     });
 
     it('ignores a budget-exempt victim for a non-exempt device (axis mismatch rule)', () => {
-      expect(resolveCeilingShortfallKw({
+      expect(gapKw({
         dev: heldDevice({ budgetExempt: false }),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ budgetExempt: true })] }),
       })).toBe(1.2);
@@ -147,7 +159,7 @@ describe('resolveCeilingShortfallKw', () => {
   // never be stored on a reason.
   it('only ever returns multiples of 0.1 kW', () => {
     for (const availableKw of [0.03, 0.51, 0.777, 1.049, 1.16]) {
-      const gap = resolveCeilingShortfallKw({
+      const gap = gapKw({
         dev: heldDevice(),
         inputs: inputs({ capacityAvailableKw: availableKw }),
       });

@@ -1580,6 +1580,51 @@ program) remain deferred.*
       framing when `powerKnown` is false. Source: pels-runtime-reality on the 2026-08-01
       budget-hold re-attribution. [P2]
 
+- [ ] **A stale reservation holder outlives a power-unknown window on the card.**
+      *Persona:* owner (`notes/personas.md`) reading a held device card during a meter hiccup.
+      *Hypothesis:* `finalizeCeilingReason` (`lib/plan/planReasons.ts`) returns early without
+      stripping the per-cycle annotations when `admissionInputs` is absent — which is whenever
+      `!context.powerKnown` (`planBuilderMaterialization.ts`, the `powerKnown` gate). A device
+      annotated `reserveHolderName` during a reserve-blocked cycle therefore keeps asserting
+      "Waiting so X can start" for as long as the meter read stays stale, and because the card
+      ladder reads the holder before the gap, it also suppresses the kW that would otherwise
+      show. This matches the documented rule for the sibling `shortfallKw` field ("No new
+      numbers while unknown; holds keep whatever the last known cycle attached"), which is why
+      it was left as-is rather than diverged from in the PR that introduced the field.
+      *Why it's needed:* the two fields go stale differently. A stale `shortfallKw` shows a wrong
+      NUMBER inside a correctly-shaped line; a stale holder makes a wrong CAUSAL claim — it names
+      a specific device as the blocker when PELS currently cannot know that. Decide whether the
+      holder should be exempt from the keep-what-was-attached rule. Fix if so is one line: strip
+      the annotations on the `!admissionInputs` branch, accepting the bare waiting line while
+      power is unknown. Source: adversarial review on the reserve-holder PR, 2026-08-07. [P2]
+
+- [ ] **A reserve-blocked hold counts as capacity starvation when the restore lane did not run.**
+      *Persona:* owner (`notes/personas.md`) watching a device that is held, but not by the
+      hard cap.
+      *Hypothesis:* `planDecisionSemantics.ts` (§ `resolveStarvationSuppression`, the
+      `reservedForStart` branch) states the intended classification outright — a startup
+      reservation is "a deliberate, user-granted, time-bounded policy
+      (`HEADROOM_RESERVE_MAX_MS`) … not capacity starvation" — and pauses the clock. But that
+      only happens when the restore/hold lane actually evaluated the device and set the
+      `reservedForStart` CODE. When it did not (fresh shed, over-pace, cooldown),
+      `finalizeCeilingReason` leaves the ceiling code in place, so the identical physical
+      state *counts* toward starvation instead of pausing. The card copy for both routes was
+      unified 2026-08-07 (the holder's name rides along as a display field), which fixed what
+      the owner reads but deliberately did NOT touch the classification.
+      *Why it's needed:* the same state should not classify two ways depending on which lane
+      ran; a device can be flagged held-back — and offered the "Let it run now" rescue — for a
+      reservation that is about to lift on its own within 15 minutes.
+      *Why it was not fixed with the copy:* the honest code, `reservedForStart`, is in
+      `RESTORE_ADMISSION_HOLD_REASON_CODES` and builds no actuation intent. Minting it at
+      reason normalization would cancel an in-flight shed command's retry while the device
+      keeps drawing inside the reserved block —
+      `test/integration/planHeadroomReserve.test.ts` § "keeps asserting the floor while the
+      shed has not materialized" is the guard. Fix direction: thread an
+      `observedAtShedFloor`-equivalent into `finalizeCeilingReason` (today the predicate is
+      temperature-only, `planReasonsHoldDecisions.ts` ~259, so binary/stepped devices need one
+      too) and apply the same guarded rewrite the restore lane already does. Source: bare
+      "Waiting to resume" path audit, 2026-08-07. [P2]
+
 - [ ] **Test fixtures still describe plan reasons as prose.** The regex layer left production on
       2026-08-07 — `packages/shared-domain/src/planReasonParsing.ts` is gone and the grammar now
       lives in `test/utils/planReasonFixtureParser.ts`, so it can no longer bend production types

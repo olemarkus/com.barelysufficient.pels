@@ -4,6 +4,7 @@ import { formatStarvationDurationLabel, formatStarvationReason } from './planSta
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  formatReservedForStartStatus,
 } from './planStateLabels';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
@@ -81,6 +82,23 @@ const readReasonCode = (reason: unknown): string | undefined => {
   if (typeof reason !== 'object' || reason === null) return undefined;
   const code = (reason as { code?: unknown }).code;
   return typeof code === 'string' && KNOWN_REASON_CODES.has(code) ? code : undefined;
+};
+
+// The display-only holder name a ceiling hold carries when admission declined
+// solely on a startup reservation (`ReserveHolder`, `planReasonSemanticsCore.ts`).
+// `undefined` means "no reservation is the blocker" and the ladder falls through
+// to the gap; `null` means one IS, but the holder could not be named — a real
+// state the generic sentence covers, so the two must stay distinguishable.
+//
+// Read defensively for the same reason `readReasonCode` is: the reason arrives
+// here untyped across the settings-UI snapshot boundary, so a non-string on this
+// field is treated as absent rather than interpolated into the sentence.
+const readReserveHolderName = (reason: unknown): string | null | undefined => {
+  if (typeof reason !== 'object' || reason === null) return undefined;
+  if (!('reserveHolderName' in reason)) return undefined;
+  const name = (reason as { reserveHolderName?: unknown }).reserveHolderName;
+  if (name === null) return null;
+  return typeof name === 'string' && name !== '' ? name : undefined;
 };
 
 // `increase` is the stepped card's variant: the device is running but was denied
@@ -195,6 +213,19 @@ export const resolveHeldCardReasonLine = (params: {
   }
 
   if (isCeilingHoldReasonCode(code)) {
+    // A named reservation is the MORE SPECIFIC cause, so it is read before the
+    // gap — same shape as the hourly branch above. The two never co-occur: the
+    // reserve carve-out is exactly the branch where no gap figure is honest, so
+    // `finalizeCeilingReason` attaches one or the other.
+    //
+    // It also beats the starvation fallback. A device held long enough to be
+    // flagged, whose actual blocker is a named reservation, is better served by
+    // "Waiting so Water heater can start" than the vaguer "Waiting for available
+    // power" — and this line takes NO starved decoration: it is a cause line
+    // like the smart-task and solar holds, not a `<stem> — <need>` line, so
+    // "Held 2 h — waiting so X can start" never forms.
+    const reserveHolderName = readReserveHolderName(reason);
+    if (reserveHolderName !== undefined) return formatReservedForStartStatus(reserveHolderName);
     const shortfallKw = resolveRestoreShortfallKw(reason);
     return shortfallKw === null ? fallback : formatShortfallLine(shortfallKw, verb, starvation);
   }

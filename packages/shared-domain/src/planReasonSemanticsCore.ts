@@ -68,6 +68,26 @@ export type CountdownReasonTiming = {
 // overview transition signature (see `buildComparableDeviceReason`).
 type AdmissionShortfall = { shortfallKw?: number | null };
 
+// The device whose startup reservation is standing in this device's way, when
+// admission declined for THAT reason and no other. Mutually exclusive with
+// `shortfallKw` by construction: the reserve carve-out is precisely the branch
+// where no gap figure is honest (a gap through the reservation would state the
+// holder's quantity as this device's), so `finalizeCeilingReason` attaches one
+// or the other, never both.
+//
+// DISPLAY-ONLY, and the distinction matters. The honest reason CODE here is
+// `reservedForStart`, but that code is in `RESTORE_ADMISSION_HOLD_REASON_CODES`
+// — it builds no actuation intent. Only the restore/hold lane may switch to it,
+// because only that lane knows whether the shed has actually materialized
+// (`observedAtShedFloor`, `lib/plan/planReasonsRestoreGating.ts`); swapping it in
+// while a floor command is still in flight would stop that command being retried
+// while the device keeps drawing inside the reserved block
+// (`test/integration/planHeadroomReserve.test.ts`). Reason normalization runs on
+// every shed device without that fact, so it carries the holder's NAME beside an
+// unchanged, still-actuating ceiling code. The card reads the same sentence
+// either way; the executor and the starvation classifier see no change.
+type ReserveHolder = { reserveHolderName?: string | null };
+
 export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.none }
   | { code: typeof PLAN_REASON_CODES.keep; detail: string | null }
@@ -86,12 +106,12 @@ export type DeviceReason =
   // `shortfallKw` these variants carry is attached post hoc at reason
   // normalization (`finalizeCeilingReason`), computed from THIS device's own
   // need against the current pace.
-  | ({ code: typeof PLAN_REASON_CODES.swapPending; targetName: string | null } & AdmissionShortfall)
-  | ({ code: typeof PLAN_REASON_CODES.swappedOut; targetName: string | null } & AdmissionShortfall)
+  | ({ code: typeof PLAN_REASON_CODES.swapPending; targetName: string | null } & AdmissionShortfall & ReserveHolder)
+  | ({ code: typeof PLAN_REASON_CODES.swappedOut; targetName: string | null } & AdmissionShortfall & ReserveHolder)
   // Never a carrier: the hour's kWh is spent, so no amount of freed power admits
   // the device before the hour rolls over — the card renders time-based copy.
   | { code: typeof PLAN_REASON_CODES.hourlyBudget; detail: string | null }
-  | ({ code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null } & AdmissionShortfall)
+  | ({ code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number | null; headroomKw: number | null }
   | ({ code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number } & CountdownReasonTiming)
@@ -134,7 +154,7 @@ export type DeviceReason =
     swapTargetName: string | null;
   }
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string | null }
-  | ({ code: typeof PLAN_REASON_CODES.capacity; detail: string | null } & AdmissionShortfall)
+  | ({ code: typeof PLAN_REASON_CODES.capacity; detail: string | null } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }

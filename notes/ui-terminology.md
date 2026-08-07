@@ -248,6 +248,7 @@ shared by all three card variants):
 | Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
 | Held because this hour's energy budget is spent | `Waiting to resume — this hour's budget is spent` (held back: `Held 2 h — this hour's budget is spent`) |
+| Held because power is reserved for a named device about to start | `Waiting so Water heater can start` (no elapsed-hold stem — it is a cause, not a need) |
 | Held on power, no shortfall resolved (rare) | `Waiting to resume` |
 | Long held back, no shortfall | `Waiting for available power` |
 | Hold that is NOT about power | its own cause (below) |
@@ -292,6 +293,15 @@ hours` (smart task), `Waiting for solar surplus`, `Turned off elsewhere — turn
 it on to resume`, `Waiting so {device} can start` (startup reservation),
 `Holding at 6 A — cannot increase while 2 devices are limited` (stepped fairness),
 and the countdown lines (`Waiting before resuming (50s)`).
+
+`Waiting so {device} can start` reaches a card by TWO routes, and they render
+identically on purpose — one situation, one sentence
+(`formatReservedForStartStatus`, `packages/shared-domain/src/planStateLabels.ts`).
+The restore/hold lane sets the `reservedForStart` reason code outright; reason
+normalization instead attaches the holder's name beside an unchanged ceiling code,
+because that stage cannot tell a materialized shed from an in-flight one and
+`reservedForStart` builds no actuation intent. The owner never sees the
+difference; only the executor and the starvation classifier do.
 
 **Retired 2026-08-02 — do not reintroduce on a card:** `Turned off by PELS`,
 `Lowered by PELS`, `Limited by the hard cap`, `Limited by today's daily budget`,
