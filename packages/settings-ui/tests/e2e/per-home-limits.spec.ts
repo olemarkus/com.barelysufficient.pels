@@ -523,10 +523,12 @@ test('a device pin overrides zone membership in a scoped devices read', async ({
 test('a scoped power read gates the area solar flag on the power source', async ({ page }) => {
   // Pins the other half of the scoped-read stub seam against its producer
   // (`powerPayloadForHome`, setup/settingsUiApi.ts): the ui_power solar flag
-  // needs BOTH a solarpanel member AND the homey_energy source, because the
-  // flow power boundary rejects negative watts, so the solar buckets can never
-  // fill and the Usage Solar card must not promise data. An ungated stub would
-  // let a scoped Usage spec render and validate a card production hides.
+  // reports false for a SUB-HOME regardless of its members: a sub-home bundle is
+  // built without the PV taps, so its generation buckets can never fill and the
+  // Usage Solar card must not promise data. An ungated stub would let a scoped
+  // Usage spec render and validate a card production hides. (The gate used to
+  // read the power source, on the since-retired premise that the flow boundary
+  // rejects negative watts.)
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
   await seedRentalArea(page);

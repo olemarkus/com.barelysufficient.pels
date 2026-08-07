@@ -10,6 +10,7 @@
 // mount stays structurally empty.
 
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
+import { hasRecordedAnyExport } from '../../../shared-domain/src/solar/exhibitedExport.ts';
 import { resolveSolarMoneyToday } from '../../../shared-domain/src/solar/solarMoney.ts';
 import { normalizeCombinedPrices } from './combinedPrices.ts';
 import { formatCost } from './dailyBudgetCost.ts';
@@ -139,7 +140,14 @@ export const resolveSolarUsageCardProps = (params: {
     // Gate passed but the displayed 7-day window has no data — a tracked-solar
     // home with no accounting yet, or one whose solar history is all older
     // than the window.
-    return { layout: 'gathering', today: null, history: [], money: null, showBatteryExportNote: false };
+    return {
+      layout: 'gathering',
+      today: null,
+      history: [],
+      money: null,
+      showBatteryExportNote: false,
+      showNoExportMeasuredNote: false,
+    };
   }
   const layout = hasGenerationEvidence(generationBuckets, rows) ? 'full' : 'export-only';
   const today = rows.find((row) => row.dateKey === todayKey) ?? null;
@@ -156,6 +164,14 @@ export const resolveSolarUsageCardProps = (params: {
     // including a pure-battery-export day where production is zero.
     showBatteryExportNote: layout === 'full'
       && rows.some((row) => row.exportedKWh > row.generatedKWh),
+    // Only where the claim is actually being made: the full layout is the one
+    // that renders "Used at home · 100%" and prices it. An export-only home has
+    // export by definition, and the gathering tier asserts nothing yet.
+    // ANY recorded export clears the note: a single negative sample proves the
+    // home's net can express export, which is the only thing the note is about.
+    // Shared with the runtime posture gate, so the card and the surplus engine
+    // agree on what counts as evidence.
+    showNoExportMeasuredNote: layout === 'full' && !hasRecordedAnyExport(tracker),
   };
 };
 

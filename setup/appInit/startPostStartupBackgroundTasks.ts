@@ -52,6 +52,8 @@ export const startPostStartupBackgroundTasks = (
   );
   // eslint-disable-next-line functional/immutable-data
   ctx.getCurtailedSurplusKw = () => curtailment.getCurtailedSurplusKw(Date.now());
+  // eslint-disable-next-line functional/immutable-data
+  ctx.canContributeCurtailmentSurplus = () => curtailment.canContributeSurplus();
   deps.backgroundTasks.startDeferredObjectiveLifecycleClock(
     createDeferredObjectiveLifecycleEmitter(ctx),
   );

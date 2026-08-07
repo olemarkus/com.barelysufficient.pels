@@ -305,6 +305,13 @@ export type AppContext = {
   // the budget-price PV inputs.
   getCurtailedSurplusKw?: () => number | null;
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
+  // Standing capability, not the current term: "could an inferred curtailment
+  // term ever arrive for this home?". Gates the `surplusOnly` posture via
+  // `resolveSurplusPoolReachable` — a device stamped on a pool that can never
+  // open is held OFF forever. Absent (pre-wiring) reads as false; the estimator
+  // persists the underlying latch, so this is a brief boot window rather than a
+  // nightly one.
+  canContributeCurtailmentSurplus?: () => boolean;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

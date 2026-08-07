@@ -294,6 +294,27 @@ export type SettingsUiDevicesPayload = {
   // net export, also get the control. Source-blind: both power sources report signed net,
   // so a flow home exhibits export on exactly the same evidence as a Homey Energy one.
   hasExhibitedExport?: boolean;
+  // True when this home's solar-surplus pool can EVER be non-zero — it has
+  // recorded ANY grid export, or its curtailment estimator can contribute
+  // (`resolveSurplusPoolReachable`). Gates the per-device "Use solar surplus"
+  // toggle, which is not merely inert without it: the runtime declines to stamp
+  // the posture on an unreachable pool (else the standing hold keeps the device
+  // OFF forever), so a toggle offered here would switch on and do nothing.
+  //
+  // Its export bar is strictly WEAKER than `hasExhibitedExport`'s 1 kWh
+  // materiality floor, and deliberately so: the question is whether the feed can
+  // express export at all, which one negative sample settles. Do not collapse
+  // the two flags together — the floor would black this out for the first ~20
+  // minutes of a home's first sunny afternoon.
+  //
+  // Distinct from the two flags above, and all three are needed. Solar presence
+  // and export history unlock the export-PRICE section, which needs no pool at
+  // all; only this one says the surplus ENGINE can act. A flow home whose Flow
+  // predates signed watts has solar, no export, and no reachable pool.
+  //
+  // Optional for the same reason as its neighbours: an `unavailable` scoped read
+  // omits it rather than fabricating `false`.
+  surplusPoolReachable?: boolean;
   // Present only on a `?homeId=` read; absent keeps the whole-home payload
   // byte-identical. `unavailable` means the empty `devices: []` is the empty
   // shape, NOT "this home manages nothing" (the two solar flags are then

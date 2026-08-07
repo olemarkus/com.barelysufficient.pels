@@ -296,6 +296,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   // main pipeline's field-initializer tap below can reference them on `this`.
   public getCurtailedSurplusKw?: () => number | null;
   public recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
+  public canContributeCurtailmentSurplus?: () => boolean;
   public defaultComputeDynamicSoftLimit: (() => number) | undefined = undefined;
   public lastKnownPowerKw: Record<string, number> = {};
   public expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};

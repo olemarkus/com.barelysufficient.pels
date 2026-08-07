@@ -43,6 +43,7 @@ const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnly
   plainBinaryControlModel: true,
   controllable: true,
   managed: true,
+  surplusPoolReachable: true,
   ...overrides,
 });
 
@@ -67,6 +68,14 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
     ['not a plain binary control model', { plainBinaryControlModel: false }],
     ['power-limit control off', { controllable: false }],
     ['unmanaged', { managed: false }],
+    // Restored guard. This row was deleted when the `meteredPowerSource` gate
+    // came out, and the trap it had been holding shut re-opened immediately: a
+    // device stamped `surplusOnly` in a home whose pool can never open is held
+    // OFF forever by `resolveSurplusHold` — no time-based escape, no UI
+    // recourse. The gate is now the honest runtime question
+    // (`resolveSurplusPoolReachable`) rather than the source name, but the
+    // reason it must exist is unchanged.
+    ['surplus pool unreachable', { surplusPoolReachable: false }],
   ])('excludes: %s', (_label, overrides) => {
     expect(resolveSurplusOnlyPosture(candidateParams(overrides))).toBe(false);
   });

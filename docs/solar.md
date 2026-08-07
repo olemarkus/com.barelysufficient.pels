@@ -14,7 +14,9 @@ The solar features below need a signal that you are exporting — either a solar
 
 On the **Power meter** power source (read through Homey Energy) both signals are available, and every feature on this page works.
 
-On the **Flow** power source, send your meter's reading to the "Report power usage" card exactly as your meter gives it: if it reports a signed value, a negative reading means you are exporting, and PELS reads it as export. Everything on this page works here too — capacity protection, the export accounting below, your panels' production, the heating surplus boost, and running an on/off device on surplus. The one thing that stays Power-meter-only is the estimate PELS makes for a **zero-export inverter** (described below), which needs your production and your meter reading to be taken at the same instant.
+On the **Flow** power source, send your meter's reading to the "Report power usage" card exactly as your meter gives it: if it reports a signed value, a negative reading means you are exporting, and PELS reads it as export. If your meter is published as two separate devices — one for import, one for export — send `import − export` so the number you report can go negative. Everything on this page works here too: capacity protection, the export accounting below, your panels' production, the heating surplus boost, and running an on/off device on surplus.
+
+Two things follow from PELS only knowing what you send it. The surplus controls — the heating boost and running an on/off device on surplus — stay hidden until PELS has actually seen your home export, and appear on their own once it has; a reading that never goes negative simply leaves those devices running as usual. And the Solar card says so: while production is measured but export never has been, it shows a note asking you to check that the reading turns negative while you export. The one thing that stays Power-meter-only is the estimate PELS makes for a **zero-export inverter** (described below), which needs your production and your meter reading to be taken at the same instant.
 :::
 
 ## What to do today

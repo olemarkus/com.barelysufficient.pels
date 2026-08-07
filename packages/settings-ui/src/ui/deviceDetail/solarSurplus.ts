@@ -16,7 +16,7 @@ import { isEvDevice } from '../../../../shared-domain/src/commandableNow.ts';
 import { logSettingsError } from '../logging.ts';
 import { savePriceOptimizationSettings } from '../priceOptimization.ts';
 import {
-  resolveHomeExhibitsSolar,
+  resolveSurplusControlAvailable,
   resolveManagedState,
   state,
   defaultPriceOptimizationConfig,
@@ -61,13 +61,15 @@ export const updateSurplusSectionVisibility = (params: {
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
   // Field-only section, shown only when the "Use solar surplus" toggle (in the
   // Control section) is on — mirrors how "Price response" gates on its switch.
-  // Solar-only: gated on the home exhibiting solar (a tracked solar/PV device OR
-  // material grid export from a meter-only PV inverter), so it never appears in a
-  // home that does not export; and only on a managed temperature device (the only
-  // kind that self-consumes by raising a setpoint).
+  // Deliberately NOT gated on pool reachability. The toggle above is, and the
+  // fields simply follow it: reachability decides whether the opt-in can be
+  // OFFERED, while these fields must stay reachable for as long as the opt-in is
+  // on — including on an install that opted in before the gate existed, which
+  // would otherwise be left with an invisible stored setting it cannot clear.
+  // (Adding the check here would also be dead: `selected` already implies it for
+  // every home that could newly turn the toggle on.)
   deviceDetailSurplusSection.style.display
-    = resolveHomeExhibitsSolar()
-      && supportsTemperatureControlDevice(device)
+    = supportsTemperatureControlDevice(device)
       && isManaged
       && deviceDetailSurplusOpt.selected
       ? 'block' : 'none';
@@ -213,12 +215,13 @@ export const setDeviceDetailDumpLoadControl = (params: {
   const shape = params.deviceId !== null && isDumpLoadDeviceShape(device, controlState);
   const optedIn = params.deviceId !== null
     && state.priceOptimizationSettings[params.deviceId]?.surplusWilling === true;
-  // Solar-only, matching the temperature surplus/boost gate: the home must
-  // exhibit solar — a tracked solar/PV device OR material grid export from a
-  // meter-only PV inverter (`resolveHomeExhibitsSolar`). Escape hatch: keep the
-  // row visible whenever the device is opted in, regardless of that signal, so
-  // the user can always turn it back off.
-  const showRow = shape && (resolveHomeExhibitsSolar() || optedIn);
+  // Matching the temperature surplus/boost gate: the home's surplus pool must be
+  // reachable (`resolveSurplusControlAvailable`). Escape hatch: keep the row
+  // visible whenever the device is opted in, regardless of that signal, so the
+  // user can always turn it back off — which matters more here than it used to,
+  // since an install that opted in before the pool-reachability gate existed
+  // needs a way to see and clear the setting.
+  const showRow = shape && (resolveSurplusControlAvailable() || optedIn);
   deviceDetailDumpLoadRow.hidden = !showRow;
   if (!showRow || !params.deviceId) {
     hideDumpLoadRow();

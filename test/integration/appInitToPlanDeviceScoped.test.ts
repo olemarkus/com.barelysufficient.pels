@@ -33,9 +33,13 @@ const buildSurplusWillingSnapshot = (): TargetDeviceSnapshot & EvObservedProbe =
 }) as unknown as TargetDeviceSnapshot & EvObservedProbe;
 
 // A ctx whose readers make the surplus posture RESOLVE TRUE on the default path:
-// metered power source, managed + controllable, surplusWilling opt-in.
+// metered power source, managed + controllable, surplusWilling opt-in, and a
+// home whose surplus pool can actually open (exhibited export) — without that
+// last part the producer declines the stamp, because a device stamped on an
+// unreachable pool is held OFF forever.
 const buildSurplusCtx = (): AppContext => {
   const ctx = createAppContextMock({
+    powerTracker: { exportDailyTotals: { '2026-08-05': 4 } },
     priceOptimizationSettings: { [SURPLUS_DEVICE_ID]: { surplusWilling: true, surplusDelta: 1 } as never },
   });
   (ctx.homey.settings.get as Mock).mockImplementation(

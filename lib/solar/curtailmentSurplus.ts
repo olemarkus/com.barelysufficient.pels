@@ -29,8 +29,8 @@
 //   below −gate — a lift financed by measured export proves nothing about the
 //   term) and actually absorbed (net came down to at most the standing-import
 //   allowance). Anything else closes the window silently with the ladder kept.
-// - CRASH-LOOP RESILIENCE: the minimal refute-ladder slice ({holdLevel,
-//   holdUntilMs, importLatchUntilMs}) persists through the optional injected
+// - CRASH-LOOP RESILIENCE: the minimal persisted slice ({holdLevel,
+//   holdUntilMs, importLatchUntilMs, armed}) persists through the optional injected
 //   `holdStore` on transitions only (never per tick), so a cpuwarn kill cycle
 //   cannot reset the ladder back to 15-min holds; expiry is honored across
 //   restarts (stale timestamps simply compare false). All other state is
@@ -121,21 +121,54 @@ export type CurtailmentSurplusLogger = {
   info: (obj: Record<string, unknown>) => void;
 };
 
-/** The minimal refute-ladder slice that survives a restart. Nullable timestamps
- *  express "no active hold/latch"; expired values are harmless (compare false). */
+/** The minimal slice that survives a restart: the refute ladder plus the ARMED
+ *  latch. Nullable timestamps express "no active hold/latch"; expired values are
+ *  harmless (compare false). */
 export type CurtailmentPersistedHoldState = {
   holdLevel: number;
   holdUntilMs: number | null;
   importLatchUntilMs: number | null;
+  /**
+   * Whether this home has EVER delivered a positive co-temporal generation
+   * reading — the dormancy latch, which is monotone (armed once, never
+   * re-armed), so persisting it is a one-way bit with no re-clear semantics.
+   *
+   * It must survive a restart because `canContributeSurplus()` is one of the two
+   * disjuncts gating the `surplusOnly` posture, and the other one — recorded
+   * export — is false BY CONSTRUCTION on the zero-export home this estimator
+   * exists to serve. In-memory, a restart after dark would leave both false
+   * until the next sunrise, and an unstamped dump load is not passive: PELS's
+   * generic restore lane turns it on from grid headroom. The feature would
+   * invert, on grid import, all night, on every app update.
+   *
+   * Absent on a pre-existing blob (older installs) ⇒ treated as not armed, which
+   * costs one production sample to re-earn.
+   */
+  armed?: boolean;
 };
+
+/**
+ * One read of the persisted slice, discriminating a FAILED read from a genuinely
+ * absent one — the distinction `null` alone cannot carry.
+ *
+ * It is load-bearing rather than pedantic: treating an unavailable read as "no
+ * state" makes the next transition write a fresh `holdLevel: 0` over a retained
+ * refute ladder, which is a destructive reset of persisted state on a transient
+ * settings failure (root `AGENTS.md`; `notes/persisted-settings-state.md`).
+ */
+export type CurtailmentHoldRead =
+  | { readonly state: 'resolved'; readonly value: CurtailmentPersistedHoldState | null }
+  | { readonly state: 'unavailable' };
 
 /** Store port for the persisted hold slice. Declared here in the domain; the
  *  setup adapter (`setup/curtailmentHoldStateAdapter.ts`) owns the Homey
- *  settings read/write AND the junk normalization — `read()` hands back either
- *  a typed state or `null` (fresh start), never a partial/malformed value. */
+ *  settings read/write AND the junk normalization — `read()` hands back a
+ *  resolved state, a resolved `null` (fresh start), or `unavailable`, never a
+ *  partial/malformed value. `write()` reports whether the value actually
+ *  landed, so a swallowed failure can be retried rather than assumed. */
 export type CurtailmentHoldStore = {
-  read: () => CurtailmentPersistedHoldState | null;
-  write: (state: CurtailmentPersistedHoldState) => void;
+  read: () => CurtailmentHoldRead;
+  write: (state: CurtailmentPersistedHoldState) => boolean;
 };
 
 export type CurtailmentSurplusDeps = {
@@ -159,8 +192,9 @@ type CurtailmentTermState = 'suppressed' | 'latched' | 'hold' | 'armed';
  * Whole-home curtailment-surplus estimator. `recordSample` is push-fed from the
  * power-sample pipeline (one co-sampled net+generation reading per tick);
  * `getCurtailedSurplusKw` is the flat producer read the plan wiring injects.
- * State is in-memory (restart re-arms fail-closed) except the refute-ladder
- * slice, which rehydrates from the optional `holdStore`.
+ * State is in-memory (restart re-arms fail-closed) except the persisted slice —
+ * the refute ladder and the armed latch — which rehydrates from the optional
+ * `holdStore`.
  */
 export class CurtailmentSurplusEstimator {
   // Inert until the home shows POSITIVE generation, so non-solar homey_energy
@@ -181,16 +215,78 @@ export class CurtailmentSurplusEstimator {
   private lastLiftEngaged = false;
   private lastTermState: CurtailmentTermState = 'suppressed';
 
+  // The boot read failed, so what is on disk is UNKNOWN rather than absent.
+  // While true, nothing may be written: a write would replace a retained ladder
+  // with this instance's blank one. Cleared by the first read that resolves, or
+  // abandoned once this instance has ladder evidence of its own.
+  private holdStateUnresolved = false;
+
+  // Whether a LOCAL transition has moved the ladder this session. Once it has,
+  // a late-resolving read is stale by construction and must not be folded in —
+  // that is what makes adoption order-independent, rather than a merge rule that
+  // has to guess which of two deadlines is the real one.
+  private ladderMutatedLocally = false;
+
+  // Whether the armed latch is known to have reached disk. A swallowed write
+  // would otherwise leave the bit set in memory and absent on disk — invisible
+  // until the next restart, which is precisely the window it exists to cover.
+  private armedPersisted = false;
+
   constructor(private readonly deps: CurtailmentSurplusDeps) {
     // Rehydrate the refute ladder so a crash-loop cannot reset it. The adapter
-    // behind `read()` has already normalized junk to null (fresh start); expired
-    // timestamps are harmless — every consumer compares them against nowMs.
-    const persisted = deps.holdStore?.read() ?? null;
-    if (persisted) {
-      this.level = persisted.holdLevel;
-      this.holdUntilMs = persisted.holdUntilMs ?? undefined;
-      this.importLatchUntilMs = persisted.importLatchUntilMs ?? undefined;
+    // behind `read()` has already normalized junk to a resolved null (fresh
+    // start); expired timestamps are harmless — every consumer compares them
+    // against nowMs.
+    this.adoptPersisted(deps.holdStore?.read());
+  }
+
+  /**
+   * Fold one store read into local state. Absent store ⇒ nothing to adopt.
+   *
+   * The LADDER is adopted wholesale or not at all, and only while this instance
+   * has made no ladder transition of its own. That ordering rule is what keeps
+   * the merge honest: any attempt to reconcile a retained ladder with a locally
+   * evolved one has to decide which of two hold deadlines is real, and both
+   * plausible answers are wrong — taking the later one re-extends a hold the
+   * home already served, taking the local one silently shortens a retained hold
+   * and then writes the shortened value back. So disk wins while it is the only
+   * evidence, local wins the moment there is first-hand evidence, and the two
+   * are never blended.
+   *
+   * The ARMED bit is exempt: it is monotone and independent of the ladder, so a
+   * late read can only ever confirm it.
+   */
+  private adoptPersisted(read: CurtailmentHoldRead | undefined): void {
+    if (read === undefined) return;
+    if (read.state === 'unavailable') {
+      this.holdStateUnresolved = true;
+      return;
     }
+    this.holdStateUnresolved = false;
+    const persisted = read.value;
+    if (!persisted) return;
+    if (persisted.armed === true) {
+      // Rehydrating the ARMED latch only ever clears dormancy, never re-sets it;
+      // the posture gate downstream depends on it surviving an overnight restart
+      // (see `CurtailmentPersistedHoldState`).
+      this.dormant = false;
+      this.armedPersisted = true;
+    }
+    if (this.ladderMutatedLocally) return;
+    this.level = persisted.holdLevel;
+    this.holdUntilMs = persisted.holdUntilMs ?? undefined;
+    this.importLatchUntilMs = persisted.importLatchUntilMs ?? undefined;
+  }
+
+  /**
+   * A local transition has moved the ladder. Marks disk stale for adoption, and
+   * ends the abandon-grace window on an unresolved read: the estimator now has
+   * first-hand evidence, so withholding writes any longer would lose it rather
+   * than protect anything.
+   */
+  private noteLadderMutated(): void {
+    this.ladderMutatedLocally = true;
+    this.holdStateUnresolved = false;
   }
 
   /**
@@ -204,18 +300,31 @@ export class CurtailmentSurplusEstimator {
    */
   recordSample(netW: number, generationW: number | undefined, nowMs: number): void {
     if (!isFiniteNumber(netW) || !isFiniteNumber(nowMs)) return;
+    // Retry an unresolved boot read HERE, ahead of every transition below, so a
+    // recovering store is always adopted before this tick can move the ladder.
+    // Adoption after a local transition would have to blend two ladders; this
+    // ordering means it never has to.
+    if (this.holdStateUnresolved) this.adoptPersisted(this.deps.holdStore?.read());
     const genValid = isFiniteNumber(generationW);
     if (this.dormant) {
       // Dormancy arming is gen-gated: flow homes (gen undefined) and non-solar
       // homes (gen 0) stay fully inert — no latch churn, no logs.
       if (!genValid || generationW <= 0) return;
       this.dormant = false;
+      // Persist the arming immediately — this is a transition, not a per-tick
+      // write, and it is the one that must outlive a restart.
+      this.persistHoldState();
       // Seed the lift baseline to the CURRENT binding lift state, so a lift
       // already engaged before the home first produced is NOT read as a rising
       // edge on this arming tick (which would open a spurious window on load the
       // inference never financed).
       this.lastLiftEngaged = this.deps.isSurplusLiftEngaged();
     }
+    // Retry an arming write that never landed. Normally a no-op — the write
+    // succeeds on the arming tick — so this costs nothing except while the
+    // settings backend is actually failing, which is exactly when the latch
+    // would otherwise be silently lost until the next restart.
+    if (genValid && !this.dormant && !this.armedPersisted) this.persistHoldState();
     // Confirm evidence = the last GEN-VALID co-sample BEFORE this tick (when an
     // expiry resolves, this tick sits at/after the deadline — outside the window).
     const genEvidenceAtMs = this.lastSampleAtMs;
@@ -243,14 +352,48 @@ export class CurtailmentSurplusEstimator {
   }
 
   /**
+   * Whether this estimator can STRUCTURALLY contribute to the surplus pool for
+   * this home — not whether it has a term right now.
+   *
+   * Answers the standing question "could an inferred term ever arrive here?",
+   * which is what the `surplusOnly` posture must be gated on
+   * (`resolveSurplusPoolReachable`): a device stamped on a pool that can never
+   * open is held OFF forever.
+   *
+   * Only the two PERMANENT suppressors count. `dormant` is the home's own
+   * capability latch (lifted once, by the first positive co-temporal generation
+   * reading), and a battery home has the term suppressed outright in v1. The
+   * transient nulls `getCurtailedSurplusKw` also applies — stale co-sample,
+   * import latch, refute hold, no resolvable potential — are deliberately
+   * EXCLUDED: they come and go by the minute, and folding them in would flap a
+   * dump load on and off all afternoon.
+   */
+  canContributeSurplus(): boolean {
+    return !this.permanentlySuppressed();
+  }
+
+  /**
+   * The suppressors that no amount of waiting clears: the home has never shown
+   * co-temporal generation, or it has a battery (v1 suppresses the term
+   * outright). Shared with `getCurtailedSurplusKw` so the "permanent subset"
+   * relationship is structural — a future permanent suppressor added only to the
+   * term read would otherwise silently re-open the held-off-forever trap that
+   * `canContributeSurplus` exists to keep shut.
+   */
+  private permanentlySuppressed(): boolean {
+    return this.dormant || this.deps.hasHomeBattery();
+  }
+
+  /**
    * The inferred curtailed-surplus term (kW, >= 0), or `null` when it cannot be
    * trusted: dormant, stale co-sample, battery home, refuted-hold, import latch,
    * or no resolvable potential for the current hour. Consumers fold null as 0.
    */
   getCurtailedSurplusKw(nowMs: number): number | null {
-    if (!isFiniteNumber(nowMs) || this.dormant) return null;
+    if (!isFiniteNumber(nowMs)) return null;
+    // Dormancy and the battery suppression, shared with `canContributeSurplus`.
+    if (this.permanentlySuppressed()) return null;
     if (this.lastSampleAtMs === null || nowMs - this.lastSampleAtMs > CURTAIL_SAMPLE_FRESH_MS) return null;
-    if (this.deps.hasHomeBattery()) return null;
     if (this.holdUntilMs !== undefined && nowMs < this.holdUntilMs) return null;
     if (this.importLatchUntilMs !== undefined && nowMs < this.importLatchUntilMs) return null;
     const hourStartMs = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
@@ -293,6 +436,7 @@ export class CurtailmentSurplusEstimator {
     if (!observedNearDeadline || !loadBearing || !absorbed) return;
     if (this.level !== 0) {
       this.level = 0;
+      this.noteLadderMutated();
       this.persistHoldState();
     }
     this.deps.logger.info({ event: 'curtailment_verify_confirmed' });
@@ -324,6 +468,7 @@ export class CurtailmentSurplusEstimator {
       this.level = Math.min(this.level + 1, CURTAIL_HOLD_MAX_LEVEL);
       const holdMs = CURTAIL_HOLD_BASE_MS * 2 ** (this.level - 1);
       this.holdUntilMs = nowMs + holdMs;
+      this.noteLadderMutated();
       this.closeVerifyWindow();
       // `holdLevel`, not `level` — pino reserves `level` for the log severity.
       this.deps.logger.info({ event: 'curtailment_verify_refuted', holdLevel: this.level, holdMs });
@@ -332,18 +477,28 @@ export class CurtailmentSurplusEstimator {
     }
     // Latch ONSET persists (covers a restart mid-import-episode); the 10 s
     // re-extensions do not — writes stay transition-only, never per tick.
-    if (!latchWasActive) this.persistHoldState();
+    if (!latchWasActive) {
+      this.noteLadderMutated();
+      this.persistHoldState();
+    }
   }
 
   // Persist the minimal refute-ladder slice on TRANSITIONS only (refute, a
   // level-resetting confirm, latch onset). Best-effort: the adapter absorbs a
   // failed settings write, which merely restores pre-persistence behavior.
   private persistHoldState(): void {
-    this.deps.holdStore?.write({
+    if (this.holdStateUnresolved) return;
+    const store = this.deps.holdStore;
+    // No store configured (tests) is "nothing to persist", satisfied — not a
+    // failed write. Treating it as failure would make the arming retry below
+    // fire on every gen-valid tick forever.
+    if (store === undefined) return;
+    if (store.write({
       holdLevel: this.level,
       holdUntilMs: this.holdUntilMs ?? null,
       importLatchUntilMs: this.importLatchUntilMs ?? null,
-    });
+      armed: !this.dormant,
+    })) this.armedPersisted = !this.dormant;
   }
 
   // Verify-window lifecycle rides the lift edge: a rising edge while the term is

@@ -59,6 +59,7 @@ export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> =>
   refreshHomeBadgesAndRepaint();
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
   state.hasExhibitedExport = payload?.hasExhibitedExport === true;
+  state.surplusPoolReachable = payload?.surplusPoolReachable === true;
   return Array.isArray(payload?.devices) ? payload.devices : [];
 };
 
@@ -383,9 +384,11 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
         devices: response.devices,
         hasManagedSolarDevice: response.hasManagedSolarDevice === true,
         hasExhibitedExport: response.hasExhibitedExport === true,
+        surplusPoolReachable: response.surplusPoolReachable === true,
       });
       state.hasManagedSolarDevice = response.hasManagedSolarDevice === true;
       state.hasExhibitedExport = response.hasExhibitedExport === true;
+      state.surplusPoolReachable = response.surplusPoolReachable === true;
       // Discovery bypasses `getTargetDevices`, the seam that starts the badge
       // membership refresh — without its own fetch here a
       // newly discovered device renders unbadged until an unrelated refetch.

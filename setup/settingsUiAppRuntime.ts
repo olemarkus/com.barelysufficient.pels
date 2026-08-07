@@ -24,6 +24,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: { getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined };
   powerTracker?: PowerTrackerState;
+  canContributeCurtailmentSurplus?: () => boolean;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
   priceCoordinator?: {
     refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -122,6 +123,23 @@ export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTra
   const tracker = getRuntimeApp(homey)?.powerTracker;
   return tracker && typeof tracker === 'object' ? tracker : null;
 };
+
+/**
+ * Whether the curtailment-surplus estimator can structurally contribute for this
+ * home — one half of `resolveSurplusPoolReachable`, which decides whether the
+ * "Use solar surplus" toggle is offered at all.
+ *
+ * The seam is TOTAL: it reads two in-memory bits (a dormancy latch and
+ * `hasBatteryDevices()`, itself an in-memory observation producer) and cannot
+ * throw. So this is a plain read, matching the producer on the plan path
+ * (`setup/appInit/toPlanDevice.ts`) — the two must resolve identically, or the
+ * toggle and the posture disagree about the same home. Only ABSENCE is handled,
+ * via the optional call: before the post-startup wiring runs there is no answer
+ * yet, and false is the safe one.
+ */
+export const getCurtailmentCanContributeForUiFromApp = (
+  homey: Homey.App['homey'],
+): boolean => getRuntimeApp(homey)?.canContributeCurtailmentSurplus?.() === true;
 
 export const emitSettingsUiDevicesUpdatedForApp = (
   homey: Homey.App['homey'],

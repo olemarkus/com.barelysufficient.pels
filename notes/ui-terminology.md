@@ -930,9 +930,31 @@ Rules:
 - The export-only layout is for Homey-Energy homes whose meter reports export
   without a production device; its note reads `Your meter reports export only
   — production is not measured.` (name the meter, not a "power source" — a
-  settings term). Flow-source homes get NO solar surfaces at all: the flow
-  power card rejects negative watts, so PELS never observes export there —
-  copy and docs must not promise Flow homes an export view.
+  settings term). Solar surfaces are NOT gated on the power source: the flow
+  power card accepts signed watts, so a flow home that reports `import −
+  export` observes export on exactly the same evidence as a Homey Energy one.
+  What gates them is EVIDENCE, never the source name.
+- A home with measured production but no export ever recorded gets the note
+  `No export measured. If your home sends power to the grid, check that the
+  whole-home power reading PELS gets turns negative while you export.` (source:
+  `SolarUsageCard.tsx` — card-local by the PR-5 judge resolution 4 exemption).
+  It renders ABOVE the money block, because it qualifies both `Used at home`
+  and the `Grid cost avoided` figure computed from that same self-use pool; a
+  note under the history rows is read last at 320 px, or not at all. The card
+  keeps showing its numbers: with no export observed, `Used at home` IS
+  everything produced, so the arithmetic is honest for the data PELS holds —
+  the note exists because that data may be incomplete, and because the fix
+  belongs to the owner. Deliberately SOURCE-NEUTRAL, matching its source-blind
+  render gate: a zero-export inverter on the Power meter source reaches this
+  state honestly, and naming a Flow card that owner does not use would name a
+  control they do not have. The opening conditional carries the rest — a home
+  that genuinely never exports simply reads past it.
+
+**Retired 2026-08-07 — do not reintroduce:** the rule that Flow-source homes get
+no solar surfaces at all, on the premise that the flow power card rejects
+negative watts. The card began accepting signed watts, so both the premise and
+the conclusion are dead; solar surfaces are gated on EVIDENCE, never on the
+source name.
 - Internal terms that stay out of the UI: `generation buckets`, `export
   buckets`, `self-consumption rate` (as a label), `PV`, `feed-in`. Docs
   exceptions: "feed-in" may appear when explaining export pricing, and "PV"

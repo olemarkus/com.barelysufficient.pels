@@ -65,13 +65,22 @@ const willingWithLift = (config: SurplusConfig | undefined): boolean => (
  * runtime candidacy never disagrees with what the toggle offers — a device the
  * UI classifies continuous/preset/stepped is never stamped `surplusOnly`.
  *
- * Candidacy is SOURCE-INDEPENDENT. It used to carry a `meteredPowerSource` bit
- * on the premise that surplus "physically cannot exist on the flow power
- * source", which was true only because that source's boundary rejected negative
- * watts. It no longer does: both sources report signed net, and the measured
- * surplus pool is `-signedNetKw` (`composeSurplusPool`) with no production term
- * anywhere in its path. A dump load is therefore a candidate wherever its own
- * modality and managed/controllable bits say so.
+ * Candidacy is SOURCE-INDEPENDENT but NOT unconditional. It used to carry a
+ * `meteredPowerSource` bit on the premise that surplus "physically cannot exist
+ * on the flow power source". That reasoning was wrong — both sources report
+ * signed net, and the measured pool is `-signedNetKw` (`composeSurplusPool`)
+ * with no production term in its path — but the bit was doing real work, and
+ * dropping it outright re-opened the trap it had been holding shut: a device
+ * stamped `surplusOnly` in a home whose pool can never open is held OFF
+ * forever by `resolveSurplusHold`, with no time-based escape.
+ *
+ * `surplusPoolReachable` replaces it with the honest question — has this home
+ * been observed to export, or can its curtailment estimator contribute? — which
+ * is a runtime fact about accumulated evidence rather than a property of the
+ * configured source. A flow home sending `import − export` passes it; a flow
+ * home whose Flow predates signed watts does not, and its dump load keeps
+ * running. Resolved at the producer (`resolveSurplusPoolReachable`) so this
+ * helper carries no tracker or estimator branch.
  */
 export function resolveSurplusOnlyPosture(params: {
   surplusWilling: boolean | undefined;
@@ -86,8 +95,13 @@ export function resolveSurplusOnlyPosture(params: {
   plainBinaryControlModel: boolean;
   controllable: boolean;
   managed: boolean;
+  // Producer-resolved: can this home's surplus pool ever be non-zero? False
+  // means no surplus can arrive, so stamping the posture would hold the device
+  // off indefinitely rather than merely leaving it idle.
+  surplusPoolReachable: boolean;
 }): boolean {
   return params.surplusWilling === true
+    && params.surplusPoolReachable
     && params.controlCapabilityId !== undefined
     && params.controlCapabilityId !== 'evcharger_charging'
     && !isEvDevice({ deviceClass: params.deviceClass, controlCapabilityId: params.controlCapabilityId })

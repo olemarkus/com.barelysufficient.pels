@@ -9,6 +9,7 @@ import type {
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
+import { resolveSurplusPoolReachable } from '../packages/shared-domain/src/solar/surplusPoolReachable';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS, POWER_TRACKER_STATE } from '../lib/utils/settingsKeys';
 import {
@@ -38,6 +39,7 @@ import {
   getAssociatedCarForUiFromApp,
   getLatestDevicesForUiFromApp,
   getPlanSnapshotForUiFromHomey,
+  getCurtailmentCanContributeForUiFromApp,
   getPowerTrackerForUiFromApp,
   getUiPickerDevicesFromApp,
   refreshSettingsUiDevicesForApp,
@@ -333,6 +335,14 @@ const devicesPayloadForHome = (
     // it is. Both sources report signed net, so a flow home exports on exactly
     // the same evidence as a Homey Energy one.
     hasExhibitedExport: hasMaterialExhibitedExport(reading.powerTracker),
+    // Always false when scoped to a SUB-HOME, and all three of its bundle's
+    // bindings say so independently: `getInferredSurplusKw: () => null`, the
+    // posture fence (`surplusPostureEnabled: false`), and — load-bearing for the
+    // TEMPERATURE lift, which the first two do not touch —
+    // `getPriceOptimizationSettings: () => ({})`, which empties the willing set.
+    // Neither surplus modality can act there, so offering the toggle would
+    // promise an engine switched off by construction.
+    surplusPoolReachable: false,
     homeScope: { state: 'resolved', homeId: scope.homeId },
   };
 };
@@ -371,6 +381,15 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // stable, accumulated export-kWh signal. Source-blind: both sources report signed net, so
     // a flow home exhibits export on exactly the same evidence as a Homey Energy one.
     hasExhibitedExport: hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
+    // Whether the surplus ENGINE can act, which the two flags above do not
+    // answer: both of them also unlock the export-price section, which needs no
+    // surplus pool. Same predicate the runtime producer gates the `surplusOnly`
+    // stamp on (`setup/appInit/toPlanDevice.ts`), so the toggle is offered
+    // exactly where enabling it does something.
+    surplusPoolReachable: resolveSurplusPoolReachable({
+      tracker: tracker && typeof tracker === 'object' ? tracker : null,
+      curtailmentCanContribute: getCurtailmentCanContributeForUiFromApp(homey),
+    }),
   };
 };
 

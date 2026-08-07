@@ -97,6 +97,16 @@ export type UiState = {
   // (from the `/ui_devices` payload) even without a role-detected solar device —
   // the meter-only PV case. Also unlocks the "Use solar surplus" control.
   hasExhibitedExport: boolean;
+  // Home-level: true when the surplus ENGINE can act here — the home has
+  // recorded ANY grid export, or its curtailment estimator can contribute (from
+  // the `/ui_devices` payload). A strictly WEAKER export bar than
+  // `hasExhibitedExport`'s 1 kWh floor; do not collapse the two. Distinct from
+  // the two flags above, which
+  // also unlock the export-PRICE section and therefore say nothing about the
+  // pool. Gates the "Use solar surplus" control on its own, because the runtime
+  // declines the posture without it: offering the toggle here would let a user
+  // switch on a feature that cannot engage.
+  surplusPoolReachable: boolean;
   // Device IDs the overview "Let it run now" rescue chip may offer the action on,
   // resolved server-side (task-free + a known target). The card view gates the
   // chip on membership, which keeps stale affordances rare — but this is a
@@ -163,6 +173,7 @@ export const state: UiState = {
   priceOptimizationSettings: {},
   hasManagedSolarDevice: false,
   hasExhibitedExport: false,
+  surplusPoolReachable: false,
   starvationRescuableDeviceIds: new Set<string>(),
   meterAreaSimulation: [],
 };
@@ -171,13 +182,33 @@ export const resolveManagedState = (deviceId: string): boolean => {
   return state.managedMap[deviceId] === true;
 };
 
-// The per-device "Use solar surplus" control is meaningful only in a home that
-// exports solar. Two independent signals unlock it: a role-detected solar/PV
-// device (`hasManagedSolarDevice`) OR a meter-only PV home that has exhibited
-// material grid export (`hasExhibitedExport`). Neither is gated on the power
-// source — both sources report signed net, so a flow home exports on the same
-// evidence as a Homey Energy one, and the surplus pool it feeds
-// (`composeSurplusPool`) never needed a production reading.
+// "This home has solar surfaces at all" — a role-detected solar/PV device OR a
+// meter-only PV home that has exhibited material grid export. Neither is gated
+// on the power source: both sources report signed net, so a flow home exports on
+// the same evidence as a Homey Energy one.
+//
+// This unlocks the export-PRICE section, whose fixed feed-in amount needs no
+// surplus pool. It is NOT the gate for the surplus toggle — see
+// `resolveSurplusControlAvailable`.
 export const resolveHomeExhibitsSolar = (): boolean => (
   state.hasManagedSolarDevice || state.hasExhibitedExport
+);
+
+// The per-device "Use solar surplus" control, which needs a pool the engine can
+// actually allocate from — a strictly narrower question than having solar.
+// Kept separate rather than folded into the flag above because the two diverge
+// on a real home: a flow install whose Flow predates signed watts has a solar
+// device and can price its export, yet its net never goes negative, so no
+// surplus can ever arrive.
+//
+// The two modalities behind this one control fail differently, and only one is
+// dangerous. A BINARY dump load stamped `surplusOnly` on an unreachable pool is
+// held OFF forever, so the runtime declines that stamp outright. A TEMPERATURE
+// device's lift is not gated in the runtime at all — it simply never engages,
+// because engaging needs surplus. So this flag is a correctness gate for the
+// first and an honesty gate for the second: do not offer a switch that cannot
+// do anything. Both keep an opted-in escape hatch so a setting stored before
+// the gate existed stays visible and clearable.
+export const resolveSurplusControlAvailable = (): boolean => (
+  state.surplusPoolReachable
 );

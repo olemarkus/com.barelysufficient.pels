@@ -236,6 +236,12 @@ describe('settings-UI `?homeId=` endpoints', () => {
       // list exactly as it is for the whole home, but still raises the flag.
       expect(deviceIds(payload)).toEqual(['dev-area']);
       expect(payload.hasManagedSolarDevice).toBe(true);
+      // ...but the surplus ENGINE is switched off for a sub-home by
+      // construction: its bundle binds `getInferredSurplusKw: () => null`, is
+      // fenced out of the posture, and gets empty price-opt settings (which
+      // kills the temperature lift too). Solar presence must not be read as a
+      // reachable pool, or the toggle promises an engine that cannot run.
+      expect(payload.surplusPoolReachable).toBe(false);
       expect(payload.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
     });
   });

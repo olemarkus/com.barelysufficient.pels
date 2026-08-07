@@ -417,6 +417,9 @@ describe('settingsUiApi', () => {
       ],
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
+      // No export history and no curtailment seam wired: the surplus engine has
+      // nothing to allocate, so the toggle is not offered.
+      surplusPoolReachable: false,
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
