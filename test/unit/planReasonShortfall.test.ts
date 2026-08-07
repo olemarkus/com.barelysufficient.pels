@@ -21,6 +21,10 @@ const heldDevice = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) => bu
   ...overrides,
 });
 
+// Fixed clock so the recent-shed window is exercised by explicit timestamps
+// rather than wall time.
+const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
+
 const inputs = (params: {
   capacityAvailableKw: number;
   budgetAvailableKw?: number | null;
@@ -28,6 +32,8 @@ const inputs = (params: {
   onDevices?: readonly ReturnType<typeof buildPlanDevice>[];
   swappedOutFor?: ReadonlyMap<string, string>;
   restoredThisCycle?: ReadonlySet<string>;
+  lastDeviceShedMsById?: Readonly<Record<string, number>>;
+  nowMs?: number;
 }) => buildCeilingShortfallInputs({
   ledgerAxes: {
     capacityAvailableKw: params.capacityAvailableKw,
@@ -37,6 +43,8 @@ const inputs = (params: {
   onDevices: params.onDevices ?? [],
   swappedOutFor: params.swappedOutFor ?? new Map(),
   restoredThisCycle: params.restoredThisCycle ?? new Set(),
+  lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
+  nowMs: params.nowMs ?? NOW_MS,
 });
 
 // Unwraps to the kW for the arithmetic cases below. The two no-number outcomes
@@ -151,6 +159,40 @@ describe('resolveCeilingShortfall', () => {
         dev: heldDevice({ budgetExempt: false }),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ budgetExempt: true })] }),
       })).toBe(1.2);
+    });
+  });
+
+  // The restore gate does not gate on the base need for a device it shed in the
+  // last 5 minutes — `getRestoreNeed` inflates it (`applyRecentShedInflation`:
+  // ×1.15 or +0.15 kW, whichever is larger). Measuring the card against the
+  // deflated figure let the resolver return `no_gap` — "this device would be
+  // admitted right now" — on the very cycle the gate rejected it on the larger
+  // number.
+  describe('measures against the same need the restore gate uses', () => {
+    // Base need 1.2 kW admits at available ≥ 1.7 (need + FLOOR + RESERVE).
+    // Inflated need max(1.2 × 1.15, 1.2 + 0.15) = 1.38 kW admits at ≥ 1.88.
+    // 1.8 kW therefore sits between the two.
+    const BETWEEN_KW = 1.8;
+
+    it('reports a gap for a device shed inside the recent-shed window', () => {
+      // gap = 0.25 − (1.8 − 1.38 − 0.25) = 0.08 → 0.1 on the display grid.
+      expect(resolveCeilingShortfall({
+        dev: heldDevice(),
+        inputs: inputs({
+          capacityAvailableKw: BETWEEN_KW,
+          lastDeviceShedMsById: { 'held-dev': NOW_MS - 60_000 },
+        }),
+      })).toEqual({ kind: 'gap', shortfallKw: 0.1 });
+    });
+
+    it('drops the inflation once the window has passed', () => {
+      expect(resolveCeilingShortfall({
+        dev: heldDevice(),
+        inputs: inputs({
+          capacityAvailableKw: BETWEEN_KW,
+          lastDeviceShedMsById: { 'held-dev': NOW_MS - 6 * 60_000 },
+        }),
+      })).toEqual({ kind: 'no_gap' });
     });
   });
 

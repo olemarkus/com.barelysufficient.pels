@@ -13,6 +13,24 @@ import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
+/**
+ * The timing facts `resolveOffDeviceReason` arbitrates between. A structural
+ * subset of `RestoreTiming` (`restore/timing.ts`), named here because two lanes
+ * now consume it: the binary stay-off lane below and the setpoint hold lane
+ * (`planReasonsHoldDecisions.ts`).
+ */
+export type OffDeviceReasonTiming = {
+  activeOvershoot: boolean;
+  inCooldown: boolean;
+  inStartupStabilization: boolean;
+  restoreCooldownSeconds: number;
+  shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
+  restoreCooldownStartedAtMs?: number | null;
+  restoreCooldownTotalSec?: number | null;
+};
+
 export type RestoreCandidate = {
   kind: 'binary' | 'stepped';
   device: DevicePlanDevice;
@@ -171,18 +189,7 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
 
 export function markOffDevicesStayOff(params: {
   deviceMap: Map<string, DevicePlanDevice>;
-  timing: {
-    activeOvershoot: boolean;
-    inCooldown: boolean;
-    inStartupStabilization: boolean;
-    restoreCooldownSeconds: number;
-    shedCooldownRemainingSec: number | null;
-    shedCooldownStartedAtMs?: number | null;
-    shedCooldownTotalSec?: number | null;
-    restoreCooldownStartedAtMs?: number | null;
-    restoreCooldownTotalSec?: number | null;
-    startupStabilizationRemainingSec: number | null;
-  };
+  timing: OffDeviceReasonTiming;
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
   reasonOverride?: (dev: DevicePlanDevice) => DeviceReason;
   blockedPlannedState?: 'shed' | 'keep';
@@ -237,19 +244,27 @@ function canSwapOutDevice(
   return currentTarget > behavior.temperature;
 }
 
-function resolveOffDeviceReason(
-  timing: {
-    activeOvershoot: boolean;
-    inCooldown: boolean;
-    inStartupStabilization: boolean;
-    restoreCooldownSeconds: number;
-    shedCooldownRemainingSec: number | null;
-    shedCooldownStartedAtMs?: number | null;
-    shedCooldownTotalSec?: number | null;
-    restoreCooldownStartedAtMs?: number | null;
-    restoreCooldownTotalSec?: number | null;
-    startupStabilizationRemainingSec: number | null;
-  },
+/**
+ * Precedence ladder for a device PELS is declining to resume this cycle:
+ * startup stabilization → active overshoot (the caller's own reason stands) →
+ * shed cooldown → restore cooldown.
+ *
+ * Exported so the setpoint hold lane (`planReasonsHoldDecisions.ts`) runs THIS
+ * ladder instead of re-deriving precedence: `inShedWindow` folds four causes
+ * into one boolean (`restore/timing.ts`), three of them timers, and a lane that
+ * cannot tell them apart labels a timer hold as a power-ceiling hold. A
+ * thermostat at its shed floor and the binary device beside it are held by the
+ * same timer and must say so identically.
+ *
+ * The terminal branch is an unconditional restore cooldown, so callers must only
+ * consult the ladder when one of the four causes actually holds.
+ *
+ * `null` means "still inside the startup window on a device PELS has never
+ * controlled" — no hold is PELS's to claim. The binary lane answers that with
+ * `NEUTRAL_STARTUP_HOLD_REASON`; an actuating lane keeps its own reason.
+ */
+export function resolveOffDeviceReason(
+  timing: OffDeviceReasonTiming,
   defaultReason: DeviceReason,
   lastControlledMs?: number,
 ): DeviceReason | null {

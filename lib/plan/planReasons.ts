@@ -103,6 +103,12 @@ function maybeApplyCooldownReason(params: {
     // (it fires whenever ANY device was shed in the last 60 s). Same precedent as the surplus
     // hold above — without this the card flips to "will try to resume in Ns" and hides the cause.
     && currentReason.code !== PLAN_REASON_CODES.reservedForStart
+    // Same shape, and the ladder both stay-off lanes run (`resolveOffDeviceReason`,
+    // `restore/devices.ts`) already ranks startup stabilization ABOVE the shed cooldown.
+    // Without this the normalizer silently re-ranked them the other way, so a device the
+    // lanes had just labelled `startupStabilization` read `cooldown_shedding` for any boot
+    // where some device happened to be shed inside the last 60 s.
+    && currentReason.code !== PLAN_REASON_CODES.startupStabilization
   ) {
     return {
       code: 'cooldown_shedding',

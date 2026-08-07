@@ -1,5 +1,9 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
-import { buildCeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
+import { buildCeilingShortfallInputs, resolveCeilingShortfall } from '../../lib/plan/planReasonShortfall';
+import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
+import { getRestoreNeed } from '../../lib/plan/restore/support';
+import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_ADMISSION_RESERVE_KW } from '../../lib/plan/planConstants';
+import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -127,6 +131,29 @@ describe('normalizeShedReasons', () => {
     });
 
     expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
+  });
+
+  // Both stay-off lanes rank startup stabilization ABOVE the shed cooldown
+  // (`resolveOffDeviceReason`). The normalizer used to silently re-rank them the
+  // other way, so a device the lanes had just labelled `startupStabilization`
+  // read "will try to resume in Ns" for any boot where some device happened to
+  // be shed inside the last 60 s — hiding the longer, real cause.
+  it('preserves startup stabilization during shed cooldown normalization', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-startup',
+        plannedState: 'shed',
+        reason: { code: PLAN_REASON_CODES.startupStabilization },
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: true,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: 25,
+    });
+
+    expect(device?.reason.code).toBe(PLAN_REASON_CODES.startupStabilization);
   });
 
   it('preserves neutral startup holds during shortfall normalization', () => {
@@ -519,6 +546,10 @@ describe('normalizeShedReasons', () => {
 // never evaluated them (headroom −0.99 → pass skipped, reasons carried
 // forward), so no producer ever attached a number.
 describe('normalizeShedReasons — uniform ceiling shortfall', () => {
+  // Fixed clock, so the recent-shed inflation window is driven by explicit
+  // timestamps instead of wall time.
+  const SHORTFALL_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
+
   // Fixture need: residualKw.restore 1.0 kW + 0.2 kW buffer = 1.2 kW.
   const heldDevice = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) => buildPlanDevice({
     id: 'held-dev',
@@ -537,6 +568,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     hourlyBudgetExhausted?: boolean;
     softLimitSource?: 'capacity' | 'daily' | null;
     capacityBreached?: boolean;
+    lastDeviceShedMsById?: Readonly<Record<string, number>>;
   }) => normalizeShedReasons({
     planDevices: params.devices,
     shedReasons: new Map(),
@@ -556,6 +588,8 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       onDevices: params.devices,
       swappedOutFor: new Map(),
       restoredThisCycle: new Set(),
+      lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
+      nowMs: SHORTFALL_NOW_MS,
     }),
     hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
   });
@@ -618,6 +652,52 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       capacityAvailableKw: 0.5,
     });
     expect(device?.reason).toEqual({ code: 'swap_pending', targetName: null });
+  });
+
+  // Parity with the restore gate, stated without repeating its constants: the
+  // gate admits at `available ≥ getRestoreNeed().needed + RESERVE + FLOOR`, so
+  // the card must find no gap exactly there and a gap just below it. The
+  // recent-shed inflation lives inside `getRestoreNeed`, and computing the card
+  // from the un-inflated base made the resolver answer `no_gap` — "would be
+  // admitted right now" — on the very cycle the gate rejected the device.
+  describe('agrees with the restore gate at its own admission boundary', () => {
+    const ADMISSION_MARGIN_KW = RESTORE_ADMISSION_RESERVE_KW + RESTORE_ADMISSION_FLOOR_KW;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(SHORTFALL_NOW_MS);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('flips from gap to no_gap at the need the gate rejects on', () => {
+      const dev = heldDevice();
+      const state = createPlanEngineState();
+      state.lastDeviceShedMs[dev.id] = SHORTFALL_NOW_MS - 60_000;
+      const gateNeededKw = getRestoreNeed(dev, state).needed;
+      const shortfallInputs = (capacityAvailableKw: number) => buildCeilingShortfallInputs({
+        ledgerAxes: { capacityAvailableKw, budgetAvailableKw: null },
+        headroomReserves: [],
+        onDevices: [],
+        swappedOutFor: new Map(),
+        restoredThisCycle: new Set(),
+        lastDeviceShedMsById: state.lastDeviceShedMs,
+        nowMs: SHORTFALL_NOW_MS,
+      });
+
+      // The inflation is real, so the gate is asking for more than the base need.
+      expect(gateNeededKw).toBeGreaterThan(computeBaseRestoreNeed(dev).needed);
+      expect(resolveCeilingShortfall({
+        dev,
+        inputs: shortfallInputs(gateNeededKw + ADMISSION_MARGIN_KW),
+      }).kind).toBe('no_gap');
+      expect(resolveCeilingShortfall({
+        dev,
+        inputs: shortfallInputs(gateNeededKw + ADMISSION_MARGIN_KW - 0.05),
+      }).kind).toBe('gap');
+    });
   });
 
   // Raw power suffices; it is promised to a device about to start. No kW is
@@ -874,6 +954,9 @@ describe('applyShedTemperatureHold', () => {
         holdDuringRestoreCooldown: false,
         restoreCooldownSeconds: 60,
         restoreCooldownRemainingSec: null,
+        inStartupStabilization: false,
+        restoreCooldownStartedAtMs: null,
+        restoreCooldownTotalSec: null,
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
       });
     };
@@ -914,6 +997,9 @@ describe('applyShedTemperatureHold', () => {
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
+      inStartupStabilization: false,
+      restoreCooldownStartedAtMs: null,
+      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
     });
 
@@ -948,6 +1034,9 @@ describe('applyShedTemperatureHold', () => {
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
+      inStartupStabilization: false,
+      restoreCooldownStartedAtMs: null,
+      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
     });
 
@@ -990,6 +1079,9 @@ describe('applyShedTemperatureHold', () => {
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
+      inStartupStabilization: false,
+      restoreCooldownStartedAtMs: null,
+      restoreCooldownTotalSec: null,
       guardInShortfall: true,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
     });
@@ -1007,5 +1099,140 @@ describe('applyShedTemperatureHold', () => {
     expect(device?.plannedState).toBe('shed');
     expect(plannedTargetOf(device)).toBe(16);
     expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom -0.50kW)');
+  });
+
+  // `inShedWindow` is the OR of four causes (`restore/timing.ts`), three of them
+  // timers. The hold lane used to collapse all four onto the `capacity`
+  // fallback, so a thermostat at its shed floor claimed the power ceiling was
+  // holding it while the binary device beside it — same cycle, same timer —
+  // correctly read the countdown. `capacity` then reaches the card as a kW gap
+  // the owner is invited to close, and the admission arithmetic finds none,
+  // leaving the bare "Waiting to resume".
+  describe('names the timing cause instead of the power ceiling', () => {
+    const COOLDOWN_STARTED_AT_MS = Date.UTC(2026, 0, 1, 11, 59, 15);
+
+    type HoldTimingOverride = Partial<Pick<
+      Parameters<typeof applyShedTemperatureHold>[0],
+      'inShedWindow' | 'inCooldown' | 'activeOvershoot' | 'inStartupStabilization'
+      | 'holdDuringRestoreCooldown' | 'shedCooldownRemainingSec'
+    >>;
+
+    const runHold = (params: {
+      timing?: HoldTimingOverride;
+      shedReasons?: Map<string, DevicePlanDevice['reason']>;
+      lastControlledMs?: number;
+      // What the DEVICE reports. Defaults to the shed floor; raise it to model a
+      // shed that has not materialized.
+      currentTarget?: number;
+    } = {}) => {
+      const state = createPlanEngineState();
+      state.lastPlannedShedIds.add('dev-temp');
+      if (params.lastControlledMs !== undefined) {
+        state.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
+      }
+      return applyShedTemperatureHold({
+        planDevices: [withBinaryOn(buildPlanDevice({
+          id: 'dev-temp',
+          name: 'Thermostat',
+          currentState: 'keep',
+          plannedState: 'shed',
+          currentTarget: params.currentTarget ?? 16,
+          plannedTarget: 16,
+          shedAction: 'set_temperature',
+          shedTemperature: 16,
+          reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+        }), true)],
+        state,
+        shedReasons: params.shedReasons ?? new Map(),
+        inShedWindow: true,
+        inCooldown: false,
+        activeOvershoot: false,
+        inStartupStabilization: false,
+        availableHeadroom: 0,
+        restoredOneThisCycle: false,
+        restoredThisCycle: new Set(),
+        shedCooldownRemainingSec: null,
+        holdDuringRestoreCooldown: false,
+        restoreCooldownSeconds: 45,
+        restoreCooldownRemainingSec: 45,
+        restoreCooldownStartedAtMs: COOLDOWN_STARTED_AT_MS,
+        restoreCooldownTotalSec: 60,
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+        ...params.timing,
+      });
+    };
+
+    it('reads the restore cooldown countdown, not the hard cap', () => {
+      const result = runHold({ timing: { holdDuringRestoreCooldown: true } });
+
+      expect(result.planDevices[0]?.reason).toEqual({
+        code: PLAN_REASON_CODES.cooldownRestore,
+        remainingSec: 45,
+        countdownStartedAtMs: COOLDOWN_STARTED_AT_MS,
+        countdownTotalSec: 60,
+      });
+      expect(plannedTargetOf(result.planDevices[0])).toBe(16);
+    });
+
+    // `cooldownRestore` is in `RESTORE_ADMISSION_HOLD_REASON_CODES`, so
+    // `buildExecutableTargetIntent` builds NO write for a device carrying it.
+    // Harmless once the device sits at its floor — there is nothing left to
+    // write — but fatal while the shed is still in flight: the thermostat would
+    // draw unchecked for the whole 60–300 s cooldown. Asserting `plannedTarget`
+    // alone does not catch that; it is the plan's intent, not the executor's.
+    it('keeps building the floor write while the shed has not materialized', () => {
+      const inFlight = runHold({ timing: { holdDuringRestoreCooldown: true }, currentTarget: 22 });
+      const [device] = inFlight.planDevices;
+
+      expect(device?.reason.code).toBe(PLAN_REASON_CODES.capacity);
+      expect(device && buildExecutableTargetIntent(device)).toMatchObject({
+        desired: 16,
+        purpose: 'shed_temperature',
+      });
+
+      // …and once the floor IS observed, suppressing the write costs nothing,
+      // so the honest countdown wins.
+      const settled = runHold({ timing: { holdDuringRestoreCooldown: true } });
+      expect(settled.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
+    });
+
+    it('reads startup stabilization for a device PELS has controlled', () => {
+      const result = runHold({
+        timing: { inStartupStabilization: true },
+        lastControlledMs: Date.UTC(2026, 0, 1, 11, 0, 0),
+      });
+
+      expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.startupStabilization);
+    });
+
+    // The ladder answers `null` here — "PELS has never controlled this device,
+    // claim nothing". The binary lane turns that into the no-actuation neutral
+    // hold; this lane is still writing the shed floor, so it keeps its own
+    // reason rather than pairing an actuating hold with a no-claim label.
+    it('keeps the base reason during startup for a device PELS has never controlled', () => {
+      const result = runHold({
+        timing: { inStartupStabilization: true },
+      });
+
+      expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.capacity);
+      expect(plannedTargetOf(result.planDevices[0])).toBe(16);
+    });
+
+    it('leaves a fresh shed decision alone', () => {
+      const result = runHold({
+        timing: { holdDuringRestoreCooldown: true },
+        shedReasons: new Map([['dev-temp', { code: PLAN_REASON_CODES.hourlyBudget, detail: null }]]),
+      });
+
+      expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.hourlyBudget);
+    });
+
+    // The ceiling branch of the same OR: over pace, `capacity` IS the honest
+    // cause, and the shared ladder hands the caller's own reason back.
+    it('still names the ceiling while the house is over pace', () => {
+      const result = runHold({ timing: { activeOvershoot: true } });
+
+      expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.capacity);
+    });
   });
 });

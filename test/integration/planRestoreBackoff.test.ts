@@ -20,7 +20,6 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import { buildSwapState, exportSwapState } from '../../lib/plan/swap';
 import { resolveMeterSettlingRemainingSec } from '../../lib/plan/restore/timing';
-import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
@@ -2168,10 +2167,7 @@ describe('restore cooldown backoff', () => {
       },
     });
 
-    // `applyRestorePlan` spreads `effectiveTiming` (which carries
-    // `inStartupStabilization`) onto its result, but `RestorePlanResult` omits the
-    // field from its type. Read it through the timing-shaped view.
-    expect((result as typeof result & Pick<RestoreTiming, 'inStartupStabilization'>).inStartupStabilization).toBe(false);
+    expect(result.inStartupStabilization).toBe(false);
     expect(result.inShedWindow).toBe(false);
   });
 });
@@ -2885,6 +2881,9 @@ describe('restore admission — headroom and penalty gates', () => {
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
+      inStartupStabilization: false,
+      restoreCooldownStartedAtMs: null,
+      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
     });
 
@@ -2933,6 +2932,9 @@ describe('restore admission — headroom and penalty gates', () => {
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
+      inStartupStabilization: false,
+      restoreCooldownStartedAtMs: null,
+      restoreCooldownTotalSec: null,
       debugStructured,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
     });
@@ -3128,6 +3130,9 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
+      inStartupStabilization: false,
+      restoreCooldownStartedAtMs: null,
+      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
     });
     const device = result.planDevices.find((d) => d.id === 'dev-temp');

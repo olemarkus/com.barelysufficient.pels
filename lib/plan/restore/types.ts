@@ -77,6 +77,13 @@ export type RestorePlanResult = {
   restoreCooldownStartedAtMs: number | null;
   restoreCooldownTotalSec: number | null;
   inShedWindow: boolean;
+  // `inShedWindow` is the OR of four causes and the downstream hold lane needs
+  // them apart; `nowTs` is this pass's single clock read, which the ceiling
+  // shortfall dates its recent-shed window against. Both already flow at runtime
+  // through the `...effectiveTiming` spread in `applyRestorePlan` — declaring
+  // them adds no computation and no second clock read.
+  inStartupStabilization: boolean;
+  nowTs: number;
   restoreCooldownMs: number;
   lastRestoreCooldownBumpMs: number | null;
 };

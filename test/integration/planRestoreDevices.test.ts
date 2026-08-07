@@ -326,7 +326,6 @@ describe('plan restore device helpers', () => {
         inStartupStabilization: false,
         restoreCooldownSeconds: 12,
         shedCooldownRemainingSec: 7,
-        startupStabilizationRemainingSec: null,
       },
       setDevice,
     });
@@ -349,7 +348,6 @@ describe('plan restore device helpers', () => {
         inStartupStabilization: false,
         restoreCooldownSeconds: 9,
         shedCooldownRemainingSec: null,
-        startupStabilizationRemainingSec: null,
       },
       setDevice,
       reasonOverride: (device) => ({ code: 'inactive', detail: `blocked ${device.id}` }),
