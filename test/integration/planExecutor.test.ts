@@ -36,14 +36,14 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planReconcileState';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
 
-const KEEP_REASON = legacyDeviceReason('keep')!;
-const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
+const KEEP_REASON = fixtureDeviceReason('keep')!;
+const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
 
 // Trusted binary evidence for an onoff device: in production a genuinely-on (or
 // genuinely-off) device reports a real boolean onoff value, which the snapshot
@@ -748,7 +748,7 @@ describe('PlanExecutor restore logging', () => {
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
-          reason: legacyDeviceReason('meter settling (30s remaining)'),
+          reason: fixtureDeviceReason('meter settling (30s remaining)'),
         }),
       ],
     });
@@ -2659,7 +2659,7 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'off',
       desiredStepId: 'low',
       targetStepId: 'low',
-      reason: legacyDeviceReason('meter settling (30s remaining)'),
+      reason: fixtureDeviceReason('meter settling (30s remaining)'),
     }));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();

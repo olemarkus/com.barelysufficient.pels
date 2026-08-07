@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
-import { buildComparablePlanReason } from '../../shared-domain/src/planReasonSemantics.ts';
+import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 import { buildHomeyApiMock, emitHomeyEvent, installHomeyMock } from './helpers/homeyApiMock';
 
 vi.mock('../src/ui/toast.ts', () => ({
@@ -1872,7 +1872,7 @@ describe('Plan sorting', () => {
             priority: 1,
             currentState: 'on',
             plannedState: 'keep',
-            reason: buildComparablePlanReason('keep'),
+            reason: fixtureDeviceReason('keep'),
           },
         ],
       },
@@ -2232,7 +2232,7 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
         plannedState: 'shed',
         budgetExempt: false,
         starvation: { isStarved: true, accumulatedMs: 5 * 60_000, cause: 'budget', startedAtMs: 0 },
-        reason: buildComparablePlanReason('shed due to capacity'),
+        reason: fixtureDeviceReason('shed due to capacity'),
       },
     ],
   };

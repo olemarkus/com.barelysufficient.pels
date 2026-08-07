@@ -19,7 +19,7 @@ export type PlanReasonDecision =
   | { code: 'meter_settling'; remainingSec: number | null; countdownTiming?: CountdownReasonTiming }
   | { code: 'restore_headroom'; params: {
     neededKw: number;
-    availableKw: number | null;
+    availableKw: number;
     postReserveMarginKw: number;
     minimumRequiredPostReserveMarginKw: number;
     penaltyExtraKw?: number;
@@ -116,7 +116,7 @@ export function buildRestoreNeedReason(neededKw: number, headroomKw: number): De
 
 export function buildRestoreHeadroomReason(params: {
   neededKw: number;
-  availableKw: number | null;
+  availableKw: number;
   postReserveMarginKw: number;
   minimumRequiredPostReserveMarginKw: number;
   penaltyExtraKw?: number;

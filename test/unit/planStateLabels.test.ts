@@ -2,10 +2,10 @@ import {
   resolvePlanStateKind,
   resolvePlanStateTone,
 } from '../../packages/shared-domain/src/planStateLabels';
-import { buildComparablePlanReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const baseDevice = {
-  reason: buildComparablePlanReason('keep'),
+  reason: fixtureDeviceReason('keep')!,
   controllable: true,
   available: true,
   plannedState: 'keep',

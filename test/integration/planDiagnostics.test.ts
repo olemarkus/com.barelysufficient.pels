@@ -12,7 +12,7 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice, buildPlanDevice } from '../utils/planTestUtils';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   DEVICE_DIAGNOSTICS_STATE_KEY,
@@ -20,7 +20,7 @@ import {
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
 
-const r = (reason: string) => legacyDeviceReason(reason)!;
+const r = (reason: string) => fixtureDeviceReason(reason)!;
 
 const buildContext = (
   device: PlanInputDevice,

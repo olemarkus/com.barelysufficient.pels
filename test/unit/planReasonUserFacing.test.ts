@@ -177,23 +177,6 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Holding — cannot increase while 3 devices are limited',
     },
     {
-      // Legacy reason without margin fields: the shortfall falls back to
-      // `need − (effective ?? available)`.
-      label: 'insufficient headroom for restore maps to the not-enough-power label',
-      reason: {
-        code: PLAN_REASON_CODES.insufficientHeadroom,
-        needKw: 2,
-        availableKw: 1,
-        postReserveMarginKw: null,
-        minimumRequiredPostReserveMarginKw: null,
-        penaltyExtraKw: null,
-        swapReserveKw: null,
-        effectiveAvailableKw: null,
-        swapTargetName: null,
-      },
-      expected: 'Not enough available power to resume — 1.0 kW more needed',
-    },
-    {
       // Production-shaped reason: the shortfall is admission-accurate,
       // `minimumRequired − postReserveMargin` (0.25 − (−0.75) = 1.0), NOT the
       // understated `need − available` (2.0 − 1.5 = 0.5). Prod 2026-08-01.
@@ -217,8 +200,8 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         code: PLAN_REASON_CODES.insufficientHeadroom,
         needKw: 2,
         availableKw: 1,
-        postReserveMarginKw: null,
-        minimumRequiredPostReserveMarginKw: null,
+        postReserveMarginKw: -0.75,
+        minimumRequiredPostReserveMarginKw: 0.25,
         penaltyExtraKw: null,
         swapReserveKw: null,
         effectiveAvailableKw: null,
@@ -272,11 +255,6 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         headroomKw: 0.3,
       },
       expected: 'Raising target low to high',
-    },
-    {
-      label: 'shedding active maps to the currently-limiting label',
-      reason: { code: PLAN_REASON_CODES.sheddingActive, detail: null },
-      expected: 'Currently limiting devices',
     },
     {
       label: 'waiting for other devices maps to the settle label',

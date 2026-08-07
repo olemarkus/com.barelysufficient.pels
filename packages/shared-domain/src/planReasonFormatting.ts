@@ -17,7 +17,6 @@ type DetailReason = Extract<
   | { code: typeof PLAN_REASON_CODES.keep }
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
-  | { code: typeof PLAN_REASON_CODES.sheddingActive }
   | { code: typeof PLAN_REASON_CODES.inactive }
   | { code: typeof PLAN_REASON_CODES.capacity }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
@@ -95,7 +94,6 @@ function isDetailReason(reason: DeviceReason): reason is DetailReason {
   return reason.code === PLAN_REASON_CODES.keep
     || reason.code === PLAN_REASON_CODES.hourlyBudget
     || reason.code === PLAN_REASON_CODES.dailyBudget
-    || reason.code === PLAN_REASON_CODES.sheddingActive
     || reason.code === PLAN_REASON_CODES.inactive
     || reason.code === PLAN_REASON_CODES.capacity
     || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
@@ -110,8 +108,6 @@ function formatDetailReason(reason: DetailReason): string {
       return formatShedReason('shed due to hourly budget', reason.detail);
     case PLAN_REASON_CODES.dailyBudget:
       return formatShedReason('shed due to daily budget', reason.detail);
-    case PLAN_REASON_CODES.sheddingActive:
-      return formatShedReason('shedding active', reason.detail);
     case PLAN_REASON_CODES.inactive:
       return reason.detail ? `inactive (${reason.detail})` : 'inactive';
     case PLAN_REASON_CODES.capacity:
@@ -196,14 +192,8 @@ function formatNeedSummary(
   return `need ${formatSignedKw(reason.needKw, 2)}kW`;
 }
 
-function formatAvailableSummary(
-  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
-): string {
-  return reason.availableKw === null
-    ? 'headroom unknown'
-    : `available ${formatSignedKw(reason.availableKw, 2)}kW`;
-}
-
+// Null only when the swap path was not in play at all — both fields are set
+// together by `buildRestoreHeadroomReason`'s swap callers.
 function formatEffectiveSummary(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
 ): string | null {
@@ -214,10 +204,7 @@ function formatEffectiveSummary(
 
 function formatPostReserveMarginSummary(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
-): string | null {
-  if (reason.postReserveMarginKw === null || reason.minimumRequiredPostReserveMarginKw === null) {
-    return null;
-  }
+): string {
   return `post-reserve margin ${formatSignedKw(reason.postReserveMarginKw, 3)}kW < `
     + `${formatSignedKw(reason.minimumRequiredPostReserveMarginKw, 3)}kW`;
 }
@@ -229,21 +216,20 @@ function formatInsufficientHeadroom(
     ? `insufficient headroom to swap for ${reason.swapTargetName}`
     : 'insufficient headroom to restore';
   const needSummary = formatNeedSummary(reason);
-  const availableSummary = formatAvailableSummary(reason);
+  const availableSummary = `available ${formatSignedKw(reason.availableKw, 2)}kW`;
   const effectiveSummary = formatEffectiveSummary(reason);
-  const postReserveMarginSummary = formatPostReserveMarginSummary(reason);
 
-  if (reason.availableKw === null) {
-    return `${prefix} (${needSummary}, ${availableSummary})`;
-  }
   if (effectiveSummary && reason.effectiveAvailableKw !== null && reason.effectiveAvailableKw < reason.needKw) {
     return `${prefix} (${needSummary}, ${availableSummary}, ${effectiveSummary})`;
   }
-  if (reason.availableKw < reason.needKw || !postReserveMarginSummary) {
+  // Raw availability already short of the need: the reserve breakdown adds
+  // nothing the reader cannot see, so the short form stands.
+  if (reason.availableKw < reason.needKw) {
     return `${prefix} (${needSummary}, ${availableSummary})`;
   }
   const reserveSummary = effectiveSummary ? `${effectiveSummary}, ` : '';
-  return `${prefix} after reserves (${needSummary}, ${availableSummary}, ${reserveSummary}${postReserveMarginSummary})`;
+  return `${prefix} after reserves `
+    + `(${needSummary}, ${availableSummary}, ${reserveSummary}${formatPostReserveMarginSummary(reason)})`;
 }
 
 // The three reasons whose whole payload is "who is this for": swap source, swap target, and a
@@ -362,11 +348,11 @@ const readFiniteNumber = (value: unknown): number | null => (
 // `minimumRequired − postReserveMargin` — NOT `need − available`, which
 // understates by the reserve stack (~0.5 kW, +0.3 kW on swap paths). Prod
 // 2026-08-01: cards read "0.5 kW more needed" for a device admission would only
-// pass with ~1.05 kW more. The `need − available` form remains as a fallback for
-// legacy prose-parsed reasons that carry no margin fields. `shortfall` reasons
-// keep `need − headroom`: that is a shed-side deficit with no admission reserves
-// in play. Accepts `unknown` because temperature-card callers hold the reason
-// untyped after the snapshot boundary.
+// pass with ~1.05 kW more. `shortfall` reasons keep `need − headroom`: that is a
+// shed-side deficit with no admission reserves in play. Accepts `unknown`
+// because temperature-card callers hold the reason untyped after the snapshot
+// boundary — so the finiteness guards below stay even though the type now
+// promises both margins (a snapshot from another build is untrusted input).
 // Ceil to the 0.1 kW display resolution (with an epsilon guard against float
 // noise like 0.799999… → 0.8). Rounding DOWN would contradict the resolver's
 // contract: a true gap of 1.04 kW rendered as "1.0" invites freeing exactly
@@ -388,14 +374,12 @@ export function resolveRestoreShortfallKw(reason: unknown): number | null {
   if (r['code'] === PLAN_REASON_CODES.insufficientHeadroom) {
     const postReserveMarginKw = readFiniteNumber(r['postReserveMarginKw']);
     const minimumRequiredKw = readFiniteNumber(r['minimumRequiredPostReserveMarginKw']);
-    if (postReserveMarginKw !== null && minimumRequiredKw !== null) {
-      return ceilToDisplayKw(minimumRequiredKw - postReserveMarginKw);
-    }
-    // Legacy prose-parsed reason with headroom genuinely unknown: no number is
-    // honest — surface the bare sentence rather than fabricating a gap from 0.
-    const availableKw = readFiniteNumber(r['effectiveAvailableKw']) ?? readFiniteNumber(r['availableKw']);
-    if (availableKw === null) return null;
-    return ceilToDisplayKw((readFiniteNumber(r['needKw']) ?? 0) - availableKw);
+    // Both are required `number` on the reason type. A snapshot that still
+    // lacks them is malformed, not "legacy": derive nothing and let the card
+    // fall to its bare waiting line rather than fabricating a gap from `needKw`
+    // against an availability figure the producer never resolved.
+    if (postReserveMarginKw === null || minimumRequiredKw === null) return null;
+    return ceilToDisplayKw(minimumRequiredKw - postReserveMarginKw);
   }
   if (r['code'] === PLAN_REASON_CODES.shortfall) {
     return ceilToDisplayKw((readFiniteNumber(r['needKw']) ?? 0) - (readFiniteNumber(r['headroomKw']) ?? 0));
@@ -554,8 +538,6 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
       return appendUserDetail(PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS, reason.detail);
     case PLAN_REASON_CODES.dailyBudget:
       return appendUserDetail(PLAN_STATE_DAILY_BUDGET_STATUS, reason.detail);
-    case PLAN_REASON_CODES.sheddingActive:
-      return appendUserDetail('Currently limiting devices', reason.detail);
     case PLAN_REASON_CODES.inactive:
       return reason.detail ? `Off for now (${reason.detail})` : 'Off for now';
     case PLAN_REASON_CODES.capacity:

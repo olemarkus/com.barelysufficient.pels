@@ -24,7 +24,7 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { createMockPlanEngine } from '../utils/planEngineMock';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
@@ -45,7 +45,7 @@ const buildPlan = (
     & TemperatureDiscriminantProbe
     & SteppedDiscriminantProbe = {},
 ): DevicePlan => {
-  const normalizedReason = typeof reason === 'string' ? legacyDeviceReason(reason)! : reason;
+  const normalizedReason = typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason;
   return {
     meta: {
       totalKw: 1,
@@ -249,7 +249,7 @@ describe('PlanService', () => {
           plannedState: 'shed' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('insufficient headroom to restore (need 0.98kW, available -0.97kW)')!,
+          reason: insufficientHeadroomFixtureReason({ needKw: 0.98, availableKw: -0.97 }),
         })) as DevicePlan['devices'][number],
         withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'dev-2',
@@ -262,7 +262,7 @@ describe('PlanService', () => {
           plannedState: 'shed' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('insufficient headroom to restore (need 1.10kW, available -0.97kW)')!,
+          reason: insufficientHeadroomFixtureReason({ needKw: 1.1, availableKw: -0.97 }),
         })) as DevicePlan['devices'][number],
         withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'ev-1',
@@ -275,7 +275,7 @@ describe('PlanService', () => {
           plannedState: 'inactive' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('inactive (charger is unplugged)')!,
+          reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
         })) as DevicePlan['devices'][number],
       ],
     };
@@ -342,7 +342,7 @@ describe('PlanService', () => {
     const overview = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: legacyDeviceReason('keep')!,
+      reason: fixtureDeviceReason('keep')!,
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       controllable: true,
@@ -396,7 +396,7 @@ describe('PlanService', () => {
     const overview = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: legacyDeviceReason('keep')!,
+      reason: fixtureDeviceReason('keep')!,
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       controllable: true,
@@ -429,7 +429,7 @@ describe('PlanService', () => {
       plannedState: 'shed' as const,
       measuredPowerKw: 0,
       expectedPowerKw: 1.2,
-      reason: legacyDeviceReason('shed due to capacity')!,
+      reason: fixtureDeviceReason('shed due to capacity')!,
     }) as DevicePlan['devices'][number]);
     const { service } = createPlanService({
       planEngine: {

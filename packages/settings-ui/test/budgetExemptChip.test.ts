@@ -376,7 +376,15 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
     currentState: 'on',
     currentTemperature: 19.4,
     plannedTarget: 22,
-    reason: { code: PLAN_REASON_CODES.insufficientHeadroom, needKw: 2, effectiveAvailableKw: 0 },
+    // Production-shaped: `postReserveMargin = available − need − 0.25`, so the
+    // gap the card states is `minimumRequired − postReserveMargin` = 2.5 kW.
+    reason: {
+      code: PLAN_REASON_CODES.insufficientHeadroom,
+      needKw: 2,
+      availableKw: 0,
+      postReserveMarginKw: -2.25,
+      minimumRequiredPostReserveMarginKw: 0.25,
+    },
     starvation: heldBackStarvation(),
     ...overrides,
   } as PlanDeviceSnapshot);
@@ -425,7 +433,15 @@ describe('PlanSteppedCard status line states what the device needs', () => {
     controlModel: 'stepped_load',
     plannedState: 'shed',
     currentState: 'off',
-    reason: { code: PLAN_REASON_CODES.insufficientHeadroom, needKw: 2, effectiveAvailableKw: 0 },
+    // Production-shaped: `postReserveMargin = available − need − 0.25`, so the
+    // gap the card states is `minimumRequired − postReserveMargin` = 2.5 kW.
+    reason: {
+      code: PLAN_REASON_CODES.insufficientHeadroom,
+      needKw: 2,
+      availableKw: 0,
+      postReserveMarginKw: -2.25,
+      minimumRequiredPostReserveMarginKw: 0.25,
+    },
     starvation: heldBackStarvation(),
     steppedLoad: {
       profile: steppedProfile(),

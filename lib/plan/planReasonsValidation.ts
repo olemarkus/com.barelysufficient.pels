@@ -57,7 +57,6 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
   { code: PLAN_REASON_CODES.swappedOut, label: 'swapped out' },
   { code: PLAN_REASON_CODES.reservedForStart, label: 'startup power reserved' },
-  { code: PLAN_REASON_CODES.sheddingActive, label: 'shedding active' },
   { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
 ] as const;
 

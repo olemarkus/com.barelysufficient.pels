@@ -24,7 +24,7 @@ import {
 } from '../../lib/observer/observationFreshness';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
-import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 /**
  * Local fixture wrappers that widen the stable shared builders with the
@@ -50,8 +50,8 @@ const steppedInput = (
 ): PlanInputDevice => steppedInputDevice(o as Parameters<typeof steppedInputDevice>[0]);
 
 /** Build a `shedReasons` map from string reason codes (test convenience). */
-const shedReasonMap = (entries: [string, string][]): Map<string, NonNullable<ReturnType<typeof legacyDeviceReason>>> =>
-  new Map(entries.map(([id, reason]) => [id, legacyDeviceReason(reason)!]));
+const shedReasonMap = (entries: [string, string][]): Map<string, NonNullable<ReturnType<typeof fixtureDeviceReason>>> =>
+  new Map(entries.map(([id, reason]) => [id, fixtureDeviceReason(reason)!]));
 
 /** Narrow a plan device to read its commanded `plannedTarget` in assertions. */
 const plannedTargetOf = (device: DevicePlanDevice): number | undefined =>

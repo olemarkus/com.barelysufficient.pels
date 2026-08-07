@@ -10,7 +10,7 @@ import {
   setAutoEnableMockDevices,
 } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
-import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -1355,7 +1355,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           controllable: true,
           controlCapabilityId: 'onoff',
-          reason: legacyDeviceReason('shed due to capacity'),
+          reason: fixtureDeviceReason('shed due to capacity'),
         },
       ],
     };
@@ -1597,7 +1597,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           powerKw: 2, // needs at least 2 + margin headroom
           controllable: true,
-          reason: legacyDeviceReason('keep'),
+          reason: fixtureDeviceReason('keep'),
         },
       ],
     };
@@ -2258,7 +2258,7 @@ describe('Device plan snapshot', () => {
           controllable: true,
           controlCapabilityId: 'onoff',
           powerKw: 0.5,
-          reason: legacyDeviceReason('keep'),
+          reason: fixtureDeviceReason('keep'),
         },
       ],
     };
@@ -2307,7 +2307,7 @@ describe('Device plan snapshot', () => {
           controllable: true,
           controlCapabilityId: 'onoff',
           powerKw: 0.5,
-          reason: legacyDeviceReason('keep'),
+          reason: fixtureDeviceReason('keep'),
         },
       ],
     };
@@ -4244,7 +4244,7 @@ describe('Dry run mode', () => {
           shedAction: 'turn_off',
           controllable: true,
           controlCapabilityId: 'onoff',
-          reason: legacyDeviceReason('shed due to capacity'),
+          reason: fixtureDeviceReason('shed due to capacity'),
         },
         {
           id: 'dev-2',
@@ -4255,7 +4255,7 @@ describe('Dry run mode', () => {
           shedAction: 'turn_off',
           controllable: true,
           controlCapabilityId: 'onoff',
-          reason: legacyDeviceReason('shed due to capacity'),
+          reason: fixtureDeviceReason('shed due to capacity'),
         },
       ],
     };

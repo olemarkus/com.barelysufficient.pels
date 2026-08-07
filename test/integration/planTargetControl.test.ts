@@ -8,7 +8,7 @@ import {
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice =>
   // `planTargetControl` reads only `targets`; the device has no control
@@ -37,7 +37,7 @@ const buildPlanDevice = (
   currentTarget,
   plannedTarget,
   controllable: true,
-  reason: legacyDeviceReason('keep')!,
+  reason: fixtureDeviceReason('keep')!,
 }) as DevicePlan['devices'][number];
 
 describe('syncPendingTargetCommands', () => {

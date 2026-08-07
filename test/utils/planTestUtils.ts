@@ -11,7 +11,7 @@ import type {
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
-import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
+import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 
 /**
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved
@@ -189,7 +189,7 @@ DevicePlanDevice => {
     currentState: resolveFixtureCurrentState({ ...o, controlCapabilityId: o.controlCapabilityId ?? 'onoff' }),
     plannedState: 'keep',
     controlCapabilityId: 'onoff',
-    reason: legacyDeviceReason('keep')!,
+    reason: fixtureDeviceReason('keep')!,
     ...withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
       ...(currentTarget !== undefined ? { currentTarget } : {}),
@@ -199,7 +199,7 @@ DevicePlanDevice => {
     // `currentOn` lives on the orthogonal `BinaryControlKind`, reached via the guard.
     ...({ currentOn }),
     ...(reason !== undefined
-      ? { reason: typeof reason === 'string' ? legacyDeviceReason(reason)! : reason }
+      ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
   } as DevicePlanDevice;
 };

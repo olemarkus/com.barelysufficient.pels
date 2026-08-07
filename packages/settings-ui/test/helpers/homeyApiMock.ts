@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import { buildComparablePlanReason } from '../../../shared-domain/src/planReasonSemantics.ts';
+import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
 import type { DailyBudgetModelSettings } from '../../../contracts/src/dailyBudgetTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
@@ -242,7 +242,7 @@ export const normalizeUiTestPlanSnapshot = (plan: unknown): unknown => {
         : resolveFixtureReasonText(device.plannedState);
       return {
         ...device,
-        reason: buildComparablePlanReason(reasonText),
+        reason: fixtureDeviceReason(reasonText),
       };
     }),
   };

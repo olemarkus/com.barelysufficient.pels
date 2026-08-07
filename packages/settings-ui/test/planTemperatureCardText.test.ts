@@ -67,28 +67,10 @@ describe('resolveTemperatureLine', () => {
 });
 
 describe('resolveTemperatureReasonLine', () => {
-  it('shows the concrete power gap when waiting to resume', () => {
-    expect(resolveTemperatureReasonLine({
-      currentState: 'off',
-      plannedState: 'shed',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
-      reason: {
-        code: 'insufficient_headroom',
-        needKw: 1.25,
-        availableKw: 0.45,
-        effectiveAvailableKw: 0.45,
-        postReserveMarginKw: null,
-        minimumRequiredPostReserveMarginKw: null,
-        penaltyExtraKw: null,
-        swapReserveKw: null,
-        swapTargetName: null,
-      },
-    })).toBe('Waiting to resume — 0.8 kW more needed');
-  });
-
-  // Production-shaped reason (margins present): the gap is the admission-accurate
-  // shortfall `minimumRequired − postReserveMargin`, not `need − available`.
+  // The gap is the admission-accurate shortfall
+  // `minimumRequired − postReserveMargin`, never `need − available` — the latter
+  // understates by the reserve stack (prod 2026-08-01). A reason with no margins
+  // is not a shape any producer can emit, so there is nothing else to test here.
   it('shows the admission-accurate gap when reserve margins are present', () => {
     expect(resolveTemperatureReasonLine({
       currentState: 'off',

@@ -68,7 +68,7 @@ import {
 } from '../../lib/device/transport/managerParseDevice';
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
 import { CONNECTED_200_STEPPED_LOAD_PROFILE } from '../../lib/device/nativeSteppedLoadWiring';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -77,7 +77,7 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
-const KEEP_REASON = legacyDeviceReason('keep')!;
+const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
 
 const createLogger = (): Logger => ({

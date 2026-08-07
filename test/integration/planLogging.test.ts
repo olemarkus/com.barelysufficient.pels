@@ -5,9 +5,9 @@ import {
   buildPlanSignature,
 } from '../../lib/plan/planLogging';
 import type { DevicePlan } from '../../lib/plan/planTypes';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 
-const r = legacyDeviceReason;
+const r = fixtureDeviceReason;
 const KEEP_REASON = r('keep')!;
 const CAPACITY_REASON = r('shed due to capacity')!;
 
@@ -367,7 +367,7 @@ describe('plan logging helpers', () => {
           plannedState: 'shed',
           currentTarget: null,
           controllable: true,
-          reason: r('insufficient headroom to restore (need 0.98kW, available -0.97kW)'),
+          reason: insufficientHeadroomFixtureReason({ needKw: 0.98, availableKw: -0.97 }),
         },
         {
           id: 'dev-2',
@@ -377,7 +377,7 @@ describe('plan logging helpers', () => {
           plannedState: 'shed',
           currentTarget: null,
           controllable: true,
-          reason: r('insufficient headroom to restore (need 1.10kW, available -0.97kW)'),
+          reason: insufficientHeadroomFixtureReason({ needKw: 1.1, availableKw: -0.97 }),
         },
         {
           id: 'ev-1',

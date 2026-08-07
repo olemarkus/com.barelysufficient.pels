@@ -16,7 +16,7 @@ import {
   resetSettingsUiPowerStats,
 } from '../../setup/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/settingsUiApi';
-import { buildComparablePlanReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 describe('settingsUiApi', () => {
   const createHomey = (
@@ -47,7 +47,7 @@ describe('settingsUiApi', () => {
     const log = vi.fn();
     const error = vi.fn();
     const defaultPlanSnapshot = {
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
     };
     // These entries pin the ui_devices wire carriage of the cluster fields the
     // base snapshot type omits: `evChargingState` (EV-observed move),
@@ -252,7 +252,7 @@ describe('settingsUiApi', () => {
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
     expect(result.plan).toEqual({
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
     });
     expect(result.power).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
@@ -420,7 +420,7 @@ describe('settingsUiApi', () => {
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
-        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
       },
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
@@ -674,20 +674,20 @@ describe('settingsUiApi', () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: fixtureDeviceReason('keep')! }],
       },
     });
 
     await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
       plan: {
         generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: fixtureDeviceReason('keep')! }],
       },
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
         generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: fixtureDeviceReason('keep')! }],
       },
     });
   });
@@ -715,7 +715,7 @@ describe('settingsUiApi', () => {
           accumulatedMs: 1_800_000,
           startedAtMs: 1234,
         },
-        reason: buildComparablePlanReason('capacity'),
+        reason: fixtureDeviceReason('capacity')!,
       }],
     };
     const homey = createHomey({ latestPlanSnapshot: enrichedPlan });
@@ -746,7 +746,7 @@ describe('settingsUiApi', () => {
       latestPlanSnapshot: null,
       settings: {
         [stalePersistedPlanKey]: {
-          devices: [{ id: 'legacy-dev', name: 'Legacy Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+          devices: [{ id: 'legacy-dev', name: 'Legacy Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
         },
       },
     });

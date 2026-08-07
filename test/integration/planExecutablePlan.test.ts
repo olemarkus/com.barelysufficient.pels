@@ -11,7 +11,7 @@ import {
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: {
@@ -175,7 +175,7 @@ describe('planExecutablePlan', () => {
   });
 
   describe('hasExecutableShedDevices', () => {
-    const shedReason = legacyDeviceReason('shed due to capacity')!;
+    const shedReason = fixtureDeviceReason('shed due to capacity')!;
 
     it('detects shed posture from binary shed intent', () => {
       const plan = planWithDevices([
@@ -236,7 +236,7 @@ describe('planExecutablePlan', () => {
         buildPlanDevice({
           id: 'held-shed',
           plannedState: 'shed',
-          reason: legacyDeviceReason('meter settling (30s remaining)')!,
+          reason: fixtureDeviceReason('meter settling (30s remaining)')!,
         }),
       ]);
       expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(true);

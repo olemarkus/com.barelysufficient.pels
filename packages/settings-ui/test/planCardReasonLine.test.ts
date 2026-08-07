@@ -86,12 +86,14 @@ describe('resolveHeldCardReasonLine', () => {
       })).toBe("Waiting to increase — this hour's budget is spent");
     });
 
-    // Bare fallback survivors: `sheddingActive` has no live producer (prose
-    // parser + tests only), and a carrier without an attached number means the
-    // arithmetic honestly declined (reserve block, or missing inputs).
+    // Bare fallback survivors: a ceiling carrier without an attached number
+    // means the arithmetic honestly declined — a reserve block, admission
+    // passing this cycle, or the exhausted hour on a swap hold.
+    // (`sheddingActive` used to sit in this list; it had no live producer at
+    // all — only the prose fixture parser minted it — and the code was removed
+    // with that parser on 2026-08-07.)
     it.each([
       PLAN_REASON_CODES.capacity,
-      PLAN_REASON_CODES.sheddingActive,
       PLAN_REASON_CODES.swapPending,
       PLAN_REASON_CODES.swappedOut,
     ] as const)('%s without a shortfall falls back to the bare waiting line', (code) => {

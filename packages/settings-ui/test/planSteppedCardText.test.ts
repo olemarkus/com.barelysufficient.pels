@@ -458,9 +458,9 @@ describe('resolveSteppedStatusLine', () => {
             code: 'insufficient_headroom',
             needKw: 1.25,
             availableKw: 0.85,
-            effectiveAvailableKw: 0.85,
-            postReserveMarginKw: null,
-            minimumRequiredPostReserveMarginKw: null,
+            effectiveAvailableKw: null,
+            postReserveMarginKw: -0.65,
+            minimumRequiredPostReserveMarginKw: 0.25,
             penaltyExtraKw: null,
             swapReserveKw: null,
             swapTargetName: null,
@@ -469,7 +469,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to resume — 0.4 kW more needed');
+      expect(result).toBe('Waiting to resume — 0.9 kW more needed');
     });
 
     it('returns waiting-to-increase text when on at low and blocked from medium', () => {
@@ -482,9 +482,9 @@ describe('resolveSteppedStatusLine', () => {
             code: 'insufficient_headroom',
             needKw: 1.75,
             availableKw: 1.25,
-            effectiveAvailableKw: 1.25,
-            postReserveMarginKw: null,
-            minimumRequiredPostReserveMarginKw: null,
+            effectiveAvailableKw: null,
+            postReserveMarginKw: -0.75,
+            minimumRequiredPostReserveMarginKw: 0.25,
             penaltyExtraKw: null,
             swapReserveKw: null,
             swapTargetName: null,
@@ -493,7 +493,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to increase — 0.5 kW more needed');
+      expect(result).toBe('Waiting to increase — 1.0 kW more needed');
     });
 
     // A swap victim denied a step-up carries the normalizer-attached gap —

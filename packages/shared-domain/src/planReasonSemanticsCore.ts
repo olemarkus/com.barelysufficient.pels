@@ -17,7 +17,6 @@ export const PLAN_REASON_CODES = {
   restoreThrottled: 'restore_throttled',
   waitingForOtherDevices: 'waiting_for_other_devices',
   insufficientHeadroom: 'insufficient_headroom',
-  sheddingActive: 'shedding_active',
   inactive: 'inactive',
   capacity: 'capacity',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
@@ -109,18 +108,32 @@ export type DeviceReason =
   } & CountdownReasonTiming)
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
+  // Nullable iff a live producer can genuinely omit the field. The admission
+  // quartet below is always supplied — `buildRestoreHeadroomReason`
+  // (`lib/plan/planReasonStrings.ts`) declares all four as required `number`,
+  // and its three call sites (`restore/accounting.ts`, `swap/candidates.ts`,
+  // `restore/steppedRestoreAdmission.ts`) each pass a computed figure. The
+  // nullable versions existed only to satisfy a prose-reason parser that
+  // reconstructed these objects by regex from log text; it was deleted
+  // 2026-08-07 (test-only for its whole life), and with it the `headroom
+  // unknown` / absent-margin renderings and the fabricate-a-gap-from-`needKw`
+  // fallback in `resolveRestoreShortfallKw`. Do not widen them back: a null
+  // here means "we could not measure admission", which no producer can say.
+  //
+  // The remaining four ARE genuinely optional — they describe conditions that
+  // may not be in play at all: an activation penalty (`penaltyExtraKw`), and
+  // the swap path's reserve/effective figures and target name.
   | {
     code: typeof PLAN_REASON_CODES.insufficientHeadroom;
     needKw: number;
-    availableKw: number | null;
-    postReserveMarginKw: number | null;
-    minimumRequiredPostReserveMarginKw: number | null;
+    availableKw: number;
+    postReserveMarginKw: number;
+    minimumRequiredPostReserveMarginKw: number;
     penaltyExtraKw: number | null;
     swapReserveKw: number | null;
     effectiveAvailableKw: number | null;
     swapTargetName: string | null;
   }
-  | { code: typeof PLAN_REASON_CODES.sheddingActive; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string | null }
   | ({ code: typeof PLAN_REASON_CODES.capacity; detail: string | null } & AdmissionShortfall)
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid; detail: string | null }
@@ -162,7 +175,6 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.restoreThrottled]: 'restore throttled',
   [PLAN_REASON_CODES.waitingForOtherDevices]: 'waiting for other devices',
   [PLAN_REASON_CODES.insufficientHeadroom]: 'insufficient headroom',
-  [PLAN_REASON_CODES.sheddingActive]: 'shedding active',
   [PLAN_REASON_CODES.inactive]: 'inactive',
   [PLAN_REASON_CODES.capacity]: 'capacity',
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',

@@ -24,7 +24,7 @@ import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
-import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import {
   type BinaryControlDiscriminantProbe,
@@ -455,7 +455,7 @@ describe('restore cooldown backoff', () => {
           name: 'Swapped heater',
           currentState: 'off',
           plannedState: 'shed',
-          reason: legacyDeviceReason('swapped out for Critical heater')!,
+          reason: fixtureDeviceReason('swapped out for Critical heater')!,
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,
           powerKw: 1.5,
@@ -465,7 +465,7 @@ describe('restore cooldown backoff', () => {
           name: 'Critical heater',
           currentState: 'off',
           plannedState: 'shed',
-          reason: legacyDeviceReason('swap pending')!,
+          reason: fixtureDeviceReason('swap pending')!,
           expectedPowerKw: 2,
           measuredPowerKw: 0,
           powerKw: 2,
@@ -513,7 +513,7 @@ describe('restore cooldown backoff', () => {
           name: 'Critical heater',
           currentState: 'off',
           plannedState: 'shed',
-          reason: legacyDeviceReason('swap pending')!,
+          reason: fixtureDeviceReason('swap pending')!,
           expectedPowerKw: 2,
           measuredPowerKw: 0,
           powerKw: 2,
@@ -997,7 +997,7 @@ describe('restore cooldown backoff', () => {
     const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
 
     expect(offDevice?.plannedState).toBe('keep');
-    expect(offDevice?.reason).toEqual(legacyDeviceReason('keep'));
+    expect(offDevice?.reason).toEqual(fixtureDeviceReason('keep'));
   });
 
   it('normalizes an off stepped device back to the lowest non-zero restore step', () => {
@@ -1950,7 +1950,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
     expect(device?.desiredStepId).toBe('low');
-    expect(device?.reason).toEqual(legacyDeviceReason('keep'));
+    expect(device?.reason).toEqual(fixtureDeviceReason('keep'));
   });
 
   it('shows startup stabilization for stepped restores PELS controlled before restart', () => {
@@ -2405,7 +2405,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     expect(deviceMap.get(inactiveEv.id)).toMatchObject({
       plannedState: 'inactive',
-      reason: legacyDeviceReason('inactive (charger is unplugged)'),
+      reason: fixtureDeviceReason('inactive (charger is unplugged)'),
     });
     expect(result).toEqual({
       availableHeadroom: 10,

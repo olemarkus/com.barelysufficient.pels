@@ -1,6 +1,6 @@
 import { installHomeyMock } from './helpers/homeyApiMock.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
-import { buildComparablePlanReason } from '../../shared-domain/src/planReasonSemantics.ts';
+import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 
 afterEach(() => {
   vi.clearAllTimers();
@@ -28,7 +28,7 @@ describe('Redesign plan UI', () => {
       ...snapshot,
       devices: snapshot.devices.map((device) => {
         if (typeof device.reason === 'string') {
-          return { ...device, reason: buildComparablePlanReason(device.reason) };
+          return { ...device, reason: fixtureDeviceReason(device.reason) };
         }
         if (device.reason && typeof device.reason === 'object') return device;
         return { ...device, reason: DEFAULT_REASON };

@@ -256,7 +256,6 @@ Each eligible plan sample must normalize into:
 - `swap_pending`
 - `swapped_out`
 - `insufficient_headroom`
-- `shedding_active`
 
 `pauseReason` must be one of:
 
@@ -376,7 +375,6 @@ These attribute starvation time after entry:
 - `swap_pending`
 - `swapped_out`
 - `insufficient_headroom`
-- `shedding_active`
 
 Current planner-text examples that should normalize to these causes:
 
@@ -388,7 +386,6 @@ Current planner-text examples that should normalize to these causes:
 - `swap pending (NAME)` -> `swap_pending`
 - `swapped out for NAME` -> `swapped_out`
 - `insufficient headroom (...)` -> `insufficient_headroom`
-- `shedding active` -> `shedding_active`
 
 ## Hold / Retry Attribution
 

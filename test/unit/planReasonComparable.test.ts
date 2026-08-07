@@ -43,9 +43,9 @@ describe('buildComparableDeviceReason', () => {
   describe('insufficientHeadroom kW quantization', () => {
     const baseReason = (overrides: Partial<{
       needKw: number;
-      availableKw: number | null;
-      postReserveMarginKw: number | null;
-      minimumRequiredPostReserveMarginKw: number | null;
+      availableKw: number;
+      postReserveMarginKw: number;
+      minimumRequiredPostReserveMarginKw: number;
       penaltyExtraKw: number | null;
       swapReserveKw: number | null;
       effectiveAvailableKw: number | null;
@@ -83,19 +83,17 @@ describe('buildComparableDeviceReason', () => {
       expect(a).toEqual(b);
     });
 
-    it('preserves nulls on optional fields', () => {
+    // Only the three genuinely-optional fields can be null: they describe
+    // conditions that may not be in play (no activation penalty; no swap path).
+    // The admission quartet is non-nullable on the reason type — every producer
+    // computes all four — so there is no null to preserve there.
+    it('preserves nulls on the genuinely-optional fields', () => {
       const comparable = buildComparableDeviceReason(baseReason({
-        availableKw: null,
-        postReserveMarginKw: null,
-        minimumRequiredPostReserveMarginKw: null,
         penaltyExtraKw: null,
         swapReserveKw: null,
         effectiveAvailableKw: null,
       }));
       expect(comparable).toMatchObject({
-        availableW: null,
-        postReserveMarginW: null,
-        minimumRequiredPostReserveMarginW: null,
         penaltyExtraW: null,
         swapReserveW: null,
         effectiveAvailableW: null,

@@ -6,10 +6,10 @@ import {
 } from '../../packages/shared-domain/src/deviceOverview';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_STATE_CAPACITY_STATUS } from '../../packages/shared-domain/src/planStateLabels';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
-const r = (reason: string): DeviceReason => legacyDeviceReason(reason)!;
+const r = (reason: string): DeviceReason => fixtureDeviceReason(reason)!;
 
 describe('overview transition signature', () => {
   // Regression (PR #1955 review, Copilot + Codex): a satisfied target-only
