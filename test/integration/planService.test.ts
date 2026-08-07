@@ -85,7 +85,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     writePelsStatus: vi.fn(),
     planEngine: {
         ...createMockPlanEngine(),
-      buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
+      buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -126,8 +126,8 @@ describe('PlanService', () => {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
-        .mockResolvedValueOnce(buildPlan(19, 'stable'))
-        .mockResolvedValueOnce(buildPlan(21, 'sensor_update')),
+        .mockResolvedValueOnce(buildPlan(19, 'keep'))
+        .mockResolvedValueOnce(buildPlan(21, 'keep')),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -790,7 +790,7 @@ describe('PlanService', () => {
     });
     const runtimePlan = buildPlan(
       18,
-      'capacity',
+      'shed due to capacity',
       {
         totalKw: 6.24,
         softLimitKw: 5.04,
@@ -987,7 +987,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'stable')),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'keep')),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -1019,8 +1019,8 @@ describe('PlanService', () => {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
-        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
-        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
+        .mockResolvedValueOnce(buildPlan(20, 'keep', { totalKw: 1.0 }))
+        .mockResolvedValueOnce(buildPlan(20, 'keep', { totalKw: 1.2 })),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -1091,7 +1091,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -1168,7 +1168,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
     });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -1221,7 +1221,7 @@ describe('PlanService', () => {
 
     (service as any).latestPlanSnapshot = buildPlan(
       null,
-      'stable',
+      'keep',
       { powerFreshnessState: 'fresh' },
       {
         id: 'ev-1',
@@ -1287,7 +1287,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -1376,7 +1376,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(18, 'stable');
+    (service as any).latestPlanSnapshot = buildPlan(18, 'keep');
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
@@ -1466,7 +1466,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = decoratePlanWithPendingTargetCommands(buildPlan(18, 'stable'));
+    (service as any).latestPlanSnapshot = decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep'));
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
@@ -1591,7 +1591,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -1642,7 +1642,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(21, 'shed due to capacity', {}, {
       currentState: 'off',
       plannedState: 'shed',
       currentTarget: 21,
@@ -1692,7 +1692,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(21, 'shed due to capacity', {}, {
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: 21,
@@ -1756,7 +1756,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'cooldown', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: 20,
@@ -1823,7 +1823,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -1895,7 +1895,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'off',
       plannedState: 'keep',
       currentTarget: 20,
@@ -1953,7 +1953,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -2022,7 +2022,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               currentTarget: 20,
               plannedTarget: 20,
-              reason: 'stable',
+              reason: 'keep',
               controllable: true,
               controlCapabilityId: 'onoff',
               currentOn: false,
@@ -2034,7 +2034,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               currentTarget: 20,
               plannedTarget: 20,
-              reason: 'stable',
+              reason: 'keep',
               controllable: true,
               controlCapabilityId: 'onoff',
               currentOn: false,
@@ -2128,7 +2128,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           currentTarget: 20,
           plannedState: 'keep',
@@ -2218,7 +2218,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               currentTarget: 20,
               plannedTarget: 20,
-              reason: 'stable',
+              reason: 'keep',
               controllable: true,
             },
             {
@@ -2229,7 +2229,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               currentTarget: 20,
               plannedTarget: 20,
-              reason: 'stable',
+              reason: 'keep',
               controllable: false,
             },
           ],
@@ -2338,7 +2338,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               currentTarget: 20,
               plannedTarget: 20,
-              reason: 'stable',
+              reason: 'keep',
               controllable: true,
               available: true,
             },
@@ -2350,7 +2350,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               currentTarget: 20,
               plannedTarget: 20,
-              reason: 'stable',
+              reason: 'keep',
               controllable: true,
               available: false,
             },
@@ -2445,7 +2445,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'keep', {}, {
           currentState: 'on',
           currentTarget: 21,
           plannedState: 'shed',
@@ -2541,7 +2541,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',
@@ -2593,7 +2593,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           plannedState: 'keep',
           currentTarget: 20,
@@ -2655,7 +2655,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -2698,7 +2698,7 @@ describe('PlanService', () => {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockImplementation(
         async () => new Promise<DevicePlan>((resolve) => {
-          resolveBuild = () => resolve(buildPlan(20, 'stable'));
+          resolveBuild = () => resolve(buildPlan(20, 'keep'));
         }),
       ),
       computeDynamicSoftLimit: vi.fn(() => 0),
@@ -2772,7 +2772,7 @@ describe('PlanService', () => {
       }]);
     const syncPendingTargetCommands = vi.fn(() => false);
     const syncPendingBinaryCommands = vi.fn(() => false);
-    const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'stable'));
+    const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'keep'));
     const service = new PlanService({
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2852,7 +2852,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -2876,7 +2876,7 @@ describe('PlanService', () => {
       expect.objectContaining({ binaryControlObservation: snapshotRefreshEvidence }),
     ], 'rebuild');
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, { binaryCommandPending: true });
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, { binaryCommandPending: true });
     liveDevices = [buildLiveDevice(realtimeEvidence)];
     await service.syncLivePlanState('realtime_capability');
 
@@ -2892,7 +2892,7 @@ describe('PlanService', () => {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
-        .mockResolvedValue(buildPlan(20, 'stable')),
+        .mockResolvedValue(buildPlan(20, 'keep')),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -2945,12 +2945,12 @@ describe('PlanService', () => {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
-        .mockResolvedValueOnce(buildPlan(20, 'stable', {}, {
+        .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
           currentState: 'on',
           plannedState: 'keep',
           plannedTarget: 20,
         }))
-        .mockResolvedValueOnce(buildPlan(20, 'stable', {}, {
+        .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           plannedState: 'keep',
           plannedTarget: 20,
@@ -3051,7 +3051,7 @@ describe('PlanService', () => {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockImplementation(async () => {
         vi.advanceTimersByTime(11);
-        return buildPlan(20, 'stable');
+        return buildPlan(20, 'keep');
       }),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
@@ -3217,7 +3217,7 @@ describe('PlanService', () => {
                 event: 'home_scoped_descendant_test',
                 expectedHomeId: homeId,
               });
-              return buildPlan(20, 'stable');
+              return buildPlan(20, 'keep');
             }),
             computeDynamicSoftLimit: vi.fn(() => 0),
             computeShortfallThreshold: vi.fn(() => 0),
@@ -3281,7 +3281,7 @@ describe('PlanService', () => {
     structuredLog.info.mockClear();
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(1501);
-      return buildPlan(20, 'stable');
+      return buildPlan(20, 'keep');
     });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -3312,7 +3312,7 @@ describe('PlanService', () => {
 
     // Return a plan with different plannedState to trigger actionChanged
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockResolvedValueOnce(
-      buildPlan(20, 'stable', {}, { plannedState: 'shed' }),
+      buildPlan(20, 'keep', {}, { plannedState: 'shed' }),
     );
     await service.rebuildPlanFromCache('power_delta');
 
@@ -3335,8 +3335,8 @@ describe('PlanService', () => {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
-          .mockResolvedValueOnce(buildPlan(20, 'stable'))
-          .mockResolvedValueOnce(buildPlan(20, 'stable', {}, { plannedState: 'shed' })),
+          .mockResolvedValueOnce(buildPlan(20, 'keep'))
+          .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -3374,8 +3374,8 @@ describe('PlanService', () => {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
-          .mockResolvedValueOnce(buildPlan(20, 'stable'))
-          .mockResolvedValueOnce(buildPlan(20, 'stable', {}, { plannedState: 'shed' })),
+          .mockResolvedValueOnce(buildPlan(20, 'keep'))
+          .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -3421,8 +3421,8 @@ describe('PlanService', () => {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
-          .mockResolvedValueOnce(buildPlan(20, 'stable'))
-          .mockResolvedValueOnce(buildPlan(20, 'stable', {}, { plannedState: 'shed' })),
+          .mockResolvedValueOnce(buildPlan(20, 'keep'))
+          .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -3491,7 +3491,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           plannedState: 'keep',
         })),
@@ -3539,7 +3539,7 @@ describe('PlanService', () => {
       } as any,
       planEngine: {
         ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           plannedState: 'keep',
         })),
@@ -3575,7 +3575,7 @@ describe('PlanService', () => {
   });
 
   it('retries unchanged stepped-load step-up plans while the reported step is still lower than desired', async () => {
-    const steppedPlan = buildPlan(20, 'stable', {}, {
+    const steppedPlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
       steppedLoadProfile: {
@@ -3689,7 +3689,7 @@ describe('PlanService', () => {
       schedulePostActuationRefresh,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       plannedState: 'keep',

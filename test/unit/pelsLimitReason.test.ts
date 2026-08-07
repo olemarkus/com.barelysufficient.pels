@@ -184,7 +184,7 @@ describe('pels status limit reason', () => {
     [{ isCheap: false, isExpensive: true }, PriceLevel.EXPENSIVE],
     [{ isCheap: false, isExpensive: false }, PriceLevel.NORMAL],
   ] as const)('resolves price level from V2 combined_prices payload', (flags, expected) => {
-    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'normal' });
+    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'keep' });
     const { status } = buildPelsStatus({
       plan,
       isCheap: flags.isCheap,
@@ -198,7 +198,7 @@ describe('pels status limit reason', () => {
   });
 
   it('resolves price level to UNKNOWN when V2 store has no hours', () => {
-    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'normal' });
+    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'keep' });
     const { status } = buildPelsStatus({
       plan,
       isCheap: true,

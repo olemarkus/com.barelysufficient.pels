@@ -202,12 +202,30 @@ function parseKnownReason(trimmed: string): DeviceReason | null {
   return null;
 }
 
-// An unrecognised label becomes `none`. It used to become `other` — a carrier
-// holding the raw text — but that code left the contract on 2026-08-07 once its
-// only runtime producer (the swap-candidate log round-trip) was removed, and a
-// fixture vocabulary is not a reason to keep a variant alive in the shared type.
+// An unrecognised label THROWS. It used to fall to `other` — a carrier holding
+// the raw text — and that code left the contract on 2026-08-07 with its only
+// runtime producer. Falling to `none` instead would have been worse than either:
+// `none` means "this device has no reason", so a stale or misspelled fixture
+// would quietly describe a different device than the fixture claims, and the
+// test would still pass. `fixtureDeviceReason('capacity')` was already doing
+// exactly that — the grammar spells it `shed due to capacity`, so a fixture
+// meaning "held on capacity" had been silently producing a reasonless device.
+//
+// Conflating malformed input with genuine absence is the failure the root
+// AGENTS.md boundary rule names outright, and a test helper is not exempt: a
+// fixture that lies is a test that proves nothing. Throwing surfaces the typo at
+// the call site instead. Every fixture in the repo parses cleanly as of
+// 2026-08-07 — if this fires, fix the label (or build the reason object
+// directly, as `planDiagnostics.test.ts` does for a deliberately foreign code).
 export function buildFixturePlanReason(reason: string | undefined): DeviceReason {
   const trimmed = normalizeReasonText(reason);
   if (!trimmed) return { code: PLAN_REASON_CODES.none };
-  return parseKnownReason(trimmed) ?? { code: PLAN_REASON_CODES.none };
+  const parsed = parseKnownReason(trimmed);
+  if (!parsed) {
+    throw new Error(
+      `Unknown plan-reason fixture label: "${trimmed}". Use a label this grammar `
+      + 'parses, or build the DeviceReason object directly.',
+    );
+  }
+  return parsed;
 }

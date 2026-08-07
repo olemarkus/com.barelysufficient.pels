@@ -391,7 +391,7 @@ describe('Redesign plan UI', () => {
           minutesRemaining: 38,
         },
         devices: [
-          { id: 'dev-shed', name: 'Heater', currentState: 'on', plannedState: 'shed', reason: 'over capacity limit' },
+          { id: 'dev-shed', name: 'Heater', currentState: 'on', plannedState: 'shed', reason: 'shed due to capacity' },
         ],
       }) as Parameters<typeof renderPlan>[0]);
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())

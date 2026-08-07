@@ -715,7 +715,7 @@ describe('settingsUiApi', () => {
           accumulatedMs: 1_800_000,
           startedAtMs: 1234,
         },
-        reason: fixtureDeviceReason('capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       }],
     };
     const homey = createHomey({ latestPlanSnapshot: enrichedPlan });
