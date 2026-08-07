@@ -1140,6 +1140,22 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
+      `homey app validate && npm run package:check`, and `homey app validate` calls
+      `preprocess({ copyAppProductionDependencies: app instanceof AppPython })` — false for a Node
+      app — so `.homeybuild/` is rebuilt *without* `node_modules`
+      (`/usr/lib/node_modules/homey/lib/App.js:862-894`, `bin/cmds/app/validate.mjs:28-32`;
+      `preprocess` wipes the directory at App.js:874, so an earlier `npm run build` tree does not
+      survive either). Every node_modules-dependent assertion in
+      `scripts/check-homey-packaging.mjs` — the pruned-package loop, the sourcemap/`.d.ts` survivor
+      guard, the 18 MB ceiling — therefore never runs in CI
+      (`.github/workflows/test.yml:61-77`); they now self-report as NOT EVALUATED rather than
+      passing silently. `homey app build` runs the same `preprocess()` with production dependencies
+      and no network or device, so inserting it before `package:check` would make all three
+      enforceable. Not done here because it means a second full `preprocess` (each one re-runs
+      `npm run build`) and validates only at level `debug`, so it is added CI minutes rather than a
+      swap — worth measuring before adopting. Source: 2026-08-07 build-size audit, adversarial pass
+      on PR #2006. [P2]
 - [ ] **`remainingActionableControlledLoadW` in the shortfall record disagrees with what shed
       selection can act on.** The capacity summary sources it from `residualKw.shed` (= current
       draw, `resolveResidualKwShed` in `lib/device/deviceResidualKw.ts`) while selection uses
@@ -3060,6 +3076,18 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 
 ## P3 Future and Exploratory Work
 
+- [ ] **Widget bundles ship unminified while the settings bundle does not.**
+      `scripts/build-widgets.mjs` passes no `--minify`, so the packaged app carries 689 KB of
+      readable widget JS (`widgets/create_smart_task/api.js` alone is 204 KB / 5765 lines) where
+      `packages/settings-ui` minifies the same kind of output — `settings/script.js` is 1.5 MB
+      minified. A trial `esbuild --minify` pass took `create_smart_task/api.js` to 86 KB, so the
+      whole set should land near 340 KB. Deferred rather than done because Homey resolves widget
+      `api.js` handlers by exported name and the change is only trustworthy once the widgets have
+      been exercised on a real Homey, which the packaging audit could not do. Persona: owner on a
+      metered or slow connection installing an app update. *Hypothesis:* the widget build simply
+      never inherited the settings build's minify flag, and adding it is ~350 KB for one argument
+      once a device run confirms the handlers still resolve. Source: 2026-08-07 build-size audit
+      (the same pass that removed the 6.2 MB of dev artifacts, preact, and sourcemaps). [P3]
 - [ ] **A switched-off EV charger's reason line may restate its own state word.**
       With signal-2 gating (2026-08-04), a charger the owner switched off renders the state word
       `Off` above the reason line `Not charging` — close to saying the same thing twice, the failure
