@@ -83,18 +83,29 @@ export type DeviceUpdateProcessedDebugEvent = {
 export type HandleRealtimeDeviceUpdateResult = {
   hadChanges: boolean;
   /**
-   * At least one CONTROL-RELEVANT capability moved in this event (`hadChanges`
-   * counts raw changes, including ones the filter drops).
+   * At least one control-relevant capability moved in this event AND was not
+   * already consumed by the pending-binary settle window.
    *
-   * This is a fact about the observation and nothing more. The producer knows
-   * which capabilities are control-relevant; it does not know what the plan
-   * wants, whether the device disagrees with it, or what should happen next.
-   * Deciding that is the executor's (`lib/executor/executorConvergence.ts`) and
-   * the planner's, in that order.
+   * Both halves are load-bearing, so read the name as scoped to this result
+   * rather than as a universal claim about the observation:
+   * - control-relevant: `hadChanges` counts RAW changes; this counts the
+   *   filtered set, so a `measure_temperature` move does not qualify.
+   * - not already settled: `applyPendingBinarySettleToDeviceUpdate` removes a
+   *   binary change it classified as `settled`/`drift`, because that path has
+   *   already dispatched for it. A pending-command confirmation therefore
+   *   reports `false` here while `hadChanges`/`result.changes` still record the
+   *   real transition — deliberately, to avoid dispatching twice for one event.
+   *
+   * What it is NOT is a plan verb. The producer knows which capabilities are
+   * control-relevant and whether it already dispatched; it does not know what
+   * the plan wants, whether the device disagrees with it, or what should happen
+   * next. Deciding that is the executor's
+   * (`lib/executor/executorConvergence.ts`) and the planner's, in that order.
    *
    * Formerly `shouldReconcilePlan` — a producer naming a plan operation, which
    * is inversion #1 of the drift/reconcile layering problem. Do not reintroduce
-   * an imperative name here.
+   * an imperative name here. Splitting the observation fact from the
+   * dispatch-suppression bit is tracked in `TODO.md`.
    */
   observedControlStateChanged: boolean;
   changes: RealtimeDeviceReconcileChange[];
