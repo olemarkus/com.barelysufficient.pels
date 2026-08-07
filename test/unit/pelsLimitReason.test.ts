@@ -4,7 +4,7 @@ import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
@@ -36,7 +36,7 @@ describe('pels status limit reason', () => {
     devices: [
       {
         ...baseDevice,
-        reason: typeof params.reason === 'string' ? legacyDeviceReason(params.reason)! : params.reason,
+        reason: typeof params.reason === 'string' ? fixtureDeviceReason(params.reason)! : params.reason,
       },
     ],
   });
@@ -128,7 +128,7 @@ describe('pels status limit reason', () => {
           plannedState: 'inactive' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('inactive (charger is unplugged)')!,
+          reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
         }),
       ],
     };

@@ -10,7 +10,6 @@ import {
   resolveRestoreShortfallKw,
   resolveSurplusHoldReportedLoadText,
 } from './planReasonFormatting';
-import { buildComparablePlanReason } from './planReasonParsing';
 
 export {
   PLAN_REASON_CODES,
@@ -24,6 +23,5 @@ export {
   resolveReportedLoadAfterPauseText,
   resolveRestoreShortfallKw,
   resolveSurplusHoldReportedLoadText,
-  buildComparablePlanReason,
 };
 export type { CountdownReasonTiming, DeviceReason, PlanReasonCode } from './planReasonSemanticsCore';

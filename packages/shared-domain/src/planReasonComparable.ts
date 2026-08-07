@@ -65,7 +65,6 @@ type DetailComparableReason = Extract<
   | { code: typeof PLAN_REASON_CODES.inactive }
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
-  | { code: typeof PLAN_REASON_CODES.sheddingActive }
   | { code: typeof PLAN_REASON_CODES.capacity }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
@@ -129,7 +128,6 @@ function isDetailComparableReason(reason: DeviceReason): reason is DetailCompara
     || reason.code === PLAN_REASON_CODES.inactive
     || reason.code === PLAN_REASON_CODES.hourlyBudget
     || reason.code === PLAN_REASON_CODES.dailyBudget
-    || reason.code === PLAN_REASON_CODES.sheddingActive
     || reason.code === PLAN_REASON_CODES.capacity
     || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
     || reason.code === PLAN_REASON_CODES.awaitingSolarSurplus;

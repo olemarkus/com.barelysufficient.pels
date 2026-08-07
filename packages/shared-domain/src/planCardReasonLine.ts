@@ -36,9 +36,6 @@ const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.insufficientHeadroom,
-  // Dead producer (prose parser + tests only) — no arithmetic exists for it, so
-  // it always lands on the fallback below. Kept for snapshot compatibility.
-  PLAN_REASON_CODES.sheddingActive,
   // Swap holds: another device took the power. The swap PRODUCERS still carry
   // no shortfall (their admission numbers belong to the device being swapped
   // IN), but reason normalization (`finalizeCeilingReason`,

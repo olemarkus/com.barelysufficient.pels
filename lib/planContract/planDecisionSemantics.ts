@@ -11,8 +11,7 @@ export type PlanStarvationCountingCause =
   | 'shortfall'
   | 'swap_pending'
   | 'swapped_out'
-  | 'insufficient_headroom'
-  | 'shedding_active';
+  | 'insufficient_headroom';
 
 export type PlanStarvationPauseReason =
   | 'cooldown'
@@ -121,7 +120,6 @@ const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, PlanStarvation
   [PLAN_REASON_CODES.swapPending]: 'swap_pending',
   [PLAN_REASON_CODES.swappedOut]: 'swapped_out',
   [PLAN_REASON_CODES.insufficientHeadroom]: 'insufficient_headroom',
-  [PLAN_REASON_CODES.sheddingActive]: 'shedding_active',
 };
 
 export const isRestoreAdmissionHoldReason = (reason: DeviceReason): boolean => (

@@ -9,7 +9,7 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice } from '../utils/planTestUtils';
-import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 // Reads the moved `plannedTarget` off a plan device by narrowing through the
 // temperature guard (the field lives on `TemperatureKind`, not the base).
@@ -27,9 +27,9 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
-        reason: legacyDeviceReason('restore (need 1.20kW)')!,
+        reason: fixtureDeviceReason('restore (need 1.20kW)')!,
       })],
-      shedReasons: new Map([['dev-1', legacyDeviceReason('shed due to hourly budget')!]]),
+      shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to hourly budget')!]]),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: false,
@@ -44,7 +44,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
         plannedState: 'shed',
-        reason: legacyDeviceReason('swapped out for Water Heater')!,
+        reason: fixtureDeviceReason('swapped out for Water Heater')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -61,7 +61,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
         plannedState: 'shed',
-        reason: legacyDeviceReason('keep')!,
+        reason: fixtureDeviceReason('keep')!,
         expectedPowerKw: 1,
       })],
       shedReasons: new Map(),
@@ -79,7 +79,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to daily budget')!,
+        reason: fixtureDeviceReason('shed due to daily budget')!,
         expectedPowerKw: 1,
       })],
       shedReasons: new Map(),
@@ -98,9 +98,9 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
-      shedReasons: new Map([['dev-1', legacyDeviceReason('shed due to capacity')!]]),
+      shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
       headroomRaw: 1.5,
       inCooldown: false,
@@ -153,7 +153,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-stale-capacity',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -179,7 +179,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-breached-capacity',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -204,7 +204,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-carry-forward',
         plannedState: 'shed',
-        reason: legacyDeviceReason('keep')!,
+        reason: fixtureDeviceReason('keep')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -228,7 +228,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-fresh-capacity',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -251,7 +251,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-fresh',
         plannedState: 'shed',
-        reason: legacyDeviceReason('keep')!,
+        reason: fixtureDeviceReason('keep')!,
       })],
       shedReasons: new Map([['dev-fresh', { code: 'capacity', detail: null }]]),
       guardInShortfall: false,
@@ -388,7 +388,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-smart-task',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -407,7 +407,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-smart-task-on-daily',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -427,7 +427,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-swap',
         plannedState: 'shed',
-        reason: legacyDeviceReason('swapped out for Water Heater')!,
+        reason: fixtureDeviceReason('swapped out for Water Heater')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -454,7 +454,7 @@ describe('normalizeShedReasons', () => {
         id: 'pool-pump',
         plannedState: 'shed',
         surplusOnly: true,
-        reason: legacyDeviceReason('cooldown (shedding, 25s remaining)')!,
+        reason: fixtureDeviceReason('cooldown (shedding, 25s remaining)')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -474,7 +474,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-capacity',
         plannedState: 'shed',
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -496,9 +496,9 @@ describe('normalizeShedReasons', () => {
         id: 'pool-pump',
         plannedState: 'shed',
         surplusOnly: true,
-        reason: legacyDeviceReason('shed due to capacity')!,
+        reason: fixtureDeviceReason('shed due to capacity')!,
       })],
-      shedReasons: new Map([['pool-pump', legacyDeviceReason('shed due to capacity')!]]),
+      shedReasons: new Map([['pool-pump', fixtureDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: false,
@@ -719,7 +719,7 @@ describe('finalizePlanDevices', () => {
   it('strips candidate reasons before returning finalized plan devices', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-      reason: legacyDeviceReason('keep')!,
+      reason: fixtureDeviceReason('keep')!,
       candidateReasons: {
         offStateAnalysis: 'restore (need 1.20kW, headroom 0.30kW)',
       },
@@ -739,35 +739,35 @@ describe('finalizePlanDevices', () => {
   it('throws in tests when a final reason/state pair is not allowed', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: legacyDeviceReason('restore (need 1.20kW, headroom 0.30kW)')!,
+      reason: fixtureDeviceReason('restore (need 1.20kW, headroom 0.30kW)')!,
     })])).toThrow(/Invalid plan reason pair/);
   });
 
   it('allows legacy restore cooldown shed reasons that are still emitted by stay-off paths', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: legacyDeviceReason('cooldown (restore, 30s remaining)')!,
+      reason: fixtureDeviceReason('cooldown (restore, 30s remaining)')!,
     })])).not.toThrow();
   });
 
   it('allows meter-settling shed reasons for blocked restore candidates', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: legacyDeviceReason('meter settling (30s remaining)')!,
+      reason: fixtureDeviceReason('meter settling (30s remaining)')!,
     })])).not.toThrow();
   });
 
   it('allows legacy restore cooldown keep reasons that still surface during restore holds', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-      reason: legacyDeviceReason('cooldown (restore, 30s remaining)')!,
+      reason: fixtureDeviceReason('cooldown (restore, 30s remaining)')!,
     })])).not.toThrow();
   });
 
   it('allows restore pending reasons for keep devices that are waiting on stepped confirmation', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-      reason: legacyDeviceReason('restore pending (30s remaining)')!,
+      reason: fixtureDeviceReason('restore pending (30s remaining)')!,
     })])).not.toThrow();
   });
 
@@ -817,7 +817,7 @@ describe('applyShedTemperatureHold', () => {
           plannedTarget: 16,
           shedAction: 'set_temperature',
           shedTemperature: 16,
-          reason: legacyDeviceReason('shed due to daily budget')!,
+          reason: fixtureDeviceReason('shed due to daily budget')!,
         }), true)],
         state,
         shedReasons: new Map(),
@@ -858,7 +858,7 @@ describe('applyShedTemperatureHold', () => {
         plannedTarget: 16,
         shedAction: 'set_temperature',
         shedTemperature: 16,
-        reason: legacyDeviceReason('swap pending')!,
+        reason: fixtureDeviceReason('swap pending')!,
       }), true)],
       state,
       shedReasons: new Map(),

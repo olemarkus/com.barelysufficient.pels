@@ -19,7 +19,7 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanDevice } from '../utils/planTestUtils';
-import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 const makeDevice = (
   overrides: Partial<DevicePlanDevice>
@@ -305,7 +305,7 @@ describe('plan restore device helpers', () => {
 
     const deviceMap = new Map<string, DevicePlanDevice>([
       ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', powerKw: 1.1 })],
-      ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: legacyDeviceReason('shed due to capacity')!, powerKw: 2.2 })],
+      ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, powerKw: 2.2 })],
       ['ev1', makeDevice({
         id: 'ev1',
         name: 'EV 1',
@@ -332,14 +332,14 @@ describe('plan restore device helpers', () => {
     });
     expect(setDevice).toHaveBeenCalledWith(
       'dev1',
-      expect.objectContaining({ reason: legacyDeviceReason('cooldown (shedding, 7s remaining)') }),
+      expect.objectContaining({ reason: fixtureDeviceReason('cooldown (shedding, 7s remaining)') }),
     );
     expect(setDevice).toHaveBeenCalledWith('ev1', expect.objectContaining({
       plannedState: 'inactive',
-      reason: legacyDeviceReason('inactive (charger is unplugged)'),
+      reason: fixtureDeviceReason('inactive (charger is unplugged)'),
     }));
     setDevice.mockClear();
-    deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: legacyDeviceReason('shed due to capacity')!, powerKw: 2.2 }));
+    deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, powerKw: 2.2 }));
 
     markOffDevicesStayOff({
       deviceMap,

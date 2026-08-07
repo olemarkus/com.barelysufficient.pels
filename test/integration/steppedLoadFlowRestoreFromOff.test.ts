@@ -48,7 +48,7 @@ import {
   type DeviceTransportParseDeps,
 } from '../../lib/device/transport/managerParseDevice';
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -61,7 +61,7 @@ import type {
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
-const KEEP_REASON = legacyDeviceReason('keep')!;
+const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'easee-1';
 const DEVICE_NAME = 'Elbillader';
 

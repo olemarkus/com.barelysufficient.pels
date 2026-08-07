@@ -54,7 +54,7 @@ import {
 } from '../../lib/device/transport/managerParseDevice';
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
 import { buildRestoreTiming, shouldPlanRestores } from '../../lib/plan/restore/timing';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import {
@@ -66,7 +66,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
-const SHED_REASON = legacyDeviceReason('limited_by_daily_budget')!;
+const SHED_REASON = fixtureDeviceReason('limited_by_daily_budget')!;
 const DEVICE_ID = 'elbillader-1';
 const START_ISO = '2026-07-26T20:55:00.000Z';
 const CYCLE_MS = 35_000; // prod rebuild cadence during the incident

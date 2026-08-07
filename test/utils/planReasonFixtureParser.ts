@@ -1,4 +1,29 @@
-import { PLAN_REASON_CODES, type DeviceReason } from './planReasonSemanticsCore';
+/**
+ * Prose → `DeviceReason` for TEST FIXTURES ONLY.
+ *
+ * Until 2026-08-07 this lived in `packages/shared-domain/src/planReasonParsing.ts`
+ * and shipped in the production bundle, even though its only entry point was
+ * reachable exclusively from test helpers. That placement had a real cost: it
+ * reconstructed reason objects by regex, so a string missing a section produced
+ * a HALF-POPULATED reason — which forced `insufficient_headroom`'s four
+ * admission fields to be nullable in the PRODUCTION `DeviceReason` type. Those
+ * nulls then justified a `headroom unknown` rendering and a
+ * fabricate-the-gap-from-`needKw` fallback in `resolveRestoreShortfallKw`,
+ * neither reachable by any live producer: dead branches held open by fixtures.
+ *
+ * Moving it here is the fix. Fixtures keep their readable prose, production
+ * types stay honest, and nothing here can widen them again.
+ *
+ * `insufficient_headroom` deliberately has NO prose form. Its text does not
+ * fully specify the object — a log line may omit the post-reserve margin
+ * section — and inventing admission figures to fill the gap is the exact
+ * failure this move exists to prevent. Fixtures needing it call
+ * `insufficientHeadroomFixtureReason` in `deviceReasonTestUtils.ts`.
+ */
+import {
+  PLAN_REASON_CODES,
+  type DeviceReason,
+} from '../../packages/shared-domain/src/planReasonSemanticsCore';
 
 const KEEP_REASON = /^keep(?: \((.+)\))?$/;
 const RESTORE_NEED_REASON = (
@@ -23,10 +48,6 @@ const HEADROOM_COOLDOWN_STEP_DOWN_REASON = new RegExp(
     + 'usage step down from (unknown|-?\\d+(?:\\.\\d+)?)kW to '
     + '(unknown|-?\\d+(?:\\.\\d+)?)kW\\)$',
 );
-const INSUFFICIENT_HEADROOM_REASON = (
-  /^insufficient headroom(?: to swap for (.+?)| to restore)?( after reserves)? \((.+)\)$/
-);
-const SHEDDING_ACTIVE_REASON = /^shedding active(?: (.+))?$/;
 const INACTIVE_REASON = /^inactive(?: \((.+)\))?$/;
 const CAPACITY_REASON = /^shed due to capacity(?: (.+))?$/;
 const SHED_INVARIANT_REASON = (
@@ -75,48 +96,10 @@ function parseShortfallReason(trimmed: string): DeviceReason | null {
   };
 }
 
-function parseNeedMatch(section: string | undefined): RegExpExecArray | null {
-  return /^need (-?\d+(?:\.\d+)?)kW$/.exec(section ?? '')
-    ?? /^effective need (-?\d+(?:\.\d+)?)kW \(base -?\d+(?:\.\d+)?kW \+ penalty (-?\d+(?:\.\d+)?)kW\)$/.exec(
-      section ?? '',
-    );
-}
-
-function parseInsufficientHeadroomReason(trimmed: string): DeviceReason | null {
-  const match = INSUFFICIENT_HEADROOM_REASON.exec(trimmed);
-  if (!match) return null;
-
-  const detailParts = match[3].split(', ');
-  const needMatch = parseNeedMatch(detailParts[0]);
-  if (!needMatch) return null;
-
-  const availableMatch = /^(?:available|headroom) (unknown|-?\d+(?:\.\d+)?)kW?$/.exec(detailParts[1] ?? '');
-  const effectiveMatch = /^effective (-?\d+(?:\.\d+)?)kW after (-?\d+(?:\.\d+)?)kW swap reserve$/.exec(
-    detailParts[2] ?? '',
-  );
-  const postReserveIndex = effectiveMatch ? 3 : 2;
-  const postReserveMatch = /^post-reserve margin (-?\d+(?:\.\d+)?)kW < (-?\d+(?:\.\d+)?)kW$/.exec(
-    detailParts[postReserveIndex] ?? '',
-  );
-
-  return {
-    code: PLAN_REASON_CODES.insufficientHeadroom,
-    needKw: Number(needMatch[1]),
-    availableKw: parseNumber(availableMatch?.[1]),
-    postReserveMarginKw: parseNumber(postReserveMatch?.[1]),
-    minimumRequiredPostReserveMarginKw: parseNumber(postReserveMatch?.[2]),
-    penaltyExtraKw: needMatch.length > 2 ? parseNumber(needMatch[2]) : null,
-    swapReserveKw: parseNumber(effectiveMatch?.[2]),
-    effectiveAvailableKw: parseNumber(effectiveMatch?.[1]),
-    swapTargetName: match[1] ?? null,
-  };
-}
-
 const REGEX_REASON_PARSERS: ReasonParser[] = [
   parseKeepReason,
   parseRestoreNeedReason,
   parseShortfallReason,
-  parseInsufficientHeadroomReason,
   (trimmed) => {
     const match = SET_TARGET_REASON.exec(trimmed);
     return match ? { code: PLAN_REASON_CODES.setTarget, targetText: match[1] } : null;
@@ -180,10 +163,6 @@ const REGEX_REASON_PARSERS: ReasonParser[] = [
     };
   },
   (trimmed) => {
-    const match = SHEDDING_ACTIVE_REASON.exec(trimmed);
-    return match ? { code: PLAN_REASON_CODES.sheddingActive, detail: match[1] ?? null } : null;
-  },
-  (trimmed) => {
     const match = INACTIVE_REASON.exec(trimmed);
     return match ? { code: PLAN_REASON_CODES.inactive, detail: match[1] ?? null } : null;
   },
@@ -223,8 +202,9 @@ function parseKnownReason(trimmed: string): DeviceReason | null {
   return null;
 }
 
-// Legacy storage bridge for old persisted plan snapshots that still store reason text.
-export function buildComparablePlanReason(reason: string | undefined): DeviceReason {
+// Unknown text falls to `other`, exactly as the shipped parser did — a fixture
+// label the grammar does not cover is a diagnostic carrier, not a failure.
+export function buildFixturePlanReason(reason: string | undefined): DeviceReason {
   const trimmed = normalizeReasonText(reason);
   if (!trimmed) return { code: PLAN_REASON_CODES.none };
   return parseKnownReason(trimmed) ?? { code: PLAN_REASON_CODES.other, text: trimmed };

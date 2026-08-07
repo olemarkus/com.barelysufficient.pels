@@ -1562,13 +1562,15 @@ program) remain deferred.*
       framing when `powerKnown` is false. Source: pels-runtime-reality on the 2026-08-01
       budget-hold re-attribution. [P2]
 
-- [ ] **Retire the legacy prose reason parsers.** Plan reasons are structured objects end to end
-      (`buildRestoreHeadroomReason` et al.), but `packages/shared-domain/src/planReasonParsing.ts`
-      still round-trips a dozen prose regexes (`insufficient headroom (…)`, `shed due to …`) for
-      legacy string reasons, and test utils lean on `legacyDeviceReason`. Every copy change to a
-      reason template risks a silent parse miss instead of a type error. Migrate the remaining
-      producers/consumers of prose reasons onto the structured contract and delete the regex layer.
-      Source: 2026-08-01 budget-hold copy investigation. [P2]
+- [ ] **Test fixtures still describe plan reasons as prose.** The regex layer left production on
+      2026-08-07 — `packages/shared-domain/src/planReasonParsing.ts` is gone and the grammar now
+      lives in `test/utils/planReasonFixtureParser.ts`, so it can no longer bend production types
+      (it had been holding `insufficient_headroom`'s four admission fields nullable). What remains
+      is ergonomic: ~460 fixtures still write `reason: 'shed due to capacity'`, so a copy change to
+      a reason template is a silent parse miss in a fixture rather than a type error. Convert them
+      to reason objects tier by tier and delete the fixture grammar.
+      *Persona:* maintainer (`notes/personas.md`) changing reason copy.
+      Source: 2026-08-01 budget-hold copy investigation; narrowed 2026-08-07. [P2]
 
 - [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
       car unobserved rather than mis-observed, so they cap what the probe can measure without

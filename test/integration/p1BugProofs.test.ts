@@ -18,7 +18,7 @@ import {
   steppedPlanDevice,
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
-import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
@@ -323,7 +323,7 @@ describe('P1 bug proofs', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controlCapabilityId: 'onoff',
-        reason: legacyDeviceReason('shed due to capacity'),
+        reason: fixtureDeviceReason('shed due to capacity'),
       })],
     });
 
