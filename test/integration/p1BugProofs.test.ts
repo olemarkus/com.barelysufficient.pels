@@ -25,7 +25,6 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   desiredForMode: {},
   total: 1.25,
   planningTotalKw: 1.25,
-  powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
   powerFreshnessState: 'fresh' as const,

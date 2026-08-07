@@ -55,7 +55,7 @@ describe('power sample freshness policy', () => {
       currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
-    expect(context.powerKnown).toBe(true);
+    expect(context.planningTotalKw).not.toBeNull();
     expect(context.hasLivePowerSample).toBe(true);
     expect(context.powerFreshnessState).toBe('fresh');
     expect(context.headroomRaw).toBeCloseTo(1.8, 6);
@@ -79,7 +79,7 @@ describe('power sample freshness policy', () => {
       currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
-    expect(staleHoldContext.powerKnown).toBe(false);
+    expect(staleHoldContext.planningTotalKw).toBeNull();
     expect(staleHoldContext.hasLivePowerSample).toBe(false);
     expect(staleHoldContext.powerFreshnessState).toBe('stale_hold');
     expect(staleHoldContext.total).toBe(4.4);
@@ -279,7 +279,7 @@ describe('planner behavior under stale power freshness states', () => {
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
 
     expect(plan.meta.powerFreshnessState).toBe('stale_hold');
-    expect(plan.meta.powerKnown).toBe(false);
+    expect(plan.meta.powerNowKw).toBeNull();
     expect(plan.meta.headroomKw).toBe(0);
     expect(plan.devices[0]?.plannedState).toBe('keep');
   });

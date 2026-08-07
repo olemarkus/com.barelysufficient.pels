@@ -529,7 +529,7 @@ export type DevicePlan = {
     projectedExemptKw?: number | null;
     softLimitSource?: 'capacity' | 'daily' | 'both';
     headroomKw: number;
-    powerKnown?: boolean;
+    powerNowKw?: number | null;
     hasLivePowerSample?: boolean;
     powerSampleAgeMs?: number | null;
     powerFreshnessState?: PowerFreshnessState;

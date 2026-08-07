@@ -272,7 +272,7 @@ describe('control toggle — optimistic rollback + serialization', () => {
       [`pels_status:${AREA_ID}`]: {
         controlledKw: 2.5,
         uncontrolledKw: 1.5,
-        powerKnown: true,
+        powerNowKw: 2,
         hasLivePowerSample: true,
         devicesOff: 0,
         limitReason: 'none',
@@ -658,7 +658,7 @@ describe('status card from pels_status:<homeId>', () => {
       [`capacity_margin_kw:${AREA_ID}`]: 0.3,
       [`capacity_dry_run:${AREA_ID}`]: false,
       [`pels_status:${AREA_ID}`]: {
-        controlledKw: 2.5, uncontrolledKw: 1.5, powerKnown: true, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none',
+        controlledKw: 2.5, uncontrolledKw: 1.5, powerNowKw: 4, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none',
       },
     });
     await refreshHomeLimitsOnLimitsPanel();
@@ -675,7 +675,7 @@ describe('status card from pels_status:<homeId>', () => {
       [`capacity_limit_kw:${AREA_ID}`]: 8,
       [`capacity_margin_kw:${AREA_ID}`]: 0.3,
       [`capacity_dry_run:${AREA_ID}`]: false,
-      [`pels_status:${AREA_ID}`]: { powerKnown: false, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
+      [`pels_status:${AREA_ID}`]: { powerNowKw: null, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
     });
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
@@ -684,7 +684,7 @@ describe('status card from pels_status:<homeId>', () => {
 
     // Runtime writes a fresh live status; the realtime hook re-reads it.
     homey.__settingsStore[`pels_status:${AREA_ID}`] = {
-      controlledKw: 3, uncontrolledKw: 0.5, powerKnown: true, hasLivePowerSample: true, devicesOff: 2, limitReason: 'hourly',
+      controlledKw: 3, uncontrolledKw: 0.5, powerNowKw: 3.5, hasLivePowerSample: true, devicesOff: 2, limitReason: 'hourly',
     };
     notifyHomeLimitsSettingChanged(`pels_status:${AREA_ID}`);
     await flushAsync();

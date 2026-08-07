@@ -23,7 +23,7 @@ const stubFlow = (): FlowPort => ({
 });
 
 const plan = (totalKw: number): DevicePlan => ({
-  meta: { totalKw, softLimitKw: 6, headroomKw: 6 - totalKw, powerKnown: true },
+  meta: { totalKw, softLimitKw: 6, headroomKw: 6 - totalKw, powerNowKw: totalKw },
   devices: [],
 });
 

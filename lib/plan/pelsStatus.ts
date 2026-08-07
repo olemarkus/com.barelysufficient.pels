@@ -39,6 +39,7 @@ export function buildPelsStatus(params: {
     totalKw?: number;
     controlledKw?: number;
     uncontrolledKw?: number;
+    powerNowKw?: number | null;
     powerKnown?: boolean;
     hasLivePowerSample?: boolean;
     powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
@@ -82,7 +83,13 @@ export function buildPelsStatus(params: {
       totalKw: areaTotalKw,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
-      powerKnown: plan.meta.powerKnown,
+      powerNowKw: plan.meta.powerNowKw,
+      // Kept for BACKWARD COMPATIBILITY only. `pels_status` is a persisted
+      // payload external automations may read, and removing a field from it
+      // breaks them — the repo rule is to ADD rather than rename or remove.
+      // Derived from `powerNowKw` so it cannot drift from the resolved value;
+      // nothing inside PELS reads it any more.
+      powerKnown: plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined,
       hasLivePowerSample: plan.meta.hasLivePowerSample,
       powerFreshnessState: plan.meta.powerFreshnessState,
       priceLevel,
@@ -263,8 +270,13 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
 }
 
 function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
-  const hasShedDevices = plan.meta.powerKnown === true && summary.hasLimitDrivenShedDevices;
-  const headroomNegative = plan.meta.powerKnown === true && plan.meta.headroomKw < 0;
+  // Both claims require a MEASUREMENT this cycle: `headroomKw` is synthesized
+  // when there is none (stale_hold → 0, stale_fail_closed → −1), and the −1
+  // sentinel would otherwise read as a real negative headroom. `powerNowKw` is
+  // null in exactly those cycles, so its absence is the gate.
+  const measured = plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined;
+  const hasShedDevices = measured && summary.hasLimitDrivenShedDevices;
+  const headroomNegative = measured && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);

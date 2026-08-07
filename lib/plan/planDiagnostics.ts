@@ -184,7 +184,7 @@ const resolveEligibleForStarvation = (params: {
 // source. This mirrors the shed-time re-attribution `resolveShedReason`/`buildBaseReason`
 // already perform for capacity→daily. A genuine capacity-bound shortfall — physical
 // capacity, an exhausted hourly cap (which forces `softLimitSource` to 'capacity'), or a
-// non-fresh meter (stale hold/fail-closed, so `powerKnown` is false) — keeps
+// non-fresh meter (stale hold/fail-closed, so there is no measured total) — keeps
 // `insufficient_headroom`.
 //
 // This re-attribution no longer gates anything user-facing. Until 2026-08-04 it fed the

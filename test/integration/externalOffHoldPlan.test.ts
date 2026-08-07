@@ -136,7 +136,6 @@ describe('external-off hold — plan-device propagation', () => {
     devices,
     desiredForMode: {},
     total: 1,
-    powerKnown: true,
     planningTotalKw: 1,
     hasLivePowerSample: true,
     powerSampleAgeMs: 0,

@@ -51,7 +51,6 @@ const buildContext = (device: PlanInputDevice): PlanContext => ({
   devices: [device],
   desiredForMode: {},
   total: 5,
-  powerKnown: true,
   planningTotalKw: 5,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,

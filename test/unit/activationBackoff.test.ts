@@ -37,7 +37,6 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   desiredForMode: {},
   total: 0,
   planningTotalKw: 0,
-  powerKnown: true,
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
   powerFreshnessState: 'fresh',
