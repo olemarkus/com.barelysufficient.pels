@@ -496,7 +496,14 @@ describe('PlanExecutor restore logging', () => {
           reason: CAPACITY_REASON,
         }),
       ],
-    })).resolves.toEqual(expect.objectContaining({ deviceWriteCount: 1, commandRequestCount: 0 }));
+    })).resolves.toEqual({
+      deviceWriteCount: 1,
+      commandRequestCount: 0,
+      // Names the device actually written, not the one that threw and not both.
+      // The realtime circuit breaker charges a strike per id in this list, so a
+      // wrong id here suppresses an innocent device's observations for 60 s.
+      writtenDeviceIds: ['dev-1'],
+    });
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       msg: 'Failed to apply action for Bad stepped load; continuing with remaining devices',
