@@ -87,6 +87,10 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   ...overrides,
 });
 
+// A real epoch, not 0: `nowTs` is `Date.now()` in production and now dates the
+// ceiling shortfall's recent-shed window.
+const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
+
 const emptyRestoreResult: RestorePlanResult = {
   planDevices: [],
   stateUpdates: { swapByDevice: {} },
@@ -107,6 +111,8 @@ const emptyRestoreResult: RestorePlanResult = {
   restoreCooldownStartedAtMs: null,
   restoreCooldownTotalSec: null,
   inShedWindow: false,
+  inStartupStabilization: false,
+  nowTs: FIXTURE_NOW_MS,
   restoreCooldownMs: 60 * 1000,
   lastRestoreCooldownBumpMs: null,
 };

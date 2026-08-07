@@ -15,7 +15,11 @@ import {
 } from './planReasonStrings';
 import { isBudgetReason, isShortfallReason, isSwapReason } from './planReasonsShared';
 import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
-import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
+import {
+  NEUTRAL_STARTUP_HOLD_REASON,
+  resolveOffDeviceReason,
+  type OffDeviceReasonTiming,
+} from './restore/devices';
 import { resolveRestoreDecision, type HoldDecision } from './planReasonsRestoreGating';
 
 type PendingRestoreDelay = {
@@ -24,10 +28,22 @@ type PendingRestoreDelay = {
   countdownTotalSec: number;
 };
 
-function getBaseShedReason(params: {
+// The terminal fallback of `getProducerShedReason`. It asserts a POWER-ceiling
+// hold on nothing stronger than "some hold applies", so it is the one shape the
+// timing ladder may replace (`resolveHoldReason`); every other shape is a
+// decision a producer actually made.
+const CAPACITY_FALLBACK_REASON: PlanReasonDecision = {
+  code: 'existing',
+  reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+};
+
+// The reason a producer decided for this device — a fresh shed entry, or a
+// carried shortfall/swap/budget reason. `null` when none did, which is exactly
+// when the caller may fall back or substitute a timing cause.
+function getProducerShedReason(params: {
   dev: DevicePlanDevice;
   shedReasons: Map<string, DeviceReason>;
-}): PlanReasonDecision {
+}): PlanReasonDecision | null {
   const { dev, shedReasons } = params;
   const explicitReason = shedReasons.get(dev.id);
   if (explicitReason) return { code: 'existing', reason: explicitReason };
@@ -40,7 +56,65 @@ function getBaseShedReason(params: {
     return { code: 'existing', reason: classifiedReason.reason };
   }
 
-  return { code: 'existing', reason: { code: PLAN_REASON_CODES.capacity, detail: null } };
+  return null;
+}
+
+// "The DEVICE reports the shed floor" — read off the observation, never off
+// `plannedTarget`, which this lane writes back every cycle.
+function isObservedAtShedFloor(
+  dev: DevicePlanDevice,
+  behavior: { temperature: number | null },
+): boolean {
+  return isTemperaturePlanDevice(dev)
+    && typeof dev.currentTarget === 'number'
+    && dev.currentTarget === behavior.temperature;
+}
+
+/**
+ * The reason a held setpoint device carries out of this lane.
+ *
+ * The `capacity` fallback says "the power ceiling is holding you", which the
+ * card renders as a kW gap the owner could close by freeing power. Under a
+ * restore cooldown, a shed cooldown, or startup stabilization that sentence is
+ * false — no amount of freed power lifts a timer — and the admission arithmetic
+ * downstream then finds no gap to state, leaving the bare "Waiting to resume".
+ * So when no producer decided a reason, the binary lane's ladder names the
+ * cause, and the two lanes stop disagreeing about the same timer.
+ *
+ * Gated on the floor being OBSERVED, for the reason `resolveRestoreDecision`
+ * documents for its own reserve carve-out: `cooldownRestore` is in
+ * `RESTORE_ADMISSION_HOLD_REASON_CODES`, so `buildExecutableTargetIntent`
+ * (`lib/executor/executableTargetProjection.ts`) builds NO write for a device
+ * carrying it. That is free once the device sits at its floor — there is nothing
+ * left to write — but while the shed is still in flight (a dropped write, or a
+ * setpoint raised outside PELS) the actuating fallback must keep asserting, or
+ * the device draws unchecked for the whole 60–300 s cooldown. The gate covers
+ * every ladder outcome, not just that one code, so adding a code to the set
+ * cannot silently reopen it.
+ */
+function resolveHoldReason(params: {
+  dev: DevicePlanDevice;
+  behavior: { temperature: number | null };
+  state: PlanEngineState;
+  shedReasons: Map<string, DeviceReason>;
+  timing: OffDeviceReasonTiming;
+  shouldHold: boolean;
+}): PlanReasonDecision {
+  const { dev, behavior, state, shedReasons, timing, shouldHold } = params;
+  const producerReason = getProducerShedReason({ dev, shedReasons });
+  if (producerReason) return producerReason;
+  // `shouldHold` false means the shortfall guard aborted the restore with no
+  // timing window at all; the ladder has no cause to name there.
+  if (!shouldHold || !isObservedAtShedFloor(dev, behavior)) return CAPACITY_FALLBACK_REASON;
+  const timedReason = resolveOffDeviceReason(
+    timing,
+    renderPlanReasonDecision(CAPACITY_FALLBACK_REASON),
+    state.lastDeviceControlledMs[dev.id],
+  );
+  // `null` = startup window on a device PELS has never controlled. The binary
+  // lane answers that with the no-actuation neutral hold; here the fallback
+  // stands, so the hold keeps a reason its own lane can act on.
+  return timedReason === null ? CAPACITY_FALLBACK_REASON : { code: 'existing', reason: timedReason };
 }
 
 export type ShedHoldParams = {
@@ -59,6 +133,14 @@ export type ShedHoldParams = {
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
+  // The rest of this cycle's `RestoreTiming`, so the hold lane can name WHICH of
+  // the four `inShedWindow` causes is holding a device instead of defaulting to
+  // the power ceiling. Required, like every other timing field here: optional
+  // would let a caller mint a countdown reason with no countdown attached — a
+  // shape production never produces.
+  inStartupStabilization: boolean;
+  restoreCooldownStartedAtMs: number | null;
+  restoreCooldownTotalSec: number | null;
   // Per-axis ledger carried over from the restore pass: a budget-exempt
   // setpoint-shed device admits its raise against the CAPACITY axis, exactly
   // like the binary/stepped lanes. Optional so scalar-only callers/tests keep
@@ -94,14 +176,9 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     state,
     shedReasons,
     inShedWindow,
-    inCooldown,
-    activeOvershoot,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
@@ -111,6 +188,20 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     debugStructured,
     getShedBehavior,
   } = params;
+
+  // The shed-window facts, assembled once per cycle in the shape the shared
+  // reason ladder reads (`resolveOffDeviceReason`).
+  const offDeviceTiming: OffDeviceReasonTiming = {
+    activeOvershoot: params.activeOvershoot,
+    inCooldown: params.inCooldown,
+    inStartupStabilization: params.inStartupStabilization,
+    restoreCooldownSeconds,
+    shedCooldownRemainingSec: params.shedCooldownRemainingSec,
+    shedCooldownStartedAtMs: params.shedCooldownStartedAtMs,
+    shedCooldownTotalSec: params.shedCooldownTotalSec,
+    restoreCooldownStartedAtMs: params.restoreCooldownStartedAtMs,
+    restoreCooldownTotalSec: params.restoreCooldownTotalSec,
+  };
 
   let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
@@ -126,14 +217,10 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       state,
       shedReasons,
       inShedWindow,
-      inCooldown,
-      activeOvershoot,
+      offDeviceTiming,
       availableHeadroom: availableForDevice,
       restoredOneThisCycle: restoredOne,
       restoredThisCycle,
-      shedCooldownRemainingSec,
-      shedCooldownStartedAtMs,
-      shedCooldownTotalSec,
       holdDuringRestoreCooldown,
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
@@ -195,14 +282,10 @@ function resolveHoldDecision(params: {
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
-  inCooldown: boolean;
-  activeOvershoot: boolean;
+  offDeviceTiming: OffDeviceReasonTiming;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
@@ -217,6 +300,7 @@ function resolveHoldDecision(params: {
     state,
     shedReasons,
     inShedWindow,
+    offDeviceTiming,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
@@ -256,9 +340,6 @@ function resolveHoldDecision(params: {
     // the original shed (an actuating reason) rather than the no-actuation
     // `reservedForStart` hold, or the pending floor command stops being
     // retried and the device keeps drawing inside the reserved block.
-    const observedAtShedFloor = isTemperaturePlanDevice(dev)
-      && typeof dev.currentTarget === 'number'
-      && dev.currentTarget === behavior.temperature;
     return resolvePostHoldRestoreDecision({
       dev,
       state,
@@ -269,8 +350,8 @@ function resolveHoldDecision(params: {
       restoreCooldownRemainingSec,
       pendingRestoreDelay,
       headroomReserves,
-      observedAtShedFloor,
-      baseShedReason: getBaseShedReason({ dev, shedReasons }),
+      observedAtShedFloor: isObservedAtShedFloor(dev, behavior),
+      baseShedReason: getProducerShedReason({ dev, shedReasons }) ?? CAPACITY_FALLBACK_REASON,
       debugStructured,
     });
   }
@@ -279,11 +360,17 @@ function resolveHoldDecision(params: {
     return { type: 'skip' };
   }
 
-  const baseReason = getBaseShedReason({
-    dev,
-    shedReasons,
-  });
-  return { type: 'hold', reason: baseReason };
+  return {
+    type: 'hold',
+    reason: resolveHoldReason({
+      dev,
+      behavior,
+      state,
+      shedReasons,
+      timing: offDeviceTiming,
+      shouldHold,
+    }),
+  };
 }
 
 function resolvePostHoldRestoreDecision(params: {
@@ -348,14 +435,10 @@ function applyHoldToDevice(params: {
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
-  inCooldown: boolean;
-  activeOvershoot: boolean;
+  offDeviceTiming: OffDeviceReasonTiming;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
@@ -370,14 +453,10 @@ function applyHoldToDevice(params: {
     state,
     shedReasons,
     inShedWindow,
-    inCooldown,
-    activeOvershoot,
+    offDeviceTiming,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
@@ -397,14 +476,10 @@ function applyHoldToDevice(params: {
     state,
     shedReasons,
     inShedWindow,
-    inCooldown,
-    activeOvershoot,
+    offDeviceTiming,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,

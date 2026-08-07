@@ -150,6 +150,12 @@ export class PlanMaterializationStages {
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
       restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
       restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
+      // From `effectiveTiming`, the same object the binary stay-off lane is fed
+      // (`restore/index.ts` zeroes the startup fields unless capacity is the
+      // binding source) — so both lanes name the same cause for the same cycle.
+      inStartupStabilization: restoreResult.inStartupStabilization,
+      restoreCooldownStartedAtMs: restoreResult.restoreCooldownStartedAtMs,
+      restoreCooldownTotalSec: restoreResult.restoreCooldownTotalSec,
       guardInShortfall: sheddingPlan.guardInShortfall,
       debugStructured: this.deps.debugStructured,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
@@ -207,6 +213,14 @@ export class PlanMaterializationStages {
           // shortfall folds in is the same one the next swap decision reads.
           swappedOutFor: buildSwapState(this.state).swappedOutFor,
           restoredThisCycle: restoreResult.restoredThisCycle,
+          // Same need the restore gate rejects on: it inflates a recently shed
+          // device's requirement, and a card computed against the deflated
+          // figure would claim the device is admissible on the very cycle the
+          // gate turned it down. `getRestoreNeed` reads its own `Date.now()`, so
+          // the two dates differ by the width of one plan cycle against a
+          // five-minute window — same answer, no shared clock needed.
+          lastDeviceShedMsById: this.state.lastDeviceShedMs,
+          nowMs: restoreResult.nowTs,
         })
         : undefined,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,

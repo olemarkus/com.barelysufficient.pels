@@ -157,14 +157,26 @@ describe('Mixed Type Restoration Throttling', () => {
         const d1RestoredC2 = d1Cycles2.plannedState !== 'shed';
         const d2RestoredC2 = d2Cycles2.plannedState !== 'shed';
 
-        // The one that WAS shed should stay shed due to its own capacity decision,
-        // not pick up the other device's global restore-cooldown label.
+        // The one that WAS shed stays shed, and says WHY: the restore cooldown.
+        // The house has 5 kW spare against a ~1 kW need here, so "shed due to
+        // capacity" would be plainly false — and, because that reason renders as
+        // a kW gap the owner is invited to close, the admission arithmetic finds
+        // no gap and the card collapses to a bare "Waiting to resume".
+        //
+        // This assertion required the cooldown label until 0c4cb8661, which
+        // flipped it to capacity on a deliberate position: the restore cooldown
+        // is plan-global (`state.lastRestoreMs`, bumped by ANY device), so it
+        // read as the other device's label. That position is reversed here, for
+        // two reasons — root `AGENTS.md` § "Device card reason lines" admits the
+        // countdowns as holds power cannot lift, and the binary peer in this very
+        // cycle already shows the same countdown via `markOffDevicesStayOff`.
+        // A global timer still holds THIS device; naming it is not borrowing.
         if (d1Restored) {
             expect(d2RestoredC2).toBe(false);
-            expect(reasonText(d2Cycles2.reason)).toBe('shed due to capacity');
+            expect(reasonText(d2Cycles2.reason)).toMatch(/^cooldown \(restore/);
         } else {
             expect(d1RestoredC2).toBe(false);
-            expect(reasonText(d1Cycles2.reason)).toBe('shed due to capacity');
+            expect(reasonText(d1Cycles2.reason)).toMatch(/^cooldown \(restore/);
         }
 
         // 4. After Cooldown (60s)
@@ -172,16 +184,16 @@ describe('Mixed Type Restoration Throttling', () => {
         await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
-        // Still in restore cooldown globally, but the still-shed peer keeps its own capacity reason.
+        // Still in restore cooldown, and the still-shed peer still says so.
         const d1Cycles3 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2Cycles3 = plan.devices.find((d: any) => d.id === 'dev-2');
 
         if (d1Restored) {
             expect(d2Cycles3.plannedState).toBe('shed');
-            expect(reasonText(d2Cycles3.reason)).toBe('shed due to capacity');
+            expect(reasonText(d2Cycles3.reason)).toMatch(/^cooldown \(restore/);
         } else {
             expect(d1Cycles3.plannedState).toBe('shed');
-            expect(reasonText(d1Cycles3.reason)).toBe('shed due to capacity');
+            expect(reasonText(d1Cycles3.reason)).toMatch(/^cooldown \(restore/);
         }
 
         // 5. After restore cooldown window

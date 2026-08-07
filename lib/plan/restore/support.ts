@@ -5,15 +5,14 @@ import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import type { PlanEngineState } from '../planState';
 import {
-  RECENT_SHED_EXTRA_BUFFER_KW,
-  RECENT_SHED_RESTORE_BACKOFF_MS,
-  RECENT_SHED_RESTORE_MULTIPLIER,
-} from '../planConstants';
-import {
   applyActivationPenalty,
   syncActivationPenaltyState,
 } from '../admission';
-import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './accounting';
+import {
+  applyRecentShedInflation,
+  computeBaseRestoreNeed,
+  computePendingRestorePowerKw,
+} from './accounting';
 
 const logger = getLogger('plan/restore-support');
 
@@ -65,13 +64,11 @@ export function getRestoreNeed(
   diagnostics?: DeviceDiagnosticsRecorder,
 ): { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number } {
   const { power: devPower, needed: baseNeeded } = computeBaseRestoreNeed(dev);
-  const lastDeviceShed = state.lastDeviceShedMs[dev.id];
-  const recentlyShed = Boolean(
-    lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
-  );
-  const recentShedNeeded = recentlyShed
-    ? Math.max(baseNeeded * RECENT_SHED_RESTORE_MULTIPLIER, baseNeeded + RECENT_SHED_EXTRA_BUFFER_KW)
-    : baseNeeded;
+  const recentShedNeeded = applyRecentShedInflation({
+    baseNeededKw: baseNeeded,
+    lastDeviceShedMs: state.lastDeviceShedMs[dev.id],
+    nowMs: Date.now(),
+  });
   const penaltyInfo = syncActivationPenaltyState({
     state,
     deviceId: dev.id,

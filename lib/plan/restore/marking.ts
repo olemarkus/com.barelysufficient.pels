@@ -37,7 +37,6 @@ export function markRestoreCandidatesStayShedForShortfall(params: {
       inStartupStabilization: false,
       restoreCooldownSeconds: 0,
       shedCooldownRemainingSec: null,
-      startupStabilizationRemainingSec: null,
     },
     setDevice: setPlanDevice,
     reasonOverride: (dev) => buildRestoreShortfallReason(dev, headroomKw),

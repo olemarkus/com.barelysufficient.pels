@@ -18,16 +18,32 @@
  * load (`notes/safe-pace-two-constraints.md`; the pace itself recovers over
  * time, so the number may exceed instantaneous house draw and still be true).
  *
+ * The need MUST be the one the restore gate rejects on (`getRestoreNeed`,
+ * `restore/support.ts`), not the bare `computeBaseRestoreNeed`: a device measured
+ * against a smaller need than the gate used can affirmatively resolve `no_gap` —
+ * the card claiming the device would be admitted right now, on the very cycle the
+ * gate turned it down. The recent-shed inflation is therefore shared as a pure
+ * helper (`applyRecentShedInflation`) and applied here too.
+ *
  * Known deviations from the richest producer figures, all accepted for
  * freshness (the computation runs every cycle; producer numbers are snapshots
  * of the rejection that minted them and go stale across carry-forward cycles):
- *  - understates by the activation-penalty inflation: the need comes from
- *    `computeBaseRestoreNeed` (pure), not `getRestoreNeed`, which folds the
- *    penalty in but mutates `PlanEngineState` — unsafe outside the restore
- *    pass. Backoff devices carry `activationBackoff` countdown copy anyway;
+ *  - understates by the activation-penalty inflation. This one is NOT
+ *    "computable but skipped": reproducing it means running
+ *    `syncActivationPenaltyState`, which advances attempt/penalty state on
+ *    `PlanEngineState` and must run exactly once per cycle, inside the restore
+ *    pass. Reading the un-synced level instead would diverge from the gate in
+ *    precisely the cycles where the level transitions. Bounded: a device deep
+ *    enough in backoff to be blocked carries `activationBackoff` countdown copy,
+ *    which attaches no kW at all;
  *  - understates by a live reserve claim on the `insufficient`-with-claim
  *    branch: `resolveReserveAdmission` hands back the RAW admission there,
  *    matching the restore gates exactly (parity, not a bug);
+ *  - the two OTHER consumers that build a user-visible need from the bare
+ *    `computeBaseRestoreNeed` — `maybeApplyShortfallReason` (`planReasons.ts`)
+ *    and `buildRestoreShortfallReason` (`restore/marking.ts`) — carry the same
+ *    deflation and are deliberately out of scope here; both render the
+ *    shortfall-guard copy, not this module's gap;
  *  - can overstate for a RUNNING stepped device denied a step-up: the need is
  *    the full restore power (`estimateRestorePower` → `planningPowerKw`), not
  *    the step-up increment the stepped gate admits on. Exposure is the
@@ -38,7 +54,7 @@ import type { DevicePlanDevice } from './planTypes';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { resolveReserveAdmission, type HeadroomReserve } from './admission';
-import { computeBaseRestoreNeed } from './restore/accounting';
+import { applyRecentShedInflation, computeBaseRestoreNeed } from './restore/accounting';
 import { buildSwapCandidates } from './swap/candidates';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { ceilToDisplayKw } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -62,6 +78,12 @@ export type CeilingShortfallInputs = {
   onDevices: readonly DevicePlanDevice[];
   swappedOutFor: ReadonlyMap<string, string>;
   restoredThisCycle: ReadonlySet<string>;
+  // Shed timestamps + this cycle's clock, so the need matches the restore gate's
+  // recent-shed inflation (`applyRecentShedInflation`). Not optional: a missing
+  // clock would silently deflate the need for exactly the devices most likely to
+  // be held — the ones PELS shed minutes ago.
+  lastDeviceShedMsById: Readonly<Record<string, number>>;
+  nowMs: number;
 };
 
 export function buildCeilingShortfallInputs(params: {
@@ -70,6 +92,8 @@ export function buildCeilingShortfallInputs(params: {
   onDevices: readonly DevicePlanDevice[];
   swappedOutFor: ReadonlyMap<string, string>;
   restoredThisCycle: ReadonlySet<string>;
+  lastDeviceShedMsById: Readonly<Record<string, number>>;
+  nowMs: number;
 }): CeilingShortfallInputs {
   return {
     ledger: buildRestoreHeadroomLedger(params.ledgerAxes),
@@ -77,6 +101,8 @@ export function buildCeilingShortfallInputs(params: {
     onDevices: params.onDevices,
     swappedOutFor: params.swappedOutFor,
     restoredThisCycle: params.restoredThisCycle,
+    lastDeviceShedMsById: params.lastDeviceShedMsById,
+    nowMs: params.nowMs,
   };
 }
 
@@ -121,7 +147,11 @@ export function resolveCeilingShortfall(params: {
   inputs: CeilingShortfallInputs;
 }): CeilingShortfallResolution {
   const { dev, inputs } = params;
-  const neededKw = computeBaseRestoreNeed(dev).needed;
+  const neededKw = applyRecentShedInflation({
+    baseNeededKw: computeBaseRestoreNeed(dev).needed,
+    lastDeviceShedMs: inputs.lastDeviceShedMsById[dev.id],
+    nowMs: inputs.nowMs,
+  });
   const reserved = resolveReserveAdmission({
     dev,
     availableHeadroom: inputs.ledger.availableFor(dev),
