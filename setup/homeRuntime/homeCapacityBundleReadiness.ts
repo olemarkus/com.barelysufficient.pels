@@ -66,8 +66,19 @@ const isCurrentSampleRevision = (
 /**
  * Keep the sample fence active for the whole rebuild, which now both plans and
  * actuates. A newer sample can arrive after planning starts but before the first
- * SDK write, so the fence has to span the apply — checking the revision only
- * afterwards would let a stale rebuild actuate before anything noticed the race.
+ * SDK write, so the guard has to span the apply.
+ *
+ * TWO mechanisms do that, and they are not interchangeable:
+ * - `shouldAbort` is evaluated ONCE, inside the queued body before the build
+ *   (`PlanService.rebuildPlanFromCache`). It catches a sample that landed while
+ *   this request sat in the queue. It does NOT span the apply.
+ * - `beginPreparedOwnershipReconcile` arms `preparedSampleFence`, and
+ *   `isActuationFenced` (`createHomeCapacityBundle`) consults
+ *   `preparedSampleFence.isSuperseded()` on EVERY actuator write. That is what
+ *   fences the remaining writes when a newer revision lands mid-apply.
+ *
+ * So do not "simplify away" the prepared fence on the grounds that `shouldAbort`
+ * already checks the revision — it checks it once, at a different moment.
  */
 const applyMembershipReadyPlan = async (params: {
   homeId: HomeId;
@@ -132,16 +143,21 @@ export function installBundleReadinessAndFreshness(
     flushDeferredShortfallSideEffect,
     isMembershipReady, isMeterSourceAuthorized,
   } = params;
-  // Latch for the readiness apply-edge (rebuild → reconcile). The rebuild
-  // recomputes against the guard's freshest total power (each ingested sample
-  // updates it synchronously), so an over-cap reading sheds; reconcile then
-  // applies that fresh plan's intent even when its action signature is unchanged
-  // (plans actuate on CHANGE; a stable committed shed would otherwise never apply
-  // once the gate opens). A BARE reconcile would re-apply the last COMMITTED plan
-  // — which, if built from an earlier under-cap dry-run sample, could RESTORE load
-  // while the home is over cap (R7b P0-1). NOT once-only: a FAILED rebuild or a
-  // sample landing mid-rebuild re-arms the latch so a later attempt retries
-  // (driven by the registry edge and by each sample's post-ingest re-trigger).
+  // Latch for the readiness apply-edge (one rebuild, which both plans and
+  // actuates). The rebuild recomputes against the guard's freshest total power
+  // (each ingested sample updates it synchronously), so an over-cap reading sheds,
+  // and it applies that fresh plan even when the action signature is unchanged —
+  // a stable committed shed would otherwise never apply once the gate opens.
+  //
+  // This was a rebuild followed by a reconcile, for exactly that
+  // unchanged-signature reason; the reconcile is gone because re-applying the last
+  // COMMITTED plan is the hazard, not the remedy. Built from an earlier under-cap
+  // dry-run sample, it could RESTORE load while the home is over cap (R7b P0-1),
+  // and the same shape breached the hard cap in production (inc_26449fb9).
+  //
+  // NOT once-only: a FAILED rebuild or a sample landing mid-rebuild re-arms the
+  // latch so a later attempt retries (driven by the registry edge and by each
+  // sample's post-ingest re-trigger).
   let membershipReadySeen = isMembershipReady();
   const applyRetryTimerKey = timerKey('membershipReadyApplyRetry');
   const scheduleMembershipReadyApplyRetry = (): void => {
