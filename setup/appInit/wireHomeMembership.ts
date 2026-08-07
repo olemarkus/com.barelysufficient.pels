@@ -131,7 +131,14 @@ const reconcilePreparedPlans = async (params: {
     schedule,
   } = params;
   let mainReconcileAborted = false;
-  const [, subHomesReconciled] = await Promise.all([
+  // The settlement convergence is a full rebuild now, not the decision-free
+  // reconcile it replaced, so it can FAIL where the old call could only no-op.
+  // `rebuildPlanFromCache` contains planner errors and resolves `{failed:true}`
+  // rather than throwing, so an unchecked result would finalize the generation
+  // and flush side effects as though convergence had happened. On the flow power
+  // source no later sample is guaranteed, which would strand the prepared
+  // actions indefinitely.
+  const [mainOutcome, subHomesReconciled] = await Promise.all([
     planService.rebuildPlanFromCache(
       'home_membership_settled',
       () => !isStableSampleRevision(getMainStableSampleRevision(), mainSampleRevision),
@@ -144,8 +151,10 @@ const reconcilePreparedPlans = async (params: {
       ? ownershipGenerationRuntime.reconcile()
       : Promise.resolve(true),
   ]);
+  if (mainOutcome.failed) schedule();
   if (
     mainReconcileAborted
+    || mainOutcome.failed
     || !subHomesReconciled
     || !isStableSampleRevision(getMainStableSampleRevision(), mainSampleRevision)
   ) {
