@@ -200,7 +200,7 @@ describe('device detail diagnostics', () => {
     ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Restart backoff level: 2');
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
-      .toContain('Status: Held back for 23m - Waiting for available power');
+      .toContain('Status: Held back for 23m — Waiting for available power');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('21 days');
     expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
