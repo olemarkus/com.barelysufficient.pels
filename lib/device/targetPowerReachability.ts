@@ -109,25 +109,50 @@ const appendExactStep = (
   return sortSteps([...steps, buildPowerStep(config, planningPowerW)]);
 };
 
-/** Full EV ladder bounded only by the user-authored candidate maximum. */
+/**
+ * Full EV ladder bounded only by the user-authored candidate maximum.
+ *
+ * The maximum is a CEILING, not a rung. A cap between two rungs — a 25 A
+ * supply limit, say — leaves 24 A as the highest step, because this ladder is
+ * a set of currents an EV charger is known to offer and the cap is not one of
+ * them: nothing has shown the charger has a step there. The cap still bounds
+ * admission (`resolveEvTargetPowerExactStep`) — it just stops being somewhere
+ * to stand.
+ *
+ * The rung watts are a nominal seed (`amps * 230 * phases`), not a measurement:
+ * real draw at a rung is learned per `(deviceId, stepId)` by
+ * `devicePowerCalibration.ts`, and commonly lands under nominal because the car
+ * draws less than the charger offers (16 A commanded, 15 A taken). A cap
+ * sitting tens of watts below a rung is therefore a units artefact — three-phase
+ * chargers are sold as "11 kW" but the 16 A rung is 11040 W — and reclaiming it
+ * with a tolerance would buy nominal precision the calibration layer overrides
+ * anyway.
+ *
+ * ACCEPTED COST: an off-ladder maximum becomes unreachable by probing. That is
+ * real for a native `target_power` charger, which is commanded in WATTS
+ * (`resolveNativeSteppedLoadCommand`) and could have taken the exact cap; it is
+ * moot for current-commanded transports, which only ever accept a whole amp.
+ * The exact step is still restored the moment the device DEMONSTRATES it — see
+ * the observed append in the confirmed profile, which is evidence rather than
+ * invention.
+ */
 export const buildEvTargetPowerCandidateProfile = (
   config: TargetPowerSteppedLoadConfig,
 ): SteppedLoadProfile => {
   const phaseCount = resolvePhaseCount(config);
   const maxPowerW = resolveCandidateMaxPowerW(config);
-  const steps: SteppedLoadStep[] = [
-    { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
-    ...EV_CHARGER_AMPS
-      .map((amps) => ({
-        id: `${amps}a`,
-        planningPowerW: amps * NOMINAL_PHASE_VOLTAGE * phaseCount,
-        planningCurrentA: amps,
-      }))
-      .filter((step) => step.planningPowerW <= maxPowerW),
-  ];
   return {
     model: 'stepped_load',
-    steps: appendExactStep(config, steps, maxPowerW),
+    steps: [
+      { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+      ...EV_CHARGER_AMPS
+        .map((amps) => ({
+          id: `${amps}a`,
+          planningPowerW: amps * NOMINAL_PHASE_VOLTAGE * phaseCount,
+          planningCurrentA: amps,
+        }))
+        .filter((step) => step.planningPowerW <= maxPowerW),
+    ],
   };
 };
 
