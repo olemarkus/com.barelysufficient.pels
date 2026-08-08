@@ -1,5 +1,6 @@
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_CAR_ASSOCIATIONS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvCarAssociations } from '../../../../contracts/src/evCarAssociations.ts';
@@ -124,7 +125,7 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
     const level = typeof associated.socPct === 'number' && Number.isFinite(associated.socPct)
       ? `${Math.round(associated.socPct)} %`
       : null;
-    deviceDetailCarStatus.textContent = [associated.carName, stateLabel, level]
+    deviceDetailCarStatus.textContent = [formatDisplayDeviceName(associated.carName), stateLabel, level]
       .filter((part): part is string => part !== null)
       .join(' · ');
     return;
@@ -157,7 +158,7 @@ const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly str
   const matched = device.associatedCar;
   deviceDetailCarFlowNote.classList.toggle('field__hint--alert', matched === undefined);
   deviceDetailCarFlowNote.textContent = matched
-    ? `Battery level comes from ${matched.carName}.`
+    ? `Battery level comes from ${formatDisplayDeviceName(matched.carName)}.`
     : 'Until a car is matched this charger has no battery level: while a car is ticked, '
       + 'both the Flow card that reports it and the charger\'s own reading are ignored.';
 };
@@ -201,7 +202,7 @@ const carRow = (deviceId: string, car: CarOption, checked: boolean): HTMLElement
   });
   const label = document.createElement('span');
   label.className = 'md-switch-row__label pels-text-settings-label';
-  label.textContent = car.name;
+  label.textContent = formatDisplayDeviceName(car.name);
   row.append(input, label);
   return row;
 };

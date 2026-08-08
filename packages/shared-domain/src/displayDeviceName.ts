@@ -12,4 +12,13 @@
 //
 // Display-only: never call from write/storage paths. Persisted names stay
 // verbatim so the next read still sees what Homey gave us.
-export const formatDisplayDeviceName = (name: string): string => name.trim();
+//
+// A trailing "(null)" / "(undefined)" parenthetical is a stringified absent
+// value leaked by an upstream device app (live-walk 2026-08-08 surfaced a car
+// named "Polestar 3 (null)" — the app interpolated a missing license plate).
+// It is never user-intended content, so displays drop it.
+const STRINGIFIED_ABSENT_SUFFIX = /\s*\((?:null|undefined)\)\s*$/iu;
+
+export const formatDisplayDeviceName = (name: string): string => (
+  name.replace(STRINGIFIED_ABSENT_SUFFIX, '').trim()
+);

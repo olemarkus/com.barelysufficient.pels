@@ -13,6 +13,9 @@ import {
 import {
   deviceDetailShedAction,
   deviceDetailSteppedAddStep,
+  deviceDetailSteppedClimbNote,
+  deviceDetailSteppedHeader,
+  deviceDetailSteppedIntro,
   deviceDetailSteppedReset,
   deviceDetailSteppedSave,
   deviceDetailSteppedSection,
@@ -252,6 +255,12 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
     if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.hidden = hidden;
     if (deviceDetailSteppedReset) deviceDetailSteppedReset.hidden = hidden;
     if (deviceDetailSteppedSave) deviceDetailSteppedSave.hidden = hidden;
+    // The editor's framing prose and the orphan "Step | Power" column header
+    // follow the editor: a boost-only section (EV preset — the preset owns the
+    // steps) otherwise renders an intro about steps above zero rows.
+    if (deviceDetailSteppedIntro) deviceDetailSteppedIntro.hidden = hidden;
+    if (deviceDetailSteppedHeader) deviceDetailSteppedHeader.hidden = hidden;
+    if (deviceDetailSteppedClimbNote) deviceDetailSteppedClimbNote.hidden = hidden;
   };
   const setEditorDisabled = (disabled: boolean) => {
     if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = disabled;

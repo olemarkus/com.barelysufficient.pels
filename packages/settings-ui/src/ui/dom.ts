@@ -214,6 +214,9 @@ export const deviceDetailShedStep = document.querySelector(
   '#device-detail-overshoot-step',
 ) as MdFilledSelectElement;
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
+export const deviceDetailSteppedIntro = qs('#device-detail-stepped-intro');
+export const deviceDetailSteppedHeader = qs('#device-detail-stepped-header');
+export const deviceDetailSteppedClimbNote = qs('#device-detail-stepped-climb-note');
 export const deviceDetailSteppedSteps = qs('#device-detail-stepped-steps');
 export const deviceDetailTargetPowerConfig = qs('#device-detail-target-power-config');
 export const deviceDetailTargetPowerFields = qs('#device-detail-target-power-fields');
