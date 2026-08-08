@@ -269,8 +269,11 @@ the probe must be called from the capability path.
 
 `tmp/shs-recipes/ev-car-link.sh` (local-only, gitignored) drives the mock `tesla_car` and
 mock chargers on SHS through the transitions that matter:
-`baseline | link | two-cars | two-chargers | move | selfstop`. Both chargers must be
-**managed** in PELS or the probe has no charger views to correlate against.
+`devices | state | baseline | link | two-cars | two-chargers | move | selfstop | limit`.
+Both chargers must be **managed** in PELS or the probe has no charger views to correlate
+against, and a car paired *after* PELS booted needs a PELS restart before the probe sees it
+at all (the "car created after startup" gap below is not theoretical — it silently produces
+a run where nothing links).
 
 Verified there (2026-07-27), reading `ev_car_*` out of the app log:
 
@@ -279,6 +282,26 @@ Verified there (2026-07-27), reading `ev_car_*` out of the app log:
 | clean 1:1 | `ev_car_link_resolved` with `source: 'coincidence'`, edges 3.5 s apart |
 | one car, two chargers | both chargers `ev_car_link_ambiguous`, **no vote**, and the affinity prior did not overturn it |
 | two cars, one charger | `ev_car_link_ambiguous` carrying both car ids, **no vote** |
+
+Verified again (2026-08-08) for the observed charge limit, on a rebuilt lab after an SHS
+re-provision: three self-stops at 80 / 81 / 80 % banked `stopSocPct: [80, 81, 80]`, which
+summarises to a median of 80 with a spread of 1 — a cluster tight enough to read as a real
+limit, and a spread that moves, so the reported number is live rather than echoed back.
+
+Two things that scenario has to get right, both of which silently produce nothing:
+
+- **The charger's draw must be forced idle, not merely written idle.** The vendor mocks
+  simulate `measure_power` from their own session state, so writing 0 W to a charger sitting
+  in `Connected_Charging` is overwritten within seconds and the classifier — which bails
+  above `EV_CAR_LINK_IDLE_POWER_W` — never starts an episode. Pin it with the test-devices
+  `mock_set_power_override` card and clear the override to re-arm.
+- **Two stops need two episodes, not two dwells.** Resuming the charge between rounds is
+  what makes the classifier return null and clear the per-charger reported flag. Without it
+  the second stop is the same episode and banks nothing.
+
+Both `pairs[...].votes` and `cars[...].stopSocPct` also live in the `ev_car_link_state` app
+setting, which is readable over the API — a second channel when the log is inconvenient, and
+the one place the raw sample array can be read rather than inferred from event fields.
 
 ## Known evidence limits
 
