@@ -186,6 +186,21 @@ test.describe('Device detail panel', () => {
     await expect(section).toBeHidden();
   });
 
+  test('Limiting card renders a statement, not a radiogroup, when there is nothing to choose', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_evcharger');
+
+    const statement = page.locator('#device-detail-shed-statement');
+    const segmented = page.locator('#device-detail-overshoot-segmented');
+    const label = page.locator('#device-detail-overshoot-segmented-label');
+
+    await expect(statement).toBeVisible();
+    await expect(statement).toHaveText(
+      'When limiting this charger, PELS turns it off and turns it back on when power allows.',
+    );
+    await expect(segmented).toBeHidden();
+    await expect(label).toBeHidden();
+  });
+
   test('Shedding segmented control mirrors hidden select and toggles conditional rows', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
 

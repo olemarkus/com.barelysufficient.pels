@@ -5075,6 +5075,12 @@ details[open] > summary .disclosure-chevron {
   margin-bottom: 0;
 }
 
+/* Statement shown when the limiting control has nothing to choose (one action,
+   or limiting switched off) — sentence-toned, not a control. */
+.detail-shed-statement {
+  margin: 0;
+}
+
 .detail-mode-list,
 .detail-stepped-list,
 .detail-deltas {

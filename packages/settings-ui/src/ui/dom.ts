@@ -198,6 +198,10 @@ export const deviceDetailDumpLoadOpt = document.querySelector('#device-detail-du
 export const deviceDetailDumpLoadDisabledHint = qs('#device-detail-dump-load-disabled-hint');
 export const deviceDetailDumpLoadPowerLimitHint = qs('#device-detail-dump-load-power-limit-hint');
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as MdFilledSelectElement;
+export const deviceDetailShedSegmented = qs('#device-detail-overshoot-segmented');
+export const deviceDetailShedSegmentedLabel = qs('#device-detail-overshoot-segmented-label');
+export const deviceDetailShedStatement = qs('#device-detail-shed-statement');
+export const deviceDetailShedHint = qs('#device-detail-shed-hint');
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector(
   '#device-detail-overshoot-temp',

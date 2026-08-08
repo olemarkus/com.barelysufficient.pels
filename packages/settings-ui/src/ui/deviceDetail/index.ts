@@ -143,6 +143,17 @@ const refreshCurrentDeviceControlStates = () => {
     currentDetailDeviceId: activeDeviceId,
     getDeviceById,
   });
+  // The limiting card's statement/radiogroup split follows Power-limit
+  // control, so a toggle must re-resolve it without reopening the panel.
+  setDeviceDetailShedBehavior({
+    deviceId: activeDeviceId,
+    getDeviceById,
+    updateSetStepOptionLabel,
+  });
+  updateShedFieldVisibility({
+    currentDetailDeviceId: activeDeviceId,
+    getDeviceById,
+  });
 };
 
 const notifyDevicesUpdated = () => {

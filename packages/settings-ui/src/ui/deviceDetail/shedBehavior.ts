@@ -1,5 +1,9 @@
 import {
   deviceDetailShedAction,
+  deviceDetailShedHint,
+  deviceDetailShedSegmented,
+  deviceDetailShedSegmentedLabel,
+  deviceDetailShedStatement,
   deviceDetailShedStep,
   deviceDetailShedStepRow,
   deviceDetailShedTemp,
@@ -7,7 +11,7 @@ import {
 } from '../dom.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { state } from '../state.ts';
+import { resolveManagedState, state } from '../state.ts';
 import {
   supportsPowerDevice,
   supportsTemperatureControlDevice,
@@ -35,6 +39,7 @@ import {
   hasEvChargingControl,
   hasEvTargetPowerPreset,
   isSteppedLoadControlModel,
+  resolveDeviceDetailKind,
 } from '../deviceKind.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
@@ -232,6 +237,9 @@ const resolveVisibleShedAction = (params: {
 }): ShedAction | null => {
   const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
   if (!deviceDetailShedAction || !device || !supportsPowerDevice(device)) return null;
+  // Limiting switched off: the statement says PELS will not limit, so the
+  // parameter rows (limited temperature / limited step) have nothing to set.
+  if (params.currentDetailDeviceId && isPowerLimitControlOff(device, params.currentDetailDeviceId)) return null;
 
   if (isTemperatureDeviceWithoutOnOff(device) && isShedActionOptionVisible('set_temperature')) {
     return 'set_temperature';
@@ -279,6 +287,66 @@ const resolveShedControlCapabilities = (params: {
   };
 };
 
+// A device whose limiting control has nothing to choose gets a statement of
+// what PELS does instead of a one-button radiogroup dressed as a choice
+// (TODO: temperature-control-disabled ticket). Power-limit control switched
+// off is stated outright rather than describing hypothetical behavior.
+const isPowerLimitControlOff = (
+  device: SettingsUiDeviceDetailItem | null,
+  deviceId: string,
+): boolean => (
+  supportsPowerDevice(device)
+  && resolveManagedState(deviceId)
+  && state.controllableMap[deviceId] !== true
+);
+
+const resolveShedStatement = (params: {
+  device: SettingsUiDeviceDetailItem | null;
+  deviceId: string;
+  shedControls: ReturnType<typeof resolveShedControlCapabilities>;
+}): string | null => {
+  const { device, deviceId, shedControls } = params;
+  const noun = resolveDeviceDetailKind(device) === 'ev_charger' ? 'charger' : 'device';
+
+  if (!supportsPowerDevice(device)) {
+    return `PELS does not limit this ${noun}.`;
+  }
+  if (isPowerLimitControlOff(device, deviceId)) {
+    return `Power-limit control is off — PELS will not limit this ${noun}.`;
+  }
+
+  const turnOffVisible = !shedControls.forceTemperatureOnly && !shedControls.forceStepOnly;
+  const visibleOptionCount = (turnOffVisible ? 1 : 0)
+    + (shedControls.supportsTemperature ? 1 : 0)
+    + (shedControls.supportsStep ? 1 : 0);
+  if (shedControls.canConfigure && visibleOptionCount > 1) return null;
+
+  if (shedControls.forceTurnOffOnly) {
+    return 'When limiting this charger, PELS pauses charging and resumes it when power allows.';
+  }
+  if (shedControls.forceTemperatureOnly) {
+    return 'When limiting this device, PELS lowers its temperature instead of turning it off.';
+  }
+  if (shedControls.forceStepOnly) {
+    return 'When limiting this device, PELS steps it down and back up as power allows.';
+  }
+  if (state.temperatureControlDisabledMap[deviceId] === true) {
+    return 'Temperature control is off for this device. '
+      + 'When limiting it, PELS turns it off and turns it back on when power allows.';
+  }
+  return `When limiting this ${noun}, PELS turns it off and turns it back on when power allows.`;
+};
+
+const renderShedStatement = (statement: string | null): void => {
+  if (deviceDetailShedStatement) {
+    deviceDetailShedStatement.textContent = statement ?? '';
+    deviceDetailShedStatement.hidden = statement === null;
+  }
+  if (deviceDetailShedSegmented) deviceDetailShedSegmented.hidden = statement !== null;
+  if (deviceDetailShedSegmentedLabel) deviceDetailShedSegmentedLabel.hidden = statement !== null;
+  if (deviceDetailShedHint) deviceDetailShedHint.hidden = statement !== null;
+};
+
 export const loadShedBehaviors = async () => {
   try {
     const behaviors = await getSetting(OVERSHOOT_BEHAVIORS);
@@ -300,6 +368,12 @@ export const setDeviceDetailShedBehavior = (params: {
     device,
   });
   const shedConfig = state.shedBehaviors[params.deviceId];
+
+  renderShedStatement(resolveShedStatement({
+    device,
+    deviceId: params.deviceId,
+    shedControls,
+  }));
 
   updateShedActionOptions({
     canConfigure: shedControls.canConfigure,
