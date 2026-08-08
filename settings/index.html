@@ -774,7 +774,7 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
-              <p class="muted" id="device-detail-modes-help">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
+              <p class="muted" id="device-detail-modes-help">Set the target temperature for each mode. PELS will set this when the mode is active. Priority is this device’s place in that mode’s resume order — reorder it in Modes.</p>
               <div id="device-detail-modes" class="detail-mode-list"></div>
             </div>
           </details>
@@ -857,7 +857,7 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
-              <div class="field">
+              <div class="field" id="device-detail-shed-field">
                 <span class="field__label pels-text-settings-label" id="device-detail-overshoot-segmented-label">What PELS does when limiting this device</span>
                 <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-labelledby="device-detail-overshoot-segmented-label"></div>
                 <md-filled-select id="device-detail-overshoot" hidden aria-hidden="true">
@@ -955,6 +955,7 @@
                 </div>
               </div>
 
+              <p class="muted" id="device-detail-stepped-locked-note" hidden>Steps come from the device app and can’t be edited here.</p>
               <div class="detail-stepped-header" id="device-detail-stepped-header" aria-hidden="true">
                 <span>Step</span>
                 <span>Power</span>
@@ -1014,6 +1015,16 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
+              <!-- The most important EV fact, stated as a readout: changing the
+                   charging model reshapes the whole page, so editing keeps
+                   Setup-grade friction behind the Change button. -->
+              <div class="field device-detail-readout" id="device-detail-charging-control-row" hidden>
+                <div class="device-detail-readout__head">
+                  <span class="field__label pels-text-settings-label">Charging control</span>
+                  <span class="device-detail-readout__value" id="device-detail-charging-control-value"></span>
+                </div>
+                <md-text-button id="device-detail-charging-control-change">Change</md-text-button>
+              </div>
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
                 <div class="md-switch-row">
                   <md-switch id="device-detail-ev-boost-enabled"></md-switch>

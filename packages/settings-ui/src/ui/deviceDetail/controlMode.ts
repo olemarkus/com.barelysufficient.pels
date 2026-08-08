@@ -69,6 +69,16 @@ export function syncDeviceDetailControlModeOptions(
   });
 }
 
+// Display label for the Charging card's control-mode readout — resolved from
+// the same option list the Setup select shows, so the two can never disagree.
+export function getControlModeDisplayLabel(
+  device: SettingsUiDeviceDetailItem | null,
+  controlMode: DeviceDetailControlMode,
+): string {
+  return getDeviceDetailControlModeOptions(device)
+    .find((option) => option.value === controlMode)?.label ?? 'Default';
+}
+
 export function normalizeDeviceDetailControlMode(value: string): DeviceDetailControlMode | null {
   if (
     value === 'default'

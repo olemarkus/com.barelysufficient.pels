@@ -27,7 +27,8 @@ import { parseModeNumberMap } from '../modeCatalogMaps.ts';
 import { serializeModeCatalogWrite } from '../modeRename.ts';
 
 const modesHelpEl = document.querySelector<HTMLElement>('#device-detail-modes-help');
-const MODES_HELP_ACTIVE = 'Set the target temperature for each mode. PELS will set this when the mode is active.';
+const MODES_HELP_ACTIVE = 'Set the target temperature for each mode. PELS will set this when the mode is active. '
+  + 'Priority is this device’s place in that mode’s resume order — reorder it in Modes.';
 const MODES_HELP_DISABLED = 'Saved target temperatures. PELS won’t apply them while temperature control is disabled.';
 
 type DetailModeCatalog = {

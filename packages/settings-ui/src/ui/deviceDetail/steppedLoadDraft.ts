@@ -16,6 +16,7 @@ import {
   deviceDetailSteppedClimbNote,
   deviceDetailSteppedHeader,
   deviceDetailSteppedIntro,
+  deviceDetailSteppedLockedNote,
   deviceDetailSteppedReset,
   deviceDetailSteppedSave,
   deviceDetailSteppedSection,
@@ -141,6 +142,9 @@ const buildSteppedRemoveButton = (params: {
   const removeButton = document.createElement('md-icon-button') as HTMLElement & { disabled: boolean };
   removeButton.classList.add('detail-stepped-remove');
   removeButton.disabled = params.disabled;
+  // A locked profile's rows can never be removed: a dimmed trash can is a dead
+  // affordance, so it hides and the locked note above explains why.
+  removeButton.hidden = params.disabled;
   removeButton.setAttribute('aria-label', `Remove step ${params.stepId}`);
   const trashTemplate = document.getElementById('pels-icon-trash') as HTMLTemplateElement | null;
   if (trashTemplate) {
@@ -276,6 +280,9 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   }
 
   const nativeProfileLocked = isNativeSteppedLoadProfileActive(device);
+  // A locked editor says WHY it is locked instead of presenting a wall of
+  // dimmed fields and dead affordances.
+  if (deviceDetailSteppedLockedNote) deviceDetailSteppedLockedNote.hidden = !nativeProfileLocked;
   // Add-step stays available while the profile is editable; Save/Undo gate on
   // whether the draft actually differs from the saved profile so Save reads as
   // tonal-and-inert until the user has made a real edit.
