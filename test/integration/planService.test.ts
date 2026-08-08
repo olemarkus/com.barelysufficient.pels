@@ -499,7 +499,7 @@ describe('PlanService', () => {
       event: 'device_overview_changed',
       reportedStepId: 'max',
       targetStepId: 'max',
-      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (reported: max)',
+      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (reported: Max)',
     }));
   });
 

@@ -21,6 +21,40 @@ type SegmentedButtonElement = HTMLButtonElement;
  * style (M3 outlined segmented buttons) controls colour, not the `md-text-button`
  * primary-accent default.
  */
+const buildLabelSpan = (className: string, text: string): HTMLSpanElement => {
+    const span = document.createElement('span');
+    span.className = className;
+    span.setAttribute('aria-hidden', 'true');
+    span.textContent = text;
+    return span;
+};
+
+// Dual-label rendering: when an option carries `data-short-label`, the full
+// label yields to the abbreviation at narrow widths (see
+// .segmented__option-label--short); the accessible name stays the full label.
+const applyOptionLabel = (
+    button: HTMLButtonElement & { dataset: DOMStringMap },
+    label: string,
+    shortLabel: string | null,
+): void => {
+    /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
+    if (button.dataset.labelFull === label && (button.dataset.labelShort ?? null) === shortLabel) return;
+    button.dataset.labelFull = label;
+    if (shortLabel) {
+        button.dataset.labelShort = shortLabel;
+        button.replaceChildren(
+            buildLabelSpan('segmented__option-label--full', label),
+            buildLabelSpan('segmented__option-label--short', shortLabel),
+        );
+        button.setAttribute('aria-label', label);
+    } else {
+        delete button.dataset.labelShort;
+        button.removeAttribute('aria-label');
+        button.textContent = label;
+    }
+    /* eslint-enable no-param-reassign */
+};
+
 export const bindSegmentedToSelect = (params: {
     container: HTMLElement;
     select: MaterialSegmentedSelectElement;
@@ -108,8 +142,7 @@ export const bindSegmentedToSelect = (params: {
                 buttons.set(option, button);
             }
             if (button.dataset.value !== option.value) button.dataset.value = option.value;
-            const label = getOptionLabel(option);
-            if (button.textContent !== label) button.textContent = label;
+            applyOptionLabel(button, getOptionLabel(option), option.getAttribute('data-short-label'));
             const isChecked = option.value === select.value && !option.hidden;
             button.setAttribute('aria-checked', isChecked ? 'true' : 'false');
             button.disabled = option.disabled || select.disabled;

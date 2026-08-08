@@ -458,7 +458,12 @@ export function resolveSurplusHoldReportedLoadText(params: {
 function formatRestoreNeedUserFacing(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>,
 ): string {
-  return `Raising target ${reason.fromTarget} to ${reason.toTarget}`;
+  // A resume at the lowest step arrives with fromTarget === toTarget; "Raising
+  // target low to low" is a broken sentence, so state the resume instead.
+  if (reason.fromTarget === reason.toTarget) {
+    return `Turning back on at ${formatStepDisplayLabel(reason.toTarget)}`;
+  }
+  return `Raising target ${formatStepDisplayLabel(reason.fromTarget)} to ${formatStepDisplayLabel(reason.toTarget)}`;
 }
 
 function formatInsufficientHeadroomUserFacing(
@@ -475,7 +480,7 @@ function formatInsufficientHeadroomUserFacing(
 }
 
 const TIMED_REASON_LABELS = {
-  [PLAN_REASON_CODES.cooldownShedding]: 'Waiting after limiting device',
+  [PLAN_REASON_CODES.cooldownShedding]: 'Waiting after limiting a device',
   [PLAN_REASON_CODES.cooldownRestore]: 'Waiting before resuming',
   [PLAN_REASON_CODES.meterSettling]: 'Waiting for power meter to stabilise',
   [PLAN_REASON_CODES.activationBackoff]: 'Delaying restart after recent failed attempt',

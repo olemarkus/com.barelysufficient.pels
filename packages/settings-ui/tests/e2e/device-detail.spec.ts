@@ -218,7 +218,7 @@ test.describe('Device detail panel', () => {
     await expect(tempRow).toBeHidden();
     await expect(stepRow).toBeHidden();
 
-    await options.filter({ hasText: 'Set to temperature' }).click();
+    await options.filter({ hasText: 'Set temperature' }).click();
     await expect.poll(() => readMdValue(page, '#device-detail-overshoot')).toBe('set_temperature');
     await expect(tempRow).toBeVisible();
     await setMdValue(page, '#device-detail-overshoot-temp', '12');
@@ -373,7 +373,7 @@ test.describe('Device detail panel', () => {
     await expect(page.locator('#device-detail-modes-help')).toContainText('won’t apply them');
     await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(true);
     await expect(page.locator('#device-detail-overshoot-segmented .segmented__option', {
-      hasText: 'Set to temperature',
+      hasText: 'Set temperature',
     })).toBeHidden();
     expect(await readHomeySetting(page, 'price_optimization_settings')).toEqual(before);
     expect(await readHomeySetting(page, 'mode_device_targets')).toEqual(modeTargetsBefore);

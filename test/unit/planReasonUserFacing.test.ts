@@ -83,7 +83,7 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
     {
       label: 'cooldown shedding maps to the waiting-after-limiting label',
       reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
-      expected: 'Waiting after limiting device (30s)',
+      expected: 'Waiting after limiting a device (30s)',
     },
     {
       label: 'meter settling maps to the meter-stabilise label',
@@ -205,7 +205,17 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         toTarget: 'high',
         needKw: 1.2,
       },
-      expected: 'Raising target low to high',
+      expected: 'Raising target Low to High',
+    },
+    {
+      label: 'restore need at the lowest step states the resume, not a no-op raise',
+      reason: {
+        code: PLAN_REASON_CODES.restoreNeed,
+        fromTarget: 'low',
+        toTarget: 'low',
+        needKw: 1.2,
+      },
+      expected: 'Turning back on at Low',
     },
     {
       label: 'waiting for other devices maps to the settle label',

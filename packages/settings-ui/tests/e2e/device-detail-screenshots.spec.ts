@@ -53,7 +53,7 @@ test('shedding section with conditional row', async ({ page }) => {
   await openDeviceDetail(page, 'dev_heatpump');
   await page.locator('#device-detail-shedding-section').scrollIntoViewIfNeeded();
   const segmented = page.locator('#device-detail-overshoot-segmented');
-  await segmented.locator('.segmented__option', { hasText: 'Set to temperature' }).click();
+  await segmented.locator('.segmented__option', { hasText: 'Set temperature' }).click();
   await page.waitForTimeout(200);
   await page.locator('#device-detail-shedding-section').screenshot({
     path: `${OUT}/shedding-with-temperature.png`,
