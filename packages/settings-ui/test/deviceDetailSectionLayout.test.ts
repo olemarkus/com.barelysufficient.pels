@@ -151,6 +151,61 @@ describe('applyDeviceDetailSectionLayout', () => {
     expect(sectionOrder()[0]).toBe('device-detail-charging-section');
   });
 
+  it('returns the shed field and unhides the limiting card on the way back from EV', async () => {
+    const { module, state } = await loadLayout();
+    const ev = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
+    state.deviceTargetPowerConfigs = {
+      [ev.id]: { enabled: true, preset: 'ev_charger_1_phase', min: 0, max: 7360, step: 460 },
+    };
+    module.applyDeviceDetailSectionLayout(ev);
+    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(true);
+
+    const thermostat = buildDevice({
+      id: 'device-2',
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+    });
+    module.applyDeviceDetailSectionLayout(thermostat);
+
+    const field = document.getElementById('device-detail-shed-field');
+    expect(field?.closest('#device-detail-shedding-section')).not.toBeNull();
+    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('tracks shed-field placement on a kind change even while focus defers the reorder', async () => {
+    const { module, state } = await loadLayout();
+    const thermostat = buildDevice({
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+    });
+    module.applyDeviceDetailSectionLayout(thermostat);
+
+    // Focus inside the panel (the Setup select during a control-model change).
+    const input = document.createElement('button');
+    document.querySelector('#device-detail-setup-section .collapse-content')?.appendChild(input);
+    input.focus();
+
+    const ev = buildDevice({ id: 'device-2', deviceClass: 'evcharger', deviceType: 'onoff' });
+    state.deviceTargetPowerConfigs = {
+      [ev.id]: { enabled: true, preset: 'ev_charger_3_phase', min: 0, max: 22080, step: 1380 },
+    };
+    module.applyDeviceDetailSectionLayout(ev);
+
+    // Reorder deferred (modes still first) but the limiting surface followed
+    // the kind: field inside the Charging card, its old card hidden.
+    expect(sectionOrder()[0]).toBe('device-detail-modes-section');
+    const field = document.getElementById('device-detail-shed-field');
+    expect(field?.closest('#device-detail-charging-section')).not.toBeNull();
+    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(true);
+
+    // The deferred reorder lands on the next apply once focus has left.
+    input.blur();
+    module.applyDeviceDetailSectionLayout(ev);
+    expect(sectionOrder()[0]).toBe('device-detail-charging-section');
+  });
+
   it('does not move sections while focus sits inside the panel', async () => {
     const { module } = await loadLayout();
     const input = document.createElement('button');

@@ -39,26 +39,24 @@ const SECTION_IDS = {
 
 type SectionKey = keyof typeof SECTION_IDS;
 
+const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
+
 // The activity log reads before advanced diagnostics for every kind: recent
-// state changes are an owner read, the 21-day counters a support read.
-const SECTION_ORDER: Record<DeviceDetailKind, readonly SectionKey[]> = {
-  ev_charger: [
-    'charging', 'car', 'stepped', 'setup', 'activityLog', 'diagnostics',
-    'modes', 'delta', 'surplus', 'shedding',
-  ],
-  temperature: [
-    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics',
-    'charging', 'car',
-  ],
-  stepped: [
-    'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics',
-    'modes', 'delta', 'surplus', 'charging', 'car',
-  ],
-  binary: [
-    'shedding', 'surplus', 'setup', 'activityLog', 'diagnostics',
-    'modes', 'delta', 'stepped', 'charging', 'car',
-  ],
+// state changes are an owner read, the 21-day counters a support read. Only
+// the meaningful head is stated per kind; the tail (sections that kind's own
+// gates hide) is derived, so an omitted key can never strand a section at the
+// previous kind's position.
+const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
+  ev_charger: ['charging', 'car', 'stepped', 'setup', 'activityLog', 'diagnostics'],
+  temperature: ['modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
+  stepped: ['stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
+  binary: ['shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
 };
+
+const sectionOrderFor = (kind: DeviceDetailKind): readonly SectionKey[] => [
+  ...SECTION_HEAD[kind],
+  ...ALL_SECTION_KEYS.filter((key) => !SECTION_HEAD[kind].includes(key)),
+];
 
 let appliedKind: DeviceDetailKind | null = null;
 
@@ -97,14 +95,20 @@ export const applyDeviceDetailSectionLayout = (
 
   const parent = sectionElement('modes')?.parentElement;
   if (!parent) return;
+  // The shed-field placement and the shedding-section visibility must track
+  // the kind even when the reorder is deferred: the Charging card's own
+  // visibility follows the new kind immediately, and skipping this leaves a
+  // page with its limiting surface inside a hidden card (or two limiting
+  // cards at once) after a control-model change re-kinds the device.
+  placeShedField(kind);
   // Never move the node the user is interacting with (md-select keeps its
   // menu/focus state through a change handler that can re-kind the page).
+  // The reorder retries on the next apply; appliedKind stays unset so it does.
   if (document.activeElement && parent.contains(document.activeElement)) return;
-  for (const key of SECTION_ORDER[kind]) {
+  for (const key of sectionOrderFor(kind)) {
     const section = sectionElement(key);
     if (section) parent.appendChild(section);
   }
-  placeShedField(kind);
   appliedKind = kind;
 };
 
