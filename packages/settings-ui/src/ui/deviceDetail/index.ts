@@ -260,7 +260,7 @@ const setDeviceDetailChargingCardState = (
   }
   if (deviceDetailChargingControlValue && device && isEvKind) {
     deviceDetailChargingControlValue.textContent
-      = getControlModeDisplayLabel(device, resolveDeviceDetailControlMode(device));
+      = getControlModeDisplayLabel(resolveDeviceDetailControlMode(device));
   }
 };
 
