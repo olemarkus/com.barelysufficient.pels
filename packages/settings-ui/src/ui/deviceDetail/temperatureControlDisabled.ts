@@ -1,5 +1,5 @@
 import { TEMPERATURE_CONTROL_DISABLED_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
-import { state } from '../state.ts';
+import { state, hasActiveDeadlineObjective } from '../state.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
@@ -39,11 +39,7 @@ const overlayPendingSelections = (persistedMap: Record<string, boolean>): Record
   return nextMap;
 };
 
-const hasActiveSmartTask = (deviceId: string): boolean => {
-  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!entry || !entry.enabled) return false;
-  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > Date.now();
-};
+const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjective(deviceId);
 
 const canOfferTemperatureControlSwitch = (
   device: SettingsUiDeviceDetailItem | null,

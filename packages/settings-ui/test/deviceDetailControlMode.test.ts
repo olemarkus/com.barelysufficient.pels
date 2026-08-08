@@ -53,11 +53,10 @@ describe('device detail control mode options', () => {
 
   it('preserves existing EV target-power presets on non-EV devices', async () => {
     const { state } = await import('../src/ui/state.ts');
-    const {
-      getDeviceDetailControlModeOptions,
-      isControlModeAllowedForDevice,
-      resolveDeviceDetailControlMode,
-    } = await import('../src/ui/deviceDetail/controlMode.ts');
+    const { getDeviceDetailControlModeOptions, isControlModeAllowedForDevice } = await import(
+      '../src/ui/deviceDetail/controlMode.ts'
+    );
+    const { resolveDeviceDetailControlMode } = await import('../src/ui/deviceKind.ts');
     const device = buildDevice({ deviceClass: 'socket', deviceType: 'onoff' });
     state.deviceTargetPowerConfigs = {
       [device.id]: {
@@ -77,11 +76,10 @@ describe('device detail control mode options', () => {
 
   it('does not preserve disabled EV target-power presets on non-EV devices', async () => {
     const { state } = await import('../src/ui/state.ts');
-    const {
-      getDeviceDetailControlModeOptions,
-      isControlModeAllowedForDevice,
-      resolveDeviceDetailControlMode,
-    } = await import('../src/ui/deviceDetail/controlMode.ts');
+    const { getDeviceDetailControlModeOptions, isControlModeAllowedForDevice } = await import(
+      '../src/ui/deviceDetail/controlMode.ts'
+    );
+    const { resolveDeviceDetailControlMode } = await import('../src/ui/deviceKind.ts');
     const device = buildDevice({ deviceClass: 'socket', deviceType: 'onoff' });
     state.deviceTargetPowerConfigs = {
       [device.id]: {

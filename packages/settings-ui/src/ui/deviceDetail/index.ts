@@ -94,7 +94,6 @@ import {
   getControlModeDisplayLabel,
   isControlModeAllowedForDevice,
   normalizeDeviceDetailControlMode,
-  resolveDeviceDetailControlMode,
   resolveTargetPowerConfigForControlMode,
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
@@ -103,7 +102,7 @@ import {
   applyDeviceDetailSectionLayout,
   autoExpandSetupWhenBare,
 } from './sectionLayout.ts';
-import { resolveDeviceDetailKind } from '../deviceKind.ts';
+import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from '../deviceKind.ts';
 import { createPendingDeviceDetailOpen } from './focus.ts';
 import {
   initDeviceDetailBudgetExemptHandler,

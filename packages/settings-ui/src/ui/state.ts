@@ -182,6 +182,15 @@ export const resolveManagedState = (deviceId: string): boolean => {
   return state.managedMap[deviceId] === true;
 };
 
+// One resolver for "does this device carry a standing smart task right now" —
+// previously five hand-copies (Overview card chip, hero, and three Setup-row
+// gates) held equal only by comments.
+export const hasActiveDeadlineObjective = (deviceId: string, nowMs: number = Date.now()): boolean => {
+  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
+  if (!entry || !entry.enabled) return false;
+  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
+};
+
 // "This home has solar surfaces at all" — a role-detected solar/PV device OR a
 // meter-only PV home that has exhibited material grid export. Neither is gated
 // on the power source: both sources report signed net, so a flow home exports on

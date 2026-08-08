@@ -101,7 +101,7 @@ const DEVICE_DETAIL_DOM_TEMPLATE = `
         </div>
         <div id="device-detail-ev-boost" class="detail-control-list detail-stepped-boost" hidden>
           <md-switch id="device-detail-ev-boost-enabled"></md-switch>
-          <div id="device-detail-ev-boost-below-row"></div>
+          <div></div>
           <md-filled-text-field id="device-detail-ev-boost-below"></md-filled-text-field>
           <div id="device-detail-ev-boost-status"></div>
         </div>
