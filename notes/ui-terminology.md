@@ -384,6 +384,37 @@ simulation (there is nothing to release). Source: `DEVICE_OVERVIEW_WOULD_*`
 in `packages/shared-domain/src/deviceOverviewStrings.ts` +
 `toSimulationReasonLine` in `simulationReasonMood.ts`.
 
+### Device-page limiting statements (no one-button radiogroups)
+
+The device page's limiting control renders a **statement instead of a
+radiogroup whenever the action resolution leaves nothing to choose** — a
+one-option segmented control looks tappable and was retired 2026-08-08; do not
+reintroduce it. Canonical sentences (source:
+`resolveShedStatement` in `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`):
+
+| Case | Statement |
+|---|---|
+| EV charger with EV preset | `When limiting this charger, PELS pauses charging and resumes it when power allows.` |
+| Plain binary device | `When limiting this device, PELS turns it off and turns it back on when power allows.` |
+| Temperature control disabled | `Temperature control is off for this device. When limiting it, PELS turns it off and turns it back on when power allows.` |
+| Forced temperature-only | `When limiting this device, PELS lowers its temperature instead of turning it off.` |
+| Forced step-only | `When limiting this device, PELS steps it down and back up as power allows.` |
+| Power-limit control off | `Power-limit control is off — PELS will not limit this charger/device.` |
+| No power reading | `PELS does not limit this charger/device.` |
+
+The EV page's **Charging card** opens with a control-mode **readout**
+(`Charging control · EV 3-phase`) and a `Change` button that expands Setup and
+focuses the select — top visibility, Setup-grade friction, because changing the
+charging model reshapes the page. The readout label comes from the same option
+list as the Setup select (`getControlModeDisplayLabel`), so the two cannot
+disagree.
+
+Suppressed-control treatment (device page): **applicable-but-unavailable
+renders visible-but-disabled with a gate hint naming the real switch**
+(`Turn on Price-based control in Setup …`); only kind- or home-inapplicable
+sections are structurally absent. Never vanish a control the user could
+re-enable from this page.
+
 ### "Held back" — the Held-back-devices widget
 
 The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining, with a per-device **Let it run now** action (a one-device rescue that lifts the budget for it and clears room from lower-priority load — never a hard-cap change). Every row reads `Held back · N min`, rolling over into hours past 60 minutes (`Held back · 2 h 15 min`). The former cause-specific `Waiting · N min` variant went with the `budget`/`capacity` bucket on 2026-08-04: the bucket was a snapshot of whichever constraint bound on the last tick, so a steady device flipped chip word — and rescue button — between cycles. (There is no "manual"/"external" cause either: a device PELS merely keeps below its target is not held back, so it never appears here.) The only row without a rescue button is one whose device already has its own smart task, which says so in a note. This is a deliberate, widget-scoped synonym of the overview **Limited** state word: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview state word) and **Held back** (the widget and device-detail diagnostics).
