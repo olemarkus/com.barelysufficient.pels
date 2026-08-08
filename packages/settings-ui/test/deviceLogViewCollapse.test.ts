@@ -3,7 +3,8 @@
 // body paragraph.
 
 import type { SettingsUiDeviceLogEntry } from '../src/../../contracts/src/settingsUiApi';
-import { collapseRepeatedLogEntries, renderDeviceLogView } from '../src/ui/views/DeviceLogView';
+import { collapseRepeatedLogEntries } from '../../shared-domain/src/deviceLogCollapse';
+import { renderDeviceLogView } from '../src/ui/views/DeviceLogView';
 
 const entry = (overrides: Partial<SettingsUiDeviceLogEntry>): SettingsUiDeviceLogEntry => ({
   atMs: 0,
@@ -25,11 +26,13 @@ describe('collapseRepeatedLogEntries', () => {
     ];
     const collapsed = collapseRepeatedLogEntries(entries);
     expect(collapsed).toHaveLength(3);
-    expect(collapsed[0].repeatCount).toBe(1);
-    expect(collapsed[1].repeatCount).toBe(3);
+    expect(collapsed[0].occurrenceCount).toBe(1);
+    expect(collapsed[1].occurrenceCount).toBe(3);
     expect(collapsed[1].entry.atMs).toBe(4000);
     expect(collapsed[1].firstAtMs).toBe(2000);
-    expect(collapsed[2].repeatCount).toBe(1);
+    expect(collapsed[2].occurrenceCount).toBe(1);
+    // Only the tail run can be retention-truncated; the middle run is not.
+    expect(collapsed[1].truncated).toBe(false);
   });
 
   it('does not collapse entries whose visible content differs', () => {
@@ -57,7 +60,8 @@ describe('renderDeviceLogView', () => {
     });
     const rows = surface.querySelectorAll('.device-log__entry');
     expect(rows).toHaveLength(1);
-    expect(surface.textContent).toContain('Repeated 3 times since t1000');
+    // The single run here IS the tail run, so it carries the truncation wording.
+    expect(surface.textContent).toContain('Seen 3 times — the log keeps only recent changes');
     // statusMsg is empty on every entry: no empty body paragraph rendered.
     expect(surface.querySelectorAll('.pels-text-body')).toHaveLength(0);
   });

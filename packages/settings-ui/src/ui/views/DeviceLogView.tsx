@@ -2,6 +2,10 @@ import { render } from 'preact';
 import type { SettingsUiDeviceLogEntry } from '../../../../contracts/src/settingsUiApi.ts';
 import { HOME_SCOPE_ACTIVITY_NOT_RECORDED } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import { chipModifierForTone } from './chipModifier.ts';
+import {
+  collapseRepeatedLogEntries,
+  type CollapsedLogEntry,
+} from '../../../../shared-domain/src/deviceLogCollapse.ts';
 
 export type DeviceLogViewState =
   | { status: 'loading' }
@@ -20,37 +24,6 @@ type DeviceLogViewProps = {
 const DeviceLogEmpty = ({ message }: { message: string }) => (
   <p class="pels-text-supporting muted device-log__empty">{message}</p>
 );
-
-// Consecutive entries whose visible content is identical (state chip, power,
-// usage, status) collapse into one row with a repeat count — fifteen identical
-// "Idle / Measured: 0.00 kW" cards read as a stuck ticker, not a log.
-type CollapsedLogEntry = {
-  entry: SettingsUiDeviceLogEntry;
-  repeatCount: number;
-  firstAtMs: number;
-};
-
-const entrySignature = (entry: SettingsUiDeviceLogEntry): string => (
-  [entry.stateMsg, entry.powerMsg ?? '', entry.usageMsg, entry.statusMsg].join('\u0000')
-);
-
-export const collapseRepeatedLogEntries = (
-  entries: SettingsUiDeviceLogEntry[],
-): CollapsedLogEntry[] => {
-  const collapsed: CollapsedLogEntry[] = [];
-  for (const entry of entries) {
-    const previous = collapsed[collapsed.length - 1];
-    if (previous && entrySignature(previous.entry) === entrySignature(entry)) {
-      previous.repeatCount += 1;
-      // Entries arrive newest-first; the run's oldest timestamp is the last
-      // one seen, so the caption can say since when it has been repeating.
-      previous.firstAtMs = entry.atMs;
-      continue;
-    }
-    collapsed.push({ entry, repeatCount: 1, firstAtMs: entry.atMs });
-  }
-  return collapsed;
-};
 
 const DeviceLogEntryRow = ({
   item,
@@ -80,9 +53,11 @@ const DeviceLogEntryRow = ({
       {entry.statusMsg ? (
         <p class="pels-text-body device-log__line">{entry.statusMsg}</p>
       ) : null}
-      {item.repeatCount > 1 ? (
+      {item.occurrenceCount > 1 ? (
         <p class="pels-text-caption muted device-log__line">
-          {`Repeated ${item.repeatCount} times since ${formatTimestamp(item.firstAtMs)}`}
+          {item.truncated
+            ? `Seen ${item.occurrenceCount} times — the log keeps only recent changes, so the run may have started earlier`
+            : `Seen ${item.occurrenceCount} times since ${formatTimestamp(item.firstAtMs)}`}
         </p>
       ) : null}
     </li>
