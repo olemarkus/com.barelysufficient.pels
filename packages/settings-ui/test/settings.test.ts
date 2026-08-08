@@ -1656,7 +1656,7 @@ describe('settings script', () => {
     diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
 
     await waitFor(() => (
-      (document.querySelector('#device-detail-diagnostics-status') as HTMLElement | null)?.textContent?.includes('Current penalty level: L2')
+      (document.querySelector('#device-detail-diagnostics-status') as HTMLElement | null)?.textContent?.includes('Restart backoff level: 2')
         === true
     ));
 
@@ -1664,7 +1664,7 @@ describe('settings script', () => {
       expect.arrayContaining(['GET', '/ui_device_diagnostics']),
     ]));
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
-    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
+    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Restart backoff');
     expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
     expect(getDiagnosticsMetricValue('Held-back time')).toBe('23m');
   });
