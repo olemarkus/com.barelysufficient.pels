@@ -1541,13 +1541,41 @@ program) remain deferred.*
       detail, the granted-permissions row renders inside the learned-inputs card; a permission is
       a setting, not something learned — move it beside the task inputs. Source: 2026-08-02
       release review, pels-ux-fit. [P2]
-- [ ] **Temperature-control-disabled device detail: one-option segmented control and three
-      different suppressed-control treatments.** With the toggle on, "What PELS does when limiting
-      this device" renders a single-option segmented control ("Turn off") that looks tappable;
-      render a static statement when only one action remains. Suppressed controls mix three
-      treatments (solar surplus and Price response vanish; Price-based control stays disabled;
-      modes card gets a "kept, not applied" hint) — pick the visible-but-disabled + hint
-      treatment. Source: 2026-08-02 release review, pels-ux-fit. [P2]
+- [ ] **"Charge now" grant + Overview action chips (quick-actions train).**
+      *Persona:* EV owner who wants the car charged ahead of schedule without opening a smart task.
+      *Hypothesis:* a user-initiated boost/exemption grant on the existing budget-exemption + boost
+      lane ("Get power now" direction), surfaced as an always-available action chip on the EV card
+      (the card chip ladder already carries the "Let it run now" rescue precedent) and on the
+      device-page hero action row. Needs a shared confirm component: the rescue chip's
+      preview-and-permissions flow must not be forked imperatively (why the 2026-08-08 device-page
+      train shipped the hero without it). Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/src/ui/deviceDetail/liveStatus.ts`, smart-task rescue API surface. [P2]
+- [ ] **Devices list: "EXPLAIN" legend disclosure and "Flow-backed" chip are list-surface jargon.**
+      *Persona:* new user on their first Devices visit.
+      *Hypothesis:* the all-caps EXPLAIN toggle hides the icon legend a first-time user needs, and
+      "Flow-backed" is wiring vocabulary on a list surface; an inline legend and a plainer chip
+      ("Controlled by your Flow"?) would carry it. Source: 2026-08-08 device-page walk,
+      pels-ux-fit. Files: `packages/settings-ui/src/ui/devices.ts`, `deviceListPresentation.ts`. [P2]
+- [ ] **Activity log: collapse resume/turn-off alternation bursts.**
+      *Persona:* owner reading the log after a windy evening.
+      *Hypothesis:* consecutive-identical entries now collapse, but an A/B/A/B resume-vs-turn-off
+      alternation within minutes still renders as 2N cards that read as malfunction; a paired
+      collapse ("Tried to resume 5× in 4 min — not enough power") would tell the story in one row.
+      Source: 2026-08-08 walk, pels-ux-fit finding 11 (remainder). Files:
+      `packages/settings-ui/src/ui/views/DeviceLogView.tsx`. [P2]
+- [ ] **Verify the device page at a true 320 px iframe width.**
+      *Persona:* owner on a narrow phone.
+      *Hypothesis:* the desktop my.homey.app panel imposes its own min-width, so the 2026-08-08 prod
+      captures never exercised PELS's ≤360/≤319 media queries; the Playwright fixture (which narrows
+      the real iframe) must confirm the per-kind pages, the segmented short labels, and the hero at
+      320 px. Files: `packages/settings-ui/tests/e2e/*`, capture harness. [P2]
+- [ ] **Split temperature boost out of the stepped-profile card.**
+      *Persona:* water-heater owner flipping boost seasonally.
+      *Hypothesis:* the 2026-08-08 IA spec gives temperature boost its own switch-headed card (it is
+      the routinely-flipped behavior toggle, invisible inside the dense profile card); the train
+      landed the ordering but kept boost inside the profile card. Files:
+      `packages/settings-ui/public/index.html`, `deviceDetail/temperatureBoost.ts`,
+      `deviceDetail/sectionLayout.ts`. [P3]
 - [ ] **`formatHoursBeforeDeadline` rounds the safety margin in the flattering direction.**
       `packages/shared-domain/src/deadlineLabels.ts:2421`: "projected ready ≈ 18:00, 2 hours
       before the deadline" against a 19:40 deadline overstates a 1 h 40 min margin via
@@ -4016,14 +4044,6 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       in their own Flows.
       *Why:* future product rollout against `notes/starvation/README.md`; the feature works without it.
       Files: `flowCards/**`, `drivers/pels_insights/**`, plan snapshot/contract wiring.
-- [ ] **Rework device detail into focused Behavior / Setup / Diagnostics sections.**
-      *Persona:* Orchestrator configuring a device, and support reading diagnostics.
-      *Hypothesis:* device detail is one long mixed scroll (modes, deadline, price, limiting, stepped,
-      boost, setup, control model, native wiring, SoC, diagnostics); a focused IA keeps common controls
-      reachable and moves the dense read-only diagnostics surface off the primary path.
-      *Why:* important setup controls feel hidden and the diagnostics surface is a dense support read at
-      the bottom of operational controls — functional but unloved. Files:
-      `packages/settings-ui/src/ui/deviceDetail/**`, device-detail e2e/screenshots.
 - [ ] **Define the binary operating precondition for temperature-lowered devices.**
       *Persona:* Optimiser with a device that is both temperature- and binary-controllable.
       *Hypothesis:* `set_temperature` limiting only lowers the target; if such a device is observed

@@ -100,17 +100,20 @@ Top-level controls:
 | **Limit** | PELS may lower or turn off this device to stay under the hard cap. |
 | **Price** | PELS adjusts the temperature target around electricity prices. |
 
-Device detail sections:
+Device detail sections. The page composes per device kind — an EV charger, a thermostat, a stepped load (such as a water heater), and a plain on/off device each lead with the sections that matter for that device, and sections that do not apply are not shown. The top of every page is a live status header: state, current draw, one fact line (temperature and target, or charging state, battery, and level), the reason the device is limited when it is, and a Smart task link when one is scheduled.
 
-| Section | What it contains |
-| --- | --- |
-| **Temperature per mode** | Per-mode target temperatures for temperature devices. |
-| **Price response** | Cheap-hour boost and expensive-hour reduction. |
-| **Power limiting** | What PELS does when power needs to be lowered: turn off, set temperature, or set stepped-load level. |
-| **Stepped load profile** | Step names, planning power values, target-power range, temperature boost, and charge boost where supported. |
-| **Solar surplus** (prosumer) | For homes with solar: **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. Appears when PELS detects a solar signal, or when a device already has one of these settings enabled (so you can turn it off). See [Solar and Self-Consumption](/solar). |
-| **Setup** | Managed by PELS, power-limit control, disable temperature control, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and battery level. |
-| **Advanced diagnostics** | Read-only blocked time, activation instability, and penalty history. |
+| Section | Shown for | What it contains |
+| --- | --- | --- |
+| **Charging** | EV chargers | The charging control readout (with a **Change** button that opens Setup), charge boost, and a statement of what limiting does (PELS pauses charging and resumes it when power allows). |
+| **Car** | EV chargers | Which cars charge here, the battery level PELS reads from the car, and where the level comes from. |
+| **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes). |
+| **Price response** | Temperature devices | Cheap-hour boost and expensive-hour reduction. Stays visible with a hint naming the switch that enables it when price control is off. |
+| **Solar surplus** (prosumer) | Homes with solar | **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. See [Solar and Self-Consumption](/solar). |
+| **Stepped load profile** | Stepped loads | Step names, planning power values, target-power range, and temperature boost. Hidden for EV chargers using an EV preset — the preset owns the steps. |
+| **Power limiting** | Devices with a real choice | Turn off or set temperature / set step. When only one action is possible, the page states what PELS does instead of showing a one-button choice. |
+| **Setup** | All devices | Managed by PELS, power-limit control, disable temperature control, leave off until turned on again, price-based control, budget exemption, built-in device control, and control model. Opens automatically for devices that are not set up yet. |
+| **Activity log** | All devices | Recent state changes PELS recorded for this device. |
+| **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
 ![PELS device detail page for a heat pump showing Temperature per mode, Price response, Power limiting, and the Setup toggles including Managed by PELS and Power-limit control](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
 
