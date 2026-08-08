@@ -84,6 +84,16 @@ const confirmSettingSaved = (): void => {
   }, 400);
 };
 
+// A failure must not be followed by a stale "Saved": the toast surface is a
+// single last-writer-wins element, so a pending confirm from an earlier write
+// would overwrite the error the user needs to see.
+const cancelPendingSavedConfirm = (): void => {
+  if (confirmSavedTimer) {
+    clearTimeout(confirmSavedTimer);
+    confirmSavedTimer = null;
+  }
+};
+
 export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): Promise<T | null> => {
   // Default normaliser: pass through real, non-array objects untouched and
   // signal "unrecoverable" otherwise. Callers can provide their own
@@ -116,6 +126,7 @@ export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): 
     confirmSettingSaved();
     return nextValue;
   } catch (error) {
+    cancelPendingSavedConfirm();
     await logSettingsError(params.logMessage, error, params.context);
     await showToastError(error, params.toastMessage);
     await params.rollback?.();

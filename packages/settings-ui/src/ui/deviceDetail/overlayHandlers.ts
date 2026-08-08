@@ -47,6 +47,10 @@ export type DeviceDetailOverlayHandlerContext = {
 // unchanged by the push, so the deadline-plan router's own popstate handling
 // sees no route change.
 let historyEntryActive = false;
+// One history.back() may be in flight before its popstate lands; a second
+// close request in that window (Escape autorepeat, double-tap) must not pop a
+// REAL history entry underneath the overlay's own.
+let closeRequestInFlight = false;
 
 export const noteDeviceDetailOpened = (): void => {
   if (historyEntryActive) return;
@@ -55,7 +59,9 @@ export const noteDeviceDetailOpened = (): void => {
 };
 
 const requestDeviceDetailClose = (closeDeviceDetail: () => void): void => {
+  if (closeRequestInFlight) return;
   if (historyEntryActive) {
+    closeRequestInFlight = true;
     window.history.back();
     return;
   }
@@ -68,11 +74,13 @@ const initDeviceDetailHistoryHandler = (
   window.addEventListener('popstate', () => {
     if (!historyEntryActive) return;
     historyEntryActive = false;
+    closeRequestInFlight = false;
     if (deviceDetailOverlay && !deviceDetailOverlay.hidden) {
       ctx.closeDeviceDetail();
     }
   });
 };
+
 
 const initDeviceDetailCloseHandlers = (
   ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
@@ -114,6 +122,18 @@ const initDeviceDetailEscapeHandler = (
     if (event.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
       requestDeviceDetailClose(ctx.closeDeviceDetail);
     }
+  });
+};
+
+const initDeviceDetailSmartTaskChipHandler = (
+  ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
+) => {
+  document.getElementById('device-detail-live-smart-task')?.addEventListener('click', () => {
+    // The deadline router already intercepted this click at document capture
+    // and mounted the plan page underneath; close the overlay directly so the
+    // page the user asked for is visible. No history.back(): the plan entry
+    // now sits on top, and the overlay's own entry pops later as a no-op.
+    ctx.closeDeviceDetail();
   });
 };
 
@@ -213,6 +233,7 @@ export const initDeviceDetailOverlayChrome = (
 ) => {
   initDeviceDetailCloseHandlers(ctx);
   initDeviceDetailHistoryHandler(ctx);
+  initDeviceDetailSmartTaskChipHandler(ctx);
   initDeviceDetailSwitchRowClick();
   initOvershootSegmented();
 };
