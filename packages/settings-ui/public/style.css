@@ -323,12 +323,17 @@ md-filled-select {
   --md-filled-text-field-focus-active-indicator-color: var(--accent);
   --md-filled-text-field-hover-active-indicator-color: var(--text-secondary);
   --md-filled-text-field-active-indicator-color: var(--panel-border);
+  /* No hover wash: the default on-surface state layer painted the whole
+     container grey — visually identical to the disabled skin — and hover is
+     noise in a touch-first WebView anyway. */
+  --md-filled-text-field-hover-state-layer-opacity: 0;
   --md-filled-select-text-field-container-color: var(--color-surface-4);
   --md-filled-select-text-field-container-shape: var(--radius-md);
   --md-filled-select-text-field-input-text-color: var(--text);
   --md-filled-select-text-field-focus-active-indicator-color: var(--accent);
   --md-filled-select-text-field-hover-active-indicator-color: var(--text-secondary);
   --md-filled-select-text-field-active-indicator-color: var(--panel-border);
+  --md-filled-select-text-field-hover-state-layer-opacity: 0;
   --md-menu-container-color: var(--pels-surface-container-highest);
   --md-menu-container-shape: var(--radius-md);
   --md-menu-container-elevation: 3;
