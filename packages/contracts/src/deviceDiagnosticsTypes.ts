@@ -13,7 +13,6 @@ export type DeviceDiagnosticsStarvationCountingCause =
   | 'swap_pending'
   | 'swapped_out'
   | 'insufficient_headroom'
-  | 'shedding_active'
   | 'cooldown'
   | 'restore'
   | 'restore_throttled'
