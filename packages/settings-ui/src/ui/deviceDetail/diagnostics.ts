@@ -203,7 +203,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     // backoff ladder, and "penalty" read as PELS punishing the device.
     deviceDetailDiagnosticsStatus.textContent = [
       `Restart backoff level: ${summary.currentPenaltyLevel}.`,
-      `Status: ${starvationStatus}${starvationContext ? ` - ${starvationContext}` : ''}.`,
+      `Status: ${starvationStatus}${starvationContext ? ` — ${starvationContext}` : ''}.`,
     ].join(' ');
   }
   if (!deviceDetailDiagnosticsCards) return;
