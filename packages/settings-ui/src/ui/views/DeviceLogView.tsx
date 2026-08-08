@@ -100,7 +100,7 @@ const DeviceLogRoot = ({ state, formatTimestamp }: DeviceLogViewProps) => {
     return <DeviceLogEmpty message={HOME_SCOPE_ACTIVITY_NOT_RECORDED} />;
   }
   if (state.entries.length === 0) {
-    return <DeviceLogEmpty message="No activity recorded yet — the log starts fresh after a restart. Changes appear here as PELS limits or resumes this device." />;
+    return <DeviceLogEmpty message="No activity recorded yet — the log starts fresh when PELS restarts. Changes appear here as PELS limits or resumes this device." />;
   }
   return (
     <ol class="device-log__list">
