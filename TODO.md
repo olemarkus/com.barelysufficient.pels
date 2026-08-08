@@ -1569,6 +1569,58 @@ program) remain deferred.*
       captures never exercised PELS's ≤360/≤319 media queries; the Playwright fixture (which narrows
       the real iframe) must confirm the per-kind pages, the segmented short labels, and the hero at
       320 px. Files: `packages/settings-ui/tests/e2e/*`, capture harness. [P2]
+- [ ] **Move the hero/card power-fact grammar into shared-domain.**
+      *Persona:* support reading logs against what the user saw.
+      *Hypothesis:* `Reported N kW` / `≈ N kW when active` exist as two hand-mirrored literals
+      (`views/PlanDeviceCards.tsx`, `deviceDetail/liveStatus.ts`) held equal by a comment; one
+      shared-domain producer (like `resolveHeldCardReasonLine`) removes the drift class, and
+      runtime logs could then reuse it. Source: 2026-08-08 stack review, pels-copy lens. [P2]
+- [ ] **Consolidate the two device-modality resolutions the device-page train left behind.**
+      *Persona:* next engineer touching device-detail predicates.
+      *Hypothesis:* the draft-over-persisted `targetPowerConfig` merge lives in three sites
+      (`deviceKind.ts` ×2, `deviceControlProfiles.ts`) and the temperature-modality disjunction
+      (`controlModel === 'temperature_target' || typeof plannedTarget === 'number'`) in two
+      (`liveStatus.ts`); one `resolveEffectiveTargetPowerConfig` + one named modality predicate
+      also retires the `controlMode.ts` re-export shim. Source: 2026-08-08 stack review,
+      pels-layering-guardian. [P2]
+- [ ] **Device page: first-run and prerequisite gaps the redesign exposed.**
+      *Persona:* new user setting up their first devices.
+      *Hypothesis:* four related holes — (a) an unmanaged EV buries Setup below two inert cards
+      and the hero never says "Not managed — set up below"; (b) disabled Setup toggles carry no
+      gate hint naming the prerequisite (Managed) while Budget exempt stays enabled beside them;
+      (c) charge boost arms with no warning when the Car card above says the battery is never
+      reported, so it can never fire; (d) the diagnostics intro caveats a Held-back card that is
+      not rendered in the empty state. Source: 2026-08-08 stack review, pels-ux-fit. Files:
+      `deviceDetail/sectionLayout.ts`, `index.ts`, `evBoost.ts`, `diagnostics.ts`. [P2]
+- [ ] **Hero: state the smart-task deferral for temperature devices.**
+      *Persona:* water-heater owner whose tank reads Off, 14 °C below target, smart task pending.
+      *Hypothesis:* EV cards get a deferral state line ("Waiting for cheaper hours — done by
+      HH:MM") from `resolveEvCardStateLine`; temperature smart-task devices have no equivalent, so
+      the hero (and card) show Off with no why. A temperature counterpart in shared-domain closes
+      the redesign's one remaining mystery-copy hero. Source: 2026-08-08 stack review,
+      pels-ux-fit P1-3. [P2]
+- [ ] **Populated-state captures for the device-page redesign features.**
+      *Persona:* reviewer of the next device-page change.
+      *Hypothesis:* every full-page capture is a quiet/empty state — the hero reason ladder, the
+      activity-log repeat collapse, and the relabelled diagnostics have no rendered pixels in
+      docs; held/limited, populated-log, and populated-diagnostics fixtures in
+      `device-detail-full-screenshot.spec.ts` would prove them (and `stepped-zaptec.png` needs a
+      regenerate — devices-list rows bleed through the element screenshot). Source: 2026-08-08
+      stack review, pels-ux-fit + pels-m3-critic. [P2]
+- [ ] **Verify: leave-off row on switchable binaries, hero chip touch target, real-device dark pass.**
+      *Persona:* owner on a real phone.
+      *Hypothesis:* three spot checks the stack review could not settle from fixtures — the
+      binary water-heater fixture lacks `controlCapabilityId` so the "Leave off until turned on
+      again" row never rendered (real switchable binaries should get it); the hero Smart-task
+      chip measures ~34–40 px (under the 48 px minimum); and the segmented dual-labels + hero
+      chip have no real-Homey dark-theme capture (host-CSS bleed is invisible to emulation).
+      Source: 2026-08-08 stack review. [P3]
+- [ ] **"Disable temperature control" is Setup's only negative-phrased toggle.**
+      *Persona:* owner scanning Setup where every other switch is positive.
+      *Hypothesis:* ON = less capability amid five positive toggles; flipping it to "Temperature
+      control" (default on) reads naturally but inverts a persisted setting's meaning — needs a
+      migration story for the stored map, so it is a deliberate follow-up, not a rename.
+      Source: 2026-08-08 stack review, pels-ux-fit. [P3]
 - [ ] **Split temperature boost out of the stepped-profile card.**
       *Persona:* water-heater owner flipping boost seasonally.
       *Hypothesis:* the 2026-08-08 IA spec gives temperature boost its own switch-headed card (it is
