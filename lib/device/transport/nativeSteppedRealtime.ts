@@ -21,6 +21,7 @@ import {
   resolveNativeSteppedLoadReportedStepId,
   resolveTargetPowerReportedStepId,
 } from '../nativeSteppedLoadWiring';
+import { isEvTargetPowerConfig } from '../targetPowerReachability';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-domain/src/targetPowerStepping';
 import {
@@ -108,6 +109,8 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
     capabilityId: string;
     nextReportedStepId: string | undefined;
     isNativePowerStepUpdate: boolean;
+    reportedStepPowerW?: number;
+    reportedStepObservedAtMs?: number;
 }): void {
     const {
         snapshotIndex,
@@ -115,11 +118,19 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
         capabilityId,
         nextReportedStepId,
         isNativePowerStepUpdate,
+        reportedStepPowerW,
+        reportedStepObservedAtMs,
     } = params;
     const currentSnapshot = ctx.latestSnapshot[snapshotIndex];
     const previousReportedStepId = currentSnapshot.reportedStepId;
+    const previousReportedStepPowerW = currentSnapshot.reportedStepPowerW;
+    const previousReportedStepObservedAtMs = currentSnapshot.reportedStepObservedAtMs;
     if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
     else delete currentSnapshot.reportedStepId;
+    if (reportedStepPowerW !== undefined) currentSnapshot.reportedStepPowerW = reportedStepPowerW;
+    if (reportedStepObservedAtMs !== undefined) {
+        currentSnapshot.reportedStepObservedAtMs = reportedStepObservedAtMs;
+    }
     if (isNativePowerStepUpdate) {
         currentSnapshot.lastFreshDataMs = Date.now();
         currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
@@ -132,6 +143,12 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
             previousReportedStepId,
             nextReportedStepId,
         });
+    }
+    const exactPowerObservationChanged = isNativePowerStepUpdate && (
+        previousReportedStepPowerW !== reportedStepPowerW
+        || previousReportedStepObservedAtMs !== reportedStepObservedAtMs
+    );
+    if (reportedStepChanged || exactPowerObservationChanged) {
         ctx.onSnapshotMutated?.(currentSnapshot, Date.now());
     }
     // A power-step that does NOT change the reported step still advances
@@ -157,7 +174,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
     deviceId: string;
     capabilityId: string;
     value: unknown;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: TransportDeviceSnapshot;
 }): boolean {
     const {
         snapshotIndex,
@@ -183,6 +200,17 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
         return isNativePowerStepUpdate;
     }
 
+    if (capabilityId === 'target_power') {
+        recordCapabilityObservation({
+            state: ctx.observationState,
+            latestSnapshot: ctx.latestSnapshot,
+            deviceId,
+            capabilityId,
+            value: normalizedValue,
+            source: 'realtime_capability',
+        });
+    }
+
     observeNativeSteppedLoadCapabilityUpdate({
         owner: ctx.owner,
         deviceId,
@@ -205,6 +233,12 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
         deviceId,
         profile,
     }) ?? fallbackReportedStepId;
+    const reportedStepPowerW = capabilityId === 'target_power'
+        && isEvTargetPowerConfig(snapshot.targetPowerConfig)
+        && typeof value === 'number'
+        && Number.isFinite(value)
+        ? Math.round(value)
+        : undefined;
 
     applyNativeSteppedLoadSnapshotUpdate(ctx, {
         snapshotIndex,
@@ -212,6 +246,8 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
         capabilityId,
         nextReportedStepId,
         isNativePowerStepUpdate,
+        reportedStepPowerW,
+        ...(reportedStepPowerW !== undefined ? { reportedStepObservedAtMs: Date.now() } : {}),
     });
     return isNativePowerStepUpdate;
 }
@@ -259,6 +295,8 @@ export function handleTargetPowerSourceCapabilityUpdate(ctx: TransportContext, p
         capabilityId,
         nextReportedStepId,
         isNativePowerStepUpdate: true,
+        reportedStepPowerW: targetPowerW,
+        reportedStepObservedAtMs: Date.now(),
     });
     return true;
 }

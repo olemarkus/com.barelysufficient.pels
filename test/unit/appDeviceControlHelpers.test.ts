@@ -24,7 +24,13 @@ import type {
   SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
+  TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
+import {
+  buildEvTargetPowerCandidateProfile,
+  buildTargetPowerReachabilityState,
+  type TargetPowerConfigWithReachability,
+} from '../../lib/device/targetPowerReachability';
 
 const steppedProfiles: DeviceControlProfiles = {
   'dev-1': {
@@ -58,6 +64,474 @@ const baseSnapshot = (
 });
 
 describe('appDeviceControlHelpers', () => {
+  it('learns a settled EV ceiling and ends the foreground retry lifecycle', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({
+        config: baseConfig,
+        maxReachedPowerW: 5750,
+      }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepId: '24a',
+      reportedStepPowerW: 5750,
+      reportedStepObservedAtMs: 1500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      issuedAtMs: 1000,
+      pendingWindowMs: 100,
+    });
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
+
+    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+    const [decorated] = helpers.decorateTargetSnapshotList([snapshot]);
+
+    expect(config.reachability).toMatchObject({
+      maxReachedPowerW: 5750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 902_000,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(decorated.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
+    expect(decorated.targetPowerConfig).toEqual(baseConfig);
+    dateNow.mockRestore();
+  });
+
+  it('raises the confirmed ladder when a probe reaches its requested step', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({
+        config: baseConfig,
+        maxReachedPowerW: 5750,
+        probeFailureCount: 2,
+        nextProbeAtMs: 1000,
+      }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepId: '25a',
+      reportedStepPowerW: 5750,
+      reportedStepObservedAtMs: 500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1000,
+      pendingWindowMs: 100,
+    });
+    snapshot.reportedStepPowerW = 6440;
+    snapshot.reportedStepObservedAtMs = 1500;
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(1600);
+
+    helpers.reconcileTargetPowerReachability([snapshot], 1_600);
+    const [decorated] = helpers.decorateTargetSnapshotList([snapshot]);
+
+    expect(config.reachability).toMatchObject({
+      maxReachedPowerW: 6440,
+      probeFailureCount: 0,
+    });
+    expect(config.reachability).not.toHaveProperty('nextProbeAtMs');
+    expect(decorated.reportedStepId).toBe('28a');
+    expect(decorated.steppedLoadProfile?.steps.at(-1)?.id).toBe('28a');
+    dateNow.mockRestore();
+  });
+
+  it('finalizes a refused Flow-backed probe from repeated exact feedback', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({
+        config: baseConfig,
+        maxReachedPowerW: 5750,
+      }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'Flow EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      reportFlowSteppedLoadObservation: ({ stepId, planningPowerW, observedAtMs }) => {
+        snapshot.reportedStepId = stepId;
+        snapshot.reportedStepPowerW = planningPowerW;
+        snapshot.reportedStepObservedAtMs = observedAtMs;
+        return true;
+      },
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1000,
+      pendingWindowMs: 100,
+    });
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
+
+    helpers.decorateTargetSnapshotList([snapshot]);
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')?.status).toBe('stale');
+    expect(helpers.reportSteppedLoadActualStep('dev-1', '25a')).toBe('changed');
+    expect(config.reachability).toMatchObject({
+      maxReachedPowerW: 5750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 902_000,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    dateNow.mockRestore();
+  });
+
+  it('does not lower learned reachability after a successful downward command', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7360,
+    };
+    const reachability = buildTargetPowerReachabilityState({
+      config: baseConfig,
+      maxReachedPowerW: 5750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 900_000,
+    });
+    const config: TargetPowerConfigWithReachability = { ...baseConfig, reachability };
+    const updateTargetPowerReachability = vi.fn(() => true);
+    const snapshot = baseSnapshot({
+      name: 'EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepId: '24a',
+      reportedStepPowerW: 5520,
+      reportedStepObservedAtMs: 1500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability,
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '24a',
+      previousStepId: '25a',
+      issuedAtMs: 1000,
+      pendingWindowMs: 100,
+    });
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
+
+    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+
+    expect(updateTargetPowerReachability).not.toHaveBeenCalled();
+    expect(config.reachability).toBe(reachability);
+    dateNow.mockRestore();
+  });
+
+  it('does not classify an ordinary increase inside the confirmed ladder as a probe', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    const config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({ config: baseConfig, maxReachedPowerW: 7_360 }),
+    };
+    const updateTargetPowerReachability = vi.fn(() => true);
+    const snapshot = baseSnapshot({
+      name: 'EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepPowerW: 1_380,
+      reportedStepObservedAtMs: 1_500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability,
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '16a',
+      previousStepId: '6a',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 100,
+    });
+    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+
+    expect(updateTargetPowerReachability).not.toHaveBeenCalled();
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+      stepId: '16a',
+      pending: true,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1'))
+      .not.toHaveProperty('targetPowerProbeConfirmedMaxPowerW');
+  });
+
+  it('moves a silent refused probe to background backoff without lowering its proven maximum', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({ config: baseConfig, maxReachedPowerW: 5_750 }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'Quiet EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: 500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 100,
+    });
+    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+
+    expect(config.reachability).toMatchObject({
+      maxReachedPowerW: 5_750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 902_000,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+  });
+
+  it('ends a refused foreground probe even when its reachability update reports no change', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    const config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({
+        config: baseConfig,
+        maxReachedPowerW: 5_750,
+      }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'Quiet EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: 500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: vi.fn(() => false),
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 100,
+    });
+    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+  });
+
+  it('keeps a probe settlement anchored to its first issue across command retries', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({ config: baseConfig, maxReachedPowerW: 5_750 }),
+    };
+    const scheduleTargetPowerProbeSettlement = vi.fn();
+    const snapshot = baseSnapshot({
+      name: 'Quiet EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: 500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      scheduleTargetPowerProbeSettlement,
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 100,
+    });
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1_050,
+      pendingWindowMs: 100,
+    });
+
+    expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(1, 1_100);
+    expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(2, 1_100);
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+      lastIssuedAtMs: 1_050,
+      targetPowerProbeStartedAtMs: 1_000,
+      retryCount: 1,
+    });
+
+    helpers.reconcileTargetPowerReachability([snapshot], 1_100);
+    expect(config.reachability).toMatchObject({
+      maxReachedPowerW: 5_750,
+      probeFailureCount: 1,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+  });
+
+  it('prefers newer Flow exact feedback when native control is not authoritative', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({ config: baseConfig, maxReachedPowerW: 5_520 }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'Flow EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepPowerW: 5_520,
+      reportedStepObservedAtMs: 500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      reportFlowSteppedLoadObservation: ({ stepId, planningPowerW, observedAtMs }) => {
+        snapshot.reportedStepId = stepId;
+        snapshot.reportedStepPowerW = planningPowerW;
+        snapshot.reportedStepObservedAtMs = observedAtMs;
+        return true;
+      },
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_000);
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', '25a')).toBe('changed');
+
+    expect(config.reachability?.maxReachedPowerW).toBe(5_750);
+    dateNow.mockRestore();
+  });
+
   it('tracks optimistic lowest-step initialization without entering the retry lifecycle', () => {
     const runtimeState = createDeviceControlRuntimeState();
 
@@ -770,6 +1244,25 @@ describe('appDeviceControlHelpers', () => {
       reportedAtMs: 1000,
     })).toBe('invalid');
     nowSpy.mockRestore();
+  });
+
+  it('treats changed exact power as new feedback even when the reported step id is unchanged', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'low',
+      planningPowerW: 1_200,
+    })).toBe('changed');
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'low',
+      planningPowerW: 1_300,
+    })).toBe('changed');
   });
 
   it('keeps a desired command pending when a different step is reported back', () => {

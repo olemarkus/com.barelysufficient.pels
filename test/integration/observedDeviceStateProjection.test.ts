@@ -25,6 +25,8 @@ import {
 import { mockHomeyInstance } from '../mocks/homey';
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { ObservedDeviceState, ReportedStepObservedProbe } from '../../packages/contracts/src/types';
 
 // Stub the live feed so the transport never opens a real socket.io connection.
 // This is an OUTWARD Homey SDK seam, not a PELS internal — the merge, the
@@ -140,6 +142,24 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(mockApiGet);
         vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(mockApiPut);
         vi.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(() => mockGetLiveReport());
+    });
+
+    it('projects the complete exact-step observation cluster', () => {
+        const snapshot: TransportDeviceSnapshot = {
+            id: 'ev-1',
+            name: 'Charger',
+            targets: [],
+            reportedStepId: '25a',
+            reportedStepPowerW: 5_750,
+            reportedStepObservedAtMs: 2_000,
+        };
+        const projected: ObservedDeviceState & ReportedStepObservedProbe = projectObservedState(snapshot);
+
+        expect(projected).toMatchObject({
+            reportedStepId: '25a',
+            reportedStepPowerW: 5_750,
+            reportedStepObservedAtMs: 2_000,
+        });
     });
 
     it('cold-start: serves nothing until the first refresh, then seeds the merged value', async () => {

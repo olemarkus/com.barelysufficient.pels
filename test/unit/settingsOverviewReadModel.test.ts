@@ -118,6 +118,32 @@ describe('settingsOverviewReadModel', () => {
     });
   });
 
+  it('uses the producer-confirmed profile instead of a planner-only probe rung', () => {
+    const device = steppedPlanDevice({
+      reportedStepId: 'medium',
+      targetStepId: 'max',
+      stepCommandPending: true,
+    });
+    expect(isSteppedLoadDevice(device)).toBe(true);
+    if (!isSteppedLoadDevice(device)) throw new Error('expected stepped test device');
+    const confirmedProfile = {
+      model: 'stepped_load' as const,
+      steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max'),
+    };
+
+    expect(buildSettingsOverviewDeviceReadModel(
+      device,
+      {},
+      undefined,
+      undefined,
+      confirmedProfile,
+    ).steppedLoad).toEqual(expect.objectContaining({
+      profile: confirmedProfile,
+      targetStepId: confirmedProfile.steps.at(-1)?.id,
+      commandPending: false,
+    }));
+  });
+
   it('treats stepped-load step commands as pending overview commands', () => {
     const device = steppedPlanDevice({
       reportedStepId: 'low',

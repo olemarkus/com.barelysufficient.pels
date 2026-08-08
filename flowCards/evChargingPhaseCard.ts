@@ -31,9 +31,10 @@ export function registerEvChargingPhaseCard(deps: FlowCardDeps): void {
     }
 
     const existing = normalizeDeviceTargetPowerConfigs(deps.homey.settings.get(DEVICE_TARGET_POWER_CONFIGS));
+    const replacement = createEvTargetPowerConfig(preset);
     deps.homey.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
       ...existing,
-      [deviceId]: createEvTargetPowerConfig(preset),
+      [deviceId]: replacement,
     });
     (deps.structuredLog ?? moduleLogger).info({
       event: 'ev_charging_phase_set_from_flow',

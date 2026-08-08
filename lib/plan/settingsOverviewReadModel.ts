@@ -15,7 +15,8 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
-import type { EvChargingState } from '../../packages/contracts/src/types';
+import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { getSteppedLoadHighestStep, getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { isEvPlanDevice } from './planEvDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
@@ -47,6 +48,7 @@ export type SettingsOverviewReadModelDeps = {
   // is a UI display concern at the planner→UI seam, NOT a planning evaluation.
   getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
   getControlModelById?: () => Map<string, 'stepped_load' | 'temperature_target' | 'binary_power'>;
+  getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
 };
 
 function resolveFiniteKWh(value: number | undefined): number | undefined {
@@ -80,17 +82,29 @@ function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): str
 
 function buildSteppedLoadReadState(
   device: DevicePlan['devices'][number],
+  confirmedProfile?: SteppedLoadProfile,
 ): SettingsUiPlanSteppedLoadState | undefined {
   if (!isSteppedLoadDevice(device)) {
     return undefined;
   }
+  const profile = confirmedProfile ?? device.steppedLoadProfile;
+  const reportedStepId = getDeviceOverviewReportedStepId(device) ?? null;
+  const plannedTargetStepId = resolveOverviewTargetStepId(device);
+  const plannerOnlyTarget = confirmedProfile !== undefined
+    && plannedTargetStepId !== null
+    && getSteppedLoadStep(confirmedProfile, plannedTargetStepId) === null;
+  const targetStepId = plannerOnlyTarget
+    ? getSteppedLoadStep(profile, reportedStepId ?? undefined)?.id
+      ?? getSteppedLoadHighestStep(profile)?.id
+      ?? null
+    : plannedTargetStepId;
   return {
-    profile: device.steppedLoadProfile,
-    reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
-    targetStepId: resolveOverviewTargetStepId(device),
-    commandPending: device.binaryCommandPending === true
+    profile,
+    reportedStepId,
+    targetStepId,
+    commandPending: !plannerOnlyTarget && (device.binaryCommandPending === true
       || device.stepCommandPending === true
-      || device.pendingTargetCommand != null,
+      || device.pendingTargetCommand != null),
   };
 }
 
@@ -139,6 +153,7 @@ export function buildSettingsOverviewDeviceReadModel(
   deps: SettingsOverviewReadModelDeps = {},
   producerDeviceType?: 'temperature' | 'onoff',
   producerControlModel?: 'stepped_load' | 'temperature_target' | 'binary_power',
+  confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
   // EV boost fields live on the orthogonal `EvKind` cluster (off the base);
   // narrow once so the snapshot can surface them. Non-EV devices have them
@@ -197,7 +212,7 @@ export function buildSettingsOverviewDeviceReadModel(
     stateTone: resolvePlanStateTone(device),
     reason: device.reason,
     starvation: deps.getOverviewStarvation?.(device.id) ?? undefined,
-    steppedLoad: buildSteppedLoadReadState(device),
+    steppedLoad: buildSteppedLoadReadState(device, confirmedSteppedLoadProfile),
     idleClassification: deps.getIdleClassification?.(device.id),
   };
 }
@@ -211,6 +226,7 @@ export function buildSettingsOverviewReadModel(
   const deviceTypeById = deps.getDeviceTypeById?.() ?? new Map<string, 'temperature' | 'onoff'>();
   const controlModelById = deps.getControlModelById?.()
     ?? new Map<string, 'stepped_load' | 'temperature_target' | 'binary_power'>();
+  const steppedLoadProfileById = deps.getSteppedLoadProfileById?.() ?? new Map<string, SteppedLoadProfile>();
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
@@ -227,6 +243,7 @@ export function buildSettingsOverviewReadModel(
         deps,
         deviceTypeById.get(device.id),
         controlModelById.get(device.id),
+        steppedLoadProfileById.get(device.id),
       )),
   };
 }

@@ -6,7 +6,11 @@ import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands'
 import type { buildPelsStatus } from './pelsStatus';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
-import type { DeviceControlModel, EvChargingState } from '../../packages/contracts/src/types';
+import type {
+  DeviceControlModel,
+  EvChargingState,
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
 import type { HomeId } from '../../packages/contracts/src/settingsKeys';
 
@@ -99,6 +103,8 @@ export type PlanServiceDeps = {
   // `temperature_target ↔ binary_power` flip; without it both collapse to
   // `null` and a deviceType-only change leaves an open overview card stale.
   getControlModelById?: () => Map<string, DeviceControlModel>;
+  /** Confirmed producer profile for UI; excludes any planner-only probe rung. */
+  getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
   getCapacityDryRun: () => boolean;
   /**
    * When set, the effective (membership-gated) dry-run this bundle actuates on,

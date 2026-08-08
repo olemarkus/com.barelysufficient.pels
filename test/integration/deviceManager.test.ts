@@ -23,6 +23,7 @@ import {
 } from '../mocks/homey';
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
 // Real observer binarySettle ops + state — only the EV settle tests below
 // need these (transport's default is inert; production wiring DIs them).
@@ -7812,6 +7813,55 @@ describe('DeviceTransport', () => {
 
                 expect(nextSnapshot[0].lastFreshDataMs).toBe(initialFreshAt);
                 expect(nextSnapshot[0].lastUpdated).toBe(initialFreshAt);
+            });
+
+            it('preserves a newer exact target-power observation over an older refresh', () => {
+                const observationState = createObservationState();
+                const realtimeObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
+                const refreshObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
+                const previousSnapshot: TransportDeviceSnapshot[] = [{
+                    id: 'ev1',
+                    name: 'Zaptec',
+                    deviceClass: 'evcharger',
+                    capabilities: ['target_power'],
+                    targets: [],
+                    powerCapable: false,
+                    reportedStepId: '25a',
+                    reportedStepPowerW: 5750,
+                    reportedStepObservedAtMs: realtimeObservedAtMs,
+                }];
+                const nextSnapshot: TransportDeviceSnapshot[] = [{
+                    ...previousSnapshot[0],
+                    reportedStepId: '24a',
+                    reportedStepPowerW: 5520,
+                    reportedStepObservedAtMs: refreshObservedAtMs,
+                }];
+                const sourceDevice: HomeyDeviceLike = {
+                    id: 'ev1',
+                    name: 'Zaptec',
+                    class: 'evcharger',
+                    capabilities: ['target_power'],
+                    capabilitiesObj: {
+                        target_power: {
+                            value: 5520,
+                            lastUpdated: new Date(refreshObservedAtMs).toISOString(),
+                        },
+                    },
+                };
+
+                mergeFresherCapabilityObservations({
+                    state: observationState,
+                    previousSnapshot,
+                    nextSnapshot,
+                    devices: [sourceDevice],
+                    logger: loggerMock,
+                });
+
+                expect(nextSnapshot[0]).toMatchObject({
+                    reportedStepId: '25a',
+                    reportedStepPowerW: 5750,
+                    reportedStepObservedAtMs: realtimeObservedAtMs,
+                });
             });
         });
 

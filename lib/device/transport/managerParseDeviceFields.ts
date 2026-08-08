@@ -264,7 +264,8 @@ export function assembleDeviceSnapshot(params: {
             controlObservationCapabilityId: overlay.controlObservationCapabilityId,
         }),
         available: control.available,
-        reportedStepId: overlay.reportedStepId,
+        reportedStepId: overlay.reportedStepId, reportedStepPowerW: overlay.reportedStepPowerW,
+        reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
         suggestedSteppedLoadProfile: overlay.suggestedSteppedLoadProfile,
         measuredPowerObservedAtMs: measuredPower.observedAtMs,
         lastFreshDataMs: control.lastFreshDataMs,
@@ -349,7 +350,7 @@ function buildParsedDeviceSnapshot(params: {
     canSetControl: boolean | undefined;
     binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
     available: boolean;
-    reportedStepId?: string;
+    reportedStepId?: string; reportedStepPowerW?: number; reportedStepObservedAtMs?: number;
     suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
     measuredPowerObservedAtMs?: number;
     lastFreshDataMs?: number;
@@ -384,7 +385,7 @@ function buildParsedDeviceSnapshot(params: {
         canSetControl,
         binaryControlObservation,
         available,
-        reportedStepId,
+        reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
         measuredPowerObservedAtMs,
         lastFreshDataMs,
@@ -424,7 +425,7 @@ function buildParsedDeviceSnapshot(params: {
         controlWriteCapabilityId,
         controlObservationCapabilityId,
         binaryControlObservation,
-        reportedStepId,
+        reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
         ...(flowBackedCapabilityIds.length > 0 ? {
             flowBacked: true,

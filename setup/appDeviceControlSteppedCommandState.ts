@@ -34,6 +34,12 @@ export type SteppedLoadDesiredRuntimeState = {
   nextRetryAtMs?: number;
   pending: boolean;
   status: SteppedLoadCommandStatus;
+  planningPowerW?: number;
+  previousPlanningPowerW?: number;
+  /** Present only when the producer admitted one rung above the confirmed EV ceiling. */
+  targetPowerProbeConfirmedMaxPowerW?: number;
+  /** First issue time for this probe; same-rung command retries must not slide settlement. */
+  targetPowerProbeStartedAtMs?: number;
 };
 
 export type SteppedLoadReportedRuntimeState = {
@@ -41,6 +47,7 @@ export type SteppedLoadReportedRuntimeState = {
   stepId: string;
   updatedAtMs: number;
   source: 'flow';
+  planningPowerW?: number;
 };
 
 export type DeviceControlRuntimeState = {
@@ -69,6 +76,9 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
   issuedAtMs?: number;
   pendingWindowMs?: number;
   confirmationPolicy?: 'required' | 'assume_applied';
+  planningPowerW?: number;
+  previousPlanningPowerW?: number;
+  targetPowerProbeConfirmedMaxPowerW?: number;
 };
 
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
@@ -130,13 +140,51 @@ export const confirmSteppedLoadDesiredStep = (params: {
   desired: SteppedLoadDesiredRuntimeState;
 }): void => {
   const { runtimeState, deviceId, desired } = params;
+  const {
+    targetPowerProbeConfirmedMaxPowerW: _targetPowerProbeConfirmedMaxPowerW,
+    targetPowerProbeStartedAtMs: _targetPowerProbeStartedAtMs,
+    ...settledDesired
+  } = desired;
   runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-    ...desired,
+    ...settledDesired,
     retryCount: 0,
     nextRetryAtMs: undefined,
     pending: false,
     status: 'success',
   });
+};
+
+const buildSteppedLoadPowerMetadata = (params: {
+  previousDesired: SteppedLoadDesiredRuntimeState | undefined;
+  desiredStepId: string;
+  issuedAtMs: number;
+  planningPowerW: number | undefined;
+  previousPlanningPowerW: number | undefined;
+  targetPowerProbeConfirmedMaxPowerW: number | undefined;
+}): Partial<SteppedLoadDesiredRuntimeState> => {
+  const {
+    previousDesired,
+    desiredStepId,
+    issuedAtMs,
+    planningPowerW,
+    previousPlanningPowerW,
+    targetPowerProbeConfirmedMaxPowerW,
+  } = params;
+  const continuingTargetPowerProbe = targetPowerProbeConfirmedMaxPowerW !== undefined
+    && previousDesired?.stepId === desiredStepId
+    && previousDesired.planningPowerW === planningPowerW
+    && previousDesired.targetPowerProbeConfirmedMaxPowerW === targetPowerProbeConfirmedMaxPowerW
+    && previousDesired.targetPowerProbeStartedAtMs !== undefined;
+  const targetPowerProbeStartedAtMs = continuingTargetPowerProbe
+    ? previousDesired.targetPowerProbeStartedAtMs
+    : issuedAtMs;
+  return {
+    ...(planningPowerW !== undefined ? { planningPowerW } : {}),
+    ...(previousPlanningPowerW !== undefined ? { previousPlanningPowerW } : {}),
+    ...(targetPowerProbeConfirmedMaxPowerW !== undefined
+      ? { targetPowerProbeConfirmedMaxPowerW, targetPowerProbeStartedAtMs }
+      : {}),
+  };
 };
 
 export const markSteppedLoadDesiredStepIssued = (params: {
@@ -147,6 +195,9 @@ export const markSteppedLoadDesiredStepIssued = (params: {
   issuedAtMs?: number;
   pendingWindowMs?: number;
   confirmationPolicy?: 'required' | 'assume_applied';
+  planningPowerW?: number;
+  previousPlanningPowerW?: number;
+  targetPowerProbeConfirmedMaxPowerW?: number;
 }): void => {
   const {
     runtimeState,
@@ -156,6 +207,9 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     issuedAtMs = Date.now(),
     pendingWindowMs,
     confirmationPolicy = 'required',
+    planningPowerW,
+    previousPlanningPowerW,
+    targetPowerProbeConfirmedMaxPowerW,
   } = params;
   if (confirmationPolicy === 'assume_applied') {
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(deviceId, desiredStepId);
@@ -180,6 +234,14 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     nextRetryAtMs: undefined,
     pending: true,
     status: 'pending',
+    ...buildSteppedLoadPowerMetadata({
+      previousDesired,
+      desiredStepId,
+      issuedAtMs,
+      planningPowerW,
+      previousPlanningPowerW,
+      targetPowerProbeConfirmedMaxPowerW,
+    }),
   });
 };
 
@@ -217,6 +279,7 @@ export const reportSteppedLoadActualStep = (params: {
   deviceId: string;
   stepId: string;
   reportedAtMs?: number;
+  planningPowerW?: number;
 }): ReportSteppedLoadActualStepResult => {
   const {
     runtimeState,
@@ -224,6 +287,7 @@ export const reportSteppedLoadActualStep = (params: {
     deviceId,
     stepId,
     reportedAtMs = Date.now(),
+    planningPowerW,
   } = params;
   const profile = profiles[deviceId];
   if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
@@ -236,6 +300,7 @@ export const reportSteppedLoadActualStep = (params: {
     stepId,
     updatedAtMs: reportedAtMs,
     source: 'flow',
+    ...(planningPowerW !== undefined ? { planningPowerW } : {}),
   });
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
@@ -253,7 +318,11 @@ export const reportSteppedLoadActualStep = (params: {
     });
   }
 
-  return previousReport?.stepId !== stepId ? 'changed' : 'unchanged';
+  if (!previousReport) return 'changed';
+  return previousReport.stepId !== stepId
+    || previousReport.planningPowerW !== planningPowerW
+    ? 'changed'
+    : 'unchanged';
 };
 
 export const pruneStaleSteppedLoadCommandStates = (

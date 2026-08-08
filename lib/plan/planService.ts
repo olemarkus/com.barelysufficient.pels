@@ -94,6 +94,7 @@ const serializePlanForUi = (
     getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
     getDeviceTypeById: deps.getDeviceTypeById,
     getControlModelById: deps.getControlModelById,
+    getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
   });
 };
 

@@ -57,12 +57,12 @@ import { normalizeError } from '../utils/errorUtils';
 import {
   createObservationState,
   getDebugObservedSources,
+  reportFlowSteppedObservation,
   type DeviceDebugObservedSources,
   type DeviceTransportObservationState,
+  type FlowSteppedLoadObservation,
 } from './transport/managerObservation';
-import type {
-  DeviceTransportParseProviders,
-} from './transport/managerParseDevice';
+import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
 import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
 import type { DeviceObservation } from './deviceObservation';
@@ -83,9 +83,7 @@ import {
   type SnapshotRefreshMetrics,
   type TransportObservedStateDispatcher,
 } from './transport/transportTypes';
-import {
-  reconcileBinarySettleEvidenceWithSnapshot,
-} from './transport/binarySettleEvidence';
+import { reconcileBinarySettleEvidenceWithSnapshot } from './transport/binarySettleEvidence';
 import {
   handleRealtimeCapabilityUpdateWithProbe as runHandleRealtimeCapabilityUpdate,
 } from './transport/realtimeCapabilityHandling';
@@ -372,6 +370,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             ...event,
             ...cursor,
         });
+    }
+
+    /** Admit trusted Flow step feedback into the transport-owned observation snapshot. */
+    reportFlowSteppedLoadObservation(params: FlowSteppedLoadObservation): boolean {
+        return reportFlowSteppedObservation(this.ctx, params);
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }

@@ -3,6 +3,9 @@ import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { AppContext } from '../../lib/app/appContext';
+import type {
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 import type { HomeScope } from '../homeRuntime/homeScope';
 import { buildControlModelMap } from '../appDeviceControlHelpers';
 import {
@@ -89,6 +92,14 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
       ctx.deviceManager?.getSnapshot() ?? [],
       ctx.isTemperatureControlDisabled,
     ),
+    getSteppedLoadProfileById: () => {
+      const map = new Map<string, SteppedLoadProfile>();
+      for (const device of ctx.deviceManager?.getSnapshot() ?? []) {
+        const profile = ctx.deviceControlHelpers.getSteppedLoadProfile(device.id);
+        if (profile) map.set(device.id, profile);
+      }
+      return map;
+    },
     getCapacityDryRun: scope.getCapacityDryRun,
     // Sub-homes publish their EFFECTIVE (membership-gated) dry-run into
     // `pels_status:<id>` so the per-home Limits card shows honest posture. The

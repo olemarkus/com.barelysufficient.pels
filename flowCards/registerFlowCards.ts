@@ -92,6 +92,7 @@ export type FlowCardDeps = {
   reportSteppedLoadActualStep: (
     deviceId: string,
     stepId: string,
+    planningPowerW?: number,
   ) => Promise<ReportSteppedLoadActualStepResult> | ReportSteppedLoadActualStepResult;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;

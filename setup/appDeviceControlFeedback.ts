@@ -3,7 +3,57 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import type { SteppedLoadDesiredRuntimeState } from './appDeviceControlHelpers';
+import { getSteppedLoadStep } from '../lib/utils/deviceControlProfiles';
+import type { DevicePlan } from '../lib/plan/planTypes';
+import type { SteppedLoadProfile } from '../packages/contracts/src/types';
+import type { SteppedLoadDesiredRuntimeState } from './appDeviceControlSteppedCommandState';
+
+export function isValidSteppedLoadFeedbackProfile(
+  profile: SteppedLoadProfile | null,
+  stepId: string,
+): profile is SteppedLoadProfile {
+  return profile?.model === 'stepped_load' && getSteppedLoadStep(profile, stepId) !== undefined;
+}
+
+export function resolvePreviousDesiredStepId(
+  profile: SteppedLoadProfile,
+  previousDesired: SteppedLoadDesiredRuntimeState | undefined,
+): string | undefined {
+  return getSteppedLoadStep(profile, previousDesired?.stepId)?.id;
+}
+
+export function resolveLatestPlanDesiredStepId(params: {
+  plan: DevicePlan | null | undefined;
+  deviceId: string;
+  profile: SteppedLoadProfile;
+}): string | undefined {
+  const plannedDevice = params.plan?.devices.find((device) => device.id === params.deviceId);
+  return getSteppedLoadStep(
+    params.profile,
+    plannedDevice?.targetStepId ?? plannedDevice?.desiredStepId,
+  )?.id;
+}
+
+export function resolvePlannedDesiredStepToPreserve(params: {
+  previousDesired: SteppedLoadDesiredRuntimeState | undefined;
+  previousDesiredStepId: string | undefined;
+  latestPlanDesiredStepId: string | undefined;
+  plannedDesiredStepId: string | undefined;
+  reportedStepId: string;
+}): string | undefined {
+  const {
+    previousDesired,
+    previousDesiredStepId,
+    latestPlanDesiredStepId,
+    plannedDesiredStepId,
+    reportedStepId,
+  } = params;
+  if (!plannedDesiredStepId) return undefined;
+  if (latestPlanDesiredStepId && previousDesired && previousDesiredStepId !== latestPlanDesiredStepId) {
+    return latestPlanDesiredStepId;
+  }
+  return !previousDesired && plannedDesiredStepId !== reportedStepId ? plannedDesiredStepId : undefined;
+}
 
 export function emitSteppedFeedbackLog(params: {
   log: PinoLogger | undefined;

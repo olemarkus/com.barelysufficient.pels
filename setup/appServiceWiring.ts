@@ -163,9 +163,13 @@ export class AppServiceWiring {
   >['shortfallSideEffectGate'];
 
   constructor(private readonly deps: AppServiceWiringDeps) {
+    const { ctx } = deps;
     this.mainHomeScope = buildMainHomeScope(deps.ctx);
     this.mainPreparedReconcileFence = createPreparedMainReconcileFence(
       deps.getStablePowerSampleRevision,
+    );
+    ctx.rebuildOwningHomePlanForDevice = (deviceId, reason) => (
+      this.rebuildOwningHomePlanForDevice(deviceId, reason)
     );
   }
 
@@ -467,6 +471,13 @@ export class AppServiceWiring {
       // main closures) before `initHomeRuntimeRegistry` and with no sub-homes.
       getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
     });
+  }
+
+  rebuildOwningHomePlanForDevice(deviceId: string, reason: string): Promise<unknown> {
+    const subHomeRoute = this.homeRuntimeRegistry?.getReconcileRouteForDevice(deviceId);
+    return subHomeRoute?.hooks.rebuild(reason)
+      ?? this.deps.ctx.planService?.rebuildPlanFromCache(reason)
+      ?? Promise.resolve();
   }
 
   async runUninit(): Promise<void> {

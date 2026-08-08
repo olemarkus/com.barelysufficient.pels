@@ -38,6 +38,7 @@ import {
   warnIfTargetPowerCapabilityViolatesContract,
 } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
+import { withoutTargetPowerReachability } from './targetPowerReachability';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -70,6 +71,7 @@ export function resolveFlowCapabilityOverlay(params: {
   requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   reportedStepId?: string;
+  reportedStepPowerW?: number;
   reportedStepObservedAtMs?: number;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
   controlModel?: 'stepped_load';
@@ -84,8 +86,7 @@ export function resolveFlowCapabilityOverlay(params: {
     deviceId,
     rawCapabilities,
     rawCapabilityObj,
-    providers,
-    logger,
+    providers, logger,
   } = params;
   const nativeEvOverlay = applyOverlaysWithDiagnostics({
     device,
@@ -162,8 +163,9 @@ export function resolveFlowCapabilityOverlay(params: {
     requiredFlowCapabilityIds,
     reportedCapabilities,
     reportedStepId: nativeSteppedOverlay.reportedStepId ?? targetPowerOverlay.reportedStepId,
-    reportedStepObservedAtMs: nativeSteppedOverlay.reportedStepObservedAtMs
-      ?? targetPowerOverlay.reportedStepObservedAtMs,
+    reportedStepPowerW: targetPowerOverlay.reportedStepPowerW,
+    reportedStepObservedAtMs: targetPowerOverlay.reportedStepPowerW !== undefined
+      ? targetPowerOverlay.reportedStepObservedAtMs : nativeSteppedOverlay.reportedStepObservedAtMs,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
     controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
     steppedLoadProfile,
@@ -271,6 +273,7 @@ function applySyntheticTargetPowerOverlay(params: {
   capabilityObj: DeviceCapabilityMap;
   steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
+  reportedStepPowerW?: number;
   reportedStepObservedAtMs?: number;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
@@ -282,8 +285,7 @@ function applySyntheticTargetPowerOverlay(params: {
       capabilityObj: params.capabilityObj,
     };
   }
-  const steppedLoadProfile = resolveTargetPowerSteppedLoadProfileFromConfig(config);
-  if (!config || !steppedLoadProfile) {
+  if (!config) {
     return {
       capabilities: params.capabilities,
       capabilityObj: params.capabilityObj,
@@ -296,20 +298,40 @@ function applySyntheticTargetPowerOverlay(params: {
     config,
     capabilityObj: params.capabilityObj,
   });
+  const reportedStepPowerW = resolveReportedTargetPowerW(params.capabilityObj, observedTargetPower?.value);
+  const steppedLoadProfile = resolveTargetPowerSteppedLoadProfileFromConfig(config, reportedStepPowerW);
+  if (!steppedLoadProfile) {
+    return {
+      capabilities: params.capabilities,
+      capabilityObj: params.capabilityObj,
+    };
+  }
   const capabilityObj = buildSyntheticTargetPowerCapabilityMap({
     capabilityObj: params.capabilityObj,
     config,
-    observedValue: observedTargetPower?.value,
-    observedAt: observedTargetPower?.observedAt,
+    observedValue: reportedStepPowerW,
+    observedAt: observedTargetPower?.observedAt ?? params.capabilityObj.target_power?.lastUpdated,
   });
   return {
     capabilities,
     capabilityObj,
     steppedLoadProfile,
     reportedStepId: resolveTargetPowerReportedStepId({ profile: steppedLoadProfile, capabilityObj }),
+    reportedStepPowerW,
     reportedStepObservedAtMs: toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
-    targetPowerConfig: config,
+    targetPowerConfig: withoutTargetPowerReachability(config),
   };
+}
+
+function resolveReportedTargetPowerW(
+  capabilityObj: DeviceCapabilityMap,
+  installationPowerW: number | undefined,
+): number | undefined {
+  if (installationPowerW !== undefined) return installationPowerW;
+  const directTargetPower = capabilityObj.target_power?.value;
+  return typeof directTargetPower === 'number' && Number.isFinite(directTargetPower)
+    ? Math.round(directTargetPower)
+    : undefined;
 }
 
 function isEvTargetPowerPresetConfig(
@@ -470,4 +492,3 @@ function hasAnyPowerCapability(capabilities: readonly string[]): boolean {
     || capabilityId === 'meter_power'
   ));
 }
-

@@ -10,6 +10,7 @@ import {
     type DeviceTransportObservationState,
 } from './observationState';
 import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from './observationApply';
+import { preserveNewerReportedStepObservation } from './reportedStepObservation';
 
 export function mergeFresherCapabilityObservations(params: {
     state: DeviceTransportObservationState;
@@ -88,6 +89,7 @@ function mergeSnapshotObservationsForDevice(params: {
         previous,
         snapshot,
     });
+    preserveNewerReportedStepObservation(previous, snapshot);
 
     if (snapshot.controlCapabilityId) {
         mergeCapabilityObservation({

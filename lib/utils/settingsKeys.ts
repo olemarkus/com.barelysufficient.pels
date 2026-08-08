@@ -123,6 +123,8 @@ export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
+/** Runtime-owned per-device EV target-power reachability; never written by the settings UI. */
+export const DEVICE_TARGET_POWER_REACHABILITY = 'device_target_power_reachability';
 export const DEVICE_COMMUNICATION_MODELS = 'device_communication_models';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';

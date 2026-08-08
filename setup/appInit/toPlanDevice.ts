@@ -20,6 +20,10 @@ import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  resolveEvTargetPowerPlannerProfile,
+  withoutTargetPowerReachability,
+} from '../../lib/device/targetPowerReachability';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
 // plain binary-power control device — NOT an enabled continuous / target-power
@@ -241,6 +245,13 @@ export function toPlanDevice(
   // (overview gray-state, idle classifier, diagnostics) is sourced from the
   // observer projection at its own wiring seams (`getObservationStale`).
   const device = projectEffectiveControlDevice(rawDevice);
+  const plannerSteppedLoadProfile = device.steppedLoadProfile?.model === 'stepped_load'
+    ? resolveEvTargetPowerPlannerProfile({
+      config: ctx.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig,
+      confirmedProfile: device.steppedLoadProfile,
+      nowMs: ctx.getNow().getTime(),
+    })
+    : undefined;
   const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
   const hasRecentObservedDraw = resolveHasRecentObservedDraw(
@@ -312,10 +323,14 @@ export function toPlanDevice(
   const {
     evChargingState: _evChargingState,
     temperatureControlDisabled: _temperatureControlDisabled,
+    steppedLoadProfile: _confirmedSteppedLoadProfile,
+    targetPowerConfig: _targetPowerConfig,
     ...deviceFields
   } = device;
   return withSteppedDiscriminant({
     ...deviceFields,
+    steppedLoadProfile: plannerSteppedLoadProfile,
+    targetPowerConfig: withoutTargetPowerReachability(device.targetPowerConfig),
     // The step-command/planning cluster used to ride in on the `...device`
     // spread when it lived on `TargetDeviceSnapshot`. It now originates on the
     // decoration carrier (`DecoratedDeviceSnapshot`); copy each field

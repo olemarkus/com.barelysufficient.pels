@@ -10,6 +10,7 @@ import { emitGated } from '../lib/logging/deviationGate';
 import type { LogDedupeEntry } from '../lib/logging/logDedupe';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { FlowCardDeps } from './registerFlowCards';
+import { resolveEvTargetPowerExactStep } from '../lib/device/targetPowerReachability';
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
@@ -38,7 +39,9 @@ export async function resolveSteppedLoadStepIdFromPowerInput(params: {
     );
   }
   const steps = device?.steppedLoadProfile?.steps ?? [];
-  const resolvedStep = resolveSteppedLoadStepFromPower(steps, powerW);
+  const resolvedStep = resolveSteppedLoadStepFromPower(steps, powerW)
+    ?? resolveEvTargetPowerExactStep(device.targetPowerConfig, powerW)
+    ?? null;
   if (!resolvedStep) {
     throw createSteppedLoadReportError(
       'no_matching_step',

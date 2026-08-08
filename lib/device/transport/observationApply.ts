@@ -14,6 +14,7 @@ import {
     type CapabilityObservation,
     type DeviceTransportObservationState,
 } from './observationState';
+import { resolveEvTargetPowerExactStep } from '../targetPowerReachability';
 
 export function applyCapabilityObservation(
     nextSnapshot: TransportDeviceSnapshot,
@@ -197,17 +198,57 @@ function applyTargetCapabilityObservation(
     } else {
         nextValue = null;
     }
-    if (nextValue === null || Object.is(target.value, nextValue)) {
-        return false;
+    if (nextValue === null) return false;
+    const targetChanged = !Object.is(target.value, nextValue);
+    if (targetChanged) {
+        if (nextValue === undefined) delete target.value;
+        else target.value = nextValue;
     }
-    if (nextValue === undefined) delete target.value;
-    else target.value = nextValue;
+    const exactObservationChanged = applyExactTargetPowerObservation({
+        snapshot,
+        capabilityId,
+        observation,
+        nextValue,
+    });
+    if (!targetChanged && !exactObservationChanged) return false;
     if (observation.source === 'local_write') {
         snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
         return true;
     }
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    return true;
+}
+
+function applyExactTargetPowerObservation(params: {
+    snapshot: TransportDeviceSnapshot;
+    capabilityId: string;
+    observation: CapabilityObservation;
+    nextValue: number | undefined;
+}): boolean {
+    const {
+        snapshot,
+        capabilityId,
+        observation,
+        nextValue,
+    } = params;
+    if (capabilityId !== 'target_power' || observation.source === 'local_write' || nextValue === undefined) {
+        return false;
+    }
+    const exactStep = resolveEvTargetPowerExactStep(snapshot.targetPowerConfig, nextValue);
+    if (
+        !exactStep
+        || (
+            snapshot.reportedStepId === exactStep.id
+            && snapshot.reportedStepPowerW === exactStep.planningPowerW
+            && snapshot.reportedStepObservedAtMs === observation.observedAt
+        )
+    ) {
+        return false;
+    }
+    snapshot.reportedStepId = exactStep.id;
+    snapshot.reportedStepPowerW = exactStep.planningPowerW;
+    snapshot.reportedStepObservedAtMs = observation.observedAt;
     return true;
 }
 

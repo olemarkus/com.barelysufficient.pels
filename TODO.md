@@ -1120,6 +1120,14 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Flow stepped-load runtime state still duplicates exact watts after transport admission.**
+      `reportSteppedLoadActualStep` admits exact power into the transport-owned reported-step
+      cluster, but `SteppedLoadReportedRuntimeState.planningPowerW` keeps a second setup-layer copy
+      solely to distinguish same-step reports. Replace that change detection with the transport
+      admission outcome, then remove the duplicate field so setup retains only command lifecycle
+      and the reported step id. Source: layering review of EV target-power reachability delivery.
+      [P2]
+
 - [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
       `homey app validate && npm run package:check`, and `homey app validate` calls
       `preprocess({ copyAppProductionDependencies: app instanceof AppPython })` — false for a Node

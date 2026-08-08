@@ -12,6 +12,7 @@ import {
   resolveNativeSteppedLoadReportedStepId,
 } from '../../lib/device/nativeSteppedLoadWiring';
 import { __resetNativeEvWiringLogStateForTests } from '../../lib/device/managerNativeEv';
+import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import { setObservedNativeSteppedLoadStep } from '../../lib/device/managerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
@@ -453,15 +454,64 @@ describe('native stepped-load wiring', () => {
       controlModel: 'stepped_load',
       targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
       reportedStepId: '6a',
+      reportedStepPowerW: 4140,
       steppedLoadProfile: expect.objectContaining({
         model: 'stepped_load',
-        steps: expect.arrayContaining([
+        steps: [
+          { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
           { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
-          { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
-        ]),
+        ],
       }),
     }));
     expect(parsed.capabilities).not.toContain('target_power');
+  });
+
+  it('publishes changed exact target power even when its derived step id is unchanged', () => {
+    const baseConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase' as const,
+      max: 7_360,
+    };
+    const config = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({
+        config: baseConfig,
+        maxReachedPowerW: 5_520,
+      }),
+    };
+    const onSnapshotMutated = vi.fn();
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getDeviceTargetPowerConfig: () => config,
+        getNativeEvWiringEnabled: () => true,
+      },
+      undefined,
+      { onSnapshotMutated },
+    );
+    const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+      capabilitiesObj: {
+        measure_power: { value: 5_520 },
+        target_power: {
+          value: 5_520,
+          setable: true,
+          min: 0,
+          max: 7_360,
+          step: 460,
+          excludeMax: 1_380,
+        },
+      },
+    })]);
+    expect(parsed.targetPowerConfig).toEqual(baseConfig);
+    deviceManager.setSnapshotForTests([parsed]);
+
+    deviceManager.injectCapabilityUpdateForTest('target-power-1', 'target_power', 5_750);
+
+    expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
+      reportedStepId: '24a',
+      reportedStepPowerW: 5_750,
+    }), expect.any(Number));
   });
 
   it('projects configured target_power details as stepped-load without a native command adapter', () => {
@@ -492,10 +542,10 @@ describe('native stepped-load wiring', () => {
       targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
       steppedLoadProfile: expect.objectContaining({
         model: 'stepped_load',
-        steps: expect.arrayContaining([
+        steps: [
+          { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
           { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
-          { id: '16a', planningPowerW: 3680, planningCurrentA: 16 },
-        ]),
+        ],
       }),
     }));
   });

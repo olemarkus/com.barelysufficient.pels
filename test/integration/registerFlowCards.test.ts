@@ -2,6 +2,7 @@ import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFl
 import type { FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { createEvTargetPowerConfig } from '../../packages/shared-domain/src/evTargetPowerConfig';
+import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../lib/utils/settingsKeys';
 import type {
   MeasuredPowerObservedProbe,
@@ -176,6 +177,36 @@ describe('registerFlowCards', () => {
       deviceName: 'Garage Charger',
       preset: 'ev_charger_1_phase',
       phase: 'EV 1-phase',
+    });
+  });
+
+  it('keeps runtime reachability out of the user config when Flow selects a phase', async () => {
+    const base = createEvTargetPowerConfig('ev_charger_1_phase');
+    const reachability = buildTargetPowerReachabilityState({
+      config: base,
+      maxReachedPowerW: 5_750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 900_000,
+    });
+    const existing = { 'ev-1': { ...base, reachability } };
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([{
+        id: 'ev-1',
+        name: 'Garage Charger',
+        targetPowerConfig: existing['ev-1'],
+      }]),
+    });
+    deps.homey.settings.get = vi.fn(() => existing);
+    deps.homey.settings.set = vi.fn();
+
+    registerFlowCards(deps);
+    await actionListeners.set_ev_charging_phase({
+      charger: { id: 'ev-1', name: 'Garage Charger' },
+      phase: { id: 'ev_charger_1_phase', name: 'EV 1-phase' },
+    });
+
+    expect(deps.homey.settings.set).toHaveBeenCalledWith(DEVICE_TARGET_POWER_CONFIGS, {
+      'ev-1': base,
     });
   });
 
@@ -994,7 +1025,7 @@ describe('registerFlowCards', () => {
       power_w: '1750 W',
     })).resolves.toBe(true);
 
-    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'low');
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'low', 1750);
     expect(deps.refreshSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_power');
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -1041,7 +1072,7 @@ describe('registerFlowCards', () => {
       power_w: '6 A',
     })).resolves.toBe(true);
 
-    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '6a');
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '6a', 4140);
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_resolved',
       sourceCardId: 'report_stepped_load_power',
@@ -1079,7 +1110,41 @@ describe('registerFlowCards', () => {
       power_w: '10a',
     })).resolves.toBe(true);
 
-    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '10a');
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '10a', 2300);
+  });
+
+  it('accepts an exact EV ceiling between configured candidate rungs', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          controlModel: 'stepped_load',
+          targetPowerConfig: {
+            enabled: true,
+            preset: 'ev_charger_1_phase',
+            max: 7360,
+          },
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '24a', planningPowerW: 5520 },
+              { id: '28a', planningPowerW: 6440 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'ev-1',
+      power_w: '25 A',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '25a', 5750);
   });
 
   it('rejects amp reports for stepped-load devices without an EV target-power preset', async () => {
@@ -1153,9 +1218,9 @@ describe('registerFlowCards', () => {
       power_w: '2865 W',
     })).resolves.toBe(true);
 
-    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(1, 'dev-1', 'low');
-    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(2, 'dev-1', 'medium');
-    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(3, 'dev-1', 'max');
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(1, 'dev-1', 'low', 1193);
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(2, 'dev-1', 'medium', 1671);
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(3, 'dev-1', 'max', 2865);
   });
 
   it('logs an explicit rejection when no configured step matches the reported power', async () => {

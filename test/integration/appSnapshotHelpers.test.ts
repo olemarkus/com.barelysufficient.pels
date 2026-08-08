@@ -61,6 +61,117 @@ describe('appSnapshotHelpers', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('settles overlapping target-power probes at each independent deadline', async () => {
+    vi.setSystemTime(new Date(0));
+    const helper = new AppSnapshotHelpers({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => undefined,
+      getPlanEngine: () => undefined,
+      getPlanService: () => undefined,
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      getStructuredDebugEmitter: () => vi.fn(),
+      getNow: () => new Date(Date.now()),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      seedMissingModeTargets: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+    const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    helper.startPeriodicSnapshotRefresh();
+
+    helper.scheduleTargetPowerProbeSettlement(100);
+    helper.scheduleTargetPowerProbeSettlement(200);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    helper.stop();
+  });
+
+  it('rebuilds in the background when a persisted target-power retry becomes due', async () => {
+    vi.setSystemTime(new Date(0));
+    const rebuildOwningHomePlanForDevice = vi.fn().mockResolvedValue(undefined);
+    const helper = new AppSnapshotHelpers({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => undefined,
+      getPlanEngine: () => undefined,
+      getPlanService: () => undefined,
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      getStructuredDebugEmitter: () => vi.fn(),
+      getNow: () => new Date(Date.now()),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      seedMissingModeTargets: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      getNextTargetPowerProbe: () => ({ deviceId: 'sub-home-charger', dueAtMs: 100 }),
+      rebuildOwningHomePlanForDevice,
+    });
+    helper.startPeriodicSnapshotRefresh();
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(rebuildOwningHomePlanForDevice).toHaveBeenCalledWith(
+      'sub-home-charger',
+      'target_power_probe_due',
+    );
+    helper.stop();
+  });
+
+  it('does not restart target-power settlement timers after stop during refresh', async () => {
+    vi.setSystemTime(new Date(0));
+    let finishRefresh: (() => void) | undefined;
+    const helper = new AppSnapshotHelpers({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => undefined,
+      getPlanEngine: () => undefined,
+      getPlanService: () => undefined,
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      getStructuredDebugEmitter: () => vi.fn(),
+      getNow: () => new Date(Date.now()),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      seedMissingModeTargets: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+    const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+      new Promise<void>((resolve) => { finishRefresh = resolve; })
+    ));
+    helper.startPeriodicSnapshotRefresh();
+    helper.scheduleTargetPowerProbeSettlement(100);
+    helper.scheduleTargetPowerProbeSettlement(200);
+
+    vi.advanceTimersByTime(100);
+    await Promise.resolve();
+    helper.stop();
+    finishRefresh?.();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('tags headroom syncs from snapshot refresh with snapshot_refresh reconciliation context', async () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const syncLivePlanState = vi.fn().mockResolvedValue(undefined);
@@ -97,9 +208,11 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
+    const scheduleTargetPowerProbe = vi.spyOn(helper, 'scheduleTargetPowerProbe');
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
 
+    expect(scheduleTargetPowerProbe).toHaveBeenCalledTimes(1);
     expect(syncHeadroomCardState).toHaveBeenCalledWith({
       devices: [{
         ...snapshot[0],

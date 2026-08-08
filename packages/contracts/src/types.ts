@@ -64,14 +64,30 @@ export type DeviceControlProfiles = Record<string, DeviceControlProfile>;
 
 export type TargetPowerSteppedLoadPreset = 'ev_charger_1_phase' | 'ev_charger_3_phase';
 
+/**
+ * Runtime-learned reachability for an EV target-power preset.
+ *
+ * `maxReachedPowerW` is observed device evidence, not the configured probe
+ * ceiling (`TargetPowerSteppedLoadConfig.max`). The app-wiring owner persists
+ * this state after joining an accepted command with fresh device feedback;
+ * planner-facing producers consume only the resolved ladder and strip this
+ * provenance before the planner boundary.
+ */
+export type TargetPowerReachabilityState = {
+  profileFingerprint: string;
+  maxReachedPowerW: number;
+  probeFailureCount: number;
+  nextProbeAtMs?: number;
+};
+
 export type TargetPowerSteppedLoadConfig = {
-    enabled?: boolean;
-    preset?: TargetPowerSteppedLoadPreset;
-    min?: number;
-    max?: number;
-    step?: number;
-    excludeMin?: number;
-    excludeMax?: number;
+  enabled?: boolean;
+  preset?: TargetPowerSteppedLoadPreset;
+  min?: number;
+  max?: number;
+  step?: number;
+  excludeMin?: number;
+  excludeMax?: number;
 };
 
 export type DeviceTargetPowerConfigs = Record<string, TargetPowerSteppedLoadConfig>;
@@ -580,6 +596,10 @@ export type SteppedLoadDescriptorProbe = {
  */
 export type ReportedStepObservedFields = {
     reportedStepId: string;
+    /** Exact target-power observation retained before rung matching. */
+    reportedStepPowerW?: number;
+    /** Timestamp of the exact step observation, not general snapshot freshness. */
+    reportedStepObservedAtMs?: number;
 };
 
 /**
@@ -589,6 +609,8 @@ export type ReportedStepObservedFields = {
  */
 export type ReportedStepObservedProbe = {
     reportedStepId?: string;
+    reportedStepPowerW?: number;
+    reportedStepObservedAtMs?: number;
 };
 
 /**

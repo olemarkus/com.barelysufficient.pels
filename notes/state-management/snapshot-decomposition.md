@@ -54,12 +54,15 @@ helpers. The observer was created but never handed the observation contract.
    `hasObservedMeasuredPower` — absence is the common case, so the guard draws the
    present/absent line and "present implies finite, non-negative kW" is the producer
    invariant; the two fields travel together and owner seams carry them through the
-   `MeasuredPowerObservedProbe` widening), `reportedStepId` (now type-gated off the
-   base onto `ReportedStepObservedFields`, narrowed via the presence-only
+   `MeasuredPowerObservedProbe` widening),
+   `reportedStepId`/`reportedStepPowerW`/`reportedStepObservedAtMs` (now type-gated
+   off the base onto `ReportedStepObservedFields`, narrowed via the presence-only
    `hasObservedReportedStep` — a non-stepped device never reports a step and a
-   stepped one carries it only once a native/flow report lands; owner seams carry it
-   through the `ReportedStepObservedProbe` widening; stepped-observed slice of the
-   discriminated-types refactor), `binaryControlObservation`, `available`,
+   stepped one carries it only once a native/flow report lands; exact target-power
+   evidence carries finite watts together with its observation timestamp; owner
+   seams carry the cluster through the `ReportedStepObservedProbe` widening;
+   stepped-observed slice of the discriminated-types refactor),
+   `binaryControlObservation`, `available`,
    `lastFreshDataMs`/`lastLocalWriteMs`/
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth
    plan/executor decide on.

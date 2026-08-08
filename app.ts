@@ -18,10 +18,10 @@ import type { PowerCalibrationSnapshot } from './packages/contracts/src/powerCal
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
-  DeviceTargetPowerConfigs,
   ObservedDeviceState,
   TargetDeviceSnapshot,
 } from './packages/contracts/src/types';
+import type { DeviceTargetPowerConfigsWithReachability } from './lib/device/targetPowerReachability';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import type { PriceCoordinator } from './lib/price/priceCoordinator';
 import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
@@ -48,10 +48,7 @@ import type {
 } from './packages/contracts/src/widgetHostApi';
 import type { SmartTaskHomeScope } from './packages/contracts/src/smartTaskHomeScope';
 import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
-import {
-  AppDeviceControlHelpers,
-  normalizeStoredDeviceControlProfiles,
-} from './setup/appDeviceControlHelpers';
+import { AppDeviceControlHelpers, normalizeStoredDeviceControlProfiles } from './setup/appDeviceControlHelpers';
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
@@ -146,7 +143,7 @@ import type {
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
 import { createHomeyEnergyPollSource } from './setup/appInit/createHomeyEnergyPollSource';
 import {
-  AppSnapshotHelpers,
+  AppSnapshotHelpers, createTargetPowerReachabilityAppWiring,
   type RefreshTargetDevicesSnapshotOptions,
 } from './setup/appSnapshotHelpers';
 import { AppFlowBacked } from './setup/appFlowBacked';
@@ -239,7 +236,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   public deviceControlProfiles: DeviceControlProfiles = {};
-  public deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
+  public deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
   public deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   public shedBehaviors: Record<string, ShedBehavior> = {};
   public debugLoggingTopics = new Set<DebugLoggingTopic>();
@@ -363,7 +360,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   });
   private structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
-  public readonly snapshotHelpers = new AppSnapshotHelpers({
+  private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);
+  public readonly snapshotHelpers: AppSnapshotHelpers = new AppSnapshotHelpers({
     getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
     getDeviceManager: () => this.deviceManager,
@@ -397,11 +395,13 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     ),
     // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
     recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
+    ...this.targetPowerReachabilityWiring.snapshotDeps,
   });
   public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);
   public readonly generationPollSource = createGenerationPollSource(this, this.observedHomePower);
-  public readonly deviceControlHelpers = new AppDeviceControlHelpers({
+  public readonly deviceControlHelpers: AppDeviceControlHelpers = new AppDeviceControlHelpers({
     getProfiles: () => this.deviceControlProfiles,
+    ...this.targetPowerReachabilityWiring.deviceControlDeps,
     isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),
     getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
     getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
