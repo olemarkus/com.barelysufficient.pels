@@ -238,7 +238,6 @@ export class AppFlowBacked {
     updateStateOfChargeObservationFreshness({
       snapshot: nextDevice,
       reportedAt,
-      nowMs: Date.now(),
     });
     return nextDevice.stateOfCharge?.status === 'fresh';
   }
@@ -262,14 +261,13 @@ export class AppFlowBacked {
       if (!device.flowBackedCapabilityIds?.includes(params.capabilityId)) return;
       // A car-sourced level is NOT the flow card's to keep alive. This helper
       // spreads the previous reading forward, so without this guard a flow card
-      // that keeps firing would re-stamp the CAR's percentage as freshly
-      // observed — holding a sleeping car's level at `fresh` indefinitely, which
-      // is exactly what the freshness rule exists to prevent.
+      // that keeps firing would re-stamp the CAR's percentage as this charger's
+      // own observation — laundering one device's reading into another's, and
+      // outliving the association that justified adopting it.
       if (hasObservedStateOfCharge(device) && device.stateOfCharge.source === 'car') return;
       updateStateOfChargeObservationFreshness({
         snapshot: device,
         reportedAt: params.reportedAt,
-        nowMs: Date.now(),
       });
       // Deliberately NOT dispatched into the projection here: this branch only
       // advances `stateOfCharge` freshness (no `lastFreshDataMs` change), which

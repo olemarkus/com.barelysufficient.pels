@@ -5910,6 +5910,8 @@ describe('DeviceTransport', () => {
                     status: 'fresh',
                 }));
 
+                // The status moves because the SESSION ended, not because time
+                // passed: a level is retired by a plug-out and by nothing else.
                 vi.setSystemTime(new Date('2026-03-20T06:45:00.000Z'));
                 evDeviceManager.injectDeviceUpdateForTest({
                     id: 'ev1',
@@ -5924,9 +5926,9 @@ describe('DeviceTransport', () => {
                     capabilitiesObj: {
                         evcharger_charging: { id: 'evcharger_charging', setable: true },
                         evcharger_charging_state: {
-                            value: 'plugged_in_charging',
+                            value: 'plugged_out',
                             id: 'evcharger_charging_state',
-                            lastUpdated: '2026-03-20T06:00:00.000Z',
+                            lastUpdated: '2026-03-20T06:44:00.000Z',
                         },
                         measure_battery: {
                             id: 'measure_battery',

@@ -142,10 +142,9 @@ export type EvCarAssociations = Record<string, EvCarAssociationConfig>;
  * `measure_battery` on change, so a session normally opens with the last
  * pre-plug reading and nothing new arrives until the level rises, and that
  * reading is still the car's real charge. `socObservedAtMs` carries when it was
- * observed so a consumer can render its age; a consumer that needs a
- * freshness VERDICT (rather than an age to display) must take it from the
- * established rule that only decays a level while charge is in motion
- * (`lib/device/transport/stateOfCharge.ts`), never invent its own cutoff.
+ * observed so a consumer can render its age. There is no freshness verdict to
+ * ask for and none to invent: nothing decays a level, and whether PELS has one
+ * at all is answered by the session (`lib/device/transport/stateOfCharge.ts`).
  *
  * A link the probe recovered from its affinity prior (rather than a live plug
  * coincidence) is presented identically — the distinction is evidence strength

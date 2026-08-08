@@ -41,9 +41,8 @@ it guesses.
 **A `true` command with a paused state is not proof of interference.** It is the
 common shape of "the car stopped by itself", and it is also documented benign
 behaviour: an Easee leaves `evcharger_charging` at `true` across a pause
-(`lib/device/AGENTS.md`). PELS already resolves that pair for freshness purposes
-by treating `plugged_in_paused` as authoritative over the boolean
-(`CHARGE_HALTED_STATES`, `lib/device/transport/stateOfCharge.ts`). The card should
+(`lib/device/AGENTS.md`). PELS already resolves that pair by treating the state enum as authoritative
+over the boolean (`resolveEvCurrentOn`, `lib/device/managerControl.ts`). The card should
 do the same: **trust signal 3 over signal 2 for what is happening, and signal 1
 over signal 2 for what PELS wants.**
 
