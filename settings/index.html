@@ -997,12 +997,29 @@
                 </div>
               </div>
 
+
+              <p class="muted" id="device-detail-stepped-climb-note">When this device is limited and then starts again, PELS climbs back up step by step.</p>
+            </div>
+          </details>
+        </section>
+
+        <!-- EV charging behavior. Layer E gives this card the control-mode readout
+             and the limiting statement; for now it homes the charge boost that
+             previously sat inside the stepped-profile shell. -->
+        <section class="detail-section" id="device-detail-charging-section" hidden>
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Charging</h3>
+              <span class="section-hint">Charge boost</span>
+              <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
+            </summary>
+            <div class="collapse-content">
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
                 <div class="md-switch-row">
                   <md-switch id="device-detail-ev-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge boost</span>
-                    <small class="field__hint">Step this charger up while the car stays below the minimum battery level, drawing from devices PELS is already allowed to lower.</small>
+                    <small class="field__hint">Step this charger up while the car's battery is below the Boost below level, drawing from devices PELS is already allowed to lower.</small>
                   </span>
                 </div>
                 <div class="md-field-row" id="device-detail-ev-boost-below-row">
@@ -1020,8 +1037,6 @@
                 </div>
                 <p class="muted" id="device-detail-ev-boost-status"></p>
               </div>
-
-              <p class="muted" id="device-detail-stepped-climb-note">When this device is limited and then starts again, PELS climbs back up step by step.</p>
             </div>
           </details>
         </section>
@@ -1043,6 +1058,13 @@
               <p class="detail-car-status" id="device-detail-car-status" hidden></p>
               <div class="detail-car-list" id="device-detail-car-list"></div>
               <small class="field__hint" id="device-detail-car-flow-note" hidden></small>
+              <div class="field device-detail-readout" id="device-detail-soc-row" hidden>
+                <div class="device-detail-readout__head">
+                  <span class="field__label pels-text-settings-label">Battery level</span>
+                  <span class="device-detail-readout__value" id="device-detail-soc-value">Not reported</span>
+                </div>
+                <small class="field__hint" id="device-detail-soc-updated"></small>
+              </div>
             </div>
           </details>
         </section>
@@ -1182,14 +1204,6 @@
                     <md-select-option value="ev_charger_3_phase"><div slot="headline">EV 3-phase</div></md-select-option>
                   </md-filled-select>
                   <small class="field__hint">Choose the control shape PELS should plan with for this device.</small>
-                </div>
-
-                <div class="field device-detail-readout" id="device-detail-soc-row" hidden>
-                  <div class="device-detail-readout__head">
-                    <span class="field__label pels-text-settings-label">Battery level</span>
-                    <span class="device-detail-readout__value" id="device-detail-soc-value">Not reported</span>
-                  </div>
-                  <small class="field__hint" id="device-detail-soc-updated"></small>
                 </div>
               </div>
             </div>
