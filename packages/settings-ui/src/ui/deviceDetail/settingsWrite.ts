@@ -1,4 +1,5 @@
 import { getSettingFresh, setSetting } from '../homey.ts';
+import { showToast } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
 import { showToastError } from '../toast.ts';
 
@@ -71,6 +72,18 @@ export const createSerializedAsyncRunner = () => {
   };
 };
 
+// Auto-save confirmation: the page saves on change with no Save button, so a
+// successful write shows one quiet "Saved" snackbar. Debounced so a burst of
+// writes (toggle + dependent field) reads as one confirmation, not a stutter.
+let confirmSavedTimer: ReturnType<typeof setTimeout> | null = null;
+const confirmSettingSaved = (): void => {
+  if (confirmSavedTimer) clearTimeout(confirmSavedTimer);
+  confirmSavedTimer = setTimeout(() => {
+    confirmSavedTimer = null;
+    void showToast('Saved', 'ok', { durationMs: 1500 });
+  }, 400);
+};
+
 export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): Promise<T | null> => {
   // Default normaliser: pass through real, non-array objects untouched and
   // signal "unrecoverable" otherwise. Callers can provide their own
@@ -100,6 +113,7 @@ export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): 
     const nextValue = params.mutate(currentValue);
     await setSetting(params.key, nextValue);
     await params.commit?.(nextValue);
+    confirmSettingSaved();
     return nextValue;
   } catch (error) {
     await logSettingsError(params.logMessage, error, params.context);

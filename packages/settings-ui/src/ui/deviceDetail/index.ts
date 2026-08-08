@@ -118,6 +118,7 @@ import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
 import {
   initDeviceDetailOverlayChrome,
   initDeviceDetailOverlaySubscriptions,
+  noteDeviceDetailOpened,
 } from './overlayHandlers.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
@@ -176,6 +177,7 @@ const notifyDevicesUpdated = () => {
 
 const showDeviceDetailOverlay = () => {
   if (deviceDetailOverlay) {
+    if (deviceDetailOverlay.hidden) noteDeviceDetailOpened();
     deviceDetailOverlay.hidden = false;
   }
 };

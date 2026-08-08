@@ -765,7 +765,13 @@
         <div id="device-detail-live-status" class="device-detail-live-status" hidden>
           <span id="device-detail-live-state" class="device-detail-live-status__state"></span>
           <span id="device-detail-live-power" class="device-detail-live-status__power"></span>
+          <!-- One modality fact line (temperature/target, charging/battery/level)
+               and the same reason ladder the Overview card renders — the hero is
+               the continuity anchor that makes the card→page tap feel like the
+               card opened. -->
+          <span id="device-detail-live-fact" class="device-detail-live-status__fact" hidden></span>
           <span id="device-detail-live-reason" class="device-detail-live-status__reason pels-text-status-line" hidden></span>
+          <a id="device-detail-live-smart-task" class="plan-chip plan-chip--info plan-chip--link device-detail-live-status__smart-task" data-tooltip="Open smart task" hidden>Smart task</a>
         </div>
         <section class="detail-section" id="device-detail-modes-section">
           <details class="settings-collapse detail-collapse" open>
