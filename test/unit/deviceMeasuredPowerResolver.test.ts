@@ -20,7 +20,6 @@ describe('DeviceMeasuredPowerResolver', () => {
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
       lastPositiveMeasuredPowerKw,
-      minSignificantPowerW: 5,
       getNow: () => 1000,
     });
 
@@ -46,7 +45,6 @@ describe('DeviceMeasuredPowerResolver', () => {
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
       lastPositiveMeasuredPowerKw,
-      minSignificantPowerW: 5,
       getNow: () => now,
     });
 
@@ -81,7 +79,6 @@ describe('DeviceMeasuredPowerResolver', () => {
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
       lastPositiveMeasuredPowerKw,
-      minSignificantPowerW: 5,
       getNow: () => 2000,
     });
 
@@ -99,25 +96,59 @@ describe('DeviceMeasuredPowerResolver', () => {
     expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 0.125, ts: 2000 });
   });
 
-  it('treats a low measure_power reading as authoritative, does not fall through, and still reports freshness', () => {
+  it('reports a few watts of standby as its own value instead of dropping it', () => {
     const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
       lastPositiveMeasuredPowerKw,
-      minSignificantPowerW: 5,
+      getNow: () => 5000,
     });
 
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
       observation: {
-        measurePowerW: 4,
+        measurePowerW: 3,
         measurePowerObservedAtMs: 1234,
         homeyEnergyLiveW: 125,
         homeyEnergyObservedAtMs: 2345,
       },
     });
 
+    // A dropped reading is indistinguishable downstream from "this device has no
+    // `measure_power`", and absence is what licenses a consumer to substitute
+    // RATED power — so 3 W could be booked as kilowatts. Report the reading.
+    expect(measuredPower).toEqual({ measuredPowerKw: 0.003, observedAtMs: 1234 });
+    expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 0.003, ts: 5000 });
+  });
+
+  it('reports a measured zero as a reading, not as absence', () => {
+    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
+    const resolver = new DeviceMeasuredPowerResolver({ logger, lastPositiveMeasuredPowerKw });
+
+    const measuredPower = resolver.resolve({
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      observation: { measurePowerW: 0, measurePowerObservedAtMs: 1234 },
+    });
+
+    expect(measuredPower).toEqual({ measuredPowerKw: 0, observedAtMs: 1234 });
+    // Zero is a draw of nothing, not a positive reading.
+    expect(lastPositiveMeasuredPowerKw).toEqual({});
+  });
+
+  it('drops a negative measure_power reading rather than reporting it as a draw', () => {
+    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
+    const resolver = new DeviceMeasuredPowerResolver({ logger, lastPositiveMeasuredPowerKw });
+
+    const measuredPower = resolver.resolve({
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      observation: { measurePowerW: -250, measurePowerObservedAtMs: 1234 },
+    });
+
+    // Negative is generation, not consumption. The producer states "not a draw"
+    // so the contract's "present implies non-negative" holds for consumers.
     expect(measuredPower).toEqual({ observedAtMs: 1234 });
     expect(lastPositiveMeasuredPowerKw).toEqual({});
   });

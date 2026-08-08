@@ -167,7 +167,7 @@ describe('readTerminalObserved — EV charger reads the same 2-state binaryContr
 });
 
 describe('resolveTerminalShedCommand — set_temperature setpoint normalization', () => {
-  const thermostat = (overrides: Partial<PlanInputDevice['targets'][number]> = {}): PlanInputDevice => ({
+  const thermostat = (overrides: Partial<PlanInputDevice['targets'][number]> = {}): PlanInputDevice => ({ currentDrawKw: 0,
     id: 't1',
     name: 'Thermostat',
     commandableNow: true,

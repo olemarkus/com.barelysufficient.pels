@@ -28,7 +28,7 @@ const buildPlanDevice = (
   name: string,
   currentTarget: number,
   plannedTarget: number,
-): DevicePlan['devices'][number] => withTemperatureDiscriminant({
+): DevicePlan['devices'][number] => withTemperatureDiscriminant({ currentDrawKw: 0,
   id: deviceId,
   name,
   commandableNow: true,

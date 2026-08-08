@@ -283,4 +283,37 @@ describe('settingsOverviewReadModel', () => {
       countdownStartedAtMs: 10,
     });
   });
+  it('does not label a drawing target-only device as idle', () => {
+    // `isSatisfiedTargetOnlyDevice` (shared-domain) decides "idle" partly on
+    // `measuredPowerKw <= 0.05`. That name belongs to the SNAPSHOT shape the
+    // settings UI feeds it; a plan device carries `currentDrawKw` instead, and the
+    // field is OPTIONAL on the shared type — so passing the plan device straight
+    // through compiles, reads `undefined`, and labels every at-target thermostat
+    // idle even while it is drawing. Pin the adaptation.
+    // `currentState: 'not_applicable'` is what makes a device target-ONLY: no
+    // on/off handle, so its state word cannot be read from a binary axis.
+    const drawing = buildPlanDevice({
+      id: 'thermo',
+      deviceType: 'temperature',
+      controlCapabilityId: undefined,
+      currentState: 'not_applicable',
+      currentTarget: 21,
+      currentTemperature: 22,
+      currentDrawKw: 1.4,
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    });
+    expect(buildSettingsOverviewDeviceReadModel(drawing).stateKind).not.toBe('idle');
+
+    const settled = buildPlanDevice({
+      id: 'thermo',
+      deviceType: 'temperature',
+      controlCapabilityId: undefined,
+      currentState: 'not_applicable',
+      currentTarget: 21,
+      currentTemperature: 22,
+      currentDrawKw: 0,
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    });
+    expect(buildSettingsOverviewDeviceReadModel(settled).stateKind).toBe('idle');
+  });
 });

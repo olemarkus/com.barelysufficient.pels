@@ -580,20 +580,113 @@ What remains open is below.*
       actuated. Source: prod log review + adversarial review, 2026-07-25; re-confirmed while
       shipping 2.17.5. [P1]
 
-- [ ] **An observed-off device attributes usage from whatever step it is parked at.**
-      `resolveObservedOffUsageKw` (`lib/plan/planUsage.ts` ~36-41) falls to
-      `getHighestKnownPowerKw`, which takes the max of measured/expected/planning/configured —
-      so a device measuring 0 W is still attributed non-zero usage, and since 2026-07-25 that
-      `planningPowerKw` can be a drifted step rather than the restore step (1.38 kW → 7.36 kW for
-      a charger that reverted to 32 A). That flows into the managed/background split
-      (`lib/power/sampleIngest.ts`), the budget-exempt bucket, the daily budget, the learned
-      background profile, and the smart-task headroom reserve. The mis-attribution pre-dates the
-      2026-07-25 change (it attributed the lowest step before), and the exposure is bounded: a
-      `plannedState: 'shed'` device attributes 0, so only the `keep`-and-observed-off restore-pending
-      window is affected, which is normally seconds. Fix is a semantics call — either attribute the
-      restore step for an observed-off device, or attribute 0 and let the restore reservation carry
-      it — so it does not belong in a patch release. Source: adversarial review of the flow-report
-      admission, 2026-07-25. [P2]
+- [ ] **The exempt-draw PROJECTION reaches a persisted energy bucket.**
+      `setup/powerSamplePipeline.ts` passes `sumBudgetExemptProjectedUsageKw` as
+      `sumBudgetExemptUsage`, which `lib/power/sampleIngest.ts` integrates into
+      `exemptBuckets` — a persisted kWh figure read by `dailyBudgetState`,
+      `dailyBudgetObservedStats`, `dailyBudgetLearning` and
+      `planDailyBudgetWindow`. The projection deliberately substitutes
+      `getHighestKnownPowerKw` (nameplate) for an observed-OFF exempt device,
+      which is right for the daily-pace CONTROL threshold (`planBuilder`'s
+      `computeDailySoftLimit`) and wrong for an energy integral —
+      `notes/safe-pace-two-constraints.md` says exactly this: the projected value
+      is "correct for the control threshold and wrong for anything rendering
+      current load". Fix is one line (`sumBudgetExemptMeasuredUsageKw` on the
+      sample path), but it changes persisted daily-budget accounting for existing
+      users mid-day, so it wants its own change with a migration thought through.
+      Source: adversarial review of the measured-draw collapse, 2026-08-08. [P1]
+
+- [ ] **Snapshot absence drops the learned measured-peak baseline.**
+      `evictMissingDeviceCacheEntries(ctx, snapshot)`
+      (`setup/homeRuntime/planDevicePrePass.ts:79`) clears per-device cache entries for
+      any device missing from the snapshot, which includes the `measured-peak`
+      baseline `estimatePower` builds up. A device that drops out for one refresh —
+      Homey reads transiently fail — restarts its learning from nothing. Wants the
+      same abandon-grace treatment as other transient-absence handling
+      (`notes/persisted-settings-state.md`). Source: adversarial review of the
+      measured-draw collapse, 2026-08-08. [P2]
+
+- [ ] **The executor's observed draw is unnamed and undocumented at its seam.**
+      `lib/executor/executablePlanProjection.ts:234` puts `snapshot.measuredPowerKw`
+      on `ExecutableObservedSteppedLoadState`. It IS consumed —
+      `resolveObservedStepForShed`
+      (`lib/executor/executableSteppedLoadProjection.ts:367-378`) prices an
+      unknown-step `set_step` shed from it — but nothing says so at either end, and
+      an earlier draft of this entry wrongly proposed deleting it. The seam also
+      takes both real snapshots and (via `planExecutionDrift`) plan devices, so it
+      carries the snapshot's field name while one caller adapts. Document the
+      consumer at the field, or give the state a name that says what it is for.
+      Source: adversarial review of the measured-draw collapse, 2026-08-08. [P3]
+
+- [ ] **The stepped shed-relief fallback gate is inverted.**
+      `resolveSteppedCandidatePower` (`lib/plan/planSteppedLoad.ts`) used to take
+      the calibrated/nameplate delta when the reading was ABSENT; it now takes it
+      when `currentDrawKw <= 0`, i.e. for a device with a genuine measured zero.
+      Unreachable today because `buildSteppedCandidate` rejects a zero draw first,
+      but if that gate loosens, a device drawing nothing is credited nameplate shed
+      relief — the substitution this change removed, re-entering by a back door.
+      Fix: return 0 for a zero draw and reserve the fallback for the calibrated
+      case. Source: adversarial review of the measured-draw collapse, 2026-08-08. [P2]
+
+- [ ] **An ON exempt device with no reading zeroes the budget axis for everyone else.**
+      `sumBudgetExemptMeasuredUsageKw` (`lib/plan/planUsage.ts`) sums
+      `currentDrawKw`, and since the measured-draw collapse
+      `resolveBudgetExemptProjectedKw` does too for a device that is not observed
+      off. A running exempt device that reports nothing therefore contributes to
+      the whole-home meter total but 0 to the exempt credit —
+      `budgetHeadroomKw` goes deeply negative and every non-exempt restore is
+      budget-held for the duration. Conservative (never over-budget) and bounded to
+      planned hours, and on the current fleet unreachable because every managed
+      device is metered — but it is the same failure mode as the `?? 0` this change
+      removed from `computeDailySoftLimit`, moved one layer in. Direction: a
+      measured-or-observed-on-projection hybrid for the axis. Persona: boost user
+      with an unmetered water heater during planned hours. Source: 2026-08-02
+      release review; re-confirmed against the collapse, 2026-08-08. [P3]
+
+- [ ] **Per-capability staleness drops a valid reading out of its own energy bucket.**
+      `buildFreshMeasuredDevicePowerWById` (`lib/power/sampleIngest.ts`) narrows
+      correctly via `hasObservedMeasuredPower` and then independently gates on
+      `measuredPowerObservedAtMs` age before including a device in the per-device
+      energy buckets. Homey reports capabilities ON CHANGE, so an old `lastUpdated`
+      means "nothing has happened", not "the reading was lost" — the longer a
+      reading is stable, the less PELS trusts it, which is backwards. Confirmed on
+      a real device (`homey:app:no.elko:smart_plus_thermostat`, "Termostat
+      vaskerom", dumped 2026-08-08T17:26Z): `measure_power: { value: 0,
+      lastUpdated: 2026-08-08T01:29:56Z }` — 16 hours earlier — with
+      `settings.load: 900` and a PELS snapshot of `measuredPowerKw: 0,
+      expectedPowerKw: 0.9, managed: true`. The thermostat simply has not turned on
+      since the weather warmed; `0 W` is exactly correct and has been continuously
+      true for 16 h, yet the age gate omits it from its own bucket for that whole
+      period, and keeps omitting it for as long as it stays legitimately unchanged.
+      Fix direction: retire per-capability staleness on the measured-power axis.
+      Freshness stays meaningful for whole-home power SAMPLES
+      (`POWER_SAMPLE_STALE_THRESHOLD_MS`) and for observation trust — those ask "is
+      the pipeline alive", a different question from "is this capability value
+      current". Do not conflate them. Persona: the owner reading the Usage tab's
+      per-device breakdown, whose steadiest devices are the ones most likely to
+      vanish from it. Source: device dump + design discussion, 2026-08-08. [P2]
+
+- [ ] **A device that vanishes mid-overshoot is attributed to background load.**
+      `hasUndiffablePlausibleContributor` (`lib/plan/planBuilderOvershoot.ts`)
+      iterates the CURRENT device map only, so a managed device present in the
+      previous plan and absent from this one cannot block a confident verdict, and
+      its rise lands in `background_load_dominant` rather than
+      `attribution_inputs_incomplete`. Newcomer/baseline cases cover APPEARANCE,
+      not disappearance. Fix: also scan `previousDevicesById` for ids missing from
+      the current map. Source: adversarial review of the measured-draw collapse,
+      2026-08-08. [P2]
+
+- [ ] **`hasKnownPowerFields` disagrees with the ladder it gates.**
+      `lib/plan/planDevicesBase.ts` gates on `currentDrawKw > 0 ||
+      Number.isFinite(expected|planning|powerKw)` and then calls
+      `getRestoreDrawKw`, whose `getHighestKnownPowerKw` requires each candidate
+      to be `> 0`. A device whose only configured field is `expectedPowerKw: 0`
+      passes the gate, finds no positive source, and is handed the 1 kW generic
+      fallback — the invented nameplate the surrounding comment says it prevents.
+      Pre-dates the measured-draw collapse and sits on the `expectedPowerKw` axis,
+      so it was left alone. Fix: drop the predicate and return
+      `getHighestKnownPowerKw(dev)?.kw`, so absence yields `undefined`. Source:
+      adversarial review of the measured-draw collapse, 2026-08-08. [P2]
 
 - [ ] **Retire the `suppressed_flow` step-state machinery.** `lib/plan/planSteppedLoadState.ts`
       still carries the `source: 'suppressed_flow'` arm, `SuppressedFlowStepInput`,
@@ -665,30 +758,6 @@ What remains open is below.*
       (`DeviceLogView.tsx`) + runtime logs. If the device-detail log should also read
       hypothetically under simulation, thread `dryRun` there too — out of scope for PR #1819
       (Overview plan-card surface only). Source: PR #1819 review gates (2026-07-02).
-- [ ] **An unresolved budget-exempt draw is treated as zero exempt draw.**
-      `computeDailySoftLimit` (`lib/plan/planBuilder.ts:534`) does
-      `sumBudgetExemptLiveUsageKw(devices) ?? 0`, but that producer
-      (`lib/plan/planUsage.ts:75`) returns `null` when exempt devices exist and none report
-      power, and returns a silent *partial* sum when only some report. `budgetPaceImportKw` then
-      collapses to `budgetPaceKw` while `P_import` still includes the exempt device's draw, so
-      the threshold is short by that draw and non-exempt devices get shed for a missing reading
-      rather than for real budget pressure. Given that Homey reads transiently fail, this is
-      reachable in normal operation. Fix at the producer: return an explicit "exempt draw
-      unresolved" state (and distinguish partial from complete) and have the planner handle it
-      rather than defaulting to zero. Same `?? null` path feeds `lib/power/sampleIngest.ts:167`,
-      so the energy bucket silently stops excluding that device for the interval too. Note the
-      rebased threshold needs no floor: `P_import > budgetPaceKw + exemptKw` already equals
-      `P_nonExempt > budgetPaceKw`. No clamp is missing anywhere on the kW axis;
-      `P_nonExempt` stays signed, per the naming/ownership refactor below. Also correct the
-      stale comment at `lib/plan/planReasons.ts:63-68` while here: it says the daily limit "adds back
-      only an exempt device's LIVE draw, zero while it is off", but `computeDailySoftLimit` sums
-      `PlanInputDevice[]`, which carries no `plannedState`
-      (`packages/planner-types/src/planInputDevice.ts:112-114`), so `resolveUsageKw` cannot take
-      its shed-zero branch and an observed-off exempt device falls to `getHighestKnownPowerKw`
-      instead. The add-back already projects an off device's expected draw, which matters
-      because a future "project the candidate draw so exempt devices are capacity-bound for
-      restore" change would double-count. Same fallback as the open P1 observed-off attribution
-      item. Source: safe-pace model review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
 - [ ] **A tight-capacity hour hands `softLimitSource` over to `'capacity'` near `:00`.**
       `capacityPaceKw` decays toward `sustainableRateKw` as the hour ends
       (`computeDynamicSoftLimit`) while `budgetPaceImportKw` holds level, so a hand-over
@@ -776,7 +845,7 @@ program) remain deferred.*
       keeps its floor for the separate reason at `lib/plan/planHourContext.ts:21-22`. Ship it as
       **two distinctly named quantities with distinct contract fields**, not one field computed
       two ways: `P_nonExemptControl = P_import - projectedExemptKw` and
-      `P_nonExemptMeasured = P_import - measuredExemptKw`. `sumBudgetExemptLiveUsageKw` returns
+      `P_nonExemptMeasured = P_import - measuredExemptKw`. `sumBudgetExemptProjectedUsageKw` returns
       the projected value (`getHighestKnownPowerKw` for observed-off devices), which is right for
       control and wrong for the hero, whose segments are defined as current load
       (`notes/overview-hero-spec.md:158-164`); the two can differ by several kW, so a single name
@@ -968,10 +1037,13 @@ program) remain deferred.*
       staleness-sensitive `sampleIngest` still checks `measuredPowerObservedAtMs` independently. Consumers
       migrated: objectives `resolveCredibleDevicePower`, `sampleIngest`, `executablePlanProjection`, the
       transport calibration-store seams, and the settings-UI device-list/view carriers; the rest read off
-      local types (`PlanInputDevice`, etc.) that keep their own `measuredPowerKw?` and are unaffected.
+      local types (`PlanInputDevice`, etc.) that kept their own `measuredPowerKw?` and were unaffected — those
+      have since been collapsed onto a required `currentDrawKw`, and the raw field no longer crosses the
+      producer boundary at all.
       **Retired the two NaN-blind `?? 0` restore-gap reads** (`planSteppedRestorePending`, `restore/accounting`)
       into named helpers `resolveObservedDrawKw` / `resolveObservedDrawKwWithNameplate`
-      (`lib/plan/restore/observedDraw.ts`) — `isFiniteNumber`-gated, so a non-finite `powerKw` nameplate can no
+      (`lib/plan/restore/observedDraw.ts`; both since superseded — the plan device carries a
+      required `currentDrawKw`, so both call sites read the field and the module is gone) — `isFiniteNumber`-gated, so a non-finite `powerKw` nameplate can no
       longer propagate through `??` (the old `measuredPowerKw ?? powerKw ?? 0` was NaN-blind). Type-level +
       one defensive-correctness improvement; no intended behavior change given the producer invariant.
       **Stepped-descriptor field-move landed (2026-06-13): `steppedLoadProfile`/`targetPowerConfig` are OFF the
@@ -1242,7 +1314,9 @@ program) remain deferred.*
       same inconsistency — `power_calibration_sample_skipped` with `reason: "below_lower_step"`,
       logged twice during `inc_26449fb9` — but the planner has no equivalent guard, and the
       calibrated/nameplate fallback in `resolveSteppedCandidatePower` is unreachable whenever
-      `measuredPowerKw` is a finite number, including a stale one. Consider treating a measurement
+      the device's `currentDrawKw` is positive, including a stale reading (it used to be
+      unreachable for ANY finite `measuredPowerKw`; since the producer always resolves a draw,
+      only a zero reading reaches the fallback now). Consider treating a measurement
       that contradicts the reported step as not-evidence and falling back to the calibrated delta.
       Deliberately not done in the ladder PR: it means trusting a reported step over the meter,
       which is a larger judgement call than the descent (which stays meter-grounded).
@@ -3269,15 +3343,6 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       the app. *Hypothesis:* the pair reads as padding at `Off` and as information at `Manual`, so
       gating on the state word keeps the informative case without the echo. Source: 2026-08-04
       `pels-copy-and-terminology` pass on the signal-2 change. [P3]
-- [ ] **An ON-but-unmetered exempt device zeroes the budget axis for everyone else.**
-      `sumBudgetExemptMeasuredUsageKw` (`lib/plan/planUsage.ts:87-95`) counts only
-      `measuredPowerKw`, so a running exempt device with no measurement contributes to the meter
-      total but 0 to the exempt credit — `budgetHeadroomKw` goes deeply negative and every
-      non-exempt restore is budget-held for the duration. Conservative (never over-budget) and
-      bounded to planned hours. Direction: a measured-or-observed-on-projection hybrid for the
-      axis. Persona: boost user with an unmetered water heater during planned hours. *Hypothesis:*
-      the hybrid removes hour-long phantom budget holds without ever over-crediting the exempt
-      slab. Source: 2026-08-02 release review, planner-core adversarial pass. [P3]
 - [ ] **The eight-area cap is not enforced where the memory is consumed.**
       `HOME_AREA_MAX_COUNT` is checked only at the `ui_homes_save` seam; neither `HomeRuntimeRegistry`
       nor `normalizeHomesConfig` bounds anything, so a `homes_config` written outside the UI still

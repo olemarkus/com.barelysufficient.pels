@@ -144,7 +144,7 @@ describe('per-axis admission headroom resolution', () => {
   const exemptRunningDevice = buildDevice({
     id: 'exempt-heater',
     budgetExempt: true,
-    measuredPowerKw: 1.25,
+    currentDrawKw: 1.25,
   });
 
   const baseParams = {

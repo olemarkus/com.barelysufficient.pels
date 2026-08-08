@@ -10,6 +10,7 @@ import type {
   DeviceStateOfChargeSnapshot, EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
+import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 
@@ -158,6 +159,31 @@ export const steppedProfile: SteppedLoadProfile = {
   ],
 };
 
+
+/**
+ * The draw a fixture device is presumed to be pulling, when the test did not say.
+ *
+ * DELEGATES to the production resolver, `getCurrentDrawKw`. That is the point: an
+ * earlier version of this helper RESTATED the producer's rungs, and when
+ * production lost one the fixture kept it — which is how 5,400 tests stayed green
+ * over three real defects (unmetered devices unsheddable, the idle classifier
+ * permanently silent, a standby trickle poisoning the learned rate). A fixture
+ * that can drift from the producer will hide the next one too.
+ *
+ * A spec whose SUBJECT is the draw should pass `currentDrawKw` explicitly rather
+ * than lean on this.
+ */
+export const fixtureCurrentDrawKw = (o: {
+  currentDrawKw?: number;
+  measuredPowerKw?: number;
+  expectedPowerKw?: number;
+  planningPowerKw?: number;
+  powerKw?: number;
+  [key: string]: unknown;
+}): number => (
+  typeof o.currentDrawKw === 'number' ? o.currentDrawKw : getCurrentDrawKw(o)
+);
+
 export const buildPlanDevice = (
   // `currentOn`/`binaryControl` live on the orthogonal `BinaryControlKind` cluster
   // (not on the `Partial<DevicePlanDevice>` base), so accept them here: the builder
@@ -172,10 +198,15 @@ export const buildPlanDevice = (
     // Lives on the orthogonal `EvKind` cluster, same as the two above; the plan
     // device receives it through the snapshot spread in `toPlanDevice`.
     stateOfCharge?: DeviceStateOfChargeSnapshot;
+    /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
+    measuredPowerKw?: number;
   } = {},
 ):
 DevicePlanDevice => {
-  const { reason, currentTarget, currentTemperature, ...rest } = overrides;
+  const {
+    reason, currentTarget, currentTemperature,
+    measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
+  } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
     controlCapabilityId?: BinaryControlCapabilityId;
@@ -198,6 +229,9 @@ DevicePlanDevice => {
     // Spread (not a direct property) so the `as DevicePlanDevice` cast accepts it:
     // `currentOn` lives on the orthogonal `BinaryControlKind`, reached via the guard.
     ...({ currentOn }),
+    // AFTER the caller spread, and destructured out of `rest` above: a required
+    // field must not be settable to `undefined` by an explicit override.
+    currentDrawKw: fixtureCurrentDrawKw(overrides),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
@@ -214,9 +248,14 @@ export const buildPlanInputDevice = (
     deviceType?: 'temperature' | 'onoff';
     currentOn?: boolean;
     binaryControl?: { on: boolean };
+    /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
+    measuredPowerKw?: number;
   } = {},
 ): PlanInputDevice => {
-  const { currentTarget: _currentTarget, currentTemperature, ...rest } = overrides;
+  const {
+    currentTarget: _currentTarget, currentTemperature,
+    measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
+  } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
     controlCapabilityId?: BinaryControlCapabilityId;
@@ -242,6 +281,9 @@ export const buildPlanInputDevice = (
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     }),
     currentOn,
+    // AFTER the caller spread, and destructured out of `rest` above: a required
+    // field must not be settable to `undefined` by an explicit override.
+    currentDrawKw: fixtureCurrentDrawKw(overrides),
   }) as PlanInputDevice;
 };
 

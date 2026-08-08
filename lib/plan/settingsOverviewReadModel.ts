@@ -161,6 +161,14 @@ export function buildSettingsOverviewDeviceReadModel(
   // owner), NOT the plan device — see `getObservedEvChargingState`.
   const ev = isEvPlanDevice(device) ? device : null;
   const temperature = resolveOverviewTemperatureState(device, deps);
+  // The shared-domain label resolvers below take a `DeviceOverviewSnapshot`,
+  // which names the draw `measuredPowerKw` because the settings UI feeds them
+  // real snapshots. Adapt once here rather than at each call.
+  const overviewShape = {
+    ...device,
+    ...temperature,
+    measuredPowerKw: device.currentDrawKw,
+  };
   return {
     id: device.id,
     name: device.name,
@@ -182,7 +190,7 @@ export function buildSettingsOverviewDeviceReadModel(
     currentTarget: temperature.currentTarget,
     plannedTarget: temperature.plannedTarget,
     currentTemperature: temperature.currentTemperature,
-    measuredPowerKw: device.measuredPowerKw,
+    measuredPowerKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
     budgetExempt: device.budgetExempt,
@@ -208,8 +216,15 @@ export function buildSettingsOverviewDeviceReadModel(
     targetStepId: device.targetStepId,
     binaryCommandPending: device.binaryCommandPending,
     pendingTargetCommand: device.pendingTargetCommand,
-    stateKind: resolvePlanStateKind(device),
-    stateTone: resolvePlanStateTone(device),
+    // These read `measuredPowerKw` off a `DeviceOverviewSnapshot`, a shape shared
+    // with the settings UI (which reads real snapshots). A plan device does not
+    // carry that name, and the field is OPTIONAL on the shared type — so passing
+    // the plan device compiles and silently reads `undefined`, which
+    // `isSatisfiedTargetOnlyDevice` then treats as `0 kW` and labels a drawing
+    // target-only device "Idle". Feed them the resolved draw under the name the
+    // shared type uses, exactly as `planOverviewEmit` does for the log seam.
+    stateKind: resolvePlanStateKind(overviewShape),
+    stateTone: resolvePlanStateTone(overviewShape),
     reason: device.reason,
     starvation: deps.getOverviewStarvation?.(device.id) ?? undefined,
     steppedLoad: buildSteppedLoadReadState(device, confirmedSteppedLoadProfile),

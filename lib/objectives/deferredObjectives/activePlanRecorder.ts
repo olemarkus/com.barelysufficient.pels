@@ -359,7 +359,7 @@ export class DeferredObjectiveActivePlanRecorder {
     current: DeferredObjectiveActivePlanV1,
     diag: DeferredObjectiveDiagnostic,
   ): DeferredObjectiveActivePlanV1 {
-    const code = resolveDiagnosticReasonCode(diag);
+    const code = resolveDiagnosticReasonCode(diag, current.diagnosticReasonCode);
     if (current.diagnosticReasonCode === code) return current;
     this.plans[current.deviceId] = withDiagnosticReasonCode(current, code);
     this.dirty = true;
@@ -383,7 +383,7 @@ export class DeferredObjectiveActivePlanRecorder {
       }
       // Pending records refresh both `pendingReason` and `diagnosticReasonCode`.
       const pendingReason = resolvePendingReason(diag);
-      const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
+      const diagnosticReasonCode = resolveDiagnosticReasonCode(diag, existing.diagnosticReasonCode);
       if (existing.pendingReason !== pendingReason || existing.diagnosticReasonCode !== diagnosticReasonCode) {
         this.plans[diag.deviceId] = withDiagnosticReasonCode({ ...existing, pendingReason }, diagnosticReasonCode);
         this.dirty = true;

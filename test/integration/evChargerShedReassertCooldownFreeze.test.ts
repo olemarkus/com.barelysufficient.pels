@@ -96,11 +96,10 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   measuredPowerResolver: new DeviceMeasuredPowerResolver({
     logger,
     lastPositiveMeasuredPowerKw: {},
-    minSignificantPowerW: 5,
   }),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
   isPowerCapable: (device, capsStatus, powerEstimate) =>
-    isDevicePowerCapable({ device, capsStatus, powerEstimate }),
+        isDevicePowerCapable({ device, capsStatus, powerEstimate }),
   resolveLatestLocalWriteMs: () => undefined,
 });
 
@@ -148,6 +147,7 @@ const parseChargerSnapshot = (
 const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
   meta: { totalKw: 0.2, softLimitKw: 6.75, headroomKw: 6.55 },
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
+    currentDrawKw: 0,
     id: DEVICE_ID,
     name: 'Elbillader',
     commandableNow: true,

@@ -27,6 +27,20 @@ import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
+import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
+
+// Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
+// snapshots go through `withHeadroomCurrentOn` — the producer boundary that
+// resolves `currentDrawKw` — before the usage math sees them.
+const splitControlledUsage: SplitControlledUsage = (params) => splitControlledUsageKw({
+  ...params,
+  devices: params.devices.map(withHeadroomCurrentOn),
+});
+const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
+  sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
+);
+
 
 const SOLAR_ID = 'solar';
 const HEATER_ID = 'heater';
@@ -182,8 +196,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
   it('its POSITIVE production is excluded from controlled AND background/uncontrolled load accounting', () => {
     const devices = [
       // Solar producing +3.0 kW. controllable:false → never controlled usage.
-      { id: SOLAR_ID, controllable: false, plannedState: 'keep' as const, measuredPowerKw: 3.0 },
-      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, measuredPowerKw: 1.5 },
+      { id: SOLAR_ID, controllable: false, plannedState: 'keep' as const, currentDrawKw: 3.0 },
+      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, currentDrawKw: 1.5 },
     ];
     // Only the heater's 1.5 kW is controlled usage; the solar's +3.0 kW is NOT.
     const controlledKw = sumControlledUsageKw(devices as Parameters<typeof sumControlledUsageKw>[0]);
@@ -202,7 +216,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
   });
 
   it('is never starvation-eligible (fails the controllable:true + temperature requirement)', () => {
-    const context = buildContext([solarInputDevice({ measuredPowerKw: 3.0 })]);
+    const context = buildContext([solarInputDevice({ currentDrawKw: 3.0 })]);
     const planDevices = buildInitialPlanDevices({
       context,
       state: createPlanEngineState(),
@@ -251,8 +265,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         // The harness type expects a no-arg getter; close over the per-call nowMs.
         getLatestTargetSnapshot: () => getLatestTargetSnapshot(nowMs) as never,
         powerTracker: tracker,
-        splitControlledUsage: splitControlledUsageKw,
-        sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+        splitControlledUsage,
+        sumBudgetExemptUsage,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
         saveState: (next) => { tracker = next; },

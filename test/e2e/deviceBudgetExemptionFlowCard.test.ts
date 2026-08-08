@@ -23,6 +23,7 @@ describe('Budget exemption flow cards', () => {
 
   it('adds a budget exemption for a device', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     const app = createApp();
@@ -39,6 +40,7 @@ describe('Budget exemption flow cards', () => {
 
   it('removes a budget exemption for a device', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('budget_exempt_devices', { 'dev-1': true });
 
@@ -56,6 +58,7 @@ describe('Budget exemption flow cards', () => {
 
   it('returns true when the device has a budget exemption', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('budget_exempt_devices', { 'dev-1': true });
 
@@ -72,6 +75,7 @@ describe('Budget exemption flow cards', () => {
 
   it('returns false when the device does not have a budget exemption', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('budget_exempt_devices', { 'dev-1': false });
 

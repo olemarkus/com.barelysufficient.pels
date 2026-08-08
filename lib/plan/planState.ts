@@ -85,7 +85,7 @@ export type OvershootTrackedPlanDevice = Pick<
   | 'controllable'
   | 'plannedState'
   | 'currentState'
-  | 'measuredPowerKw'
+  | 'currentDrawKw'
   | 'expectedPowerKw'
   | 'planningPowerKw'
   | 'binaryCommandPending'

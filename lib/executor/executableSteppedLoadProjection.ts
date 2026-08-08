@@ -344,12 +344,12 @@ const resolveMeasuredCurrentStepForShed = (
   dev: PlanDevice,
 ): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
   if (dev.plannedState !== 'shed' || dev.shedAction !== 'set_step') return undefined;
-  if (typeof dev.measuredPowerKw !== 'number' || !Number.isFinite(dev.measuredPowerKw) || dev.measuredPowerKw <= 0) {
-    return undefined;
-  }
+  // The producer's number is finite by construction; only "is it drawing?" is
+  // still a question worth asking.
+  if (dev.currentDrawKw <= 0) return undefined;
   return {
     stepId: 'unknown',
-    planningPowerW: Math.round(dev.measuredPowerKw * 1000),
+    planningPowerW: Math.round(dev.currentDrawKw * 1000),
   };
 };
 

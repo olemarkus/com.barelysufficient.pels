@@ -188,7 +188,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     selectedStepId: 'low',
     currentTemperature: 50,
     lastFreshDataMs: nowMs,
-    measuredPowerKw: STEP_LOW_KW,
+    currentDrawKw: STEP_LOW_KW,
     expectedPowerKw: STEP_LOW_KW,
     planningPowerKw: STEP_LOW_KW,
     hasRecentObservedDraw: true,
@@ -196,7 +196,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
   })),
 ) as PlanInputDevice;
 
-const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({
+const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
   commandableNow: true,

@@ -23,6 +23,9 @@ const buildVentilationApiDevice = (overrides?: Partial<{
     ],
     capabilitiesObj: {
         onoff: { id: 'onoff', value: overrides?.onoff ?? true },
+        ...(overrides?.capabilities?.includes('measure_power')
+            ? { measure_power: { id: 'measure_power', value: 0 } }
+            : {}),
     },
     settings: {},
     energyObj: overrides?.energyObj,
@@ -89,6 +92,10 @@ describe('Unsupported device handling', () => {
 
         vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
             'vent-1': buildVentilationApiDevice({
+                // A managed device has to report an actual draw. The declared
+                // energy approximation supplies the ESTIMATE below; it no longer
+                // makes the device manageable on its own.
+                capabilities: ['onoff', 'measure_power'],
                 energyObj: {
                     approximation: {
                         usageOn: 110,
@@ -114,5 +121,49 @@ describe('Unsupported device handling', () => {
         expect(managed['vent-1']).toBe(true);
         expect(controllable['vent-1']).toBe(true);
         expect(priceSettings['vent-1']?.enabled).toBe(true);
+    });
+    it('never demotes persisted managed/controllable settings when a reading goes missing', async () => {
+        // A device whose meter is momentarily silent must NOT reach
+        // `disableUnsupportedDevices`' persisted `managed: false` / `controllable: false`
+        // write: a transient Homey read failure would otherwise permanently un-manage
+        // the device and the owner would have to re-enable it by hand
+        // (AGENTS.md: "transient external failures get an abandon-grace window, never a
+        // destructive reset of persisted state").
+        //
+        // It does not, because `powerCapable` is STRUCTURAL — it asks whether PELS
+        // can support the device at all, not whether it reported a number this
+        // cycle. The live question is asked separately, when the plan input is
+        // built. This test pins the separation: wire the live gate into
+        // `powerCapable` and a home battery is permanently unmanaged on its first
+        // discharge (negative watts read as "no reading").
+        setMockDrivers({});
+        mockHomeyInstance.settings.set('managed_devices', { 'vent-1': true });
+        mockHomeyInstance.settings.set('controllable_devices', { 'vent-1': true });
+
+        const app = createApp();
+        await app.onInit();
+
+        // `measure_power` is advertised but carries no value this cycle.
+        vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+            'vent-1': {
+                ...buildVentilationApiDevice({ capabilities: ['onoff', 'measure_power'] }),
+                capabilitiesObj: {
+                    onoff: { id: 'onoff', value: true },
+                    // Advertised, but no value carried this cycle.
+                    measure_power: { id: 'measure_power' },
+                },
+            },
+        });
+
+        await (app as any).refreshTargetDevicesSnapshot();
+
+        // Still supported, still in the snapshot, still configurable.
+        expect(getLatestTargetSnapshotForTests().find((device) => device.id === 'vent-1')?.powerCapable)
+            .toBe(true);
+
+        const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
+        const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
+        expect(managed['vent-1']).toBe(true);
+        expect(controllable['vent-1']).toBe(true);
     });
 });

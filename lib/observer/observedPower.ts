@@ -12,6 +12,7 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
+import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 // Re-export the canonical type so existing observer importers keep working.
 export type { RestorePowerSource } from '../../packages/contracts/src/types';
@@ -19,7 +20,13 @@ export type { RestorePowerSource } from '../../packages/contracts/src/types';
 type KnownPowerSource = Exclude<RestorePowerSource, 'fallback' | 'stepped'>;
 
 export type ObservedPowerInput = {
-  measuredPowerKw?: number;
+  /**
+   * The producer-resolved current draw. REQUIRED: the raw `measuredPowerKw` no
+   * longer travels past a producer boundary, so the one number every caller
+   * here has in hand is the resolved one. A producer-side caller that starts
+   * from a snapshot resolves it with `getCurrentDrawKw` first.
+   */
+  currentDrawKw: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
   powerKw?: number;
@@ -28,21 +35,29 @@ export type ObservedPowerInput = {
   steppedLoadProfile?: SteppedLoadProfile;
 };
 
-export type ObservedStateInput = {
-  // The producer-resolved on/off truth (binary axis AND stepped-off fold). Plan
-  // callers pass plan devices' `currentOn`; the residual producer resolves it
-  // from the snapshot. The raw `binaryControl` is no longer read here.
-  currentOn?: boolean;
+/**
+ * The PRODUCER's view of a device, for `getCurrentDrawKw` only. Snapshot-shaped:
+ * it still has the raw `measuredPowerKw`, because resolving that away is exactly
+ * this function's job. Nothing downstream of the producer sees this type.
+ */
+export type CurrentDrawInput = {
+  measuredPowerKw?: number;
 };
 
 export type ActivelyDrawingInput = {
   available?: boolean;
   currentOn?: boolean;
-  measuredPowerKw?: number;
+  currentDrawKw: number;
 };
 
-export const EV_MIN_START_FALLBACK_KW = 1.38;
-export const DEFAULT_FALLBACK_KW = 1;
+// Restore-axis fallbacks ONLY: what to reserve for a device that is about to be
+// switched on and has no positive number anywhere (measured, expected, planning,
+// configured). They are no longer reachable from the current-draw axis —
+// `getCurrentDrawKw` used to end in this same ladder, and that is exactly how an
+// unmeasured device came to be credited an invented draw. Module-private so the
+// only way back to them is through `getRestoreDrawKw`.
+const EV_MIN_START_FALLBACK_KW = 1.38;
+const DEFAULT_FALLBACK_KW = 1;
 export const MIN_ACTIVE_MEASURED_POWER_KW = 0.05;
 
 /**
@@ -55,7 +70,7 @@ export function getHighestKnownPowerKw(
   device: ObservedPowerInput,
 ): { kw: number; source: KnownPowerSource } | null {
   const candidates: Array<{ source: KnownPowerSource; value?: number }> = [
-    { source: 'measured', value: device.measuredPowerKw },
+    { source: 'measured', value: device.currentDrawKw },
     { source: 'expected', value: device.expectedPowerKw },
     { source: 'planning', value: device.planningPowerKw },
     { source: 'configured', value: device.powerKw },
@@ -70,43 +85,52 @@ export function getHighestKnownPowerKw(
 }
 
 /**
- * Pure measurement — the value of `measure_power` if it is a finite
- * non-negative number, else null. Lower-level building block; most callers
- * want `getCurrentDrawKw` for "best estimate right now" or `getRestoreDrawKw`
- * for "what this device will draw when active".
- */
-export function getMeasuredDrawKw(device: ObservedPowerInput): number | null {
-  if (isFiniteNumber(device.measuredPowerKw) && device.measuredPowerKw >= 0) {
-    return device.measuredPowerKw;
-  }
-  return null;
-}
-
-/**
- * Best estimate of what the device is drawing right now. Plan-state-blind:
- * Observer looks at measurement and observed binary state only.
+ * What this device is drawing right now, in kW: the meter's answer, and nothing
+ * else.
  *
- *  - measured value if present (including 0).
- *  - 0 when the producer-resolved on/off truth is confirmed-off
- *    (`currentOn === false`) — shedding gives no immediate relief from an
- *    off device. The producer-resolved `currentOn` is trusted directly: it is
- *    the latched on/off value (Homey reports capabilities on change, so a stale
- *    `currentOn: false` is a trusted-off), and the plan/executor has no right to
- *    distrust the observer's resolution. There is no staleness gate here.
- *  - otherwise the device's preferred configured demand (expected, then
- *    planning, then configured), respecting an explicit zero as authoritative,
- *    with EV / default fallback when nothing is configured.
+ * PRODUCER-ONLY. Call it at a producer boundary (`toPlanDevice`,
+ * `withHeadroomCurrentOn`, `buildResidualKwForPlanDevice`) to resolve
+ * `currentDrawKw` once. Plan and executor code reads that resolved field and
+ * never comes back here.
  *
- * Used for shed/swap candidate `effectivePower`. Callers reject the device
- * when this returns 0.
+ * `DeviceMeasuredPowerResolver.selectSource` has already collapsed the three real
+ * sources into one number: `measure_power`, a `meter_power` delta, and the Homey
+ * Energy live reading. A reported `0` is an ANSWER — the device is drawing
+ * nothing — and it stops here. Crediting a nameplate over a real zero is the
+ * defect this whole change exists to remove.
+ *
+ * There is deliberately NO declared-load rung, and no fallback constant.
+ *
+ * A declared load looked like it deserved one: an Elko thermostat configured with
+ * `settings.load: 900` plainly knows something about itself. But that population
+ * is already metered — across a 124-device fleet, every device carrying
+ * `settings.load` also exposes plain `measure_power` and `meter_power`, and zero
+ * devices qualify for management on the declared load alone. So the rung would
+ * have described no one, while costing the contract its most useful property:
+ * a declared load is a CONSTANT that does not fall to zero when the device is
+ * switched off, so reading it here would mean `currentDrawKw > 0` no longer
+ * implied "drawing". A satisfied thermostat reports its own honest `0 W`
+ * instead — verified against a real device (`no.elko:smart_plus_thermostat`,
+ * `measure_power: 0` while at target, `settings.load: 900`).
+ *
+ * `EV_MIN_START_FALLBACK_KW` (1.38) and `DEFAULT_FALLBACK_KW` (1.0) are gone for
+ * the same reason, one step further out: guesses about a device nobody described.
+ *
+ * It consults NO plan state. There is no `currentOn` branch, and with no declared
+ * load to qualify it none is needed: the meter already reports 0 when the device
+ * is off.
  */
-export function getCurrentDrawKw(
-  device: ObservedPowerInput & ObservedStateInput,
-): number {
-  const measured = getMeasuredDrawKw(device);
-  if (measured !== null) return measured;
-  if (device.currentOn === false) return 0;
-  return resolveConfiguredOrFallbackKw(device);
+export function getCurrentDrawKw(device: CurrentDrawInput): number {
+  // The same `normalizeMeasuredPowerKw` every snapshot write seam applies — one
+  // rule, not a fourth hand-rolled guard. It is the backstop rather than the only
+  // line of defence: a presence check here would pass `null` and `NaN` (the
+  // snapshot guard next door, `hasObservedMeasuredPower`, uses `!= null`, so its
+  // author considered `null` reachable), and a bare finiteness check would pass a
+  // discharging battery's negative watts to consumers that cannot question them.
+  //
+  // A rejected reading is absence, and absence resolves to 0 here for the same
+  // reason a device with no meter does — nothing is known to be drawn.
+  return normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0;
 }
 
 /**
@@ -142,25 +166,7 @@ export function getRestoreDrawKw(
 export function isActivelyDrawing(observation: ActivelyDrawingInput): boolean {
   if (observation.available === false) return false;
   if (observation.currentOn === true) return true;
-  return isFiniteNumber(observation.measuredPowerKw)
-    && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW;
-}
-
-function resolveConfiguredOrFallbackKw(device: ObservedPowerInput): number {
-  const candidates: Array<number | undefined> = [
-    device.expectedPowerKw,
-    device.planningPowerKw,
-    device.powerKw,
-  ];
-  for (const value of candidates) {
-    if (isFiniteNumber(value) && value >= 0) {
-      return value;
-    }
-  }
-  if (device.controlCapabilityId === 'evcharger_charging') {
-    return EV_MIN_START_FALLBACK_KW;
-  }
-  return DEFAULT_FALLBACK_KW;
+  return observation.currentDrawKw > MIN_ACTIVE_MEASURED_POWER_KW;
 }
 
 function resolveFinitePositiveKw(value: number | undefined): number | null {

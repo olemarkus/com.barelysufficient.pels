@@ -16,7 +16,6 @@ import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
 } from '../planSteppedRestorePending';
-import { resolveObservedDrawKwWithNameplate } from './observedDraw';
 import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 
 // Re-exported for plan-layer consumers (planReasons, restore/index, tests)
@@ -133,7 +132,7 @@ function resolvePendingRestoreGapKwForDevice(
   // absent-field default.
   if (isBinaryPlanDevice(dev) && dev.currentOn === false) return 0;
   const expectedKw = estimateRestorePower(dev);
-  const actualKw = resolveObservedDrawKwWithNameplate(dev);
+  const actualKw = dev.currentDrawKw;
   if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) return 0;
   return expectedKw - actualKw;
 }

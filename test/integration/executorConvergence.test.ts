@@ -629,7 +629,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedTarget: 20,
         powerKw: 1,
         expectedPowerKw: 1,
-        measuredPowerKw: 1,
+        currentDrawKw: 1,
       })]);
       // Same binary state and same target; only the power readings moved. Power is
       // not a control axis, so there is nothing for the executor to converge.
@@ -641,7 +641,7 @@ describe('executorConvergence stepped device drift', () => {
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         powerKw: 2,
         expectedPowerKw: 2,
-        measuredPowerKw: 2,
+        currentDrawKw: 2,
       })];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);

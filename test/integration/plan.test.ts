@@ -1391,7 +1391,8 @@ describe('Device plan snapshot', () => {
     await minTempDev.setCapabilityValue('onoff', true);
     await minTempDev.setCapabilityValue('target_temperature', 16); // already at configured shed minimum
 
-    const highPriDev = new MockDevice('dev-high', 'High Pri', ['target_temperature', 'onoff']);
+    const highPriDev = new MockDevice('dev-high', 'High Pri', ['target_temperature', 'onoff', 'measure_power']);
+    await highPriDev.setCapabilityValue('measure_power', 0);
     await highPriDev.setCapabilityValue('onoff', false);
     await highPriDev.setCapabilityValue('target_temperature', 21);
 
@@ -1422,8 +1423,10 @@ describe('Device plan snapshot', () => {
   });
 
   it('ignores non-controllable devices when planning shedding', async () => {
-    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature']);
-    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature']);
+    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature', 'measure_power']);
+    await controllable.setCapabilityValue('measure_power', 2500);
+    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature', 'measure_power']);
+    await nonCtl.setCapabilityValue('measure_power', 2500);
     setMockDrivers({
       driverA: new MockDriver('driverA', [controllable, nonCtl]),
     });
@@ -1767,6 +1770,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
+        measuredPowerKw: 1,
         powerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
@@ -1777,6 +1781,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-2',
         name: 'Heater B',
         targets: [],
+        measuredPowerKw: 1,
         powerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
@@ -3237,6 +3242,7 @@ describe('Dry run mode', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
+        measuredPowerKw: 2,
         powerKw: 2,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
@@ -3357,8 +3363,9 @@ describe('Dry run mode', () => {
   });
 
   it('does not actuate price optimization in dry run mode', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('measure_power', 3000);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3407,8 +3414,9 @@ describe('Dry run mode', () => {
   });
 
   it('price optimization respects dry run mode', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('measure_power', 3000);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3567,8 +3575,9 @@ describe('Dry run mode', () => {
   });
 
   it('price optimization is overridden by temperature-based shedding', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('measure_power', 3000);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3612,6 +3621,7 @@ describe('Dry run mode', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
+        measuredPowerKw: 2,
         powerKw: 2,
         binaryControl: { on: true },
         controllable: true,
@@ -3844,6 +3854,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-1' ? 15 : 20, unit: '°C' }],
+        measuredPowerKw: 1,
         powerKw: 1,
         binaryControl: { on: true },
         controllable: true,
@@ -3853,6 +3864,7 @@ describe('Dry run mode', () => {
         name: 'Heater B',
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-2' ? 15 : 20, unit: '°C' }],
+        measuredPowerKw: 1,
         powerKw: 1,
         binaryControl: { on: true },
         controllable: true,
@@ -4314,6 +4326,7 @@ describe('Dry run mode', () => {
         capabilities: ['onoff'],
         binaryControl: { on: false }, // currently shed/off
         controllable: true,
+        measuredPowerKw: 0,
         powerKw: 0.05,
         expectedPowerKw: 0.05,
         lastFreshDataMs: Date.now(),
@@ -4325,6 +4338,7 @@ describe('Dry run mode', () => {
         capabilities: ['target_temperature', 'onoff'],
         binaryControl: { on: true },
         controllable: true,
+        measuredPowerKw: 0.6,
         powerKw: 0.6,
         expectedPowerKw: 0.6,
         lastFreshDataMs: Date.now(),
@@ -4389,6 +4403,7 @@ describe('Dry run mode', () => {
         capabilities: ['onoff'],
         binaryControl: { on: false },
         controllable: true,
+        measuredPowerKw: 0,
         powerKw: 0.05,
         expectedPowerKw: 0.05,
         lastFreshDataMs: Date.now(),
@@ -4400,6 +4415,7 @@ describe('Dry run mode', () => {
         capabilities: ['target_temperature'],
         binaryControl: { on: true },
         controllable: true,
+        measuredPowerKw: 0.6,
         powerKw: 0.6,
         expectedPowerKw: 0.6,
         lastFreshDataMs: Date.now(),

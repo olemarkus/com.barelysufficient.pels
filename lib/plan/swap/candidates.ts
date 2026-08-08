@@ -1,5 +1,4 @@
 import type { DevicePlanDevice } from '../planTypes';
-import { getCurrentDrawKw } from '../../observer/observedPower';
 import {
   RESTORE_ADMISSION_FLOOR_KW,
   SWAP_RESTORE_RESERVE_KW,
@@ -81,7 +80,7 @@ export function buildSwapCandidates(params: {
   for (const onDev of onDevices) {
     if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
 
-    const pwr = getCurrentDrawKw(onDev);
+    const pwr = onDev.currentDrawKw;
     if (pwr <= 0) continue;
 
     toShed.push(onDev);

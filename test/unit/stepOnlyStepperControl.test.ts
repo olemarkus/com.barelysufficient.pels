@@ -93,21 +93,21 @@ describe('isPlanDeviceObservedOff / isPlanDeviceObservedOn — kind-aware on/off
 
 describe('activation backoff observation — step-only steppers', () => {
   it('detects a step-only stepper at its off step as explicitly inactive', () => {
-    expect(isActivationObservationExplicitlyInactive({
+    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'off',
     })).toBe(true);
     // at an active step it is NOT inactive
-    expect(isActivationObservationExplicitlyInactive({
+    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'low',
     })).toBe(false);
   });
 
   it('detects a step-only stepper at an active step as active-now without needing a measurement', () => {
-    expect(isActivationObservationActiveNow({
+    expect(isActivationObservationActiveNow({ currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'low',
     })).toBe(true);
     // at the off step, with no measured draw, it is not active
-    expect(isActivationObservationActiveNow({
+    expect(isActivationObservationActiveNow({ currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'off',
     })).toBe(false);
   });
@@ -115,16 +115,16 @@ describe('activation backoff observation — step-only steppers', () => {
   it('falls back to the currentState label for a label-only observation (restore caller)', () => {
     // The restore caller builds the observation with `currentState` but no step
     // fields, so a step-only stepper must still be classified from the label.
-    expect(isActivationObservationExplicitlyInactive({ currentOn: undefined, currentState: 'off' })).toBe(true);
-    expect(isActivationObservationActiveNow({ currentOn: undefined, currentState: 'on' })).toBe(true);
-    expect(isActivationObservationExplicitlyInactive({ currentOn: undefined, currentState: 'on' })).toBe(false);
+    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: undefined, currentState: 'off' })).toBe(true);
+    expect(isActivationObservationActiveNow({ currentDrawKw: 0, currentOn: undefined, currentState: 'on' })).toBe(true);
+    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: undefined, currentState: 'on' })).toBe(false);
   });
 
   it('leaves binary observation reasoning unchanged', () => {
-    expect(isActivationObservationExplicitlyInactive({ currentOn: false })).toBe(true);
-    expect(isActivationObservationExplicitlyInactive({ currentOn: true })).toBe(false);
-    expect(isActivationObservationActiveNow({ currentOn: true })).toBe(true);
-    expect(isActivationObservationActiveNow({ currentOn: false })).toBe(false);
+    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: false })).toBe(true);
+    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: true })).toBe(false);
+    expect(isActivationObservationActiveNow({ currentDrawKw: 0, currentOn: true })).toBe(true);
+    expect(isActivationObservationActiveNow({ currentDrawKw: 0, currentOn: false })).toBe(false);
   });
 });
 
@@ -181,23 +181,27 @@ describe('raw-snapshot currentOn stamping (powerSample / headroom seams)', () =>
 describe('sumControlledUsageKw — step-only steppers', () => {
   it('counts a shed step-only stepper parked at its off step as 0, not unknown', () => {
     const total = sumControlledUsageKw([{
+      currentDrawKw: 0,
       controllable: true,
       plannedState: 'shed',
       steppedLoadProfile: profile,
       selectedStepId: 'off',
-      // no currentOn (step-only), no measuredPowerKw
     }]);
     expect(total).toBe(0);
   });
 
-  it('attributes a keep step-only stepper at an active step via the on-usage path', () => {
+  it('attributes a keep step-only stepper by its meter, not by its step nameplate', () => {
+    // The step axis says which rung it is on; it does not say what it is pulling.
+    // Attribution reads the producer's draw, so a configured 1.25 kW step whose
+    // meter reads 0.9 kW books 0.9 kW.
     const total = sumControlledUsageKw([{
+      currentDrawKw: 0.9,
       controllable: true,
       plannedState: 'keep',
       steppedLoadProfile: profile,
       selectedStepId: 'low',
       expectedPowerKw: 1.25,
     }]);
-    expect(total).toBe(1.25);
+    expect(total).toBe(0.9);
   });
 });

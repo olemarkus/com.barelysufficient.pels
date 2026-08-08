@@ -110,7 +110,7 @@ export function buildOverviewEventForDevice(
     // the opposite of what this field is for. `null` when the card renders no
     // reason line.
     cardReasonText: resolveCardReasonTextForLog(device),
-    measuredPowerKw: device.measuredPowerKw ?? null,
+    currentDrawKw: device.currentDrawKw,
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
     targetStepId: resolveOverviewTargetStepId(device),

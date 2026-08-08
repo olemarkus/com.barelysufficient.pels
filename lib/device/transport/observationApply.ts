@@ -15,6 +15,7 @@ import {
     type DeviceTransportObservationState,
 } from './observationState';
 import { resolveEvTargetPowerExactStep } from '../targetPowerReachability';
+import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 
 export function applyCapabilityObservation(
     nextSnapshot: TransportDeviceSnapshot,
@@ -133,14 +134,10 @@ function applyMeasuredPowerObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    if (
-        typeof observation.value !== 'number'
-        || !Number.isFinite(observation.value)
-        || Object.is(snapshot.measuredPowerKw, observation.value)
-    ) {
-        return false;
-    }
-    snapshot.measuredPowerKw = observation.value;
+    // Same single rule as every other write seam; a rejected reading is absent.
+    const kw = normalizeMeasuredPowerKw(observation.value);
+    if (kw === null || Object.is(snapshot.measuredPowerKw, kw)) return false;
+    snapshot.measuredPowerKw = kw;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;

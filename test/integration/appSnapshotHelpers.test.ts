@@ -218,6 +218,9 @@ describe('appSnapshotHelpers', () => {
         ...snapshot[0],
         managed: true,
         controllable: true,
+        // Stamped by `withHeadroomCurrentOn`, the producer boundary for devices
+        // that reach the usage math straight off the transport.
+        currentDrawKw: 1.2,
       }],
       cleanupMissingDevices: true,
       reconciliationContext: 'snapshot_refresh',
@@ -343,6 +346,9 @@ describe('appSnapshotHelpers', () => {
         ...snapshot[0],
         managed: false,
         controllable: false,
+        // The producer answers for an unmetered device too. This fixture declares
+        // no load either, so there is genuinely nothing to draw against.
+        currentDrawKw: 0,
       }],
       cleanupMissingDevices: true,
       reconciliationContext: 'snapshot_refresh',

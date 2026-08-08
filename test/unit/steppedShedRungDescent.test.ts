@@ -28,7 +28,7 @@ const heater = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => st
   steppedLoadProfile: waterHeaterProfile,
   stepPowerCalibration: waterHeaterCalibration,
   selectedStepId: 'max',
-  measuredPowerKw: 1.193,
+  currentDrawKw: 1.193,
   ...overrides,
 });
 
@@ -88,7 +88,7 @@ describe('stepped shed rung descent', () => {
     // the deeper rung would decrement the deficit by a step-down the executor
     // never commands, so selection would treat the breach as covered and skip the
     // device that could actually have helped — strictly worse than no candidate.
-    const device = heater({ measuredPowerKw: 1.5 });
+    const device = heater({ currentDrawKw: 1.5 });
     const result = resolveSteppedShedRung({
       device,
       profile: waterHeaterProfile,
@@ -116,7 +116,7 @@ describe('stepped shed rung descent', () => {
     // No-regression guard: once `measure_power` reports the real 2.865 kW,
     // `max -> medium` releases 1.194 kW, so the descent must stop there rather
     // than continuing to `off`. This reproduces the reliefKw logged at 20:06:33.
-    const device = heater({ measuredPowerKw: 2.865 });
+    const device = heater({ currentDrawKw: 2.865 });
     const result = resolveSteppedShedRung({
       device,
       profile: waterHeaterProfile,
@@ -131,7 +131,7 @@ describe('stepped shed rung descent', () => {
   });
 
   it('reports no reachable step when the device is already at its lowest active step', () => {
-    const device = heater({ selectedStepId: 'low', measuredPowerKw: 1.193 });
+    const device = heater({ selectedStepId: 'low', currentDrawKw: 1.193 });
     const result = resolveSteppedShedRung({
       device,
       profile: waterHeaterProfile,
@@ -145,7 +145,7 @@ describe('stepped shed rung descent', () => {
   it('turns a lowest-active-step device off when its shed behaviour allows it', () => {
     // The mirror of the case above: same position, but `turn_off` puts the off
     // step on the ladder, and the meter says 1.193 kW is there to release.
-    const device = heater({ selectedStepId: 'low', measuredPowerKw: 1.193 });
+    const device = heater({ selectedStepId: 'low', currentDrawKw: 1.193 });
     const result = resolveSteppedShedRung({
       device,
       profile: waterHeaterProfile,
@@ -166,7 +166,7 @@ describe('stepped shed rung descent', () => {
     const device = heater({
       desiredStepId: 'low',
       stepCommandPending: true,
-      measuredPowerKw: 1.193,
+      currentDrawKw: 1.193,
     });
     const result = resolveSteppedShedRung({
       device,

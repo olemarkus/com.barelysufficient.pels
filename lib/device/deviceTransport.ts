@@ -75,7 +75,6 @@ import {
   createEstimateDecisionLogState,
   createInertBinarySettleOps,
   createPeakPowerLogState,
-  MIN_SIGNIFICANT_POWER_W,
   type BinarySettleDepsForTransport,
   type DeviceTransportBinarySettleOps,
   type DeviceTransportOptions,
@@ -265,7 +264,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.measuredPowerResolver = new DeviceMeasuredPowerResolver({
             logger: this.logger,
             lastPositiveMeasuredPowerKw: powerState?.lastPositiveMeasuredPowerKw ?? {},
-            minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
         });
         this.ctx = this.createContext();
     }

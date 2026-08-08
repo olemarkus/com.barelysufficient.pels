@@ -89,6 +89,9 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
+          // `estimatePower` sets both for a declared load; only its
+          // knows-nothing `default` arm leaves `expectedPowerKw` unset.
+          measuredPowerKw: 2, expectedPowerKw: 2,
           powerKw: 2,
         }),
       ],

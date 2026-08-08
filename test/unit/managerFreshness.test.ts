@@ -93,6 +93,20 @@ describe('applyFreshnessOnlyCapabilityUpdate — numeric boundary (present impli
     expect(snapshot.measuredPowerKw).toBe(2);
   });
 
+  it('drops a NEGATIVE measure_power value — a discharging battery is not a draw', () => {
+    // A home battery reads negative `measure_power` while discharging; that is its
+    // normal state, not junk. `resolveDirectWatts` already drops it at parse, so
+    // this seam must agree — otherwise the same device's snapshot reports absent
+    // or negative depending on which seam wrote last, and the contract's
+    // "present implies finite, NON-NEGATIVE kW" is false.
+    const snapshot = numericSnapshot({ measuredPowerKw: 2 });
+    const result = applyFreshnessOnlyCapabilityUpdate({
+      snapshot, capabilityId: 'measure_power', value: -1500,
+    });
+    expect(result.changed).toBe(false);
+    expect(snapshot.measuredPowerKw).toBe(2);
+  });
+
   it('writes a finite measure_temperature value', () => {
     const snapshot = numericSnapshot({ currentTemperature: 18 });
     const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_temperature', value: 21 });

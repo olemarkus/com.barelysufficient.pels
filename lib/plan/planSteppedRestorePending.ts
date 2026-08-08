@@ -1,5 +1,4 @@
 import type { DevicePlanDevice } from './planTypes';
-import { resolveObservedDrawKw } from './restore/observedDraw';
 import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
@@ -229,7 +228,7 @@ export function resolveSteppedRestoreObservedGapKw(
   dev: DevicePlanDevice,
   reservation: Pick<SteppedRestoreAttemptState, 'baselinePowerKw' | 'deltaKw'>,
 ): number {
-  const actualKw = resolveObservedDrawKw(dev);
+  const actualKw = dev.currentDrawKw;
   const observedIncrementKw = Math.max(0, actualKw - reservation.baselinePowerKw);
   return Math.max(0, reservation.deltaKw - observedIncrementKw);
 }

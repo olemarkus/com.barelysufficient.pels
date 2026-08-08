@@ -117,19 +117,19 @@ const isResumingDevice = (device: PlanDeviceSnapshot): boolean => (
 // `resolvePlanStateKind` marks a device `held` the instant the plan says shed,
 // so an `active`-only check would miss a managed load that is still drawing and
 // wrongly claim the cascade is done mid-shed. For a pending shed we judge
-// "settled" by measured draw when a measurement exists (a temperature device
-// stays `currentState: 'on'` after PELS only lowers its setpoint, so on-like
-// state alone would never let the cascade read exhausted for heaters); when the
-// snapshot carries NO per-device power, we fall back to on-like current state so
-// an unmeasured-but-still-on managed load also keeps the cascade open. When none
-// remain while over the hard cap, the managed shed cascade is genuinely
-// exhausted — the decision sentence then stops promising further mitigation.
-// Devices with Power-limit control turned off (`controllable === false`) are
-// excluded by construction.
+// "settled" by draw (a temperature device stays `currentState: 'on'` after PELS
+// only lowers its setpoint, so on-like state alone would never let the cascade
+// read exhausted for heaters). When none remain while over the hard cap, the
+// managed shed cascade is genuinely exhausted — the decision sentence then stops
+// promising further mitigation. Devices with Power-limit control turned off
+// (`controllable === false`) are excluded by construction.
+//
+// There is no longer an "unmeasured" fallback to on-like state: the plan read
+// model always carries a resolved draw, and every managed device is metered
+// (verified across a 124-device fleet), so a still-running managed load keeps the
+// cascade open on its own reading rather than on a separate state check.
 const isPendingShedStillRunning = (device: PlanDeviceSnapshot): boolean => (
-  device.measuredPowerKw === undefined || device.measuredPowerKw === null
-    ? device.currentState === 'on'
-    : device.measuredPowerKw > 0
+  (device.measuredPowerKw ?? 0) > 0
 );
 const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean => (
   device.controllable !== false && (

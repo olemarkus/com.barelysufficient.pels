@@ -9,14 +9,14 @@ import {
   resolveRestorePowerSource,
 } from '../../lib/plan/restore/accounting';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
-import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
+import { getRestoreDrawKw } from '../../lib/observer/observedPower';
 import { PENDING_RESTORE_WINDOW_MS } from '../../lib/plan/planConstants';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
 // Fixture shape: the shared output builders resolve the producer-owned `currentOn`
-// (the on/off truth `getCurrentDrawKw` / `getRestoreDrawKw` now read) from the
+// (the on/off truth `getRestoreDrawKw` now reads) from the
 // fixture's `binaryControl`, mirroring `toPlanDevice`.
 type BinaryFixture = DevicePlanDevice & { binaryControl?: { on: boolean } };
 
@@ -33,8 +33,8 @@ describe('buildSwapCandidates', () => {
     const result = buildSwapCandidates({
       dev: buildPlanDevice({ priority: 50 }),
       onDevices: [
-        buildPlanDevice({ id: 'higher', name: 'Higher', priority: 40, powerKw: 2 }),
-        buildPlanDevice({ id: 'equal', name: 'Equal', priority: 50, powerKw: 2 }),
+        buildPlanDevice({ id: 'higher', name: 'Higher', priority: 40, measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+        buildPlanDevice({ id: 'equal', name: 'Equal', priority: 50, measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
       ],
       swappedOutFor: new Map(),
       availableHeadroom: 1,
@@ -53,7 +53,7 @@ describe('buildSwapCandidates', () => {
   // exempt TARGET admits on the capacity axis, where freed draw is real.
   it('never counts a budget-exempt source toward a non-exempt target, but does for an exempt target', () => {
     const onDevices = [
-      buildPlanDevice({ id: 'exempt-src', name: 'Exempt Heater', priority: 120, budgetExempt: true, powerKw: 2 }),
+      buildPlanDevice({ id: 'exempt-src', name: 'Exempt Heater', priority: 120, budgetExempt: true, measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
     ];
     const forNonExempt = buildSwapCandidates({
       dev: buildPlanDevice({ id: 'target', priority: 50 }),
@@ -81,8 +81,8 @@ describe('buildSwapCandidates', () => {
     const result = buildSwapCandidates({
       dev: buildPlanDevice({ priority: undefined }),
       onDevices: [
-        buildPlanDevice({ id: 'equal-default', name: 'EqualDefault', priority: undefined, powerKw: 2 }),
-        buildPlanDevice({ id: 'lower-priority', name: 'LowerPriority', priority: 120, powerKw: 2 }),
+        buildPlanDevice({ id: 'equal-default', name: 'EqualDefault', priority: undefined, measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+        buildPlanDevice({ id: 'lower-priority', name: 'LowerPriority', priority: 120, measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
       ],
       swappedOutFor: new Map(),
       availableHeadroom: 0.8,
@@ -98,11 +98,14 @@ describe('buildSwapCandidates', () => {
     const swappedOutFor = new Map<string, string>([['skip', 'target']]);
     const restoredThisCycle = new Set(['restored']);
     const onDevices = [
-      buildPlanDevice({ id: 'shed', name: 'Shed', priority: 100, plannedState: 'shed', powerKw: 2 }),
-      buildPlanDevice({ id: 'skip', name: 'Skip', priority: 90, plannedState: 'keep', powerKw: 2 }),
-      buildPlanDevice({ id: 'restored', name: 'Restored', priority: 80, plannedState: 'keep', powerKw: 2 }),
-      buildPlanDevice({ id: 'add1', name: 'Add1', priority: 70, plannedState: 'keep', powerKw: 2 }),
-      buildPlanDevice({ id: 'add2', name: 'Add2', priority: 60, plannedState: 'keep' }),
+      buildPlanDevice({ id: 'shed', name: 'Shed', priority: 100, plannedState: 'shed', measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+      buildPlanDevice({ id: 'skip', name: 'Skip', priority: 90, plannedState: 'keep', measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+      buildPlanDevice({ id: 'restored', name: 'Restored', priority: 80, plannedState: 'keep', measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+      buildPlanDevice({ id: 'add1', name: 'Add1', priority: 70, plannedState: 'keep', measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+      // Declares 1 kW. It used to contribute that via the observer's generic
+      // 1.0 kW fallback constant, which is deleted — a device nobody declared
+      // anything about now draws 0 and offers no swap relief.
+      buildPlanDevice({ id: 'add2', name: 'Add2', priority: 60, plannedState: 'keep', measuredPowerKw: 1, powerKw: 1, expectedPowerKw: 1 }),
     ];
 
     const result = buildSwapCandidates({
@@ -123,7 +126,7 @@ describe('buildSwapCandidates', () => {
   it('returns not ready when potential headroom is still insufficient', () => {
     const result = buildSwapCandidates({
       dev: buildPlanDevice({ priority: 50 }),
-      onDevices: [buildPlanDevice({ id: 'on', name: 'On', priority: 90, powerKw: 1 })],
+      onDevices: [buildPlanDevice({ id: 'on', name: 'On', priority: 90, measuredPowerKw: 1, powerKw: 1, expectedPowerKw: 1 })],
       swappedOutFor: new Map(),
       availableHeadroom: 0,
       needed: 5,
@@ -169,7 +172,9 @@ describe('buildSwapCandidates', () => {
           id: 'candidate',
           name: 'Candidate',
           priority: 90,
-          powerKw: 0.2,
+          // Drawing its full load: shedding it frees 1.2 kW, which is the relief
+          // the swap is priced on. (`powerKw` is the nameplate, not the draw.)
+          measuredPowerKw: 1.2, powerKw: 0.2,
           expectedPowerKw: 1.2,
         }),
       ],
@@ -217,7 +222,7 @@ describe('buildSwapCandidates', () => {
           id: 'zero',
           name: 'Zero',
           priority: 90,
-          expectedPowerKw: 0,
+          measuredPowerKw: 0, expectedPowerKw: 0,
           powerKw: 0,
         }),
       ],
@@ -287,9 +292,12 @@ describe('restore swap helpers', () => {
   it('estimates restore power from expected, measured, or fallback values', () => {
     expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 2, measuredPowerKw: 5, powerKw: 1 }))).toBe(5);
     expect(estimateRestorePower(buildPlanDevice({ measuredPowerKw: 3, powerKw: 1 }))).toBe(3);
-    expect(estimateRestorePower(buildPlanDevice({ powerKw: 2 }))).toBe(2);
-    expect(estimateRestorePower(buildPlanDevice())).toBe(1);
-    expect(estimateRestorePower(buildPlanDevice({ controlCapabilityId: 'evcharger_charging' }))).toBe(1.38);
+    expect(estimateRestorePower(buildPlanDevice({ currentDrawKw: 0, powerKw: 2 }))).toBe(2);
+    expect(estimateRestorePower(buildPlanDevice({ currentDrawKw: 0 }))).toBe(1);
+    expect(estimateRestorePower(buildPlanDevice({
+      currentDrawKw: 0,
+      controlCapabilityId: 'evcharger_charging',
+    }))).toBe(1.38);
   });
 
   it('uses lowest non-zero step for stepped devices at off-step', () => {
@@ -297,12 +305,12 @@ describe('restore swap helpers', () => {
     expect(estimateRestorePower(steppedPlanDevice({
       selectedStepId: 'off',
       planningPowerKw: 0,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     }))).toBe(1.25);
     // At active step with positive planningPowerKw — should use planningPowerKw directly
     expect(estimateRestorePower(steppedPlanDevice({
       selectedStepId: 'medium',
-      planningPowerKw: 2,
+      currentDrawKw: 2, planningPowerKw: 2,
     }))).toBe(2);
     // Device is off (currentState: 'off'), but selectedStepId is 'medium'.
     // planningPowerKw is 2.0 (retained from medium step).
@@ -311,7 +319,7 @@ describe('restore swap helpers', () => {
       currentState: 'off',
       selectedStepId: 'medium',
       planningPowerKw: 2,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     }))).toBe(1.25);
     // No planningPowerKw set, no measuredPower — should still use lowest non-zero step
     expect(estimateRestorePower(steppedPlanDevice({
@@ -342,9 +350,9 @@ describe('restore swap helpers', () => {
     // 0kW needs no capacity management. Treating it as 0 makes needed=0.2kW (buffer only),
     // admitting the restore regardless of actual draw, and reserving no pending headroom.
     // The fix: treat 0 the same as absent — fall through to measuredPowerKw or powerKw.
-    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 0, powerKw: 2 }))).toBe(2);
+    expect(estimateRestorePower(buildPlanDevice({ measuredPowerKw: 0, expectedPowerKw: 0, powerKw: 2 }))).toBe(2);
     expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 0, measuredPowerKw: 3, powerKw: 2 }))).toBe(3);
-    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 0 }))).toBe(1); // fallback
+    expect(estimateRestorePower(buildPlanDevice({ measuredPowerKw: 0, expectedPowerKw: 0 }))).toBe(1); // fallback
   });
 });
 
@@ -357,12 +365,12 @@ describe('resolveRestorePowerSource', () => {
     expect(resolveRestorePowerSource(steppedPlanDevice({
       selectedStepId: 'off',
       planningPowerKw: 0,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     }))).toBe('stepped');
   });
 
   it('returns planning when planningPowerKw > 0', () => {
-    expect(resolveRestorePowerSource(buildPlanDevice({ planningPowerKw: 2 }))).toBe('planning');
+    expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0, planningPowerKw: 2 }))).toBe('planning');
   });
 
   it('returns the source with the highest known restore estimate', () => {
@@ -374,12 +382,12 @@ describe('resolveRestorePowerSource', () => {
   });
 
   it('returns expected when expectedPowerKw > 0 and it is the strongest source', () => {
-    expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 1.5 }))).toBe('expected');
+    expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0, expectedPowerKw: 1.5 }))).toBe('expected');
   });
 
   it('skips expectedPowerKw=0 and falls through to next source', () => {
-    expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 0, powerKw: 2 }))).toBe('configured');
-    expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 0 }))).toBe('fallback');
+    expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0, expectedPowerKw: 0, powerKw: 2 }))).toBe('configured');
+    expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0, expectedPowerKw: 0 }))).toBe('fallback');
   });
 
   it('returns measured when only measuredPowerKw > 0 is available', () => {
@@ -387,19 +395,23 @@ describe('resolveRestorePowerSource', () => {
   });
 
   it('returns configured when powerKw is set and no other source', () => {
-    expect(resolveRestorePowerSource(buildPlanDevice({ powerKw: 1.5 }))).toBe('configured');
+    expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0, powerKw: 1.5 }))).toBe('configured');
   });
 
   it('ignores NaN power candidates and falls through to finite values', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({
+      currentDrawKw: 0,
       planningPowerKw: Number.NaN,
       expectedPowerKw: 1.5,
     }))).toBe('expected');
   });
 
   it('returns fallback when no power fields are set', () => {
-    expect(resolveRestorePowerSource(buildPlanDevice({}))).toBe('fallback');
-    expect(resolveRestorePowerSource(buildPlanDevice({ controlCapabilityId: 'evcharger_charging' }))).toBe('fallback');
+    expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0 }))).toBe('fallback');
+    expect(resolveRestorePowerSource(buildPlanDevice({
+      currentDrawKw: 0,
+      controlCapabilityId: 'evcharger_charging',
+    }))).toBe('fallback');
   });
 
   it('keeps stepped restore power aligned with the stepped restore helper', () => {
@@ -407,7 +419,7 @@ describe('resolveRestorePowerSource', () => {
       currentState: 'off',
       selectedStepId: 'off',
       planningPowerKw: 0,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
 
     expect(resolveRestorePowerSource(stepped)).toBe('stepped');
@@ -425,7 +437,7 @@ describe('observed power boundary — current draw vs restore draw', () => {
       measuredPowerKw: 3,
       expectedPowerKw: 1,
     });
-    expect(getCurrentDrawKw(device)).toBe(3);
+    expect(device.currentDrawKw).toBe(3);
     expect(estimateRestorePower(device)).toBe(3);
   });
 
@@ -438,7 +450,7 @@ describe('observed power boundary — current draw vs restore draw', () => {
       powerKw: 2.5,
     });
     // Shedding an already-off device gives no immediate relief.
-    expect(getCurrentDrawKw(offDevice)).toBe(0);
+    expect(offDevice.currentDrawKw).toBe(0);
     // Restore admission reserves the device's configured peak (TODO #43 — the
     // configured load stays the stable expected demand even when measured is 0).
     expect(getRestoreDrawKw(offDevice).kw).toBe(2.5);
@@ -488,7 +500,7 @@ describe('computePendingRestorePowerKw', () => {
       stepCommandPending: true,
       stepCommandStatus: 'pending',
       lastStepCommandIssuedAt: recentMs,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.deviceIds).toEqual(['therm']);
@@ -505,7 +517,7 @@ describe('computePendingRestorePowerKw', () => {
       lastDesiredStepId: 'low',
       stepCommandPending: false,
       stepCommandStatus: 'success',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       planningPowerKw: 0,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
@@ -523,7 +535,7 @@ describe('computePendingRestorePowerKw', () => {
       lastDesiredStepId: 'low',
       stepCommandPending: false,
       stepCommandStatus: 'success',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       planningPowerKw: 0,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now, recentMs + 1);
@@ -542,7 +554,7 @@ describe('computePendingRestorePowerKw', () => {
       stepCommandPending: false,
       stepCommandStatus: 'stale',
       nextStepCommandRetryAtMs: now + 30_000,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       planningPowerKw: 0,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
@@ -561,7 +573,7 @@ describe('computePendingRestorePowerKw', () => {
       stepCommandPending: true,
       stepCommandStatus: 'pending',
       lastStepCommandIssuedAt: recentMs,
-      measuredPowerKw: 1.25,
+      currentDrawKw: 1.25,
       planningPowerKw: 1.25,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
@@ -579,7 +591,7 @@ describe('computePendingRestorePowerKw', () => {
       lastDesiredStepId: 'medium',
       stepCommandPending: false,
       stepCommandStatus: 'success',
-      measuredPowerKw: 1.25,
+      currentDrawKw: 1.25,
       planningPowerKw: 2,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
@@ -597,7 +609,7 @@ describe('computePendingRestorePowerKw', () => {
       lastDesiredStepId: 'medium',
       stepCommandPending: false,
       stepCommandStatus: 'success',
-      measuredPowerKw: 1.25,
+      currentDrawKw: 1.25,
       planningPowerKw: 2,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, recentMs + 61_000);
@@ -615,7 +627,7 @@ describe('computePendingRestorePowerKw', () => {
       lastDesiredStepId: 'medium',
       stepCommandPending: false,
       stepCommandStatus: 'success',
-      measuredPowerKw: 1.25,
+      currentDrawKw: 1.25,
       planningPowerKw: 2,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now, recentMs + 1);
@@ -633,7 +645,8 @@ describe('computePendingRestorePowerKw', () => {
       lastDesiredStepId: 'medium',
       stepCommandPending: false,
       stepCommandStatus: 'success',
-      measuredPowerKw: undefined,
+      // The meter says zero — the honest form of "no settled stepped power".
+      currentDrawKw: 0,
       powerKw: 2,
       planningPowerKw: 2,
     });
@@ -653,7 +666,7 @@ describe('computePendingRestorePowerKw', () => {
       stepCommandStatus: 'stale',
       lastStepCommandIssuedAt: recentMs,
       nextStepCommandRetryAtMs: now + 30_000,
-      measuredPowerKw: 1.25,
+      currentDrawKw: 1.25,
       planningPowerKw: 1.25,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
@@ -669,10 +682,17 @@ describe('computePendingRestorePowerKw', () => {
     expect(result.deviceIds).toHaveLength(0);
   });
 
-  it('uses powerKw as observed draw fallback when measuredPowerKw is absent', () => {
-    // Installations without live power only populate powerKw. Treat it as actual draw so
-    // a device already drawing via powerKw is not double-reserved for the full expected load.
-    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 3, powerKw: 1 });
+  it('measures the pending-restore gap against the meter, never against the nameplate', () => {
+    // This used to fall back to `powerKw` when no measurement was present. The
+    // producer now always resolves a draw, so the gap is the expected draw minus
+    // what the meter actually reports.
+    const dev = binaryDevice({
+      id: 'therm',
+      binaryControl: { on: true },
+      expectedPowerKw: 3,
+      powerKw: 1,
+      currentDrawKw: 1,
+    });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBeCloseTo(2, 5); // gap: 3 - 1 (1 < 3*0.5 — not yet confirmed)
   });
@@ -694,7 +714,7 @@ describe('computePendingRestorePowerKw', () => {
 
   it('considers powerKw-only device confirmed when powerKw meets threshold', () => {
     // powerKw=1.2 meets the 50% threshold of expectedPowerKw=2 — device is confirmed, no reservation.
-    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, powerKw: 1.2 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, measuredPowerKw: 2, expectedPowerKw: 2, powerKw: 1.2 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);

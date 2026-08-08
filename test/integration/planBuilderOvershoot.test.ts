@@ -4,7 +4,7 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { resolveFixtureCurrentOn, steppedInputDevice } from '../utils/planTestUtils';
+import { fixtureCurrentDrawKw, resolveFixtureCurrentOn, steppedInputDevice } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -23,6 +23,7 @@ const buildDevice = (
   };
   return withBinaryDiscriminant({
     ...merged,
+    currentDrawKw: fixtureCurrentDrawKw(merged),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };
@@ -93,13 +94,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
       buildDevice({
         id: 'reducible',
         name: 'Reducible',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         priority: 1,
       }),
       buildDevice({
         id: 'second',
         name: 'Second',
-        measuredPowerKw: 0.9,
+        currentDrawKw: 0.9,
         priority: 2,
       }),
     ]);
@@ -164,7 +165,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'steady-device',
           name: 'Steady Device',
-          measuredPowerKw: 0.83,
+          currentDrawKw: 0.83,
         }),
       ]);
 
@@ -178,7 +179,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'steady-device',
           name: 'Steady Device',
-          measuredPowerKw: 0.84,
+          currentDrawKw: 0.84,
         }),
       ]);
 
@@ -194,83 +195,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
-  it('reports attribution_inputs_incomplete when a tracked device current power read drops to null', async () => {
-    vi.useFakeTimers();
-    try {
-      const state = createPlanEngineState();
-      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
-      vi.setSystemTime(now);
-      state.lastDeviceRestoreMs['flaky-device'] = now - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'flaky-device',
-        source: 'pels_restore',
-        nowTs: now - 1_000,
-      });
-
-      const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
-
-      const builder = new PlanBuilder({
-        setCapacityInShortfall: vi.fn(),
-        getCapacityGuard: () => capacityGuard,
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getPriceOptimizationSettings: () => ({}),
-        getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
-        getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
-        getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        structuredLog: structuredLog as any,
-        log: vi.fn(),
-        logDebug: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-      }, state);
-
-      // First build: device reads a real measured value and total sits under the
-      // soft limit, so a prior plan baseline (with a readable device) is recorded
-      // and no overshoot fires.
-      capacityGuard.reportTotalPower(0.5);
-      await builder.buildDevicePlanSnapshot([
-        buildDevice({
-          id: 'flaky-device',
-          name: 'Flaky Device',
-          measuredPowerKw: 0.5,
-        }),
-      ]);
-
-      // Second build: the whole-home total rises into overshoot, but the managed
-      // device's own power read is now unavailable (no measured/expected/planning
-      // value). It is excluded from the contributor diff, so its real rise lands in
-      // the unattributed delta — which must NOT be blamed on background load.
-      structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(0.8);
-      await builder.buildDevicePlanSnapshot([
-        buildDevice({
-          id: 'flaky-device',
-          name: 'Flaky Device',
-          binaryControl: { on: true },
-          // measuredPowerKw intentionally omitted — the read failed this cycle.
-        }),
-      ]);
-
-      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'overshoot_entered',
-        overshootTotalDeltaKw: 0.3,
-        overshootUnattributedDeltaKw: 0.3,
-        overshootAttributionReason: 'attribution_inputs_incomplete',
-        overshootTopControlledContributors: [],
-        overshootTopUncontrolledContributors: [],
-      }));
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
+  // Deleted: 'reports attribution_inputs_incomplete when a tracked device current
+  // power read drops to null'. Its precondition — a managed device present in the
+  // plan with no READABLE power — is no longer producible: the producer always
+  // resolves a number, from the meter or from the declared load, so a device
+  // cannot arrive unreadable. Disappearance is a different case, tracked in
+  // TODO.md.
   it('reports attribution_inputs_incomplete when a managed device has a readable current but missing previous baseline', async () => {
     vi.useFakeTimers();
     try {
@@ -309,7 +239,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'anchor',
           name: 'Anchor',
-          measuredPowerKw: 0.5,
+          currentDrawKw: 0.5,
         }),
       ]);
 
@@ -324,12 +254,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'anchor',
           name: 'Anchor',
-          measuredPowerKw: 0.5,
+          currentDrawKw: 0.5,
         }),
         buildDevice({
           id: 'newcomer',
           name: 'Newcomer',
-          measuredPowerKw: 0.3,
+          currentDrawKw: 0.3,
         }),
       ]);
 
@@ -387,7 +317,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'some-device',
           name: 'Some Device',
-          measuredPowerKw: 0.5,
+          currentDrawKw: 0.5,
         }),
       ]);
 
@@ -448,7 +378,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'some-device',
           name: 'Some Device',
-          measuredPowerKw: 0.8,
+          currentDrawKw: 0.8,
         }),
       ]);
 
@@ -494,7 +424,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         id: 'at-temp',
         name: 'AtTemp',
         deviceType: 'temperature',
-        measuredPowerKw: 0.8,
+        currentDrawKw: 0.8,
         targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
       }),
     ]);
@@ -550,7 +480,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Connected 300',
           binaryControl: { on: true },
           currentState: 'on',
-          measuredPowerKw: 1.671,
+          currentDrawKw: 1.671,
           expectedPowerKw: 1.25,
         }),
         selectedStepId: undefined,
@@ -561,7 +491,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         name: 'Carryover Off',
         binaryControl: { on: false },
         currentState: 'off',
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 0,
       }),
     ]);
@@ -601,13 +531,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
       buildDevice({
         id: 'reducible',
         name: 'Reducible',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         priority: 1,
       }),
       buildDevice({
         id: 'second',
         name: 'Second',
-        measuredPowerKw: 0.9,
+        currentDrawKw: 0.9,
         priority: 2,
       }),
     ];
@@ -661,7 +591,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       buildDevice({
         id: 'device-1',
         name: 'Device',
-        measuredPowerKw: 0.1,
+        currentDrawKw: 0.1,
       }),
     ]);
 
@@ -715,7 +645,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'deadband-device',
           name: 'Deadband Device',
-          measuredPowerKw: 1.03,
+          currentDrawKw: 1.03,
         }),
       ];
 
@@ -779,7 +709,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-device',
           name: 'Restored Device',
-          measuredPowerKw: 0.5,
+          currentDrawKw: 0.5,
         }),
       ];
 
@@ -843,7 +773,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // is absent, so it will have NO previous snapshot to diff against next cycle.
       capacityGuard.reportTotalPower(0.5);
       await builder.buildDevicePlanSnapshot([
-        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+        buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
       ]);
 
       // Second build: the whole-home total rises to 0.8 (the rise lives in untracked
@@ -853,13 +783,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog.info.mockClear();
       capacityGuard.reportTotalPower(0.8);
       await builder.buildDevicePlanSnapshot([
-        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+        buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
         buildDevice({
           id: 'zero-newcomer',
           name: 'Zero Newcomer',
           binaryControl: { on: false },
           currentState: 'off',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
         }),
       ]);
 
@@ -912,7 +842,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // First build records a baseline with only the steady anchor.
       capacityGuard.reportTotalPower(0.5);
       await builder.buildDevicePlanSnapshot([
-        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+        buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
       ]);
 
       // Second build: a newly-discovered UNCONTROLLED device appears drawing 0.3 kW (above
@@ -923,12 +853,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog.info.mockClear();
       capacityGuard.reportTotalPower(0.8);
       await builder.buildDevicePlanSnapshot([
-        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+        buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
         buildDevice({
           id: 'uncontrolled-newcomer',
           name: 'Uncontrolled Newcomer',
           controllable: false,
-          measuredPowerKw: 0.3,
+          currentDrawKw: 0.3,
         }),
       ]);
 
@@ -989,7 +919,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       }, state);
 
       await builder.buildDevicePlanSnapshot([
-        buildDevice({ id: 'some-device', name: 'Some Device', measuredPowerKw: 0.5 }),
+        buildDevice({ id: 'some-device', name: 'Some Device', currentDrawKw: 0.5 }),
       ]);
 
       // Even though a finite total delta (0.8 - 0.5 = 0.3) COULD be computed, the sample
@@ -1052,7 +982,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-device',
           name: 'Restored Device',
-          measuredPowerKw: 0.1,
+          currentDrawKw: 0.1,
         }),
       ]);
 
@@ -1062,7 +992,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-device',
           name: 'Restored Device',
-          measuredPowerKw: 0.7,
+          currentDrawKw: 0.7,
         }),
       ]);
 
@@ -1127,13 +1057,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'managed',
           name: 'Managed Heater',
-          measuredPowerKw: managedKw,
+          currentDrawKw: managedKw,
         }),
         buildDevice({
           id: 'background',
           name: 'Background Load',
           controllable: false,
-          measuredPowerKw: backgroundKw,
+          currentDrawKw: backgroundKw,
         }),
       ];
 
@@ -1209,7 +1139,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
         }),
       ]);
 
@@ -1221,7 +1151,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0.2,
+          currentDrawKw: 0.2,
           lastFreshDataMs: start + 10_000,
         }),
       ]);
@@ -1234,7 +1164,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0.2,
+          currentDrawKw: 0.2,
           lastFreshDataMs: start + 20_000,
         }),
       ]);
@@ -1249,7 +1179,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0.8,
+          currentDrawKw: 0.8,
           lastFreshDataMs: start + 30_000,
         }),
       ]);
@@ -1315,7 +1245,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
         }),
       ]);
 
@@ -1328,7 +1258,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0.2,
+          currentDrawKw: 0.2,
           lastFreshDataMs: start + 10_000,
         }),
       ]);
@@ -1342,7 +1272,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0.25,
+          currentDrawKw: 0.25,
           lastFreshDataMs: start + 20_000,
         }),
       ]);
@@ -1362,7 +1292,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0.8,
+          currentDrawKw: 0.8,
           lastFreshDataMs: start + 30_000,
         }),
       ]);
@@ -1425,7 +1355,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
         }),
       ]);
 
@@ -1439,7 +1369,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0.2,
+          currentDrawKw: 0.2,
           lastFreshDataMs: start + 10_000,
         }),
       ]);
@@ -1454,7 +1384,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0.2,
+          currentDrawKw: 0.2,
           lastFreshDataMs: start + 10_000,
         }),
       ]);
@@ -1475,7 +1405,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           currentState: 'on',
           binaryControl: { on: true },
-          measuredPowerKw: 0.8,
+          currentDrawKw: 0.8,
           lastFreshDataMs: start + 100_000,
         }),
       ]);
@@ -1533,7 +1463,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
         }),
       ]);
 
@@ -1545,7 +1475,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0.2,
+          currentDrawKw: 0.2,
           lastFreshDataMs: start - 5_000,
         }),
       ]);
@@ -1560,7 +1490,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Restored Thermostat',
           deviceClass: 'thermostat',
           binaryControl: { on: true },
-          measuredPowerKw: 0.8,
+          currentDrawKw: 0.8,
           lastFreshDataMs: start - 5_000,
         }),
       ]);
@@ -1610,15 +1540,15 @@ describe('PlanBuilder overshoot diagnostics', () => {
       }, state);
 
       const devices = (heaterOn: boolean) => [
-        buildDevice({ id: 'protected', name: 'Protected', measuredPowerKw: 0.53 }),
-        buildDevice({ id: 'mid', name: 'Mid', measuredPowerKw: 1.3 }),
-        // Unmetered water heater: relief is credited from its configured demand.
+        buildDevice({ id: 'protected', name: 'Protected', currentDrawKw: 0.53 }),
+        buildDevice({ id: 'mid', name: 'Mid', currentDrawKw: 1.3 }),
+        // Metered water heater: drawing 2 kW while on, its own honest 0 when off.
         buildDevice({
           id: 'heater',
           name: 'Heater',
           expectedPowerKw: 2,
           binaryControl: { on: heaterOn },
-          ...(heaterOn ? {} : { measuredPowerKw: 0 }),
+          currentDrawKw: heaterOn ? 2 : 0,
         }),
       ];
 

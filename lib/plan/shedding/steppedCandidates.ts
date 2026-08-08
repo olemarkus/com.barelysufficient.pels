@@ -28,7 +28,6 @@ import type { SteppedLoadProfile, SteppedLoadStep } from '../../../packages/cont
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
-import { getCurrentDrawKw } from '../../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -47,7 +46,6 @@ import {
 } from '../../utils/deviceControlProfiles';
 import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
 import { buildTemperatureCandidate } from './candidateBuilders';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
 import { type ShedCandidate, type SheddingDeps } from './types';
@@ -170,8 +168,11 @@ type SteppedCandidateParams = {
 export function buildSteppedCandidate(params: SteppedCandidateParams): ShedCandidate | null {
   const { device, getShedBehavior, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
-  if (isFiniteNumber(device.measuredPowerKw) && device.measuredPowerKw === 0) {
-    recorder?.record({ device, reasonCode: 'stepped_measured_zero' });
+  // `currentDrawKw === 0` means the device is drawing nothing. The reason code
+  // deliberately does NOT say "measured": how the producer knows is not this
+  // layer's business, and a consumer that started caring would be re-deriving.
+  if (device.currentDrawKw === 0) {
+    recorder?.record({ device, reasonCode: 'stepped_zero_draw' });
     return null;
   }
   const shedBehavior = getShedBehavior(device.id);
@@ -350,7 +351,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   }
   const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
   if (!selectedStep || isSteppedLoadOffStep(steppedProfile, selectedStep.id)) return null;
-  const effectivePower = getCurrentDrawKw(device);
+  const effectivePower = device.currentDrawKw;
   if (effectivePower <= 0) return null;
   // Raw read: activeness is computed here with the device's communication
   // model, so `peek` (not `get`) preserves the prior field-read behaviour.

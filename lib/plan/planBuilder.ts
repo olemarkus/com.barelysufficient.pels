@@ -417,7 +417,12 @@ export class PlanBuilder {
   ): DailySoftLimitResolution | null {
     const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker);
     if (!bucket) return null;
-    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices) ?? 0);
+    // No `?? 0` here any more. The sum used to return `null` when exempt devices
+    // existed but none reported power, and defaulting that to 0 shortened the
+    // daily threshold by the exempt draw — non-exempt devices were shed for a
+    // missing reading rather than for real budget pressure. Every plan device now
+    // carries a resolved draw, so the unresolved state is gone.
+    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices));
     const budgetPaceKw = computeDailyUsageSoftLimit({
       ...bucket,
     });

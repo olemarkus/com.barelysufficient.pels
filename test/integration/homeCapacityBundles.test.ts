@@ -20,7 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   HOME_CONFIG_ACTIVATION_VERSION,
   type HomeConfig,
@@ -1502,7 +1502,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('owns a fresh reconcile when the execution dry-run source read is transiently unavailable', async () => {
-    const load: TargetDeviceSnapshot = {
+    const load = {
       id: 'load-a',
       name: 'Annex load',
       targets: [],
@@ -1514,8 +1514,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       managed: true,
       binaryControl: { on: true },
       available: true,
+      measuredPowerKw: 4,
       expectedPowerKw: 4,
-    };
+    } as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
     const setCapability = vi.fn(async () => undefined);
     const deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => [load],

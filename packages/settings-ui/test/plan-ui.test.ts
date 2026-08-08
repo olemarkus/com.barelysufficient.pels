@@ -548,11 +548,15 @@ describe('Redesign plan UI', () => {
         .toBe('On pace to exceed the hard cap this hour. Easing devices off.');
     });
 
-    it('keeps the default over-cap copy for a pending shed that is on-like with no power measurement', async () => {
-      // No per-device power in the snapshot: a controllable device selected for
-      // shedding that is still `currentState: 'on'` must count as not-yet-settled
-      // (fall back to on-like state when measurement is absent), so the honest
-      // "already eased off" copy must not fire while the shed is in flight.
+    it('keeps the default over-cap copy for a pending shed on an unmetered device', async () => {
+      // A controllable device selected for shedding that is still drawing must
+      // count as not-yet-settled, so the honest "already eased off" copy must not
+      // fire while the shed is in flight.
+      //
+      // This used to be expressed as "no per-device power, fall back to on-like
+      // state". There is no such state any more: the plan read model always
+      // carries a resolved draw. This device reports 1.2 kW, and it is still
+      // drawing, which is the thing the copy actually turns on.
       await renderPlanSnapshot({
         meta: {
           // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
@@ -568,8 +572,14 @@ describe('Redesign plan UI', () => {
           minutesRemaining: 38,
         },
         devices: [
-          // plannedState shed + on, but no measuredPowerKw → on-like fallback.
-          { id: 'dev-shedding', name: 'Heater', currentState: 'on', plannedState: 'shed', stateKind: 'held' },
+          {
+            id: 'dev-shedding',
+            name: 'Heater',
+            currentState: 'on',
+            plannedState: 'shed',
+            stateKind: 'held',
+            measuredPowerKw: 1.2,
+          },
           {
             id: 'dev-uncontrolled',
             name: 'Sauna',

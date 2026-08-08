@@ -27,7 +27,9 @@ export type ActivationBackoffObservation = {
   currentOn?: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-  measuredPowerKw?: number;
+  // Producer-resolved draw. Required: every shape that reaches an activation
+  // read (plan device, headroom snapshot view) carries it.
+  currentDrawKw: number;
   lastFreshDataMs?: number;
 };
 
@@ -199,7 +201,7 @@ export function isActivationObservationActiveNow(
   // label-only restore caller; binary devices keep their measured-draw fallback.
   if (observation.currentOn === undefined
     && (isSteppedDeviceAtActiveStep(observation) || observation.currentState === 'on')) return true;
-  return isActivelyDrawing({ measuredPowerKw: observation.measuredPowerKw });
+  return isActivelyDrawing({ currentDrawKw: observation.currentDrawKw });
 }
 
 type CloseActivationAttemptKind = 'inactive' | 'shed' | 'quiet';

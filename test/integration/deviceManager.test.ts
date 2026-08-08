@@ -339,17 +339,35 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('ignores dotted power sub-capabilities when resolving measured power', () => {
+        it('reads the plain power capability and ignores dotted sub-capabilities', () => {
+            // Modelled on a real device: the Hoiax Connected 300 ships
+            // `measure_power` AND `measure_power.leak` / `meter_power.in_tank`,
+            // and the Easee charger and Frient HAN do the same. The dotted ones
+            // are separate channels (a leak sensor, an export register) and must
+            // never be mistaken for the device's own draw.
+            //
+            // Previously this fixture had ONLY the dotted capability plus a
+            // `settings.load`, to exercise the `loadKw` branch of the gate. No
+            // such device exists: across a 124-device fleet every device with a
+            // dotted power sub-capability also exposes the plain one, and every
+            // device with `settings.load` exposes `measure_power` and
+            // `meter_power`. The invented shape was the sole evidence for a gate
+            // term that admitted nobody.
             const [parsed] = deviceManager.parseDeviceListForTests([{
                 id: 'socket-subcap',
                 name: 'Socket With Internal Power',
                 class: 'socket',
-                capabilities: ['onoff', 'measure_power.internal'],
+                capabilities: ['onoff', 'measure_power', 'measure_power.leak'],
                 capabilitiesObj: {
                     onoff: { value: true, id: 'onoff' },
-                    'measure_power.internal': {
+                    measure_power: {
                         value: 730,
-                        id: 'measure_power.internal',
+                        id: 'measure_power',
+                        lastUpdated: '2026-04-01T11:53:00.000Z',
+                    },
+                    'measure_power.leak': {
+                        value: 4200,
+                        id: 'measure_power.leak',
                         lastUpdated: '2026-04-01T11:53:00.000Z',
                     },
                 },
@@ -359,7 +377,8 @@ describe('DeviceTransport', () => {
             expect(parsed).toEqual(expect.objectContaining({
                 id: 'socket-subcap',
                 powerCapable: true,
-                measuredPowerKw: undefined,
+                // 0.73 kW from `measure_power`, NOT 4.2 kW from the leak channel.
+                measuredPowerKw: 0.73,
                 expectedPowerSource: 'load-setting',
                 powerKw: 0.9,
             }));

@@ -37,7 +37,7 @@ const buildObservedState = (
     steppedLoadProfile,
     selectedStepId: device.selectedStepId,
     reportedStepId: device.reportedStepId,
-    measuredPowerKw: device.measuredPowerKw,
+    measuredPowerKw: device.currentDrawKw,
     ...overrides,
   });
 };
@@ -188,7 +188,7 @@ describe('planExecutableSteppedLoad', () => {
       shedAction: 'set_step',
       selectedStepId: undefined,
       desiredStepId: 'low',
-      measuredPowerKw: 3,
+      currentDrawKw: 3,
     }));
 
     expect(action?.current.stepForShed).toEqual({

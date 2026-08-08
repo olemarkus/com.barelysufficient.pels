@@ -35,7 +35,7 @@ describe('pels status limit reason', () => {
       powerNowKw: params.powerNowKw === undefined ? 4.2 : params.powerNowKw,
     },
     devices: [
-      {
+      { currentDrawKw: 0,
         ...baseDevice,
         reason: typeof params.reason === 'string' ? fixtureDeviceReason(params.reason)! : params.reason,
       },
@@ -123,7 +123,7 @@ describe('pels status limit reason', () => {
         headroomKw: 5.6,
       },
       devices: [
-        withTemperatureDiscriminant({
+        withTemperatureDiscriminant({ currentDrawKw: 0,
           id: 'ev-1',
           name: 'EV Charger',
           commandableNow: true,

@@ -11,7 +11,7 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { reasonText } from '../utils/deviceReasonTestUtils';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -34,6 +34,7 @@ const buildDevice = (
   };
   return withBinaryDiscriminant({
     ...merged,
+    currentDrawKw: fixtureCurrentDrawKw(merged),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };
@@ -96,7 +97,7 @@ describe('buildSheddingPlan', () => {
         buildDevice({
           id: 'dev-1',
           name: 'Heater',
-          expectedPowerKw: 1.2,
+          currentDrawKw: 1.2, expectedPowerKw: 1.2,
           binaryControl: { on: true },
           controllable: true,
         }),
@@ -153,7 +154,7 @@ describe('buildSheddingPlan', () => {
         buildDevice({
           id: 'dev-1',
           name: 'Heater',
-          expectedPowerKw: 1.2,
+          currentDrawKw: 1.2, expectedPowerKw: 1.2,
           binaryControl: { on: true },
           controllable: true,
         }),
@@ -259,7 +260,7 @@ describe('buildSheddingPlan', () => {
         buildDevice({
           id: 'dev-1',
           name: 'Heater',
-          expectedPowerKw: 1.2,
+          currentDrawKw: 1.2, expectedPowerKw: 1.2,
           binaryControl: { on: true },
           controllable: true,
         }),
@@ -304,21 +305,21 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'dev-nonrecent',
         name: 'NonRecent',
-        expectedPowerKw: 1.5,
+        currentDrawKw: 1.5, expectedPowerKw: 1.5,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'dev-recent',
         name: 'Recent',
-        expectedPowerKw: 1,
+        currentDrawKw: 1, expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'dev-at-temp',
         name: 'AtTemp',
-        expectedPowerKw: 1,
+        currentDrawKw: 1, expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
@@ -382,14 +383,14 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'dev-high',
         name: 'High',
-        measuredPowerKw: 0.4,
+        currentDrawKw: 0.4,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'dev-low',
         name: 'Low',
-        measuredPowerKw: 0.6,
+        currentDrawKw: 0.6,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -437,14 +438,14 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'dev-restore',
         name: 'Restore',
-        measuredPowerKw: 0.8,
+        currentDrawKw: 0.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'dev-extra',
         name: 'Extra',
-        powerKw: 0.4,
+        currentDrawKw: 0.4, powerKw: 0.4, expectedPowerKw: 0.4,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -506,7 +507,7 @@ describe('buildSheddingPlan', () => {
             name: 'Stale Heater',
             binaryControl: { on: false },
             controllable: true,
-            measuredPowerKw: 0.8,
+            currentDrawKw: 0.8,
           }),
         ],
         total: 4.8,
@@ -564,7 +565,7 @@ describe('buildSheddingPlan', () => {
             selectedStepId: undefined,
             binaryControl: { on: true },
             controllable: true,
-            measuredPowerKw: 1.671,
+            currentDrawKw: 1.671,
           }),
         ],
         total: 4.8,
@@ -618,7 +619,7 @@ describe('buildSheddingPlan', () => {
         },
         selectedStepId: 'max',
         targets: [{ id: 'target_temperature', value: 65, unit: 'C' }],
-        expectedPowerKw: 3,
+        currentDrawKw: 3, expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -674,7 +675,7 @@ describe('buildSheddingPlan', () => {
         id: 'dev-heater',
         name: 'Heater',
         deviceType: 'temperature',
-        expectedPowerKw: 2,
+        currentDrawKw: 2, expectedPowerKw: 2,
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
@@ -691,7 +692,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'dev-other',
         name: 'Other',
-        expectedPowerKw: 1,
+        currentDrawKw: 1, expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -755,7 +756,7 @@ describe('buildSheddingPlan', () => {
         id: 'dev-heater',
         name: 'Heater',
         deviceType: 'temperature',
-        expectedPowerKw: 2,
+        currentDrawKw: 2, expectedPowerKw: 2,
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
@@ -772,7 +773,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'dev-other',
         name: 'Other',
-        expectedPowerKw: 1,
+        currentDrawKw: 1, expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -824,7 +825,7 @@ describe('buildSheddingPlan', () => {
         id: 'dev-temp',
         name: 'Temp Device',
         deviceType: 'temperature',
-        expectedPowerKw: 2,
+        currentDrawKw: 2, expectedPowerKw: 2,
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
@@ -891,14 +892,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 2.8,
+        currentDrawKw: 2.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -939,7 +940,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('bath')).toBe(false);
   });
 
-  it('steps down a stepped load without measured power using planning power fallback', async () => {
+  it('steps down a stepped load by its step ladder rather than its raw draw', async () => {
     const state = createPlanEngineState();
 
     const devices = [
@@ -957,7 +958,9 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: undefined,
+        // A managed stepped device always has a reading now; the descent is
+        // priced from the step ladder, not from this number directly.
+        currentDrawKw: 3,
         expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
@@ -965,7 +968,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1023,7 +1026,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
@@ -1031,7 +1034,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1090,7 +1093,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'low',
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
@@ -1099,7 +1102,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1156,12 +1159,12 @@ describe('buildSheddingPlan', () => {
             { id: 'max', planningPowerW: 3000 },
           ],
         },
-        // selectedStepId stuck at 'max' because device has no reported step or power meter
+        // selectedStepId stuck at 'max' because the device reports no step
         selectedStepId: 'max',
         // Previous cycle already commanded step-down to 'mid'
         desiredStepId: 'mid',
         stepCommandPending: true,
-        measuredPowerKw: undefined,
+        currentDrawKw: 3,
         expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
@@ -1169,7 +1172,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1227,14 +1230,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 2.8,
+        currentDrawKw: 2.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1296,14 +1299,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'mid',
-        measuredPowerKw: 1.9,
+        currentDrawKw: 1.9,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1366,14 +1369,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 2.9,
+        currentDrawKw: 2.9,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'gang',
         name: 'Termostat gang',
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         binaryControl: { on: false },
         controllable: true,
       }),
@@ -1436,14 +1439,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 2.9,
+        currentDrawKw: 2.9,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'gang',
         name: 'Termostat gang',
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         binaryControl: { on: false },
         controllable: true,
       }),
@@ -1504,14 +1507,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'low',
-        measuredPowerKw: 0.9,
+        currentDrawKw: 0.9,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1572,7 +1575,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'low',
-        measuredPowerKw: 0.9,
+        currentDrawKw: 0.9,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1630,7 +1633,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'low',
-        measuredPowerKw: 1.193,
+        currentDrawKw: 1.193,
         expectedPowerKw: 1.25,
         binaryControl: { on: true },
         controlCapabilityId: 'onoff',
@@ -1694,14 +1697,14 @@ describe('buildSheddingPlan', () => {
         desiredStepId: 'mid',
         stepCommandPending: true,
         stepCommandStatus: 'pending',
-        measuredPowerKw: 2.8,
+        currentDrawKw: 2.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1767,14 +1770,14 @@ describe('buildSheddingPlan', () => {
         desiredStepId: 'low',
         stepCommandPending: true,
         stepCommandStatus: 'pending',
-        measuredPowerKw: 2.9,
+        currentDrawKw: 2.9,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'hall',
         name: 'Hall thermostat',
-        measuredPowerKw: 1.1,
+        currentDrawKw: 1.1,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1841,14 +1844,14 @@ describe('buildSheddingPlan', () => {
         desiredStepId: 'low',
         stepCommandPending: true,
         stepCommandStatus: 'pending',
-        measuredPowerKw: 2.8,
+        currentDrawKw: 2.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1915,14 +1918,14 @@ describe('buildSheddingPlan', () => {
         desiredStepId: 'mid',
         stepCommandPending: false,
         stepCommandStatus: 'stale',
-        measuredPowerKw: 2.8,
+        currentDrawKw: 2.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -1983,14 +1986,14 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 2.8,
+        currentDrawKw: 2.8,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'binary-dev',
         name: 'Binary device',
-        measuredPowerKw: 0.8,
+        currentDrawKw: 0.8,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2054,7 +2057,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'low',
-        measuredPowerKw: 0.9,
+        currentDrawKw: 0.9,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2071,7 +2074,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        measuredPowerKw: 1.4,
+        currentDrawKw: 1.4,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2129,14 +2132,14 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'bath',
         name: 'Bathroom thermostat',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'hall',
         name: 'Hall thermostat',
-        measuredPowerKw: 0.5,
+        currentDrawKw: 0.5,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2198,7 +2201,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'low',
-        measuredPowerKw: 1.193,
+        currentDrawKw: 1.193,
         expectedPowerKw: 1.25,
         binaryControl: { on: true },
         controlCapabilityId: 'onoff',
@@ -2207,7 +2210,7 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'hall',
         name: 'Hall thermostat',
-        measuredPowerKw: 0.5,
+        currentDrawKw: 0.5,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2271,7 +2274,7 @@ describe('buildSheddingPlan', () => {
             id: 'tank',
             name: 'Connected 300',
             communicationModel: 'cloud',
-            measuredPowerKw: 3,
+            currentDrawKw: 3,
             expectedPowerKw: 3,
             binaryControl: { on: false },
             controllable: true,
@@ -2358,7 +2361,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'zero',
             name: 'Zero',
-            expectedPowerKw: 0,
+            currentDrawKw: 0, expectedPowerKw: 0,
             powerKw: 0,
             controllable: true,
             binaryControl: { on: true },
@@ -2406,14 +2409,14 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'positive',
             name: 'Positive',
-            expectedPowerKw: 1,
+            currentDrawKw: 1, expectedPowerKw: 1,
             binaryControl: { on: true },
             controllable: true,
           }),
           buildDevice({
             id: 'zero',
             name: 'Zero',
-            expectedPowerKw: 0,
+            currentDrawKw: 0, expectedPowerKw: 0,
             powerKw: 0,
             binaryControl: { on: true },
             controllable: true,
@@ -2464,7 +2467,7 @@ describe('buildSheddingPlan', () => {
             name: 'AtTemp',
             binaryControl: { on: true },
             controllable: true,
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
           }),
         ],
@@ -2532,7 +2535,7 @@ describe('buildSheddingPlan', () => {
             controlModel: 'stepped_load',
             selectedStepId: 'low',
             desiredStepId: 'low',
-            measuredPowerKw: 0.4,
+            currentDrawKw: 0.4,
             steppedLoadProfile: {
               model: 'stepped_load',
               steps: [
@@ -2595,7 +2598,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'budget-exempt',
             name: 'Budget Exempt Heater',
-            measuredPowerKw: 0.4,
+            currentDrawKw: 0.4,
             binaryControl: { on: true },
             controllable: true,
             budgetExempt: true,
@@ -2650,7 +2653,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'exempt',
             name: 'Budget Exempt',
-            measuredPowerKw: 2,
+            currentDrawKw: 2,
             binaryControl: { on: true },
             controllable: true,
             budgetExempt: true,
@@ -2658,7 +2661,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'regular',
             name: 'Regular',
-            measuredPowerKw: 1,
+            currentDrawKw: 1,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -2704,7 +2707,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'exempt',
             name: 'Budget Exempt',
-            measuredPowerKw: 2,
+            currentDrawKw: 2,
             binaryControl: { on: true },
             controllable: true,
             budgetExempt: true,
@@ -2712,7 +2715,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'regular',
             name: 'Regular',
-            measuredPowerKw: 1,
+            currentDrawKw: 1,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -2757,7 +2760,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'exempt',
             name: 'Budget Exempt',
-            measuredPowerKw: 2,
+            currentDrawKw: 2,
             binaryControl: { on: true },
             controllable: true,
             budgetExempt: true,
@@ -2765,7 +2768,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'regular',
             name: 'Regular',
-            measuredPowerKw: 1,
+            currentDrawKw: 1,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -2813,7 +2816,7 @@ describe('buildSheddingPlan', () => {
         selectedStepId: 'low',
         desiredStepId: 'max',
         stepCommandPending: true,
-        measuredPowerKw: 0.9,
+        currentDrawKw: 0.9,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2873,7 +2876,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'off',
-        expectedPowerKw: 1,
+        currentDrawKw: 0, expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -2933,7 +2936,7 @@ describe('buildSheddingPlan', () => {
           ],
         },
         selectedStepId: 'max',
-        expectedPowerKw: 0,
+        currentDrawKw: 0, expectedPowerKw: 0,
         powerKw: 0,
         binaryControl: { on: true },
         controllable: true,
@@ -2970,9 +2973,12 @@ describe('buildSheddingPlan', () => {
       },
     );
 
+    // The meter says the device is pulling nothing, so there is no rung to shed
+    // it to and nothing to gain by trying — it is skipped rather than planned.
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5, expect.objectContaining({
       controlledDevices: 1,
-      plannedShedDevices: 1,
+      plannedShedDevices: 0,
+      remainingActionableControlledLoad: false,
     }));
   });
 
@@ -3129,8 +3135,8 @@ describe('buildSheddingPlan', () => {
     const result1 = await buildSheddingPlan(
       buildContext({
         devices: [
-          buildDevice({ ...steppedABase, selectedStepId: 'max', measuredPowerKw: 2.8 }),
-          buildDevice({ ...steppedBBase, selectedStepId: 'max', measuredPowerKw: 1.4 }),
+          buildDevice({ ...steppedABase, selectedStepId: 'max', currentDrawKw: 2.8 }),
+          buildDevice({ ...steppedBBase, selectedStepId: 'max', currentDrawKw: 1.4 }),
           buildDevice(binaryBase),
         ],
         total: 8,
@@ -3155,8 +3161,8 @@ describe('buildSheddingPlan', () => {
     const result2 = await buildSheddingPlan(
       buildContext({
         devices: [
-          buildDevice({ ...steppedABase, selectedStepId: 'low', measuredPowerKw: 0.9 }),
-          buildDevice({ ...steppedBBase, selectedStepId: 'max', measuredPowerKw: 1.4 }),
+          buildDevice({ ...steppedABase, selectedStepId: 'low', currentDrawKw: 0.9 }),
+          buildDevice({ ...steppedBBase, selectedStepId: 'max', currentDrawKw: 1.4 }),
           buildDevice(binaryBase),
         ],
         total: 5,
@@ -3180,8 +3186,8 @@ describe('buildSheddingPlan', () => {
     const result3 = await buildSheddingPlan(
       buildContext({
         devices: [
-          buildDevice({ ...steppedABase, selectedStepId: 'low', measuredPowerKw: 0.9 }),
-          buildDevice({ ...steppedBBase, selectedStepId: 'low', measuredPowerKw: 0.45 }),
+          buildDevice({ ...steppedABase, selectedStepId: 'low', currentDrawKw: 0.9 }),
+          buildDevice({ ...steppedBBase, selectedStepId: 'low', currentDrawKw: 0.45 }),
           buildDevice(binaryBase),
         ],
         total: 4,
@@ -3219,7 +3225,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'dev-escalate',
             name: 'Escalate',
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -3272,7 +3278,7 @@ describe('buildSheddingPlan', () => {
         buildDevice({
           id: 'dev-fresh',
           name: 'Fresh Shed',
-          expectedPowerKw: 0.8,
+          currentDrawKw: 0.8, expectedPowerKw: 0.8,
           binaryControl: { on: true },
           controllable: true,
         }),
@@ -3340,14 +3346,14 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'bad-2etg',
         name: 'Bad 2. etg',
-        measuredPowerKw: 0.53,
+        currentDrawKw: 0.53,
         binaryControl: { on: true },
         controllable: true,
       }),
       buildDevice({
         id: 'kontor-vk',
         name: 'Kontoret VK',
-        measuredPowerKw: 1.3,
+        currentDrawKw: 1.3,
         binaryControl: { on: true },
         controllable: true,
       }),
@@ -3355,16 +3361,16 @@ describe('buildSheddingPlan', () => {
       buildDevice({
         id: 'entre',
         name: 'Entre',
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         binaryControl: { on: true },
         controllable: true,
       }),
-      // Unmetered water heater: relief is credited from its configured demand.
+      // Water heater drawing 2 kW; reads its own 0 once PELS has shed it.
       buildDevice({
         id: 'vvb',
         name: 'Kontoret VVB',
         expectedPowerKw: 2,
-        ...(options.vvbShed ? { measuredPowerKw: 0 } : {}),
+        currentDrawKw: options.vvbShed ? 0 : 2,
         binaryControl: { on: options.vvbShed !== true },
         controllable: true,
       }),
@@ -3587,7 +3593,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'dev-wait',
             name: 'Wait',
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -3646,7 +3652,7 @@ describe('buildSheddingPlan', () => {
             name: 'Off Device',
             binaryControl: { on: false },
             controllable: true,
-            expectedPowerKw: 1.2,
+            currentDrawKw: 0, expectedPowerKw: 1.2,
           }),
         ],
         total: 4.8,
@@ -3708,7 +3714,7 @@ describe('buildSheddingPlan', () => {
             controlModel: 'stepped_load',
             selectedStepId: 'max',
             desiredStepId: 'max',
-            measuredPowerKw: 1.193,
+            currentDrawKw: 1.193,
             stepPowerCalibration: {
               low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
               medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
@@ -3775,7 +3781,7 @@ describe('buildSheddingPlan', () => {
             controlModel: 'stepped_load',
             selectedStepId: 'max',
             desiredStepId: 'max',
-            measuredPowerKw: 1.193,
+            currentDrawKw: 1.193,
             steppedLoadProfile: {
               model: 'stepped_load',
               steps: [
@@ -3786,8 +3792,8 @@ describe('buildSheddingPlan', () => {
               ],
             },
           }),
-          buildDevice({ id: 'plainA', name: 'Plain A', controllable: true, measuredPowerKw: 1 }),
-          buildDevice({ id: 'plainB', name: 'Plain B', controllable: true, measuredPowerKw: 1 }),
+          buildDevice({ id: 'plainA', name: 'Plain A', controllable: true, currentDrawKw: 1 }),
+          buildDevice({ id: 'plainB', name: 'Plain B', controllable: true, currentDrawKw: 1 }),
         ],
         // 3 kW of deficit — more than the heater alone can release, so the
         // selection loop must keep going after it.
@@ -3840,7 +3846,7 @@ describe('buildSheddingPlan', () => {
             controlModel: 'stepped_load',
             selectedStepId: 'max',
             desiredStepId: 'max',
-            measuredPowerKw: 1.193,
+            currentDrawKw: 1.193,
             stepPowerCalibration: {
               low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
               medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
@@ -3885,7 +3891,7 @@ describe('buildSheddingPlan', () => {
       devices: [expect.objectContaining({
         deviceId: 'heater',
         reasonCode: 'zero_step_relief',
-        measuredPowerKw: 1.193,
+        currentDrawKw: 1.193,
         rungsTried: ['medium'],
       })],
     }));
@@ -3912,21 +3918,21 @@ describe('buildSheddingPlan', () => {
             name: 'Binary',
             binaryControl: { on: true },
             controllable: true,
-            expectedPowerKw: 1.2,
+            currentDrawKw: 1.2, expectedPowerKw: 1.2,
           }),
           buildDevice({
             id: 'second',
             name: 'Second',
             binaryControl: { on: true },
             controllable: true,
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
           }),
           buildDevice({
             id: 'exempt',
             name: 'Budget exempt',
             binaryControl: { on: true },
             controllable: true,
-            expectedPowerKw: 3,
+            currentDrawKw: 3, expectedPowerKw: 3,
             budgetExempt: true,
           }),
         ],
@@ -3991,7 +3997,7 @@ describe('buildSheddingPlan', () => {
             selectedStepId: 'max',
             binaryControl: { on: true },
             controllable: true,
-            planningPowerKw: 3,
+            currentDrawKw: 3, planningPowerKw: 3,
           }),
           buildDevice({
             id: 'temp',
@@ -4000,7 +4006,7 @@ describe('buildSheddingPlan', () => {
             targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
             binaryControl: { on: true },
             controllable: true,
-            expectedPowerKw: 1.5,
+            currentDrawKw: 1.5, expectedPowerKw: 1.5,
           }),
         ],
         total: 0,
@@ -4059,7 +4065,7 @@ describe('buildSheddingPlan', () => {
             selectedStepId: 'off',
             binaryControl: { on: true },
             controllable: true,
-            measuredPowerKw: 0,
+            currentDrawKw: 0,
             expectedPowerKw: 0,
             planningPowerKw: 0,
           }),
@@ -4112,7 +4118,7 @@ describe('buildSheddingPlan', () => {
             name: 'AtTemp',
             binaryControl: { on: true },
             controllable: true,
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
           }),
         ],
@@ -4171,7 +4177,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'dev-unmanaged',
             name: 'Unmanaged',
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             binaryControl: { on: true },
             controllable: false,
           }),
@@ -4221,7 +4227,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'dev-daily',
             name: 'Daily',
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -4270,7 +4276,7 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'dev-cap',
             name: 'Capacity Device',
-            expectedPowerKw: 0.8,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
             binaryControl: { on: true },
             controllable: true,
           }),
@@ -4447,5 +4453,55 @@ describe('buildSheddingPlan', () => {
 
     expect(result.sheddingActive).toBe(false);
     expect(guard.isSheddingActive()).toBe(false);
+  });
+  it('sheds an unmetered relay heater on its declared load', async () => {
+    // The producer answers for a device with no metering hardware with its
+    // DECLARED load, not 0. Answering 0 made every unmetered relay heater
+    // unsheddable — `buildBinaryCandidate` rejects `power <= 0` — so a home whose
+    // heaters are unmetered relays silently lost hard-cap protection. Shedding
+    // one frees real power, so it must be a candidate.
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(8),
+    } as unknown as CapacityGuard;
+
+    const unmetered = buildDevice({
+      id: 'relay-heater',
+      name: 'Unmetered panel heater',
+      // No `currentDrawKw` and no measurement: exactly what `toPlanDevice`
+      // resolves for a relay with a declared load and no meter.
+      currentDrawKw: 1.5, expectedPowerKw: 1.5,
+      binaryControl: { on: true },
+      controllable: true,
+    });
+    expect(unmetered.currentDrawKw).toBeCloseTo(1.5, 6);
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [unmetered],
+        total: 3,
+        softLimit: 2,
+        capacitySoftLimit: 2,
+        headroomRaw: -1,
+        headroom: -1,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 4001 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 10,
+        log: vi.fn(),
+        debugStructured: vi.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('relay-heater')).toBe(true);
   });
 });

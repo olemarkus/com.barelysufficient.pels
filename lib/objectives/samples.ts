@@ -21,6 +21,20 @@ import type {
   SteppedLoadDescriptorProbe,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
+
+/**
+ * Below this, a reading is standby noise rather than a device doing work.
+ *
+ * Deliberately 5 W — the exact floor `DeviceMeasuredPowerResolver` used to apply
+ * before it was removed, so this restores the old boundary at the consumer that
+ * needs it instead of at the producer that did not. It is NOT the 50 W
+ * actively-drawing threshold used elsewhere: this gate decides whether to trust a
+ * reading as `powerSource: 'measured'`, and a device genuinely drawing 30 W is
+ * doing work. Setting it at 50 W would push that device onto its step NAMEPLATE
+ * (`reported_step_planning` below) — substituting a rated figure for a real meter
+ * reading, which is the defect this whole change removes.
+ */
+const MIN_CREDIBLE_DEVICE_POWER_KW = 0.005;
 import type { DeviceObjectiveProfileSample } from './types';
 
 // Observed truth (temperature / SoC / measured power / reported step) plus the
@@ -97,9 +111,17 @@ function resolveCredibleDevicePower(
 ): Pick<DeviceObjectiveProfileSample, 'crediblePowerW' | 'powerSource'> {
   // `hasObservedMeasuredPower` proves `measuredPowerKw` is a finite `number`
   // (producer invariant — the write seams store only `Number.isFinite` values),
-  // so no `typeof`/`Number.isFinite` re-check here; `> 0` is the positive-draw
-  // gate (a measured 0 W is not credible device power), which stays.
-  if (hasObservedMeasuredPower(device) && device.measuredPowerKw > 0) {
+  // so no `typeof`/`Number.isFinite` re-check here.
+  //
+  // The threshold is `MIN_CREDIBLE_DEVICE_POWER_KW`, not a bare `> 0`. The
+  // measured-power resolver used to drop any reading at or below 5 W; that floor
+  // was removed (it made "drawing 3 W" indistinguishable from "has no meter",
+  // which is what licensed a rated-power substitution), so a standby trickle now
+  // reaches this function. Billing a coast window at 3 W as `powerSource:
+  // 'measured'` poisons the learned kWh-per-unit rate and defeats the `powerW <= 0`
+  // coast-window protection described below. Credibility is this consumer's
+  // question, so it is asked here rather than back at the producer.
+  if (hasObservedMeasuredPower(device) && device.measuredPowerKw > MIN_CREDIBLE_DEVICE_POWER_KW) {
     return {
       crediblePowerW: Math.round(device.measuredPowerKw * 1000),
       powerSource: 'measured',

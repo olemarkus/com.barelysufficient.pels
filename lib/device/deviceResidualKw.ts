@@ -85,7 +85,8 @@ export type ResidualKwShedSteppedDevice = {
    * measured fallback only fires when no step state is known at all.
    */
   hasKnownEffectiveStep: boolean;
-  measuredPowerKw?: number;
+  /** Producer-resolved current draw (see `getCurrentDrawKw`). */
+  currentDrawKw: number;
   controlCapabilityId?: BinaryControlCapabilityId;
 };
 
@@ -125,9 +126,7 @@ export function resolveResidualKwShed(params: {
 }): number {
   const { device, shedBehavior } = params;
   if (!canStillShedResidual(device, shedBehavior)) return 0;
-  const drawKw = device.currentDrawKw;
-  if (!isFiniteNumber(drawKw) || drawKw <= 0) return 0;
-  return drawKw;
+  return Math.max(0, device.currentDrawKw);
 }
 
 function canStillShedResidual(
@@ -188,18 +187,16 @@ function canShedFromUnknownCurrentStep(
   // the configured target step exists and would not be at-or-above the
   // current draw (set_step) / would actually turn off (turn_off).
   if (steppedLoad.hasKnownEffectiveStep) return false;
-  const measuredPowerKw = isFiniteNumber(steppedLoad.measuredPowerKw)
-    ? Math.max(0, steppedLoad.measuredPowerKw)
-    : 0;
-  if (measuredPowerKw <= 0) return false;
+  const currentDrawKw = Math.max(0, steppedLoad.currentDrawKw);
+  if (currentDrawKw <= 0) return false;
   const targetStep = shedAction === 'set_step'
     ? getSteppedLoadLowestActiveStep(steppedLoad.profile)
     : getSteppedLoadOffStep(steppedLoad.profile) ?? getSteppedLoadLowestStep(steppedLoad.profile);
   if (!targetStep) return false;
   const targetPlanningKw = targetStep.planningPowerW / 1000;
   const effectivePowerKw = shedAction === 'set_step'
-    ? Math.max(0, measuredPowerKw - targetPlanningKw)
-    : measuredPowerKw;
+    ? Math.max(0, currentDrawKw - targetPlanningKw)
+    : currentDrawKw;
   return effectivePowerKw > 0;
 }
 

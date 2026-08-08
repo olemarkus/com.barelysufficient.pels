@@ -1,3 +1,4 @@
+import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
@@ -80,7 +81,7 @@ const buildTrackedDevice = (overrides: Record<string, unknown> = {}) => ({
   binaryControl: { on: true },
   available: true,
   expectedPowerKw: 0,
-  measuredPowerKw: 0,
+  currentDrawKw: 0,
   powerKw: 0,
   ...overrides,
 });
@@ -96,19 +97,21 @@ describe('activation backoff', () => {
   });
 
   it('does not synthesize fallback draw for a running device with no configured load', () => {
-    // Regression: Observer's `getCurrentDrawKw` falls back to 1.0 kW (or
-    // 1.38 kW for EVs) when no source is configured. For the Flow-card path
-    // that would credit headroom for a device that has not proven any draw.
-    // Headroom credit must be 0 in that case.
+    // Regression: the Flow card must not credit headroom to a device that has
+    // proven no draw at all — no meter, no configured demand. Headroom credit
+    // must be 0 in that case.
     const state = createPlanEngineState();
     const start = Date.now();
-    const unknownRunningDevice = {
+    // Through the real producer seam, so the device carries a resolved
+    // `currentDrawKw` exactly as the Flow card receives it in production. Nothing
+    // reports a draw here, so it resolves to 0 and credits nothing.
+    const unknownRunningDevice = withHeadroomCurrentOn({
       id: 'dev-1',
       name: 'Unknown heater',
       binaryControl: { on: true },
       available: true,
       lastFreshDataMs: start,
-    };
+    });
     const decision = evaluateHeadroomForDevice({
       state,
       devices: [unknownRunningDevice as any],
@@ -123,22 +126,28 @@ describe('activation backoff', () => {
     expect(decision?.allowed).toBe(false);
   });
 
-  it('credits a running non-metered device with its configured load in headroom math', () => {
-    // Regression: non-metered relay-style devices (`powerKw` configured, no
-    // `measure_power` capability) must still contribute their configured draw
-    // back into `headroom + observedKw`, otherwise the Flow card blocks
-    // legitimate activations of devices already drawing the requested load.
+  it('credits a running device its measured draw in headroom math', () => {
+    // The card must contribute a running device's draw back into
+    // `headroom + observedKw`, or it blocks legitimate activations of devices
+    // already drawing the requested load.
+    //
+    // Was "credits a running NON-METERED device with its CONFIGURED load". There
+    // is no such managed device: every device on the fleet carrying a configured
+    // `settings.load` also exposes `measure_power`, so the draw is measured. The
+    // card no longer re-derives one from configured demand — that was a fourth
+    // copy of the producer's ladder.
     const state = createPlanEngineState();
     const start = Date.now();
-    const runningNonMeteredDevice = {
+    const runningNonMeteredDevice = withHeadroomCurrentOn({
       id: 'dev-1',
       name: 'Relay heater',
       binaryControl: { on: true },
       available: true,
       lastFreshDataMs: start,
+      measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
       powerKw: 1.2,
-    };
+    });
     const decision = evaluateHeadroomForDevice({
       state,
       devices: [runningNonMeteredDevice as any],
@@ -153,25 +162,25 @@ describe('activation backoff', () => {
     expect(decision?.allowed).toBe(true);
   });
 
-  it('credits configured load for a stale-observation device with stable real values', () => {
-    // Regression for TODO P1 stale-observation refresh loop: Many Homey drivers
-    // only advance per-capability `lastUpdated` on value change, so a
-    // thermostat that has been steady at setpoint for 40+ minutes ages past
-    // `STALE_DEVICE_OBSERVATION_MS` while still being on and drawing exactly
-    // its configured load. The previous behavior returned 0 here, dropped the
-    // configured-fallback path, and blocked legitimate activations even
-    // though `headroom + observedKw` math would otherwise admit them.
+  it('credits a stale-observation device its last reading rather than zero', () => {
+    // Regression for the TODO P1 stale-observation refresh loop: many Homey
+    // drivers only advance per-capability `lastUpdated` on VALUE CHANGE, so a
+    // thermostat steady at setpoint for 40+ minutes ages past
+    // `STALE_DEVICE_OBSERVATION_MS` while still on and drawing exactly what it
+    // last reported. Returning 0 for that blocked legitimate activations. The
+    // longer a reading is stable, the MORE trustworthy it is, not less.
     const state = createPlanEngineState();
     const start = Date.now();
-    const staleStableDevice = {
+    const staleStableDevice = withHeadroomCurrentOn({
       id: 'dev-1',
       name: 'Heater',
       binaryControl: { on: true },
       available: true,
       lastFreshDataMs: start - (45 * 60 * 1000),
+      measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
       powerKw: 1.2,
-    };
+    });
     const decision = evaluateHeadroomForDevice({
       state,
       devices: [staleStableDevice as any],
@@ -273,7 +282,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { available: true, measuredPowerKw: 2 },
+      observation: { available: true, currentDrawKw: 2 },
     });
     expect(stuckInfo.penaltyLevel).toBe(1);
     expect(stuckInfo.attemptOpen).toBe(false);
@@ -300,7 +309,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 1,
-      observation: { available: true, measuredPowerKw: 1.2 },
+      observation: { available: true, currentDrawKw: 1.2 },
     });
     expect(firstSync.attemptOpen).toBe(true);
     expect(firstSync.transitions).toEqual([]);
@@ -309,7 +318,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { available: true, measuredPowerKw: 1.2 },
+      observation: { available: true, currentDrawKw: 1.2 },
     });
     expect(secondSync.attemptOpen).toBe(false);
     expect(secondSync.transitions).toEqual([]);
@@ -331,6 +340,7 @@ describe('activation backoff', () => {
       observation: {
         currentOn: false,
         available: true,
+        currentDrawKw: 0,
       },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
@@ -375,7 +385,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, currentDrawKw: 0.25 },
     });
     expect(closingSync.attemptOpen).toBe(false);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
@@ -415,7 +425,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, currentDrawKw: 0.25 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
@@ -461,7 +471,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'ev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, measuredPowerKw: 0 },
+      observation: { available: true, currentDrawKw: 0 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
@@ -497,7 +507,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, currentDrawKw: 0.25 },
     });
 
     expect(closingSync.transitions).toEqual([
@@ -557,7 +567,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: postWindowMs + 1_000,
-      observation: { available: true, measuredPowerKw: 0.2 },
+      observation: { available: true, currentDrawKw: 0.2 },
     });
     expect(closingSync.attemptOpen).toBe(false);
     expect(closingSync.penaltyLevel).toBe(2);
@@ -596,7 +606,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, currentDrawKw: 0.25 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
@@ -636,6 +646,7 @@ describe('activation backoff', () => {
       observation: {
         currentOn: false,
         available: true,
+        currentDrawKw: 0,
       },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
@@ -674,7 +685,7 @@ describe('activation backoff', () => {
           name: 'Heater',
           currentState: 'off',
           expectedPowerKw: 2,
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           powerKw: 2,
         }),
       ],
@@ -719,7 +730,7 @@ describe('activation backoff', () => {
           name: 'Heater',
           currentState: 'off',
           expectedPowerKw: 2,
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           powerKw: 2,
         }),
       ],
@@ -757,7 +768,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: now - 10_000,
-      observation: { available: true },
+      observation: { available: true, currentDrawKw: 0 },
     });
 
     const setback = recordActivationSetback({
@@ -905,7 +916,7 @@ describe('activation backoff', () => {
           name: 'Heater',
           currentState: 'off',
           expectedPowerKw: 2,
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           powerKw: 2,
         }),
       ],
@@ -938,7 +949,7 @@ describe('activation backoff', () => {
       available: true,
       lastFreshDataMs: start,
       expectedPowerKw: 0,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       powerKw: 0,
     };
 
@@ -957,7 +968,7 @@ describe('activation backoff', () => {
       binaryControl: { on: true },
       lastFreshDataMs: start + 60 * 1000,
       expectedPowerKw: 3.2,
-      measuredPowerKw: 3.2,
+      currentDrawKw: 3.2,
       powerKw: 3.2,
     };
     evaluateHeadroomForDevice({
@@ -974,7 +985,7 @@ describe('activation backoff', () => {
       ...steppedUpDevice,
       lastFreshDataMs: start + 2 * 60 * 1000,
       expectedPowerKw: 1,
-      measuredPowerKw: 1,
+      currentDrawKw: 1,
       powerKw: 1,
     };
     const setbackDecision = evaluateHeadroomForDevice({
@@ -994,7 +1005,7 @@ describe('activation backoff', () => {
       ...steppedUpDevice,
       lastFreshDataMs: start + 3 * 60 * 1000,
       expectedPowerKw: 3.2,
-      measuredPowerKw: 3.2,
+      currentDrawKw: 3.2,
       powerKw: 3.2,
     };
     const recoveredDecision = evaluateHeadroomForDevice({
@@ -1027,7 +1038,7 @@ describe('activation backoff', () => {
         name: 'Heater',
         available: true,
         expectedPowerKw: 3.2,
-        measuredPowerKw: 3.2,
+        currentDrawKw: 3.2,
         powerKw: 3.2,
       }],
       nowTs: start,
@@ -1110,7 +1121,7 @@ describe('activation backoff', () => {
         name: 'Heater',
         available: true,
         expectedPowerKw: 3.2,
-        measuredPowerKw: 3.2,
+        currentDrawKw: 3.2,
         powerKw: 3.2,
       }],
       nowTs: start,
@@ -1204,7 +1215,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
         powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
@@ -1218,7 +1229,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
-        measuredPowerKw: 0.2,
+        currentDrawKw: 0.2,
         expectedPowerKw: 0.2,
         powerKw: 0.2,
         lastFreshDataMs: start + 1_000,
@@ -1363,7 +1374,7 @@ describe('activation backoff', () => {
         name: 'Heater',
         binaryControl: { on: true },
         currentState: 'on',
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
         powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
@@ -1402,9 +1413,9 @@ describe('activation backoff', () => {
     syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', measuredPowerKw: 3.2, expectedPowerKw: 3.2, powerKw: 3.2 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', measuredPowerKw: 2.4, expectedPowerKw: 2.4, powerKw: 2.4 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', measuredPowerKw: 1.8, expectedPowerKw: 1.8, powerKw: 1.8 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 3.2, expectedPowerKw: 3.2, powerKw: 3.2 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 2.4, expectedPowerKw: 2.4, powerKw: 2.4 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 1.8, expectedPowerKw: 1.8, powerKw: 1.8 }),
       ] as any,
       nowTs: start,
     });
@@ -1412,9 +1423,9 @@ describe('activation backoff', () => {
     expect(syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', measuredPowerKw: 0.8, expectedPowerKw: 0.8, powerKw: 0.8 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', measuredPowerKw: 0.5, expectedPowerKw: 0.5, powerKw: 0.5 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', measuredPowerKw: 0.2, expectedPowerKw: 0.2, powerKw: 0.2 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 0.8, expectedPowerKw: 0.8, powerKw: 0.8 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 0.5, expectedPowerKw: 0.5, powerKw: 0.5 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 0.2, expectedPowerKw: 0.2, powerKw: 0.2 }),
       ] as any,
       nowTs: start + 5_000,
       reconciliationContext: 'snapshot_refresh',
@@ -1459,7 +1470,7 @@ describe('activation backoff', () => {
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         powerKw: 0,
       }],
       nowTs: start,
@@ -1473,7 +1484,7 @@ describe('activation backoff', () => {
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 1.0,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         powerKw: 0,
       }],
       nowTs: start + 5_000,
@@ -1493,7 +1504,7 @@ describe('activation backoff', () => {
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         powerKw: 0,
       }],
       nowTs: start + 24_000,
@@ -1527,7 +1538,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + 5_000,
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1557,7 +1568,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + (2 * 60 * 1000),
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1586,7 +1597,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS),
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1616,7 +1627,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + 45_000,
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1649,7 +1660,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + 5_000,
       diagnostics: diagnostics as any,
     })).toBe(false);

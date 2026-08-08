@@ -135,7 +135,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     name: 'Heater',
     binaryControl: { on: true },
     currentState: 'on',
-    measuredPowerKw: 2.4,
+    currentDrawKw: 2.4,
     planningPowerKw: 2,
   });
   const deviceC = buildRestoreFixture({
@@ -192,7 +192,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     currentState: 'on',
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
-    measuredPowerKw: 1.1,
+    currentDrawKw: 1.1,
   });
   // (c) Stepped device with `selectedStepId` absent but
   //     `hasKnownEffectiveStep === true` via `reportedStepId`. The legacy
@@ -209,7 +209,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
     reportedStepId: 'medium',
-    measuredPowerKw: 2.05,
+    currentDrawKw: 2.05,
   });
   // (d) Temperature device with `currentValue == normalized shedTemperature`.
   //     The restore-side code does not consult the temperature target at all
@@ -221,7 +221,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     name: 'Thermostat at shed setpoint',
     binaryControl: { on: true },
     currentState: 'on',
-    measuredPowerKw: 1.8,
+    currentDrawKw: 1.8,
     expectedPowerKw: 1.8,
     shedAction: 'set_temperature',
     shedTemperature: 18,

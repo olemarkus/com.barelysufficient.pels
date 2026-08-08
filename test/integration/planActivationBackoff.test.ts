@@ -5,7 +5,7 @@ describe('isActivationObservationActiveNow', () => {
     // `controlCapabilityId` is load-bearing: `isActivationObservationActiveNow`
     // reads the producer-resolved `currentOn`, which is the on/off truth only for
     // a binary device (`controlCapabilityId` set).
-    expect(isActivationObservationActiveNow({
+    expect(isActivationObservationActiveNow({ currentDrawKw: 0,
       controlCapabilityId: 'onoff',
       currentOn: true,
     })).toBe(true);
@@ -13,14 +13,14 @@ describe('isActivationObservationActiveNow', () => {
 
   it('is true when measured power is above the activation threshold', () => {
     expect(isActivationObservationActiveNow({
-      measuredPowerKw: 0.5,
+      currentDrawKw: 0.5,
     })).toBe(true);
   });
 
   it('is false when the device is reported unavailable', () => {
     expect(isActivationObservationActiveNow({
       available: false,
-      measuredPowerKw: 5,
+      currentDrawKw: 5,
     })).toBe(false);
   });
 
@@ -30,7 +30,7 @@ describe('isActivationObservationActiveNow', () => {
     // refactor briefly let this case report active without consulting measured power.
     expect(isActivationObservationActiveNow({
       binaryControl: { on: true },
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',

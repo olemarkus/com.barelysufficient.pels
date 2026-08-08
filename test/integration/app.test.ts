@@ -524,7 +524,8 @@ describe('MyApp initialization', () => {
   });
 
   it('emits stepped_feedback_reported event for the first reported step', async () => {
-    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -551,7 +552,8 @@ describe('MyApp initialization', () => {
   });
 
   it('emits stepped_feedback_confirmed event when reported step matches pending desired step', async () => {
-    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -586,7 +588,8 @@ describe('MyApp initialization', () => {
   });
 
   it('emits stepped_feedback_confirmed with stale=true for delayed feedback matching desired step', async () => {
-    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -633,7 +636,8 @@ describe('MyApp initialization', () => {
   });
 
   it('emits stepped_feedback_external_change when reported step changes outside PELS', async () => {
-    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -1092,7 +1096,8 @@ describe('MyApp initialization', () => {
   });
 
   it('still schedules convergence rebuilds for active overshoot', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1112,6 +1117,7 @@ describe('MyApp initialization', () => {
         id: 'dev-1',
         name: 'Heater',
         targets: [],
+        measuredPowerKw: 1.2,
         powerKw: 1.2,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
@@ -2656,7 +2662,8 @@ describe('computeDynamicSoftLimit', () => {
   });
 
   it('backfills capacity control when managed is true and no settings exist', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2735,7 +2742,8 @@ describe('computeDynamicSoftLimit', () => {
   });
 
   it('backfills managed devices from capacity control settings', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });

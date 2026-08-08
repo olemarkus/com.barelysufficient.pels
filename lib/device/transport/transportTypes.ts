@@ -17,6 +17,19 @@ import type {
   PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 
+/**
+ * Hysteresis threshold for the binary-settle EDGE detector
+ * (`didMeasurePowerBecomeSignificantlyPositive`): did this device just cross
+ * from ~0 into meaningfully drawing? That is settlement evidence for an on/off
+ * command, and a threshold is the right tool for it.
+ *
+ * It is NOT a measurement filter. `DeviceMeasuredPowerResolver` used to drop
+ * any reading at or below this floor, which turned "drawing 3 W" into the same
+ * answer as "has no `measure_power`" — and absence is what licenses a consumer
+ * to substitute rated power, so a few watts of standby could be booked as
+ * kilowatts. The resolver now reports every non-negative finite reading.
+ * Do not reintroduce this constant there.
+ */
 export const MIN_SIGNIFICANT_POWER_W = 5;
 export const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 

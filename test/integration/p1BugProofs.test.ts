@@ -19,6 +19,20 @@ import {
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
+import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
+
+// Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
+// snapshots go through `withHeadroomCurrentOn` — the producer boundary that
+// resolves `currentDrawKw` — before the usage math sees them.
+const splitControlledUsage: SplitControlledUsage = (params) => splitControlledUsageKw({
+  ...params,
+  devices: params.devices.map(withHeadroomCurrentOn),
+});
+const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
+  sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
+);
+
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
@@ -82,22 +96,25 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
 };
 
 describe('P1 bug proofs', () => {
-  it('uses one power resolution model for an off keep device across restore, shedding, and live usage accounting', () => {
+  it('separates what an off device will draw when restored from what it is drawing now', () => {
+    // The original proof asserted these were the SAME number — live usage equal to
+    // the highest known configured demand. That is the defect: an off device
+    // measuring a true 0 W was booked at its nameplate, and `sampleIngest` wrote
+    // that into the persisted managed/background split. Restore admission still
+    // reserves the configured demand (it is about to be switched on); live usage
+    // reports the meter.
     const device = buildPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
+      currentDrawKw: 0,
       expectedPowerKw: 2,
       planningPowerKw: 4,
       powerKw: 1,
     });
 
     const highestKnown = getHighestKnownPowerKw(device)?.kw ?? 0;
-    const restorePower = estimateRestorePower(device);
-    const liveUsage = sumControlledUsageKw([device]);
-
-    expect(restorePower).toBe(highestKnown);
-    expect(liveUsage).not.toBeNull();
-    expect(liveUsage).toBe(highestKnown);
+    expect(estimateRestorePower(device)).toBe(highestKnown);
+    expect(sumControlledUsageKw([device])).toBe(0);
   });
 
   it('keeps shedding active after a single sample just above the restore margin', async () => {
@@ -176,10 +193,11 @@ describe('P1 bug proofs', () => {
           binaryControl: { on: true },
           controllable: true,
           controlCapabilityId: 'onoff',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           binaryCommandPending: true,
         }) as PlanInputDevice,
         withBinaryDiscriminant({
+          currentDrawKw: 1,
           id: 'stale',
           name: 'Stale',
           commandableNow: true,
@@ -251,7 +269,8 @@ describe('P1 bug proofs', () => {
         selectedStepId: 'off',
         currentState: 'off',
         expectedPowerKw: 1.25,
-        measuredPowerKw: undefined,
+        // Parked at its off step and drawing nothing — its own meter says so.
+        currentDrawKw: 0,
       }),
       binaryControl: { on: false },
     }) as PlanInputDevice;
@@ -272,15 +291,15 @@ describe('P1 bug proofs', () => {
       },
     });
 
-    const plannerControlledKw = sumControlledUsageKw([planDevice]) ?? 0;
+    const plannerControlledKw = sumControlledUsageKw([planDevice]);
     await recordPowerSampleForApp({
       currentPowerW: 1250,
       nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -288,7 +307,14 @@ describe('P1 bug proofs', () => {
       },
     });
 
-    expect(plannerControlledKw).toBeCloseTo(((tracker as { lastControlledPowerW?: number }).lastControlledPowerW ?? 0) / 1000, 6);
+    // The proof is AGREEMENT between the two paths: the planner's managed sum and
+    // the power tracker's split must describe this device the same way. The tank
+    // is off and drawing nothing, so it contributes 0 to managed usage and the
+    // whole 1.25 kW house reading lands in background — where it belongs.
+    expect(plannerControlledKw).toBeCloseTo(
+      ((tracker as { lastControlledPowerW?: number }).lastControlledPowerW ?? 0) / 1000,
+      6,
+    );
     expect(1.25 - plannerControlledKw).toBeCloseTo(
       ((tracker as { lastUncontrolledPowerW?: number }).lastUncontrolledPowerW ?? 0) / 1000,
       6,

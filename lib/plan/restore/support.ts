@@ -78,7 +78,7 @@ export function getRestoreNeed(
       // `currentOn` (the on/off truth) is forwarded for the activation in/active reads.
       ...(isBinaryPlanDevice(dev) ? { currentOn: dev.currentOn } : {}),
       currentState: dev.currentState,
-      measuredPowerKw: dev.measuredPowerKw,
+      currentDrawKw: dev.currentDrawKw,
     },
   });
   for (const transition of penaltyInfo.transitions) {

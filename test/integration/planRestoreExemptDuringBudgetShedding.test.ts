@@ -303,7 +303,7 @@ const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDe
   controllable: true,
   controlCapabilityId: 'onoff',
   binaryControl: { on: params.on },
-  measuredPowerKw: params.on ? 1.25 : 0,
+  currentDrawKw: params.on ? 1.25 : 0,
   expectedPowerKw: 1.25,
   budgetExempt: params.exempt,
   lastFreshDataMs: Date.now(),
@@ -317,7 +317,7 @@ const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscrim
   controllable: true,
   controlCapabilityId: 'onoff',
   binaryControl: { on },
-  measuredPowerKw: on ? 1.0 : 0,
+  currentDrawKw: on ? 1.0 : 0,
   expectedPowerKw: 1.0,
   lastFreshDataMs: Date.now(),
 }) as PlanInputDevice;

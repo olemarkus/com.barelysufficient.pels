@@ -139,9 +139,9 @@ Two axes, named so no expression silently mixes them:
 
 There are two exempt sums and therefore two non-exempt quantities, and they must
 carry distinct names down to the contract field. `sumBudgetExemptProjectedUsageKw`
-(`lib/plan/planUsage.ts:75`) returns the **projected** value: for an observed-off
-device `resolveUsageKw` falls through to `getHighestKnownPowerKw`, so a parked
-charger contributes its configured power. That projection is correct for the
+returns the **projected** value: for an observed-off device
+`resolveBudgetExemptProjectedKw` (`lib/plan/planUsage.ts`) falls through to
+`getHighestKnownPowerKw`, so a parked charger contributes its configured power. That projection is correct for the
 control threshold and wrong for anything rendering current load, and the two can
 differ by several kW. A single `exemptKw` or a single `P_nonExempt` that "lands
 twice with different inputs" would rebuild exactly the ambiguity this table
@@ -361,8 +361,10 @@ performs the same subtraction for the daily-budget state and UI view; that is a
 parallel path, not the one the planner paces on.)
 
 The exempt device set is the same on both axes: `sumBudgetExemptProjectedUsageKw`
-(`lib/plan/planUsage.ts:75`) gates the energy accrual at `lib/power/sampleIngest.ts:167`
-and the power term at `lib/plan/planBuilder.ts:534`.
+(`lib/plan/planUsage.ts`) gates the energy accrual at `lib/power/sampleIngest.ts`
+and the power term at `lib/plan/planBuilder.ts`. Feeding the PROJECTED sum to the
+energy accrual is a known defect — it books an off exempt device's nameplate into
+a persisted kWh bucket — tracked in `TODO.md`.
 
 The gap is that the energy side materialises `P_nonExempt`'s kWh equivalent as the
 bucket's `usedKWh`, while the power side never materialises `P_nonExempt` at all.
@@ -616,9 +618,9 @@ shows measured load. The geometry is therefore deferred rather than treated as a
 direct rendering of `overBudgetPace`.
 
 **Feed the slab `measuredExemptKw`, not `projectedExemptKw`.** The value
-`computeDailySoftLimit` uses is the projected one: `resolveUsageKw` falls through to
-`getHighestKnownPowerKw` for an observed-off device, so an off charger contributes
-its configured power. The hero's managed and background segments are defined as
+`computeDailySoftLimit` uses is the projected one: `resolveBudgetExemptProjectedKw`
+falls through to `getHighestKnownPowerKw` for an observed-off device, so an off
+charger contributes its configured power. The hero's managed and background segments are defined as
 current load (`notes/overview-hero-spec.md:158-164`), so painting a slab from the
 projected value would show kilowatts the device is not drawing, and in the solar
 case could paint the entire bar as exempt. The geometry needs a measured-only
@@ -652,14 +654,15 @@ Two supporting changes:
 
   **But do not repeat that comment's stated reason.** It says the add-back is the
   exempt device's live draw, "zero while it is off". That is not what the code
-  does. `computeDailySoftLimit` sums over `PlanInputDevice[]`, and `PlanInputDevice`
-  carries no `plannedState` (`packages/planner-types/src/planInputDevice.ts:112-114`),
-  so `resolveUsageKw` (`lib/plan/planUsage.ts:52-57`) can never take its
-  `plannedState === 'shed'` zero branch here. An observed-off exempt device falls to
-  `resolveObservedOffUsageKw`, which returns `getHighestKnownPowerKw`: the highest
-  of measured / expected / planning / configured power. So `budgetPaceImportKw`
+  does. An observed-off exempt device falls through
+  `resolveBudgetExemptProjectedKw` to `getHighestKnownPowerKw`: the highest of
+  measured / expected / planning / configured power. So `budgetPaceImportKw`
   **already projects an off exempt device's expected draw**, and the add-back is
-  only zero when nothing is known about the device's power at all.
+  only zero when nothing is known about the device's power at all. (There is a
+  `plannedState === 'shed'` arm ahead of the projection — it returns the device's
+  ACTUAL draw rather than projecting configured demand — but
+  `computeDailySoftLimit` sums over `PlanInputDevice[]`, which carries no
+  `plannedState`, so it cannot fire on that path.)
 
   The practical consequence: a proposal to "project the candidate's expected draw
   into the exempt add-back" so exempt devices become capacity-bound for restore
