@@ -19,6 +19,9 @@
 // It is never user-intended content, so displays drop it.
 const STRINGIFIED_ABSENT_SUFFIX = /\s*\((?:null|undefined)\)\s*$/iu;
 
-export const formatDisplayDeviceName = (name: string): string => (
-  name.replace(STRINGIFIED_ABSENT_SUFFIX, '').trim()
-);
+export const formatDisplayDeviceName = (name: string): string => {
+  const stripped = name.replace(STRINGIFIED_ABSENT_SUFFIX, '').trim();
+  // A name that IS the artifact ("(null)") must not strip to an empty title;
+  // the verbatim name is the lesser evil.
+  return stripped === '' ? name.trim() : stripped;
+};
