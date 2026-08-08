@@ -1,4 +1,5 @@
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
+import { isEvChargerDevice } from '../deviceKind.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_CAR_ASSOCIATIONS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvCarAssociations } from '../../../../contracts/src/evCarAssociations.ts';
@@ -38,7 +39,7 @@ let carOptionsRetryable = false;
 
 export const supportsCarAssociation = (
   device: SettingsUiDeviceDetailItem | null | undefined,
-): boolean => device?.deviceClass === 'evcharger';
+): boolean => isEvChargerDevice(device);
 
 export const loadEvCarAssociations = async (): Promise<void> => {
   try {

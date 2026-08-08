@@ -4,6 +4,7 @@ import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../contracts/src/evBoost.ts';
 import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/commandableNowReason.ts';
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
+import { isEvChargerDevice } from '../deviceKind.ts';
 import {
   deviceDetailEvBoost,
   deviceDetailEvBoostBelow,
@@ -24,7 +25,7 @@ const normalizeBoostBelowPercent = (value: number, fallback: number): number => 
 );
 
 export const supportsEvBoostDevice = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
-  device?.deviceClass === 'evcharger' && hasSteppedLoadSupport(device)
+  isEvChargerDevice(device) && hasSteppedLoadSupport(device)
 );
 
 type EvBoostHandlerDeps = {
