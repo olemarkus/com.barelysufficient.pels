@@ -313,6 +313,7 @@ const refreshOpenDeviceDetail = () => {
     currentDetailDeviceId,
     getDeviceById,
   });
+  syncSwitchRowDisabledStyling();
 };
 
 export const openDeviceDetail = (deviceId: string) => {
