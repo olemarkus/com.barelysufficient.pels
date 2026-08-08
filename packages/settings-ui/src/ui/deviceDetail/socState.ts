@@ -1,3 +1,4 @@
+import { isEvChargerDevice } from '../deviceKind.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailSocRow,
@@ -8,7 +9,7 @@ import { getTimeAgo } from '../utils.ts';
 
 export function setDeviceDetailSocState(device: SettingsUiDeviceDetailItem | null): void {
   if (!deviceDetailSocRow || !deviceDetailSocValue || !deviceDetailSocUpdated) return;
-  if (!device || device.deviceClass !== 'evcharger') {
+  if (!device || !isEvChargerDevice(device)) {
     deviceDetailSocRow.hidden = true;
     deviceDetailSocValue.textContent = 'Not reported';
     deviceDetailSocUpdated.textContent = '';
