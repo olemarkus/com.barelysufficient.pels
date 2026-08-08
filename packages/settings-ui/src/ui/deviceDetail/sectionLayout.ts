@@ -115,7 +115,9 @@ export const applyDeviceDetailSectionLayout = (
 // A page whose open cards carry no interactive control has one job: get the
 // device set up. Expand Setup once per device for unmanaged devices and for
 // plain binary devices (their behavior area is a single statement).
-let setupAutoExpandedForDeviceId: string | null = null;
+// Per-device memory: returning to a device whose Setup the user already
+// closed must not re-expand it.
+const setupAutoExpandedDeviceIds = new Set<string>();
 
 export const autoExpandSetupWhenBare = (params: {
   deviceId: string;
@@ -125,11 +127,11 @@ export const autoExpandSetupWhenBare = (params: {
   const kind = resolveDeviceDetailKind(params.device);
   const shouldExpand = !params.isManaged || kind === 'binary';
   if (!shouldExpand) {
-    setupAutoExpandedForDeviceId = null;
+    setupAutoExpandedDeviceIds.delete(params.deviceId);
     return;
   }
-  if (setupAutoExpandedForDeviceId === params.deviceId) return;
-  setupAutoExpandedForDeviceId = params.deviceId;
+  if (setupAutoExpandedDeviceIds.has(params.deviceId)) return;
+  setupAutoExpandedDeviceIds.add(params.deviceId);
   const disclosure = document.getElementById('device-detail-setup-disclosure') as HTMLDetailsElement | null;
   if (disclosure && !disclosure.open) disclosure.open = true;
 };
@@ -137,5 +139,5 @@ export const autoExpandSetupWhenBare = (params: {
 // Test seam: clears the applied-layout memo so specs can assert re-application.
 export const resetDeviceDetailSectionLayoutForTest = (): void => {
   appliedKind = null;
-  setupAutoExpandedForDeviceId = null;
+  setupAutoExpandedDeviceIds.clear();
 };

@@ -69,14 +69,21 @@ export function syncDeviceDetailControlModeOptions(
   });
 }
 
-// Display label for the Charging card's control-mode readout — resolved from
-// the same option list the Setup select shows, so the two can never disagree.
-export function getControlModeDisplayLabel(
-  device: SettingsUiDeviceDetailItem | null,
-  controlMode: DeviceDetailControlMode,
-): string {
-  return getDeviceDetailControlModeOptions(device)
-    .find((option) => option.value === controlMode)?.label ?? 'Default';
+// Display label for the Charging card's control-mode readout. A static total
+// map, deliberately NOT filtered through the option list: the readout states
+// the mode that IS resolved, and falling back to "Default" for a mode missing
+// from the current options would reinterpret an unexpected state as a benign
+// one (resolution-in-the-producer rule).
+const CONTROL_MODE_DISPLAY_LABELS: Record<DeviceDetailControlMode, string> = {
+  default: 'Default',
+  stepped_load: 'Stepped load',
+  continuous: 'Continuous',
+  ev_charger_1_phase: 'EV 1-phase',
+  ev_charger_3_phase: 'EV 3-phase',
+};
+
+export function getControlModeDisplayLabel(controlMode: DeviceDetailControlMode): string {
+  return CONTROL_MODE_DISPLAY_LABELS[controlMode];
 }
 
 export function normalizeDeviceDetailControlMode(value: string): DeviceDetailControlMode | null {
