@@ -637,7 +637,7 @@ describe('plan diagnostics observations', () => {
     });
   });
 
-  it('normalizes keep and restore hold states as paused starvation states', () => {
+  it('normalizes a keep hold as paused and a pending restore as counting', () => {
     const keepObservation = buildObservation({
       inputDevice: {
         id: 'heater-1',
@@ -695,13 +695,17 @@ describe('plan diagnostics observations', () => {
       desiredForMode: { 'heater-1': 21 },
     });
 
+    // A device PELS is commanding in full is not held back by PELS.
     expect(keepObservation.pauseReason).toBe('keep');
     expect(keepObservation.suppressionState).toBe('paused');
-    expect(restoreObservation.pauseReason).toBe('restore');
-    expect(restoreObservation.suppressionState).toBe('paused');
+    // A device PELS declined to resume this cycle IS held back by PELS — the queue being
+    // busy is PELS's own pacing, not the device getting served.
+    expect(restoreObservation.countingCause).toBe('restore');
+    expect(restoreObservation.suppressionState).toBe('counting');
+    expect(restoreObservation.pauseReason).toBeNull();
   });
 
-  it('uses explicit keep-state hold reasons for starvation suppression', () => {
+  it('counts a meter-settling hold — PELS is still the reason the device is off', () => {
     const observation = buildObservation({
       inputDevice: {
         id: 'heater-1',
@@ -731,8 +735,9 @@ describe('plan diagnostics observations', () => {
       desiredForMode: { 'heater-1': 21 },
     });
 
-    expect(observation.pauseReason).toBe('cooldown');
-    expect(observation.suppressionState).toBe('paused');
+    expect(observation.countingCause).toBe('cooldown');
+    expect(observation.suppressionState).toBe('counting');
+    expect(observation.pauseReason).toBeNull();
   });
 
   it('re-attributes a daily-bound insufficient-headroom hold to the daily_budget counting cause', () => {
@@ -930,7 +935,7 @@ describe('plan diagnostics observations', () => {
     });
   });
 
-  it('treats activation backoff as paused starvation rather than counting suppression', () => {
+  it('counts activation backoff — the retry timer is PELS pacing itself, not service', () => {
     const observation = buildObservation({
       inputDevice: {
         id: 'heater-1',
@@ -960,9 +965,88 @@ describe('plan diagnostics observations', () => {
       desiredForMode: { 'heater-1': 21 },
     });
 
-    expect(observation.pauseReason).toBe('activation_backoff');
-    expect(observation.suppressionState).toBe('paused');
-    expect(observation.countingCause).toBeNull();
+    expect(observation.countingCause).toBe('activation_backoff');
+    expect(observation.suppressionState).toBe('counting');
+    expect(observation.pauseReason).toBeNull();
+  });
+
+  it('counts a resume PELS throttled', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        binaryControl: { on: false },
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'off',
+        plannedState: 'keep',
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: r('restore throttled'),
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation.countingCause).toBe('restore_throttled');
+    expect(observation.suppressionState).toBe('counting');
+    expect(observation.pauseReason).toBeNull();
+  });
+
+  // A startup reservation is bounded (`HEADROOM_RESERVE_MAX_MS`, 15 min) and issues no write,
+  // which is why it used to PAUSE the clock. It counts now: the device is off because PELS
+  // decided a higher-priority device gets the block first, and boundedness is a property of
+  // the mechanism, not something the held device experiences. Note the reserve's ceiling is
+  // exactly the starvation entry delay, so a maximally long reservation sits right at the
+  // `Held back` boundary — deliberate, and recorded in
+  // `notes/deferred-load-objectives/preemptive-power-reservation.md`.
+  it('counts a hold on another device\'s startup reservation, named as its own cause', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        binaryControl: { on: false },
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'off',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: { code: PLAN_REASON_CODES.reservedForStart, targetName: 'Car charger' },
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    // Its own cause, not folded into `capacity` — device detail must be able to say the
+    // device is waiting on a reservation rather than on the hard cap.
+    expect(observation.countingCause).toBe('reserved_for_start');
+    expect(observation.suppressionState).toBe('counting');
+    expect(observation.pauseReason).toBeNull();
   });
 });
 
@@ -1125,6 +1209,106 @@ describe('daily-bound headroom starvation flows through to the overview budget b
 
     expect([...seenCountingCauses]).toEqual(['daily_budget']);
     expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
+    service.destroy();
+  });
+});
+
+// The 2026-08-08 rule (`notes/starvation/README.md`): the clock runs whenever PELS is the
+// reason the device is down. A restore cooldown used to PAUSE it, which is what let a
+// device cycling between a capacity hold and its 60 s cooldown look like it was being
+// served. Driven through the real producer + the real episode tracker, because the point of
+// the change is what the two do together over time.
+describe('a device held under a restore cooldown accumulates held-back time', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-09T10:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const createService = () => {
+    const store = new Map<string, unknown>();
+    const settings = {
+      get: (key: string) => store.get(key),
+      set: (key: string, value: unknown) => {
+        store.set(key, value);
+      },
+    };
+    return new DeviceDiagnosticsService({
+      diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+      getTimeZone: () => 'Europe/Oslo',
+      isDebugEnabled: () => false,
+    });
+  };
+
+  // Mode target 21, PELS commands 18 and is sitting out its restore cooldown.
+  const buildRestoreCooldownObservation = () => buildObservation({
+    inputDevice: {
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      managed: true,
+      controllable: true,
+      available: true,
+      currentTemperature: 18,
+      binaryControl: { on: false },
+      targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+    },
+    planDevice: {
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      currentState: 'off',
+      plannedState: 'keep',
+      currentTarget: 18,
+      plannedTarget: 18,
+      reason: r('cooldown (restore, 45s remaining)'),
+      controllable: true,
+      available: true,
+      currentTemperature: 18,
+    },
+    desiredForMode: { 'heater-1': 21 },
+  });
+
+  it('enters held-back after the entry delay and attributes the time to the cooldown', () => {
+    const service = createService();
+    const start = Date.now();
+
+    for (const offset of [0, 9, 16, 25]) {
+      service.observePlanSample({
+        nowTs: start + offset * 60 * 1000,
+        observations: [buildRestoreCooldownObservation()],
+      });
+    }
+
+    const starvation = service.getUiPayload().diagnosticsByDeviceId['heater-1']?.starvation;
+    expect(starvation?.isStarved).toBe(true);
+    // 1 min from entry (t15) to t16, plus the t16→t25 span.
+    expect(starvation?.starvedAccumulatedMs).toBe(10 * 60 * 1000);
+    expect(starvation?.starvationCause).toBe('cooldown');
+    expect(starvation?.starvationPauseReason).toBeNull();
+    service.destroy();
+  });
+
+  // The guard on the wider rescue offer: counting is not the gate, the 15-minute entry delay
+  // is. A device inside an ordinary 60 s cooldown is nowhere near "Held back", so it is not
+  // in the rescuable list and its card grows no "Let it run now" chip.
+  it('does not offer a rescue for a device merely inside its cooldown', () => {
+    const service = createService();
+    const start = Date.now();
+
+    for (const offset of [0, 1, 2]) {
+      service.observePlanSample({
+        nowTs: start + offset * 60 * 1000,
+        observations: [buildRestoreCooldownObservation()],
+      });
+    }
+
+    expect(service.getUiPayload().diagnosticsByDeviceId['heater-1']?.starvation.isStarved).toBe(false);
+    expect(service.getOverviewStarvation('heater-1')).toBeNull();
     service.destroy();
   });
 });

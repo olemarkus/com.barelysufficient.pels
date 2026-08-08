@@ -70,32 +70,67 @@ describe('plan decision semantics', () => {
       countingCause: 'capacity',
       pauseReason: null,
     });
-    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.restorePending))).toEqual({
-      state: 'paused',
-      countingCause: null,
-      pauseReason: 'restore',
-    });
-    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.activationBackoff))).toEqual({
-      state: 'paused',
-      countingCause: null,
-      pauseReason: 'activation_backoff',
-    });
     expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.keep))).toEqual({
       state: 'paused',
       countingCause: null,
       pauseReason: 'keep',
     });
+    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.inactive))).toEqual({
+      state: 'paused',
+      countingCause: null,
+      pauseReason: 'inactive',
+    });
+  });
+
+  // The 2026-08-08 owner ruling: the clock runs whenever PELS is the reason the device is
+  // down. Every hold here USED to pause it, which is what made a device cycling between a
+  // capacity hold and a 60 s cooldown look like it had been served. Each keeps its own
+  // cause — device detail renders it, so a cooldown must not read as a reservation.
+  it('counts every hold PELS itself imposes, attributed to the specific hold', () => {
+    const countingCauseByCode = {
+      [PLAN_REASON_CODES.cooldownShedding]: 'cooldown',
+      [PLAN_REASON_CODES.cooldownRestore]: 'cooldown',
+      [PLAN_REASON_CODES.meterSettling]: 'cooldown',
+      [PLAN_REASON_CODES.restorePending]: 'restore',
+      [PLAN_REASON_CODES.waitingForOtherDevices]: 'restore',
+      [PLAN_REASON_CODES.restoreThrottled]: 'restore_throttled',
+      [PLAN_REASON_CODES.activationBackoff]: 'activation_backoff',
+      [PLAN_REASON_CODES.reservedForStart]: 'reserved_for_start',
+    };
+
+    Object.entries(countingCauseByCode).forEach(([code, countingCause]) => {
+      expect(resolveStarvationSuppressionSemantics(reason(code as DeviceReason['code']))).toEqual({
+        state: 'counting',
+        countingCause,
+        pauseReason: null,
+      });
+    });
+  });
+
+  // `restoreNeed` is the one restore code that must NOT follow its siblings above: it lands
+  // on a keep-state device that is ON and merely wants a step up, so PELS has not turned it
+  // off and the clock stays stopped.
+  it('keeps a stepped step-up need paused — the device is running', () => {
+    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.restoreNeed))).toEqual({
+      state: 'paused',
+      countingCause: null,
+      pauseReason: 'restore',
+    });
+  });
+
+  // The carve-out from the ruling: PELS did turn these off, but at the owner's own explicit
+  // request. Flagging "Held back" and offering "Let it run now" would be telling the owner
+  // their own setting is a problem, so the clock stays stopped however long the hold runs.
+  it('pauses the holds the owner asked for', () => {
     expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.deferredObjectiveAvoid))).toEqual({
       state: 'paused',
       countingCause: null,
       pauseReason: 'deferred_objective_avoid',
     });
-    // A startup reservation is a deliberate, user-granted, bounded hold — a pause, never
-    // starvation counting. Without this branch it falls through to `unknown_suppression_reason`.
-    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.reservedForStart))).toEqual({
+    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.awaitingSolarSurplus))).toEqual({
       state: 'paused',
       countingCause: null,
-      pauseReason: 'reserved_for_start',
+      pauseReason: 'awaiting_solar_surplus',
     });
   });
 });

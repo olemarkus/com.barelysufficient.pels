@@ -100,9 +100,14 @@ ones"*. Three things were wrong with it.
 
 **The line that makes the current shape legitimate is mechanical, not causal.** Be honest about
 what it is not: for a device that *would* have been resumed this cycle, the observable outcome of a
-reservation is the same as a shed. It is classified as a hold (`HOLD_REASON_CODES`) and pauses the
-starvation clock, and the code says so. Claiming the reserve "does not affect other devices" would
-be a rationalisation.
+reservation is the same as a shed. It is classified as a hold (`HOLD_REASON_CODES`) and, since
+2026-08-08, it **runs the starvation clock** — `reservedForStart` is a counting cause, because PELS
+is the reason the held device is down (`notes/starvation/README.md`). It used to pause the clock on
+the grounds that the reserve is bounded by `HEADROOM_RESERVE_MAX_MS`; that bound is a property of
+the mechanism, not something the held device experiences, and the reserve's 15-minute ceiling is
+exactly the starvation entry delay, so a maximally long reservation now sits right at the entry
+boundary. The code says so. Claiming the reserve "does not affect other devices" would be a
+rationalisation.
 
 What is actually different is the mechanism, and it is checkable:
 

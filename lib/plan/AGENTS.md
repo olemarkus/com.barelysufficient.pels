@@ -36,8 +36,9 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `plannedState`" — the reference implementation does exactly that, through that shared path.
 
   Equally, do **not** state it as "a decoration must not affect other devices". A headroom reserve
-  plainly does affect them: they are not resumed, they classify as `HOLD_REASON_CODES`, and they
-  pause the starvation clock. That version is unfalsifiable and would wave through the next lane
+  plainly does affect them: they are not resumed, they classify as `HOLD_REASON_CODES`, and since
+  2026-08-08 they **accrue held-back time** — `reservedForStart` counts on the starvation clock
+  like any other PELS-imposed hold. That version is unfalsifiable and would wave through the next lane
   exactly as `lib/plan/shedding/pauseHold.ts` was waved through — it passed every import check and
   still put a smart-task-shaped shed lane in the planner.
 

@@ -22,11 +22,14 @@ import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './re
  * that restore admission already consumes, exactly as `reserveHeadroomForPendingRestores`
  * (`lib/plan/restore/support.ts`) already does for a device whose restore is in flight.
  *
- * A lower-priority device IS affected: it is not resumed, it classifies as a hold, and it pauses
- * the starvation clock. What makes that acceptable is mechanical rather than causal — nothing is
- * added to `shedSet`, no other device's `plannedState` is set from here, and no actuation intent
- * is produced (`reservedForStart` is in `RESTORE_ADMISSION_HOLD_REASON_CODES`). See
- * `lib/plan/AGENTS.md` and `notes/deferred-load-objectives/preemptive-power-reservation.md`.
+ * A lower-priority device IS affected: it is not resumed, it classifies as a hold, and it ACCRUES
+ * held-back time — `reservedForStart` counts on the starvation clock (it paused it until
+ * 2026-08-08; the reserve is bounded, but boundedness is a property of the mechanism, not
+ * something the held device feels). What makes that acceptable is mechanical rather than causal —
+ * nothing is added to `shedSet`, no other device's `plannedState` is set from here, and no
+ * actuation intent is produced (`reservedForStart` is in `RESTORE_ADMISSION_HOLD_REASON_CODES`).
+ * See `lib/plan/AGENTS.md`, `notes/starvation/README.md`, and
+ * `notes/deferred-load-objectives/preemptive-power-reservation.md`.
  *
  * Scope is deliberately step 1 only:
  *   - the reserve is EXACTLY the lowest active step's power — never the next or target step;
