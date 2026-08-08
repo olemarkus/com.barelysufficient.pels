@@ -164,13 +164,20 @@ test.describe('Device detail panel', () => {
 
     const section = page.locator('#device-detail-surplus-section');
     const delta = page.locator('#device-detail-surplus-delta');
+    const gateHint = page.locator('#device-detail-surplus-gate-hint');
 
-    // Field-only section is hidden until the "Use solar surplus" toggle (in the
-    // Control cluster) is on — mirrors how "Price response" gates on its switch.
-    await expect(section).toBeHidden();
+    // With the toggle off the section stays visible but disabled, and the gate
+    // hint names the real switch — the suppressed-control treatment is
+    // visible-but-disabled, never vanish.
+    await expect(section).toBeVisible();
+    await expect(gateHint).toBeVisible();
+    await expect(gateHint).toContainText('Use solar surplus');
+    expect(await readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(true);
     await setMdSwitch(page, '#device-detail-surplus-opt', true);
     await expect(section).toBeVisible();
     await expect(delta).toBeVisible();
+    await expect(gateHint).toBeHidden();
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(false);
 
     await setMdValue(page, '#device-detail-surplus-delta', '3');
     await expect.poll(async () => {
@@ -181,9 +188,11 @@ test.describe('Device detail panel', () => {
       return settings?.dev_heatpump;
     }, { timeout: 3000 }).toMatchObject({ surplusWilling: true, surplusDelta: 3 });
 
-    // Disabling hides the field-only section again.
+    // Disabling returns the section to visible-but-disabled with the hint.
     await setMdSwitch(page, '#device-detail-surplus-opt', false);
-    await expect(section).toBeHidden();
+    await expect(section).toBeVisible();
+    await expect(gateHint).toBeVisible();
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(true);
   });
 
   test('Limiting card renders a statement, not a radiogroup, when there is nothing to choose', async ({ page }) => {

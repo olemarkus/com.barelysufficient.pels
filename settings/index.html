@@ -789,6 +789,9 @@
             </summary>
             <div class="collapse-content">
               <p class="muted">Temperature changes applied during cheap and expensive electricity hours.</p>
+              <!-- Why these values are inert right now (kept, not applied) — the
+                   suppressed-control treatment is visible-but-disabled + hint. -->
+              <p class="muted detail-gate-hint" id="device-detail-delta-gate-hint" hidden></p>
               <div class="detail-deltas form-grid">
                 <div class="md-field-row">
                   <md-filled-text-field
@@ -800,7 +803,7 @@
                     inputmode="decimal"
                     suffix-text="°C"
                   ></md-filled-text-field>
-                  <small class="field__hint">Added to target during cheap hours, for example +5.</small>
+                  <small class="field__hint">Added to target during cheap hours, for example +2 °C.</small>
                 </div>
                 <div class="md-field-row">
                   <md-filled-text-field
@@ -828,6 +831,7 @@
             </summary>
             <div class="collapse-content">
               <p class="muted">While your home is exporting solar, this lifts the target so you use your own power instead of exporting it.</p>
+              <p class="muted detail-gate-hint" id="device-detail-surplus-gate-hint" hidden></p>
               <div class="detail-deltas form-grid">
                 <div class="md-field-row">
                   <md-filled-text-field
@@ -839,7 +843,7 @@
                     inputmode="decimal"
                     suffix-text="°C"
                   ></md-filled-text-field>
-                  <small class="field__hint">Added to the target while exporting solar, for example +2.</small>
+                  <small class="field__hint">Added to the target while exporting solar, for example +2 °C.</small>
                 </div>
               </div>
             </div>

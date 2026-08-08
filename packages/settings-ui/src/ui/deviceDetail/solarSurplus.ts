@@ -4,6 +4,7 @@ import {
   deviceDetailDumpLoadPowerLimitHint,
   deviceDetailDumpLoadRow,
   deviceDetailSurplusDelta,
+  deviceDetailSurplusGateHint,
   deviceDetailSurplusOpt,
   deviceDetailSurplusSection,
 } from '../dom.ts';
@@ -52,6 +53,37 @@ export const setDeviceDetailSurplusValues = (deviceId: string) => {
   }
 };
 
+/**
+ * Whether the "Use solar surplus" control may be shown for a device: the home's
+ * surplus pool must be able to open at all, OR the device is already opted in.
+ *
+ * The escape hatch mirrors the binary sibling below. Without it, an install
+ * that opted in before the pool-reachability gate existed keeps a live stored
+ * setting with no surface to see or clear it.
+ */
+export const surplusControlVisibleFor = (deviceId: string): boolean => (
+  resolveSurplusControlAvailable()
+  || state.priceOptimizationSettings[deviceId]?.surplusWilling === true
+);
+
+// Why the boost field is inert right now. Applicable-but-unavailable renders
+// visible-but-disabled with this hint; only kind- or home-inapplicable states
+// (no temperature target, or no surplus pool to opt into) hide the section.
+const resolveSurplusGateHint = (params: {
+  canControlTemperature: boolean;
+  isManaged: boolean;
+  selected: boolean;
+}): string | null => {
+  if (!params.canControlTemperature) {
+    return 'Temperature control is off for this device — this value is kept but not applied.';
+  }
+  if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use solar surplus.';
+  if (!params.selected) {
+    return 'Turn on Use solar surplus in Setup to lift the target while you export solar.';
+  }
+  return null;
+};
+
 export const updateSurplusSectionVisibility = (params: {
   currentDetailDeviceId: string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -59,20 +91,28 @@ export const updateSurplusSectionVisibility = (params: {
   if (!deviceDetailSurplusSection || !deviceDetailSurplusOpt) return;
   const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
-  // Field-only section, shown only when the "Use solar surplus" toggle (in the
-  // Control section) is on — mirrors how "Price response" gates on its switch.
-  // Deliberately NOT gated on pool reachability. The toggle above is, and the
-  // fields simply follow it: reachability decides whether the opt-in can be
-  // OFFERED, while these fields must stay reachable for as long as the opt-in is
-  // on — including on an install that opted in before the gate existed, which
-  // would otherwise be left with an invisible stored setting it cannot clear.
-  // (Adding the check here would also be dead: `selected` already implies it for
-  // every home that could newly turn the toggle on.)
-  deviceDetailSurplusSection.style.display
-    = supportsTemperatureControlDevice(device)
-      && isManaged
-      && deviceDetailSurplusOpt.selected
-      ? 'block' : 'none';
+  // Section visibility follows the toggle row's own offer gate (pool reachable
+  // or already opted in): a non-solar home never sees the section at all, while
+  // an opted-in device keeps it reachable regardless of reachability — an
+  // install that opted in before the gate existed must be able to see and clear
+  // its stored setting.
+  const offered = params.currentDetailDeviceId ? surplusControlVisibleFor(params.currentDetailDeviceId) : false;
+  const applicable = supportsTemperatureDevice(device) && (offered || deviceDetailSurplusOpt.selected);
+  if (!applicable) {
+    deviceDetailSurplusSection.style.display = 'none';
+    return;
+  }
+  const gateHint = resolveSurplusGateHint({
+    canControlTemperature: supportsTemperatureControlDevice(device),
+    isManaged,
+    selected: deviceDetailSurplusOpt.selected,
+  });
+  deviceDetailSurplusSection.style.display = 'block';
+  if (deviceDetailSurplusDelta) deviceDetailSurplusDelta.disabled = gateHint !== null;
+  if (deviceDetailSurplusGateHint) {
+    deviceDetailSurplusGateHint.textContent = gateHint ?? '';
+    deviceDetailSurplusGateHint.hidden = gateHint === null;
+  }
 };
 
 export const initDeviceDetailSurplusOptHandlers = (params: {

@@ -183,6 +183,8 @@ export const deviceDetailControlModel = document.querySelector('#device-detail-c
 export const deviceDetailModesSection = qs('#device-detail-modes-section');
 export const deviceDetailModes = qs('#device-detail-modes');
 export const deviceDetailDeltaSection = qs('#device-detail-delta-section');
+export const deviceDetailDeltaGateHint = qs('#device-detail-delta-gate-hint');
+export const deviceDetailSurplusGateHint = qs('#device-detail-surplus-gate-hint');
 export const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as MdFilledTextFieldElement;
 export const deviceDetailExpensiveDelta = document.querySelector(
   '#device-detail-expensive-delta',
