@@ -21,6 +21,7 @@ import {
   shouldDisplayExternalOffReason,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
 import { resolveHeldCardReasonLine } from '../../../../shared-domain/src/planCardReasonLine.ts';
+import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import {
   resolveSteppedEvExceptionLabel,
   resolveSteppedLevelFact,
@@ -190,12 +191,22 @@ type HeroStateKind = ReturnType<typeof resolveDisplayStateKind>;
 const resolveHeroReasonText = (
   dev: PlanDeviceSnapshot,
   kind: HeroStateKind,
+  intentHeld: boolean,
   reasonCode: string | undefined,
 ): string => {
   // The same reason ladder the Overview card renders — the answer to "why is
   // this Limited?" must not be three disclosures down in the activity log.
   if (shouldDisplayExternalOffReason(kind, reasonCode)) return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
-  if (kind === 'held') return resolveHeldCardReasonLine({ reason: dev.reason, starvation: dev.starvation });
+  // Fire on plan INTENT, like the card: under simulation the state word goes
+  // factual while the hold still exists, and the "Reported N kW" qualifier
+  // needs its explaining line. The mood transform keeps the sentence honest
+  // ("Would be … (simulation)"); it is a no-op outside simulation.
+  if (intentHeld || dev.starvation?.isStarved === true) {
+    return toSimulationReasonLine(
+      resolveHeldCardReasonLine({ reason: dev.reason, starvation: dev.starvation }),
+      state.dryRun,
+    );
+  }
   return '';
 };
 
@@ -217,7 +228,7 @@ const renderHeroRows = (params: {
     mounts.factEl.textContent = factText;
     mounts.factEl.hidden = factText === '';
   }
-  const reasonText = resolveHeroReasonText(dev, params.kind, params.reasonCode);
+  const reasonText = resolveHeroReasonText(dev, params.kind, params.intentHeld, params.reasonCode);
   mounts.reasonEl.textContent = reasonText;
   mounts.reasonEl.hidden = reasonText === '';
   if (mounts.smartTaskEl) {
