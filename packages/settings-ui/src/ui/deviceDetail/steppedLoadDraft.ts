@@ -26,10 +26,7 @@ import {
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
-import {
-  hasEvTargetPowerPreset,
-  resolveDeviceDetailControlMode,
-} from './controlMode.ts';
+import { hasEvTargetPowerPreset, isSteppedLoadControlModel } from '../deviceKind.ts';
 import { supportsEvBoostDevice } from './evBoost.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 
@@ -202,10 +199,6 @@ const buildSteppedLoadStepRow = (params: {
   row.append(idInput, planningInput, removeButton);
   return row;
 };
-
-export const isSteppedLoadControlModel = (device: SettingsUiDeviceDetailItem | null): boolean => (
-  Boolean(device && resolveDeviceDetailControlMode(device) === 'stepped_load')
-);
 
 export const resolveSavedSteppedLoadProfile = (device: SettingsUiDeviceDetailItem): SteppedLoadProfile | null => {
   const stored = getStoredDeviceControlProfile(device.id);

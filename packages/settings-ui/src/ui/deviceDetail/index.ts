@@ -56,7 +56,6 @@ import { setDeviceDetailSocState } from './socState.ts';
 import {
   closeSteppedLoadDraft,
   initSteppedLoadDraftHandlers,
-  isSteppedLoadControlModel,
   renderSteppedLoadDraft,
   resolveSavedSteppedLoadProfile,
   updateSetStepOptionLabel,
@@ -263,7 +262,6 @@ const refreshOpenDeviceDetail = () => {
   setDeviceDetailShedBehavior({
     deviceId: currentDetailDeviceId,
     getDeviceById,
-    isSteppedLoadControlModel,
     updateSetStepOptionLabel,
   });
   renderSteppedLoadDraft(device);
@@ -285,7 +283,6 @@ const refreshOpenDeviceDetail = () => {
   updateShedFieldVisibility({
     currentDetailDeviceId,
     getDeviceById,
-    isSteppedLoadControlModel,
   });
 };
 
@@ -320,7 +317,6 @@ export const openDeviceDetail = (deviceId: string) => {
   setDeviceDetailShedBehavior({
     deviceId,
     getDeviceById,
-    isSteppedLoadControlModel,
     updateSetStepOptionLabel,
   });
   renderSteppedLoadDraft(device);
@@ -342,7 +338,6 @@ export const openDeviceDetail = (deviceId: string) => {
   updateShedFieldVisibility({
     currentDetailDeviceId: deviceId,
     getDeviceById,
-    isSteppedLoadControlModel,
   });
 
   resetDeviceDetailDiagnosticsView();
@@ -448,7 +443,6 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailShedHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,
-    isSteppedLoadControlModel,
   });
   initSteppedLoadDraftHandlers({
     getCurrentDetailDeviceId,

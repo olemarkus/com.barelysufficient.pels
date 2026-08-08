@@ -14,7 +14,7 @@ import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { state, type SettingsUiDeviceView } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
-import { isSteppedLoadControlModel } from './steppedLoadDraft.ts';
+import { isSteppedLoadControlModel } from '../deviceKind.ts';
 import { supportsTemperatureControlDevice } from '../deviceUtils.ts';
 
 const runSerializedTemperatureBoostWrite = createSerializedAsyncRunner();
