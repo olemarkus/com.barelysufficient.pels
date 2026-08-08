@@ -6,9 +6,9 @@ import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/command
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
 import {
+  deviceDetailChargingSection,
   deviceDetailEvBoost,
   deviceDetailEvBoostBelow,
-  deviceDetailEvBoostBelowRow,
   deviceDetailEvBoostEnabled,
   deviceDetailEvBoostStatus,
 } from '../dom.ts';
@@ -49,6 +49,7 @@ export const renderEvBoostSettings = (device: SettingsUiDeviceView | null) => {
   }
   const visible = supportsEvBoostDevice(device);
   deviceDetailEvBoost.hidden = !visible;
+  if (deviceDetailChargingSection) deviceDetailChargingSection.hidden = !visible;
   if (!visible || !device) return;
 
   const config = state.evBoostSettings[device.id] ?? device.evBoost;
@@ -56,10 +57,9 @@ export const renderEvBoostSettings = (device: SettingsUiDeviceView | null) => {
   deviceDetailEvBoostEnabled.selected = enabled;
   deviceDetailEvBoostEnabled.disabled = false;
   deviceDetailEvBoostBelow.value = String(config?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT);
+  // Visible-but-disabled while boost is off — the toggle's hint names this
+  // field, so hiding it left the sentence pointing at nothing.
   deviceDetailEvBoostBelow.disabled = !enabled;
-  if (deviceDetailEvBoostBelowRow) {
-    deviceDetailEvBoostBelowRow.hidden = !enabled;
-  }
   const boostBelowPercent = normalizeBoostBelowPercent(
     config?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT,
     DEFAULT_BOOST_BELOW_PERCENT,

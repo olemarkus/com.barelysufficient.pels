@@ -30,7 +30,6 @@ import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { hasEvTargetPowerPreset, isSteppedLoadControlModel } from '../deviceKind.ts';
-import { supportsEvBoostDevice } from './evBoost.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 
 // Drafts are keyed by deviceId so the editor state for one device cannot bleed
@@ -249,7 +248,6 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   const temperatureControlAvailable = !supportsTemperatureDevice(device)
     || supportsTemperatureControlDevice(device);
   const showStepEditor = temperatureControlAvailable && isSteppedLoadControlModel(device);
-  const showBoostOnlySection = supportsEvBoostDevice(device);
   const setEditorVisibility = (hidden: boolean) => {
     deviceDetailSteppedSteps.hidden = hidden;
     if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.hidden = hidden;
@@ -267,7 +265,7 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
     if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = disabled;
     if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = disabled;
   };
-  deviceDetailSteppedSection.hidden = !showStepEditor && !showBoostOnlySection;
+  deviceDetailSteppedSection.hidden = !showStepEditor;
   setEditorVisibility(!showStepEditor);
   if (!showStepEditor) {
     clearSteppedLoadDraft(device.id);

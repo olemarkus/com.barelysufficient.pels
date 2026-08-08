@@ -1029,7 +1029,9 @@ describe('device detail managed state saves', () => {
       },
     });
     expect(controlModelInput?.value).toBe('ev_charger_1_phase');
-    expect(steppedSection?.hidden).toBe(false);
+    // The preset owns the steps: the stepped-profile section hides entirely and
+    // the charge boost lives in the Charging section instead.
+    expect(steppedSection?.hidden).toBe(true);
     expect(steppedSteps?.hidden).toBe(true);
     expect(steppedAdd?.hidden).toBe(true);
     expect(steppedSave?.hidden).toBe(true);

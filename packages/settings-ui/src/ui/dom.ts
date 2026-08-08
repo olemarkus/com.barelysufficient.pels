@@ -213,6 +213,7 @@ export const deviceDetailShedStepRow = qs('#device-detail-overshoot-step-row');
 export const deviceDetailShedStep = document.querySelector(
   '#device-detail-overshoot-step',
 ) as MdFilledSelectElement;
+export const deviceDetailChargingSection = qs('#device-detail-charging-section');
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
 export const deviceDetailSteppedIntro = qs('#device-detail-stepped-intro');
 export const deviceDetailSteppedHeader = qs('#device-detail-stepped-header');
@@ -253,7 +254,6 @@ export const deviceDetailEvBoost = qs('#device-detail-ev-boost');
 export const deviceDetailEvBoostEnabled = document.querySelector(
   '#device-detail-ev-boost-enabled',
 ) as MdSwitchElement;
-export const deviceDetailEvBoostBelowRow = qs('#device-detail-ev-boost-below-row');
 export const deviceDetailEvBoostBelow = document.querySelector(
   '#device-detail-ev-boost-below',
 ) as MdFilledTextFieldElement;
