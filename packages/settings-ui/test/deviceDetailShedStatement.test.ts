@@ -64,7 +64,7 @@ const loadShedStatementHarness = async () => {
     setSetting: vi.fn().mockResolvedValue(undefined),
   }));
   vi.doMock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn() }));
-  vi.doMock('../src/ui/toast.ts', () => ({ showToastError: vi.fn() }));
+  vi.doMock('../src/ui/toast.ts', () => ({ showToast: vi.fn().mockResolvedValue(undefined), showToastError: vi.fn() }));
 
   const module = await import('../src/ui/deviceDetail/shedBehavior.ts');
   const { state } = await import('../src/ui/state.ts');
