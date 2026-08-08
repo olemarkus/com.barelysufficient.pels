@@ -20,9 +20,11 @@ describe('Expected power flow card', () => {
   });
 
   it('omits devices with settings.load from autocomplete lists', async () => {
-    const deviceWithLoad = new MockDevice('dev-load', 'With Load', ['target_temperature']);
+    const deviceWithLoad = new MockDevice('dev-load', 'With Load', ['target_temperature', 'measure_power']);
+    await deviceWithLoad.setCapabilityValue('measure_power', 800);
     deviceWithLoad.setSettings({ load: 800 });
-    const deviceNoLoad = new MockDevice('dev-noload', 'No Load', ['target_temperature']);
+    const deviceNoLoad = new MockDevice('dev-noload', 'No Load', ['target_temperature', 'measure_power']);
+    await deviceNoLoad.setCapabilityValue('measure_power', 0);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [deviceWithLoad, deviceNoLoad]) });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-load': true, 'dev-noload': true });
@@ -120,7 +122,8 @@ describe('Expected power flow card', () => {
   });
 
   it('fails when device has configured load setting', async () => {
-    const device = new MockDevice('dev-2', 'Heater', ['target_temperature']);
+    const device = new MockDevice('dev-2', 'Heater', ['target_temperature', 'measure_power']);
+    await device.setCapabilityValue('measure_power', 1000);
     device.setSettings({ load: 500 });
 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
@@ -134,7 +137,9 @@ describe('Expected power flow card', () => {
 
   it('rejects invalid payloads and stepped-load devices', async () => {
     const steppedDevice = new MockDevice('dev-step', 'Stepped Heater', ['onoff', 'measure_power']);
+    await steppedDevice.setCapabilityValue('measure_power', 1000);
     const plainDevice = new MockDevice('dev-plain', 'Plain Heater', ['onoff', 'measure_power']);
+    await plainDevice.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [steppedDevice, plainDevice]) });
     mockHomeyInstance.settings.set('device_control_profiles', {
@@ -168,6 +173,7 @@ describe('Expected power flow card', () => {
 
   it('rejects expected-power overrides for snapshot-only stepped-load devices', async () => {
     const device = new MockDevice('dev-target-power', 'Target Power Heater', ['onoff', 'measure_power']);
+    await device.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('device_target_power_configs', {

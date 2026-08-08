@@ -1,32 +1,42 @@
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 
 describe('plan usage budget exemption helpers', () => {
-  it('prefers measured power over expected power when both are available', () => {
+  it('prefers the measured draw over expected power when the device is drawing', () => {
     expect(sumBudgetExemptProjectedUsageKw([
       {
         budgetExempt: true,
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         expectedPowerKw: 2,
       },
       {
+        // Drawing nothing and not observed off: the meter is the answer.
+        currentDrawKw: 0,
         budgetExempt: true,
         expectedPowerKw: 0.8,
       },
-    ])).toBeCloseTo(2, 6);
+    ])).toBeCloseTo(1.2, 6);
   });
 
-  it('allows expected power as a live fallback for exempt soft-limit control', () => {
+  it('projects an observed-off exempt device onto its configured demand', () => {
+    // The daily-pace reservation has to survive a duty cycle, so an exempt
+    // device that is OFF still claims its configured demand. This is the one
+    // remaining stand-in for a device that is not drawing, and it is a
+    // reservation question rather than a measurement question.
     expect(sumBudgetExemptProjectedUsageKw([
       {
+        currentDrawKw: 0,
         budgetExempt: true,
+        controlCapabilityId: 'onoff',
+        currentOn: false,
         expectedPowerKw: 1.5,
       },
       {
         budgetExempt: true,
-        measuredPowerKw: 0.5,
+        currentDrawKw: 0.5,
         expectedPowerKw: 2,
       },
       {
+        currentDrawKw: 0,
         budgetExempt: false,
         expectedPowerKw: 10,
       },
@@ -38,12 +48,12 @@ describe('plan usage budget exemption helpers', () => {
       {
         budgetExempt: true,
         controllable: false,
-        measuredPowerKw: 5,
+        currentDrawKw: 5,
       },
       {
         budgetExempt: true,
         controllable: true,
-        measuredPowerKw: 1.5,
+        currentDrawKw: 1.5,
       },
     ])).toBeCloseTo(1.5, 6);
   });
@@ -52,9 +62,9 @@ describe('plan usage budget exemption helpers', () => {
     expect(splitControlledUsageKw({
       totalKw: 4,
       devices: [
-        { currentState: 'on', measuredPowerKw: 1.5, controllable: true },
-        { currentState: 'on', expectedPowerKw: 0.5, controllable: true },
-        { currentState: 'on', measuredPowerKw: 2, controllable: false },
+        { currentState: 'on', currentDrawKw: 1.5, controllable: true },
+        { currentDrawKw: 0.5, currentState: 'on', expectedPowerKw: 0.5, controllable: true },
+        { currentState: 'on', currentDrawKw: 2, controllable: false },
       ],
     })).toEqual({
       controlledKw: 2,
@@ -66,8 +76,8 @@ describe('plan usage budget exemption helpers', () => {
     expect(splitControlledUsageKw({
       totalKw: 4,
       devices: [
-        { currentState: 'on', measuredPowerKw: 1.5, controllable: true },
-        { currentState: 'on', powerKw: 1, controllable: true },
+        { currentState: 'on', currentDrawKw: 1.5, controllable: true },
+        { currentDrawKw: 0, currentState: 'on', powerKw: 1, controllable: true },
       ],
     })).toEqual({
       controlledKw: 1.5,
@@ -75,13 +85,17 @@ describe('plan usage budget exemption helpers', () => {
     });
   });
 
-  it('keeps target-only devices on expected-power fallback when binary state is not applicable', () => {
+  it('books a target-only device at its meter, never at its expected demand', () => {
+    // A device with no on/off handle used to fall through to `expectedPowerKw`
+    // because its live state was "not applicable". It has a meter like everything
+    // else in the managed set, and the meter says 1.25 kW.
     expect(splitControlledUsageKw({
       totalKw: 3,
       devices: [
         {
+          currentDrawKw: 1.25,
           currentState: 'not_applicable',
-          expectedPowerKw: 1.25,
+          expectedPowerKw: 4,
           controllable: true,
         },
       ],
@@ -102,7 +116,7 @@ describe('plan usage budget exemption helpers', () => {
         {
           controllable: true,
           plannedState: 'keep',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           expectedPowerKw: 2,
         },
       ],

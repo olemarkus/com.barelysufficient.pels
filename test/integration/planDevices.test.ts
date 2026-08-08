@@ -313,7 +313,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 0.5,
+      currentDrawKw: 0.5,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -358,7 +358,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 0.5,
+      currentDrawKw: 0.5,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -405,7 +405,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 3,
+      currentDrawKw: 3,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -446,14 +446,14 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 3,
+      currentDrawKw: 3,
     });
     const recoveringDevice = inputDevice({
       id: 'gang',
       name: 'Hall thermostat',
       binaryControl: { on: false },
       controllable: true,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -491,7 +491,7 @@ describe('buildInitialPlanDevices', () => {
       desiredStepId: undefined,
       binaryControl: { on: true },
       controllable: true,
-      measuredPowerKw: 3,
+      currentDrawKw: 3,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -533,7 +533,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 3,
+      currentDrawKw: 3,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -564,7 +564,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 1.25,
-      measuredPowerKw: 1.19,
+      currentDrawKw: 1.19,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -730,7 +730,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: false }, // OFF at binary level
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
 
     const context = buildContext([steppedDevice]);
@@ -768,7 +768,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: false },
       controllable: true,
       expectedPowerKw: 1,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -798,7 +798,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: false },
       controllable: true,
       expectedPowerKw: 3,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -833,7 +833,7 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: false },
       controllable: true,
       expectedPowerKw: 0,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1197,7 +1197,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const device = inputDevice({
       id: 'dev-1',
       name: 'Broken heater',
-      measuredPowerKw: Number.NaN,
+      currentDrawKw: Number.NaN,
       expectedPowerKw: Number.POSITIVE_INFINITY,
       planningPowerKw: Number.NaN,
       powerKw: Number.POSITIVE_INFINITY,

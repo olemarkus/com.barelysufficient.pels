@@ -46,7 +46,7 @@ type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   | 'reportedStepId'
   | 'selectedStepId'
   | 'desiredStepId'
-  | 'measuredPowerKw'
+  | 'currentDrawKw'
   | 'stepPowerCalibration'
 >;
 type StepIdentityFields = Pick<StepCapableDevice, 'reportedStepId' | 'selectedStepId' | 'desiredStepId'>;
@@ -424,7 +424,7 @@ export const resolveSteppedLoadPlanningKw = (
 type ImmediateReliefDevice =
   & Pick<
     StepCapableDevice,
-    'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
+    'steppedLoadProfile' | 'currentDrawKw' | 'stepPowerCalibration'
   >
   & StepIdentityFields;
 
@@ -437,9 +437,7 @@ export const resolveSteppedLoadImmediateReliefKw = (params: {
   if (!isSteppedLoadDevice(device)) return 0;
 
   const effectiveFromStepId = rawFromStepId ?? resolvePlannerEffectiveStepId(device);
-  const measured = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
-    ? Math.max(0, device.measuredPowerKw)
-    : 0;
+  const measured = Math.max(0, device.currentDrawKw);
   const fromConservativeKw = resolveStepDeliveryKw(device, effectiveFromStepId);
   const toConservativeKw = resolveStepAdmissionKw(device, toStepId);
   // Cap by measured so the relief estimate cannot exceed what the meter is
@@ -453,7 +451,7 @@ export const resolveSteppedLoadImmediateReliefKw = (params: {
 type RestoreDeltaDevice =
   & Pick<
     StepCapableDevice,
-    'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
+    'steppedLoadProfile' | 'currentDrawKw' | 'stepPowerCalibration'
   >
   & { currentState?: string; currentOn?: boolean };
 
@@ -468,10 +466,7 @@ export const resolveSteppedLoadRestoreDeltaKw = (params: {
   // estimate for the current step so the restore delta does not under-count
   // the new commitment when the device is briefly drawing more than its
   // calibrated baseline.
-  const measured = typeof device.measuredPowerKw === 'number'
-    && Number.isFinite(device.measuredPowerKw)
-    ? Math.max(0, device.measuredPowerKw)
-    : null;
+  const measured = Math.max(0, device.currentDrawKw);
   const deliveryFromKw = resolveStepDeliveryKw(device, fromStepId);
   const currentDrawKw = resolveRestoreFromContribution({
     device,
@@ -484,17 +479,17 @@ export const resolveSteppedLoadRestoreDeltaKw = (params: {
 
 function resolveRestoreFromContribution(params: {
   device: RestoreDeltaDevice;
-  measured: number | null;
+  measured: number;
   deliveryFromKw: number;
 }): number {
-  // Only override with measured when it is *positive* — a zero or missing
-  // reading is not evidence that the device is currently idle at this step
-  // (it may be mid-cycle, throttled, or reporting stale data). In those
-  // cases the calibrated delivery / nameplate estimate is the safer proxy
-  // for "what this device contributes right now."
+  // Only override with measured when it is *positive* — a zero reading is not
+  // evidence that the device is currently idle at this step (it may be
+  // mid-cycle, throttled, or reporting stale data). In those cases the
+  // calibrated delivery / nameplate estimate is the safer proxy for "what this
+  // device contributes right now."
   const { device, measured, deliveryFromKw } = params;
   if (device.currentOn === false) return 0;
-  if (measured !== null && measured > 0) return Math.min(measured, deliveryFromKw);
+  if (measured > 0) return Math.min(measured, deliveryFromKw);
   return deliveryFromKw;
 }
 
@@ -570,8 +565,12 @@ export function resolveSteppedCandidatePower(
     toStepId: targetStep.id,
   });
   if (measured > 0) return measured;
-  const hasMeasuredPower = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw);
-  if (!hasMeasuredPower) {
+  // Gate inverted from the pre-refactor `!hasMeasuredPower`: that took the
+  // calibrated/nameplate fallback when the reading was ABSENT, this takes it when
+  // the device is drawing nothing. Unreachable today — `buildSteppedCandidate`
+  // rejects a zero draw before this runs — but if that gate ever loosens, a device
+  // drawing nothing would be credited nameplate shed relief. Tracked in TODO.md.
+  if (device.currentDrawKw <= 0) {
     // Fall back to calibrated delta when available, else nameplate delta —
     // both bound by zero so a calibrated "to" estimate that exceeds the
     // calibrated "from" estimate yields zero relief rather than a negative
@@ -586,7 +585,7 @@ export function resolveSteppedCandidatePower(
 }
 
 export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
-  device: SteppedDiscriminantProbe & Pick<PlanInputDevice, 'measuredPowerKw'> & StepIdentityFields;
+  device: SteppedDiscriminantProbe & Pick<PlanInputDevice, 'currentDrawKw'> & StepIdentityFields;
   shedAction: 'turn_off' | 'set_step';
 }): {
   targetStep: SteppedLoadStep;
@@ -596,10 +595,8 @@ export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
   if (!isSteppedLoadDevice(device) || resolvePlannerEffectiveStepId(device)) return null;
   const steppedProfile = getSteppedLoadProfileForDevice(device);
   if (!steppedProfile) return null;
-  const measuredPowerKw = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
-    ? Math.max(0, device.measuredPowerKw)
-    : 0;
-  if (measuredPowerKw <= 0) return null;
+  const currentDrawKw = device.currentDrawKw;
+  if (currentDrawKw <= 0) return null;
 
   const targetStep = shedAction === 'set_step'
     ? getSteppedLoadLowestActiveStep(steppedProfile)
@@ -608,8 +605,8 @@ export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
 
   const targetPlanningKw = targetStep.planningPowerW / 1000;
   const effectivePowerKw = shedAction === 'set_step'
-    ? Math.max(0, measuredPowerKw - targetPlanningKw)
-    : measuredPowerKw;
+    ? Math.max(0, currentDrawKw - targetPlanningKw)
+    : currentDrawKw;
   if (effectivePowerKw <= 0) return null;
 
   return {

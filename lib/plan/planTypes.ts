@@ -450,7 +450,8 @@ type DevicePlanDeviceBase = {
   expectedPowerKw?: number;
   planningPowerKw?: number;
   expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
-  measuredPowerKw?: number;
+  /** Current draw in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
+  currentDrawKw: number;
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.
   reason: DeviceReason;
   zone?: string;

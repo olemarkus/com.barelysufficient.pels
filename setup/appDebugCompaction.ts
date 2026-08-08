@@ -118,9 +118,8 @@ export const buildEnergyDebugPayload = (device: HomeyDeviceLike): EnergyDebugPay
   // that exists is always worth reporting; only its total absence is `null`.
   const onoff = resolveOnOffValue(device);
   // The approximation/`W` values keep reading the RESOLVED container only —
-  // that precedence is shared with `hasPotentialHomeyEnergyEstimate` and
-  // `devicePowerEstimate`, and is not this change's to alter. Only the reported
-  // role declaration covers both containers.
+  // that precedence is shared with `devicePowerEstimate`, and is not this
+  // change's to alter. Only the reported role declaration covers both containers.
   const values = resolveApproximationValues(energy);
   const inference = inferExpectedW({ onoff, values });
   const record = device as unknown as UnknownRecord;

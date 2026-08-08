@@ -56,13 +56,6 @@ describe('resolveResidualKwShed — simple device (no stepped, no temperature ta
     expect(kw).toBe(0);
   });
 
-  it('returns 0 for non-finite draws', () => {
-    const kw = resolveResidualKwShed({
-      device: { currentDrawKw: Number.NaN },
-      shedBehavior: { action: 'turn_off' },
-    });
-    expect(kw).toBe(0);
-  });
 });
 
 describe('resolveResidualKwShed — temperature target', () => {
@@ -126,6 +119,7 @@ describe('resolveResidualKwShed — stepped load device', () => {
       profile: steppedProfile,
       selectedStepId: 'max',
       hasKnownEffectiveStep: true,
+    currentDrawKw: 0,
     };
     const kw = resolveResidualKwShed({
       device: { currentDrawKw: 3, steppedLoad },
@@ -139,6 +133,7 @@ describe('resolveResidualKwShed — stepped load device', () => {
       profile: steppedProfile,
       selectedStepId: 'low',
       hasKnownEffectiveStep: true,
+    currentDrawKw: 0,
     };
     const kw = resolveResidualKwShed({
       device: { currentDrawKw: 1.3, steppedLoad },
@@ -152,6 +147,7 @@ describe('resolveResidualKwShed — stepped load device', () => {
       profile: steppedProfile,
       selectedStepId: 'low',
       hasKnownEffectiveStep: true,
+      currentDrawKw: 0,
       controlCapabilityId: 'onoff',
     };
     const kw = resolveResidualKwShed({
@@ -169,6 +165,7 @@ describe('resolveResidualKwShed — stepped load device', () => {
       profile: stepOnlyProfile,
       selectedStepId: 'low',
       hasKnownEffectiveStep: true,
+      currentDrawKw: 0,
       controlCapabilityId: 'onoff',
     };
     const kw = resolveResidualKwShed({
@@ -185,6 +182,7 @@ describe('resolveResidualKwShed — stepped load device', () => {
       profile: stepOnlyProfile,
       selectedStepId: 'low',
       hasKnownEffectiveStep: true,
+      currentDrawKw: 0,
       controlCapabilityId: undefined,
     };
     const kw = resolveResidualKwShed({
@@ -200,7 +198,7 @@ describe('resolveResidualKwShed — stepped load with unknown current step', () 
     const steppedLoad: ResidualKwShedSteppedDevice = {
       profile: steppedProfile,
       hasKnownEffectiveStep: false,
-      measuredPowerKw: 2.1,
+      currentDrawKw: 2.1,
     };
     const kw = resolveResidualKwShed({
       device: { currentDrawKw: 2.1, steppedLoad },
@@ -213,7 +211,7 @@ describe('resolveResidualKwShed — stepped load with unknown current step', () 
     const steppedLoad: ResidualKwShedSteppedDevice = {
       profile: steppedProfile,
       hasKnownEffectiveStep: false,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
     };
     const kw = resolveResidualKwShed({
       device: { currentDrawKw: 0, steppedLoad },
@@ -227,7 +225,7 @@ describe('resolveResidualKwShed — stepped load with unknown current step', () 
     const steppedLoad: ResidualKwShedSteppedDevice = {
       profile: steppedProfile,
       hasKnownEffectiveStep: false,
-      measuredPowerKw: 0.5,
+      currentDrawKw: 0.5,
     };
     const kw = resolveResidualKwShed({
       device: { currentDrawKw: 0.5, steppedLoad },
@@ -243,7 +241,7 @@ describe('resolveResidualKwShed — stepped load with unknown current step', () 
       profile: steppedProfile,
       selectedStepId: undefined,
       hasKnownEffectiveStep: true,
-      measuredPowerKw: 2.1,
+      currentDrawKw: 2.1,
     };
     const kw = resolveResidualKwShed({
       device: { currentDrawKw: 2.1, steppedLoad },

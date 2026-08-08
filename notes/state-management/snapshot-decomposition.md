@@ -51,10 +51,14 @@ helpers. The observer was created but never handed the observation contract.
    `TemperatureObservedProbe` widening),
    `measuredPowerKw`/`measuredPowerObservedAtMs` (now type-gated off the base onto
    `MeasuredPowerObservedFields`, narrowed via the presence-only
-   `hasObservedMeasuredPower` — absence is the common case, so the guard draws the
-   present/absent line and "present implies finite, non-negative kW" is the producer
-   invariant; the two fields travel together and owner seams carry them through the
-   `MeasuredPowerObservedProbe` widening),
+   `hasObservedMeasuredPower` — absence is the common case ON THE SNAPSHOT, so the
+   guard draws the present/absent line and "present implies finite, non-negative kW"
+   is the producer invariant; the two fields travel together and owner seams carry
+   them through the `MeasuredPowerObservedProbe` widening. Absence stops here: the
+   producer seams (`toPlanDevice`, `withHeadroomCurrentOn`,
+   `buildResidualKwForPlanDevice`) resolve it once into the plan device's REQUIRED
+   `currentDrawKw` — the meter's reading, or 0 — so no plan or executor consumer
+   ever decides what an absent draw means, or asks how the producer knew),
    `reportedStepId`/`reportedStepPowerW`/`reportedStepObservedAtMs` (now type-gated
    off the base onto `ReportedStepObservedFields`, narrowed via the presence-only
    `hasObservedReportedStep` — a non-stepped device never reports a step and a

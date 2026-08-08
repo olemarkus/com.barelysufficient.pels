@@ -136,7 +136,7 @@ function composeSurplusPool(params: {
   let addBackKw = 0;
   for (const dev of params.willing) {
     if (params.state.surplusEligibilityByDevice[dev.id]?.eligible === true) {
-      addBackKw += positiveOrZero(dev.measuredPowerKw);
+      addBackKw += positiveOrZero(dev.currentDrawKw);
     }
   }
   const measuredExportKw = -params.signedNetKw;

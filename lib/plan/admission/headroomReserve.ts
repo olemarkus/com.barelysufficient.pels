@@ -5,7 +5,7 @@ import {
   type DeviceReason,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { getLogger } from '../../logging/logger';
-import { getMeasuredDrawKw, MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
+import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
 import { isSteppedLoadDevice, resolveStepAdmissionKw } from '../planSteppedLoad';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
@@ -375,7 +375,7 @@ function isStartupSatisfied(device: DevicePlanDevice, startupKw: number): boolea
   // still reads off here and keeps its reserve.
   if (isBinaryPlanDevice(device) && device.currentOn) return true;
   const activeThresholdKw = Math.max(MIN_ACTIVE_MEASURED_POWER_KW, startupKw * RELEASE_ACTIVE_FRACTION);
-  return Math.max(0, getMeasuredDrawKw(device) ?? 0) >= activeThresholdKw;
+  return device.currentDrawKw >= activeThresholdKw;
 }
 
 function isReportedAtOrAboveLowestActiveStep(device: DevicePlanDevice): boolean {

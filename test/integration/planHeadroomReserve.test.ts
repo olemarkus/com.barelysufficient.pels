@@ -101,7 +101,7 @@ describe('PlanBuilder startup power reservation', () => {
     name: 'Connected 300',
     reservesStartupPower: true,
     binaryControl: { on: false },
-    measuredPowerKw: 0,
+    currentDrawKw: 0,
     expectedPowerKw: 1.19,
     ...over,
   });
@@ -109,7 +109,7 @@ describe('PlanBuilder startup power reservation', () => {
   const lowerPriorityThermostat = (over?: DeviceOverride) => buildInputDevice({
     id: 'thermostat',
     name: 'Termostat',
-    measuredPowerKw: 0.6,
+    currentDrawKw: 0.6,
     expectedPowerKw: 0.6,
     ...over,
   });
@@ -136,7 +136,7 @@ describe('PlanBuilder startup power reservation', () => {
     vi.advanceTimersByTime(2 * 60_000);
     const settled = [
       params.heater,
-      lowerPriorityThermostat({ binaryControl: { on: false }, measuredPowerKw: 0 }),
+      lowerPriorityThermostat({ binaryControl: { on: false }, currentDrawKw: 0 }),
     ];
     // Recovering re-arms the 60 s shed cooldown (`getShedCooldownState` restarts it from
     // `lastRecoveryMs`), so burn one build on the recovery and let that clock run out — otherwise
@@ -156,7 +156,7 @@ describe('PlanBuilder startup power reservation', () => {
       ...Array.from({ length: 10 }, (_, index) => buildInputDevice({
         id: `thermostat-${index}`,
         name: `Termostat ${index}`,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 0.6,
       })),
     ];
@@ -194,7 +194,7 @@ describe('PlanBuilder startup power reservation', () => {
     // Same freed power, same priorities — the only difference is that the heater is now drawing,
     // so its reservation is satisfied and released.
     const { builder, settled } = await shedThenEase({
-      heater: reservingHeater({ binaryControl: { on: true }, measuredPowerKw: 1.19 }),
+      heater: reservingHeater({ binaryControl: { on: true }, currentDrawKw: 1.19 }),
     });
     const plan = await builder.buildDevicePlanSnapshot(settled);
 
@@ -251,7 +251,7 @@ describe('PlanBuilder startup power reservation', () => {
       deviceType: 'temperature',
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
-      measuredPowerKw: 0.6,
+      currentDrawKw: 0.6,
       expectedPowerKw: 0.6,
       ...over,
     });
@@ -276,7 +276,7 @@ describe('PlanBuilder startup power reservation', () => {
         params.heater,
         setpointThermostat({
           targets: [{ id: 'target_temperature', value: settledTargetC, unit: 'C' }],
-          measuredPowerKw: settledTargetC === SHED_FLOOR_C ? 0 : 0.6,
+          currentDrawKw: settledTargetC === SHED_FLOOR_C ? 0 : 0.6,
         }),
       ];
       await harness.builder.buildDevicePlanSnapshot(settled);
@@ -314,7 +314,7 @@ describe('PlanBuilder startup power reservation', () => {
 
     it('lets the setpoint raise through once the reserving device has started', async () => {
       const { builder, settled } = await shedThenEaseSetpoint({
-        heater: reservingHeater({ binaryControl: { on: true }, measuredPowerKw: 1.19 }),
+        heater: reservingHeater({ binaryControl: { on: true }, currentDrawKw: 1.19 }),
       });
       const plan = await builder.buildDevicePlanSnapshot(settled);
 

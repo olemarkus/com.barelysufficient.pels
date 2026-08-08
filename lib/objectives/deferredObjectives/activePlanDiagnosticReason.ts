@@ -10,7 +10,15 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 // `latest` revision, so the list chip stays honest after a mid-plan transition.
 export const resolveDiagnosticReasonCode = (
   diag: DeferredObjectiveDiagnostic,
+  current?: DeferredObjectiveActivePlanDiagnosticReason,
 ): DeferredObjectiveActivePlanDiagnosticReason | undefined => {
+  // The device is not in this cycle's plan input, so this diagnostic carries no
+  // information about the overlay. HOLD whatever is already persisted: resolving
+  // to `undefined` would clear a standing `objective_invalid_session` /
+  // `objective_charger_not_resumable` / `objective_device_left_off` with no
+  // grace, and the user's chip would flip back to a cached "On track" on a
+  // momentary gap. A real recovery arrives as a diagnostic that names itself.
+  if (diag.reasonCode === 'objective_missing_device') return current;
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_charger_not_resumable') return 'objective_charger_not_resumable';
   if (diag.reasonCode === 'objective_device_in_sub_home') return 'objective_device_in_sub_home';

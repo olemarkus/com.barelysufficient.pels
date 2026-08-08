@@ -7,7 +7,6 @@ import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { isBinaryPlanDevice } from './planBinaryDevice';
-import { getCurrentDrawKw } from '../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -29,7 +28,8 @@ import {
 } from './planSteppedLoadState';
 
 type RemainingSheddablePowerFields = {
-  measuredPowerKw?: number;
+  // Producer-resolved draw; the raw reading is not carried on plan devices.
+  currentDrawKw: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
   powerKw?: number;
@@ -177,7 +177,7 @@ export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): Remain
  */
 export function residualKwAfterSnapshot(device: DevicePlanDevice): number {
   const shedBehavior = toPlanResidualShedBehavior(device);
-  const drawKw = getCurrentDrawKw(device);
+  const drawKw = device.currentDrawKw;
   const steppedLoad = toPlanResidualSteppedLoad(device);
   const temperatureTarget = toPlanResidualTemperatureTarget(device);
   return resolveResidualKwShed({
@@ -211,7 +211,7 @@ function toPlanResidualSteppedLoad(device: DevicePlanDevice): ResidualKwShedStep
     profile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
     hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
-    measuredPowerKw: device.measuredPowerKw,
+    currentDrawKw: device.currentDrawKw,
     controlCapabilityId: device.controlCapabilityId,
   };
 }
@@ -252,8 +252,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   }
 
   if (!canStillShedDevice({ device, shedBehavior })) return 0;
-  const power = getCurrentDrawKw(device);
-  return power > 0 ? power : 0;
+  return Math.max(0, device.currentDrawKw);
 }
 
 export function sumRemainingSheddableLoadKw(params: {
@@ -291,7 +290,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
     controlCapabilityId: device.controlCapabilityId,
-    measuredPowerKw: device.measuredPowerKw,
+    currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
     powerKw: device.powerKw,

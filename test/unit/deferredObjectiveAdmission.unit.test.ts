@@ -165,7 +165,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
     const waterHeater: PlanInputDevice = {
       id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
-      commandableNow: true,
+      commandableNow: true, currentDrawKw: 0,
     };
     const idleHorizon = {
       currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },

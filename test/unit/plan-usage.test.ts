@@ -1,115 +1,69 @@
 import { splitControlledUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 
+// Managed-usage attribution is one rule now: sum `currentDrawKw` over the
+// devices PELS controls. The specs that used to pin the shed / observed-off /
+// observed-on ladders are gone with the ladders — a plan device can no longer
+// arrive without a reading, so there is no branch left for them to pin.
 describe('sumControlledUsageKw', () => {
   it('returns 0 when no controllable devices are present', () => {
     const result = sumControlledUsageKw([
-      { controllable: false, measuredPowerKw: 1 },
-      { controllable: false },
+      { controllable: false, currentDrawKw: 1 },
+      { currentDrawKw: 3, controllable: false },
     ]);
 
     expect(result).toBe(0);
   });
 
-  it('returns null when controllable devices have no usage data', () => {
+  it('sums the resolved draw of every controllable device', () => {
     const result = sumControlledUsageKw([
-      { controllable: true },
-      { controllable: undefined },
-    ]);
-
-    expect(result).toBeNull();
-  });
-
-  it('sums measured or expected usage for controllable devices', () => {
-    const result = sumControlledUsageKw([
-      { controllable: true, measuredPowerKw: 1.2 },
-      { controllable: true, expectedPowerKw: 0.8 },
-      { controllable: false, measuredPowerKw: 10 },
+      { controllable: true, currentDrawKw: 1.2 },
+      { currentDrawKw: 0.8, controllable: true },
+      { controllable: false, currentDrawKw: 10 },
     ]);
 
     expect(result).toBeCloseTo(2.0, 6);
   });
 
-  it('keeps measured off-state draw when present before falling back to controlled demand', () => {
-    const result = sumControlledUsageKw([
-      { controllable: true, currentState: 'off', measuredPowerKw: 0.15, expectedPowerKw: 1.2 },
-      { controllable: true, currentState: 'off', expectedPowerKw: 0.8 },
-    ]);
-
-    expect(result).toBeCloseTo(0.95, 6);
+  it('treats an undefined `controllable` as controllable, matching the planner filter', () => {
+    expect(sumControlledUsageKw([{ currentDrawKw: 0.4, controllable: undefined }]))
+      .toBeCloseTo(0.4, 6);
   });
 
-  it('uses planning demand for off devices when telemetry is absent', () => {
+  it('books a device measuring zero at zero, whatever its plan state or nameplate', () => {
+    // The defect this replaces: an observed-off device measuring a true 0 W fell
+    // through to `getHighestKnownPowerKw` and was credited its RATED power, which
+    // `sampleIngest` then wrote into the persisted managed/background split.
     const result = sumControlledUsageKw([
-      { controllable: true, controlCapabilityId: 'onoff', currentOn: false, expectedPowerKw: 1.2, planningPowerKw: 1.4 },
+      {
+        controllable: true,
+        plannedState: 'keep',
+        controlCapabilityId: 'onoff',
+        currentOn: false,
+        currentDrawKw: 0,
+        expectedPowerKw: 1.2,
+        planningPowerKw: 1.4,
+        powerKw: 2.5,
+      },
     ]);
 
-    expect(result).toBe(1.4);
+    expect(result).toBe(0);
   });
 
-  it('preserves usage when the live state is explicitly unknown (not classified off)', () => {
+  it('keeps counting a shed device that is still drawing', () => {
     const result = sumControlledUsageKw([
-      { controllable: true, currentState: 'unknown', expectedPowerKw: 1.2 },
-    ]);
-
-    expect(result).toBeCloseTo(1.2, 6);
-  });
-  it('preserves measured usage for shed devices so live draw is still counted', () => {
-    const result = sumControlledUsageKw([
-      { controllable: true, plannedState: 'shed', measuredPowerKw: 0.4, expectedPowerKw: 1.2 },
-      { controllable: true, measuredPowerKw: 0.6 },
+      { controllable: true, plannedState: 'shed', currentDrawKw: 0.4, expectedPowerKw: 1.2 },
+      { controllable: true, currentDrawKw: 0.6 },
     ]);
 
     expect(result).toBeCloseTo(1.0, 6);
-  });
-
-  it('keeps shed-device accounting aligned with the shared live-usage helper for unknown live state', () => {
-    const result = sumControlledUsageKw([
-      { controllable: true, plannedState: 'shed', currentState: 'unknown', expectedPowerKw: 1.2 },
-    ]);
-
-    expect(result).toBeNull();
-  });
-
-  it('treats shed devices observed off without a measurement as zero controlled usage', () => {
-    expect(splitControlledUsageKw({
-      totalKw: 1.25,
-      devices: [
-        { controllable: true, plannedState: 'shed', controlCapabilityId: 'onoff', currentOn: false, expectedPowerKw: 1.25 },
-      ],
-    })).toEqual({
-      controlledKw: 0,
-      uncontrolledKw: 1.25,
-    });
-  });
-
-  it('reports unknown live usage for shed target-only devices without measurement', () => {
-    // Target-only devices have no onoff capability — the defaulted currentOn
-    // is not authoritative. Without a measured power sample, the device's
-    // live attribution is genuinely unknown; the helper returns null/null so
-    // the caller doesn't optimistically attribute its draw to controlled load.
-    expect(splitControlledUsageKw({
-      totalKw: 1.25,
-      devices: [
-        {
-          controllable: true,
-          plannedState: 'shed',
-          currentState: 'not_applicable',
-          controlCapabilityId: undefined,
-          expectedPowerKw: 1.25,
-        },
-      ],
-    })).toEqual({
-      controlledKw: null,
-      uncontrolledKw: null,
-    });
   });
 
   it('caps controlled usage at totalKw when splitting controlled and uncontrolled usage', () => {
     expect(splitControlledUsageKw({
       totalKw: 1,
       devices: [
-        { controllable: true, measuredPowerKw: 0.7 },
-        { controllable: true, expectedPowerKw: 0.8 },
+        { controllable: true, currentDrawKw: 0.7 },
+        { currentDrawKw: 0.8, controllable: true },
       ],
     })).toEqual({
       controlledKw: 1,
@@ -121,12 +75,23 @@ describe('sumControlledUsageKw', () => {
     expect(splitControlledUsageKw({
       totalKw: -1,
       devices: [
-        { controllable: true, measuredPowerKw: 0.7 },
-        { controllable: true, expectedPowerKw: 0.8 },
+        { controllable: true, currentDrawKw: 0.7 },
+        { currentDrawKw: 0.8, controllable: true },
       ],
     })).toEqual({
       controlledKw: 0,
       uncontrolledKw: 0,
+    });
+  });
+
+  it('leaves the background residual unknown when the whole-home total is missing', () => {
+    // Only the managed side became certain; the house meter can still fail.
+    expect(splitControlledUsageKw({
+      totalKw: null,
+      devices: [{ controllable: true, currentDrawKw: 0.7 }],
+    })).toEqual({
+      controlledKw: 0.7,
+      uncontrolledKw: null,
     });
   });
 });

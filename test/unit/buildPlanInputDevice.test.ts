@@ -17,6 +17,10 @@ describe('buildPlanInputDevice', () => {
       // Required base field — resolved the way the producer resolves it, never
       // left undefined for a consumer to read as "not commandable".
       commandableNow: true,
+      // Likewise required: a plan device always carries a resolved draw. This
+      // fixture declares no power at all, and the producer answers 0 for a device
+      // nobody described — it no longer invents a generic 1 kW.
+      currentDrawKw: 0,
     });
   });
 

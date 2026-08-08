@@ -121,11 +121,9 @@ const buildFreshMeasuredDevicePowerWById = (params: {
  * Flooring at raw measured DEVICE draw instead would leak across devices: that
  * set includes non-controllable ones (a home battery charging is real draw but
  * `controllable: false`), while the controlled sum they would inflate is
- * computed over controllable devices and falls back to `expectedPowerKw` when a
- * device has no fresh measurement (`resolveObservedOnUsageKw`). A home exporting
- * 1 kW with a battery drawing a measured 2 kW and a heater carrying a stale 2 kW
- * estimate would then report 2 kW of *heater* usage and 0 background — the
- * battery's watts attributed to the wrong device.
+ * computed over controllable devices only. A home exporting 1 kW with a battery
+ * drawing a measured 2 kW would then report 2 kW of *heater* usage and 0
+ * background — the battery's watts attributed to the wrong device.
  *
  * Whether gross should floor at the controlled sum ALWAYS (not just during
  * export) is a separate question this deliberately does not answer.

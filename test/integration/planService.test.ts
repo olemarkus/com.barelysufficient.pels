@@ -236,7 +236,7 @@ describe('PlanService', () => {
         headroomKw: -0.97,
       },
       devices: [
-        withTemperatureDiscriminant(withBinaryDiscriminant({
+        withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -249,7 +249,7 @@ describe('PlanService', () => {
           controllable: true,
           reason: insufficientHeadroomFixtureReason({ needKw: 0.98, availableKw: -0.97 }),
         })) as DevicePlan['devices'][number],
-        withTemperatureDiscriminant(withBinaryDiscriminant({
+        withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
           id: 'dev-2',
           name: 'Heater 2',
           commandableNow: true,
@@ -262,7 +262,7 @@ describe('PlanService', () => {
           controllable: true,
           reason: insufficientHeadroomFixtureReason({ needKw: 1.1, availableKw: -0.97 }),
         })) as DevicePlan['devices'][number],
-        withTemperatureDiscriminant(withBinaryDiscriminant({
+        withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
           id: 'ev-1',
           name: 'EV',
           commandableNow: true,
@@ -322,7 +322,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
           plannedState: 'keep',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           expectedPowerKw: 3,
         })),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -355,7 +355,7 @@ describe('PlanService', () => {
       plannedState: 'keep',
       reasonCode: 'keep',
       reasonText: '',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
       reportedStepId: null,
       targetStepId: null,
@@ -372,7 +372,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
           plannedState: 'keep',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           expectedPowerKw: 3,
         })),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -414,7 +414,7 @@ describe('PlanService', () => {
     const plan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
     });
     plan.devices.push(withBinaryDiscriminant({
@@ -425,7 +425,7 @@ describe('PlanService', () => {
       binaryControl: { on: false },
       currentOn: false,
       plannedState: 'shed' as const,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 1.2,
       reason: fixtureDeviceReason('shed due to capacity')!,
     }) as DevicePlan['devices'][number]);
@@ -478,7 +478,7 @@ describe('PlanService', () => {
           steppedLoadProfile: { model: 'stepped_load', steps: [{ id: 'max', planningPowerW: 3000 }] },
           currentState: 'on',
           plannedState: 'keep',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           planningPowerKw: 3,
           reportedStepId: 'max',
           targetStepId: 'max',
@@ -516,7 +516,7 @@ describe('PlanService', () => {
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
     });
     let controlModel: 'temperature_target' | 'binary_power' = 'temperature_target';
@@ -559,7 +559,7 @@ describe('PlanService', () => {
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
     });
     const { service } = createPlanService({
@@ -598,13 +598,13 @@ describe('PlanService', () => {
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
             currentState: 'on',
             plannedState: 'keep',
-            measuredPowerKw: 0,
+            currentDrawKw: 0,
             expectedPowerKw: 3,
           }))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
             currentState: 'on',
             plannedState: 'keep',
-            measuredPowerKw: 0.25,
+            currentDrawKw: 0.25,
             expectedPowerKw: 3,
           })),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -627,7 +627,7 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_overview_changed',
       usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
-      measuredPowerKw: 0.25,
+      currentDrawKw: 0.25,
       expectedPowerKw: 3,
     }));
     // A usage-only overview change must NOT persist the plan snapshot (no
@@ -687,7 +687,7 @@ describe('PlanService', () => {
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
     });
     const { service } = createPlanService({
@@ -743,7 +743,7 @@ describe('PlanService', () => {
         binaryControl: { on: true },
         currentOn: true,
         currentTemperature: 21,
-        measuredPowerKw: 0.25,
+        currentDrawKw: 0.25,
         expectedPowerKw: 3,
         binaryCommandPending: true,
       }],
@@ -758,7 +758,7 @@ describe('PlanService', () => {
     (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'off',
       plannedState: 'keep',
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
       binaryCommandPending: true,
     });
@@ -809,7 +809,7 @@ describe('PlanService', () => {
         zone: 'Living room',
         budgetExempt: false,
         currentTemperature: 16,
-        measuredPowerKw: 1.2,
+        currentDrawKw: 1.2,
         expectedPowerKw: 2.5,
         pendingTargetCommand: {
           desired: 20,
@@ -891,7 +891,7 @@ describe('PlanService', () => {
         }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1069,7 +1069,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1144,7 +1144,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1218,7 +1218,7 @@ describe('PlanService', () => {
         syncPendingTargetCommands: vi.fn(() => true),
         decoratePlanWithPendingTargetCommands,
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1308,7 +1308,7 @@ describe('PlanService', () => {
         }),
         decoratePlanWithPendingTargetCommands,
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1366,7 +1366,7 @@ describe('PlanService', () => {
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1437,7 +1437,7 @@ describe('PlanService', () => {
           return true;
         }),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1541,7 +1541,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [
-        {
+        { currentDrawKw: 0,
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -1552,7 +1552,7 @@ describe('PlanService', () => {
           currentOn: liveCurrentOnById['dev-1'],
           currentTemperature: 21,
         },
-        {
+        { currentDrawKw: 0,
           id: 'dev-2',
           name: 'Heater 2',
           commandableNow: true,
@@ -1633,7 +1633,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -1734,7 +1734,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [
-        {
+        { currentDrawKw: 0,
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -1746,7 +1746,7 @@ describe('PlanService', () => {
           currentTemperature: 21,
           controllable: true,
         },
-        {
+        { currentDrawKw: 0,
           id: 'dev-2',
           name: 'Heater 2',
           commandableNow: true,
@@ -1856,7 +1856,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [
-        {
+        { currentDrawKw: 0,
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -1869,7 +1869,7 @@ describe('PlanService', () => {
           controllable: true,
           available: true,
         },
-        {
+        { currentDrawKw: 0,
           id: 'dev-2',
           name: 'Heater 2',
           // `available: false` below: the producer resolves that to
@@ -1951,7 +1951,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -2073,7 +2073,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: planEngine as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -2185,6 +2185,7 @@ describe('PlanService', () => {
     const buildLiveDevice = (binaryControlObservation: BinaryControlObservation) => ({
       id: 'dev-1',
       name: 'Heater',
+      currentDrawKw: 0,
       commandableNow: true,
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       deviceType: 'temperature' as const,
@@ -2291,7 +2292,7 @@ describe('PlanService', () => {
       controlCapabilityId: 'onoff' as const,
       currentTemperature: 21,
     };
-    let liveDevices: PlanInputDevice[] = [withTemperatureDiscriminant(withBinaryDiscriminant({
+    let liveDevices: PlanInputDevice[] = [withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
       ...liveDeviceBase,
       binaryControl: { on: true },
       currentOn: true,
@@ -2340,7 +2341,7 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
     applyPlanActions.mockClear();
 
-    liveDevices = [withTemperatureDiscriminant(withBinaryDiscriminant({
+    liveDevices = [withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
       ...liveDeviceBase,
       binaryControl: { on: false },
       currentOn: false,
@@ -2857,7 +2858,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -2905,7 +2906,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(false),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,
@@ -3032,7 +3033,7 @@ describe('PlanService', () => {
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      getPlanDevices: () => [{
+      getPlanDevices: () => [{ currentDrawKw: 0,
         id: 'dev-1',
         name: 'Heater',
         commandableNow: true,

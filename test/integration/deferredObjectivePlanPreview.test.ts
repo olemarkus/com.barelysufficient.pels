@@ -641,13 +641,14 @@ describe('previewDeferredObjectivePlan', () => {
 
   it('tags unavailable as needs_observation for a thermal learned-rate device with no executable step', () => {
     const ctx: PreviewContext = {
-      // Learned kWh/°C is present, but the device has no stepped profile and no
-      // measured/planning power, so resolveObjectiveSteps is empty →
+      // Learned kWh/°C is present, but the device has no stepped profile, is
+      // drawing nothing, and has no configured power, so resolveObjectiveSteps
+      // is empty →
       // objective_missing_charge_rate. For a thermal device that is the same
       // "not observed yet" cold-start as missing_capacity.
       device: buildTemperatureDevice({
         steppedLoadProfile: undefined,
-        measuredPowerKw: undefined,
+        currentDrawKw: 0,
         expectedPowerKw: undefined,
         powerKw: undefined,
         planningPowerKw: undefined,

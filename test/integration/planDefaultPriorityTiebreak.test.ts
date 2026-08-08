@@ -23,7 +23,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   // device; shed candidacy gates on writability (`isCanSetControl`).
   controlCapabilityId: 'onoff',
   binaryControl: { on: true },
-  measuredPowerKw: 1.5,
+  currentDrawKw: 1.5,
 }) as PlanInputDevice;
 
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
@@ -47,6 +47,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
 const buildRestoreDevice = (id: string): DevicePlanDevice => ({
   id,
   name: id,
+  currentDrawKw: 1.5,
   currentState: 'off',
   plannedState: 'keep',
   controlCapabilityId: 'onoff',

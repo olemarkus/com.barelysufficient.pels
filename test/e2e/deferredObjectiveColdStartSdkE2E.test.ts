@@ -58,7 +58,7 @@ const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]! : tomorrowPrices[hod - 24]!);
 
-const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant({
+const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
   id: DEVICE_ID,
   name: 'Connected 300',
   commandableNow: true,

@@ -59,7 +59,7 @@ const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OU
 // The step ladder is a live transport input (flow-registered overlay). Pre-restart
 // the device carries it; post-restart it is gone and no calibrated/measured power
 // stands in — exactly the prod shape that makes `resolveObjectiveSteps` return [].
-const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => withBinaryDiscriminant({
+const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
   id: DEVICE_ID,
   name: 'Connected 300',
   commandableNow: true,

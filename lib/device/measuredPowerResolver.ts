@@ -2,6 +2,7 @@ import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { Logger } from '../utils/types';
 import type { DeviceMeasuredPowerObservation } from './measuredPowerReader';
 import { getLogger } from '../logging/logger';
+import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 const moduleLogger = getLogger('device/measured-power');
 
@@ -20,7 +21,6 @@ export class DeviceMeasuredPowerResolver {
   constructor(private readonly deps: {
     logger: Logger;
     lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
-    minSignificantPowerW: number;
     getNow?: () => number;
   }) {}
 
@@ -47,7 +47,6 @@ export class DeviceMeasuredPowerResolver {
     if (selectedSource === 'measure_power') {
       return this.resolveDirectWatts({
         deviceId,
-        deviceLabel,
         watts: observation.measurePowerW,
         observedAtMs: observation.measurePowerObservedAtMs,
         now,
@@ -65,7 +64,6 @@ export class DeviceMeasuredPowerResolver {
     if (selectedSource === 'homey_energy') {
       return this.resolveDirectWatts({
         deviceId,
-        deviceLabel,
         watts: observation.homeyEnergyLiveW,
         observedAtMs: observation.homeyEnergyObservedAtMs,
         now,
@@ -89,36 +87,50 @@ export class DeviceMeasuredPowerResolver {
 
   private resolveDirectWatts(params: {
     deviceId: string;
-    deviceLabel: string;
     watts: number | undefined;
     observedAtMs?: number;
     now: number;
   }): DeviceMeasuredPowerResolution {
     const {
       deviceId,
-      deviceLabel,
       watts,
       observedAtMs,
       now,
     } = params;
+    // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
+    // finite and non-negative. A rejected reading is ABSENT, never 0 — "no
+    // reading" and "drawing nothing" are different facts, and conflating them is
+    // what let a device measuring a true 0 W be credited its nameplate.
+    //
+    // A negative is dropped for every device, including a home battery or solar
+    // panel that is exporting, and that loses nothing: PV/battery production has
+    // its own producer, `extractSolarProductionState` (`managerEnergy.ts`) feeding
+    // `SolarProductionProducer`, which reads the raw `measure_power` capability
+    // and owns the sign. This resolver answers a narrower question — what is this
+    // device pulling FROM the house right now — and for an exporting device the
+    // honest answer is "no draw reading".
+    //
+    // The `observedAtMs`-only return distinguishes "the capability reported, but
+    // not a usable draw" from "nothing reported at all" (`{}`), which the
+    // freshness bookkeeping downstream relies on.
     if (typeof watts !== 'number' || !Number.isFinite(watts)) {
       return {};
     }
-    if (watts === 0) {
-      return { measuredPowerKw: 0, observedAtMs };
+    const normalized = normalizeMeasuredPowerKw(watts / 1000);
+    if (normalized === null) {
+      return { observedAtMs };
     }
-    if (watts > this.deps.minSignificantPowerW) {
-      const measuredPowerKw = watts / 1000;
+    // Every accepted reading resolves to its own value, including a few watts of
+    // standby. A significance floor used to drop `0 < w <= 5` as
+    // `power_estimate_low_reading_ignored`, which made "drawing 3 W"
+    // indistinguishable from "has no `measure_power`" — and absence is what sends
+    // a consumer to a RATED-power fallback, so a 3 W standby draw could be booked
+    // as kilowatts. The reading is the answer; report it.
+    const measuredPowerKw = normalized;
+    if (measuredPowerKw > 0) {
       this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
-      return { measuredPowerKw, observedAtMs };
     }
-    this.deps.logger.debug({
-      event: 'power_estimate_low_reading_ignored',
-      deviceId,
-      deviceLabel,
-      watts,
-    });
-    return { observedAtMs };
+    return { measuredPowerKw, observedAtMs };
   }
 
   private resolveMeterDelta(params: {
@@ -169,17 +181,9 @@ export class DeviceMeasuredPowerResolver {
       return { measuredPowerKw: 0, observedAtMs };
     }
 
-    const measuredW = measuredPowerKw * 1000;
-    if (measuredW < this.deps.minSignificantPowerW) {
-      this.deps.logger.debug({
-        event: 'power_estimate_low_meter_delta_ignored',
-        deviceId,
-        deviceLabel,
-        measuredW,
-      });
-      return { observedAtMs };
-    }
-
+    // As in `resolveDirectWatts`: a small but real delta is reported, not
+    // dropped. Dropping it produced absence, and absence is what licenses a
+    // consumer to substitute rated power.
     this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
     return { measuredPowerKw, observedAtMs };
   }

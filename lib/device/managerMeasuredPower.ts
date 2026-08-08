@@ -6,6 +6,14 @@ import { readDeviceMeasuredPowerObservation } from './measuredPowerReader';
 import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import type { PowerEstimateState } from './devicePowerEstimate';
 
+/**
+ * Below this a reading is standby noise, not evidence of what the device draws
+ * when working. 5 W — the floor `DeviceMeasuredPowerResolver` used to apply to
+ * every reading before it was removed (it made "drawing 3 W" indistinguishable
+ * from "has no meter", which is what licensed rated-power substitution).
+ */
+const MIN_PEAK_LEARNING_KW = 0.005;
+
 export function resolveMeasuredPowerKw(params: {
   deviceId: string;
   deviceLabel: string;
@@ -39,7 +47,19 @@ export function resolveMeasuredPowerKw(params: {
       homeyEnergyObservedAtMs: now,
     }),
   });
-  if (typeof measuredPower.measuredPowerKw === 'number' && Number.isFinite(measuredPower.measuredPowerKw)) {
+  // Peak learning is gated at the credibility floor, NOT at "any finite reading".
+  // `updateLastKnownPower` is a max-tracker, so a standby trickle can never
+  // displace an established peak — but it CAN establish the first one, and a
+  // device whose only observed draw so far is 3 W would then carry
+  // `expectedPowerSource: 'measured-peak'` with a 3 W expectation into the restore
+  // axis. Before `MIN_SIGNIFICANT_POWER_W` was removed from the resolver, such a
+  // reading never reached here at all; this keeps that boundary where the
+  // consequence lives instead of back at the producer.
+  if (
+    typeof measuredPower.measuredPowerKw === 'number'
+    && Number.isFinite(measuredPower.measuredPowerKw)
+    && measuredPower.measuredPowerKw >= MIN_PEAK_LEARNING_KW
+  ) {
     updateLastKnownPower({
       state: powerState,
       logger,

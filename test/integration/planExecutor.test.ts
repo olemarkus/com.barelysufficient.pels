@@ -97,7 +97,7 @@ const buildPlan = (): DevicePlan => ({
     headroomKw: 4,
   },
   devices: [
-    withTemperatureDiscriminant({
+    withTemperatureDiscriminant({ currentDrawKw: 0,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -120,7 +120,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     headroomKw: 4,
   },
   devices: [
-    withTemperatureDiscriminant({
+    withTemperatureDiscriminant({ currentDrawKw: 0,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -1586,7 +1586,7 @@ describe('PlanExecutor stepped loads', () => {
         headroomKw: 4,
       },
       devices: [
-        withTemperatureDiscriminant(withSteppedDiscriminant({
+        withTemperatureDiscriminant(withSteppedDiscriminant({ currentDrawKw: 0,
           ...merged,
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
@@ -3898,10 +3898,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       currentTarget: null, controllable: true, reason: CAPACITY_REASON,
       controlCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
+      currentDrawKw: 0,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       currentTarget: null, controllable: true, reason: KEEP_REASON, commandableNow: true,
+      currentDrawKw: 0,
       controlModel: 'stepped_load' as const,
       controlCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,

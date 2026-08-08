@@ -72,7 +72,7 @@ const buildPump = (params: { on: boolean; measuredKw?: number; surplusOnly?: boo
     // stamping the flat bit.
     ...((params.surplusOnly ?? true) ? { surplusOnly: true } : {}),
     binaryControl: { on: params.on },
-    measuredPowerKw: params.measuredKw ?? (params.on ? PUMP_DRAW_KW : 0),
+    currentDrawKw: params.measuredKw ?? (params.on ? PUMP_DRAW_KW : 0),
     expectedPowerKw: PUMP_DRAW_KW,
   })
 );
@@ -347,8 +347,8 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // device it must be a pure no-op: byte-identical plans whether the
     // price-opt blob is empty or carries a non-willing entry.
     const devices = (): PlanInputDevice[] => [
-      buildInputDevice({ id: 'heater', name: 'Heater', measuredPowerKw: 0.8 }),
-      buildInputDevice({ id: 'light', name: 'Light', binaryControl: { on: false }, measuredPowerKw: 0 }),
+      buildInputDevice({ id: 'heater', name: 'Heater', currentDrawKw: 0.8 }),
+      buildInputDevice({ id: 'light', name: 'Light', binaryControl: { on: false }, currentDrawKw: 0 }),
     ];
     const empty = makeHarness({ totalKw: 1.2 });
     const nonWilling = makeHarness({

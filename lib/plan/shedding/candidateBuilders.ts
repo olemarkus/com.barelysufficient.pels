@@ -14,7 +14,6 @@ import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
-import { getCurrentDrawKw } from '../../observer/observedPower';
 import { isCanSetControl } from '../../device/deviceActionProjection';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
@@ -44,7 +43,7 @@ export function buildBinaryCandidate(
     recorder?.record({ device, reasonCode: 'control_not_writable' });
     return null;
   }
-  const power = getCurrentDrawKw(device);
+  const power = device.currentDrawKw;
   if (power <= 0) {
     recorder?.record({ device, reasonCode: 'zero_current_draw' });
     return null;
@@ -87,7 +86,7 @@ export function buildTemperatureCandidate(params: {
     device, priority, recentlyRestored, targetCapabilityId, targetCapability, pendingTargetCommands, recorder,
   } = params;
   const shedTemperature = normalizeTargetCapabilityValue({ target: targetCapability, value: params.shedTemperature });
-  const power = getCurrentDrawKw(device);
+  const power = device.currentDrawKw;
   if (power <= 0) {
     recorder?.record({ device, reasonCode: 'zero_current_draw' });
     return null;

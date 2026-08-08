@@ -1,27 +1,14 @@
 import {
   getCurrentDrawKw,
   getHighestKnownPowerKw,
-  getMeasuredDrawKw,
   getRestoreDrawKw,
   isActivelyDrawing,
 } from '../../lib/observer/observedPower';
 
-describe('getMeasuredDrawKw', () => {
-  it('returns the measured value when finite, including zero', () => {
-    expect(getMeasuredDrawKw({ measuredPowerKw: 0.42 })).toBe(0.42);
-    expect(getMeasuredDrawKw({ measuredPowerKw: 0 })).toBe(0);
-  });
-
-  it('returns null when measurement is missing, non-finite, or negative', () => {
-    expect(getMeasuredDrawKw({})).toBeNull();
-    expect(getMeasuredDrawKw({ measuredPowerKw: -1 })).toBeNull();
-  });
-});
-
 describe('getRestoreDrawKw', () => {
   it('returns the highest known non-zero value across all configured sources', () => {
     const result = getRestoreDrawKw({
-      measuredPowerKw: 0.8,
+      currentDrawKw: 0.8,
       expectedPowerKw: 1.4,
       planningPowerKw: 1.0,
       powerKw: 3,
@@ -30,73 +17,72 @@ describe('getRestoreDrawKw', () => {
   });
 
   it('is stable across observed-on/off state changes — current draw does not erase configured demand', () => {
-    const off = getRestoreDrawKw({ measuredPowerKw: 0, expectedPowerKw: 1 });
-    const on = getRestoreDrawKw({ measuredPowerKw: 1, expectedPowerKw: 1 });
+    // The two inputs must actually DIFFER on the draw, or the assertion proves
+    // nothing. A thermostat mid-duty-cycle reads 0 one moment and 0.6 the next;
+    // the restore reservation must not move with it.
+    const off = getRestoreDrawKw({ currentDrawKw: 0, expectedPowerKw: 1 });
+    const on = getRestoreDrawKw({ currentDrawKw: 0.6, expectedPowerKw: 1 });
     expect(off.kw).toBe(1);
     expect(on.kw).toBe(1);
   });
 
   it('falls back to the EV default for evcharger_charging with no known power', () => {
-    expect(getRestoreDrawKw({ controlCapabilityId: 'evcharger_charging' }).kw).toBeCloseTo(1.38, 6);
+    expect(getRestoreDrawKw({ currentDrawKw: 0, controlCapabilityId: 'evcharger_charging' }).kw).toBeCloseTo(1.38, 6);
   });
 
   it('falls back to the default for any other device with no known power', () => {
-    expect(getRestoreDrawKw({}).kw).toBe(1);
-    expect(getRestoreDrawKw({ measuredPowerKw: 0, expectedPowerKw: -1 }).kw).toBe(1);
+    expect(getRestoreDrawKw({ currentDrawKw: 0}).kw).toBe(1);
+    expect(getRestoreDrawKw({ currentDrawKw: 0, expectedPowerKw: -1 }).kw).toBe(1);
   });
 
   it('reports the source label that drove the result', () => {
-    expect(getRestoreDrawKw({ measuredPowerKw: 2 }).source).toBe('measured');
-    expect(getRestoreDrawKw({ measuredPowerKw: 0, powerKw: 1 }).source).toBe('configured');
-    expect(getRestoreDrawKw({}).source).toBe('fallback');
+    expect(getRestoreDrawKw({ currentDrawKw: 2 }).source).toBe('measured');
+    expect(getRestoreDrawKw({ currentDrawKw: 0, powerKw: 1 }).source).toBe('configured');
+    expect(getRestoreDrawKw({ currentDrawKw: 0}).source).toBe('fallback');
   });
 });
 
 describe('getCurrentDrawKw', () => {
-  it('returns the measured value when present, including zero', () => {
-    expect(getCurrentDrawKw({ measuredPowerKw: 0.42, currentOn: true })).toBe(0.42);
-    expect(getCurrentDrawKw({ measuredPowerKw: 0, currentOn: true })).toBe(0);
+  it('is the meter reading, including a true zero', () => {
+    expect(getCurrentDrawKw({ measuredPowerKw: 0.42 })).toBe(0.42);
+    expect(getCurrentDrawKw({ measuredPowerKw: 0 })).toBe(0);
   });
 
-  it('returns 0 for an explicitly observed-off device — shedding gives no immediate relief', () => {
-    expect(getCurrentDrawKw({ currentOn: false })).toBe(0);
-    expect(getCurrentDrawKw({ currentOn: false, expectedPowerKw: 2 })).toBe(0);
+  it('resolves a device with no reading to 0 rather than inventing a draw', () => {
+    // No declared-load rung and no fallback constant. The population a declared
+    // load would have described is already metered — every device on a 124-device
+    // fleet carrying `settings.load` also exposes plain `measure_power` — and a
+    // declared load is a CONSTANT, so reading it would break the property that
+    // `currentDrawKw > 0` means "drawing". A satisfied Elko thermostat reports its
+    // own honest 0 W instead.
+    expect(getCurrentDrawKw({})).toBe(0);
   });
 
-  it('falls back to the configured restore draw for an observed-on device with no measurement', () => {
-    expect(getCurrentDrawKw({ currentOn: true, expectedPowerKw: 2 })).toBe(2);
-    expect(getCurrentDrawKw({ currentOn: true })).toBe(1); // generic fallback
+  it('drops a null or non-finite reading instead of returning it as a number', () => {
+    // The producer boundary is the one shape check in a design where every
+    // consumer trusts the result implicitly, so a presence check is not enough.
+    expect(getCurrentDrawKw({ measuredPowerKw: null as unknown as number })).toBe(0);
+    expect(getCurrentDrawKw({ measuredPowerKw: Number.NaN })).toBe(0);
   });
 
-  it('treats unknown state as conservatively active — uses restore draw as the estimate', () => {
-    // Observation-stale devices are filtered upstream; reaching here means we
-    // do not know the device is off, so be optimistic and use the configured demand.
-    expect(getCurrentDrawKw({ expectedPowerKw: 2 })).toBe(2);
-    expect(getCurrentDrawKw({})).toBe(1);
-  });
-
-  it('trusts a confirmed-off currentOn=false as zero draw (no staleness gate)', () => {
-    // The plan trusts the producer-resolved on/off truth: a confirmed-off device
-    // draws 0 for shed accounting. `currentOn` is the latched value (Homey reports
-    // capabilities on change, so a stale `currentOn: false` is a trusted-off) —
-    // there is no staleness gate here. Matches the stale-off = trusted-off
-    // principle that `resolveCurrentOn` already enforces.
-    expect(getCurrentDrawKw({
-      currentOn: false,
-      expectedPowerKw: 2,
-    })).toBe(0);
+  it('drops a negative reading — a discharging battery is not drawing', () => {
+    // A home battery reads negative `measure_power` while discharging, and that is
+    // its NORMAL state. Returning it would hand a negative draw to consumers that
+    // trust the number implicitly, and would falsify the "present implies finite,
+    // non-negative kW" invariant the snapshot contract documents.
+    expect(getCurrentDrawKw({ measuredPowerKw: -1.5 })).toBe(0);
   });
 });
 
 describe('getHighestKnownPowerKw', () => {
   it('returns null when no source is positive', () => {
-    expect(getHighestKnownPowerKw({})).toBeNull();
-    expect(getHighestKnownPowerKw({ measuredPowerKw: 0, expectedPowerKw: -1 })).toBeNull();
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0})).toBeNull();
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0, expectedPowerKw: -1 })).toBeNull();
   });
 
   it('returns the highest non-zero value across all sources', () => {
     const result = getHighestKnownPowerKw({
-      measuredPowerKw: 0.8,
+      currentDrawKw: 0.8,
       expectedPowerKw: 1.4,
       planningPowerKw: 1.0,
       powerKw: 3,
@@ -107,23 +93,23 @@ describe('getHighestKnownPowerKw', () => {
 
 describe('isActivelyDrawing', () => {
   it('is true when currentOn is true', () => {
-    expect(isActivelyDrawing({ currentOn: true })).toBe(true);
+    expect(isActivelyDrawing({ currentDrawKw: 0, currentOn: true })).toBe(true);
   });
 
   it('is true when measured power is above the activation threshold', () => {
-    expect(isActivelyDrawing({ measuredPowerKw: 0.06 })).toBe(true);
+    expect(isActivelyDrawing({ currentDrawKw: 0.06 })).toBe(true);
   });
 
   it('is false when measured power is at or below the activation threshold', () => {
-    expect(isActivelyDrawing({ measuredPowerKw: 0.05 })).toBe(false);
-    expect(isActivelyDrawing({ measuredPowerKw: 0 })).toBe(false);
+    expect(isActivelyDrawing({ currentDrawKw: 0.05 })).toBe(false);
+    expect(isActivelyDrawing({ currentDrawKw: 0 })).toBe(false);
   });
 
   it('is false when available is explicitly false', () => {
-    expect(isActivelyDrawing({ available: false, currentOn: true, measuredPowerKw: 5 })).toBe(false);
+    expect(isActivelyDrawing({ available: false, currentOn: true, currentDrawKw: 5 })).toBe(false);
   });
 
   it('is false when nothing is observed', () => {
-    expect(isActivelyDrawing({})).toBe(false);
+    expect(isActivelyDrawing({ currentDrawKw: 0})).toBe(false);
   });
 });

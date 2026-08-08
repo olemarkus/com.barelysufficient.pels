@@ -9,7 +9,6 @@ import {
   resolveHeadroomCardCooldown,
   syncHeadroomCardState,
 } from './planHeadroomState';
-import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
 import type {
   HeadroomCardCooldownSource,
   HeadroomCardDeviceLike,
@@ -26,42 +25,36 @@ export {
 } from './planHeadroomState';
 
 /**
- * Conservative read of a device's current draw for headroom-for-device math.
- * The Flow card is asking permission to *add* load, so we never synthesize
- * draw the device hasn't proven it consumes:
+ * The device's current draw, for headroom-for-device math.
  *
- *  - Device unavailable → 0. Homey reports `available === false` for devices
- *    that are offline / unreachable / removed from the mesh. Crediting their
- *    declared load would let activations through against capacity that the
- *    device cannot actually be consuming. Mirrors `isActivelyDrawing` in
- *    `lib/observer/observedPower.ts`.
- *  - Measured draw present → that value (including 0 — a real zero-measurement
- *    is authoritative).
- *  - Observed-off → 0.
- *  - Otherwise (running, with or without a fresh measurement) → highest known
- *    configured demand (expected / planning / configured `powerKw`) so
- *    non-metered relays still credit their declared load. If none of those
- *    are configured either, fall back to 0 — we explicitly avoid Observer's
- *    generic 1.0 kW / EV 1.38 kW fallback because that would overstate
- *    `headroom + observedKw` and let activations through that should be
- *    blocked.
+ * One rung of its own: `available === false` → 0. Homey reports that for a
+ * device that is offline, unreachable, or gone from the mesh, and the Flow card
+ * is asking permission to ADD load — crediting a device that cannot be consuming
+ * anything would let activations through against capacity that is not free.
+ * Mirrors `isActivelyDrawing` in `lib/observer/observedPower.ts`.
  *
- * Observation staleness is intentionally NOT a short-circuit here. Many Homey
- * drivers only republish per-capability `lastUpdated` on value change, so a
- * thermostat steady at setpoint can age out of `STALE_DEVICE_OBSERVATION_MS`
- * while still being on and drawing exactly its configured load. Returning 0
- * for that case under-credited known load and blocked legitimate activations.
- * The `available === false`, `currentOn === false`, and zero-measured branches
- * above already cover the conservative cases.
+ * Everything else is `currentDrawKw`, trusted as-is. This used to re-derive the
+ * draw through a measured → observed-off → highest-configured ladder, a FOURTH
+ * copy of the producer's own resolution; it is gone with the other three.
+ *
+ * Its last rung credited an unmetered running device its configured load. That
+ * rung is not replaced, and does not need to be: every managed device is metered
+ * (verified across a 124-device fleet — all 11 devices carrying a `settings.load`
+ * also expose `measure_power` and `meter_power`), so the meter answers. A device
+ * that reports nothing credits nothing, which is what this card's own
+ * conservative rule asks for.
+ *
+ * Observation staleness is intentionally NOT a short-circuit. Many Homey drivers
+ * only republish per-capability `lastUpdated` on value change, so a thermostat
+ * steady at setpoint can age out of `STALE_DEVICE_OBSERVATION_MS` while still on
+ * and drawing exactly what it last reported. Returning 0 for that case
+ * under-credited known load and blocked legitimate activations.
  */
 const resolveObservedHeadroomDeviceKw = (
   device: HeadroomCardDeviceLike,
 ): number => {
   if (device.available === false) return 0;
-  const measured = getMeasuredDrawKw(device);
-  if (measured !== null) return measured;
-  if (device.currentOn === false) return 0;
-  return getHighestKnownPowerKw(device)?.kw ?? 0;
+  return device.currentDrawKw;
 };
 
 export type HeadroomForDeviceDecision = {

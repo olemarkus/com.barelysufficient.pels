@@ -28,7 +28,7 @@ const heaterAt = (
   currentState: 'on',
   binaryControl: { on: true },
   observationStale: false,
-  measuredPowerKw: 0,
+  currentDrawKw: 0,
   currentTemperature: 61.5,
   currentTarget: 65,
   plannedState: 'keep',
@@ -61,7 +61,7 @@ describe('createIdleClassifier', () => {
     classifier.classifyAll([heaterAt()], t0);
     classifier.classifyAll([heaterAt()], t0 + IDLE_HOLD_MIN_DURATION_MS);
     classifier.classifyAll(
-      [heaterAt({ measuredPowerKw: 1.2 })],
+      [heaterAt({ currentDrawKw: 1.2 })],
       t0 + IDLE_HOLD_MIN_DURATION_MS + 1_000,
     );
 
@@ -74,8 +74,8 @@ describe('createIdleClassifier', () => {
     const info = createSink();
     const debug = createSink();
     const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
-    classifier.classifyAll([heaterAt({ measuredPowerKw: 1.0 })], 1_000_000);
-    classifier.classifyAll([heaterAt({ measuredPowerKw: 1.0 })], 2_000_000);
+    classifier.classifyAll([heaterAt({ currentDrawKw: 1.0 })], 1_000_000);
+    classifier.classifyAll([heaterAt({ currentDrawKw: 1.0 })], 2_000_000);
     expect(info.events).toHaveLength(0);
     expect(debug.events).toHaveLength(0);
   });
@@ -140,14 +140,14 @@ describe('createIdleClassifier', () => {
     let drawing = true;
     while (cursor <= t0 + CAPPED_IDLE_MIN_WINDOW_MS) {
       classifier.classifyAll(
-        [{ ...cappedAt58, measuredPowerKw: drawing ? 1.5 : 0 }],
+        [{ ...cappedAt58, currentDrawKw: drawing ? 1.5 : 0 }],
         cursor,
       );
       cursor += 30_000;
       drawing = !drawing;
     }
     classifier.classifyAll(
-      [{ ...cappedAt58, measuredPowerKw: 0 }],
+      [{ ...cappedAt58, currentDrawKw: 0 }],
       cursor,
     );
     expect(classifier.getClassification('heater-1')).toBe('capped_idle');
@@ -165,8 +165,8 @@ describe('createIdleClassifier', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
       const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5, currentTemperature: 59.4 })], t0); // seed: drawing
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 0, currentTemperature: 59.4 })], t0 + 10_000); // edge: stopped
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5, currentTemperature: 59.4 })], t0); // seed: drawing
+      classifier.classifyAll([heaterAt({ currentDrawKw: 0, currentTemperature: 59.4 })], t0 + 10_000); // edge: stopped
       expect(debug.events).toContainEqual(expect.objectContaining({
         event: 'device_power_draw_stopped',
         deviceId: 'heater-1',
@@ -181,15 +181,15 @@ describe('createIdleClassifier', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ debugStructured: debug.emit });
       const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 0 })], t0); // seed: idle
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5 })], t0 + 10_000); // edge: resumed
+      classifier.classifyAll([heaterAt({ currentDrawKw: 0 })], t0); // seed: idle
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0 + 10_000); // edge: resumed
       expect(eventNames(debug)).toContain('device_power_draw_resumed');
     });
 
     it('does not log an edge on the first observation (seeds only)', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ debugStructured: debug.emit });
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 0 })], 1_000_000);
+      classifier.classifyAll([heaterAt({ currentDrawKw: 0 })], 1_000_000);
       expect(eventNames(debug)).not.toContain('device_power_draw_stopped');
       expect(eventNames(debug)).not.toContain('device_power_draw_resumed');
     });
@@ -198,8 +198,8 @@ describe('createIdleClassifier', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ debugStructured: debug.emit });
       const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5, plannedState: 'shed' })], t0);
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 0, plannedState: 'shed' })], t0 + 10_000);
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5, plannedState: 'shed' })], t0);
+      classifier.classifyAll([heaterAt({ currentDrawKw: 0, plannedState: 'shed' })], t0 + 10_000);
       expect(eventNames(debug)).not.toContain('device_power_draw_stopped');
     });
 
@@ -207,30 +207,19 @@ describe('createIdleClassifier', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ debugStructured: debug.emit });
       const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5 })], t0); // seed: drawing
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 0, observationStale: true })], t0 + 10_000);
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0); // seed: drawing
+      classifier.classifyAll([heaterAt({ currentDrawKw: 0, observationStale: true })], t0 + 10_000);
       expect(eventNames(debug)).not.toContain('device_power_draw_stopped');
     });
 
-    it('ignores a transient non-finite power sample (no spurious stop/resume edge)', () => {
-      const debug = createSink();
-      const classifier = createIdleClassifier({ debugStructured: debug.emit });
-      const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5 })], t0); // drawing (seed)
-      classifier.classifyAll([heaterAt({ measuredPowerKw: undefined })], t0 + 10_000); // dropout — held, no edge
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5 })], t0 + 20_000); // drawing again
-      // A missing sample must not be read as "stopped" — it carries no draw-edge info.
-      expect(eventNames(debug)).not.toContain('device_power_draw_stopped');
-      expect(eventNames(debug)).not.toContain('device_power_draw_resumed');
-    });
 
     it('drops the streak when the device goes off, so it does not fire a spurious resume on return', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ debugStructured: debug.emit });
       const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5 })], t0); // on + drawing (seed)
-      classifier.classifyAll([heaterAt({ currentState: 'off', measuredPowerKw: 0 })], t0 + 10_000); // off — streak dropped
-      classifier.classifyAll([heaterAt({ measuredPowerKw: 1.5 })], t0 + 20_000); // on + drawing again
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0); // on + drawing (seed)
+      classifier.classifyAll([heaterAt({ currentState: 'off', currentDrawKw: 0 })], t0 + 10_000); // off — streak dropped
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0 + 20_000); // on + drawing again
       // The on→off→on was PELS/transport, not the device's own coast — no resume edge.
       expect(eventNames(debug)).not.toContain('device_power_draw_resumed');
     });

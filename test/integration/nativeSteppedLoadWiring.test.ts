@@ -82,7 +82,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       controlModel: 'stepped_load',
       selectedStepId: device.selectedStepId,
       reportedStepId: device.reportedStepId,
-      measuredPowerKw: device.measuredPowerKw,
+      measuredPowerKw: device.currentDrawKw,
     } as TargetDeviceSnapshot & MeasuredPowerObservedProbe),
   );
 };

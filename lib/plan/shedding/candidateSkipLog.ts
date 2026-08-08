@@ -31,7 +31,7 @@ export type ShedCandidateSkipReason =
   | 'zero_current_draw'
   | 'already_at_shed_temperature'
   | 'no_temperature_target'
-  | 'stepped_measured_zero'
+  | 'stepped_zero_draw'
   | 'no_lower_step_reachable'
   | 'zero_step_relief'
   | 'budget_exempt_daily_only';
@@ -45,13 +45,13 @@ type SkippedDeviceRecord = {
   deviceId: string;
   deviceName?: string;
   reasonCode: ShedCandidateSkipReason;
-  measuredPowerKw?: number;
+  currentDrawKw: number;
   rungsTried?: string[];
 };
 
 export type ShedCandidateSkipRecorder = {
   record: (params: {
-    device: { id: string; name?: string; measuredPowerKw?: number };
+    device: { id: string; name?: string; currentDrawKw: number };
     reasonCode: ShedCandidateSkipReason;
     rungsTried?: string[];
   }) => void;
@@ -70,7 +70,7 @@ export function createShedCandidateSkipRecorder(
         deviceId: device.id,
         ...(device.name !== undefined ? { deviceName: device.name } : {}),
         reasonCode,
-        ...(device.measuredPowerKw !== undefined ? { measuredPowerKw: device.measuredPowerKw } : {}),
+        currentDrawKw: device.currentDrawKw,
         ...(rungsTried ? { rungsTried } : {}),
       });
       counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);

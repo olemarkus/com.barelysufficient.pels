@@ -60,6 +60,11 @@ function recordOverviewChange(
   // planning.
   const overviewDevice = {
     ...resolveOverviewControlModel(device, pass.controlModelById),
+    // The display/log helpers are shared with the settings UI, which reads
+    // SNAPSHOTS and so still names this `measuredPowerKw`. Feed them the plan
+    // device's producer-resolved draw under that name — one value, two seams,
+    // no second answer anywhere in the planner.
+    measuredPowerKw: device.currentDrawKw,
     // Display-only staleness, sourced from the observer (the plan device no longer
     // carries it) so the signature flips on a gray/"unresponsive" transition and the
     // device-log/debug surfaces match the live card — same provenance as the read

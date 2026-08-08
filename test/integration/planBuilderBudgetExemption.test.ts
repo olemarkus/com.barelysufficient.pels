@@ -113,7 +113,7 @@ describe('PlanBuilder budget exemption handling', () => {
         binaryControl: { on: true },
         controllable: true,
         budgetExempt: true,
-        measuredPowerKw: 2,
+        currentDrawKw: 2,
       }),
       buildInputDevice({
         id: 'regular',
@@ -121,7 +121,7 @@ describe('PlanBuilder budget exemption handling', () => {
         targets: [],
         binaryControl: { on: true },
         controllable: true,
-        measuredPowerKw: 1,
+        currentDrawKw: 1,
       }),
     ];
 

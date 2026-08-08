@@ -23,6 +23,7 @@ describe('Managed device condition', () => {
 
   it('returns true when the device is managed by PELS', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
@@ -40,6 +41,7 @@ describe('Managed device condition', () => {
 
   it('returns false when the device is explicitly unmanaged', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': false });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
@@ -57,6 +59,7 @@ describe('Managed device condition', () => {
 
   it('returns false for missing device args or unknown devices', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     const app = createApp();
@@ -74,6 +77,7 @@ describe('Managed device condition', () => {
 
   it('returns false when managed is undefined in the snapshot', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     const app = createApp();

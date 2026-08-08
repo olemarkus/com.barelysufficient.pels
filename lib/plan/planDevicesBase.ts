@@ -81,8 +81,14 @@ function resolveSteppedExpectedPowerKw(params: {
   }
   return null;
 }
+// Is there evidence of this device's power draw at all? `currentDrawKw` is
+// always finite, so finiteness proves nothing here — a 0 with no meter behind it
+// (the gate refused the device) is absence, not a reading. Only a positive draw
+// counts as measured evidence; without any evidence the device gets NO
+// `expectedPowerKw` rather than the restore-axis fallback constant, because
+// inventing a nameplate for an unmeasured device is the defect this replaces.
 function hasKnownPowerFields(dev: PlanInputDevice): boolean {
-  return Number.isFinite(dev.measuredPowerKw)
+  return dev.currentDrawKw > 0
     || Number.isFinite(dev.expectedPowerKw)
     || Number.isFinite(dev.planningPowerKw)
     || Number.isFinite(dev.powerKw);
@@ -238,7 +244,7 @@ export function buildBasePlanDevice(params: {
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     planningPowerKw: dev.planningPowerKw,
     expectedPowerSource: dev.expectedPowerSource,
-    measuredPowerKw: dev.measuredPowerKw,
+    currentDrawKw: dev.currentDrawKw,
     controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
     ...producerResolvedDecisionFields(dev),

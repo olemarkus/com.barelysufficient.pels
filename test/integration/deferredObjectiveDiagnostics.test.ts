@@ -812,7 +812,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
   // predicate (priority 1, both rescue permissions `'always'`, enabled
   // objective). Each helper creates one task; the per-test code stitches them
   // into a settings map and device map.
-  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({
+  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ currentDrawKw: 0,
     id,
     name: id,
     targets: [],
@@ -2973,7 +2973,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceType: 'temperature' as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
-      measuredPowerKw: 1.5,
+      currentDrawKw: 1.5,
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
     })) as PlanInputDevice;
@@ -3049,7 +3049,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 0 kW step. The producer must walk down the candidate list to
     // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
     // horizon plan still builds.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
       id: 'heater-1',
       name: 'Idle Panel Heater',
       commandableNow: true,
@@ -3114,7 +3114,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // which `activePlanRecorder` will surface as `pendingReason:
     // missing_capacity` for thermal kinds (intentional cold-start hero
     // copy). Guards against the fallback over-reaching.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
       id: 'heater-1',
       name: 'Powerless Thermostat',
       commandableNow: true,
@@ -3325,7 +3325,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({
+    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ currentDrawKw: 0,
       id,
       name: id,
       targets: [],

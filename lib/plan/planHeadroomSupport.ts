@@ -3,11 +3,15 @@ import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
 import type { HeadroomCardState, PlanEngineState } from './planState';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { resolveCurrentOn } from '../observer/observedState';
+import { getCurrentDrawKw } from '../observer/observedPower';
 import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 export { isFiniteNumber };
 
 type RawHeadroomDevice = {
+  // Owner-side optional: this is still a transport snapshot at this seam, and
+  // absence is exactly what `hasMeasuredDraw` goes on to record.
+  measuredPowerKw?: number;
   controlCapabilityId?: BinaryControlCapabilityId;
   binaryControl?: { on: boolean };
   steppedLoadProfile?: SteppedLoadProfile;
@@ -22,10 +26,17 @@ type RawHeadroomDevice = {
  * card) carry no `currentOn` otherwise, so the activation in/active reads would
  * mis-detect a device that turned off/on mid-window.
  */
-export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(device: T): T & { currentOn?: boolean } {
+export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(
+  device: T,
+): T & { currentOn?: boolean; currentDrawKw: number } {
+  // The sample path's producer boundary — the twin of `toPlanDevice` for devices
+  // that reach the usage math straight off the transport. Resolve the draw here
+  // so nothing below has to look at the raw reading.
+  //
+  const currentDrawKw = getCurrentDrawKw(device);
   return device.controlCapabilityId !== undefined
-    ? { ...device, currentOn: resolveCurrentOn(device) }
-    : device;
+    ? { ...device, currentDrawKw, currentOn: resolveCurrentOn(device) }
+    : { ...device, currentDrawKw };
 }
 
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
@@ -45,7 +56,7 @@ export type HeadroomCardDeviceLike = {
   name: string;
   powerKw?: number;
   expectedPowerKw?: number;
-  measuredPowerKw?: number;
+  currentDrawKw: number;
   lastFreshDataMs?: number;
   // Producer-resolved on/off truth (present iff binary). The activation in/active
   // reads consume this; the seams that feed raw snapshots (appSnapshotHelpers,

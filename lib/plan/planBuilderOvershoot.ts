@@ -442,7 +442,7 @@ function buildOvershootContributor(
   const deltaKw = nextPower.kw - previousPower.kw;
   if (deltaKw <= OVERSHOOT_DELTA_EPSILON_KW) return null;
   const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
-  const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
+  const currentDrawKw = device.currentDrawKw;
   let expectedByPreviousPlan: boolean | null = null;
   if (previous && previous.controllable !== false) {
     expectedByPreviousPlan = previous.plannedState !== 'shed' && previous.plannedState !== 'inactive';
@@ -458,10 +458,8 @@ function buildOvershootContributor(
     expectedByPreviousPlan,
     changedDuringPendingWindow: hasPendingWindow(previous) || hasPendingWindow(device),
     changedDuringCooldownWindow: isCooldownBlocked(previous) || isCooldownBlocked(device),
-    measuredExceedsExpectedKw: (
-      measuredPowerKw !== null && expectedPowerKw !== null && measuredPowerKw > expectedPowerKw
-    )
-      ? roundOvershootKw(measuredPowerKw - expectedPowerKw)
+    measuredExceedsExpectedKw: expectedPowerKw !== null && currentDrawKw > expectedPowerKw
+      ? roundOvershootKw(currentDrawKw - expectedPowerKw)
       : null,
   };
 }
@@ -491,7 +489,7 @@ function trackPlanDeviceForOvershoot(
     ...(isBinaryPlanDevice(device)
       ? { currentOn: device.currentOn }
       : {}),
-    measuredPowerKw: device.measuredPowerKw,
+    currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
     binaryCommandPending: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
@@ -535,21 +533,14 @@ function shouldExposePendingTargetCommand(
 function resolveOvershootDevicePower(
   device: Pick<
     OvershootTrackedPlanDevice,
-    'currentOn' | 'currentState' | 'measuredPowerKw' | 'expectedPowerKw' | 'planningPowerKw'
+    'currentOn' | 'currentState' | 'currentDrawKw' | 'expectedPowerKw' | 'planningPowerKw'
   > | undefined,
 ): { kw: number | null; source: ResolvedPowerSource } {
   if (!device) return { kw: null, source: 'unknown' };
-  const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
-  if (measuredPowerKw !== null) return { kw: measuredPowerKw, source: 'measured' };
-  // A confirmed-off device draws nothing. `currentOn === false` is the binary
-  // off truth; a step-only stepper carries no `currentOn`, so its off-state is
-  // the producer-resolved step-axis label `currentState === 'off'`.
-  if (device.currentOn === false || device.currentState === 'off') return { kw: 0, source: 'off' };
-  const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
-  if (expectedPowerKw !== null) return { kw: expectedPowerKw, source: 'expected' };
-  const planningPowerKw = resolveFiniteNumber(device.planningPowerKw);
-  if (planningPowerKw !== null) return { kw: planningPowerKw, source: 'planning' };
-  return { kw: null, source: 'unknown' };
+  // One of three ladders that each re-derived "measured, else off, else
+  // configured". The measured arm is now the producer's answer and always
+  // present, so the rest is unreachable — kept only for the `undefined` device.
+  return { kw: device.currentDrawKw, source: 'measured' };
 }
 
 function hasPendingWindow(

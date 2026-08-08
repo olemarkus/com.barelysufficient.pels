@@ -13,7 +13,6 @@ import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
 } from '../../lib/plan/planSteppedLoadState';
-import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
 import {
   buildPlanDevice as baseBuildPlanDevice,
@@ -54,17 +53,22 @@ const buildPlanInputDevice = (
 describe('resolveRemainingSheddableLoadKw — stale observation handling', () => {
   const turnOffBehavior: RemainingShedBehavior = { action: 'turn_off' };
 
-  it('credits configured demand for an unknown-state device (currentOn not confirmed-off)', () => {
+  it('credits a still-drawing unknown-state device its measured draw', () => {
     // A device whose observer label is 'unknown' carries no confirmed-off
-    // `currentOn`, so it may still be drawing: it must NOT be silently zeroed out
-    // of remaining sheddable load (that would mis-signal "no actionable load left"
-    // during shortfall). `getCurrentDrawKw` falls back to the configured demand.
+    // `currentOn`, so it must NOT be silently zeroed out of remaining sheddable
+    // load — that would mis-signal "no actionable load left" during shortfall.
+    //
+    // "Is it still drawing?" is no longer a guess: the meter answers it. This one
+    // reads 1.4 kW, so shedding it frees 1.4 kW. (The spec used to credit the
+    // CONFIGURED demand for an unknown device with a measured 0 — the invented
+    // substitution this change removes. The confirmed-off case is the sibling
+    // spec below.)
     const unknown = toPlanRemainingSheddableDevice(buildPlanDevice({
       id: 'unknown-off',
       controllable: true,
       binaryControl: { on: false },
       currentState: 'unknown',
-      expectedPowerKw: 1.4,
+      measuredPowerKw: 1.4, expectedPowerKw: 1.4,
     }));
     const kw = resolveRemainingSheddableLoadKw({
       device: unknown,
@@ -82,7 +86,7 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
       controllable: true,
       binaryControl: { on: false },
       currentState: 'off',
-      expectedPowerKw: 1.4,
+      measuredPowerKw: 0, expectedPowerKw: 1.4,
     }));
     const kw = resolveRemainingSheddableLoadKw({
       device: fresh,
@@ -286,7 +290,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       const target = getPrimaryTargetCapability(device.targets);
       const shed = resolveResidualKwShed({
         device: {
-          currentDrawKw: getCurrentDrawKw(device),
+          currentDrawKw: device.currentDrawKw,
           ...(target
             ? {
               temperatureTarget: {
@@ -305,9 +309,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
                 profile: steppedDevice.steppedLoadProfile,
                 ...(device.selectedStepId !== undefined ? { selectedStepId: device.selectedStepId } : {}),
                 hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
-                ...(typeof device.measuredPowerKw === 'number'
-                  ? { measuredPowerKw: device.measuredPowerKw }
-                  : {}),
+                currentDrawKw: device.currentDrawKw,
                 ...(device.controlCapabilityId !== undefined
                   ? { controlCapabilityId: device.controlCapabilityId }
                   : {}),
@@ -389,11 +391,11 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const steppedDevice = device as PlanInputDevice & SteppedDiscriminantProbe;
     const producerShed = resolveResidualKwShed({
       device: {
-        currentDrawKw: getCurrentDrawKw(device),
+        currentDrawKw: device.currentDrawKw,
         steppedLoad: {
           profile: steppedDevice.steppedLoadProfile!,
           hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
-          measuredPowerKw: device.measuredPowerKw,
+          currentDrawKw: device.currentDrawKw,
           controlCapabilityId: device.controlCapabilityId,
         },
       },

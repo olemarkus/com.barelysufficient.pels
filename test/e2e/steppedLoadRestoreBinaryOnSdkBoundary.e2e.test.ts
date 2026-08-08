@@ -70,11 +70,10 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   measuredPowerResolver: new DeviceMeasuredPowerResolver({
     logger,
     lastPositiveMeasuredPowerKw: {},
-    minSignificantPowerW: 5,
   }),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
   isPowerCapable: (device, capsStatus, powerEstimate) =>
-    isDevicePowerCapable({ device, capsStatus, powerEstimate }),
+        isDevicePowerCapable({ device, capsStatus, powerEstimate }),
   resolveLatestLocalWriteMs: () => undefined,
 });
 
@@ -222,6 +221,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 const buildRestoreToLowPlan = (): DevicePlan => ({
   meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
+    currentDrawKw: 0,
     id: DEVICE_ID,
     name: 'Connected 300',
     commandableNow: true,

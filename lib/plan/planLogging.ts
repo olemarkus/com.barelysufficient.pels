@@ -238,17 +238,11 @@ function isActiveInputDevice(device: PlanInputDevice): boolean {
 }
 
 function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
-  return isActiveControlledDevice(device)
-    && typeof device.measuredPowerKw === 'number'
-    && Number.isFinite(device.measuredPowerKw)
-    && device.measuredPowerKw <= 0;
+  return isActiveControlledDevice(device) && device.currentDrawKw <= 0;
 }
 
 function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
-  return isActiveInputDevice(device)
-    && typeof device.measuredPowerKw === 'number'
-    && Number.isFinite(device.measuredPowerKw)
-    && device.measuredPowerKw <= 0;
+  return isActiveInputDevice(device) && device.currentDrawKw <= 0;
 }
 
 function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {

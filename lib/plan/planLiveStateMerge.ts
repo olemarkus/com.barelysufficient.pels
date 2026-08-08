@@ -108,7 +108,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         expectedPowerKw: live.expectedPowerKw,
         planningPowerKw: live.planningPowerKw,
         expectedPowerSource: live.expectedPowerSource,
-        measuredPowerKw: live.measuredPowerKw,
+        currentDrawKw: live.currentDrawKw,
         controlCapabilityId: live.controlCapabilityId,
         binaryCommandPending: live.binaryCommandPending,
         available: live.available,

@@ -3,7 +3,7 @@ import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
-import { firstPositiveFinite } from './planningSpeed';
+import { drawWhenActivelyDrawingKw, firstPositiveFinite } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
 
 const resolveAdmissionPowerKw = (
@@ -59,12 +59,12 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // step from measured/expected/nameplate power so the bucket allocator can
   // build a horizon plan instead of leaving the smart task stuck on
   // `objective_missing_charge_rate` / `pendingReason: missing_capacity`.
-  // `measuredPowerKw` is preferred (live draw on a heating cycle is the most
-  // accurate nameplate we have for these devices); `firstPositiveFinite`
-  // skips 0/negative readings, so an idle heater falls through to
+  // The live draw (`currentDrawKw`) is preferred — on a heating cycle it is the
+  // most accurate nameplate we have for these devices; `drawWhenActivelyDrawingKw`
+  // ignores a standby trickle, so an idle heater falls through to
   // `expectedPowerKw` / `powerKw` (which the power estimator populates from
   // the load setting / Homey Energy approximation). EV chargers do not use
-  // `measuredPowerKw` here because their `expectedPowerKw` is the calibrated
+  // the live draw here because their `expectedPowerKw` is the calibrated
   // 1-step view from `appInit/calibrationViews.buildEvChargerCalibrationView` and the
   // existing branch above is the documented invariant for EV planning speed.
   // Mill-/Adax-/Glamox-shaped Norwegian panel heaters report class
@@ -72,7 +72,11 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // stepped controls; before this branch they kept `pendingReason:
   // missing_capacity` indefinitely even with a converged learned profile.
   if (isTemperatureControlDevice(device)) {
-    const expected = firstPositiveFinite([device.measuredPowerKw, device.expectedPowerKw, device.powerKw]);
+    const expected = firstPositiveFinite([
+      drawWhenActivelyDrawingKw(device.currentDrawKw),
+      device.expectedPowerKw,
+      device.powerKw,
+    ]);
     if (expected !== null) {
       return [{
         id: 'charge',

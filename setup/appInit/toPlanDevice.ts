@@ -1,4 +1,5 @@
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
+import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import {
   resolveCanSetControl,
   resolveCommandableNow,
@@ -8,6 +9,7 @@ import type {
   DecoratedDeviceSnapshot,
   DeviceControlModel,
   EvObservedProbe,
+  MeasuredPowerObservedProbe,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
@@ -75,7 +77,7 @@ export type ToPlanDeviceOptions = {
 // to read its OWN engine (see `buildSubHomeScope.getPlanDevices`).
 function resolvePendingBinaryCommand(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
   opts: ToPlanDeviceOptions | undefined,
 ): { desired: boolean } | null | undefined {
   if (opts?.getPendingBinaryCommand) {
@@ -117,7 +119,7 @@ function resolvePlanCommandability(
  */
 export function resolveExternalOffHoldActive(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
 ): boolean {
   if (device.controlCapabilityId === undefined) return false;
   if (ctx.externalOffHold?.isHeld(device.id) !== true) return false;
@@ -173,7 +175,7 @@ export function isExternalOffHeldForDevice(ctx: AppContext, deviceId: string): b
  */
 function resolveSurplusPostureForDevice(params: {
   ctx: AppContext;
-  device: DecoratedDeviceSnapshot & EvObservedProbe;
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe;
   opts: ToPlanDeviceOptions | undefined;
   plainBinaryControlModel: boolean;
   controllable: boolean;
@@ -211,8 +213,8 @@ function resolveSurplusPostureForDevice(params: {
  * the plan sees only the commands PELS is currently allowed to issue.
  */
 function projectEffectiveControlDevice(
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
-): DecoratedDeviceSnapshot & EvObservedProbe {
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
+): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe {
   if (device.temperatureControlDisabled !== true) return device;
   return {
     ...device,
@@ -238,7 +240,7 @@ function projectEffectiveControlDevice(
 
 function resolveEffectiveShedBehavior(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
 ) {
   if (device.temperatureControlDisabled === true) {
     return { action: 'turn_off' as const, temperature: null, stepId: null };
@@ -248,7 +250,7 @@ function resolveEffectiveShedBehavior(
 
 function resolveEffectiveTemperatureBoost(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
 ) {
   if (device.temperatureControlDisabled === true) return undefined;
   return ctx.getTemperatureBoostConfig?.(device.id);
@@ -272,7 +274,7 @@ function resolveEvStartProbePosture(device: EvObservedProbe): {
 // (transport writes it); the base type omits it for consumers.
 export function toPlanDevice(
   ctx: AppContext,
-  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe,
+  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
   opts?: ToPlanDeviceOptions,
 ): PlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -359,6 +361,11 @@ export function toPlanDevice(
     temperatureControlDisabled: _temperatureControlDisabled,
     steppedLoadProfile: _confirmedSteppedLoadProfile,
     targetPowerConfig: _targetPowerConfig,
+    // Strip the RAW reading too. It is absent from the plan contract by type, but
+    // a spread would still carry it at runtime — invisible to tsc and readable by
+    // any structural consumer, which is exactly the second competing answer this
+    // change exists to remove. `currentDrawKw` below is the only answer.
+    measuredPowerKw: _measuredPowerKw,
     ...deviceFields
   } = device;
   return withSteppedDiscriminant({
@@ -411,6 +418,10 @@ export function toPlanDevice(
     evChargerNotResumable: commandable.evChargerNotResumable,
     canSetControlResolved,
     residualKw,
+    // The single place the device's draw is decided: the meter's reading, or 0.
+    // The raw field is stripped from the spread above, so no consumer can reach
+    // past this answer to a second one.
+    currentDrawKw: getCurrentDrawKw(device),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDraw !== undefined
       ? { hasRecentObservedDraw }

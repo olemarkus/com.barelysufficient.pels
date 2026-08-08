@@ -456,28 +456,13 @@ function resolveDevicePowerState(params: {
     powerEstimate: ReturnType<typeof estimatePower>;
 } {
     const {
-        device,
-        deviceId,
-        deviceLabel,
-        capabilities,
-        capabilityObj,
-        livePowerWByDeviceId,
-        now,
-        measuredPowerResolver,
-        powerState,
-        logger,
+        device, deviceId, deviceLabel, capabilities, capabilityObj,
+        livePowerWByDeviceId, now, measuredPowerResolver, powerState, logger,
     } = params;
     const currentTemperature = getCurrentTemperature(capabilityObj);
     const measuredPower = resolveMeasuredPowerKw({
-        deviceId,
-        deviceLabel,
-        capabilities,
-        capabilityObj,
-        livePowerWByDeviceId,
-        now,
-        measuredPowerResolver,
-        powerState,
-        logger,
+        deviceId, deviceLabel, capabilities, capabilityObj, livePowerWByDeviceId, now,
+        measuredPowerResolver, powerState, logger,
     });
     const powerEstimate = estimatePower({
         device,

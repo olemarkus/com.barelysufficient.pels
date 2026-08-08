@@ -14,6 +14,8 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
+  type SplitControlledUsage,
+  type SumBudgetExemptUsage,
 } from '../../lib/power/sampleIngest';
 import {
   type PowerSampleRebuildState,
@@ -36,7 +38,21 @@ import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuil
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
+import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
+
+// Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
+// snapshots go through `withHeadroomCurrentOn` — the producer boundary that
+// resolves `currentDrawKw` (and `currentOn`) — before the usage math sees them.
+// Injecting the bare plan helpers would hand them un-resolved snapshots the
+// runtime never produces.
+const splitControlledUsage: SplitControlledUsage = (params) => splitControlledUsageKw({
+  ...params,
+  devices: params.devices.map(withHeadroomCurrentOn),
+});
+const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
+  sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
+);
 
 const createCapacityGuardMock = (params: {
   limitKw?: number;
@@ -2131,8 +2147,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2147,8 +2163,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2161,7 +2177,10 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
   });
 
-  it('falls back to expected power for live budget exempt usage when measured power is unavailable', async () => {
+  it('keeps an OFF exempt device claiming its configured demand on the daily axis', async () => {
+    // The exempt projection is a reservation, not a measurement stand-in: the
+    // daily-pace add-back has to survive the device's duty cycle. Note the
+    // trigger is being observed OFF — a running exempt device measuring 0 books 0.
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getLatestTargetSnapshot = () => ([
@@ -2169,6 +2188,9 @@ describe('recordPowerSampleForApp', () => {
         id: 'dev-budget',
         name: 'Budget exempt heater',
         targets: [],
+        controlCapabilityId: 'onoff',
+        binaryControl: { on: false },
+        measuredPowerKw: 0,
         expectedPowerKw: 0.8,
         budgetExempt: true,
       },
@@ -2180,8 +2202,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2196,8 +2218,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2230,8 +2252,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2246,8 +2268,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2300,8 +2322,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2316,8 +2338,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2352,8 +2374,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2368,8 +2390,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2391,8 +2413,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot: () => [],
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2433,8 +2455,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2450,8 +2472,8 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      splitControlledUsage: splitControlledUsageKw,
-      sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+      splitControlledUsage,
+      sumBudgetExemptUsage,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -2504,8 +2526,8 @@ describe('recordPowerSampleForApp', () => {
         capacitySettings: { limitKw: 10, marginKw: 0.2 },
         getLatestTargetSnapshot: params.getLatestTargetSnapshot as never,
         powerTracker: {},
-        splitControlledUsage: splitControlledUsageKw,
-        sumBudgetExemptUsage: sumBudgetExemptProjectedUsageKw,
+        splitControlledUsage,
+        sumBudgetExemptUsage,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
         saveState: (nextState) => {
@@ -2532,11 +2554,11 @@ describe('recordPowerSampleForApp', () => {
     it('never attributes a non-controllable device\'s draw to a managed device', async () => {
       // The floor must be summed over the SAME set the split attributes over.
       // A home battery is real draw but `controllable: false`, so it is excluded
-      // from the controlled sum — while a controllable device with no fresh
-      // measurement contributes its `expectedPowerKw` estimate to that sum. A
-      // floor built from raw measured device draw would hand the battery's 2 kW
-      // to the split, which would then record it as 2 kW of HEATER usage with 0
-      // background: the wrong device credited for watts it never drew.
+      // from the controlled sum — while the controllable heater contributes its
+      // own measured 2 kW. A floor built from raw measured device draw would hand
+      // the battery's 2 kW to the split, which would then record it as 2 kW of
+      // HEATER usage with 0 background: the wrong device credited for watts it
+      // never drew.
       const tracker = await record({
         currentPowerW: -1000,
         getLatestTargetSnapshot: () => ([
@@ -2550,15 +2572,16 @@ describe('recordPowerSampleForApp', () => {
           },
           {
             id: 'heater-estimated',
-            name: 'Heater (no fresh measurement)',
+            name: 'Heater',
             targets: [],
+            measuredPowerKw: 2,
             expectedPowerKw: 2,
           },
         ]) as never,
       });
 
-      // Only the heater's own projected 2 kW is attributed — the battery's
-      // measured draw is not laundered into the managed bucket.
+      // Only the heater's own measured 2 kW is attributed — the battery's draw
+      // is not laundered into the managed bucket.
       expect(tracker.lastControlledPowerW).toBe(2000);
       expect(tracker.lastUncontrolledPowerW).toBe(0);
     });

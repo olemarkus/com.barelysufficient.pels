@@ -43,7 +43,15 @@ export type IdleClassifierDeviceInput = {
   currentState: string;
   binaryControl?: { on: boolean };
   observationStale?: boolean;
-  measuredPowerKw?: number;
+  /**
+   * Producer-resolved current draw. REQUIRED — this input is built from plan
+   * devices, which always carry it. It was `measuredPowerKw?: number` and the
+   * plan device stopped carrying that name; because the field was OPTIONAL,
+   * nothing failed to compile and the classifier silently saw `undefined` for
+   * every device, which reads as "drawing" and made every idle/unresponsive
+   * state unreachable. Required, so that cannot recur.
+   */
+  currentDrawKw: number;
   currentTemperature?: number;
   currentTarget: number | null;
   plannedState: PlannedDeviceState;
@@ -70,7 +78,7 @@ const toDetectorInput = (
 ): IdleDetectorInput => ({
   deviceId: device.id,
   now,
-  measuredPowerKw: device.measuredPowerKw,
+  measuredPowerKw: device.currentDrawKw,
   currentTemperature: device.currentTemperature,
   targetTemperature: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
   observedOn: device.currentState === 'on',
@@ -160,7 +168,7 @@ const emitTransitionLog = (params: {
         deviceName: device.name,
         idleDurationMs,
         temperatureGapC,
-        measuredPowerKw: device.measuredPowerKw,
+        measuredPowerKw: device.currentDrawKw,
         currentTemperatureC: device.currentTemperature,
         targetTemperatureC: device.currentTarget ?? undefined,
         detail: copy.detail,
@@ -205,8 +213,7 @@ const emitPowerEdge = (params: {
   // A missing / non-finite power sample (transient sensor or transport dropout)
   // carries no information about a draw edge — hold the prior streak and wait for
   // the next trusted sample rather than fabricating a stop (then resume) edge.
-  if (!isFiniteNumber(device.measuredPowerKw)) return;
-  const drawingNow = device.measuredPowerKw > IDLE_MEASURED_POWER_THRESHOLD_KW;
+  const drawingNow = device.currentDrawKw > IDLE_MEASURED_POWER_THRESHOLD_KW;
   const wasDrawing = lastDrawingById.get(device.id);
   lastDrawingById.set(device.id, drawingNow);
   if (wasDrawing === undefined || wasDrawing === drawingNow) return;
@@ -215,7 +222,7 @@ const emitPowerEdge = (params: {
     component: 'observer',
     deviceId: device.id,
     deviceName: device.name,
-    measuredPowerKw: device.measuredPowerKw,
+    measuredPowerKw: device.currentDrawKw,
     currentTemperatureC: device.currentTemperature,
     targetTemperatureC: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
     temperatureGapC: isFiniteNumber(device.currentTarget)

@@ -57,7 +57,12 @@ export type ObjectiveDeviceInput = {
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  measuredPowerKw?: number;
+  /**
+   * Producer-resolved current draw, structurally assignable from
+   * `PlanInputDevice`. Required, like it is there: the raw `measuredPowerKw`
+   * does not travel past the producer, so there is nothing here to be absent.
+   */
+  currentDrawKw: number;
   currentTemperature?: number;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   lastFreshDataMs?: number;

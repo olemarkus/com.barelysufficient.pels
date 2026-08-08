@@ -12,6 +12,7 @@ import {
 } from './stateOfCharge';
 import { formatBinaryState } from './managerRealtimeSupport';
 import type { RealtimeDeviceReconcileChange } from '../managerRuntime';
+import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 
 export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
@@ -26,17 +27,25 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
   value: unknown;
 }): FreshnessOnlyCapabilityUpdateResult {
   const { snapshot, capabilityId, value } = params;
-  // `Number.isFinite` gate matches the other two `measuredPowerKw` write seams
-  // (`resolveMeasuredPowerKw` at parse, `applyMeasuredPowerObservation` at
-  // snapshot-refresh) so a realtime `NaN`/`Infinity` power event from the Homey
-  // live feed is DROPPED (no write, no freshness bump) rather than polluting the
-  // snapshot. Junk is validated out at the boundary, not propagated to the power
-  // sum / shed decisions downstream.
-  if (capabilityId === 'measure_power' && typeof value === 'number' && Number.isFinite(value)) {
-    const kw = value / 1000;
-    if (Object.is(snapshot.measuredPowerKw, kw)) return { changed: false, normalizedValue: kw };
-    snapshot.measuredPowerKw = kw;
-    return { changed: true, normalizedValue: kw };
+  // `normalizeMeasuredPowerKw` is the shared rule every `measuredPowerKw` write
+  // seam applies (`resolveMeasuredPowerKw` at parse, `applyMeasuredPowerObservation`
+  // at snapshot-refresh, `getCurrentDrawKw` at the plan producer), so a realtime
+  // `NaN`/`Infinity`/negative power event from the Homey live feed is DROPPED
+  // rather than polluting the snapshot. Junk is validated out at the boundary,
+  // not propagated to the power sum / shed decisions downstream.
+  // One rule for every write seam. A rejected reading is ABSENT — `null` here, so
+  // it falls through to the no-op return below with no write and no freshness
+  // bump — and is never floored to 0, because "no reading" and "drawing nothing"
+  // are different facts.
+  const measuredKw = capabilityId === 'measure_power'
+    ? normalizeMeasuredPowerKw(typeof value === 'number' ? value / 1000 : value)
+    : null;
+  if (measuredKw !== null) {
+    if (Object.is(snapshot.measuredPowerKw, measuredKw)) {
+      return { changed: false, normalizedValue: measuredKw };
+    }
+    snapshot.measuredPowerKw = measuredKw;
+    return { changed: true, normalizedValue: measuredKw };
   }
   // Same `Number.isFinite` boundary gate as `measure_power` above and the other
   // two `currentTemperature` write seams (`getCurrentTemperature` at parse,

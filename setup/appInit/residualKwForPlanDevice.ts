@@ -33,7 +33,7 @@ import {
   type ResidualKwShedTemperatureTarget,
 } from '../../lib/device/deviceResidualKw';
 import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
-import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
+import { resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
@@ -48,33 +48,27 @@ export type ResidualKwForPlanDeviceShedBehavior = {
 };
 
 export function buildResidualKwForPlanDevice(params: {
-  device: DecoratedDeviceSnapshot;
+  device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
   controlCapabilityId?: BinaryControlCapabilityId;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
   const { device, controlCapabilityId, shedBehavior } = params;
-  const currentDrawKw = getCurrentDrawKw({
-    ...device,
-    // `getCurrentDrawKw` reads the resolved on/off truth, not the raw `binaryControl`.
-    // Resolve it from the snapshot ONLY for binary devices (mirror `toPlanDevice`'s
-    // `controlCapabilityId` gate): a non-binary step-only stepper carries no
-    // `currentOn`, and its off-step is handled by the stepped residual path below —
-    // folding it into `getCurrentDrawKw` here would zero a draw the configured
-    // fallback should still surface. `getCurrentDrawKw` trusts the resolved
-    // `currentOn`; there is no staleness gate.
-    ...(controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
-  });
+  // The same producer answer `toPlanDevice` stamps as `currentDrawKw`: the
+  // meter's reading, with no on/off or configured-demand ladder behind it.
+  const currentDrawKw = getCurrentDrawKw(device);
   const shed = resolveResidualKwShed({
     device: {
       currentDrawKw,
       temperatureTarget: toResidualTemperatureTarget(device),
-      steppedLoad: toResidualSteppedLoad(device, controlCapabilityId),
+      steppedLoad: toResidualSteppedLoad(device, currentDrawKw, controlCapabilityId),
     },
     shedBehavior: toResidualShedBehavior(shedBehavior),
   });
   const restore = resolveResidualKwRestore({
     steppedLoad: toRestoreSteppedLoad(device, controlCapabilityId),
-    restoreFallback: getRestoreDrawKw(device),
+    // The snapshot's own resolved draw is the `measured` candidate in the
+    // restore ladder; the raw field never travels past this seam.
+    restoreFallback: getRestoreDrawKw({ ...device, currentDrawKw }),
   });
   return { shed, restore };
 }
@@ -124,6 +118,7 @@ function toResidualShedBehavior(
 
 function toResidualSteppedLoad(
   device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
+  currentDrawKw: number,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwShedSteppedDevice | undefined {
   if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
@@ -139,7 +134,7 @@ function toResidualSteppedLoad(
     profile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
     hasKnownEffectiveStep,
-    measuredPowerKw: device.measuredPowerKw,
+    currentDrawKw,
     controlCapabilityId,
   };
 }

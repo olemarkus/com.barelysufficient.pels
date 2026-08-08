@@ -1,7 +1,6 @@
 import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
+import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { isPlanDeviceObservedOff } from './planSteppedLoad';
-import { isFiniteNumber } from '../utils/appTypeGuards';
 
 type UsageDevice = {
   controllable?: boolean;
@@ -15,65 +14,43 @@ type UsageDevice = {
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
   plannedState?: string;
-  measuredPowerKw?: number;
+  currentDrawKw: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
   powerKw?: number;
 };
 
-function isFiniteNonNegative(value: number | undefined): value is number {
-  return isFiniteNumber(value) && value >= 0;
-}
-
-// Live usage attribution. Plan-state-aware composition over Observer primitives —
-// the rules differ by plannedState and observed binary state, so this stays on the
-// plan side. Behavior preserved from the previous resolveLiveUsagePowerKw helper.
-const resolveShedUsageKw = (dev: UsageDevice, measured: number | null): number | null => {
-  if (measured !== null) return measured;
-  return isPlanDeviceObservedOff(dev) ? 0 : null;
-};
-
-const resolveObservedOffUsageKw = (dev: UsageDevice, measured: number | null): number => {
-  if (measured !== null && measured > 0) return measured;
-  const highest = getHighestKnownPowerKw(dev);
-  if (highest !== null) return highest.kw;
-  return measured ?? 0;
-};
-
-const resolveObservedOnUsageKw = (dev: UsageDevice, measured: number | null): number | null => {
-  // Measured wins when present, including a measured 0 — that matches the
-  // pre-refactor `resolveLiveUsagePowerKw` behavior of allowZero on the priority walk.
-  if (measured !== null) return measured;
-  if (isFiniteNonNegative(dev.expectedPowerKw)) return dev.expectedPowerKw;
-  if (isFiniteNonNegative(dev.planningPowerKw)) return dev.planningPowerKw;
-  return null;
-};
-
-const resolveUsageKw = (dev: UsageDevice): number | null => {
-  const measured = getMeasuredDrawKw(dev);
-  if (dev.plannedState === 'shed') return resolveShedUsageKw(dev, measured);
-  if (isPlanDeviceObservedOff(dev)) return resolveObservedOffUsageKw(dev, measured);
-  return resolveObservedOnUsageKw(dev, measured);
-};
-
-export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
+/**
+ * Managed usage: the sum of what the managed devices are drawing.
+ *
+ * The per-device rule is now just the producer's `currentDrawKw`. Three
+ * plan-state-dependent ladders used to live here (shed / observed-off /
+ * observed-on), each deciding for itself what an absent reading meant. The
+ * observed-off arm answered with `getHighestKnownPowerKw`, i.e. RATED power, so
+ * a device measuring a true 0 W was credited its nameplate — and this sum is
+ * what `sampleIngest` persists into `controlledBuckets`. `0` is an answer, not a
+ * gap: a device drawing nothing contributes nothing.
+ *
+ * No longer `number | null`. The null meant "a controllable device has no usable
+ * reading, so the managed total cannot be attributed" — a state that no longer
+ * exists, because the producer always has an answer for every planned device.
+ */
+export const sumControlledUsageKw = (devices: UsageDevice[]): number => {
   let totalKw = 0;
-  let hasUsage = false;
-  let hasControllable = false;
   for (const dev of devices) {
     if (dev.controllable === false) continue;
-    hasControllable = true;
-    const usage = resolveUsageKw(dev);
-    if (usage === null) continue;
-    totalKw += usage;
-    hasUsage = true;
+    totalKw += dev.currentDrawKw;
   }
-  if (!hasControllable) return 0;
-  return hasUsage ? totalKw : null;
+  return totalKw;
 };
 
-export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number | null => {
-  return sumBudgetExemptUsageKwInternal(devices);
+export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number => {
+  let totalKw = 0;
+  for (const dev of devices) {
+    if (dev.budgetExempt !== true || dev.controllable === false) continue;
+    totalKw += resolveBudgetExemptProjectedKw(dev);
+  }
+  return totalKw;
 };
 
 // Measured-only sibling of `sumBudgetExemptProjectedUsageKw`. The live sum PROJECTS an
@@ -88,8 +65,7 @@ export const sumBudgetExemptMeasuredUsageKw = (devices: UsageDevice[]): number =
   let totalKw = 0;
   for (const dev of devices) {
     if (dev.budgetExempt !== true || dev.controllable === false) continue;
-    const measured = getMeasuredDrawKw(dev);
-    if (measured !== null && measured > 0) totalKw += measured;
+    totalKw += dev.currentDrawKw;
   }
   return totalKw;
 };
@@ -97,34 +73,46 @@ export const sumBudgetExemptMeasuredUsageKw = (devices: UsageDevice[]): number =
 export function splitControlledUsageKw(params: {
   devices: UsageDevice[];
   totalKw: number | null;
-}): { controlledKw: number | null; uncontrolledKw: number | null } {
+}): { controlledKw: number; uncontrolledKw: number | null } {
   const { devices, totalKw } = params;
   const controlledKw = sumControlledUsageKw(devices);
-  const boundedControlledKw = totalKw !== null && controlledKw !== null
-    ? Math.max(0, Math.min(totalKw, controlledKw))
-    : controlledKw;
+  // `uncontrolledKw` stays nullable: the WHOLE-HOME total is a separate reading
+  // and can genuinely be missing. The managed side always resolves.
+  if (totalKw === null) return { controlledKw, uncontrolledKw: null };
+  const boundedControlledKw = Math.max(0, Math.min(totalKw, controlledKw));
   return {
     controlledKw: boundedControlledKw,
-    uncontrolledKw: totalKw !== null && boundedControlledKw !== null
-      ? Math.max(0, totalKw - boundedControlledKw)
-      : null,
+    uncontrolledKw: Math.max(0, totalKw - boundedControlledKw),
   };
 }
 
-const sumBudgetExemptUsageKwInternal = (
-  devices: UsageDevice[],
-): number | null => {
-  let totalKw = 0;
-  let hasExempt = false;
-  let hasUsage = false;
-  for (const dev of devices) {
-    if (dev.budgetExempt !== true || dev.controllable === false) continue;
-    hasExempt = true;
-    const usage = resolveUsageKw(dev);
-    if (usage === null) continue;
-    totalKw += usage;
-    hasUsage = true;
-  }
-  if (!hasExempt) return 0;
-  return hasUsage ? totalKw : null;
+/**
+ * The exempt device's claim on the daily budget, which is NOT the same question
+ * as what it is drawing.
+ *
+ * A deliberate RESERVATION, and the one place a configured demand still stands in
+ * for a device that is off. The daily-pace add-back has to keep an exempt
+ * device's claim alive across its duty cycle, or the pace ceiling would jump the
+ * moment a thermostat finished a burn (`notes/safe-pace-two-constraints.md`).
+ *
+ * This is not the substitution that caused the defect. That one lived on the
+ * current-draw axis, in `sumControlledUsageKw`, where a device measuring a true
+ * 0 W was booked at nameplate into the persisted managed/background split. Here
+ * the projection is the answer to a different question, it is gated on the
+ * device being observed OFF, and its measured sibling
+ * (`sumBudgetExemptMeasuredUsageKw`) is what restore admission spends.
+ */
+const resolveBudgetExemptProjectedKw = (dev: UsageDevice): number => {
+  // Kept from the pre-refactor ladder, and currently INERT: both callers sum
+  // shapes that carry no `plannedState` (`planBuilder` over `PlanInputDevice[]`,
+  // `powerSamplePipeline` over `withHeadroomCurrentOn(snapshot)`), so this never
+  // fires today — see `notes/safe-pace-two-constraints.md`. It stays because the
+  // rule it encodes is right: a device PELS decided to shed has no claim to
+  // project, since the plan is to take its load away.
+  if (dev.plannedState === 'shed') return dev.currentDrawKw;
+  if (dev.currentDrawKw > 0) return dev.currentDrawKw;
+  if (!isPlanDeviceObservedOff(dev)) return dev.currentDrawKw;
+  // Reached only when the draw is 0, so the fallback arm is 0 — not "the draw".
+  return getHighestKnownPowerKw(dev)?.kw ?? 0;
 };
+

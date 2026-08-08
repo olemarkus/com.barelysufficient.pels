@@ -289,11 +289,11 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 PELS manages any Homey device that exposes the capabilities the planner needs:
 
-- **Devices with power-limit control**: a usable power-estimate path (`measure_power`/`meter_power`, `settings.load`, device Energy settings, Homey Energy metadata, or Homey live `values.W`).
+- **Devices with power-limit control**: a way to report power (`measure_power`/`meter_power`, device Energy settings, Homey Energy metadata, or Homey live `values.W`). A `settings.load` value refines the *expected* power estimate, but it is not on its own enough to make a device manageable — PELS needs something that reports what the device is actually drawing.
 - **Price-only temperature devices**: `target_temperature` + `measure_temperature` is enough for mode and price-based control, even without a power estimate.
 - **On/off devices**: `onoff` plus a usable power-estimate path.
 
-Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey or a `settings.load` value, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
+Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
 
 For a temperature device that another app or Flow controls, enable **Disable temperature control**. PELS continues reading and displaying its measured temperature and target, but does not change the target for modes, prices, Smart tasks, boosts, or power limiting. If the device also exposes on/off control, PELS can still turn it off and on to manage capacity.
 

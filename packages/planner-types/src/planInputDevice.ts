@@ -230,7 +230,28 @@ export type PlanInputDeviceBase = {
   expectedPowerKw?: number;
   planningPowerKw?: number;
   expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
-  measuredPowerKw?: number;
+  /**
+   * The device's current draw in kW, as the producer resolved it. REQUIRED —
+   * never null, never undefined, never absent.
+   *
+   * The raw `measuredPowerKw` deliberately does NOT reach this contract. It
+   * stays on the transport snapshot, where absence is real and the producer
+   * reads it; carrying it here as well would leave two competing answers to
+   * "what is this device drawing", which is the whole defect this replaces.
+   *
+   * The producer ALWAYS resolves a number, so there is no hole to handle: the
+   * meter's reading, or `0`. There is no configured-demand rung and no fallback
+   * constant — every managed device is metered (verified across a 124-device
+   * fleet), and a configured load is a CONSTANT that would not fall to zero when
+   * the device switches off, so reading one would cost `currentDrawKw > 0` its
+   * meaning.
+   *
+   * Trust it implicitly. Do not re-validate it, do not substitute for it, do not
+   * ask where it came from. `0` means the device is drawing nothing; it is never
+   * "unknown" and never a placeholder the producer emitted for lack of an
+   * answer.
+   */
+  currentDrawKw: number;
   // `currentTemperature` is split off onto the orthogonal `TemperaturePlanInputKind`
   // cluster; reach it through the `isTemperaturePlanDevice` guard
   // (`lib/plan/planTemperatureDevice.ts`). `temperatureBoost` stays on the base.
