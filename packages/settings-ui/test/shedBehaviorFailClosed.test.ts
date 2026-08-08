@@ -22,6 +22,7 @@ const loadShedHelpers = async () => {
     logSettingsError,
   }));
   vi.doMock('../src/ui/toast.ts', () => ({
+    showToast: vi.fn().mockResolvedValue(undefined),
     showToastError,
   }));
   vi.doMock('../src/ui/dom.ts', () => ({

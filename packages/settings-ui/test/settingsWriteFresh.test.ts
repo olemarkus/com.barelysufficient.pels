@@ -21,6 +21,7 @@ const loadHelper = async () => {
     logSettingsError,
   }));
   vi.doMock('../src/ui/toast.ts', () => ({
+    showToast: vi.fn().mockResolvedValue(undefined),
     showToastError,
   }));
 

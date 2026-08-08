@@ -116,6 +116,25 @@ test.describe('Device detail panel', () => {
     await expect(overlay).toBeHidden();
   });
 
+  test('Platform back closes the overlay instead of leaving the page', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    const overlay = page.locator('#device-detail-overlay');
+    await expect(overlay).toBeVisible();
+
+    // The overlay pushed one history entry on open; the platform back gesture
+    // (Android back / browser back) pops it and closes the panel in place.
+    await page.goBack();
+    await expect(overlay).toBeHidden();
+    await expect(page.locator('#devices-panel')).toBeVisible();
+  });
+
+  test('Hero shows the fact line and reason from the shared card grammar', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    const fact = page.locator('#device-detail-live-fact');
+    await expect(fact).toBeVisible();
+    await expect(fact).toContainText('target');
+  });
+
   test('Temperature per mode inputs persist for each mode', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
     const modeSection = page.locator('#device-detail-modes-section');

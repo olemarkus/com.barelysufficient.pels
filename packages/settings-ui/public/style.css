@@ -1073,9 +1073,19 @@ md-primary-tab.tab[active] {
   white-space: nowrap;
 }
 
+.device-detail-live-status__fact {
+  flex-basis: 100%;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
 .device-detail-live-status__reason {
   flex-basis: 100%;
   overflow-wrap: anywhere;
+}
+
+.device-detail-live-status__smart-task {
+  align-self: center;
 }
 
 .settings-detail-panel {

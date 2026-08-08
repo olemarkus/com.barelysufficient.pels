@@ -37,13 +37,50 @@ export type DeviceDetailOverlayHandlerContext = {
   pendingDeviceDetailOpen: ReturnType<typeof createPendingDeviceDetailOpen>;
 };
 
+// ─── Android back integration ────────────────────────────────────────────────
+// The overlay pushes one history entry when it opens, so the platform back
+// gesture closes the panel instead of exiting the WebView. UI close paths
+// consume that entry via history.back() and let the popstate handler do the
+// actual close; a close with no live entry (device disappeared mid-session)
+// falls through to a direct close, and the stale entry later pops as a no-op
+// because the handler ignores popstate while the overlay is hidden. The URL is
+// unchanged by the push, so the deadline-plan router's own popstate handling
+// sees no route change.
+let historyEntryActive = false;
+
+export const noteDeviceDetailOpened = (): void => {
+  if (historyEntryActive) return;
+  historyEntryActive = true;
+  window.history.pushState({ pelsDeviceDetail: true }, '', window.location.href);
+};
+
+const requestDeviceDetailClose = (closeDeviceDetail: () => void): void => {
+  if (historyEntryActive) {
+    window.history.back();
+    return;
+  }
+  closeDeviceDetail();
+};
+
+const initDeviceDetailHistoryHandler = (
+  ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
+) => {
+  window.addEventListener('popstate', () => {
+    if (!historyEntryActive) return;
+    historyEntryActive = false;
+    if (deviceDetailOverlay && !deviceDetailOverlay.hidden) {
+      ctx.closeDeviceDetail();
+    }
+  });
+};
+
 const initDeviceDetailCloseHandlers = (
   ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
 ) => {
-  deviceDetailClose?.addEventListener('click', ctx.closeDeviceDetail);
+  deviceDetailClose?.addEventListener('click', () => requestDeviceDetailClose(ctx.closeDeviceDetail));
   deviceDetailOverlay?.addEventListener('click', (event) => {
     if (event.target === deviceDetailOverlay) {
-      ctx.closeDeviceDetail();
+      requestDeviceDetailClose(ctx.closeDeviceDetail);
     }
   });
 };
@@ -75,7 +112,7 @@ const initDeviceDetailEscapeHandler = (
 ) => {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
-      ctx.closeDeviceDetail();
+      requestDeviceDetailClose(ctx.closeDeviceDetail);
     }
   });
 };
@@ -175,6 +212,7 @@ export const initDeviceDetailOverlayChrome = (
   ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
 ) => {
   initDeviceDetailCloseHandlers(ctx);
+  initDeviceDetailHistoryHandler(ctx);
   initDeviceDetailSwitchRowClick();
   initOvershootSegmented();
 };

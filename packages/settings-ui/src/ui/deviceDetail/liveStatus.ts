@@ -20,7 +20,13 @@ import {
   resolveRawPlanStateKind,
   shouldDisplayExternalOffReason,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
-import { resolveSteppedEvExceptionLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
+import { resolveHeldCardReasonLine } from '../../../../shared-domain/src/planCardReasonLine.ts';
+import {
+  resolveSteppedEvExceptionLabel,
+  resolveSteppedLevelFact,
+} from '../../../../shared-domain/src/planSteppedCardText.ts';
+import { resolveTemperatureLine } from '../../../../shared-domain/src/planTemperatureCardText.ts';
+import { buildDeadlineHref } from '../deadlineUrls.ts';
 import {
   isSatisfiedTargetOnlyDevice,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
@@ -72,14 +78,45 @@ const getRow = (): {
   row: HTMLElement;
   stateEl: HTMLElement;
   powerEl: HTMLElement;
+  factEl: HTMLElement | null;
   reasonEl: HTMLElement;
+  smartTaskEl: HTMLAnchorElement | null;
 } | null => {
   const row = document.getElementById('device-detail-live-status');
   const stateEl = document.getElementById('device-detail-live-state');
   const powerEl = document.getElementById('device-detail-live-power');
   const reasonEl = document.getElementById('device-detail-live-reason');
   if (!row || !stateEl || !powerEl || !reasonEl) return null;
-  return { row, stateEl, powerEl, reasonEl };
+  return {
+    row,
+    stateEl,
+    powerEl,
+    factEl: document.getElementById('device-detail-live-fact'),
+    reasonEl,
+    smartTaskEl: document.getElementById('device-detail-live-smart-task') as HTMLAnchorElement | null,
+  };
+};
+
+// One modality fact line, from the same shared producers the Overview cards
+// use: temperature devices show measured/target, stepped devices (including EV
+// chargers, whose battery and charging state fold in) show the level fact.
+const resolveFactText = (dev: PlanDeviceSnapshot): string => {
+  if (dev.controlModel === 'temperature_target' || typeof dev.plannedTarget === 'number') {
+    return resolveTemperatureLine(dev as Parameters<typeof resolveTemperatureLine>[0]) ?? '';
+  }
+  if (dev.controlModel === 'stepped_load') {
+    const exception = resolveSteppedEvExceptionLabel(dev);
+    const levelFact = resolveSteppedLevelFact(dev);
+    return [exception, levelFact].filter((part): part is string => part !== null).join(' · ');
+  }
+  return '';
+};
+
+// Same standing-deadline resolution the Overview card's Smart task chip uses.
+const hasActiveDeadlineObjective = (deviceId: string, nowMs: number): boolean => {
+  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
+  if (!entry || !entry.enabled) return false;
+  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
 };
 
 // Overlapping renders are last-wins: a slow plan read must not overwrite the
@@ -143,12 +180,51 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   // keeps its `Reported` qualifier even under simulation's factual state word
   // — same split the Overview card makes.
   const intentHeld = resolveIntentStateKind(grammarParams) === 'held';
-  mounts.stateEl.textContent = displayStateLabel(kind);
-  mounts.row.dataset.stateKind = kind;
-  mounts.powerEl.textContent = resolvePowerText(dev, intentHeld);
-  const externalOff = shouldDisplayExternalOffReason(kind, grammarParams.reasonCode);
-  mounts.reasonEl.textContent = externalOff ? PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS : '';
-  mounts.reasonEl.hidden = !externalOff;
+  renderHeroRows({
+    mounts, dev, deviceId, kind, intentHeld, reasonCode: grammarParams.reasonCode, nowMs,
+  });
+};
+
+type HeroStateKind = ReturnType<typeof resolveDisplayStateKind>;
+
+const resolveHeroReasonText = (
+  dev: PlanDeviceSnapshot,
+  kind: HeroStateKind,
+  reasonCode: string | undefined,
+): string => {
+  // The same reason ladder the Overview card renders — the answer to "why is
+  // this Limited?" must not be three disclosures down in the activity log.
+  if (shouldDisplayExternalOffReason(kind, reasonCode)) return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
+  if (kind === 'held') return resolveHeldCardReasonLine({ reason: dev.reason, starvation: dev.starvation });
+  return '';
+};
+
+const renderHeroRows = (params: {
+  mounts: NonNullable<ReturnType<typeof getRow>>;
+  dev: PlanDeviceSnapshot;
+  deviceId: string;
+  kind: HeroStateKind;
+  intentHeld: boolean;
+  reasonCode: string | undefined;
+  nowMs: number;
+}): void => {
+  const { mounts, dev } = params;
+  mounts.stateEl.textContent = displayStateLabel(params.kind);
+  mounts.row.dataset.stateKind = params.kind;
+  mounts.powerEl.textContent = resolvePowerText(dev, params.intentHeld);
+  if (mounts.factEl) {
+    const factText = resolveFactText(dev);
+    mounts.factEl.textContent = factText;
+    mounts.factEl.hidden = factText === '';
+  }
+  const reasonText = resolveHeroReasonText(dev, params.kind, params.reasonCode);
+  mounts.reasonEl.textContent = reasonText;
+  mounts.reasonEl.hidden = reasonText === '';
+  if (mounts.smartTaskEl) {
+    const hasTask = hasActiveDeadlineObjective(params.deviceId, params.nowMs);
+    mounts.smartTaskEl.hidden = !hasTask;
+    if (hasTask) mounts.smartTaskEl.href = buildDeadlineHref(params.deviceId);
+  }
   mounts.row.hidden = false;
 };
 
