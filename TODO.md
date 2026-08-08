@@ -41,6 +41,24 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **A native `target_power` charger can no longer reach an off-ladder configured maximum.**
+      `buildEvTargetPowerCandidateProfile` now stops at the highest real rung under `config.max`
+      (PR #2027 — the cap is a ceiling, not a rung), so a 25 A cap tops out at `24a` and a
+      three-phase cap authored as the marketing "11 kW" (11000) tops out at `14a` = 9660 W rather
+      than the 11040 W `16a` rung. For a current-commanded charger that costs nothing — it only
+      ever accepts a whole amp. For a native `target_power` charger it is real: PELS writes WATTS
+      there (`resolveNativeSteppedLoadCommand` sends `Math.round(desiredStep.planningPowerW)`), so
+      the exact cap used to be commandable and now is only reachable if the device happens to
+      report it, since `resolveEvTargetPowerPlannerProfile` probes candidate rungs only. A
+      tolerance that snaps the cap up to a near rung was considered and rejected: rung watts are a
+      nominal seed (`amps * 230 * phases`) and real per-rung draw is already learned per
+      `(deviceId, stepId)` in `devicePowerCalibration.ts`, commonly landing under nominal because
+      the car draws less than the charger offers. The honest fix is therefore to compare the cap
+      against LEARNED power rather than nominal, not to fudge the nominal. Persona: owner of a
+      three-phase charger whose installation limit was authored as a round kW number; hypothesis:
+      silently charging at 9.66 kW on an "11 kW" charger, with the max field hidden in the UI for
+      EV presets, is invisible and unattributable. Raised by Codex on PR #2027. [P2]
+
 - [ ] **Solar-surplus reachability is derived from RESETTABLE accounting, so "Reset usage history"
       can drop a dump load's surplus posture.** `resolveSurplusPoolReachable`
       (`packages/shared-domain/src/solar/surplusPoolReachable.ts`) reads its export half from the

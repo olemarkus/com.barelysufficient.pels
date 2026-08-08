@@ -47,6 +47,43 @@ describe('targetPowerReachability', () => {
     expect(config.max).toBe(7_360);
   });
 
+  it('stops the candidate ladder at the highest real rung below an off-ladder cap', () => {
+    // A 25 A fuse leaves 24 A as the highest step. Minting a `25a` rung to sit
+    // on the cap would invent a step no charger ever offered, and drop a 1 A
+    // increment into a ladder whose rungs are 2-4 A apart.
+    const config: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      min: 0,
+      max: 25 * 230,
+      step: 460,
+      excludeMin: 1,
+      excludeMax: 1_380,
+    };
+
+    const candidate = buildEvTargetPowerCandidateProfile(config);
+
+    expect(candidate.steps.at(-1)).toMatchObject({ id: '24a', planningCurrentA: 24 });
+    expect(candidate.steps.map((step) => step.id)).not.toContain('25a');
+  });
+
+  it('still ends the confirmed ladder on a rung the device reached but the cap excludes', () => {
+    // The counterpart to the rule above, on the SAME off-ladder cap: PELS never
+    // mints `25a` from the 25 A cap, but a charger that demonstrably reached
+    // 5750 W keeps it. This pairing is where the two rules meet, so it is the
+    // case a future simplification of either append would silently break.
+    const config: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 25 * 230,
+    };
+
+    expect(resolveEvTargetPowerConfirmedProfile(config, 5_750).steps.at(-1))
+      .toMatchObject({ id: '25a', planningPowerW: 5_750 });
+    expect(resolveEvTargetPowerConfirmedProfile(config, 5_520).steps.at(-1))
+      .toMatchObject({ id: '24a', planningPowerW: 5_520 });
+  });
+
   it('offers only the next candidate when a probe is due', () => {
     const config = buildConfig();
     const confirmedProfile = resolveEvTargetPowerConfirmedProfile(config);
