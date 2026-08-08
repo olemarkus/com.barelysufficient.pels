@@ -15,6 +15,11 @@ import {
   deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
+  deviceDetailChargingSection,
+  deviceDetailChargingControlRow,
+  deviceDetailChargingControlValue,
+  deviceDetailChargingControlChange,
+  deviceDetailSetupDisclosure,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import {
@@ -86,6 +91,7 @@ import {
   renderTargetPowerConfig,
 } from './targetPowerConfig.ts';
 import {
+  getControlModeDisplayLabel,
   isControlModeAllowedForDevice,
   normalizeDeviceDetailControlMode,
   resolveDeviceDetailControlMode,
@@ -93,6 +99,11 @@ import {
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
 import { resolveDeviceDetailControlState, setTemperatureGatedSwitch } from './controlState.ts';
+import {
+  applyDeviceDetailSectionLayout,
+  autoExpandSetupWhenBare,
+} from './sectionLayout.ts';
+import { resolveDeviceDetailKind } from '../deviceKind.ts';
 import { createPendingDeviceDetailOpen } from './focus.ts';
 import {
   initDeviceDetailBudgetExemptHandler,
@@ -226,6 +237,31 @@ const setDeviceDetailControlStates = (deviceId: string) => {
       || state.temperatureControlDisabledMap[deviceId] === true;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
   }
+
+  setDeviceDetailChargingCardState(device, controlState);
+  autoExpandSetupWhenBare({
+    deviceId,
+    device,
+    isManaged: controlState.isManaged,
+  });
+};
+
+// The Charging card exists for every EV charger — with or without stepped
+// support — because it carries the control-mode readout and the limiting
+// statement, not just the boost.
+const setDeviceDetailChargingCardState = (
+  device: ReturnType<typeof getDeviceById>,
+  controlState: { canManageDevice: boolean },
+) => {
+  const isEvKind = resolveDeviceDetailKind(device) === 'ev_charger';
+  if (deviceDetailChargingSection) deviceDetailChargingSection.hidden = !isEvKind;
+  if (deviceDetailChargingControlRow) {
+    deviceDetailChargingControlRow.hidden = !isEvKind || !controlState.canManageDevice;
+  }
+  if (deviceDetailChargingControlValue && device && isEvKind) {
+    deviceDetailChargingControlValue.textContent
+      = getControlModeDisplayLabel(device, resolveDeviceDetailControlMode(device));
+  }
 };
 
 const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null): Promise<boolean> => (
@@ -286,6 +322,7 @@ const refreshOpenDeviceDetail = () => {
   }
 
   setDeviceDetailTitle(device.name);
+  applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(currentDetailDeviceId);
   setDeviceDetailControlStates(currentDetailDeviceId);
   setDeviceDetailShedBehavior({
@@ -329,6 +366,7 @@ export const openDeviceDetail = (deviceId: string) => {
   currentDetailDeviceId = deviceId;
 
   setDeviceDetailTitle(device.name);
+  applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(deviceId);
   setDeviceDetailControlStates(deviceId);
   setDeviceDetailShedBehavior({
@@ -439,6 +477,15 @@ export const initDeviceDetailHandlers = () => {
     refreshSharedDeviceViews,
   });
   initDeviceDetailControlModelHandler();
+  // Charging-card "Change": the readout keeps top visibility while the edit
+  // keeps Setup-grade friction — expand Setup and hand focus to the select.
+  deviceDetailChargingControlChange?.addEventListener('click', () => {
+    if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
+      deviceDetailSetupDisclosure.open = true;
+    }
+    deviceDetailControlModel?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    deviceDetailControlModel?.focus();
+  });
   initDeviceDetailPriceOptHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,

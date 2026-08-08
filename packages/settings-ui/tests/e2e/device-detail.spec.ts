@@ -195,6 +195,35 @@ test.describe('Device detail panel', () => {
     await expect.poll(() => readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(true);
   });
 
+  test('Sections compose per device kind: EV leads with Charging, thermostat with modes', async ({ page }) => {
+    // EV charger: Charging card first, carrying the limiting statement; the
+    // standalone Power limiting card is gone; activity log precedes diagnostics.
+    await openDeviceDetail(page, 'dev_evcharger');
+    const visibleSections = () => page.locator('.slide-panel__content > section.detail-section:visible')
+      .evaluateAll((sections) => sections.map((el) => el.id));
+    await expect.poll(visibleSections).toEqual([
+      'device-detail-charging-section',
+      'device-detail-car-section',
+      'device-detail-setup-section',
+      'device-detail-activity-log-section',
+      'device-detail-diagnostics-section',
+    ]);
+    await expect(page.locator('#device-detail-charging-section #device-detail-shed-statement')).toBeVisible();
+    await page.locator('#device-detail-close').click();
+
+    // Thermostat: per-mode targets lead; limiting closes the open cards.
+    await clickDeviceDetailButton(page, 'dev_heatpump');
+    await expect.poll(visibleSections).toEqual([
+      'device-detail-modes-section',
+      'device-detail-delta-section',
+      'device-detail-surplus-section',
+      'device-detail-shedding-section',
+      'device-detail-setup-section',
+      'device-detail-activity-log-section',
+      'device-detail-diagnostics-section',
+    ]);
+  });
+
   test('Limiting card renders a statement, not a radiogroup, when there is nothing to choose', async ({ page }) => {
     await openDeviceDetail(page, 'dev_evcharger');
 

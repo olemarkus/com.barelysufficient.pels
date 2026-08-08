@@ -6,7 +6,6 @@ import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/command
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
 import {
-  deviceDetailChargingSection,
   deviceDetailEvBoost,
   deviceDetailEvBoostBelow,
   deviceDetailEvBoostEnabled,
@@ -49,7 +48,6 @@ export const renderEvBoostSettings = (device: SettingsUiDeviceView | null) => {
   }
   const visible = supportsEvBoostDevice(device);
   deviceDetailEvBoost.hidden = !visible;
-  if (deviceDetailChargingSection) deviceDetailChargingSection.hidden = !visible;
   if (!visible || !device) return;
 
   const config = state.evBoostSettings[device.id] ?? device.evBoost;
