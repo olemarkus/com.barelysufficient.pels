@@ -262,14 +262,19 @@ const formatEvSocStatus = (
 const formatUsageText = (params: {
   measuredKw?: number;
   expectedKw?: number;
+  // Stepped devices report PLANNING power (the capacity the selected step
+  // reserves), which tracked the reported step one moment and the target step
+  // the next — labelling that "Expected" made the number look inconsistent.
+  expectedLabel?: 'Expected' | 'Planned';
 }): string => {
-  const { measuredKw, expectedKw } = params;
+  const { measuredKw, expectedKw, expectedLabel } = params;
   const hasMeasured = typeof measuredKw === 'number' && Number.isFinite(measuredKw);
   const hasExpected = typeof expectedKw === 'number' && Number.isFinite(expectedKw);
+  const label = expectedLabel ?? 'Expected';
   if (hasExpected && hasMeasured) {
-    return `Measured: ${measuredKw.toFixed(2)} kW / Expected: ${expectedKw.toFixed(2)} kW`;
+    return `Measured: ${measuredKw.toFixed(2)} kW / ${label}: ${expectedKw.toFixed(2)} kW`;
   }
-  if (hasExpected) return `Expected: ${expectedKw.toFixed(2)} kW`;
+  if (hasExpected) return `${label}: ${expectedKw.toFixed(2)} kW`;
   if (hasMeasured) return `Measured: ${measuredKw.toFixed(2)} kW`;
   return DEVICE_OVERVIEW_UNKNOWN;
 };
@@ -298,6 +303,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   let usageMsg = formatUsageText({
     measuredKw: device.measuredPowerKw,
     expectedKw: getDeviceOverviewExpectedPowerKw(device),
+    expectedLabel: isSteppedLoadDevice(device) ? 'Planned' : 'Expected',
   });
   if (isSteppedLoadDevice(device)) {
     const stepText = getSteppedUsageStepText(device);

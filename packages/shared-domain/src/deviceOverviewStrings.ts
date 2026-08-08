@@ -47,7 +47,9 @@ export const DEVICE_OVERVIEW_TURNED_OFF = 'Turned off';
 export const deviceOverviewLimitedToStep = (stepId: string): string => `Limited to ${stepId}`;
 
 // Gray / non-controllable state lines.
-export const DEVICE_OVERVIEW_CAPACITY_CONTROL_OFF = 'Capacity control off';
+// Named after the Setup switch it reflects — the log chip and the toggle must
+// not use two names for one control (was 'Capacity control off').
+export const DEVICE_OVERVIEW_CAPACITY_CONTROL_OFF = 'Power-limit control off';
 export const DEVICE_OVERVIEW_UNAVAILABLE = 'Unavailable';
 export const DEVICE_OVERVIEW_STATE_UNKNOWN = 'State unknown';
 export const DEVICE_OVERVIEW_UNKNOWN = 'Unknown';
