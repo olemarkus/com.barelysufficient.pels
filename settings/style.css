@@ -5192,6 +5192,15 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-3);
 }
 
+/* Value + trailing action on one line (the Charging card's control readout):
+   a block-level text button below the row read as a stray centered link. */
+.device-detail-readout__trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
 .device-detail-readout__value {
   color: var(--text);
   font-weight: var(--font-weight-semibold);

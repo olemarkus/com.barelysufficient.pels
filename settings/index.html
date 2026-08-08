@@ -1011,7 +1011,7 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Charging</h3>
-              <span class="section-hint">Charge boost</span>
+              <span class="section-hint">How PELS controls charging</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -1021,9 +1021,11 @@
               <div class="field device-detail-readout" id="device-detail-charging-control-row" hidden>
                 <div class="device-detail-readout__head">
                   <span class="field__label pels-text-settings-label">Charging control</span>
-                  <span class="device-detail-readout__value" id="device-detail-charging-control-value"></span>
+                  <span class="device-detail-readout__trailing">
+                    <span class="device-detail-readout__value" id="device-detail-charging-control-value"></span>
+                    <md-text-button id="device-detail-charging-control-change">Change</md-text-button>
+                  </span>
                 </div>
-                <md-text-button id="device-detail-charging-control-change">Change</md-text-button>
               </div>
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
                 <div class="md-switch-row">
@@ -1214,7 +1216,7 @@
                     <md-select-option value="ev_charger_1_phase"><div slot="headline">EV 1-phase</div></md-select-option>
                     <md-select-option value="ev_charger_3_phase"><div slot="headline">EV 3-phase</div></md-select-option>
                   </md-filled-select>
-                  <small class="field__hint">Choose the control shape PELS should plan with for this device.</small>
+                  <small class="field__hint">How PELS controls this device.</small>
                 </div>
               </div>
             </div>
