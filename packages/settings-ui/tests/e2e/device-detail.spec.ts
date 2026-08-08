@@ -195,7 +195,7 @@ test.describe('Device detail panel', () => {
 
     await expect(statement).toBeVisible();
     await expect(statement).toHaveText(
-      'When limiting this charger, PELS turns it off and turns it back on when power allows.',
+      'When limiting this charger, PELS pauses charging and resumes it when power allows.',
     );
     await expect(segmented).toBeHidden();
     await expect(label).toBeHidden();

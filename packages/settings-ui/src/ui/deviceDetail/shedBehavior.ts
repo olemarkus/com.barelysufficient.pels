@@ -321,7 +321,11 @@ const resolveShedStatement = (params: {
     + (shedControls.supportsStep ? 1 : 0);
   if (shedControls.canConfigure && visibleOptionCount > 1) return null;
 
-  if (shedControls.forceTurnOffOnly) {
+  // Every EV charger gets the pause/resume sentence, preset or not: a binary
+  // "turn off" on the charging capability is actuated as pausing charging
+  // (lib/executor/shedReleaseActuation.ts), so "turns it off" would misstate
+  // what the owner observes.
+  if (noun === 'charger') {
     return 'When limiting this charger, PELS pauses charging and resumes it when power allows.';
   }
   if (shedControls.forceTemperatureOnly) {
@@ -334,7 +338,7 @@ const resolveShedStatement = (params: {
     return 'Temperature control is off for this device. '
       + 'When limiting it, PELS turns it off and turns it back on when power allows.';
   }
-  return `When limiting this ${noun}, PELS turns it off and turns it back on when power allows.`;
+  return 'When limiting this device, PELS turns it off and turns it back on when power allows.';
 };
 
 const renderShedStatement = (statement: string | null): void => {
