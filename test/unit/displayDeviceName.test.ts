@@ -26,4 +26,16 @@ describe('formatDisplayDeviceName', () => {
   it('passes already-clean names through unchanged', () => {
     expect(formatDisplayDeviceName('Tesla')).toBe('Tesla');
   });
+
+  it('drops a stringified-null suffix an upstream app leaked into the name', () => {
+    // Live-walk 2026-08-08: a car named "Polestar 3 (null)" — the car app
+    // interpolated a missing license plate into the device name.
+    expect(formatDisplayDeviceName('Polestar 3 (null)')).toBe('Polestar 3');
+    expect(formatDisplayDeviceName('Polestar 3 (NULL) ')).toBe('Polestar 3');
+    expect(formatDisplayDeviceName('Charger (undefined)')).toBe('Charger');
+  });
+
+  it('keeps a meaningful parenthetical that is not a stringified absence', () => {
+    expect(formatDisplayDeviceName('Heater (garage)')).toBe('Heater (garage)');
+  });
 });

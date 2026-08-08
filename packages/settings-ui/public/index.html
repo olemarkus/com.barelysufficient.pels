@@ -899,7 +899,7 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
-              <p class="muted">Selected step, measured power, and planning power are treated separately. Planning power reserves future capacity; it does not need to match live draw exactly.</p>
+              <p class="muted" id="device-detail-stepped-intro">Selected step, measured power, and planning power are treated separately. Planning power reserves future capacity; it does not need to match live draw exactly.</p>
 
               <div class="target-power-config" id="device-detail-target-power-config">
                 <div class="form-grid target-power-grid" id="device-detail-target-power-fields">
@@ -955,7 +955,7 @@
                 </div>
               </div>
 
-              <div class="detail-stepped-header" aria-hidden="true">
+              <div class="detail-stepped-header" id="device-detail-stepped-header" aria-hidden="true">
                 <span>Step</span>
                 <span>Power</span>
                 <span></span>
@@ -1021,22 +1021,30 @@
                 <p class="muted" id="device-detail-ev-boost-status"></p>
               </div>
 
-              <p class="muted">When this device is limited and then starts again, PELS climbs back up step by step.</p>
+              <p class="muted" id="device-detail-stepped-climb-note">When this device is limited and then starts again, PELS climbs back up step by step.</p>
             </div>
           </details>
         </section>
 
+        <!-- Same card primitive as every neighbouring section: heading inside the
+             card surface, not floating on the panel background. -->
         <section class="detail-section" id="device-detail-car-section" hidden>
-          <h3 class="section-title">Car</h3>
-          <span class="section-hint">
-            Tick the cars that charge here and PELS reads the battery level straight from the car,
-            so charge boost and smart tasks know how full it is without a Flow.
-          </span>
-          <div class="settings-form-card detail-car-card">
-            <p class="detail-car-status" id="device-detail-car-status" hidden></p>
-            <div class="detail-car-list" id="device-detail-car-list"></div>
-            <small class="field__hint" id="device-detail-car-flow-note" hidden></small>
-          </div>
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Car</h3>
+              <span class="section-hint">Which car charges here</span>
+              <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
+            </summary>
+            <div class="collapse-content">
+              <p class="muted">
+                Tick the cars that charge here and PELS reads the battery level straight from the car,
+                so charge boost and smart tasks know how full it is without a Flow.
+              </p>
+              <p class="detail-car-status" id="device-detail-car-status" hidden></p>
+              <div class="detail-car-list" id="device-detail-car-list"></div>
+              <small class="field__hint" id="device-detail-car-flow-note" hidden></small>
+            </div>
+          </details>
         </section>
 
         <section class="detail-section" id="device-detail-setup-section">

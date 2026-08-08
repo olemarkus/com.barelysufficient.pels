@@ -9548,11 +9548,6 @@ md-switch {
 /* Charger page: the cars this charger may match. A checkbox list rather than
    switches — these are list members, not independent capabilities, and the
    checkbox reads as "include this one". */
-.detail-car-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
 
 /* The section's answer — which car, and how full — so it reads as the headline
    rather than as a footnote under the list it drives. */
