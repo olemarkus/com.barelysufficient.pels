@@ -10,6 +10,7 @@ import {
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
+  deviceDetailPriceOptRow,
   deviceDetailSurplusOpt,
   deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
@@ -194,6 +195,10 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailControllable.disabled = !controlState.supportsPower || !controlState.isManaged;
   }
   const priceConfig = state.priceOptimizationSettings[deviceId];
+  // Kind-inapplicable, not gated: a device with no temperature target can never
+  // use price-based temperature control, so the row hides instead of promising
+  // "adjust temperature" on a charger or socket.
+  if (deviceDetailPriceOptRow) deviceDetailPriceOptRow.hidden = !controlState.supportsTemperature;
   setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
   setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, controlState);
   if (deviceDetailSurplusOptRow) {

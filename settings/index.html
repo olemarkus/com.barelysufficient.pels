@@ -1110,7 +1110,11 @@
                   </span>
                 </div>
 
-                <div class="md-switch-row">
+                <!-- Kind-inapplicable on devices with no temperature target (EV
+                     chargers, plain on/off devices): hidden outright there — a
+                     temperature promise on a socket is not a gate the user can
+                     lift from this page. -->
+                <div class="md-switch-row" id="device-detail-price-opt-row">
                   <md-switch id="device-detail-price-opt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
