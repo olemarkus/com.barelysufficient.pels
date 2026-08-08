@@ -8363,17 +8363,17 @@ md-switch {
   flex: 1;
 }
 
-/* Gated row: the switch is `disabled`, so the row must READ disabled too. Only
- * the label dims — at full strength it looks like a live control that silently
- * swallows taps, while the hint underneath is the one line explaining why it is
- * off and so must stay the more legible of the two. `0.38` is the same
- * disabled-content opacity `.smart-task-edit__time-input:disabled` uses, so one
- * form doesn't speak two disabled languages. */
+/* Gated row: the switch is `disabled`, so the row must READ disabled too. The
+ * whole content column dims together — dimming only the label inverted the
+ * hierarchy (a ghost title over a darker description); one opacity over both
+ * keeps the label the stronger line. `0.38` is the same disabled-content
+ * opacity `.smart-task-edit__time-input:disabled` uses, so one form doesn't
+ * speak two disabled languages. */
 .md-switch-row--disabled {
   cursor: default;
 }
 
-.md-switch-row--disabled .md-switch-row__label {
+.md-switch-row--disabled .md-switch-row__content {
   opacity: 0.38;
 }
 
