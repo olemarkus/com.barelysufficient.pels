@@ -23,7 +23,7 @@ import {
 } from '../deviceControlProfiles.ts';
 import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
-import { resolveSurplusControlAvailable, state } from '../state.ts';
+import { state } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
 import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
 import {
@@ -44,6 +44,7 @@ import {
   initDeviceDetailSurplusOptHandlers,
   setDeviceDetailDumpLoadControl,
   setDeviceDetailSurplusValues,
+  surplusControlVisibleFor,
   updateSurplusSectionVisibility,
 } from './solarSurplus.ts';
 import {
@@ -154,6 +155,7 @@ const refreshCurrentDeviceControlStates = () => {
     currentDetailDeviceId: activeDeviceId,
     getDeviceById,
   });
+  syncSwitchRowDisabledStyling();
 };
 
 const notifyDevicesUpdated = () => {
@@ -164,6 +166,17 @@ const showDeviceDetailOverlay = () => {
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = false;
   }
+};
+
+// A locked switch must read as locked: only the track outline changes when
+// md-switch.disabled flips, so the row label stays full-strength and the row
+// looks live. Mirror the switch's disabled state onto the row's dim class
+// (`.md-switch-row--disabled`, the treatment DeadlinePlan already uses).
+const syncSwitchRowDisabledStyling = () => {
+  document.querySelectorAll('#device-detail-panel .md-switch-row').forEach((row) => {
+    const switchEl = row.querySelector<HTMLElement & { disabled?: boolean }>('md-switch');
+    row.classList.toggle('md-switch-row--disabled', switchEl?.disabled === true);
+  });
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
@@ -297,19 +310,6 @@ const refreshOpenDeviceDetail = () => {
   });
 };
 
-/**
- * Whether the "Use solar surplus" control may be shown for a device: the home's
- * surplus pool must be able to open at all, OR the device is already opted in.
- *
- * The escape hatch mirrors the binary sibling in `solarSurplus.ts`. Without it,
- * an install that opted in before the pool-reachability gate existed keeps a
- * live stored setting with no surface to see or clear it.
- */
-const surplusControlVisibleFor = (deviceId: string): boolean => (
-  resolveSurplusControlAvailable()
-  || state.priceOptimizationSettings[deviceId]?.surplusWilling === true
-);
-
 export const openDeviceDetail = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   if (!device) return;
@@ -350,6 +350,8 @@ export const openDeviceDetail = (deviceId: string) => {
     currentDetailDeviceId: deviceId,
     getDeviceById,
   });
+
+  syncSwitchRowDisabledStyling();
 
   resetDeviceDetailDiagnosticsView();
   resetDeviceDetailActivityLogView();

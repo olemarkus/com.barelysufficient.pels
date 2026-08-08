@@ -1,11 +1,16 @@
 import {
   deviceDetailCheapDelta,
+  deviceDetailDeltaGateHint,
   deviceDetailDeltaSection,
   deviceDetailExpensiveDelta,
   deviceDetailPriceOpt,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
-import { supportsTemperatureControlDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import {
+  supportsTemperatureControlDevice,
+  supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
+} from '../deviceUtils.ts';
 import { logSettingsError } from '../logging.ts';
 import {
   renderPriceOptimization,
@@ -49,6 +54,24 @@ export const setDeviceDetailDeltaValues = (deviceId: string) => {
   }
 };
 
+// Why the delta fields are inert right now. Applicable-but-unavailable renders
+// visible-but-disabled with this hint; only kind-inapplicable devices (no
+// temperature target at all) hide the section outright.
+const resolveDeltaGateHint = (params: {
+  canControlTemperature: boolean;
+  isManaged: boolean;
+  selected: boolean;
+}): string | null => {
+  if (!params.canControlTemperature) {
+    return 'Temperature control is off for this device — these values are kept but not applied.';
+  }
+  if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use price response.';
+  if (!params.selected) {
+    return 'Turn on Price-based control in Setup to adjust this device’s temperature with electricity prices.';
+  }
+  return null;
+};
+
 export const updateDeltaSectionVisibility = (params: {
   currentDetailDeviceId: string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -56,13 +79,24 @@ export const updateDeltaSectionVisibility = (params: {
   if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
 
   const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
-  if (!supportsTemperatureControlDevice(device)) {
+  if (!supportsTemperatureDevice(device)) {
     deviceDetailDeltaSection.style.display = 'none';
     return;
   }
 
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
-  deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.selected && isManaged ? 'block' : 'none';
+  const gateHint = resolveDeltaGateHint({
+    canControlTemperature: supportsTemperatureControlDevice(device),
+    isManaged,
+    selected: deviceDetailPriceOpt.selected,
+  });
+  deviceDetailDeltaSection.style.display = 'block';
+  if (deviceDetailCheapDelta) deviceDetailCheapDelta.disabled = gateHint !== null;
+  if (deviceDetailExpensiveDelta) deviceDetailExpensiveDelta.disabled = gateHint !== null;
+  if (deviceDetailDeltaGateHint) {
+    deviceDetailDeltaGateHint.textContent = gateHint ?? '';
+    deviceDetailDeltaGateHint.hidden = gateHint === null;
+  }
 };
 
 export const initDeviceDetailPriceOptHandlers = (params: {

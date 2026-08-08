@@ -30,6 +30,7 @@ const buildDom = () => {
           <md-switch id="device-detail-surplus-opt"></md-switch>
         </div>
         <section id="device-detail-surplus-section" style="display:none">
+          <p id="device-detail-surplus-gate-hint" hidden></p>
           <md-filled-text-field id="device-detail-surplus-delta"></md-filled-text-field>
         </section>
         <md-switch id="device-detail-budget-exempt"></md-switch>
@@ -158,6 +159,18 @@ describe('device detail "Use solar surplus" gating', () => {
   it('reveals the surplus section only when solar is present and the toggle is on', async () => {
     await openPanel({ hasManagedSolarDevice: true, device: buildDevice(), surplusWilling: true });
     expect(surplusSection()?.style.display).toBe('block');
+  });
+
+  it('keeps the section visible but disabled with a hint while the toggle is off', async () => {
+    // Suppressed-control treatment: applicable-but-unavailable renders
+    // visible-but-disabled + hint, never vanish.
+    await openPanel({ hasManagedSolarDevice: true, device: buildDevice() });
+    expect(surplusSection()?.style.display).toBe('block');
+    const hint = document.querySelector('#device-detail-surplus-gate-hint') as HTMLElement;
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toContain('Use solar surplus');
+    const delta = document.querySelector('#device-detail-surplus-delta') as HTMLElement & { disabled?: boolean };
+    expect(delta.disabled).toBe(true);
   });
 
   it('shows the surplus fields whenever the toggle is on, even with no reachable pool', async () => {
