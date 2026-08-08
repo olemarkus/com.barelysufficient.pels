@@ -181,7 +181,7 @@ describe('device overview formatter', () => {
       reason: r('shed due to capacity'),
     })).toEqual({
       powerMsg: null,
-      stateMsg: 'Limited to max',
+      stateMsg: 'Limited to Max',
       usageMsg: 'Measured: 0.00 kW / Planned: 3.00 kW (target: Max)',
       statusMsg: PLAN_STATE_CAPACITY_STATUS,
     });
