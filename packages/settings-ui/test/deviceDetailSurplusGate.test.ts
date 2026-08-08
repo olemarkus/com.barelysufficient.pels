@@ -83,7 +83,7 @@ const mockSiblings = () => {
     renderPriceOptimization: vi.fn(),
     savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
   }));
-  vi.doMock('../src/ui/toast.ts', () => ({ showToastError: vi.fn().mockResolvedValue(undefined) }));
+  vi.doMock('../src/ui/toast.ts', () => ({ showToast: vi.fn().mockResolvedValue(undefined), showToastError: vi.fn().mockResolvedValue(undefined) }));
   vi.doMock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
 };
 
