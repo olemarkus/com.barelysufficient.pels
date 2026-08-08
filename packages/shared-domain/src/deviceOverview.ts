@@ -169,7 +169,9 @@ const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (device.shedAction === 'set_temperature') return DEVICE_OVERVIEW_LOWERED;
   if (device.shedAction === 'set_step') {
     const targetStepId = getTargetStepId(device);
-    return targetStepId ? deviceOverviewLimitedToStep(targetStepId) : DEVICE_OVERVIEW_LIMITED;
+    // Same display formatter as the usage line and the card rail — one entry
+    // must not read "Limited to 32a" beside "target: 32 A".
+    return targetStepId ? deviceOverviewLimitedToStep(formatStepDisplayLabel(targetStepId)) : DEVICE_OVERVIEW_LIMITED;
   }
   return DEVICE_OVERVIEW_TURNED_OFF;
 };
