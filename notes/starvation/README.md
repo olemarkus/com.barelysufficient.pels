@@ -210,10 +210,13 @@ device PELS commands in full (`keep`) is never starved, however cold it
 physically is — that is the device not reaching its own target, not PELS holding
 it back.
 
-Cooldown, retry/backoff, restore holds, and other non-counting PELS hold states
-PAUSE a latched episode (they do not start one and they do not add counted time):
-while paused the device is not being limited right now. The original counting
-cause is retained across the pause for diagnostic attribution.
+A hold PELS did not impose — `keep`, `inactive`, a step-up `restore_need` — and
+the owner-set holds (`deferred_objective_avoid`, `awaiting_solar_surplus`) PAUSE
+a latched episode: they do not start one and they do not add counted time. PELS's
+own cooldowns, retry backoff, pending restores and startup reservations do NOT
+pause — since 2026-08-08 they count, because the device is still off and PELS is
+still the reason (see "Hold / Retry Attribution"). The original counting cause is
+retained across a pause for diagnostic attribution.
 
 Starvation is orthogonal metadata, not a new planner state:
 
@@ -257,22 +260,36 @@ Each eligible plan sample must normalize into:
 - `swap_pending`
 - `swapped_out`
 - `insufficient_headroom`
+- `cooldown`
+- `restore`
+- `restore_throttled`
+- `activation_backoff`
+- `reserved_for_start`
 
 `pauseReason` must be one of:
 
-- `cooldown`
-- `restore_throttled`
-- `activation_backoff`
-- `inactive`
 - `keep`
+- `inactive`
 - `restore`
+- `deferred_objective_avoid`
+- `awaiting_solar_surplus`
 - `invalid_observation`
 - `sample_gap`
+- `suppression_none`
 - `unknown_suppression_reason`
+
+`restore` appears in both lists, and the split is which device it lands on:
+`restore_pending` / `waiting_for_other_devices` hold a device that is OFF, so
+they count; `restore_need` lands on a keep-state device that is ON and merely
+wants a step up, so it pauses. Both render the same user-facing label — a user
+cannot tell them apart, and does not need to.
 
 Unknown or newly introduced planner reasons should keep explicit `unknown_suppression_reason`
 attribution when the device is otherwise held by PELS, rather than disappearing from the starvation
-episode.
+episode. Note this is a PAUSE, deliberately: an unattributable hold is not counted, because
+the counting cause is what device detail and the `device_starvation_*` logs report, and a
+cause we cannot name is not one worth counting. Adding a new planner reason that holds a
+device off means adding it to one of the two tables above.
 
 ## Target Used For Evaluation
 
@@ -358,7 +375,7 @@ across valid contiguous samples:
 The entry timer resets on any of:
 
 - PELS no longer holds the device below target (`commandedTargetC >= intendedNormalTargetC`)
-- the suppression is not a real counting cause (`keep` / `inactive` / cooldown / any pause)
+- the suppression is not a real counting cause (`keep` / `inactive` / an owner-set hold / any pause)
 - invalid observation
 - sample gap longer than `10 minutes`
 - intended normal target change
@@ -366,7 +383,7 @@ The entry timer resets on any of:
 
 ## Suppression Attribution
 
-These attribute starvation time after entry:
+These attribute starvation time after entry — the ceiling causes:
 
 - `capacity`
 - `daily_budget`
@@ -375,6 +392,15 @@ These attribute starvation time after entry:
 - `swap_pending`
 - `swapped_out`
 - `insufficient_headroom`
+
+…and, since 2026-08-08, the holds PELS imposes on itself (see
+"Hold / Retry Attribution" for why):
+
+- `cooldown`
+- `restore`
+- `restore_throttled`
+- `activation_backoff`
+- `reserved_for_start`
 
 Current planner-text examples that should normalize to these causes:
 
@@ -386,28 +412,71 @@ Current planner-text examples that should normalize to these causes:
 - `swap pending (NAME)` -> `swap_pending`
 - `swapped out for NAME` -> `swapped_out`
 - `insufficient headroom (...)` -> `insufficient_headroom`
+- `cooldown (shedding, Ns remaining)` / `cooldown (restore, Ns remaining)` /
+  `meter settling (Ns remaining)` -> `cooldown`
+- `restore pending (Ns remaining)` / `waiting for other devices to recover` -> `restore`
+- `restore throttled` -> `restore_throttled`
+- `activation backoff (Ns remaining)` -> `activation_backoff`
+- a hold on another device's startup reservation -> `reserved_for_start`
 
 ## Hold / Retry Attribution
 
-These are pause reasons, NOT counting causes. They cannot start starvation and do
-not add counted time; on a latched episode they pause accumulation (the device is
-not being limited right now) while retaining the original counting cause:
+> **Rule change, 2026-08-08 (owner ruling): the clock runs whenever PELS has
+> turned the device off.** Cooldowns, restore throttling, activation backoff,
+> pending/queued restores and startup reservations used to sit in this section as
+> pause reasons that "cannot start starvation and do not add counted time". They
+> now COUNT. The old split asked *how transient is this hold?*; the rule asks
+> *who turned the device off?* — and a device cycling between a capacity hold and
+> its own 60 s restore cooldown was never being served, so pausing there
+> under-reported real held-back time and withheld the rescue from exactly the
+> devices that needed it.
 
-- `cooldown (...)`
-- `restore throttled`
-- activation backoff
-- `inactive (...)`
-- `keep`
-- `keep (recently restored)`
-- `restore (...)`
-- `deferred_objective_avoid`
-- unknown or unmapped suppression reason
+The one question is **who is the reason the device is down**:
 
-Behavior in these states:
+- **PELS is the reason → the clock counts.** Capacity, the daily and hourly
+  budgets, shortfall, swaps, insufficient available power, *and* every hold PELS
+  imposes on itself: shed/restore cooldowns, meter settling, restore throttling,
+  activation backoff, pending restores, waiting for other devices to recover, and
+  another device's startup reservation. Each keeps its own counting cause, so
+  device detail can still tell a cooldown from a reservation.
+- **The owner or the device is the reason → the clock pauses.**
 
-- if not yet starved: reset the pending entry timer (PELS is not limiting the device)
+Three PELS-commanded holds are a deliberate carve-out from a literal reading of
+the rule. PELS did turn these devices off, but at the owner's explicit request,
+so flagging `Held back` and offering `Let it run now` would be telling the owner
+their own setting is a problem:
+
+- `deferred_objective_avoid` — the device's own smart task is deferring it to a
+  cheaper or reserved hour.
+- `awaiting_solar_surplus` — the opted-in dump-load posture, whose baseline IS
+  off, waiting for export.
+- `external_off_hold` — the owner turned the device off outside PELS. Handled one
+  level up: it is excluded from starvation ELIGIBILITY
+  (`resolveEligibleForStarvation`), which resets accrual rather than latching a
+  paused episode, so the classifier resolves it to `none`.
+
+The remaining pause reasons are the states where PELS has not turned the device
+off at all, plus the observation-quality ones:
+
+- `keep` / `keep (recently restored)` — PELS is commanding the device in full.
+- `inactive (...)` — unplugged or physically unavailable.
+- `restore_need` — a keep-state device that is ON and wants a step up.
+- invalid observation, sample gap, unknown or unmapped suppression reason.
+
+Behavior in a pause state:
+
+- if not yet starved: reset the pending entry timer (PELS is not holding the device back)
 - if already starved AND still held below target: pause accumulation, stay latched
 - invalid observations and sample gaps also pause accumulation
+
+The counting causes are strictly a superset of what they were, so the change is
+one-directional: **more devices reach `Held back`, and more are offered
+`Let it run now`.** What did NOT move is the gate on that offer — entry still
+requires 15 continuous minutes of below-target counting suppression, so a device
+inside an ordinary 60 s cooldown is nowhere near being offered a rescue. The
+day-level censoring totals that feed the weather advisor
+(`targetDeficitMs` / `blockedByHeadroomMs`) are derived from `blockCause`, not
+from the suppression state, so that bounded loop is untouched by this change.
 
 ## Clear (recovery)
 
@@ -451,8 +520,8 @@ Add starvation time only while all are true:
 
 Pause starvation accumulation while the sample is invalid/stale, OR PELS is not
 holding the device below target via a real counting cause (a `keep`/`inactive`/
-cooldown/restore pause, or a still-below device under a non-counting suppression).
-The original counting cause is retained across the pause.
+`restore_need` pause, an owner-set hold, or a still-below device under a
+non-counting suppression). The original counting cause is retained across the pause.
 
 ### Clear
 
@@ -589,7 +658,10 @@ Logs should include:
 - physical temperature does not gate entry, accumulation, or clear (display/telemetry only)
 - starvation enters only after `15 minutes` of continuous below-target counting suppression
 - invalid observations and sample gaps do not backfill or count as continuous qualification
-- non-counting holds (cooldown/backoff/restore/keep/inactive) cannot start starvation and pause a
+- every hold PELS imposes counts, including its own cooldowns, retry backoff, pending restores
+  and startup reservations (the 2026-08-08 rule)
+- holds PELS did not impose (`keep`/`inactive`/`restore_need`) and the owner-set holds
+  (`deferred_objective_avoid`/`awaiting_solar_surplus`) cannot start starvation and pause a
   latched episode, retaining its counting cause
 - the overview/badge carries NO cause bucket (removed 2026-08-04); the granular
   counting cause serves device detail and the logs

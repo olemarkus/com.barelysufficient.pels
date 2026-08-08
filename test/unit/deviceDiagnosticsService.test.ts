@@ -123,9 +123,13 @@ describe('DeviceDiagnosticsService', () => {
       observations: [buildObservation({
         blockCause: 'cooldown_backoff',
         appliedStateSummary: '19.0C',
-        suppressionState: 'paused',
-        countingCause: null,
-        pauseReason: 'cooldown',
+        // A cooldown COUNTS (PELS is still the reason the device is down), so this
+        // window feeds `blockedByCooldownBackoffMs` and the starvation clock alike.
+        // The device still never enters here — the `keep` sample below lands well
+        // before the 15-minute entry delay.
+        suppressionState: 'counting',
+        countingCause: 'cooldown',
+        pauseReason: null,
       })],
     });
     service.observePlanSample({
@@ -630,7 +634,7 @@ describe('DeviceDiagnosticsService', () => {
     expect(starvation?.starvationLastResumedAt).toBe(start + (25 * 60 * 1000));
   });
 
-  it('never enters starvation under a non-counting hold (cooldown) — only a real cap hold counts', () => {
+  it('never enters starvation under an owner-set hold (smart-task deferral)', () => {
     const { service } = createDeps();
     const start = Date.now();
 
@@ -638,14 +642,16 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start,
       observations: [buildObservation()],
     });
-    // A cooldown pause before the entry delay completes resets the pending entry:
-    // PELS is not actively limiting the device, so it cannot starve.
+    // The owner's own smart task is deferring this device to a cheaper hour. PELS did turn
+    // it off, but at the owner's request — so the clock stops and the pending entry resets.
+    // (A cooldown here would COUNT: `notes/starvation/README.md` — the clock runs whenever
+    // PELS is the reason the device is down.)
     service.observePlanSample({
       nowTs: start + (9 * 60 * 1000),
       observations: [buildObservation({
         suppressionState: 'paused',
         countingCause: null,
-        pauseReason: 'cooldown',
+        pauseReason: 'deferred_objective_avoid',
       })],
     });
     service.observePlanSample({
@@ -653,7 +659,7 @@ describe('DeviceDiagnosticsService', () => {
       observations: [buildObservation({
         suppressionState: 'paused',
         countingCause: null,
-        pauseReason: 'cooldown',
+        pauseReason: 'deferred_objective_avoid',
       })],
     });
 

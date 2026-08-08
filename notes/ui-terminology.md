@@ -669,10 +669,13 @@ covers a device made to wait for power. Only the reason line differs: it avoids 
 `Limited so … can run` form used by `swappedOut`, because nothing was switched off to
 build the reservation. Do not reuse `Held back`, which belongs to the budget widget.
 
-Note the deliberate split, same as `awaiting_solar_surplus`: `reserved_for_start` is a
-starvation *pause* reason (`packages/contracts/src/deviceDiagnosticsTypes.ts`), so
-device-detail diagnostics reads `Not held back — …` while the Overview card reads
-`Limited`. That is not a regression; do not re-flag it.
+`reserved_for_start` is a starvation *counting* cause since 2026-08-08
+(`packages/contracts/src/deviceDiagnosticsTypes.ts`): PELS is the reason the device is
+down, so a device left waiting long enough does reach `Held back` and does get offered
+`Let it run now`. It used to be a pause reason, and device detail read `Not held back` no
+matter how long the wait ran. Contrast `awaiting_solar_surplus`, which still pauses — the
+owner opted that device into a baseline-off posture, so flagging it would be telling them
+their own setting is a problem (`notes/starvation/README.md`).
 
 In user-facing copy this scope is `Extra permissions`. It is **not**
 `Allowances`, `Overrides`, `Rescue`, `Rescue scope`, `Rescue permissions`, or
