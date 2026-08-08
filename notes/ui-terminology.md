@@ -353,10 +353,15 @@ which is retired EVERYWHERE: it misdescribed the trigger (the hour's kWh being
 spent, not cap proximity), and the `hourlyBudget` reason now renders
 `Waiting to resume — this hour's budget is spent` on the card and in the log alike.
 
-They do NOT appear on the device-detail live-status row, which renders no plan
-reason except the external-off guidance. `Turned off by
-PELS` / `Lowered by PELS` are not in that formatter at all — they lived in
-`resolveHeldStateActionLabel`, which now has no production caller.
+Since the 2026-08-08 device-page redesign the device-detail live-status row is
+a HERO: it renders the full card grammar — state word, power fact, one modality
+fact line, and the same held-reason ladder the Overview card shows (fired on
+plan intent, through the simulation mood transform). The earlier rule that the
+row carried no plan reason except external-off guidance is deliberately
+revised: the answer to "why is this Limited?" must not sit three disclosures
+down in the activity log. `Turned off by PELS` / `Lowered by PELS` are not in
+that formatter at all — they lived in `resolveHeldStateActionLabel`, which now
+has no production caller.
 
 **Charging paused** survives as an EV *state* word (state row), not as a reason
 line.
@@ -394,7 +399,7 @@ reintroduce it. Canonical sentences (source:
 
 | Case | Statement |
 |---|---|
-| EV charger with EV preset | `When limiting this charger, PELS pauses charging and resumes it when power allows.` |
+| EV charger (preset or not — the executor pauses the charging capability) | `When limiting this charger, PELS pauses charging and resumes it when power allows.` |
 | Plain binary device | `When limiting this device, PELS turns it off and turns it back on when power allows.` |
 | Temperature control disabled | `Temperature control is off for this device. When limiting it, PELS turns it off and turns it back on when power allows.` |
 | Forced temperature-only | `When limiting this device, PELS lowers its temperature instead of turning it off.` |
