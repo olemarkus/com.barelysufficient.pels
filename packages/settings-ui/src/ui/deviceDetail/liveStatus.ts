@@ -34,7 +34,7 @@ import {
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
-import { state } from '../state.ts';
+import { hasActiveDeadlineObjective, state } from '../state.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 
 const isFiniteKw = (value: unknown): value is number => (
@@ -113,12 +113,7 @@ const resolveFactText = (dev: PlanDeviceSnapshot): string => {
   return '';
 };
 
-// Same standing-deadline resolution the Overview card's Smart task chip uses.
-const hasActiveDeadlineObjective = (deviceId: string, nowMs: number): boolean => {
-  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!entry || !entry.enabled) return false;
-  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
-};
+
 
 // Overlapping renders are last-wins: a slow plan read must not overwrite the
 // row after the overlay switched device (or a fresher plan landed).

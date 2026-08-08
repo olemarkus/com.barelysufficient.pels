@@ -1569,6 +1569,15 @@ program) remain deferred.*
       captures never exercised PELS's ≤360/≤319 media queries; the Playwright fixture (which narrows
       the real iframe) must confirm the per-kind pages, the segmented short labels, and the hero at
       320 px. Files: `packages/settings-ui/tests/e2e/*`, capture harness. [P2]
+- [ ] **Extract the shared device-detail render block from the three refresh paths.**
+      *Persona:* next engineer adding a device-detail section.
+      *Hypothesis:* `openDeviceDetail` and `refreshOpenDeviceDetail` duplicate a ~15-call render
+      block (title, layout, live status, control states, shed, stepped, boosts, car, modes,
+      visibility passes) that has already drifted cosmetically once and misses easily; one
+      `renderDeviceDetailPanel(device)` called by both (with `refreshCurrentDeviceControlStates`
+      keeping its deliberately lighter shed-refresh subset) removes the drift class. Pure
+      refactor, no behavior change. Source: 2026-08-09 adversarial review. Files:
+      `packages/settings-ui/src/ui/deviceDetail/index.ts`. [P2]
 - [ ] **Move the hero/card power-fact grammar into shared-domain.**
       *Persona:* support reading logs against what the user saw.
       *Hypothesis:* `Reported N kW` / `≈ N kW when active` exist as two hand-mirrored literals

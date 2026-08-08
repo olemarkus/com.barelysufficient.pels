@@ -11,10 +11,6 @@ import {
   createEvTargetPowerConfig,
 } from './targetPowerConfig.ts';
 
-// Re-exported so existing importers keep one import site while the resolver
-// migrates to deviceKind.ts (this PR keeps the churn to the definitions).
-export { resolveDeviceDetailControlMode, type DeviceDetailControlMode } from '../deviceKind.ts';
-
 export type DeviceDetailControlModeOption = {
   value: DeviceDetailControlMode;
   label: string;

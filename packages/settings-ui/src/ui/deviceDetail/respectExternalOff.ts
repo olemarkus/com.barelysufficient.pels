@@ -1,4 +1,4 @@
-import { state } from '../state.ts';
+import { state, hasActiveDeadlineObjective } from '../state.ts';
 import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
@@ -40,11 +40,7 @@ const readStrictBooleanMap = (value: unknown): Record<string, boolean> | null =>
   return Object.fromEntries(entries);
 };
 
-const hasActiveSmartTask = (deviceId: string): boolean => {
-  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!entry || !entry.enabled) return false;
-  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > Date.now();
-};
+const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjective(deviceId);
 
 const isPowerLimitControlOn = (deviceId: string): boolean => (
   state.controllableMap[deviceId] === true

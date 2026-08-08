@@ -58,16 +58,10 @@ import {
   isStarvationRescuable,
   previewStarvationRescue,
 } from '../starvationRescue.ts';
-import { state } from '../state.ts';
+import { hasActiveDeadlineObjective, state } from '../state.ts';
 import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { DeviceReason } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
-
-const hasActiveDeadlineObjective = (deviceId: string, nowMs: number): boolean => {
-  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!entry || !entry.enabled) return false;
-  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
-};
 
 const formatEvCardTime = (ms: number): string => (
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })

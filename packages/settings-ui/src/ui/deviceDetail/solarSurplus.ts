@@ -16,15 +16,13 @@ import {
 import { isEvDevice } from '../../../../shared-domain/src/commandableNow.ts';
 import { logSettingsError } from '../logging.ts';
 import { savePriceOptimizationSettings } from '../priceOptimization.ts';
-import {
-  resolveSurplusControlAvailable,
+import { resolveSurplusControlAvailable,
   resolveManagedState,
   state,
   defaultPriceOptimizationConfig,
-  type PriceOptimizationConfig,
-} from '../state.ts';
+  type PriceOptimizationConfig, hasActiveDeadlineObjective } from '../state.ts';
 import { showToastError } from '../toast.ts';
-import { resolveDeviceDetailControlMode } from './controlMode.ts';
+import { resolveDeviceDetailControlMode } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 
 const ensurePriceOptimizationConfig = (deviceId: string) => {
@@ -178,11 +176,7 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
 // on canManageDevice": fixed here for the new section; the pre-existing
 // temperature gating is deliberately left unchanged in this PR).
 
-const hasActiveSmartTask = (deviceId: string): boolean => {
-  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!entry || !entry.enabled) return false;
-  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > Date.now();
-};
+const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjective(deviceId);
 
 // Device-shape candidacy WITHOUT the solar-presence gate: managed,
 // power-limit-controllable binary device, not temperature/stepped/EV. Mirrors the

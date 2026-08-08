@@ -288,9 +288,9 @@ const resolveShedControlCapabilities = (params: {
 };
 
 // A device whose limiting control has nothing to choose gets a statement of
-// what PELS does instead of a one-button radiogroup dressed as a choice
-// (TODO: temperature-control-disabled ticket). Power-limit control switched
-// off is stated outright rather than describing hypothetical behavior.
+// what PELS does instead of a one-button radiogroup dressed as a choice.
+// Power-limit control switched off is stated outright rather than describing
+// hypothetical behavior.
 const isPowerLimitControlOff = (
   device: SettingsUiDeviceDetailItem | null,
   deviceId: string,
