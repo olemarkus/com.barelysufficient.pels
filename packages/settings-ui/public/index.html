@@ -861,7 +861,10 @@
                   <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
                   <md-select-option value="set_step"><div slot="headline">Set to step</div></md-select-option>
                 </md-filled-select>
-                <small class="field__hint">PELS uses this action when it needs to lower power to stay under the hard cap or daily budget.</small>
+                <!-- With one action (or limiting switched off) there is nothing to choose:
+                     the radiogroup gives way to a statement of what PELS does. -->
+                <p class="pels-text-status-line detail-shed-statement" id="device-detail-shed-statement" hidden></p>
+                <small class="field__hint" id="device-detail-shed-hint">PELS uses this action when it needs to lower power to stay under the hard cap or daily budget.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
                 <md-filled-text-field
