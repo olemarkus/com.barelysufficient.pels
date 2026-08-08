@@ -121,7 +121,6 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   swap_pending: 'Waiting for higher-priority device',
   swapped_out: 'Waiting for higher-priority device',
   insufficient_headroom: STARVATION_WAITING_FOR_POWER_COPY,
-  shedding_active: 'PELS is limiting devices',
   cooldown: 'Waiting before retrying',
   restore_throttled: 'Delaying restart after recent failed attempt',
   activation_backoff: 'Delaying restart after recent failed attempt',

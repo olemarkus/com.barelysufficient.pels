@@ -1638,32 +1638,117 @@ program) remain deferred.*
       the annotations on the `!admissionInputs` branch, accepting the bare waiting line while
       power is unknown. Source: adversarial review on the reserve-holder PR, 2026-08-07. [P2]
 
-- [ ] **A reserve-blocked hold counts as capacity starvation when the restore lane did not run.**
-      *Persona:* owner (`notes/personas.md`) watching a device that is held, but not by the
-      hard cap.
-      *Hypothesis:* `planDecisionSemantics.ts` (§ `resolveStarvationSuppression`, the
-      `reservedForStart` branch) states the intended classification outright — a startup
-      reservation is "a deliberate, user-granted, time-bounded policy
-      (`HEADROOM_RESERVE_MAX_MS`) … not capacity starvation" — and pauses the clock. But that
-      only happens when the restore/hold lane actually evaluated the device and set the
-      `reservedForStart` CODE. When it did not (fresh shed, over-pace, cooldown),
-      `finalizeCeilingReason` leaves the ceiling code in place, so the identical physical
-      state *counts* toward starvation instead of pausing. The card copy for both routes was
-      unified 2026-08-07 (the holder's name rides along as a display field), which fixed what
-      the owner reads but deliberately did NOT touch the classification.
-      *Why it's needed:* the same state should not classify two ways depending on which lane
-      ran; a device can be flagged held-back — and offered the "Let it run now" rescue — for a
-      reservation that is about to lift on its own within 15 minutes.
+- [ ] **A reserve-blocked hold is attributed to the wrong counting cause when the restore lane
+      did not run.**
+      *Persona:* owner (`notes/personas.md`) opening device detail on a device that is held
+      back, to find out what is holding it.
+      *Hypothesis:* both routes into a startup-reservation hold now COUNT toward the held-back
+      clock — the 2026-08-08 ruling is that the clock runs whenever PELS turned the device off,
+      and a reservation is PELS holding it for a higher-priority device. What still differs is
+      the attributed cause. When the restore/hold lane evaluated the device it sets the
+      `reservedForStart` code and the cause reads `reserved_for_start` ("Waiting so X can
+      start"). When it did not (fresh shed, over-pace, cooldown), `finalizeCeilingReason`
+      leaves the ceiling code in place and the cause reads `capacity` /
+      `insufficient_headroom` ("Waiting for available power") — which tells the owner to free
+      power for a hold no amount of freed power lifts.
+      *Why it's needed:* the card copy for both routes was unified 2026-08-07 (the holder's
+      name rides along as a display field), so the CARD is honest either way; device-detail
+      diagnostics still are not, and that is where an owner goes when the card is not enough.
       *Why it was not fixed with the copy:* the honest code, `reservedForStart`, is in
       `RESTORE_ADMISSION_HOLD_REASON_CODES` and builds no actuation intent. Minting it at
       reason normalization would cancel an in-flight shed command's retry while the device
       keeps drawing inside the reserved block —
       `test/integration/planHeadroomReserve.test.ts` § "keeps asserting the floor while the
       shed has not materialized" is the guard. Fix direction: thread an
-      `observedAtShedFloor`-equivalent into `finalizeCeilingReason` (today the predicate is
-      temperature-only, `planReasonsHoldDecisions.ts` ~259, so binary/stepped devices need one
-      too) and apply the same guarded rewrite the restore lane already does. Source: bare
-      "Waiting to resume" path audit, 2026-08-07. [P2]
+      `observedAtShedFloor`-equivalent into `finalizeCeilingReason` (the setpoint lane grew one
+      in `planReasonsHoldDecisions.ts` § `isObservedAtShedFloor` on 2026-08-08, so binary and
+      stepped devices still need theirs) and apply the same guarded rewrite the restore lane
+      already does.
+      *Scope note:* `HEADROOM_RESERVE_MAX_MS` is 15 minutes and the held-back entry delay is
+      also 15 minutes, so a maximally long reservation now sits exactly on the boundary —
+      worth confirming against prod telemetry before tuning either constant.
+      Source: bare "Waiting to resume" path audit, 2026-08-07; rewritten 2026-08-08 after the
+      held-back clock ruling falsified the original premise (both lanes paused/counted
+      differently; now both count). [P2]
+
+- [ ] **Four shed-device reason codes have no starvation classification at all.**
+      *Persona:* owner (`notes/personas.md`) reading device detail on a held-back device.
+      *Hypothesis:* `neutralStartupHold`, `startupStabilization`, `capacityControlOff` and
+      `shedInvariant` appear in neither the counting nor the pausing table in
+      `lib/planContract/planDecisionSemantics.ts`, so a `plannedState: 'shed'` device carrying
+      one falls through to `unknown_suppression_reason` and device detail literally reads
+      "Service reason unknown". The 2026-08-08 ruling (the clock runs whenever PELS turned the
+      device off) argues `neutralStartupHold` and `shedInvariant` should COUNT with their own
+      causes; `capacityControlOff` is the owner's own switch and should pause.
+      *Why it's needed:* "Service reason unknown" is the one string in that view that tells the
+      owner nothing, and it is reachable today. Pre-existing — neither introduced nor worsened
+      by the ruling. Source: starvation-rule change, 2026-08-08. [P3]
+
+- [ ] **Two user-visible need figures still use the deflated restore need.**
+      *Persona:* owner (`notes/personas.md`) reading how much more power a device needs.
+      *Hypothesis:* `maybeApplyShortfallReason` and `buildRestoreShortfallReason` build their
+      numbers from bare `computeBaseRestoreNeed`, so they carry the same understatement the
+      ceiling-shortfall path had before 2026-08-08 — the recent-shed inflation
+      (`applyRecentShedInflation`, 1.15× or +0.15 kW within five minutes of a shed) is missing.
+      A device shed minutes ago is told it needs less than the restore gate will actually
+      demand.
+      *Why it's needed:* the owner acts on that number — freeing exactly the stated amount and
+      finding the device still will not resume is the failure mode the ceiling path was fixed
+      to avoid. Fix direction: call the shared helper, as `resolveCeilingShortfall` now does.
+      Source: planner timer-hold + shortfall-need fix, 2026-08-08. [P2]
+
+- [ ] **`cooldown_restore` escapes the hourly-exhausted fold and the daily re-attribution.**
+      *Persona:* owner (`notes/personas.md`) during an hour whose energy budget is spent.
+      *Hypothesis:* `HOURLY_FOLD_REASON_CODES` and `resolveDailyBindingReattribution`
+      (`lib/plan/planReasons.ts`) do not include `cooldownRestore`, so a device carrying it
+      through a spent hour keeps the countdown copy instead of folding to the hourly-budget
+      line. Narrow reachability (needs a stale hold) and pre-existing for binary devices; the
+      2026-08-08 setpoint fix made it reachable for thermostats too.
+      *Why it's needed:* during a spent hour the countdown is a promise PELS cannot keep — the
+      resume will not happen when the timer expires. Widening the fold set affects both lanes,
+      so it is a product decision, not a mechanical one. Source: planner timer-hold fix,
+      2026-08-08. [P3]
+
+- [ ] **The browser runs the uncached date-formatter path.**
+      *Persona:* owner (`notes/personas.md`) on the settings UI, where chart and plan rendering
+      formats many timestamps per view.
+      *Hypothesis:* `lib/utils/dateUtils.ts` and `packages/shared-domain/src/utils/dateUtils.ts`
+      are a sanctioned twin pair (settings-UI cannot import `lib/` — dep-cruiser
+      `no-settings-ui-to-runtime`), but they have DRIFTED: the runtime copy caches its
+      `Intl.DateTimeFormat` instances — the 2026-05 fix for what a CPU profile showed as 60% of
+      plan-build cost — and the shared-domain copy does not. The browser therefore constructs a
+      formatter per call. The shared-domain copy also carries `formatDayFirstInTimeZone`, which
+      the runtime copy lacks, so the drift runs both ways.
+      *Why it's needed:* the same ICU construction cost that dominated plan-build is being paid
+      in a WebView on a phone. No sync script or CI check enforces the twins' parity, so the
+      drift is invisible until someone diffs them. Source: knip blind-spot fix, 2026-08-07. [P2]
+
+- [ ] **`packages/contracts` is in the knip blind spot that `shared-domain` just left.**
+      *Persona:* contributor (`notes/personas.md`) trusting `deadcode:check` to catch dead
+      exports.
+      *Hypothesis:* `knip.json` declares `packages/contracts` with `entry: ["src/**/*.ts"]`, so
+      every file is an entry point and no unused export there can ever be reported — the exact
+      defect fixed for `shared-domain` and `widgets/` on 2026-08-07. Emptying that entry list
+      surfaces ~31 candidates, mostly `settingsKeys` / `settingsUiApi` constants.
+      *Why it's needed:* the fix is one config line, but the triage behind it is a real pass —
+      contracts is the runtime↔UI seam, and a "dead" export there may be a wire field a
+      consumer reads dynamically. Source: knip blind-spot fix, 2026-08-07. [P3]
+
+- [ ] **Device-detail diagnostics hardcodes 12 status strings that duplicate or contradict
+      shared-domain.**
+      *Persona:* owner (`notes/personas.md`) comparing a device card against that device's
+      detail view.
+      *Hypothesis:* `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` inlines its own
+      `STARVATION_REASON_LABELS` copy rather than importing the shared-domain vocabulary. Some
+      entries are verbatim duplicates; others actively disagree for the same reason code —
+      `'Waiting before retrying'` vs shared-domain's `'Waiting before resuming'`,
+      `'Daily budget is limiting service'` vs `'Limited by today's daily budget'`,
+      `'Waiting for higher-priority device'` vs `'Making room for higher-priority device'`.
+      Three entries render the planner-jargon phrase "No active service block".
+      *Why it's needed:* the card and the detail view describe the same state in different
+      words, and `notes/ui-terminology.md` makes shared-domain the single home for user-visible
+      copy so runtime logs and UI cannot drift. Pre-existing since May 2026. Source: starvation
+      classification work, 2026-08-08. [P3]
 
 - [ ] **Test fixtures still describe plan reasons as prose.** The regex layer left production on
       2026-08-07 — `packages/shared-domain/src/planReasonParsing.ts` is gone and the grammar now
