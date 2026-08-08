@@ -136,9 +136,9 @@ type BaseDeferredObjectiveDiagnostic = {
   // identically; `expectedStepId` is null while it is set.
   liveStepsUnavailable?: true;
   horizonPlan?: DeferredObjectiveHorizonPlan;
-  // Resolved device priority used by the batch allocator. Persisted with fresh
-  // revisions so ordering survives a restart where this device is temporarily
-  // absent from the first SDK snapshot.
+  // Ephemeral relative device priority used by the batch allocator. Resolved
+  // from the current mode catalog and complete allocation roster on each read;
+  // it is not a persisted source of ordering.
   devicePriority?: number;
   // Batch-allocation provenance. The recorder persists the signature on fresh
   // revisions and may replace (rather than floor-merge) a lower-priority

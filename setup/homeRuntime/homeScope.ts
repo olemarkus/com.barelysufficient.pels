@@ -32,6 +32,7 @@ import type { buildPelsStatus } from '../../lib/plan/pelsStatus';
 import type { PlanEngineDeps } from '../../lib/plan/planEngine';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
+import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
@@ -75,6 +76,7 @@ export type HomeScope = {
   getCapacityGuard: () => CapacityGuard | undefined;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
+  /** Active planned devices with a unique, gap-free relative priority in this home. */
   getPlanDevices: () => PlanInputDevice[];
   // Persisted-signal writers. Each writes this home's key
   // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home).
@@ -198,6 +200,9 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getHardCapKw: () => ctx.capacitySettings.limitKw,
+    getBasePriorityForDevice: (deviceId) => (
+      resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
+    ),
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),

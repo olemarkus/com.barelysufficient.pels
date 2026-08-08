@@ -20,6 +20,7 @@ import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler'
 import { executePendingPowerRebuild } from '../../lib/plan/rebuildScheduler/powerDriven';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
+import { buildHomePlanDevices } from '../../setup/homeRuntime/planDevicePrePass';
 import { createHomePowerPipeline } from '../../setup/homeRuntime/createHomePowerPipeline';
 import {
   filterDevicesForHome,
@@ -235,6 +236,72 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     const ctx = makeCtx(makeMembershipService(membershipInputs));
     const scope = buildMainHomeScope(ctx);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
+  });
+
+  it('projects the lifecycle-visible active set to stable relative priorities', () => {
+    const snapshot = [mainDevice, subDevice];
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: snapshot,
+      homeMembership: makeMembershipService(membershipInputs),
+      resolveManagedState: vi.fn(() => true),
+      // Simulate persisted gaps left by devices that are no longer active.
+      capacityPriorities: { Home: { 'device-main': 5, 'device-sub': 9 } },
+      operatingMode: 'Home',
+    });
+    const scope = buildMainHomeScope(ctx);
+    const priorities = () => Object.fromEntries(
+      scope.getPlanDevices().map((device) => [device.id, device.priority]),
+    );
+
+    expect(priorities()).toEqual({ 'device-main': 1, 'device-sub': 2 });
+
+    // The smart-task lifecycle calls this same producer independently of
+    // PlanBuilder. A transiently missing former rank 1 must promote the sole
+    // remaining device, then restore the original order on reappearance.
+    snapshot.shift();
+    expect(priorities()).toEqual({ 'device-sub': 1 });
+    snapshot.unshift(mainDevice);
+    expect(priorities()).toEqual({ 'device-main': 1, 'device-sub': 2 });
+  });
+
+  it('uses the owning home priority resolver before assigning relative ranks', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    createDeviceHomeAssignmentsStore(homeyLike).write({
+      'device-main': SUB_HOME.homeId,
+      'device-sub': SUB_HOME.homeId,
+    });
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: [mainDevice, subDevice],
+      homeMembership: makeMembershipService(membershipInputs),
+      resolveManagedState: vi.fn(() => true),
+      // Main's order deliberately conflicts with the area's order below.
+      capacityPriorities: { Home: { 'device-main': 1, 'device-sub': 2 } },
+      operatingMode: 'Home',
+    });
+
+    const devices = buildHomePlanDevices(ctx, SUB_HOME.homeId, {
+      getBasePriorityForDevice: (deviceId) => deviceId === 'device-sub' ? 4 : 8,
+    });
+
+    expect(devices.map(({ id, priority }) => ({ id, priority }))).toEqual([
+      { id: 'device-main', priority: 2 },
+      { id: 'device-sub', priority: 1 },
+    ]);
+  });
+
+  it('keeps an unconfigured device behind an explicitly saved rank 100', () => {
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: [mainDevice, subDevice],
+      homeMembership: makeMembershipService(membershipInputs),
+      resolveManagedState: vi.fn(() => true),
+      capacityPriorities: { Home: { 'device-sub': 100 } },
+      operatingMode: 'Home',
+    });
+
+    expect(buildMainHomeScope(ctx).getPlanDevices().map(({ id, priority }) => ({ id, priority }))).toEqual([
+      { id: 'device-main', priority: 2 },
+      { id: 'device-sub', priority: 1 },
+    ]);
   });
 });
 

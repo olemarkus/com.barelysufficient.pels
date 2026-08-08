@@ -176,6 +176,16 @@ export class PlanBuilder {
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const nowTs = Date.now();
+    // `HomeScope.getPlanDevices` has already projected this home's active set
+    // to unique relative ranks. Snapshot those producer-resolved values so
+    // smart-task decoration, shed/restore, and materialization all consume the
+    // same cycle order even if settings change during the async plan build.
+    const inputPriorityByDeviceId = new Map(
+      devices.map((device) => [device.id, device.priority] as const),
+    );
+    const getCyclePriority = (deviceId: string): number => (
+      inputPriorityByDeviceId.get(deviceId) ?? this.deps.getPriorityForDevice(deviceId)
+    );
     // Evaluate deferred objectives at the planner boundary and translate active objectives
     // into a plain managed-device shape: cap-off devices become controllable=true for the
     // cycle (so they participate in shed/restore), and idle hours seed the shedding shed-set.
@@ -204,7 +214,12 @@ export class PlanBuilder {
       context,
       sheddingPlan,
       overshootDecision,
-    } = await this.buildContextAndShedding(admittedDevices, nowTs, dailyBudgetSnapshot);
+    } = await this.buildContextAndShedding(
+      admittedDevices,
+      nowTs,
+      dailyBudgetSnapshot,
+      getCyclePriority,
+    );
     // Surplus allocator + the "Run on solar surplus" dump-load hold + the
     // post-shedding hold merges, all in `runSurplusPass` (hoisted so eligibility
     // exists as the shed set is assembled); returns the dump-load reason map for
@@ -216,14 +231,14 @@ export class PlanBuilder {
       shedSet: sheddingPlan.shedSet,
       decoration: { forceShedSet, deferredAvoidDeviceIds, deferredReleaseIntentByDeviceId, admittedDeviceIds },
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
-      getPriority: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+      getPriority: getCyclePriority,
       getInferredSurplusKw: this.deps.getInferredSurplusKw,
       debugStructured: this.deps.debugStructured,
       nowTs,
     }));
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
 
-    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan);
+    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan, getCyclePriority);
     const restoreResult = this.stages.applyRestorePlan(planDevices, context, sheddingPlan, deviceNameById);
     planDevices = restoreResult.planDevices;
 
@@ -315,6 +330,7 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     nowTs: number,
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+    getCyclePriority: (deviceId: string) => number,
   ): Promise<{
     context: PlanContext;
     sheddingPlan: SheddingPlan;
@@ -362,7 +378,7 @@ export class PlanBuilder {
         capacityGuard: this.capacityGuard,
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+        getPriorityForDevice: getCyclePriority,
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         log: (...args: unknown[]) => this.deps.log(...args),
         debugStructured: this.deps.debugStructured,

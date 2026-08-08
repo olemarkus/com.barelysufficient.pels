@@ -380,9 +380,6 @@ export const buildRevision = (params: {
     ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
-    ...(typeof params.diag.devicePriority === 'number' && Number.isFinite(params.diag.devicePriority)
-      ? { devicePriority: params.diag.devicePriority }
-      : {}),
     ...(params.diag.allocationContextSignature
       ? { allocationContextSignature: params.diag.allocationContextSignature }
       : {}),

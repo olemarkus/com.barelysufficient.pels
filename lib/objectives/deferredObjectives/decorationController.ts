@@ -27,6 +27,8 @@ export type DeferredObjectiveDecorationControllerDeps = {
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getHardCapKw: () => number;
+  /** Live priority from the user's current saved mode; runtime order is derived on read. */
+  getBasePriorityForDevice?: (deviceId: string) => unknown;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
   // daily-budget snapshot (threaded via `decorate(input)`) is now only the
   // budget overlay.
@@ -103,6 +105,7 @@ export class DeferredObjectiveDecorationController {
         activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
         hardCapKw: this.deps.getHardCapKw(),
         priorityAllocationTracker: this.priorityAllocationTracker,
+        getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
         isDeviceInSubHome: this.deps.isDeviceInSubHome,
       });
     } finally {

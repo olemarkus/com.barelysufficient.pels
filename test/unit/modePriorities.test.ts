@@ -1,6 +1,7 @@
 import {
   normalizeModePriorities,
   normalizeModePriorityMap,
+  rankActiveDevicePriorities,
 } from '../../packages/shared-domain/src/modePriorities';
 
 describe('normalizeModePriorityMap', () => {
@@ -78,5 +79,45 @@ describe('normalizeModePriorities', () => {
     expect(normalizeModePriorities({})).toEqual({});
     expect(normalizeModePriorities(null)).toEqual({});
     expect(normalizeModePriorities(undefined)).toEqual({});
+  });
+});
+
+describe('rankActiveDevicePriorities', () => {
+  it('projects the active device set to unique, gap-free ranks', () => {
+    const stored = { removed: 1, heater: 4, charger: 9 };
+
+    expect(rankActiveDevicePriorities(
+      ['charger', 'heater'],
+      (deviceId) => stored[deviceId as keyof typeof stored],
+    )).toEqual({ heater: 1, charger: 2 });
+  });
+
+  it('ranks unconfigured peers deterministically after configured devices', () => {
+    const stored: Record<string, number> = { heater: 100 };
+
+    expect(rankActiveDevicePriorities(
+      ['z-new', 'heater', 'a-new'],
+      (deviceId) => stored[deviceId],
+    )).toEqual({ heater: 1, 'a-new': 2, 'z-new': 3 });
+  });
+
+  it('breaks equal and invalid priorities by device id', () => {
+    const stored: Record<string, number> = {
+      zulu: 5,
+      alpha: 5,
+      missing: Number.NaN,
+    };
+
+    expect(rankActiveDevicePriorities(
+      ['zulu', 'missing', 'alpha'],
+      (deviceId) => stored[deviceId],
+    )).toEqual({ alpha: 1, zulu: 2, missing: 3 });
+  });
+
+  it('deduplicates repeated device ids', () => {
+    expect(rankActiveDevicePriorities(
+      ['heater', 'heater'],
+      () => 100,
+    )).toEqual({ heater: 1 });
   });
 });

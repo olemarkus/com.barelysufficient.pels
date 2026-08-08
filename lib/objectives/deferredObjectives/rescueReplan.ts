@@ -95,8 +95,10 @@ export const resolveHorizonPlanWithRescue = (params: {
   //     non-top task with both permissions can still be denied by a *higher*-
   //     priority controlled device (which `limit-lower-priority` cannot shed),
   //     so the capacity guard would catch the wall but verdicts would
-  //     oscillate. Strict `=== 1` is the safe v1 floor; broader semantics
-  //     ("highest priority *present* on this Homey") tracked as TODO.
+  //     oscillate. Active devices are projected to relative ranks before this
+  //     clock runs, so `1` already means the highest-priority device present in
+  //     this home. Promoting lower relative ranks needs the richer forecast
+  //     tracked in TODO.
   // Anything weaker stays at the min-step floor.
   const fullyReserved = params.devicePriority === 1
     && objective.rescue?.exemptFromBudget === 'always'

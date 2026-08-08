@@ -20,6 +20,7 @@ import {
   type HomeId,
 } from '../../lib/utils/settingsKeys';
 import {
+  resolveConfiguredDevicePriority,
   resolveDevicePriority,
   resolveModeName,
 } from '../../lib/utils/capacityHelpers';
@@ -310,6 +311,11 @@ export const getPriorityFromHomeModeCatalog = (
   catalog: HomeModeCatalogSnapshot,
   deviceId: string,
 ): number => resolveDevicePriority(catalog.priorities, catalog.operatingMode, deviceId);
+
+export const getConfiguredPriorityFromHomeModeCatalog = (
+  catalog: HomeModeCatalogSnapshot,
+  deviceId: string,
+): number | undefined => resolveConfiguredDevicePriority(catalog.priorities, catalog.operatingMode, deviceId);
 
 export type ModeOwnershipMove = {
   deviceId: string;

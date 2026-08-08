@@ -94,11 +94,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
         id: 'reducible',
         name: 'Reducible',
         measuredPowerKw: 1.2,
+        priority: 1,
       }),
       buildDevice({
         id: 'second',
         name: 'Second',
         measuredPowerKw: 0.9,
+        priority: 2,
       }),
     ]);
 
@@ -109,7 +111,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
       hardCapBreached: false,
       hardCapHeadroomKw: 2.5,
       remainingReducibleControlledLoad: true,
-      remainingReducibleControlledLoadW: 900,
+      // Equal stored priorities now resolve to a strict relative order before
+      // shed selection. `second` is lower priority and is limited first, so the
+      // higher-priority 1.2 kW device remains available.
+      remainingReducibleControlledLoadW: 1200,
       activeControlledDevices: 2,
       activePlannedShedDevices: 1,
       // Cold start: no prior plan baseline to diff against, so no device delta
@@ -597,11 +602,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
         id: 'reducible',
         name: 'Reducible',
         measuredPowerKw: 1.2,
+        priority: 1,
       }),
       buildDevice({
         id: 'second',
         name: 'Second',
         measuredPowerKw: 0.9,
+        priority: 2,
       }),
     ];
 
@@ -613,7 +620,9 @@ describe('PlanBuilder overshoot diagnostics', () => {
       event: 'overshoot_entered',
       reasonCode: 'active_overshoot',
       hardCapBreached: false,
-      remainingReducibleControlledLoad: true,
+      // The lower-priority 0.9 kW device cannot cover the stale-power 1 kW
+      // shortfall alone, so the strict order proceeds to the second device.
+      remainingReducibleControlledLoad: false,
       activeControlledDevices: 2,
     }));
   });

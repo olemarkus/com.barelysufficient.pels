@@ -137,8 +137,8 @@ export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCa
   return candidates.slice().sort((a, b) => {
     const byPriority = (a.device.priority ?? 999) - (b.device.priority ?? 999);
     if (byPriority !== 0) return byPriority;
-    // Deterministic final tiebreak shared with shed (compareDeviceIdAsc) so the
-    // all-default-priority bucket arbitrates identically regardless of input order.
+    // Defensive tiebreak for partial/legacy inputs, shared with shed. Normal
+    // active-home plan inputs already carry unique relative ranks.
     return compareDeviceIdAsc(a.device, b.device);
   });
 }

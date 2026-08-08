@@ -53,6 +53,8 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
   getHardCapKw: () => number | null;
+  /** Live priority from the user's current saved mode; runtime order is derived on read. */
+  getBasePriorityForDevice: (deviceId: string) => unknown;
   getDeferredObjectiveDebugStructured?: () => StructuredDebugEmitter | undefined;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
@@ -134,6 +136,7 @@ export class DeferredObjectiveLifecycleEmitter {
       activePlans,
       hardCapKw: this.deps.getHardCapKw(),
       priorityAllocationTracker: this.priorityAllocationTracker,
+      getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
       isDeviceInSubHome: this.deps.isDeviceInSubHome,
       // Resolve the user-facing status to `satisfied` for parked/stalled devices
       // so the status chip, notifications, Flows (active-plan recorder) and the

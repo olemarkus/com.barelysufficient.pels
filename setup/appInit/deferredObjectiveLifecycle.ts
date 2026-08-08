@@ -1,4 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
+import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
@@ -421,6 +422,9 @@ export function createDeferredObjectiveLifecycleEmitter(
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getHardCapKw: () => ctx.capacitySettings.limitKw,
+    getBasePriorityForDevice: (deviceId) => (
+      resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
+    ),
     // Multi-home v1: a relocated task's lifecycle diagnostics carry the
     // dedicated `objective_device_in_sub_home` code, and the eligible-count
     // denominator excludes it (see the dep's doc on the emitter).

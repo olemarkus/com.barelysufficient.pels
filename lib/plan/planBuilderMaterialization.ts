@@ -49,7 +49,6 @@ import { trackPlanStage } from './planStageTiming';
  * Read live off that shared object every cycle, never snapshotted.
  */
 export type PlanMaterializationDeps = {
-  getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
@@ -88,7 +87,11 @@ export class PlanMaterializationStages {
     return this.deps.getPriceOptimizationSettings();
   }
 
-  buildPlanDevices(context: PlanContext, sheddingPlan: SheddingPlan): DevicePlanDevice[] {
+  buildPlanDevices(
+    context: PlanContext,
+    sheddingPlan: SheddingPlan,
+    getCyclePriority: (deviceId: string) => number,
+  ): DevicePlanDevice[] {
     return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices({
       context,
       state: this.state,
@@ -96,7 +99,7 @@ export class PlanMaterializationStages {
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deps: {
-        getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+        getPriorityForDevice: getCyclePriority,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,

@@ -145,7 +145,22 @@ export function resolveDevicePriority(
   operatingMode: string,
   deviceId: string,
 ): number {
-  return capacityPriorities[operatingMode || 'Home']?.[deviceId] ?? 100;
+  return resolveConfiguredDevicePriority(capacityPriorities, operatingMode, deviceId) ?? 100;
+}
+
+/**
+ * Read the stored priority without applying the legacy default tier.
+ *
+ * Active-set rankers need to distinguish an explicitly saved rank `100` from
+ * a device that has no catalog entry at all. Concrete planner-policy reads keep
+ * using `resolveDevicePriority`, which preserves the historical `100` fallback.
+ */
+export function resolveConfiguredDevicePriority(
+  capacityPriorities: Record<string, Record<string, number>>,
+  operatingMode: string,
+  deviceId: string,
+): number | undefined {
+  return capacityPriorities[operatingMode || 'Home']?.[deviceId];
 }
 
 export function normalizeShedBehaviors(input: unknown): Record<string, ShedBehavior> {
