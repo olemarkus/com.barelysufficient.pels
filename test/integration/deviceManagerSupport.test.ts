@@ -33,6 +33,7 @@ import {
   writeErrorToStderr,
 } from '../../lib/device/transport/managerHomeyApi';
 import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -319,6 +320,39 @@ describe('device manager support helpers', () => {
 
     expect(result.observedControlStateChanged).toBe(false);
     expect(capabilityAccesses).not.toContain('');
+  });
+
+  it('does not let an older bundled device update roll back exact step evidence', () => {
+    const newerObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
+    const olderObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
+    const latestSnapshot: TransportDeviceSnapshot[] = [{
+      id: 'ev-1',
+      name: 'Charger',
+      targets: [{ id: 'target_power', value: 5_750, unit: 'W' }],
+      reportedStepId: '25a',
+      reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: newerObservedAtMs,
+    }];
+
+    reconcileRealtimeDeviceUpdate({
+      latestSnapshot,
+      device: { id: 'ev-1', name: 'Charger' },
+      parseDevice: () => ({
+        id: 'ev-1',
+        name: 'Charger',
+        targets: [{ id: 'target_power', value: 5_520, unit: 'W' }],
+        reportedStepId: '24a',
+        reportedStepPowerW: 5_520,
+        reportedStepObservedAtMs: olderObservedAtMs,
+      }),
+    });
+
+    expect(latestSnapshot[0]).toMatchObject({
+      reportedStepId: '25a',
+      reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: newerObservedAtMs,
+      targets: [{ id: 'target_power', value: 5_750, unit: 'W' }],
+    });
   });
 
   it('hasRestClient reflects current state', () => {

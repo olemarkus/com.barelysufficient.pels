@@ -9,12 +9,14 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { ShedAction } from '../../lib/plan/planTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_TARGET_POWER_REACHABILITY,
   POWER_SOURCE,
   POWER_TRACKER_STATE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
@@ -603,6 +605,100 @@ describe('buildCapacitySettingsSnapshot', () => {
         preset: 'ev_charger_3_phase',
       },
     });
+  });
+
+  it('joins compatible runtime-owned reachability into user-authored configs', () => {
+    const config = {
+      enabled: true,
+      preset: 'ev_charger_1_phase' as const,
+      min: 0,
+      max: 7_360,
+      step: 460,
+      excludeMin: 1,
+      excludeMax: 1_380,
+    };
+    const reachability = buildTargetPowerReachabilityState({
+      config,
+      maxReachedPowerW: 5_750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 900_000,
+    });
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === DEVICE_TARGET_POWER_CONFIGS) return { charger: config };
+        if (key === DEVICE_TARGET_POWER_REACHABILITY) return { charger: reachability };
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.deviceTargetPowerConfigs.charger?.reachability).toStrictEqual(reachability);
+  });
+
+  it('keeps newer in-memory reachability ahead of a stale valid persisted map', () => {
+    const config = {
+      enabled: true,
+      preset: 'ev_charger_1_phase' as const,
+      max: 7_360,
+    };
+    const stale = buildTargetPowerReachabilityState({
+      config,
+      maxReachedPowerW: 5_520,
+    });
+    const current = buildTargetPowerReachabilityState({
+      config,
+      maxReachedPowerW: 5_750,
+      probeFailureCount: 1,
+      nextProbeAtMs: 900_000,
+    });
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === DEVICE_TARGET_POWER_CONFIGS) return { charger: config };
+        if (key === DEVICE_TARGET_POWER_REACHABILITY) return { charger: stale };
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        deviceTargetPowerConfigs: { charger: { ...config, reachability: current } },
+      }),
+    });
+
+    expect(next.deviceTargetPowerConfigs.charger?.reachability).toStrictEqual(current);
+  });
+
+  it('rejects a reachability map with any malformed sibling', () => {
+    const config = {
+      enabled: true,
+      preset: 'ev_charger_1_phase' as const,
+      max: 7_360,
+    };
+    const reachability = buildTargetPowerReachabilityState({
+      config,
+      maxReachedPowerW: 5_750,
+    });
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === DEVICE_TARGET_POWER_CONFIGS) return { charger: config };
+        if (key === DEVICE_TARGET_POWER_REACHABILITY) {
+          return { charger: reachability, sibling: { maxReachedPowerW: 'bad' } };
+        }
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.deviceTargetPowerConfigs.charger).toEqual(config);
   });
 
   it('keeps current target power configs when persisted payload is malformed JSON', () => {

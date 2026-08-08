@@ -515,9 +515,9 @@ export const wireHomeMembership = (
     setOnDeviceZoneChanged: (callback) => ctx.deviceManager?.setOnDeviceZoneChanged(callback),
     getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,
     // The RAW transport snapshot on purpose, NOT `ctx.latestTargetSnapshot`:
-    // the decorated path (`decorateTargetSnapshotList`) mutates stepped-load
-    // runtime state (prune/expire/confirm) as a side effect, and a membership
-    // recompute must be a pure read. The join needs only `id` + `zoneId`, both
+    // the decorated path (`decorateTargetSnapshotList`) prunes/expires/confirms
+    // stepped-load command state, while a membership recompute must be a pure
+    // read. The join needs only `id` + `zoneId`, both
     // stamped on the raw snapshot at parse (R3).
     getDevices: () => (ctx.deviceManager?.getSnapshot() ?? []).map((device) => ({
       deviceId: device.id,

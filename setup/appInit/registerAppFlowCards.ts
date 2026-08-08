@@ -80,8 +80,8 @@ export function registerAppFlowCards(ctx: AppContext): void {
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
     getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),
     reportFlowBackedCapability: (params) => ctx.reportFlowBackedCapability(params),
-    reportSteppedLoadActualStep: (deviceId, stepId) => (
-      ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId)
+    reportSteppedLoadActualStep: (deviceId, stepId, planningPowerW) => (
+      ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId, planningPowerW)
     ),
     getDeviceLoadSetting: (deviceId) => ctx.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),

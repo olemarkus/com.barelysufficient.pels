@@ -32,7 +32,6 @@ import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contrac
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
-  DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
   EvCarAssociations,
@@ -41,6 +40,7 @@ import type {
   TemperatureBoostConfig,
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
+import type { DeviceTargetPowerConfigsWithReachability } from '../device/targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { HomeMembershipPort } from '../home/membership';
@@ -132,6 +132,8 @@ export type AppContext = {
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   requestFlowPlanRebuild: (source: string) => void;
+  /** App-wiring route to the PlanService that owns one device (main or sub-home). */
+  rebuildOwningHomePlanForDevice?: (deviceId: string, reason: string) => Promise<unknown>;
   getFlowReportedCapabilitiesForDevice: (deviceId: string) => FlowReportedCapabilitiesForDevice;
   getFlowReportedDeviceIds: () => string[];
   reportFlowBackedCapability: (params: {
@@ -223,8 +225,8 @@ export type AppContext = {
   set deviceDriverOverrides(value: Record<string, string>);
   get deviceControlProfiles(): DeviceControlProfiles;
   set deviceControlProfiles(value: DeviceControlProfiles);
-  get deviceTargetPowerConfigs(): DeviceTargetPowerConfigs;
-  set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigs);
+  get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability;
+  set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigsWithReachability);
   get deviceCommunicationModels(): Record<string, 'local' | 'cloud'>;
   set deviceCommunicationModels(value: Record<string, 'local' | 'cloud'>);
   get shedBehaviors(): Record<string, ShedBehavior>;

@@ -15,7 +15,6 @@ import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type {
   DeviceControlProfiles,
-  DeviceTargetPowerConfigs,
   EvBoostSettings,
   EvCarAssociations,
   TargetDeviceSnapshot,
@@ -24,6 +23,7 @@ import type {
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
+import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -107,7 +107,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let budgetExemptDevices: Record<string, boolean> = {};
   let deviceDriverOverrides: Record<string, string> = {};
   let deviceControlProfiles: DeviceControlProfiles = {};
-  let deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
+  let deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
   let temperatureBoostSettings: TemperatureBoostSettings = {};
   let temperatureControlDisabledDevices: Record<string, boolean> = {};
   let temperatureControlPolicyState: 'unavailable' | 'resolved' = 'resolved';

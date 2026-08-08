@@ -21,6 +21,7 @@ import {
   resolveExplicitBinaryEvidence,
   type ExplicitControlObservation,
 } from './transport/managerExplicitBinaryObservation';
+import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
 
 const moduleLogger = getLogger('device/manager-runtime');
 
@@ -146,6 +147,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
+  if (previous) preserveNewerReportedStepObservation(previous, parsed);
 
   if (snapshotIndex >= 0) {
     latestSnapshot[snapshotIndex] = parsed;

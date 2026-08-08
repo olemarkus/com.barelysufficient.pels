@@ -42,6 +42,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Observe
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),
+        ...projectReportedStepObservation(snapshot),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
@@ -55,7 +56,6 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Observe
     if (snapshot.measuredPowerObservedAtMs !== undefined) {
         projected.measuredPowerObservedAtMs = snapshot.measuredPowerObservedAtMs;
     }
-    if (snapshot.reportedStepId !== undefined) projected.reportedStepId = snapshot.reportedStepId;
     if (snapshot.binaryControlObservation !== undefined) {
         projected.binaryControlObservation = {
             ...snapshot.binaryControlObservation,
@@ -67,4 +67,14 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Observe
     if (snapshot.lastLocalWriteMs !== undefined) projected.lastLocalWriteMs = snapshot.lastLocalWriteMs;
     if (snapshot.lastUpdated !== undefined) projected.lastUpdated = snapshot.lastUpdated;
     return projected;
+}
+
+function projectReportedStepObservation(snapshot: TransportDeviceSnapshot): ReportedStepObservedProbe {
+    return {
+        ...(snapshot.reportedStepId !== undefined ? { reportedStepId: snapshot.reportedStepId } : {}),
+        ...(snapshot.reportedStepPowerW !== undefined ? { reportedStepPowerW: snapshot.reportedStepPowerW } : {}),
+        ...(snapshot.reportedStepObservedAtMs !== undefined
+            ? { reportedStepObservedAtMs: snapshot.reportedStepObservedAtMs }
+            : {}),
+    };
 }

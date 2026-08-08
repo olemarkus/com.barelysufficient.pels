@@ -198,6 +198,10 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   // Bound here instead of via a constructor dep so the app.ts wiring literal
   // stays untouched; same resolver instance the transport providers use.
   ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterSelection(ctx.homey));
+  const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook({
+    getStore: () => deps.getPowerCalibrationStore(),
+    debugStructured: ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
+  });
   const deviceManager = new DeviceTransport(deps.homeyApp, {
     log: ctx.log.bind(ctx),
     debug: (...args: unknown[]) => ctx.logDebug('devices', ...args),
@@ -215,10 +219,10 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   }, {
     debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
     getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),
-    onSnapshotMutated: createCalibrationSnapshotMutationHook({
-      getStore: () => deps.getPowerCalibrationStore(),
-      debugStructured: ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
-    }),
+    onSnapshotMutated: (snapshot, nowMs) => {
+      observeCalibrationSnapshotMutation(snapshot, nowMs);
+      ctx.deviceControlHelpers.reconcileTargetPowerReachability([snapshot], nowMs);
+    },
     binarySettleState: deps.getObserverBinarySettleState(),
     binarySettleOps: buildObserverBinarySettleOps(),
     pendingPredicate: (deviceId, capabilityId) => (

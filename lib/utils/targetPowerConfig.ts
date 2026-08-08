@@ -1,4 +1,8 @@
-import type { TargetPowerSteppedLoadConfig, TargetPowerSteppedLoadPreset } from '../../packages/contracts/src/types';
+import type {
+  TargetPowerReachabilityState,
+  TargetPowerSteppedLoadConfig,
+  TargetPowerSteppedLoadPreset,
+} from '../../packages/contracts/src/types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -29,6 +33,56 @@ function buildTargetPowerSteppedLoadConfig(parsed: UnknownRecord): TargetPowerSt
     ...(excludeMin !== undefined ? { excludeMin } : {}),
     ...(excludeMax !== undefined ? { excludeMax } : {}),
   };
+}
+
+function normalizeTargetPowerReachability(value: unknown): TargetPowerReachabilityState | undefined {
+  const parsed = parseJsonObject(value);
+  if (!parsed || typeof parsed.profileFingerprint !== 'string' || !parsed.profileFingerprint) return undefined;
+  const maxReachedPowerW = normalizeFiniteNumber(parsed.maxReachedPowerW);
+  const probeFailureCount = normalizeFiniteNumber(parsed.probeFailureCount);
+  const nextProbeAtMs = normalizeFiniteNumber(parsed.nextProbeAtMs);
+  if (
+    maxReachedPowerW === undefined
+    || maxReachedPowerW < 0
+    || probeFailureCount === undefined
+    || !Number.isInteger(probeFailureCount)
+    || probeFailureCount < 0
+    || (parsed.nextProbeAtMs !== undefined && nextProbeAtMs === undefined)
+    || (nextProbeAtMs !== undefined && nextProbeAtMs < 0)
+  ) return undefined;
+  return {
+    profileFingerprint: parsed.profileFingerprint,
+    maxReachedPowerW,
+    probeFailureCount,
+    ...(nextProbeAtMs !== undefined ? { nextProbeAtMs } : {}),
+  };
+}
+
+export function normalizeTargetPowerReachabilityByDevice(
+  value: unknown,
+): Record<string, TargetPowerReachabilityState> {
+  const record = parseJsonObject(value);
+  if (!record) return {};
+  return Object.fromEntries(Object.entries(record).flatMap(([deviceId, entry]) => {
+    const normalizedId = deviceId.trim();
+    const reachability = normalizeTargetPowerReachability(entry);
+    return normalizedId && reachability ? [[normalizedId, reachability]] : [];
+  }));
+}
+
+/** Resolve the runtime-owned map only when every persisted sibling is valid. */
+export function normalizeCompleteTargetPowerReachabilityByDevice(
+  value: unknown,
+): Record<string, TargetPowerReachabilityState> | undefined {
+  const record = parseJsonObject(value);
+  if (!record) return undefined;
+  const normalized = normalizeTargetPowerReachabilityByDevice(record);
+  const complete = Object.keys(record).every((deviceId) => (
+    deviceId.length > 0
+    && deviceId.trim() === deviceId
+    && Object.hasOwn(normalized, deviceId)
+  ));
+  return complete ? normalized : undefined;
 }
 
 function isAcceptableTargetPowerSteppedLoadConfig(config: TargetPowerSteppedLoadConfig): boolean {

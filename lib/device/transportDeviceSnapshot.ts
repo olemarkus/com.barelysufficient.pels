@@ -23,7 +23,8 @@ import type {
  *   `measuredPowerObservedAtMs` (see `MeasuredPowerObservedFields`).
  * - `SteppedLoadDescriptorProbe` for `steppedLoadProfile` / `targetPowerConfig`
  *   (see `SteppedLoadDescriptorFields`).
- * - `ReportedStepObservedProbe` for `reportedStepId` (see
+ * - `ReportedStepObservedProbe` for `reportedStepId` and exact target-power
+ *   evidence (see
  *   `ReportedStepObservedFields`).
  *
  * This shape is for the transport/observer OWNER seams only. It must not leak

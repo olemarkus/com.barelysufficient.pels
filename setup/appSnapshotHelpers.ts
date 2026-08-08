@@ -17,6 +17,12 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import { runWithoutContext } from '../lib/logging/alsContext';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
+import {
+  TargetPowerProbeScheduler,
+  type DueTargetPowerProbe,
+} from './targetPowerProbeScheduler';
+
+export { createTargetPowerReachabilityAppWiring } from './appTargetPowerReachabilityWiring';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
@@ -80,6 +86,7 @@ export class AppSnapshotHelpers {
   // forget queue-and-return behavior to avoid awaiting their own caller.
   private snapshotRefreshInFlight: Promise<void> | null = null;
   private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
+  private readonly targetPowerProbeScheduler: TargetPowerProbeScheduler;
   private deviceObservationStaleById = new Map<string, boolean>();
   // Last `stale_device_observation_refresh` log emit per device. We suppress
   // repeat emits within `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` so that a
@@ -124,13 +131,30 @@ export class AppSnapshotHelpers {
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
     recordPowerSample: (sample: HomePowerSample) => Promise<void>;
-  }) {}
+    reconcileTargetPowerReachability?: (snapshot: TargetDeviceSnapshot[], nowMs: number) => void;
+    getNextTargetPowerProbe?: () => DueTargetPowerProbe | undefined;
+    hasPendingTargetPowerProbe?: () => boolean;
+    rebuildOwningHomePlanForDevice?: (deviceId: string, reason: string) => Promise<unknown>;
+  }) {
+    this.targetPowerProbeScheduler = new TargetPowerProbeScheduler({
+      timers: deps.timers,
+      getNowMs: () => deps.getNow().getTime(),
+      getNextProbe: () => deps.getNextTargetPowerProbe?.(),
+      hasPendingProbe: () => deps.hasPendingTargetPowerProbe?.() === true,
+      rebuildForDueProbe: async (deviceId) => {
+        await deps.rebuildOwningHomePlanForDevice?.(deviceId, 'target_power_probe_due');
+      },
+      refreshForSettlement: async () => this.refreshTargetDevicesSnapshot({ targeted: true }),
+      getLogger: () => deps.getStructuredLogger('snapshot'),
+    });
+  }
 
   getPostActuationRefreshTimer(): ReturnType<typeof setTimeout> | undefined {
     return this.postActuationRefreshTimer;
   }
 
   startPeriodicSnapshotRefresh(): void {
+    this.targetPowerProbeScheduler.start();
     if (this.snapshotRefreshTimer) {
       this.deps.timers.clear('snapshotRefresh');
       this.snapshotRefreshTimer = undefined;
@@ -156,6 +180,7 @@ export class AppSnapshotHelpers {
 
   stop(): void {
     this.staleObservationRefreshStopped = true;
+    this.targetPowerProbeScheduler.stop();
     this.snapshotRefreshPending = false;
     if (this.snapshotRefreshTimer) {
       this.deps.timers.clear('snapshotRefresh');
@@ -399,6 +424,14 @@ export class AppSnapshotHelpers {
     ));
   }
 
+  scheduleTargetPowerProbeSettlement(dueAtMs: number): void {
+    this.targetPowerProbeScheduler.scheduleSettlement(dueAtMs);
+  }
+
+  scheduleTargetPowerProbe(): void {
+    this.targetPowerProbeScheduler.scheduleProbe();
+  }
+
   private async runSnapshotRefreshCycle(
     deviceManager: DeviceTransport,
     options: RefreshTargetDevicesSnapshotOptions,
@@ -419,6 +452,12 @@ export class AppSnapshotHelpers {
       // would otherwise let a sample for another authority slip through.
       mainMeterSelection: meterSelectionAtStart,
     });
+
+    this.deps.reconcileTargetPowerReachability?.(
+      deviceManager.getSnapshot(),
+      this.deps.getNow().getTime(),
+    );
+    this.scheduleTargetPowerProbe();
 
     const snapshot = this.deps.getLatestTargetSnapshot();
     this.deps.disableUnsupportedDevices(snapshot);

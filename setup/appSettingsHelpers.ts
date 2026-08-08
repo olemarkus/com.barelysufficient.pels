@@ -2,9 +2,9 @@ import type Homey from 'homey';
 import type { ShedBehavior } from '../lib/plan/planTypes';
 import type {
   DeviceControlProfiles,
-  DeviceTargetPowerConfigs,
   EvBoostSettings,
   EvCarAssociations,
+  TargetPowerReachabilityState,
   TemperatureBoostSettings,
 } from '../packages/contracts/src/types';
 import {
@@ -29,7 +29,14 @@ import {
   normalizeTemperatureBoostSettings,
 } from '../lib/utils/appTypeGuards';
 import { normalizeEvCarAssociations } from '../lib/utils/evCarAssociations';
-import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
+import {
+  normalizeCompleteTargetPowerReachabilityByDevice,
+  normalizeDeviceTargetPowerConfigs,
+} from '../lib/utils/targetPowerConfig';
+import {
+  type DeviceTargetPowerConfigsWithReachability,
+  resolveValidTargetPowerReachability,
+} from '../lib/device/targetPowerReachability';
 import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -37,6 +44,7 @@ import {
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_TARGET_POWER_REACHABILITY,
   EV_BOOST_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   NATIVE_EV_WIRING_DEVICES,
@@ -76,7 +84,7 @@ export type CapacitySettingsSnapshot = {
   nativeEvWiringDevices: Record<string, boolean>;
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
-  deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
+  deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability;
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   shedBehaviors: Record<string, ShedBehavior>;
 };
@@ -318,19 +326,48 @@ function readDeviceControlSettings(params: {
   const { settings, current } = params;
   const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
   const deviceTargetPowerConfigs = settings.get(DEVICE_TARGET_POWER_CONFIGS) as unknown;
+  const targetPowerReachability = settings.get(DEVICE_TARGET_POWER_REACHABILITY) as unknown;
   const deviceCommunicationModels = settings.get(DEVICE_COMMUNICATION_MODELS) as unknown;
   const targetPowerConfigSetting = parseRecordSetting(deviceTargetPowerConfigs);
+  const normalizedTargetPowerConfigs = targetPowerConfigSetting
+    ? normalizeDeviceTargetPowerConfigs(targetPowerConfigSetting)
+    : undefined;
+  const reachabilityByDevice = normalizeCompleteTargetPowerReachabilityByDevice(targetPowerReachability) ?? {};
+  const currentReachabilityByDevice = Object.fromEntries(
+    Object.entries(current.deviceTargetPowerConfigs).flatMap(([deviceId, config]) => (
+      config.reachability ? [[deviceId, config.reachability]] : []
+    )),
+  );
   return {
     deviceControlProfiles: isDeviceControlProfiles(deviceControlProfiles)
       ? deviceControlProfiles
       : current.deviceControlProfiles,
-    deviceTargetPowerConfigs: targetPowerConfigSetting
-      ? normalizeDeviceTargetPowerConfigs(targetPowerConfigSetting)
+    deviceTargetPowerConfigs: normalizedTargetPowerConfigs
+      ? joinTargetPowerReachability(
+        normalizedTargetPowerConfigs,
+        reachabilityByDevice,
+        currentReachabilityByDevice,
+      )
       : current.deviceTargetPowerConfigs,
     deviceCommunicationModels: isCommunicationModelMap(deviceCommunicationModels)
       ? deviceCommunicationModels
       : current.deviceCommunicationModels,
   };
+}
+
+function joinTargetPowerReachability(
+  configs: DeviceTargetPowerConfigsWithReachability,
+  reachabilityByDevice: Record<string, TargetPowerReachabilityState>,
+  currentReachabilityByDevice: Record<string, TargetPowerReachabilityState>,
+): DeviceTargetPowerConfigsWithReachability {
+  return Object.fromEntries(Object.entries(configs).map(([deviceId, config]) => {
+    const reachability = currentReachabilityByDevice[deviceId] ?? reachabilityByDevice[deviceId];
+    if (!reachability) return [deviceId, config];
+    const joined = { ...config, reachability };
+    return resolveValidTargetPowerReachability(joined)
+      ? [deviceId, joined]
+      : [deviceId, config];
+  }));
 }
 
 function parseRecordSetting(value: unknown): Record<string, unknown> | undefined {

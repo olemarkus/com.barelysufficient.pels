@@ -9,6 +9,32 @@ describe('normalizeTargetPowerSteppedLoadConfig', () => {
       .toEqual({ enabled: true, preset: 'ev_charger_1_phase' });
   });
 
+  it('drops runtime reachability state from the user-authored config', () => {
+    expect(normalizeTargetPowerSteppedLoadConfig({
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      reachability: {
+        profileFingerprint: 'ev_charger_1_phase:off=0,32a=7360',
+        maxReachedPowerW: 5750,
+        probeFailureCount: 2,
+        nextProbeAtMs: 123_000,
+      },
+    })).toEqual({ enabled: true, preset: 'ev_charger_1_phase' });
+  });
+
+  it('drops malformed runtime reachability without rejecting the base preset', () => {
+    expect(normalizeTargetPowerSteppedLoadConfig({
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      reachability: {
+        profileFingerprint: 'profile',
+        maxReachedPowerW: 5750,
+        probeFailureCount: 1,
+        nextProbeAtMs: 'soon',
+      },
+    })).toEqual({ enabled: true, preset: 'ev_charger_1_phase' });
+  });
+
   it('accepts manual configs whose range includes zero', () => {
     expect(normalizeTargetPowerSteppedLoadConfig({ min: 0, max: 3680, step: 460 }))
       .toEqual({ min: 0, max: 3680, step: 460 });

@@ -14,6 +14,7 @@ import {
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_TARGET_POWER_REACHABILITY,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -335,6 +336,7 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [DEVICE_DRIVER_OVERRIDES, 'device_driver_override_change'],
   [DEVICE_CONTROL_PROFILES, 'device_control_profile_change'],
   [DEVICE_TARGET_POWER_CONFIGS, 'device_target_power_change'],
+  [DEVICE_TARGET_POWER_REACHABILITY, 'device_target_power_reachability_change'],
   [DEVICE_COMMUNICATION_MODELS, 'device_communication_model_change'],
 ];
 

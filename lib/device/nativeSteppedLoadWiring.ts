@@ -6,6 +6,12 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import {
+  buildEvTargetPowerCandidateProfile,
+  isEvTargetPowerConfig,
+  resolveEvTargetPowerConfirmedMaxPowerW,
+  resolveEvTargetPowerConfirmedProfile,
+} from './targetPowerReachability';
+import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
   sortSteppedLoadSteps,
@@ -24,8 +30,6 @@ type TargetPowerPreset = 'ev_charger_1_phase' | 'ev_charger_3_phase';
 
 const NATIVE_STEPPED_LOAD_CAPABILITY_SET = new Set<string>(NATIVE_STEPPED_LOAD_CAPABILITY_IDS);
 export const TARGET_POWER_CAPABILITY_ID = 'target_power';
-const NOMINAL_PHASE_VOLTAGE = 230;
-const EV_CHARGER_AMPS = [6, 8, 10, 12, 14, 16, 20, 24, 28, 32] as const;
 const TARGET_POWER_MAX_GENERATED_STEPS = 128;
 const TARGET_POWER_PRESET_SETTING_KEYS = [
   'pelsTargetPowerPreset',
@@ -142,10 +146,10 @@ export function resolveNativeSteppedLoadProfileSuggestion(params: {
 
 export function resolveTargetPowerSteppedLoadProfileFromConfig(
   config: TargetPowerSteppedLoadConfig | undefined,
+  observedPowerW?: number,
 ): SteppedLoadProfile | undefined {
   if (!config || config.enabled === false) return undefined;
-  if (config.preset === 'ev_charger_1_phase') return buildEvTargetPowerSteppedLoadProfile(1);
-  if (config.preset === 'ev_charger_3_phase') return buildEvTargetPowerSteppedLoadProfile(3);
+  if (isEvTargetPowerConfig(config)) return resolveEvTargetPowerConfirmedProfile(config, observedPowerW);
   return buildCapabilityTargetPowerSteppedLoadProfile(config);
 }
 
@@ -156,12 +160,15 @@ export function buildSyntheticTargetPowerCapabilityMap(params: {
   observedAt?: DeviceCapabilityMap[string]['lastUpdated'];
 }): DeviceCapabilityMap {
   const currentTargetPower = params.capabilityObj[TARGET_POWER_CAPABILITY_ID];
+  const resolvedMax = isEvTargetPowerConfig(params.config)
+    ? resolveEvTargetPowerConfirmedMaxPowerW(params.config, params.observedValue)
+    : params.config.max;
   return {
     ...params.capabilityObj,
     [TARGET_POWER_CAPABILITY_ID]: {
       ...currentTargetPower,
       min: params.config.min,
-      max: params.config.max,
+      max: resolvedMax,
       step: params.config.step,
       excludeMin: params.config.excludeMin,
       excludeMax: params.config.excludeMax,
@@ -361,8 +368,9 @@ function resolveTargetPowerSteppedLoadProfileSuggestion(params: {
 }): SteppedLoadProfile | undefined {
   if (!isTargetPowerSteppedLoadCandidate(params)) return undefined;
   const preset = resolveTargetPowerPreset(params.device);
-  if (preset === 'ev_charger_1_phase') return buildEvTargetPowerSteppedLoadProfile(1);
-  if (preset === 'ev_charger_3_phase') return buildEvTargetPowerSteppedLoadProfile(3);
+  if (preset === 'ev_charger_1_phase' || preset === 'ev_charger_3_phase') {
+    return buildEvTargetPowerCandidateProfile({ preset });
+  }
   return buildCapabilityTargetPowerSteppedLoadProfile(params.capabilityObj?.target_power);
 }
 
@@ -374,23 +382,6 @@ function resolveTargetPowerPreset(device: HomeyDeviceLike): TargetPowerPreset | 
     if (value === 'ev_charger_1_phase' || value === 'ev_charger_3_phase') return value;
   }
   return undefined;
-}
-
-function buildEvTargetPowerSteppedLoadProfile(phaseCount: 1 | 3): SteppedLoadProfile {
-  return {
-    model: 'stepped_load',
-    steps: [
-      { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
-      ...EV_CHARGER_AMPS.map((amps) => ({
-        id: `${amps}a`,
-        planningPowerW: amps * NOMINAL_PHASE_VOLTAGE * phaseCount,
-        // Pre-resolved per-step installation current so the executor reads it off
-        // the step instead of dividing by the preset's watts-per-amp. Inverse of
-        // `planningPowerW = amps * 230 * phaseCount`, i.e. exactly `amps`.
-        planningCurrentA: amps,
-      })),
-    ],
-  };
 }
 
 function buildCapabilityTargetPowerSteppedLoadProfile(

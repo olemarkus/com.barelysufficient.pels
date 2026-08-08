@@ -143,7 +143,7 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
         deviceId,
         rawPower,
       });
-      const result = await deps.reportSteppedLoadActualStep(deviceId, stepId);
+      const result = await deps.reportSteppedLoadActualStep(deviceId, stepId, parsedPowerW);
       await handleSteppedLoadReportResult({
         deps,
         result,
