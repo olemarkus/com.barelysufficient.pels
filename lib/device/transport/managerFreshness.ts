@@ -109,7 +109,6 @@ function applyEvChargingStateUpdate(
       snapshot: mutableSnapshot,
       evChargingState: value,
       observedAtMs,
-      nowMs: observedAtMs,
     });
   }
   return {

@@ -54,12 +54,12 @@ import {
     type EvLinkEdge,
     appendEvLinkEdge,
     isChargingElsewhere,
-    isEvConnectedState,
     matchCoincidentEdges,
     pruneExpiredEvLinkEdges,
     resolveEvLinkEdge,
     resolveLinkForCharger,
 } from './evCarLink';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 import {
     clearEvCarLinkSession,
     getEvCarLinkVotes,
@@ -420,7 +420,7 @@ export class EvCarLinkProducer {
             // observations are lost. Remember it; `correlate` resolves it from the
             // persisted affinity WITHOUT manufacturing an edge or a vote.
             if (previous === undefined) {
-                if (isEvConnectedState(charger.evChargingState)) this.coldStartChargerIds.add(charger.id);
+                if (isEvPlugStateConnected(charger.evChargingState)) this.coldStartChargerIds.add(charger.id);
                 continue;
             }
             const kind = resolveEvLinkEdge(previous, charger.evChargingState);
@@ -514,10 +514,10 @@ export class EvCarLinkProducer {
      * candidates on connectedness; a live coincidence clears the same bar.
      */
     private canOpenSession(charger: EvCarLinkChargerView | undefined, coincidentCarId?: string): boolean {
-        if (!charger || !isEvConnectedState(charger.evChargingState)) return false;
+        if (!charger || !isEvPlugStateConnected(charger.evChargingState)) return false;
         if (coincidentCarId === undefined) return true;
         const coincidentCar = this.cars.get(coincidentCarId);
-        return coincidentCar !== undefined && isEvConnectedState(coincidentCar.state);
+        return coincidentCar !== undefined && isEvPlugStateConnected(coincidentCar.state);
     }
 
     /**
@@ -613,7 +613,7 @@ export class EvCarLinkProducer {
             // for a charger a guest car is actually on, and its later charge
             // updates would be attributed to a charger it is not attached to.
             candidateCarIds: [...this.cars.entries()]
-                .filter(([, car]) => isEvConnectedState(car.state))
+                .filter(([, car]) => isEvPlugStateConnected(car.state))
                 .map(([carId]) => carId),
             votesFor: (carId) => getEvCarLinkVotes(snapshot, carId, chargerId),
         });

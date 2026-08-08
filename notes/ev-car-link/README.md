@@ -126,8 +126,9 @@ charger's `stateOfCharge`, carrying `source: 'car'` and the car's device id. Thr
 
 The value arrives on the realtime seam, at the point the probe already computed `wouldAdopt`,
 and is dispatched as a `measure_battery` observation so the existing EV-boost plan-rebuild gate
-fires exactly as it does for a charger's own report. Staleness is the established rule
-unchanged: a level decays only while charge is actually in motion.
+fires exactly as it does for a charger's own report. Nothing decays the level: the session
+decides whether the charger has one, and an association is not resolved at all for a car that
+reports itself disconnected (`resolveAssociatedCarSnapshot`).
 
 A car must publish **both** `ev_charging_state` and `measure_battery` to be offered in the
 picker. Only the first is needed to associate; the second is required because a car that

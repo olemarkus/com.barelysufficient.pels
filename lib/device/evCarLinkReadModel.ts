@@ -1,5 +1,6 @@
 import type { AssociatedCarSnapshot } from '../../packages/contracts/src/types';
 import type { CarObservation } from './evCarLinkObservation';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 
 /**
  * Resolves the car-link probe's in-memory session state into the flat,
@@ -38,10 +39,11 @@ export type ActiveLinkView = {
  * statistic, and banking a previous session's percentage there publishes a
  * confidently wrong charge limit.
  *
- * Staleness is therefore the consumer's rendering concern (how old is this
- * reading) and, when the level is adopted as the charger's state-of-charge, the
- * established `resolveStateOfChargeStatus` rule applies — age decays it only
- * while charge is actually in motion.
+ * Age is therefore the consumer's rendering concern and nothing else. Nothing
+ * decays a level: when it is adopted as the charger's state-of-charge, the
+ * session decides whether PELS has one (`resolveStateOfChargeStatus`), and the
+ * car's own plug state is what ends that session — which is why an association
+ * is not resolved at all for a car that reports itself disconnected.
  */
 export const resolveAssociatedCarSnapshot = (params: {
     cars: ReadonlyMap<string, CarObservation>;
@@ -53,6 +55,14 @@ export const resolveAssociatedCarSnapshot = (params: {
     if (!link) return undefined;
     const car = cars.get(link.carId);
     if (!car) return undefined;
+    // The car's own plug state is the guard, resolved HERE so no consumer has to
+    // ask: an `AssociatedCarSnapshot` cannot exist for a car that has left, and
+    // the charger's adopted level goes with it. The session paths normally get
+    // there first — a disconnect edge clears the session immediately
+    // (`applyCarObservation`), resume forgets one whose car reads disconnected,
+    // and the affinity fallback only considers connected cars — but each of
+    // those needs a prior observation to compare against, and this does not.
+    if (!isEvPlugStateConnected(car.state)) return undefined;
 
     return {
         carId: link.carId,

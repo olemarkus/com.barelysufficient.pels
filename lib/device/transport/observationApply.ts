@@ -122,11 +122,12 @@ function applyEvChargingStateObservation(
     } else {
         delete snapshot.binaryControlObservation;
     }
+    // Unconditional: the plug-state contract gate drops a device that reports a
+    // non-enum value, so a normalised state is always known here.
     updateStateOfChargeSessionBoundary({
         snapshot,
         evChargingState: normalized,
         observedAtMs: observation.observedAt,
-        nowMs: observation.observedAt,
     });
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;

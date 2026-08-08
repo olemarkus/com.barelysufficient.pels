@@ -41,8 +41,8 @@ describe('resolveAssociatedCarSnapshot', () => {
     // with the last pre-plug reading and nothing new arrives until the level
     // rises. That reading is the car's real charge — a parked battery does not
     // move — and suppressing it would blank the level for cars reporting
-    // correctly. Age is judged downstream, by the same rule that only decays a
-    // charger's state-of-charge while charge is in motion.
+    // correctly. Nothing downstream decays it either — the session decides
+    // whether the charger has a level, and age is a rendering concern.
     const resolved = resolve({ cars: [['car-1', car({ socAtMs: 999 })]] });
     expect(resolved?.socPct).toBe(42);
     expect(resolved?.socObservedAtMs).toBe(999);
@@ -56,6 +56,19 @@ describe('resolveAssociatedCarSnapshot', () => {
 
   it('resolves nothing for a charger with no session', () => {
     expect(resolve({ chargerId: 'charger-2' })).toBeUndefined();
+  });
+
+  it('resolves nothing for a car that reports itself unplugged', () => {
+    // The car's own plug state is the guard on an adopted level: a car that has
+    // left has none to lend this charger. The session paths normally get there
+    // first, but each of them needs a prior observation to compare against, and
+    // resolution does not — so it is answered once, here, for every consumer.
+    expect(resolve({ cars: [['car-1', car({ state: 'plugged_out' })]] })).toBeUndefined();
+  });
+
+  it('resolves a discharging car — V2G is still attached', () => {
+    expect(resolve({ cars: [['car-1', car({ state: 'plugged_in_discharging' })]] })?.carId)
+      .toBe('car-1');
   });
 
   it('resolves nothing when the linked car is no longer observed', () => {

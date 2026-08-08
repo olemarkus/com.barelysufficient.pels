@@ -1,7 +1,7 @@
 import type { EvCarLinkSession } from '../../packages/contracts/src/evCarLink';
 import type { CarObservation } from './evCarLinkObservation';
 import type { EvCarLinkChargerView } from './evCarLinkChargerView';
-import { isEvConnectedState } from './evCarLink';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 
 /**
  * Deciding which sessions a restart may pick back up.
@@ -63,8 +63,8 @@ export const resolveResumableSessions = (params: {
         const car = cars.get(session.carId);
         // Absent telemetry is not a disproof — an unobserved car says nothing.
         // Only a reading that affirmatively says disconnected ends the session.
-        const chargerDisconnected = !isEvConnectedState(charger.evChargingState);
-        const carDisconnected = car !== undefined && !isEvConnectedState(car.state);
+        const chargerDisconnected = !isEvPlugStateConnected(charger.evChargingState);
+        const carDisconnected = car !== undefined && !isEvPlugStateConnected(car.state);
         if (chargerDisconnected || carDisconnected) {
             forget.push(charger.id);
             continue;

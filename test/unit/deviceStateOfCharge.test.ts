@@ -83,9 +83,8 @@ describe('resolveStateOfChargeSnapshot', () => {
     })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
   });
 
-  // An Easee can leave `evcharger_charging` lingering `true` across a pause. The
-  // state enum is authoritative (`resolveEvCurrentOn`), so that stale boolean must
-  // not age out the reading of a charger the state string says is paused.
+  // An Easee can leave `evcharger_charging` lingering `true` across a pause, and
+  // a charger paused for hours is the ordinary overnight case.
   it('does not age out a paused charger whose charging boolean still lingers true', () => {
     expect(resolve({
       chargingState: 'plugged_in_paused',
@@ -95,22 +94,78 @@ describe('resolveStateOfChargeSnapshot', () => {
     })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
   });
 
-  it('ages out a reading that goes unrefreshed while the charger is charging', () => {
+  // The gate this replaced measured age in TOTAL wall-clock, so the moment PELS
+  // resumed a charger it had paused for more than 40 minutes, the reading was
+  // stale — and `measure_battery` is change-only, so the car could not republish
+  // to clear it. The smart task then paused the charger again, which is the
+  // oscillation the pause fix existed to remove, reached by another route.
+  it('keeps the reading when a long pause ends and charging resumes', () => {
+    const paused = resolve({
+      chargingState: 'plugged_in_paused',
+      chargingStateAt: SOC_AT,
+      charging: false,
+      nowMs: SOC_AT + 3 * 60 * 60_000,
+    });
+
+    expect(resolve({
+      chargingState: 'plugged_in_charging',
+      chargingStateAt: SOC_AT + 3 * 60 * 60_000,
+      charging: true,
+      nowMs: SOC_AT + 3 * 60 * 60_000 + 1_000,
+      retainedSession: paused,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+  });
+
+  // The deliberate behaviour change: a level belongs to its session, not to a
+  // clock. A charger that keeps charging without republishing leaves PELS holding
+  // the level it last reported — the old gate turned that into a qualifier every
+  // consumer then reinterpreted, and it also fired for chargers that were simply
+  // idle. There is no ageing here.
+  it('keeps a reading that goes unrefreshed while the charger is charging', () => {
     expect(resolve({
       chargingState: 'plugged_in_charging',
       chargingStateAt: SOC_AT,
       charging: true,
-      nowMs: SOC_AT + 41 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'stale' }));
+      nowMs: SOC_AT + 6 * 60 * 60_000,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
   });
 
-  it('ages out on the charging boolean alone when the plug state stays generic', () => {
-    expect(resolve({
-      chargingState: 'plugged_in',
+  // The mirror of the case above, and the second direction the old gate got
+  // wrong: once a reading HAD aged out mid-charge, the next idle observation
+  // reached an unconditional `return 'fresh'` and resurrected it. Nothing can
+  // resurrect a reading now, because nothing retires one but its session.
+  it('does not flip a long-charging reading when the charger falls idle', () => {
+    const charging = resolve({
+      chargingState: 'plugged_in_charging',
       chargingStateAt: SOC_AT,
       charging: true,
-      nowMs: SOC_AT + 41 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'stale' }));
+      nowMs: SOC_AT + 6 * 60 * 60_000,
+    });
+
+    expect(resolve({
+      chargingState: 'plugged_in_paused',
+      chargingStateAt: SOC_AT + 6 * 60 * 60_000,
+      charging: false,
+      nowMs: SOC_AT + 6 * 60 * 60_000 + 1_000,
+      retainedSession: charging,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+  });
+
+  // V2G: a discharging car is attached, so a reconnect observed in that state
+  // anchors its session like any other connected one.
+  it('anchors a reconnect observed while the car is discharging', () => {
+    const unplugged = resolve({
+      chargingState: 'plugged_out',
+      chargingStateAt: SOC_AT + 60_000,
+      nowMs: SOC_AT + 2 * 60_000,
+    });
+
+    expect(resolve({
+      chargingState: 'plugged_in_discharging',
+      chargingStateAt: SOC_AT + 3 * 60_000,
+      nowMs: SOC_AT + 4 * 60_000,
+      retainedSession: unplugged,
+    })?.sessionStartedAtMs).toBe(SOC_AT + 3 * 60_000);
   });
 
   it('marks the reading stale once the car is unplugged', () => {

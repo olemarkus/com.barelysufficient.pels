@@ -19,9 +19,22 @@ const hasCapability = (capabilities: readonly string[], capabilityId: string): b
   capabilities.includes(capabilityId)
 );
 
+/**
+ * Whether a charger already speaks the official EV vocabulary in FULL — the
+ * command axis (`evcharger_charging`) and the plug-state axis
+ * (`evcharger_charging_state`) both.
+ *
+ * BOTH, not either. The two answer different questions and PELS needs both: the
+ * boolean says what the charger was told, the enum says what the plug is doing.
+ * Accepting one used to be enough, which let a charger exposing only the boolean
+ * count as fully wired — so the overlay that would have synthesised the missing
+ * plug state was skipped, and the device ran with no plug state at all. Nothing
+ * could then end its charging session, which since the state-of-charge age gate
+ * was deleted means nothing could retire its battery level either.
+ */
 export const hasOfficialEvChargerCapabilities = (capabilities: readonly string[]): boolean => (
   hasCapability(capabilities, 'evcharger_charging')
-  || hasCapability(capabilities, 'evcharger_charging_state')
+  && hasCapability(capabilities, 'evcharger_charging_state')
 );
 
 const hasAllZaptecNativeCapabilities = (capabilities: readonly string[]): boolean => (

@@ -112,6 +112,25 @@ export const isEvSessionInactive = (evChargingState: EvChargingState): boolean =
 );
 
 /**
+ * Is a car physically attached?
+ *
+ * True for every `plugged_in*` state, INCLUDING `plugged_in_discharging` — a
+ * V2G session is a car on the cable. That is what separates this from
+ * {@link isEvSessionInactive}, which calls discharging inactive because no
+ * charge is being credited: attachment and creditable-session are different
+ * questions about the same state, and conflating them left a discharging
+ * reconnect unable to anchor its session.
+ *
+ * This is what decides whether PELS has a battery level for a charger
+ * (`lib/device/transport/stateOfCharge.ts`): a level belongs to the session it
+ * was taken in, and the session ends when the car leaves. Nothing else retires
+ * one — there is no age gate.
+ */
+export const isEvPlugStateConnected = (evChargingState: EvChargingState): boolean => (
+  evChargingState !== 'plugged_out'
+);
+
+/**
  * The bare connected state (`plugged_in` — distinct from `plugged_in_paused` /
  * `plugged_in_charging`): the car is plugged in and the charger reports no
  * active session. PELS still commands a charger in this state (see
