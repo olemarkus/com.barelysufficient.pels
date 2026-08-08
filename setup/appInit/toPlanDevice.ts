@@ -24,6 +24,7 @@ import {
   resolveEvTargetPowerPlannerProfile,
   withoutTargetPowerReachability,
 } from '../../lib/device/targetPowerReachability';
+import type { CommandabilityProjection } from '../../lib/executor/evResumeReachability';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
 // plain binary-power control device — NOT an enabled continuous / target-power
@@ -58,6 +59,14 @@ export type ToPlanDeviceOptions = {
     capabilityId: string,
     observedOnAtMs: number,
   ) => void;
+  projectCommandability?: (params: {
+    deviceId: string;
+    eligibleForStartProbe: boolean;
+    activityObserved: boolean;
+    available?: boolean;
+    base: CommandabilityProjection;
+  }) => CommandabilityProjection;
+  pruneCommandability?: (presentDeviceIds: ReadonlySet<string>) => void;
 };
 
 // Resolve the device's in-flight binary command. Default (no override) reads
@@ -73,6 +82,27 @@ function resolvePendingBinaryCommand(
     return opts.getPendingBinaryCommand(device.id, device.communicationModel);
   }
   return ctx.planEngine?.getPendingBinaryCommandForDevice?.(device.id, device.communicationModel);
+}
+
+function resolvePlanCommandability(
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  opts: ToPlanDeviceOptions | undefined,
+) {
+  const base = resolveCommandableNow({
+    dev: {
+      deviceClass: device.deviceClass,
+      controlCapabilityId: device.controlCapabilityId,
+      evChargingState: device.evChargingState,
+      available: device.available,
+    },
+  });
+  const projected = opts?.projectCommandability?.({
+    deviceId: device.id,
+    ...resolveEvStartProbePosture(device),
+    available: device.available,
+    base,
+  }) ?? base;
+  return { ...base, ...projected };
 }
 
 /**
@@ -224,6 +254,17 @@ function resolveEffectiveTemperatureBoost(
   return ctx.getTemperatureBoostConfig?.(device.id);
 }
 
+function resolveEvStartProbePosture(device: EvObservedProbe): {
+  eligibleForStartProbe: boolean;
+  activityObserved: boolean;
+} {
+  return {
+    eligibleForStartProbe: device.evChargingState === 'plugged_in'
+      || device.evChargingState === 'plugged_in_paused',
+    activityObserved: device.evChargingState === 'plugged_in_charging',
+  };
+}
+
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
 // it resolves the flat EV sub-fields below and strips the raw field off the
@@ -258,14 +299,7 @@ export function toPlanDevice(
     ctx,
     device,
   );
-  const commandable = resolveCommandableNow({
-    dev: {
-      deviceClass: device.deviceClass,
-      controlCapabilityId: device.controlCapabilityId,
-      evChargingState: device.evChargingState,
-      available: device.available,
-    },
-  });
+  const commandable = resolvePlanCommandability(device, opts);
   const canSetControlResolved = resolveCanSetControl({
     controlCapabilityId: device.controlCapabilityId,
     capabilities: device.capabilities,

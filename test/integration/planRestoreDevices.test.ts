@@ -1,6 +1,5 @@
 import {
   isBinaryRestoreCandidate,
-  getEvRestoreStateBlockReason,
   getInactiveReason,
   getOffDevices,
   getOnDevices,
@@ -260,39 +259,7 @@ describe('plan restore device helpers', () => {
     expect(isOffSteppedRestoreCandidate(atMaxStep)).toBe(false);
   });
 
-  it('evaluates EV restore blocks and marks off devices as staying off', () => {
-    // Only the two states where the electrics say no block a restore.
-    expect(getEvRestoreStateBlockReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_out',
-    }))).toBe('charger is unplugged');
-    expect(getEvRestoreStateBlockReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in_discharging',
-    }))).toBe('charger is discharging');
-    // Bare-connected and absent plug-states do NOT block — the literal is too
-    // vendor-inconsistent to gate on, so PELS commands and lets activation
-    // backoff judge the result.
-    expect(getEvRestoreStateBlockReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in',
-    }))).toBeNull();
-    expect(getEvRestoreStateBlockReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
-    }))).toBeNull();
-    // EV identity follows isEvDevice (device class OR evcharger_charging capability):
-    // an evcharger-class device controlling via a different capability still
-    // surfaces the EV block reason instead of falling through as a generic binary.
-    expect(getEvRestoreStateBlockReason(makeDevice({
-      deviceClass: 'evcharger',
-      controlCapabilityId: 'onoff',
-      evChargingState: 'plugged_out',
-    }))).toBe('charger is unplugged');
-    // A genuine non-EV binary device is unaffected (no EV reason).
-    expect(getEvRestoreStateBlockReason(makeDevice({
-      controlCapabilityId: 'onoff',
-      evChargingState: 'plugged_out',
-    }))).toBeNull();
+  it('uses generic producer commandability to mark off devices as staying off', () => {
     expect(reasonText(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',

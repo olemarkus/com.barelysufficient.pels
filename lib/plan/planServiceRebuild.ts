@@ -169,9 +169,9 @@ async function buildPlanForRebuild(
   reason: string,
 ): Promise<{ plan: DevicePlan; buildMs: number; liveDevices: PlanInputDevice[] }> {
   const { planEngine } = host.deps;
+  planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
   const liveDevices = host.deps.getPlanDevices();
   planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
-  planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
   const buildStart = Date.now();
   if (planEngine.state) {
     // Restore/target planning reads the active rebuild reason from shared plan state so

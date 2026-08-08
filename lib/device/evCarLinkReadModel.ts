@@ -58,6 +58,7 @@ export const resolveAssociatedCarSnapshot = (params: {
         carId: link.carId,
         carName: car.name,
         chargingState: car.state,
+        chargingStateObservedAtMs: car.stateAtMs,
         // Absent until the car has reported a valid charge at least once —
         // omitted, never a fabricated zero, which would read as an empty battery.
         ...(car.socPct === undefined ? {} : { socPct: car.socPct, socObservedAtMs: car.socAtMs }),

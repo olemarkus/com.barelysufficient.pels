@@ -485,6 +485,7 @@ export class AppServiceWiring {
     // First teardown edge: close the final Main write seam before any awaited
     // or synchronous cleanup can detach the membership authority it also reads.
     this.mainActuationStopped = true;
+    this.mainHomeScope.disposeBinaryCommandReachability();
     // Signal the fire-and-forget native-wiring probe to drop its side effects
     // before anything else tears down. We deliberately do NOT await it: it can
     // be parked on a slow flow read, and blocking teardown on that read would

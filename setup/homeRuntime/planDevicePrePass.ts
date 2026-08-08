@@ -22,7 +22,7 @@ import {
 import { filterDevicesForHome } from '../homeMembership';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import type { AppContext } from '../../lib/app/appContext';
-import type { HomeId } from '../../lib/utils/settingsKeys';
+import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import { rankActiveDevicePriorities } from '../../packages/shared-domain/src/modePriorities';
@@ -108,7 +108,14 @@ export const buildHomePlanDevices = (
   homeId: HomeId,
   options?: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
-  const devices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId)
+  const homeDevices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId);
+  const membershipAuthorityAvailable = ctx.homeMembership
+    ? ctx.homeMembership.getConfiguredMeterSources().state === 'resolved'
+    : homeId === MAIN_HOME_ID;
+  if (membershipAuthorityAvailable) {
+    options?.pruneCommandability?.(new Set(homeDevices.map((device) => device.id)));
+  }
+  const devices = homeDevices
     .map((device) => toPlanDevice(ctx, device, options))
     .filter(isRuntimePlannedDevice);
   const priorityByDeviceId = rankActiveDevicePriorities(

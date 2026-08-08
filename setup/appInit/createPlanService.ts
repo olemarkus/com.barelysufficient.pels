@@ -1,4 +1,4 @@
-import { requirePlanEngine } from './contextGuards';
+import { requireDeviceManager, requirePlanEngine } from './contextGuards';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -20,6 +20,7 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 // coupling); a sub-home capacity bundle MUST pass its own engine — falling
 // through to `ctx.planEngine` would silently drive the MAIN home's engine.
 export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?: PlanEngine): PlanService {
+  const deviceManager = requireDeviceManager(ctx);
   return new PlanService({
     homeId: scope.homeId,
     homey: ctx.homey,
@@ -33,7 +34,10 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // straight off the device snapshot — it is not (and must not be) on the
     // plan-facing `PlanInputDevice`. Pending commands only exist for commanded
     // devices, so the unfiltered snapshot is a harmless superset.
-    getSettleDevices: () => ctx.latestTargetSnapshot,
+    getSettleDevices: () => ctx.latestTargetSnapshot.map((device) => ({
+      ...device,
+      associatedCar: deviceManager.getAssociatedCar(device.id),
+    })),
     // EV charging state for the settings-UI read model comes from the observer
     // (its canonical owner), not the plan device — the planner carries only the
     // resolved flat EV plug-state sub-fields, not the raw observed plug-state. NB: do NOT
@@ -48,7 +52,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
-    getAssociatedCarChargingState: (deviceId) => ctx.deviceManager?.getAssociatedCar(deviceId)?.chargingState,
+    getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
     getObservedTemperature: (deviceId) => readObservedTemperatureState(ctx.getObservedState(deviceId)),
     // Observation staleness for the settings-UI gray-state label and the idle
     // classifier, sourced from the observer projection — the same seam as
@@ -73,7 +77,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // it to pick the temperature-vs-binary card for non-stepped devices.
     getDeviceTypeById: () => {
       const map = new Map<string, 'temperature' | 'onoff'>();
-      for (const device of ctx.deviceManager?.getSnapshot() ?? []) {
+      for (const device of deviceManager.getSnapshot()) {
         if (device.deviceType) map.set(device.id, device.deviceType);
       }
       return map;
@@ -89,12 +93,12 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // out of the map and a `temperature_target ↔ binary_power` flip would never
     // reach the signature.
     getControlModelById: () => buildControlModelMap(
-      ctx.deviceManager?.getSnapshot() ?? [],
+      deviceManager.getSnapshot(),
       ctx.isTemperatureControlDisabled,
     ),
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();
-      for (const device of ctx.deviceManager?.getSnapshot() ?? []) {
+      for (const device of deviceManager.getSnapshot()) {
         const profile = ctx.deviceControlHelpers.getSteppedLoadProfile(device.id);
         if (profile) map.set(device.id, profile);
       }

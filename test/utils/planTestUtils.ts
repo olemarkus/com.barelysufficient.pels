@@ -119,8 +119,8 @@ type MaterializedEvFields = {
  * `resolveCommandableNow` and attaches `commandableNow` / `commandableNowReason`
  * alongside the EV trio, so the fixture is faithful to a real `PlanInputDevice`
  * (the executor drift path reads `commandableNow` off it). An EV with no
- * `evChargingState` resolves to commandable: absence means "no such signal —
- * skip", not a blocking state, matching the producer.
+ * `evChargingState` fails closed because resume requires affirmative connected
+ * evidence, matching the producer.
  *
  * `commandableNow` is materialized for EVERY fixture, EV or not, because it is a
  * required base field — a fixture without it would let a consumer read `undefined`

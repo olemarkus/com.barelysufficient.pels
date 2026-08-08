@@ -857,10 +857,10 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.expectedPowerKw).toBeCloseTo(1.25);
   });
 
-  it('marks an EV charger inactive when plugged_out even if snapshot reports currentOn=true', () => {
-    // Simulates a stale snapshot: device capability last reported as 'on' (charging) but
-    // evChargingState was updated to 'plugged_out'. Without the fix, this would produce
-    // plannedState='keep' because applyOffStateReason skips non-off devices.
+  it('keeps a currently-on device active even when its generic commandability is false', () => {
+    // The planner consumes producer-resolved current state and generic
+    // commandability only. Commandability gates a future transition; it must not
+    // reinterpret an observed-on device as inactive or inspect EV terminology.
     const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
@@ -885,8 +885,7 @@ describe('buildInitialPlanDevices', () => {
       },
     });
 
-    expect(planDevice.plannedState).toBe('inactive');
-    expect(reasonText(planDevice.reason)).toBe('inactive (charger is unplugged)');
+    expect(planDevice.plannedState).toBe('keep');
   });
 
   it('does not mark an actively-charging EV as inactive due to unknown expected power', () => {

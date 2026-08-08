@@ -323,13 +323,11 @@ describe('EV charger integration', { retry: 2 }, () => {
     },
   );
 
-  it('normalises a vendor charging state outside the enum without blocking the charger', async () => {
+  it('normalises a vendor charging state outside the enum and fails closed', async () => {
     // The producer (`getEvChargingState`) maps any value outside the
     // `evcharger_charging_state` enum to `undefined`, so an unrecognised state is
-    // never surfaced verbatim. That normalisation stands — what changed is that
-    // the resulting absence no longer blocks: an app reporting a non-standard
-    // string would otherwise be uncommandable forever, not for one cold-start
-    // cycle. PELS commands it and activation backoff judges the outcome.
+    // never surfaced verbatim. Resume now requires affirmative connected
+    // evidence, so the resulting absence blocks rather than issuing a blind ON.
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('mystery');
     const app = await createEvApp(charger);
@@ -337,8 +335,8 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.plannedState).not.toBe('inactive');
-    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+    expect(evPlan.plannedState).toBe('inactive');
+    expect(charger.getCommandSequence()).toEqual([]);
     // The unrecognised vendor value never reaches a consumer.
     expect(charger.commandLog.some((entry) => entry.value === 'mystery')).toBe(false);
   });

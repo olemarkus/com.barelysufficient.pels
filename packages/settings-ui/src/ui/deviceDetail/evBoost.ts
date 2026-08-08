@@ -82,10 +82,7 @@ function buildEvBoostStatusText(params: {
 }): string {
   const { device, enabled, boostBelowPercent } = params;
   if (!enabled) return '';
-  // Narrow through the EV-observed guard: the base device type omits the raw
-  // plug-state, and an unobserved plug-state never blocks boost (matches the
-  // resolver's undefined branch before the field-move).
-  const boostBlock = isEvObserved(device) ? resolveEvBoostBlockReason(device) : null;
+  const boostBlock = resolveEvBoostBlockReason(isEvObserved(device) ? device : {});
   if (boostBlock) return boostBlock;
   const stateOfCharge = device.stateOfCharge;
   if (!stateOfCharge || stateOfCharge.status === 'unknown') {

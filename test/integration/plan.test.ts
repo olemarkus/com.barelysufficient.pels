@@ -1613,6 +1613,7 @@ describe('Device plan snapshot', () => {
 
   it('keeps planned state as shed when headroom is below device need even after turn-off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('onoff', true);
     await dev1.setCapabilityValue('measure_power', 2500); // 2.5 kW
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),

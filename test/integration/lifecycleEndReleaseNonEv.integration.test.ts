@@ -267,6 +267,7 @@ const buildObserved = (
   target: null,
   steppedLoad: null,
   ...overrides,
+  commandableNow: overrides?.commandableNow ?? true,
 });
 
 const buildDeps = (params: {

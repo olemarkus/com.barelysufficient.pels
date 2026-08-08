@@ -83,7 +83,8 @@ describe('resolveEvBoostActive', () => {
   it('activates for a bare connected charger (plugged_in)', () => {
     // `plugged_in` is commandable — the literal is vendor-inconsistent (Easee
     // reports it while awaiting authentication, Wallbox for its own paused state),
-    // so boost tries and `activationBackoff` handles a charger that never draws.
+    // so boost may request a probe; observer reachability handles a charger that
+    // declines or never starts drawing.
     expect(resolveEvBoostActive(buildEvDevice({
       evChargingState: 'plugged_in',
       stateOfCharge: { percent: 20, status: 'fresh' as const },

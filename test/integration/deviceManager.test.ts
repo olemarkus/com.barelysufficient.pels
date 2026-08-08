@@ -6659,10 +6659,10 @@ describe('DeviceTransport', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
             expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(0);
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                // Paused = off (state-authoritative), even though the proprietary
+                // Finished = connected idle/off (state-authoritative), even though the proprietary
                 // charging signal lingered before the charge_mode update.
                 binaryControl: { on: false },
-                evChargingState: 'plugged_in_paused',
+                evChargingState: 'plugged_in',
             }));
 
             evDeviceManager.destroy();

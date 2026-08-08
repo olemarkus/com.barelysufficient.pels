@@ -1904,7 +1904,18 @@ describe('device detail managed state saves', () => {
     expect(status?.textContent).toBe('Battery level is stale. Boost will not activate.');
   });
 
-  it('allows EV boost for a bare-connected charger (plugged_in)', async () => {
+  it.each([
+    {
+      title: 'blocks EV boost when charger state is unavailable',
+      evChargingState: undefined,
+      expected: 'Charger state is unavailable. Boost will not activate.',
+    },
+    {
+      title: 'allows EV boost for a bare-connected charger',
+      evChargingState: 'plugged_in' as const,
+      expected: 'Boost active when planning: 32% < 40%.',
+    },
+  ])('$title', async ({ evChargingState, expected }) => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -1939,17 +1950,15 @@ describe('device detail managed state saves', () => {
     } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
-    // Fresh SoC below the 40% threshold. `plugged_in` no longer blocks: boost is
-    // "command it on now", and PELS does command a bare-connected charger, so the
-    // panel must not claim boost won't activate. Only `plugged_out` /
-    // `plugged_in_discharging` still win over the SoC check.
+    // Fresh SoC would otherwise activate boost, so the missing charger state
+    // must win and surface the fail-closed runtime posture.
     state.latestDevices = [buildDevice('charger-1', 'Driveway charger', {
       deviceClass: 'evcharger',
       deviceType: 'onoff',
       controlModel: 'stepped_load',
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging'],
-      evChargingState: 'plugged_in',
+      ...(evChargingState ? { evChargingState } : {}),
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
@@ -1978,6 +1987,6 @@ describe('device detail managed state saves', () => {
     await flushPromises();
 
     const status = document.querySelector('#device-detail-ev-boost-status') as HTMLElement | null;
-    expect(status?.textContent).toBe('Boost active when planning: 32% < 40%.');
+    expect(status?.textContent).toBe(expected);
   });
 });

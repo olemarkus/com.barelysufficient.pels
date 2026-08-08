@@ -30,6 +30,7 @@ describe('resolveAssociatedCarSnapshot', () => {
       carId: 'car-1',
       carName: 'Polestar 3',
       chargingState: 'plugged_in_charging',
+      chargingStateObservedAtMs: 2_000,
       socPct: 42,
       socObservedAtMs: 2_000,
     });

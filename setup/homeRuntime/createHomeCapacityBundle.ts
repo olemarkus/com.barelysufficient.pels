@@ -47,6 +47,7 @@ import type {
 } from '../../lib/power/trackerTypes';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
+import { createEvResumeReachability } from '../../lib/executor/evResumeReachability';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
@@ -301,6 +302,24 @@ function buildSubHomeScope(params: {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
     getTracker, getServiceForSync, getPlanEngineForPending, modeCatalog,
   } = params;
+  const evResumeReachability = createEvResumeReachability({
+    requestRebuild: () => {
+      queueMicrotask(() => {
+        if (!isTornDown()) void getServiceForSync()?.rebuildPlanFromCache('binary_command_reachability_changed');
+      });
+    },
+    scheduleRebuild: (deviceId, dueAtMs) => {
+      const key = `evResumeProbe:${homeId}:${deviceId}`;
+      ctx.timers.registerTimeout(key, setTimeout(() => {
+        if (isTornDown()) return;
+        ctx.timers.clear(key);
+        void getServiceForSync()?.rebuildPlanFromCache('binary_command_reachability_deadline');
+      }, Math.max(0, dueAtMs - Date.now())));
+    },
+    clearScheduledRebuild: (deviceId) => {
+      ctx.timers.clear(`evResumeProbe:${homeId}:${deviceId}`);
+    },
+  });
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
   // rebuild/reconcile continuation that resolves AFTER teardown must not
   // re-create this home's suffixed keys (nor clobber a same-`homeId` bundle
@@ -339,8 +358,12 @@ function buildSubHomeScope(params: {
           ?.getPendingBinaryCommandForDevice(id, model) ?? null,
         clearRecentBinaryOffCommand: (id, capabilityId, observedOnAtMs) => getPlanEngineForPending()
           ?.clearRecentBinaryOffCommandForCapability(id, capabilityId, observedOnAtMs),
+        projectCommandability: evResumeReachability.project,
+        pruneCommandability: evResumeReachability.prune,
       });
     },
+    binaryCommandLifecycle: evResumeReachability.lifecycle,
+    disposeBinaryCommandReachability: evResumeReachability.dispose,
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
     persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),

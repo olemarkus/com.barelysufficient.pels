@@ -156,6 +156,7 @@ export type AssociatedCarSnapshot = {
     carId: string;
     carName: string;
     chargingState: EvChargingState;
+    chargingStateObservedAtMs: number;
     socPct?: number;
     socObservedAtMs?: number;
 };

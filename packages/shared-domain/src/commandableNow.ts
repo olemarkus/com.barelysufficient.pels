@@ -153,15 +153,9 @@ export type CommandableNowConsumerInput = {
  *   - `commandableNow: true` with `reason: null` when the device accepts
  *     commands.
  *
- * An EV device with no resolved plug-state is commandable. `undefined` is not a
- * device state: it collapses a permanently-absent `evcharger_charging_state`
- * capability (a `car`-class device driven through `evcharger_charging` never has
- * one), a vendor value outside the Homey enum, a cold start, and the narrow
- * window where the live feed is down AND a pull omits the capability with no
- * retained observation. Failing closed on that looked like safety but was a
- * permanent block for the first two, so the gate now fails OPEN and the command
- * outcome decides: `activationBackoff` penalises a device commanded on that
- * never draws. Commanding an unplugged charger is a no-op, not a hazard.
+ * An EV device with no resolved plug-state is not commandable. Resume attempts
+ * require affirmative connected evidence; an absent or unrecognised state must
+ * not be treated as permission to issue an ON command.
  */
 export function resolveCommandableNow(params: {
   dev: CommandableNowResolveInput;
@@ -175,20 +169,14 @@ export function resolveCommandableNow(params: {
   // non-EV — even if a non-EV device unexpectedly carries an `evChargingState`.
   // This is the ONE place the raw plug-state is read; downstream consumers read
   // the flat bits below through the device-shaped resolvers (no raw arm).
-  // `evBlockReason` and `evSessionInactive` classify the same two states today
-  // (`resolveEvBlockReasonKey` blocks exactly what `isEvSessionInactive` marks);
-  // they stay separate fields because they answer different questions — may we
+  // `evBlockReason` also covers missing evidence, while `evSessionInactive`
+  // classifies only physical inactivity. They answer different questions — may we
   // command it, and is there a creditable session — and a future plug-state
   // could separate them again.
-  // Absence is resolved HERE, at the seam nearest the capability read, and means
-  // "no such signal — skip", never a classified state. `resolveEvBlockReason`
-  // therefore takes a required `EvChargingState` and has no `undefined` arm to
-  // misread. Same discipline as a device with no `onoff` capability: nothing is
-  // inferred from the missing signal.
+  // Absence is resolved HERE, at the seam nearest the capability read, and
+  // fails closed because it is not affirmative connected evidence.
   const isEv = isEvDevice(dev);
-  const evBlock = isEv && dev.evChargingState !== undefined
-    ? resolveEvBlockReason(dev.evChargingState)
-    : null;
+  const evBlock = isEv ? resolveEvBlockReason(dev.evChargingState) : null;
   const evSub = {
     evBlockReason: evBlock,
     evSessionInactive: isEv && isEvSessionInactive(dev.evChargingState),
@@ -226,9 +214,7 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
 
 /**
  * EV block-reason for a device: `null` when commandable (or not an EV), else the
- * reason string. The device-shaped public resolver consumed by the plan
- * restore-reason gate (`getEvRestoreStateBlockReason`), which therefore never
- * re-derives the EV-state switch nor touches the raw `evChargingState`.
+ * producer-materialized reason string. Consumers never re-derive the raw state.
  *
  * Reads ONLY the producer-resolved flat `evBlockReason`, materialized once at
  * the producer seam (`resolveCommandableNow` → `toPlanDevice`) where it is

@@ -81,6 +81,7 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
       return observed !== undefined && isDeviceObservationStale(observed);
     },
     actuator,
+    binaryCommandLifecycle: scope.binaryCommandLifecycle,
     getCapacityGuard: scope.getCapacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
     getCapacityDryRun: scope.getCapacityDryRun,

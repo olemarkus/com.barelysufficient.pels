@@ -178,7 +178,8 @@ describe('charger car picker', () => {
     await loadEvCarAssociations();
     renderCarAssociation(charger({
       associatedCar: {
-        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging', socPct: NaN,
+        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging',
+        chargingStateObservedAtMs: 1_000, socPct: NaN,
       },
     }));
     await flush();
@@ -196,7 +197,8 @@ describe('charger car picker', () => {
     await loadEvCarAssociations();
     renderCarAssociation(charger({
       associatedCar: {
-        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging', socPct: 63,
+        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging',
+        chargingStateObservedAtMs: 1_000, socPct: 63,
       },
     }));
     await flush();
@@ -212,7 +214,8 @@ describe('charger car picker', () => {
     await loadEvCarAssociations();
     renderCarAssociation(charger({
       associatedCar: {
-        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging', socPct: 63,
+        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging',
+        chargingStateObservedAtMs: 1_000, socPct: 63,
       },
     }));
     await flush();
@@ -261,7 +264,8 @@ describe('charger car picker', () => {
     await loadEvCarAssociations();
     renderCarAssociation(charger({
       associatedCar: {
-        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging', socPct: 63,
+        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging',
+        chargingStateObservedAtMs: 1_000, socPct: 63,
       },
     }));
     await flush();

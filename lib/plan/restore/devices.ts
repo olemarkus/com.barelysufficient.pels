@@ -4,7 +4,6 @@ import {
   isSteppedLoadOffStep,
 } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import { resolveEvBlockReasonForDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
@@ -165,23 +164,10 @@ export function getOnDevices(
   return sortByPriorityDesc(filtered);
 }
 
-export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
-  // Delegate EV identity AND EV-state → reason to the shared device-shaped
-  // resolver (one source of truth, also behind resolveCommandableNow). Its own
-  // `isEvDevice` gate covers BOTH the `evcharger_charging` control capability and
-  // an `evcharger` device class, so an evcharger-class device that happens to
-  // control via a different capability is no longer silently skipped. Non-EV
-  // devices resolve to `null`. This consumer never touches the raw charging-state
-  // string — no plug-state re-derivation here.
-  return resolveEvBlockReasonForDevice(dev);
-}
-
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
-  const evStateBlock = getEvRestoreStateBlockReason(dev);
-  if (evStateBlock) return { code: PLAN_REASON_CODES.inactive, detail: evStateBlock };
-  // Checked after the EV plug-state block so an unplugged held charger still
-  // reads as unplugged — that is the more immediate fact for the user, and the
-  // hold stays stored underneath, becoming visible again after reconnection.
+  if (dev.commandableNow === false && dev.commandableNowReason) {
+    return { code: PLAN_REASON_CODES.inactive, detail: dev.commandableNowReason };
+  }
   if (dev.externalOffHoldActive === true) return { code: PLAN_REASON_CODES.externalOffHold };
 
   return null;

@@ -194,12 +194,9 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
   if (!snapshot || !isEvDevice(snapshot)) return null;
   // `isEvObserved` is the only typed way to reach `evChargingState` (the field is
   // omitted from the base snapshot by design), so the guard stays. What changed is
-  // the un-narrowed arm: an EV charger with no resolved plug-state no longer reads
-  // as blocked. Absence is not a device state — it covers a permanently-absent
-  // capability as well as a cold start — so both arms defer to the one switch in
-  // commandableNowReason, and PELS learns commandability by commanding and
-  // watching (activationBackoff).
-  return isEvObserved(snapshot) ? resolveEvBlockReason(snapshot.evChargingState) : null;
+  // the un-narrowed arm: resume requires affirmative connected evidence, so an
+  // EV whose state is missing is blocked at the producer boundary too.
+  return resolveEvBlockReason(isEvObserved(snapshot) ? snapshot.evChargingState : undefined);
 }
 
 type BinaryCapabilityResolveInput = {
