@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AssociatedCarSnapshot } from '../../packages/contracts/src/types';
 import {
+  applyAssociatedCarStateOfCharge,
   resolveAssociatedCar,
   type CarAssociationSources,
 } from '../../lib/device/transport/carAssociation';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
 /**
  * The eligibility gate: the probe says which car matched a charger's plug edge,
@@ -69,5 +71,52 @@ describe('resolveAssociatedCar', () => {
   it('associates a matched car from a multi-car eligibility set', () => {
     eligibleCarIds = ['car-2', 'car-1'];
     expect(resolveAssociatedCar(ctx(), 'charger-1')).toEqual(ASSOCIATED);
+  });
+});
+
+/**
+ * The car's own plug state is the guard on an adopted level: the level belongs
+ * to the car's session, so a car that has left has no level to lend this
+ * charger. Nothing here ages a reading — a level only moves while the car is
+ * attached.
+ */
+describe('applyAssociatedCarStateOfCharge', () => {
+  const charger = (): TransportDeviceSnapshot => ({
+    id: 'charger-1',
+    name: 'Elbillader',
+    deviceClass: 'evcharger',
+    evChargingState: 'plugged_in_charging',
+    evCharging: true,
+    targets: [],
+  } as unknown as TransportDeviceSnapshot);
+
+  const writeCtx = (snapshot: TransportDeviceSnapshot) => ({
+    ...ctx(),
+    latestSnapshotById: new Map([['charger-1', snapshot]]),
+  });
+
+  const reading = { chargerId: 'charger-1', carId: 'car-1', socPct: 63, socAtMs: 1_500 };
+
+  it('writes the level while the car reports a connected state', () => {
+    const snapshot = charger();
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(true);
+    expect(snapshot.stateOfCharge).toMatchObject({ percent: 63, source: 'car' });
+  });
+
+  it('keeps writing while the car is discharging — it is still attached', () => {
+    matched = { ...ASSOCIATED, chargingState: 'plugged_in_discharging' };
+    const snapshot = charger();
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(true);
+    expect(snapshot.stateOfCharge).toMatchObject({ percent: 63 });
+  });
+
+  it('writes nothing when the probe reports no association', () => {
+    // Which is what a departed car looks like from here: the guard on the car's
+    // own plug state lives in `resolveAssociatedCarSnapshot`, so an association
+    // simply does not resolve for a car that has left.
+    matched = undefined;
+    const snapshot = charger();
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(false);
+    expect(snapshot.stateOfCharge).toBeUndefined();
   });
 });

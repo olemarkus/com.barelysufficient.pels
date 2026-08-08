@@ -56,6 +56,19 @@ export const resolveAssociatedCar = (
 };
 
 /**
+ * Drops the charger's car-sourced level when its session ends. Unconditional on
+ * eligibility: if a level got there via a car, the car leaving is what ends it,
+ * whatever the user has ticked since.
+ */
+export const clearAssociatedCarStateOfCharge = (
+  ctx: { latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot> },
+  chargerId: string,
+): boolean => {
+  const snapshot = ctx.latestSnapshotById.get(chargerId);
+  return snapshot ? clearCarStateOfCharge({ snapshot }) : false;
+};
+
+/**
  * Applies a car-reported battery level to its charger, when the user opted that
  * charger in. Returns whether the stored level actually moved, so the caller
  * only dispatches on a real change.
@@ -63,6 +76,13 @@ export const resolveAssociatedCar = (
  * The eligibility check happens HERE rather than in the probe: the probe reports
  * what it observed and stays settings-free, and this is the one place that turns
  * an observation into a write.
+ *
+ * The CAR's own plug state is the guard on an adopted level — a car that has
+ * left has none to lend — and it is applied by the producer, not here:
+ * `resolveAssociatedCarSnapshot` refuses to resolve an association for a
+ * disconnected car, so there is nothing to write. Re-checking it here would read
+ * `chargingState`, which the contract declares display-only precisely so a car
+ * app's reporting lag cannot drive a control path.
  */
 export const applyAssociatedCarStateOfCharge = (
   ctx: CarAssociationSources & {
@@ -82,19 +102,6 @@ export const applyAssociatedCarStateOfCharge = (
     carId: reading.carId,
     nowMs,
   });
-};
-
-/**
- * Drops the charger's car-sourced level when its session ends. Unconditional on
- * eligibility: if a level got there via a car, the car leaving is what ends it,
- * whatever the user has ticked since.
- */
-export const clearAssociatedCarStateOfCharge = (
-  ctx: { latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot> },
-  chargerId: string,
-): boolean => {
-  const snapshot = ctx.latestSnapshotById.get(chargerId);
-  return snapshot ? clearCarStateOfCharge({ snapshot }) : false;
 };
 
 /**

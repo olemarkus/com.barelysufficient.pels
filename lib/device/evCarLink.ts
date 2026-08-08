@@ -27,6 +27,7 @@
  * and no `driverId` branching appears anywhere in this feature.
  */
 import type { EvChargingState } from '../../packages/contracts/src/types';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 
 /**
  * A physical plug event. Both sides derive it from the same closed enum, so one
@@ -65,20 +66,6 @@ export const EV_CAR_LINK_AWAY_VERDICT_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 2
 /** Bound on retained edges per side — see the RSS note in `notes/ev-car-link/README.md`. */
 export const EV_CAR_LINK_MAX_EDGES_PER_SIDE = 20;
 
-const CONNECTED_STATES: ReadonlySet<EvChargingState> = new Set<EvChargingState>([
-    'plugged_in',
-    'plugged_in_charging',
-    'plugged_in_paused',
-    'plugged_in_discharging',
-]);
-
-/**
- * Whether the plug state means a car is physically attached. Exported because
- * the producer needs it to refuse (re)creating a session for a charger that is
- * currently unplugged.
- */
-export const isEvConnectedState = (state: EvChargingState): boolean => CONNECTED_STATES.has(state);
-
 /**
  * Resolve a plug edge from a state transition.
  *
@@ -94,8 +81,8 @@ export const resolveEvLinkEdge = (
     next: EvChargingState,
 ): EvLinkEdgeKind | null => {
     if (previous === next) return null;
-    const wasConnected = isEvConnectedState(previous);
-    const isConnected = isEvConnectedState(next);
+    const wasConnected = isEvPlugStateConnected(previous);
+    const isConnected = isEvPlugStateConnected(next);
     if (!wasConnected && isConnected) return 'connect';
     if (wasConnected && !isConnected) return 'disconnect';
     return null;

@@ -365,6 +365,52 @@ describe('native EV wiring shim', () => {
     expect(overlay.capabilityObj.evcharger_charging_state?.lastUpdated).toBe('2026-04-22T09:00:07.000Z');
   });
 
+  it('does not let a connected alarm downgrade a discharging session', () => {
+    // The alarm says a car is attached and nothing more. Collapsing V2G to
+    // `plugged_in_paused` would read as commandable when it is not.
+    expect(normalizeNativeEvCapabilityUpdate({
+      snapshot: {
+        controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
+        evChargingState: 'plugged_in_discharging',
+      },
+      capabilityId: 'alarm_generic.car_connected',
+      value: true,
+    })).toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_in_discharging' }]);
+  });
+
+  it('still synthesizes the plug state for a charger that has only the command axis', () => {
+    // `hasOfficialEvChargerCapabilities` requires BOTH axes. When it accepted
+    // either, this device counted as fully wired, the shim was skipped, and it
+    // ran with no plug state at all — so nothing could end its charging session,
+    // and therefore nothing could retire its battery level.
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getNativeEvWiringEnabled: () => true,
+      },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+      capabilities: [
+        'measure_power',
+        'charging_button',
+        'charge_mode',
+        'alarm_generic.car_connected',
+        'evcharger_charging',
+      ],
+      capabilitiesObj: {
+        measure_power: { value: 7200 },
+        charging_button: { value: true, setable: true },
+        charge_mode: { value: 'Disconnected' },
+        'alarm_generic.car_connected': { value: false },
+        evcharger_charging: { value: true, setable: false },
+      },
+    })]);
+
+    expect(parsed?.evChargingState).toBe('plugged_out');
+  });
+
   it('keeps native evcharger capabilities ahead of the Zaptec shim', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
