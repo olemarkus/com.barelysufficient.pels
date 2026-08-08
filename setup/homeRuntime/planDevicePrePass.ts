@@ -8,8 +8,10 @@
 // arrived by pull — and the next shed in that bundle would strand the device.
 //
 // Only the per-device projection differs between homes, and that difference is
-// the `ToPlanDeviceOptions` argument (a sub-home disables the surplus posture and
-// routes pending-binary reads to its own engine).
+// the options argument: a sub-home disables the surplus posture, routes
+// pending-binary reads to its own engine, and supplies its own mode-priority
+// resolver. This boundary also projects each home's current planned set to
+// unique relative ranks before either the planner or smart-task clock reads it.
 
 import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
 import {
@@ -23,6 +25,13 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
+import { rankActiveDevicePriorities } from '../../packages/shared-domain/src/modePriorities';
+import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
+
+type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
+  /** This home's stored priority source; absence must remain distinguishable from rank 100. */
+  getBasePriorityForDevice?: (deviceId: string) => unknown;
+};
 
 /**
  * Seed observed state, release any external-off hold whose device is observed
@@ -97,9 +106,19 @@ const runSnapshotPrePass = (
 export const buildHomePlanDevices = (
   ctx: AppContext,
   homeId: HomeId,
-  options?: ToPlanDeviceOptions,
-): PlanInputDevice[] => (
-  filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId)
+  options?: BuildHomePlanDevicesOptions,
+): PlanInputDevice[] => {
+  const devices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId)
     .map((device) => toPlanDevice(ctx, device, options))
-    .filter(isRuntimePlannedDevice)
-);
+    .filter(isRuntimePlannedDevice);
+  const priorityByDeviceId = rankActiveDevicePriorities(
+    devices.map((device) => device.id),
+    options?.getBasePriorityForDevice ?? ((deviceId) => (
+      resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
+    )),
+  );
+  return devices.map((device): PlanInputDevice => ({
+    ...device,
+    priority: priorityByDeviceId[device.id],
+  }));
+};

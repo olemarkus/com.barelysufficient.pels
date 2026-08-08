@@ -80,6 +80,7 @@ import {
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
 import {
   createHomeModeCatalog,
+  getConfiguredPriorityFromHomeModeCatalog,
   getPriorityFromHomeModeCatalog,
   type HomeModeCatalog,
 } from './homeModeCatalog';
@@ -331,6 +332,9 @@ function buildSubHomeScope(params: {
       // (not MAIN's via `ctx.planEngine`).
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: false,
+        getBasePriorityForDevice: (id) => (
+          getConfiguredPriorityFromHomeModeCatalog(modeCatalog.getSnapshot(), id)
+        ),
         getPendingBinaryCommand: (id, model) => getPlanEngineForPending()
           ?.getPendingBinaryCommandForDevice(id, model) ?? null,
         clearRecentBinaryOffCommand: (id, capabilityId, observedOnAtMs) => getPlanEngineForPending()

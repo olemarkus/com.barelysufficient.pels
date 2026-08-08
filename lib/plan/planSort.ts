@@ -16,12 +16,11 @@ function stableSort(
 }
 
 /**
- * Final, deterministic tiebreak shared by shed and restore arbitration. Devices
- * with no stored priority all collapse to the same `priority ?? default`
- * bucket; without a total order, their relative ranking depends on input order
- * (and shed vs restore could disagree). Comparing the raw `id` with `<`/`>`
- * gives a locale-independent, total order so the same device always wins on
- * both sides. Equal ids return 0 (identity).
+ * Final, deterministic defensive tiebreak shared by shed and restore
+ * arbitration. Production plan inputs already carry unique active-home ranks,
+ * but these lower-level helpers also accept partial/legacy test and recovery
+ * shapes. Comparing the raw `id` with `<`/`>` keeps those callers independent
+ * of input order and makes shed and restore agree. Equal ids return 0.
  */
 export function compareDeviceIdAsc(a: { id: string }, b: { id: string }): number {
   if (a.id < b.id) return -1;

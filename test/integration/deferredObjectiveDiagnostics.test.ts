@@ -984,18 +984,25 @@ describe('ConcurrentEligibleTaskTracker', () => {
 });
 
 describe('PriorityAllocationTracker', () => {
-  it('keeps a missing higher device ahead of lower tasks during the SDK grace window', () => {
+  it('keeps a missing device reservation-eligible during the SDK grace window', () => {
     const tracker = new PriorityAllocationTracker();
     const high = buildDevice({ id: 'high', priority: 1 });
     const low = buildDevice({ id: 'low', priority: 2 });
     tracker.observe({ devices: [high, low], nowMs: NOW_MS });
 
-    expect(tracker.resolve('high', undefined)).toBe(1);
     tracker.observe({ devices: [low], nowMs: NOW_MS + 30_000 });
-    expect(tracker.resolve('high', undefined)).toBe(1);
+    expect(tracker.shouldReserveMissingDevice({
+      deviceId: 'high',
+      nowMs: NOW_MS + 30_000,
+      hasPersistedCommitment: false,
+    })).toBe(true);
 
     tracker.observe({ devices: [low], nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS });
-    expect(tracker.resolve('high', undefined)).toBe(100);
+    expect(tracker.shouldReserveMissingDevice({
+      deviceId: 'high',
+      nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS,
+      hasPersistedCommitment: false,
+    })).toBe(false);
   });
 });
 
@@ -1223,7 +1230,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(low?.replaceCommitment).toBe(true);
   });
 
-  it('reserves a missing higher commitment for one restart grace window, then releases it', () => {
+  it('re-ranks a transiently missing higher task before a compacted lower task, then releases it', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
     const objective = {
       ...buildSettings({ targetPercent: 50 }).objectivesByDeviceId['ev-1'],
@@ -1231,7 +1238,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
     const settings = normalizeDeferredObjectiveSettings({
       version: 1,
-      objectivesByDeviceId: { 'ev-1': objective, 'ev-2': objective },
+      objectivesByDeviceId: { 'z-high': objective, 'a-low': objective },
     });
     const committedHours = [
       { startsAtMs: NOW_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 },
@@ -1245,14 +1252,13 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       hours: committedHours,
       energyNeededKWh: 2,
       planStatus: 'on_track' as const,
-      devicePriority: 1,
     };
     const activePlans: DeferredObjectiveActivePlansV1 = {
       version: 1,
       plansByDeviceId: {
-        'ev-1': {
-          deviceId: 'ev-1',
-          deviceName: 'Driveway EV',
+        'z-high': {
+          deviceId: 'z-high',
+          deviceName: 'Higher EV',
           objectiveKind: 'ev_soc',
           targetTemperatureC: null,
           targetPercent: 50,
@@ -1272,15 +1278,20 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       },
     };
-    const low = buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
+    const high = buildDevice({ id: 'z-high', name: 'Higher EV', priority: 1 });
+    // The visible-home producer has compacted the survivor to 1. The allocation
+    // roster must still put the grace-retained higher task first, despite the
+    // lower device id sorting lexically before it.
+    const low = buildDevice({ id: 'a-low', name: 'Lower EV', priority: 1 });
     const tracker = new PriorityAllocationTracker();
+    tracker.observe({ devices: [high, { ...low, priority: 2 }], nowMs: NOW_MS - 30_000 });
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [low],
       settings,
-      powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
+      powerTracker: buildPowerTracker({ objectiveProfiles: { 'z-high': profile!, 'a-low': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({
         prices: Array.from({ length: 24 }, () => 5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
@@ -1289,13 +1300,20 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       activePlans,
       hardCapKw: 1.5,
       priorityAllocationTracker: tracker,
+      getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
     });
-    const lowHours = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2')
+    const lowDiagnostic = diagnostics.find((diagnostic) => diagnostic.deviceId === 'a-low');
+    const lowHours = lowDiagnostic
       ?.horizonPlan?.plannedBuckets
       .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
       .map((bucket) => Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS) ?? [];
 
-    expect(diagnostics[0]).toMatchObject({ deviceId: 'ev-1', reasonCode: 'objective_missing_device' });
+    expect(diagnostics[0]).toMatchObject({
+      deviceId: 'z-high',
+      devicePriority: 1,
+      reasonCode: 'objective_missing_device',
+    });
+    expect(lowDiagnostic?.devicePriority).toBe(2);
     expect(lowHours).not.toContain(NOW_MS);
     expect(lowHours).not.toContain(NOW_MS + 2 * HOUR_MS);
 
@@ -1304,7 +1322,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       timeZone: 'UTC',
       devices: [low],
       settings,
-      powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
+      powerTracker: buildPowerTracker({ objectiveProfiles: { 'z-high': profile!, 'a-low': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({
         prices: Array.from({ length: 24 }, () => 5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
@@ -1313,16 +1331,19 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       activePlans,
       hardCapKw: 1.5,
       priorityAllocationTracker: tracker,
+      getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
     });
-    const releasedLowHours = afterGrace.find((diagnostic) => diagnostic.deviceId === 'ev-2')
+    const releasedLow = afterGrace.find((diagnostic) => diagnostic.deviceId === 'a-low');
+    const releasedLowHours = releasedLow
       ?.horizonPlan?.plannedBuckets
       .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
       .map((bucket) => Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS) ?? [];
 
-    expect(afterGrace[0]).toMatchObject({
-      deviceId: 'ev-1',
+    expect(afterGrace.find((diagnostic) => diagnostic.deviceId === 'z-high')).toMatchObject({
+      deviceId: 'z-high',
       reasonCode: 'objective_missing_device',
     });
+    expect(releasedLow?.devicePriority).toBe(1);
     expect(releasedLowHours).toContain(NOW_MS + 2 * HOUR_MS);
   });
 
@@ -3415,11 +3436,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // applied while planning at the un-promoted floor: `min` (1 kW) × 4 h = 4 kWh
       // against a 6 kWh need, versus the priority-1 control above which promotes to
       // `top` (3 kW) and reaches `on_track`.
+      const higherDevice = { ...buildPromotableDevice('higher-device'), priority: 1 };
       const belowTop = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
         nowMs: NOW_MS,
         timeZone: 'UTC',
-        devices: [belowTop],
+        devices: [higherDevice, belowTop],
         settings: normalizeDeferredObjectiveSettings({
           version: 1,
           objectivesByDeviceId: {
@@ -3441,7 +3463,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expect(diagnostic.status).not.toBe('on_track');
     });
 
-    it('books equal-priority tasks by device-id tie-break without double-booking an hour', () => {
+    it('normalizes equal base priorities by device id without double-booking an hour', () => {
       const diagnostics = buildDeferredObjectiveDiagnostics({
         nowMs: NOW_MS,
         timeZone: 'UTC',
@@ -3468,7 +3490,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((diagnostic) => [diagnostic.deviceId, diagnostic]));
       expect(byDevice.get('ev-1')?.status).toBe('on_track');
-      expect(byDevice.get('ev-2')?.status).toBe('on_track');
+      expect(byDevice.get('ev-1')?.devicePriority).toBe(1);
+      expect(byDevice.get('ev-2')).toMatchObject({
+        devicePriority: 2,
+        status: 'at_risk',
+      });
       const firstHours = new Set(byDevice.get('ev-1')?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
         .map((bucket) => Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS));
@@ -3516,7 +3542,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
     });
 
-    it('fills the residual step after a higher tie-break task carries a prior commitment', () => {
+    it('does not promote a lower relative rank after a higher task carries a prior commitment', () => {
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       // Mirror the prior-cycle commitment shape that `activePlanRecorder`
       // would persist for a fully-reserved top-priority EV: a 5-hour
@@ -3605,11 +3631,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
-      expect(byDevice.get('ev-2')).toMatchObject({ status: 'on_track' });
+      expect(byDevice.get('ev-2')).toMatchObject({ devicePriority: 2, status: 'cannot_meet' });
       expect(byDevice.get('ev-1')?.expectedStepId).toBe('min');
       expect(byDevice.get('ev-2')?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
-        .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
+        .every((bucket) => bucket.plannedAdmissionPowerKw === 1)).toBe(true);
     });
   });
 });

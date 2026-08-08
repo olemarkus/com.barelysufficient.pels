@@ -15,6 +15,7 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
+import { rankActiveDevicePriorities } from '../../../packages/shared-domain/src/modePriorities';
 import {
   resolveStepAdmissionPowerKw,
   selectMinimumStepForEnergy,
@@ -26,15 +27,13 @@ import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
 const DEFAULT_PRIORITY = 100;
-const UNKNOWN_COMMITTED_PRIORITY = 0;
 
-type CachedPriority = { priority: number; lastSeenAtMs: number };
-
-// Keeps ordering stable across a transient SDK device-snapshot miss. Exact
-// reservations come from the persisted commitment during the same gap; this
-// cache ensures the missing higher device is still visited before lower tasks.
+// Keeps the allocation roster stable across a transient SDK device-snapshot
+// miss. It deliberately stores presence timestamps only: the mode catalog is
+// the durable priority source, and `orderDeferredObjectives` derives a fresh
+// unique order from that source every time the roster is read.
 export class PriorityAllocationTracker {
-  private readonly priorityByDeviceId = new Map<string, CachedPriority>();
+  private readonly lastSeenAtMsByDeviceId = new Map<string, number>();
 
   private readonly missingReservationSinceByDeviceId = new Map<string, number>();
 
@@ -46,29 +45,26 @@ export class PriorityAllocationTracker {
     const observedDeviceIds = new Set<string>();
     for (const device of params.devices) {
       if (params.isDeviceInSubHome?.(device.id) === true) {
-        this.priorityByDeviceId.delete(device.id);
+        this.lastSeenAtMsByDeviceId.delete(device.id);
         this.missingReservationSinceByDeviceId.delete(device.id);
         continue;
       }
       observedDeviceIds.add(device.id);
-      this.priorityByDeviceId.set(device.id, {
-        priority: resolvedPriority(device),
-        lastSeenAtMs: params.nowMs,
-      });
+      this.lastSeenAtMsByDeviceId.set(device.id, params.nowMs);
       this.missingReservationSinceByDeviceId.delete(device.id);
     }
-    for (const [deviceId, cached] of this.priorityByDeviceId) {
+    for (const [deviceId, lastSeenAtMs] of this.lastSeenAtMsByDeviceId) {
       if (params.isDeviceInSubHome?.(deviceId) === true) {
-        this.priorityByDeviceId.delete(deviceId);
+        this.lastSeenAtMsByDeviceId.delete(deviceId);
         this.missingReservationSinceByDeviceId.delete(deviceId);
         continue;
       }
       if (observedDeviceIds.has(deviceId)) continue;
       if (!this.missingReservationSinceByDeviceId.has(deviceId)) {
-        this.missingReservationSinceByDeviceId.set(deviceId, cached.lastSeenAtMs);
+        this.missingReservationSinceByDeviceId.set(deviceId, lastSeenAtMs);
       }
-      if (params.nowMs - cached.lastSeenAtMs >= ELIGIBILITY_ABANDON_GRACE_MS) {
-        this.priorityByDeviceId.delete(deviceId);
+      if (params.nowMs - lastSeenAtMs >= ELIGIBILITY_ABANDON_GRACE_MS) {
+        this.lastSeenAtMsByDeviceId.delete(deviceId);
       }
     }
   }
@@ -96,15 +92,6 @@ export class PriorityAllocationTracker {
     return true;
   }
 
-  public resolve(
-    deviceId: string,
-    device: ObjectiveDeviceInput | undefined,
-    persistedPriority = DEFAULT_PRIORITY,
-  ): number {
-    return device
-      ? resolvedPriority(device)
-      : this.priorityByDeviceId.get(deviceId)?.priority ?? persistedPriority;
-  }
 }
 
 export type OrderedDeferredObjective = {
@@ -139,9 +126,13 @@ export const orderDeferredObjectives = (params: {
   tracker?: PriorityAllocationTracker;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   nowMs: number;
+  // Live mode-catalog read. Production callers provide this so the full
+  // visible-plus-grace roster is ordered from the user's current saved mode,
+  // never from a runtime-persisted rank. Optional for isolated legacy callers.
+  getBasePriorityForDevice?: (deviceId: string) => unknown;
 }): OrderedDeferredObjective[] => {
   params.tracker?.retainObjectiveDeviceIds(new Set(Object.keys(params.settings.objectivesByDeviceId)));
-  return Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
+  const entries = Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
     if (!objective.enabled || params.isDeviceInSubHome?.(deviceId) === true) return [];
     const device = params.deviceById.get(deviceId);
     const activePlan = resolveActiveCommittedPlan({
@@ -149,10 +140,6 @@ export const orderDeferredObjectives = (params: {
       deviceId,
       objective,
     });
-    const persistedPriority = activePlan?.latest?.devicePriority
-      ?? (activePlan ? UNKNOWN_COMMITTED_PRIORITY : DEFAULT_PRIORITY);
-    const priority = params.tracker?.resolve(deviceId, device, persistedPriority)
-      ?? resolvedPriority(device, persistedPriority);
     const reservationEligible = device !== undefined || (
       params.tracker
         ? params.tracker.shouldReserveMissingDevice({
@@ -162,9 +149,39 @@ export const orderDeferredObjectives = (params: {
         })
         : activePlan !== undefined
     );
-    return [{ deviceId, objective, device, priority, reservationEligible }];
-  })
-  .sort((left, right) => left.priority - right.priority || compareDeviceIdAsc(left.deviceId, right.deviceId));
+    return [{ deviceId, objective, device, reservationEligible }];
+  });
+  const activeDeviceIds = [
+    ...[...params.deviceById.values()].flatMap((device) => (
+      params.isDeviceInSubHome?.(device.id) === true ? [] : [device.id]
+    )),
+    ...entries.flatMap((entry) => entry.reservationEligible ? [entry.deviceId] : []),
+  ];
+  const activePriorityByDeviceId = rankActiveDevicePriorities(
+    activeDeviceIds,
+    (deviceId) => {
+      if (params.getBasePriorityForDevice) return params.getBasePriorityForDevice(deviceId);
+      return resolvedPriority(params.deviceById.get(deviceId));
+    },
+  );
+  const inactivePriorityByDeviceId = rankActiveDevicePriorities(
+    entries.flatMap((entry) => entry.reservationEligible ? [] : [entry.deviceId]),
+    (deviceId) => params.getBasePriorityForDevice
+      ? params.getBasePriorityForDevice(deviceId)
+      : DEFAULT_PRIORITY,
+  );
+  const activeDeviceCount = Object.keys(activePriorityByDeviceId).length;
+  return entries
+    .map((entry) => {
+      const priority = activePriorityByDeviceId[entry.deviceId]
+        ?? activeDeviceCount + (inactivePriorityByDeviceId[entry.deviceId] ?? DEFAULT_PRIORITY);
+      return {
+        ...entry,
+        priority,
+        ...(entry.device ? { device: { ...entry.device, priority } } : {}),
+      };
+    })
+    .sort((left, right) => left.priority - right.priority || compareDeviceIdAsc(left.deviceId, right.deviceId));
 };
 
 const objectiveSignature = (entry: OrderedDeferredObjective): string => buildObjectiveSignature({

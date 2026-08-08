@@ -88,6 +88,9 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
   priorityAllocationTracker?: PriorityAllocationTracker;
+  // Current mode-catalog priority producer. The batch allocator projects its
+  // complete visible-plus-grace roster to unique relative ranks on every read.
+  getBasePriorityForDevice?: (deviceId: string) => unknown;
   // Preview-only override: solve the candidate fresh while allowing tasks
   // ahead of it to keep their settled commitments.
   forceFreshDeviceId?: string;
@@ -119,6 +122,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
     tracker: params.priorityAllocationTracker,
     activePlans: params.activePlans,
     nowMs: params.nowMs,
+    getBasePriorityForDevice: params.getBasePriorityForDevice,
   });
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;

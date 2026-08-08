@@ -217,8 +217,7 @@ function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
     return Number(a.recentlyRestored) - Number(b.recentlyRestored);
   }
   if (a.effectivePower !== b.effectivePower) return b.effectivePower - a.effectivePower;
-  // Deterministic final tiebreak so the all-default-priority bucket (and any
-  // equal-power ties) resolves identically on shed and restore, independent of
-  // input order. Shared with restore via compareDeviceIdAsc.
+  // Defensive final tiebreak for partial/legacy inputs (active-home plan
+  // inputs have unique ranks), shared with restore via compareDeviceIdAsc.
   return compareDeviceIdAsc(a, b);
 }

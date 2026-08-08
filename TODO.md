@@ -2076,6 +2076,18 @@ program) remain deferred.*
       seam and dedicated source diagnostic so status/history explain the task's real scope before it ends.
       P2. Source: runtime-reality review of PR #1873, 2026-07-23.
 
+- [ ] **Smart-task preview keeps a missing committed task reserved after the live grace expires.**
+      *Persona:* owner previewing a lower-priority task after a higher task's device has stayed
+      unavailable for more than an hour. *Hypothesis:* lifecycle and planner decoration own
+      stateful `PriorityAllocationTracker`s and release the missing task after
+      `ELIGIBILITY_ABANDON_GRACE_MS`, while preview calls the batch diagnostics without a tracker;
+      its active-plan fallback therefore remains reservation-eligible until the commitment is
+      otherwise cleared. The preview is conservative and cannot actuate, but can understate the
+      candidate's feasible schedule after the live controller has moved on. Expose a read-only
+      grace classification from a clock-owned in-memory roster (never persist the derived order),
+      then add a post-grace preview-parity regression. P2. Source: pels-runtime-reality review of
+      the relative-priority PR, 2026-08-08.
+
 - [ ] **Sub-home per-poll CPU scaling: decorate once per poll instead of per-bundle.**
       *Persona:* multi-home owner on a busy Homey with several sub-homes. *Hypothesis:* `latestTargetSnapshot`
       re-runs `getSnapshot()` + full `decorateTargetSnapshotList` on every access, and every bundle's
@@ -3728,8 +3740,8 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
       'always'` because the reserved-headroom forecast (`hardCap − uncontrolled`) assumes every
       controlled watt is displaceable — true only at the very top. A richer forecast that also
       subtracts higher-priority controlled load (`hardCap − uncontrolled − higherPriorityControlled`)
-      would let the gate broaden to "highest priority present on this Homey", so a default-priority
-      committed device's rescue stops being budget-exemption-only and can claim a guaranteed floor.
+      would let the gate broaden safely to lower relative ranks, so a non-top committed device's
+      rescue stops being budget-exemption-only and can claim a guaranteed floor.
       *Why it's needed:* today a non-top committed device plans at the un-promoted floor and can
       still `cannot_meet`; the Optimiser with a mixed-priority home is the one who hits it. *Validate
       first:* pick up only if post-Slice-2 prod logs show a long-tail `cannot_meet` rate on

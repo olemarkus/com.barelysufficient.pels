@@ -261,6 +261,7 @@ type PreviewContext = {
   devices?: PlanInputDevice[];
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
+  getBasePriorityForDevice?: (deviceId: string) => unknown;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
@@ -284,6 +285,7 @@ const runPreview = (params: {
   devices: params.ctx.devices,
   settings: params.ctx.settings,
   activePlans: params.ctx.activePlans,
+  getBasePriorityForDevice: params.ctx.getBasePriorityForDevice,
   powerTracker: params.ctx.powerTracker,
   dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
   priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
@@ -353,6 +355,54 @@ describe('previewDeferredObjectivePlan', () => {
     const highHours = new Set((buildHoursFromHorizonPlan(highDiagnostic!) ?? []).map((hour) => hour.startsAtMs));
 
     expect(estimate.status).toBe('at_risk');
+    expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
+  });
+
+  it('keeps a missing higher commitment ahead of a compacted preview candidate', () => {
+    const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
+    const candidate = evCandidate({ deadlineAtMs });
+    const highDevice = buildEvDevice({ id: 'z-high', name: 'Higher EV', priority: 1 });
+    const compactedLow = buildEvDevice({ id: 'a-low', name: 'Lower EV', priority: 1 });
+    const settings = buildSettings({ deviceId: 'z-high', candidate });
+    const profile = buildEvPowerTracker().objectiveProfiles?.['ev-1'];
+    const powerTracker = buildEvPowerTracker({
+      objectiveProfiles: { 'z-high': profile!, 'a-low': profile! },
+    });
+    const dailyBudgetSnapshot = buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) });
+    const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [highDevice],
+      settings,
+      powerTracker,
+      dailyBudgetSnapshot,
+      priceOptimizationEnabled: true,
+      hardCapKw: 1.5,
+      getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
+    });
+    const { recorder } = buildRecorder();
+    recorder.observe([highDiagnostic!], NOW_MS);
+    const activePlans = recorder.getActivePlansSnapshot();
+    const highHours = new Set(
+      activePlans.plansByDeviceId['z-high']?.latest?.hours.map((hour) => hour.startsAtMs),
+    );
+
+    const estimate = runPreview({
+      deviceId: 'a-low',
+      candidate,
+      ctx: {
+        device: compactedLow,
+        devices: [compactedLow],
+        settings,
+        activePlans,
+        getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
+        powerTracker,
+        dailyBudgetSnapshot,
+        priceOptimizationEnabled: true,
+        hardCapKw: 1.5,
+      },
+    });
+
     expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
   });
 

@@ -6,8 +6,9 @@
 // sequence, or non-finite values. Consumers (the planner's shed/restore
 // ordering, the settings-UI priority list) need a *strict total order* over the
 // configured devices so that one configured device always consistently wins
-// over another. (Devices with no stored priority fall to a caller-side default
-// and are not ranked here — see TODO.md "default-priority tiebreak".)
+// over another. `normalizeModePriorities` resolves the persisted catalog;
+// `rankActiveDevicePriorities` then extends that order across the devices
+// present in one home right now, including devices with no stored entry.
 //
 // This module is the single producer of that strict order. It lives in
 // shared-domain because both the runtime (via the settings snapshot builder)
@@ -70,4 +71,35 @@ export const normalizeModePriorities = (
     normalized[mode] = normalizeModePriorityMap(raw[mode]);
   }
   return normalized;
+};
+
+/**
+ * Resolve the active devices to a strict relative order for one plan cycle.
+ *
+ * Persisted mode priorities express the owner's preferred order, but they do
+ * not necessarily cover the devices that are active now: a newly managed
+ * device has no entry yet, while a removed or relocated device may still own a
+ * stored rank. This projection ranks only `deviceIds`, closes those active-set
+ * gaps, and gives missing/equal/invalid base priorities a deterministic
+ * device-id tiebreak. Every returned rank is unique and gap-free in `1..N`.
+ */
+export const rankActiveDevicePriorities = (
+  deviceIds: readonly string[],
+  getBasePriority: (deviceId: string) => unknown,
+): ModePriorityMap => {
+  const uniqueDeviceIds = [...new Set(deviceIds)];
+  // Read each producer once. Apart from avoiding repeated settings lookups,
+  // this makes one projection internally coherent if the outer state changes
+  // while a caller is assembling a cycle.
+  const basePriorityByDeviceId = new Map(
+    uniqueDeviceIds.map((deviceId) => [deviceId, coercePriority(getBasePriority(deviceId))]),
+  );
+  const ordered = uniqueDeviceIds.sort((a, b) => {
+    const pa = basePriorityByDeviceId.get(a) ?? Number.POSITIVE_INFINITY;
+    const pb = basePriorityByDeviceId.get(b) ?? Number.POSITIVE_INFINITY;
+    if (pa !== pb) return pa < pb ? -1 : 1;
+    if (a === b) return 0;
+    return a < b ? -1 : 1;
+  });
+  return Object.fromEntries(ordered.map((deviceId, index) => [deviceId, index + 1]));
 };

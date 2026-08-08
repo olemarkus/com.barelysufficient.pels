@@ -245,9 +245,9 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // Lives on the revision so all surfaces format consistently with the math
   // the planner actually used. Optional for backward compatibility.
   estimatedDurationText?: string;
-  // Resolved device priority used when this revision was allocated. Optional
-  // for backward compatibility; it lets the coordinator restore ordering on a
-  // restart even when the device is absent from the first SDK snapshot.
+  // Legacy resolved device priority. Retained only so persisted revisions from
+  // older releases still parse; new revisions derive ordering from the current
+  // user-saved mode catalog and do not write this field.
   devicePriority?: number;
   // Stable signature of the smart-task prefix, order, objective settings, and
   // higher-task claim topology used for this allocation. A mismatch forces an

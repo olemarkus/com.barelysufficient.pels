@@ -1176,6 +1176,47 @@ describe('settings script', () => {
     expect(new Set(ranks).size).toBe(ranks.length);
   });
 
+  it('shows newly managed devices in the same relative order the planner uses', async () => {
+    const stalePriorities = Object.fromEntries(
+      Array.from({ length: 99 }, (_, index) => [`stale-${index + 1}`, index + 1]),
+    );
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'z-new',
+          name: 'Zulu',
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+        {
+          id: 'configured',
+          name: 'Configured',
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+        {
+          id: 'a-new',
+          name: 'Alpha',
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+      ],
+      // The configured active device remains rank 100 after normalizing the 99
+      // stale entries. Newly managed devices have no entry and stay behind it.
+      capacity_priorities: { Home: { ...stalePriorities, configured: 100 } },
+      mode_device_targets: { Home: {} },
+      managed_devices: { configured: true, 'z-new': true, 'a-new': true },
+    });
+
+    await loadSettingsScript();
+
+    const { renderPriorities } = await import('../src/ui/modes.ts');
+    const { state } = await import('../src/ui/state.ts');
+    expect(state.capacityPriorities.Home.configured).toBe(100);
+    renderPriorities(state.latestDevices);
+
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('#priority-list .device-row'));
+    expect(rows.map((row) => row.dataset.deviceId)).toEqual(['configured', 'a-new', 'z-new']);
+    expect(rows.map((row) => row.querySelector('.priority-badge')?.textContent)).toEqual(['#1', '#2', '#3']);
+  });
+
   it('renames a mode and updates settings', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock

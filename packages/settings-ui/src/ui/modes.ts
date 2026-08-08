@@ -28,7 +28,7 @@ import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
-import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
+import { normalizeModePriorities, rankActiveDevicePriorities } from '../../../shared-domain/src/modePriorities.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { debouncedSetSetting } from './utils.ts';
 import { getHomeIdForUiDevice, getHomeScope } from './homeScope.ts';
@@ -157,11 +157,6 @@ const getPriorityRows = (): HTMLElement[] => (
   Array.from(priorityList?.querySelectorAll<HTMLElement>('.device-row') || [])
 );
 
-export const getPriority = (deviceId: string) => {
-  const mode = state.editingMode || DEFAULT_MODE_NAME;
-  return state.capacityPriorities[mode]?.[deviceId] ?? 100;
-};
-
 export const getDesiredTarget = (device: SettingsUiDeviceListItem) => {
   if (!supportsTemperatureDevice(device)) return null;
   const mode = state.editingMode || DEFAULT_MODE_NAME;
@@ -259,7 +254,11 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   }
   priorityEmpty.hidden = true;
 
-  const sorted = [...managedDevices].sort((a, b) => getPriority(a.id) - getPriority(b.id));
+  const activePriorities = rankActiveDevicePriorities(
+    managedDevices.map((device) => device.id),
+    (deviceId) => state.capacityPriorities[state.editingMode || DEFAULT_MODE_NAME]?.[deviceId],
+  );
+  const sorted = [...managedDevices].sort((a, b) => activePriorities[a.id] - activePriorities[b.id]);
   sorted.forEach((device) => {
     priorityList.appendChild(buildPriorityRow(device));
   });

@@ -72,9 +72,10 @@ swap free just enough for itself and consume the unaccounted remainder of the pr
 exactly the tight-power case the feature exists for. A swap must free enough for the candidate AND
 the whole reservation.
 
-**Only lower-priority devices are constrained.** Equal priority does not constrain — a peer has no
-claim over a peer — and a more important device ignores the reserve entirely. Reserves from several
-devices sum, because two devices each waiting for their own block each need that block.
+**Only lower-priority devices are constrained.** Active devices in one home have unique relative
+ranks, so every other device is either lower or higher priority. The strict comparison remains
+defensive for legacy inputs; a more important device ignores the reserve entirely. Reserves from
+several devices sum, because two devices each waiting for their own block each need that block.
 
 **No reserve for a device that cannot start.** An external off-hold, an unavailable device, or one
 that is not commandable gets none: the cost lands entirely on other devices and buys nothing.

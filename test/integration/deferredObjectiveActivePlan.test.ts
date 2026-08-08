@@ -167,7 +167,7 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
-  it('persists admission power and the allocation-context signature on a revision', () => {
+  it('persists allocation context without persisting the runtime-derived priority', () => {
     const persist = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
     const diagnostic = makeDiag({
@@ -184,7 +184,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.flushIfDirty();
 
     expect(persist.saved()?.plansByDeviceId.dev?.latest).toMatchObject({
-      devicePriority: 2,
       allocationContextSignature: 'ctx-1',
       hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.8 }],
       reservationSegments: [{
@@ -194,6 +193,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         plannedAdmissionPowerKw: 1.8,
       }],
     });
+    expect(persist.saved()?.plansByDeviceId.dev?.latest).not.toHaveProperty('devicePriority');
   });
 
   it('round-trips exact fractional-grid reservations and reuses them after restart', () => {

@@ -47,6 +47,7 @@ export type PreviewDeferredObjectivePlanParams = {
   devices?: ObjectiveDeviceInput[];
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
+  getBasePriorityForDevice?: (deviceId: string) => unknown;
   isDeviceInSubHome?: (deviceId: string) => boolean;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
@@ -110,6 +111,7 @@ export const previewDeferredObjectivePlan = (
       priceOptimizationEnabled: params.priceOptimizationEnabled,
       activePlans: params.activePlans ?? null,
       hardCapKw: params.hardCapKw,
+      getBasePriorityForDevice: params.getBasePriorityForDevice,
       isDeviceInSubHome: params.isDeviceInSubHome,
       forceFreshDeviceId: params.deviceId,
     }).find((diagnostic) => diagnostic.deviceId === params.deviceId)

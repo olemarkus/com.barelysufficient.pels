@@ -130,6 +130,7 @@ const buildDevice = (params: {
   nowMs: number;
   currentOn: boolean;
   selectedStepId: string;
+  priority?: number;
 }): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: DEVICE_ID,
   name: 'Water Heater',
@@ -151,6 +152,9 @@ const buildDevice = (params: {
   measuredPowerKw: params.currentOn ? 1.5 : 0,
   expectedPowerKw: params.currentOn ? 1.5 : 0,
   planningPowerKw: params.currentOn ? 1.5 : 0,
+  // This fixture models the semantic `HomeScope` producer output. A sole
+  // active device is always relative rank 1, regardless of its stored rank.
+  priority: params.priority ?? 1,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
 })) as PlanInputDevice;
 
@@ -226,6 +230,7 @@ const buildContender = (params: {
   currentOn: boolean;
   nowMs: number;
   controllable?: boolean;
+  priority?: number;
 }): PlanInputDevice => withBinaryDiscriminant({
   id: CONTENDER_ID,
   name: 'Contender',
@@ -236,6 +241,7 @@ const buildContender = (params: {
   measuredPowerKw: params.currentOn ? 1.5 : 0,
   expectedPowerKw: 1.5,
   planningPowerKw: 1.5,
+  priority: params.priority ?? 2,
   lastFreshDataMs: params.nowMs,
   targets: [],
 }) as PlanInputDevice;
@@ -367,8 +373,8 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
   // The deferred horizon planner and admission decision do not read operating mode, and
   // priority is resolved fresh per cycle from `capacityPriorities[mode][deviceId]`. So a
   // mid-horizon mode flip should be transparent for a single deferred device with no
-  // contending managed devices: the per-hour shape is unchanged, and the priority field on
-  // the plan output reflects the new mode immediately on the next cycle.
+  // contending managed devices: the per-hour shape is unchanged, and the plan
+  // keeps the sole active device at relative priority 1 in either mode.
   it('mid-horizon mode flip Home → Away is transparent for a single deferred device', async () => {
     let temperatureC = 50;
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
@@ -417,9 +423,9 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       { hour: 0, mode: 'Home', plannedState: 'keep', priority: 1 },
       { hour: 1, mode: 'Home', plannedState: 'shed', priority: 1 },
       { hour: 2, mode: 'Home', plannedState: 'keep', priority: 1 },
-      { hour: 3, mode: 'Away', plannedState: 'shed', priority: 5 },
-      { hour: 4, mode: 'Away', plannedState: 'keep', priority: 5 },
-      { hour: 5, mode: 'Away', plannedState: 'keep', priority: 5 },
+      { hour: 3, mode: 'Away', plannedState: 'shed', priority: 1 },
+      { hour: 4, mode: 'Away', plannedState: 'keep', priority: 1 },
+      { hour: 5, mode: 'Away', plannedState: 'keep', priority: 1 },
     ]);
     expect(temperatureC).toBeGreaterThanOrEqual(TARGET_C);
   });
@@ -427,7 +433,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
   // Two managed devices share a 2.5 kW budget that fits exactly one at low. In Home the
   // deferred device is priority 1 and wins the head-to-head; the contender stays shed. After
   // the mode flips to Away at hour 3 the priorities invert: the contender becomes priority 1
-  // and the deferred device priority 5, so when both compete in hour 4 (a planned hour for
+  // and the deferred device relative priority 2, so when both compete in hour 4 (a planned hour for
   // the deferred objective) restore admits the contender first and the deferred device misses
   // its planned hour. The horizon allocator then re-plans on the next cycle and falls back to
   // bucket 5 (originally an "avoid" bucket) as a backup hour. Once the contender finishes
@@ -477,13 +483,24 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       capacityGuard.reportTotalPower((deferOn ? 1.5 : 0) + (contendOn ? 1.5 : 0));
 
       const snapshot = await builder.buildDevicePlanSnapshot([
-        buildDevice({ currentTemperatureC: deferTemp, nowMs, currentOn: deferOn, selectedStepId: deferStep }),
+        buildDevice({
+          currentTemperatureC: deferTemp,
+          nowMs,
+          currentOn: deferOn,
+          selectedStepId: deferStep,
+          priority: modeRef.current === 'Home' ? 1 : 2,
+        }),
         // After the contender finishes externally we drop it out of PELS management so the
         // freed capacity is available to the deferred device's backup hour. In real PELS this
         // would be e.g. an EV switching to `plugged_in_fully_charged` (its restore lane block
         // reason kicks in) or the user toggling capacity-based control off; for the test we
         // model "no longer managed" with controllable=false.
-        buildContender({ currentOn: contendOn, nowMs, controllable: !contendFinished }),
+        buildContender({
+          currentOn: contendOn,
+          nowMs,
+          controllable: !contendFinished,
+          priority: modeRef.current === 'Home' ? 2 : 1,
+        }),
       ]);
       const defer = findDevice(snapshot.devices, DEVICE_ID);
       const contend = findDevice(snapshot.devices, CONTENDER_ID);
@@ -515,15 +532,15 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       { hour: 1, mode: 'Home', defer: 'shed', contend: 'shed', deferPriority: 1 },
       { hour: 2, mode: 'Home', defer: 'keep', contend: 'shed', deferPriority: 1 },
       // Mode flips. Idle hour for defer; defer force-shed; contender still can't fit.
-      { hour: 3, mode: 'Away', defer: 'shed', contend: 'shed', deferPriority: 5 },
+      { hour: 3, mode: 'Away', defer: 'shed', contend: 'shed', deferPriority: 2 },
       // Planned hour for defer, but in Away the contender is pri 1 and wins restore first;
       // defer misses this planned hour.
-      { hour: 4, mode: 'Away', defer: 'shed', contend: 'keep', deferPriority: 5 },
+      { hour: 4, mode: 'Away', defer: 'shed', contend: 'keep', deferPriority: 2 },
       // Contender finished externally before bucket 5 — the horizon allocator falls back to
       // bucket 5 (originally an "avoid" / expensive bucket) and the deferred device is
       // admitted there. The contender shows plannedState='keep' because cap-off devices are
       // left alone; PELS isn't actively managing it any more.
-      { hour: 5, mode: 'Away', defer: 'keep', contend: 'keep', deferPriority: 5 },
+      { hour: 5, mode: 'Away', defer: 'keep', contend: 'keep', deferPriority: 2 },
     ]);
     expect(deferTemp).toBeGreaterThanOrEqual(TARGET_C);
   });

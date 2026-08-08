@@ -10,6 +10,7 @@ import {
   resolveSmartTaskDeviceKind,
   resolveSmartTaskGoalBounds,
 } from '../packages/shared-domain/src/smartTaskDeviceKind';
+import { rankActiveDevicePriorities } from '../packages/shared-domain/src/modePriorities';
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import {
   hasOpenDeferredObjective,
@@ -40,6 +41,7 @@ import {
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import { getLogger } from '../lib/logging/logger';
+import { resolveConfiguredDevicePriority } from '../lib/utils/capacityHelpers';
 
 const logger = getLogger('setup/smart-task-api');
 
@@ -363,9 +365,22 @@ export class AppSmartTaskApi {
     });
     const planDevices = planService.getPlanDevices();
     const candidateDevice = snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined;
-    const devices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
+    const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
+    const previewPriorityByDeviceId = rankActiveDevicePriorities(
+      previewDevices.map((device) => device.id),
+      (id) => resolveConfiguredDevicePriority(
+        this.ctx.capacityPriorities,
+        this.ctx.operatingMode,
+        id,
+      ),
+    );
+    const devices = previewDevices.map((device) => ({
+      ...device,
+      priority: previewPriorityByDeviceId[device.id],
+    }));
+    const previewDevice = devices.find((device) => device.id === deviceId);
     return previewDeferredObjectivePlan({
       nowMs: this.ctx.getNow().getTime(),
       timeZone: this.ctx.getTimeZone(),
@@ -376,10 +391,15 @@ export class AppSmartTaskApi {
       // pure read projection (no live-state mutation), so the preview is
       // read-only by construction. Undefined when the device is in neither
       // snapshot → projection comes back `unavailable`.
-      device: candidateDevice,
+      device: previewDevice,
       devices,
       settings: roster.settings,
       activePlans: activePlanRecorder.getActivePlansSnapshot(),
+      getBasePriorityForDevice: (id) => resolveConfiguredDevicePriority(
+        this.ctx.capacityPriorities,
+        this.ctx.operatingMode,
+        id,
+      ),
       isDeviceInSubHome: (id) => !isSmartTaskDeviceInMainHome(this.ctx, id),
       powerTracker: this.ctx.powerTracker,
       dailyBudgetSnapshot,
