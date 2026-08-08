@@ -217,6 +217,7 @@ export const updateSetStepOptionLabel = (
 
   if (!device || !isSteppedLoadControlModel(device)) {
     setOptionLabel(setStepOption, DEFAULT_SET_STEP_OPTION_LABEL);
+    setStepOption.setAttribute('data-short-label', 'Step');
   } else {
     const profile = profileOverride
       ?? getSteppedLoadDraft(device.id)
@@ -228,6 +229,10 @@ export const updateSetStepOptionLabel = (
     setOptionLabel(setStepOption, lowestActiveStepId
       ? `Set to ${formatStepDisplayLabel(lowestActiveStepId)}`
       : DEFAULT_SET_STEP_OPTION_LABEL);
+    setStepOption.setAttribute(
+      'data-short-label',
+      lowestActiveStepId ? formatStepDisplayLabel(lowestActiveStepId) : 'Step',
+    );
   }
 
   if (previousLabel !== getOptionLabel(setStepOption)) {

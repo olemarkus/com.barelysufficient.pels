@@ -5354,11 +5354,14 @@ details[open] > summary .disclosure-chevron {
    typography come from the chip system; tonal teal via custom-property
    overrides matches the eco-palette good-state surface. */
 .detail-mode-row__header .detail-mode-row__active-chip {
-  --md-assist-chip-label-text-color: var(--color-base-good-default);
-  --md-assist-chip-hover-label-text-color: var(--color-base-good-default);
-  --md-assist-chip-focus-label-text-color: var(--color-base-good-default);
-  --md-assist-chip-pressed-label-text-color: var(--color-base-good-default);
-  --md-assist-chip-container-color: color-mix(in srgb, var(--color-base-good-default) 15%, transparent);
+  /* Accent role, not the raw mint base colour: the mint dissolves as small
+     foreground text on the mode-row container, and the accent green is the
+     colour the surrounding switches already use for "on". */
+  --md-assist-chip-label-text-color: var(--color-role-accent);
+  --md-assist-chip-hover-label-text-color: var(--color-role-accent);
+  --md-assist-chip-focus-label-text-color: var(--color-role-accent);
+  --md-assist-chip-pressed-label-text-color: var(--color-role-accent);
+  --md-assist-chip-container-color: color-mix(in srgb, var(--color-role-accent) 12%, transparent);
   --md-assist-chip-outline-color: transparent;
   --md-assist-chip-hover-state-layer-color: transparent;
   --md-assist-chip-pressed-state-layer-color: transparent;

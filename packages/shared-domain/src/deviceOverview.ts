@@ -15,6 +15,7 @@ import {
   normalizeDeviceState,
 } from './deviceStatePredicates';
 import { isSatisfiedTargetOnlyDevice, resolvePlanStateKind } from './planStateLabels';
+import { formatStepDisplayLabel } from './steppedStepLabel';
 import {
   DEVICE_OVERVIEW_ACTIVE,
   DEVICE_OVERVIEW_ACTIVE_CHARGING,
@@ -128,14 +129,16 @@ const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null 
   const reportedStepId = getDeviceOverviewReportedStepId(device);
   const targetStepId = getTargetStepId(device);
 
+  // Step ids surface through the shared display formatter ('32a' → '32 A',
+  // 'low' → 'Low') so the log line matches the card rail's vocabulary.
   if (reportedStepId) {
     if (targetStepId && targetStepId !== reportedStepId) {
-      return `reported: ${reportedStepId} / target: ${targetStepId}`;
+      return `reported: ${formatStepDisplayLabel(reportedStepId)} / target: ${formatStepDisplayLabel(targetStepId)}`;
     }
-    return `reported: ${reportedStepId}`;
+    return `reported: ${formatStepDisplayLabel(reportedStepId)}`;
   }
 
-  return targetStepId ? `target: ${targetStepId}` : null;
+  return targetStepId ? `target: ${formatStepDisplayLabel(targetStepId)}` : null;
 };
 
 const resolvePlannedPowerState = (

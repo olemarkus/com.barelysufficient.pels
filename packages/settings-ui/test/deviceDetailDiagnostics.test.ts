@@ -207,7 +207,7 @@ describe('device detail diagnostics', () => {
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Held-back details');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('18.2C / 22.0C');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('18.2 °C / 22.0 °C');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:00:00');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:15:00');
   });

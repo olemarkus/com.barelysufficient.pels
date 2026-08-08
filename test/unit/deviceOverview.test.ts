@@ -182,7 +182,7 @@ describe('device overview formatter', () => {
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Limited to max',
-      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
+      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: Max)',
       statusMsg: PLAN_STATE_CAPACITY_STATUS,
     });
   });
@@ -197,7 +197,7 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       measuredPowerKw: 0,
       reason: r('keep'),
-    }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: low / target: max)');
+    }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: Low / target: Max)');
   });
 
   it('treats on-like stepped step changes as active mode transitions', () => {
@@ -213,7 +213,7 @@ describe('device overview formatter', () => {
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Active (low → max)',
-      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
+      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: Low / target: Max)',
       statusMsg: 'Waiting before resuming (10s)',
     });
   });
@@ -244,7 +244,7 @@ describe('device overview formatter', () => {
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Active',
-      usageMsg: 'Measured: 0.40 kW / Expected: 1.25 kW (reported: low)',
+      usageMsg: 'Measured: 0.40 kW / Expected: 1.25 kW (reported: Low)',
       statusMsg: '',
     });
   });
@@ -265,7 +265,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(device)).toEqual({
       powerMsg: null,
       stateMsg: 'State unknown',
-      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
+      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: Low / target: Max)',
       statusMsg: 'Waiting before resuming (10s)',
     });
   });
@@ -287,7 +287,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(device)).toEqual({
       powerMsg: null,
       stateMsg: 'Unavailable',
-      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
+      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: Low / target: Max)',
       statusMsg: 'Waiting before resuming (10s)',
     });
   });
@@ -318,7 +318,7 @@ describe('device overview formatter', () => {
 
     expect(getDeviceOverviewReportedStepId(device)).toBe('max');
     expect(formatDeviceOverview(device).usageMsg)
-      .toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: max)');
+      .toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: Max)');
   });
 
   it('handles missing optional values consistently', () => {

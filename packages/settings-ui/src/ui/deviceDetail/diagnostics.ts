@@ -37,9 +37,11 @@ const formatHours = (durationMs: number): string => {
   const hours = durationMs / (60 * 60 * 1000);
   if (hours >= 10) return `${hours.toFixed(0)}h`;
   if (hours >= 1) return `${hours.toFixed(1)}h`;
+  // Whole minutes below the hour, seconds below the minute — "1.3m" is not a
+  // duration anyone reads.
   const minutes = durationMs / (60 * 1000);
-  if (minutes >= 10) return `${minutes.toFixed(0)}m`;
-  return `${minutes.toFixed(1)}m`;
+  if (minutes >= 1) return `${Math.round(minutes)}m`;
+  return `${Math.round(durationMs / 1000)}s`;
 };
 
 const formatCycleDuration = (durationMs: number | null): string => {
@@ -148,7 +150,7 @@ const formatStarvationContext = (starvation: DeviceDiagnosticsStarvationSummary)
 
 const formatStarvationTemperatureTarget = (starvation: DeviceDiagnosticsStarvationSummary): string => {
   if (starvation.currentTemperatureC === null || starvation.intendedNormalTargetC === null) return 'Unavailable';
-  return `${starvation.currentTemperatureC.toFixed(1)}C / ${starvation.intendedNormalTargetC.toFixed(1)}C`;
+  return `${starvation.currentTemperatureC.toFixed(1)} °C / ${starvation.intendedNormalTargetC.toFixed(1)} °C`;
 };
 
 const formatCurrentStarvationStatus = (params: {
