@@ -2,18 +2,8 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { computeBaseRestoreNeed } from './restore/accounting';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { buildShortfallReason } from './planReasonStrings';
-import { getInactiveReason, getEvRestoreStateBlockReason } from './restore/devices';
-import { isEvPhysicallyUnplugged } from '../device/deviceActionProjection';
+import { getInactiveReason } from './restore/devices';
 import type { DevicePlanDevice } from './planTypes';
-
-function resolveEvPhysicalBlockInactiveReason(planDevice: DevicePlanDevice): string | null {
-  // Producer-seam consumer (chunk 2): the EV plug-state gate moved into
-  // `deviceActionProjection.isEvPhysicallyUnplugged`. The existing reason
-  // string emitter is kept unchanged so UI strings don't churn here —
-  // chunk 6 reroutes UI consumers to `commandableNowReason`.
-  if (!isEvPhysicallyUnplugged(planDevice)) return null;
-  return getEvRestoreStateBlockReason(planDevice) ?? null;
-}
 
 export function applyOffStateReason(params: {
   planDevice: DevicePlanDevice;
@@ -22,19 +12,14 @@ export function applyOffStateReason(params: {
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
-  const physicalBlockReason = resolveEvPhysicalBlockInactiveReason(planDevice);
-  if (physicalBlockReason) {
+  if (planDevice.currentState !== 'off') return planDevice;
+  const inactiveReason = getInactiveReason(planDevice);
+  if (inactiveReason) {
     return {
       ...planDevice,
       plannedState: 'inactive',
-      reason: { code: PLAN_REASON_CODES.inactive, detail: physicalBlockReason },
+      reason: inactiveReason,
     };
-  }
-  if (planDevice.currentState !== 'off') return planDevice;
-  // Full inactive check (including power-unknown) is safe once the device is confirmed off.
-  const inactiveReason = getInactiveReason(planDevice);
-  if (inactiveReason) {
-    return { ...planDevice, plannedState: 'inactive', reason: inactiveReason };
   }
   const shouldForceOffStep = guardInShortfall && isSteppedLoadDevice(planDevice);
   const desiredStepId = shouldForceOffStep

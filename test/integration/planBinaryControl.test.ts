@@ -211,11 +211,9 @@ describe('plan binary control helpers', () => {
       canSetControl: false,
     }))).toEqual({ capabilityId: 'evcharger_charging', canSet: false });
 
-    // An unobserved plug-state no longer blocks: the un-narrowed `isEvObserved`
-    // arm defers to the same switch, which treats absence as "nothing known
-    // against commanding".
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' }))).toBeNull();
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' }))).toBeNull();
+    // Resume requires affirmative connected evidence; absence fails closed.
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' }))).toBe('charger state is unknown');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' }))).toBe('charger state is unknown');
     expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' }))).toBe('charger is unplugged');
     expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in_discharging' }))).toBe('charger is discharging');
     expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' }))).toBeNull();
@@ -1406,7 +1404,10 @@ describe('plan binary control helpers', () => {
 
   it('evicts an expired entry when the store get() observes a stale pending', () => {
     const state = createPlanEngineState();
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    const onLifecycle = vi.fn();
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, {
+      onTimedOut: onLifecycle,
+    });
     state.pendingBinaryCommands.socket1 = {
       capabilityId: 'onoff',
       desired: false,
@@ -1419,6 +1420,13 @@ describe('plan binary control helpers', () => {
 
     expect(pending).toBeUndefined();
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
+    expect(onLifecycle).toHaveBeenCalledWith({
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: false,
+      startedAtMs: 1_000,
+      settledAtMs: 21_000,
+    });
     expect(logCapture.findEvent('pending_binary_command_cleared')).toMatchObject({
       reason: 'stale_age',
       deviceId: 'socket1',

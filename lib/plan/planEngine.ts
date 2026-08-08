@@ -48,6 +48,7 @@ import {
   syncPendingBinaryCommands,
   type PendingBinaryCommandStore,
   type PendingBinaryLiveDevice,
+  type BinaryCommandLifecycleListener,
 } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { getLogger, type Logger as PinoLogger, type StructuredDebugEmitter } from '../logging/logger';
@@ -85,6 +86,7 @@ export type PlanEngineDeps = {
   deviceManager: PlanExecutorDeps['deviceManager'];
   getObservedState: PlanExecutorDeps['getObservedState'];
   actuator: Actuator;
+  binaryCommandLifecycle?: BinaryCommandLifecycleListener;
   // --- Capacity/price/budget readers consumed by the builder each cycle.
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -198,7 +200,10 @@ export class PlanEngine {
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
     this.state.isExternalOffHeld = deps.isExternalOffHeld;
-    this.pendingBinaryCommandStore = createPendingBinaryCommandStore(this.state.pendingBinaryCommands);
+    this.pendingBinaryCommandStore = createPendingBinaryCommandStore(
+      this.state.pendingBinaryCommands,
+      deps.binaryCommandLifecycle,
+    );
     this.deviceDiagnostics = deps.deviceDiagnostics;
     this.debugStructuredFn = deps.debugStructured;
     this.structuredLog = deps.structuredLog ?? moduleLogger;

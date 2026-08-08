@@ -217,6 +217,24 @@ describe('filterDevicesForHome identity guard', () => {
 });
 
 describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
+  it('preserves commandability state while meter authority is unavailable', () => {
+    const pruneCommandability = vi.fn();
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: [mainDevice],
+      homeMembership: {
+        hasSubHomes: () => false,
+        getHomeIdForDevice: () => MAIN_HOME_ID,
+        getConfiguredMeterSources: () => ({
+          state: 'unavailable',
+          deviceIds: new Set<string>(),
+        }),
+      } as unknown as NonNullable<ReturnType<typeof createAppContextMock>['homeMembership']>,
+    });
+
+    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID, { pruneCommandability })).toEqual([]);
+    expect(pruneCommandability).not.toHaveBeenCalled();
+  });
+
   it('includes every device while no sub-homes exist', () => {
     const ctx = makeCtx(makeMembershipService(membershipInputs));
     const scope = buildMainHomeScope(ctx);

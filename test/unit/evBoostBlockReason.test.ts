@@ -12,6 +12,11 @@ describe('resolveEvBoostBlockReason', () => {
       .toBe(EV_BOOST_BLOCK_REASONS.plugged_in_discharging);
   });
 
+  it('blocks boost when the charger state is unavailable', () => {
+    expect(resolveEvBoostBlockReason({}))
+      .toBe(EV_BOOST_BLOCK_REASONS.state_unknown);
+  });
+
   it('does not block `plugged_in` — boost is just "command it on now"', () => {
     // Boost blocks on exactly what actuation blocks on, off the same
     // `resolveEvBlockReasonKey` classification. `plugged_in` is commandable
@@ -23,7 +28,5 @@ describe('resolveEvBoostBlockReason', () => {
   it('does not block the resumable / charging states (fall through to SoC checks)', () => {
     expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in_paused' })).toBeNull();
     expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in_charging' })).toBeNull();
-    // No absent-state case: the input is the narrowed `EvObservedFields` shape —
-    // presence is decided once, at the `isEvObserved` guard (unobserved never blocks).
   });
 });

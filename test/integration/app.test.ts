@@ -3935,6 +3935,10 @@ describe('periodic snapshot refresh scheduling', () => {
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
     const persistSpy = vi.spyOn(app as any, 'persistPowerTrackerState');
+    const disposeReachabilitySpy = vi.spyOn(
+      (app as any).serviceWiring.mainHomeScope,
+      'disposeBinaryCommandReachability',
+    );
 
     (app as any).startHeartbeat();
     (app as any).startPowerTrackerPruning();
@@ -3948,6 +3952,7 @@ describe('periodic snapshot refresh scheduling', () => {
     await app.onUninit?.();
 
     expect(persistSpy).toHaveBeenCalled();
+    expect(disposeReachabilitySpy).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
 

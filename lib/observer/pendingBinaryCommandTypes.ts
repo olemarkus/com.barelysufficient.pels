@@ -37,6 +37,7 @@ export type PendingObservationSource =
  */
 export const BINARY_COMMAND_PENDING_MS = 15000;
 export const CLOUD_BINARY_COMMAND_PENDING_MS = 75 * 1000;
+export const EV_START_COMMAND_PENDING_MS = 90 * 1000;
 
 export type CommunicationModel = 'local' | 'cloud' | undefined;
 

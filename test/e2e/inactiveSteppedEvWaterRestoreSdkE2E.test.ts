@@ -26,8 +26,11 @@ import { drainUntilCalledWith } from '../utils/asyncDrain';
 const EV_ID = 'ev-charger';
 const WATER_HEATER_ID = 'water-heater';
 const WATER_HEATER_ONOFF_PATH = `manager/devices/device/${WATER_HEATER_ID}/capability/onoff`;
+const EV_CHARGING_PATH = `manager/devices/device/${EV_ID}/capability/evcharger_charging`;
 
-async function buildInactiveSteppedEv(): Promise<MockDevice> {
+async function buildInactiveSteppedEv(
+  chargingState: 'plugged_out' | 'plugged_in' = 'plugged_out',
+): Promise<MockDevice> {
   const device = new MockDevice(
     EV_ID,
     'BilLader (5E)',
@@ -48,7 +51,7 @@ async function buildInactiveSteppedEv(): Promise<MockDevice> {
   await device.setCapabilityValue('measure_power', 0);
   await device.setCapabilityValue('target_power', 4_140);
   await device.setCapabilityValue('evcharger_charging', false);
-  await device.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+  await device.setCapabilityValue('evcharger_charging_state', chargingState);
   return device;
 }
 
@@ -75,10 +78,10 @@ function reportHomePower(totalW: number): void {
   });
 }
 
-function configureCapacity(): void {
+function configureCapacity(limitKw = 9.2): void {
   const enabledDevices = { [EV_ID]: true, [WATER_HEATER_ID]: true };
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
-  mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 9.2);
+  mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, limitKw);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
@@ -145,5 +148,58 @@ describe('inactive stepped EV and water-heater restore (SDK-boundary e2e)', () =
       WATER_HEATER_ONOFF_PATH,
       { value: true },
     );
+    expect(putSpy).not.toHaveBeenCalledWith(EV_CHARGING_PATH, { value: true });
+  });
+
+  it('falls through to the water heater when the connected EV rejects resume', async () => {
+    const [ev, waterHeater] = await Promise.all([
+      buildInactiveSteppedEv('plugged_in'),
+      buildWaterHeater(),
+    ]);
+    ev.configureCapabilityBehavior('evcharger_charging', { onApiWrite: { accept: false } });
+    setMockDrivers({ driverA: new MockDriver('driverA', [ev, waterHeater]) });
+    configureCapacity(5.1);
+    reportHomePower(900);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
+
+    expect(putSpy).toHaveBeenCalledWith(EV_CHARGING_PATH, { value: true });
+    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+  });
+
+  it('falls through after 90 seconds when the EV accepts resume without charging evidence', async () => {
+    const [ev, waterHeater] = await Promise.all([
+      buildInactiveSteppedEv('plugged_in'),
+      buildWaterHeater(),
+    ]);
+    ev.configureCapabilityBehavior('evcharger_charging', {
+      onApiWrite: {
+        accept: true,
+        updateActual: false,
+        updateApi: false,
+        emitCapabilityEvent: false,
+        emitDeviceUpdate: false,
+      },
+    });
+    setMockDrivers({ driverA: new MockDriver('driverA', [ev, waterHeater]) });
+    configureCapacity(5.1);
+    reportHomePower(900);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, EV_CHARGING_PATH, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    await vi.advanceTimersByTimeAsync(79_999);
+    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    await vi.advanceTimersByTimeAsync(1);
+    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
+
+    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
   });
 });

@@ -506,6 +506,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // writers/tracker-save, so any in-flight rebuild/reconcile/heartbeat/sample
       // continuation dispatched before this point can neither actuate nor persist.
       markTornDown();
+      scope.disposeBinaryCommandReachability();
       planRebuildScheduler.cancelAll('home_bundle_teardown');
       ctx.timers.clear(timerKey('planRebuild'));
       ctx.timers.clear(timerKey('noTreeWarn'));

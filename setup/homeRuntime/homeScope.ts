@@ -33,6 +33,8 @@ import type { PlanEngineDeps } from '../../lib/plan/planEngine';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
+import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
+import { createEvResumeReachability } from '../../lib/executor/evResumeReachability';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
@@ -78,6 +80,8 @@ export type HomeScope = {
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   /** Active planned devices with a unique, gap-free relative priority in this home. */
   getPlanDevices: () => PlanInputDevice[];
+  binaryCommandLifecycle: BinaryCommandLifecycleListener;
+  disposeBinaryCommandReachability: () => void;
   // Persisted-signal writers. Each writes this home's key
   // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home).
   setCapacityInShortfall: (inShortfall: boolean) => void;
@@ -213,6 +217,21 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     // preserving exact single-home behavior.
     isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
   });
+  const evResumeReachability = createEvResumeReachability({
+    requestRebuild: () => {
+      queueMicrotask(() => { void ctx.planService?.rebuildPlanFromCache('binary_command_reachability_changed'); });
+    },
+    scheduleRebuild: (deviceId, dueAtMs) => {
+      const key = `evResumeProbe:${homeId}:${deviceId}`;
+      ctx.timers.registerTimeout(key, setTimeout(() => {
+        ctx.timers.clear(key);
+        void ctx.planService?.rebuildPlanFromCache('binary_command_reachability_deadline');
+      }, Math.max(0, dueAtMs - Date.now())));
+    },
+    clearScheduledRebuild: (deviceId) => {
+      ctx.timers.clear(`evResumeProbe:${homeId}:${deviceId}`);
+    },
+  });
   return {
     homeId,
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
@@ -235,8 +254,13 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // ...plus the external-off release sweep, cache eviction, the membership
       // complement and the planned-set filter — all shared with every sub-home
       // bundle, see `buildHomePlanDevices`.
-      return buildHomePlanDevices(ctx, homeId);
+      return buildHomePlanDevices(ctx, homeId, {
+        projectCommandability: evResumeReachability.project,
+        pruneCommandability: evResumeReachability.prune,
+      });
     },
+    binaryCommandLifecycle: evResumeReachability.lifecycle,
+    disposeBinaryCommandReachability: evResumeReachability.dispose,
     setCapacityInShortfall: (inShortfall) => (
       ctx.homey.settings.set(homeScopedSettingsKey(CAPACITY_IN_SHORTFALL, homeId), inShortfall)
     ),

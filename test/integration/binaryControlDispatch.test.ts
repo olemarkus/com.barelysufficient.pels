@@ -10,6 +10,7 @@ import {
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import {
+  type BinaryCommandLifecycleListener,
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
@@ -95,6 +96,7 @@ const buildTransport = (
     setCapability: ActuatorTransport['setCapability'];
     triggerFlowBackedBinaryControl?: ActuatorTransport['triggerFlowBackedBinaryControl'];
   },
+  lifecycle?: BinaryCommandLifecycleListener,
 ): BinaryControlTransport => {
   const rejectMissingTrigger = () => Promise.reject(new Error('Flow-backed control trigger is unavailable'));
   const actuator = createDeviceActuator({
@@ -104,7 +106,7 @@ const buildTransport = (
   });
   return {
     observation: buildObservation(),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, lifecycle),
     actuator,
   };
 };
@@ -374,6 +376,40 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
     });
   });
 
+  it('reports EV start acceptance/failure and uses the 90 second settle window', async () => {
+    const state = createPlanEngineState();
+    const onDispatchAccepted = vi.fn();
+    const onDispatchFailed = vi.fn();
+    const accepted = buildTransport(state, { setCapability: vi.fn().mockResolvedValue(undefined) }, {
+      onDispatchAccepted,
+      onDispatchFailed,
+    });
+    const decision = {
+      deviceId: 'ev1',
+      name: 'EV',
+      capabilityId: 'evcharger_charging' as const,
+      desired: true,
+      flowBackedControl: false,
+      logContext: 'capacity' as const,
+    };
+
+    await expect(dispatchBinaryControlDecision({ decision, transport: accepted })).resolves.toEqual({ ok: true });
+    expect(state.pendingBinaryCommands.ev1?.pendingMs).toBe(90_000);
+    expect(onDispatchAccepted).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'ev1', capabilityId: 'evcharger_charging', desired: true,
+    }));
+    expect(onDispatchFailed).not.toHaveBeenCalled();
+
+    const failed = buildTransport(createPlanEngineState(), {
+      setCapability: vi.fn().mockRejectedValue(new Error('completed')),
+    }, { onDispatchFailed });
+    await expect(dispatchBinaryControlDecision({ decision, transport: failed })).resolves.toEqual({
+      ok: false,
+      reason: 'dispatch_failed',
+    });
+    expect(onDispatchFailed).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'ev1' }));
+  });
+
   it('returns dispatch_failed when the flow trigger is missing', async () => {
     const state = createPlanEngineState();
     // No flow trigger wired: the actuator's flow-backed branch rejects, so the
@@ -403,6 +439,109 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
     expect(logCapture.findEvent('flow_backed_binary_command_failed')).toMatchObject({
       reasonCode: 'flow_trigger_failed',
     });
+  });
+});
+
+describe('EV start settlement evidence', () => {
+  const pendingStore = () => {
+    const startedMs = Date.now();
+    const backing = createPlanEngineState().pendingBinaryCommands;
+    const store = createPendingBinaryCommandStore(backing);
+    store.record('ev1', {
+      capabilityId: 'evcharger_charging',
+      desired: true,
+      startedMs,
+      pendingMs: 90_000,
+    });
+    return { store, startedMs };
+  };
+  const binaryObservation = (startedMs: number) => ({
+    capabilityId: 'evcharger_charging' as const,
+    observedValue: false,
+    observedAtMs: startedMs + 1_000,
+    observedCapabilityIds: ['evcharger_charging', 'evcharger_charging_state'],
+  });
+
+  it('does not settle from the writable boolean echo while charging state stays idle', () => {
+    const { store, startedMs } = pendingStore();
+    expect(syncPendingBinaryCommands({
+      store,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        evChargingState: 'plugged_in',
+        binaryControlObservation: {
+          ...binaryObservation(startedMs),
+          observedValue: true,
+          observedCapabilityIds: ['evcharger_charging'],
+        },
+      }],
+      source: 'snapshot_refresh',
+    })).toBe(false);
+    expect(store.has('ev1')).toBe(true);
+  });
+
+  it('settles from fresh measured draw or associated-car charging evidence', () => {
+    const { store: measuredStore, startedMs: measuredStartedMs } = pendingStore();
+    expect(syncPendingBinaryCommands({
+      store: measuredStore,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        evChargingState: 'plugged_in',
+        measuredPowerKw: 3.7,
+        measuredPowerObservedAtMs: measuredStartedMs + 1_100,
+      }],
+      source: 'snapshot_refresh',
+    })).toBe(true);
+    expect(measuredStore.has('ev1')).toBe(false);
+
+    const { store: carStore, startedMs: carStartedMs } = pendingStore();
+    expect(syncPendingBinaryCommands({
+      store: carStore,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        evChargingState: 'plugged_in',
+        associatedCar: {
+          carId: 'car1',
+          carName: 'Car',
+          chargingState: 'plugged_in_charging',
+          chargingStateObservedAtMs: carStartedMs + 1_200,
+        },
+      }],
+      source: 'snapshot_refresh',
+    })).toBe(true);
+    expect(carStore.has('ev1')).toBe(false);
+  });
+
+  it('does not settle from pre-command measured draw or car charging evidence', () => {
+    const { store: measuredStore, startedMs: measuredStartedMs } = pendingStore();
+    expect(syncPendingBinaryCommands({
+      store: measuredStore,
+      liveDevices: [{
+        id: 'ev1', name: 'EV', measuredPowerKw: 3.7, measuredPowerObservedAtMs: measuredStartedMs - 1,
+      }],
+      source: 'snapshot_refresh',
+    })).toBe(false);
+    expect(measuredStore.has('ev1')).toBe(true);
+
+    const { store: carStore, startedMs: carStartedMs } = pendingStore();
+    expect(syncPendingBinaryCommands({
+      store: carStore,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        associatedCar: {
+          carId: 'car1',
+          carName: 'Car',
+          chargingState: 'plugged_in_charging',
+          chargingStateObservedAtMs: carStartedMs - 1,
+        },
+      }],
+      source: 'snapshot_refresh',
+    })).toBe(false);
+    expect(carStore.has('ev1')).toBe(true);
   });
 });
 

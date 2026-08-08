@@ -50,10 +50,10 @@ function resolveZaptecChargingStateFromChargeMode(chargeMode: unknown): string |
     chargeMode === 'Connected_Requesting'
     || chargeMode === 'Connected_Finishing'
     || chargeMode === 'Connecting to car'
-    || chargeMode === 'Charging finished'
   ) {
     return 'plugged_in_paused';
   }
+  if (chargeMode === 'Charging finished') return 'plugged_in';
   if (chargeMode === 'Disconnected') return 'plugged_out';
   return undefined;
 }

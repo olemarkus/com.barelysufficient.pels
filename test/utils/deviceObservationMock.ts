@@ -1,4 +1,7 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  AssociatedCarSnapshot,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 
 /**
  * Adds `getSnapshotByDeviceId` derived from the same backing snapshot source
@@ -19,9 +22,11 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
   mock: T,
 ): T & {
   getSnapshotByDeviceId: (deviceId: string) => TargetDeviceSnapshot | undefined;
+  getAssociatedCar: (deviceId: string) => AssociatedCarSnapshot | undefined;
   dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void;
 } => ({
   dispatchObservedStateForDevice: () => {},
+  getAssociatedCar: () => undefined,
   ...mock,
   getSnapshotByDeviceId: (deviceId: string) => mock.getSnapshot().find((entry) => entry.id === deviceId),
 });

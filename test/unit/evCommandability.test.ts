@@ -65,13 +65,9 @@ describe('resolveCommandableNow — EV plug-state sub-classification', () => {
     }
   });
 
-  it('leaves an unread plug-state (undefined) commandable', () => {
-    // `undefined` is not a device state — it collapses a permanently-absent
-    // `evcharger_charging_state` capability (a `car`-class device driven through
-    // `evcharger_charging` never has one), a vendor value outside the enum, and a
-    // cold start. Failing closed on it was a permanent block for the first two.
+  it('blocks an unread plug-state (undefined)', () => {
     expect(evSub(EV)).toEqual({
-      evBlockReason: null,
+      evBlockReason: EV_COMMANDABLE_NOW_REASONS.state_unknown,
       evSessionInactive: false,
       evChargerNotResumable: false,
     });

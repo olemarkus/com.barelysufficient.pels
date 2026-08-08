@@ -27,6 +27,7 @@ import type {
   ExecutableReleaseIntent,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
 import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
@@ -172,13 +173,14 @@ export function buildExecutableObservedDeviceState(
   // (`buildObservedSteppedLoadState`) reads.
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe
-    & { currentOn?: boolean },
+    & { currentOn?: boolean; commandableNow?: boolean },
 ): ExecutableObservedDeviceState {
   return {
     id: snapshot.id,
     name: snapshot.name,
     snapshot,
     available: typeof snapshot.available === 'boolean' ? snapshot.available : null,
+    commandableNow: snapshot.commandableNow ?? resolveCommandableNow({ dev: snapshot }).commandableNow,
     binaryControl: snapshot.binaryControl,
     observedBinaryState: resolveObservedBinaryStateFromSnapshot(snapshot),
     target: buildObservedTargetState(snapshot),

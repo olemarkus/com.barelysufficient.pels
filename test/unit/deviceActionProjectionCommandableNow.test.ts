@@ -83,13 +83,7 @@ describe('resolveCommandableNow — availability', () => {
 });
 
 describe('resolveCommandableNow — no trusted plug state', () => {
-  it('stays commandable when an EV charger has no evChargingState', () => {
-    // `undefined` is not one case but four: a permanently-absent
-    // `evcharger_charging_state` capability (a `car`-class device driven through
-    // `evcharger_charging` never has one), a vendor value outside the Homey enum,
-    // a cold start, and a live-feed gap. Failing closed read as caution but was a
-    // permanent block for the first two, so the gate fails open and the command
-    // outcome decides (`activationBackoff` penalises a device that never draws).
+  it('fails closed when an EV charger has no evChargingState', () => {
     const result = resolveCommandableNow({
       dev: {
         deviceClass: 'evcharger',
@@ -97,8 +91,8 @@ describe('resolveCommandableNow — no trusted plug state', () => {
         evChargingState: undefined,
       },
     });
-    expect(result.commandableNow).toBe(true);
-    expect(result.reason).toBeNull();
+    expect(result.commandableNow).toBe(false);
+    expect(result.reason).toBe('charger state is unknown');
   });
 });
 

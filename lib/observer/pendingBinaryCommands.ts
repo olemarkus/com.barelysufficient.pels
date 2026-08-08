@@ -22,7 +22,12 @@
  * `isPlanActivelyConverging` emptiness probe; no consumer reads or
  * evicts it in place.
  */
-import type { BinaryControlCapabilityId, EvObservedProbe } from '../../packages/contracts/src/types';
+import type {
+  AssociatedCarSnapshot,
+  BinaryControlCapabilityId,
+  EvObservedProbe,
+  MeasuredPowerObservedProbe,
+} from '../../packages/contracts/src/types';
 import {
   type PendingBinaryCommand,
   type PendingObservationSource,
@@ -31,6 +36,7 @@ import {
 } from './pendingBinaryCommandTypes';
 import { getLogger } from '../logging/logger';
 import { formatPendingBinaryObservedValue } from './pendingBinaryCommandFormatting';
+import { MIN_ACTIVE_MEASURED_POWER_KW } from './observedPower';
 
 export type {
   PendingBinaryCommand,
@@ -38,6 +44,22 @@ export type {
 
 const logger = getLogger('observer/pending-binary-commands');
 export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;
+
+export type BinaryCommandLifecycleEvent = {
+  deviceId: string;
+  capabilityId: BinaryControlCapabilityId;
+  desired: boolean;
+  startedAtMs?: number;
+  settledAtMs?: number;
+  evidenceSource?: 'charging_state' | 'measured_power' | 'associated_car' | 'boolean_fallback';
+};
+
+export type BinaryCommandLifecycleListener = {
+  onDispatchAccepted?: (event: BinaryCommandLifecycleEvent) => void;
+  onDispatchFailed?: (event: BinaryCommandLifecycleEvent) => void;
+  onConfirmed?: (event: BinaryCommandLifecycleEvent) => void;
+  onTimedOut?: (event: BinaryCommandLifecycleEvent) => void;
+};
 
 /**
  * Observer-owned facade over the pending-binary-command map. The backing
@@ -52,7 +74,53 @@ export class PendingBinaryCommandStore {
     confirmedAtMs: number;
   }>();
 
-  constructor(private readonly backing: Record<string, PendingBinaryCommand>) {}
+  constructor(
+    private readonly backing: Record<string, PendingBinaryCommand>,
+    private readonly lifecycle?: BinaryCommandLifecycleListener,
+  ) {}
+
+  recordDispatchAccepted(deviceId: string, command: BinaryCommandLifecycleEvent): void {
+    this.lifecycle?.onDispatchAccepted?.({
+      ...command,
+      deviceId,
+      startedAtMs: this.backing[deviceId]?.startedMs,
+      settledAtMs: Date.now(),
+    });
+  }
+
+  recordDispatchFailed(deviceId: string, command: BinaryCommandLifecycleEvent): void {
+    this.lifecycle?.onDispatchFailed?.({
+      ...command,
+      deviceId,
+      startedAtMs: this.backing[deviceId]?.startedMs,
+      settledAtMs: Date.now(),
+    });
+  }
+
+  lifecycleConfirmed(
+    deviceId: string,
+    command: PendingBinaryCommand,
+    observation: PendingBinaryObservationSnapshot,
+  ): void {
+    this.lifecycle?.onConfirmed?.({
+      deviceId,
+      capabilityId: command.capabilityId,
+      desired: command.desired,
+      startedAtMs: command.startedMs,
+      settledAtMs: observation.observedAtMs,
+      evidenceSource: observation.evidenceSource,
+    });
+  }
+
+  lifecycleTimedOut(deviceId: string, command: PendingBinaryCommand): void {
+    this.lifecycle?.onTimedOut?.({
+      deviceId,
+      capabilityId: command.capabilityId,
+      desired: command.desired,
+      startedAtMs: command.startedMs,
+      settledAtMs: Date.now(),
+    });
+  }
 
   /** Record a freshly issued command keyed by `deviceId`; replaces any prior entry. */
   record(deviceId: string, command: PendingBinaryCommand): void {
@@ -137,6 +205,7 @@ export class PendingBinaryCommandStore {
     const nowMs = Date.now();
     if (isPendingBinaryCommandActive({ pending: entry, nowMs })) return entry;
     delete this.backing[deviceId];
+    this.lifecycleTimedOut(deviceId, entry);
     logger.debug({
       event: 'pending_binary_command_cleared',
       reason: 'stale_age',
@@ -175,8 +244,9 @@ export class PendingBinaryCommandStore {
 
 export function createPendingBinaryCommandStore(
   backing: Record<string, PendingBinaryCommand>,
+  lifecycle?: BinaryCommandLifecycleListener,
 ): PendingBinaryCommandStore {
-  return new PendingBinaryCommandStore(backing);
+  return new PendingBinaryCommandStore(backing, lifecycle);
 }
 
 /**
@@ -251,6 +321,7 @@ function reconcilePendingEntry(params: {
     communicationModel: liveDevice?.communicationModel,
   })) {
     store.clear(deviceId);
+    store.lifecycleTimedOut(deviceId, pending);
     logger.debug({
       event: 'pending_binary_command_timed_out',
       deviceId,
@@ -283,6 +354,7 @@ function reconcilePendingEntry(params: {
       source,
       confirmedAtMs: observation.observedAtMs,
     });
+    store.lifecycleConfirmed(deviceId, pending, observation);
     store.clear(deviceId);
     logger.debug({
       event: 'pending_binary_command_confirmed',
@@ -352,13 +424,15 @@ export type PendingBinaryLiveDevice = {
   name: string;
   communicationModel?: 'local' | 'cloud';
   binaryControlObservation?: PendingBinaryObservationSnapshot;
-} & EvObservedProbe;
+  associatedCar?: AssociatedCarSnapshot;
+} & EvObservedProbe & MeasuredPowerObservedProbe;
 
 export type PendingBinaryObservationSnapshot = {
   capabilityId: BinaryControlCapabilityId;
   observedValue: boolean;
   observedAtMs: number;
   observedCapabilityIds: string[];
+  evidenceSource?: BinaryCommandLifecycleEvent['evidenceSource'];
 };
 
 function getSettlingBinaryObservation(
@@ -366,11 +440,16 @@ function getSettlingBinaryObservation(
   pending: PendingBinaryCommand,
 ): PendingBinaryObservationSnapshot | undefined {
   const observation = liveDevice.binaryControlObservation;
+  if (pending.capabilityId === 'evcharger_charging' && pending.desired) {
+    return resolveSettlingEvStartObservation(liveDevice, pending, observation);
+  }
   if (!observation) return undefined;
   if (observation.capabilityId !== pending.capabilityId) return undefined;
   if (!Number.isFinite(observation.observedAtMs)) return undefined;
   if (observation.observedAtMs <= pending.startedMs) return undefined;
-  if (pending.capabilityId === 'evcharger_charging') return resolveSettlingEvObservation(liveDevice, observation);
+  if (pending.capabilityId === 'evcharger_charging') {
+    return resolveSettlingEvObservation(liveDevice, observation);
+  }
   return observation;
 }
 
@@ -378,13 +457,95 @@ function resolveSettlingEvObservation(
   liveDevice: PendingBinaryLiveDevice,
   observation: PendingBinaryObservationSnapshot,
 ): PendingBinaryObservationSnapshot | undefined {
-  const rawStateValue = liveDevice.evChargingState;
-  if (rawStateValue === undefined) {
+  if (liveDevice.evChargingState === undefined) {
     return observation.observedCapabilityIds.includes('evcharger_charging_state')
       ? undefined
       : observation;
   }
-  const observedFromState = observation.observedCapabilityIds.includes('evcharger_charging_state');
-  if (!observedFromState) return undefined;
+  return observation.observedCapabilityIds.includes('evcharger_charging_state')
+    ? observation
+    : undefined;
+}
+
+function resolveSettlingEvStartObservation(
+  liveDevice: PendingBinaryLiveDevice,
+  pending: PendingBinaryCommand,
+  observation: PendingBinaryObservationSnapshot | undefined,
+): PendingBinaryObservationSnapshot | undefined {
+  const validObservation = getValidEvStartBinaryObservation(observation, pending);
+  const stateEvidence = getEvStateEvidence(validObservation);
+  const measuredEvidence = getEvMeasuredPowerEvidence(liveDevice);
+  const carEvidence = getEvAssociatedCarEvidence(liveDevice);
+  const evidence = [
+    ...(stateEvidence ? [stateEvidence] : []),
+    ...(measuredEvidence ? [measuredEvidence] : []),
+    ...(carEvidence ? [carEvidence] : []),
+  ];
+  const confirming = evidence.find((entry) => entry.observedAtMs > pending.startedMs && entry.charging);
+  if (confirming) {
+    return {
+      capabilityId: pending.capabilityId,
+      observedValue: true,
+      observedAtMs: confirming.observedAtMs,
+      observedCapabilityIds: validObservation?.observedCapabilityIds ?? [],
+      evidenceSource: confirming.source,
+    };
+  }
+  if (evidence.length > 0) {
+    return validObservation ? {
+      ...validObservation,
+      observedValue: false,
+      evidenceSource: stateEvidence?.source,
+    } : undefined;
+  }
+  if (liveDevice.evChargingState !== undefined) return undefined;
+  return validObservation ? { ...validObservation, evidenceSource: 'boolean_fallback' } : undefined;
+}
+
+function getValidEvStartBinaryObservation(
+  observation: PendingBinaryObservationSnapshot | undefined,
+  pending: PendingBinaryCommand,
+): PendingBinaryObservationSnapshot | undefined {
+  if (!observation || observation.capabilityId !== pending.capabilityId) return undefined;
+  if (!Number.isFinite(observation.observedAtMs) || observation.observedAtMs <= pending.startedMs) return undefined;
   return observation;
+}
+
+type EvStartEvidence = {
+  observedAtMs: number;
+  charging: boolean;
+  source: NonNullable<BinaryCommandLifecycleEvent['evidenceSource']>;
+};
+
+function getEvStateEvidence(
+  observation: PendingBinaryObservationSnapshot | undefined,
+): EvStartEvidence | undefined {
+  if (!observation?.observedCapabilityIds.includes('evcharger_charging_state')) return undefined;
+  return {
+    observedAtMs: observation.observedAtMs,
+    charging: observation.observedValue,
+    source: 'charging_state',
+  };
+}
+
+function getEvMeasuredPowerEvidence(liveDevice: PendingBinaryLiveDevice): EvStartEvidence | undefined {
+  if (
+    liveDevice.measuredPowerObservedAtMs === undefined
+    || !Number.isFinite(liveDevice.measuredPowerObservedAtMs)
+    || !Number.isFinite(liveDevice.measuredPowerKw)
+  ) return undefined;
+  return {
+    observedAtMs: liveDevice.measuredPowerObservedAtMs,
+    charging: (liveDevice.measuredPowerKw ?? 0) > MIN_ACTIVE_MEASURED_POWER_KW,
+    source: 'measured_power',
+  };
+}
+
+function getEvAssociatedCarEvidence(liveDevice: PendingBinaryLiveDevice): EvStartEvidence | undefined {
+  if (!liveDevice.associatedCar) return undefined;
+  return {
+    observedAtMs: liveDevice.associatedCar.chargingStateObservedAtMs,
+    charging: liveDevice.associatedCar.chargingState === 'plugged_in_charging',
+    source: 'associated_car',
+  };
 }

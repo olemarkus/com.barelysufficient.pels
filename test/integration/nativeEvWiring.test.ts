@@ -582,7 +582,7 @@ describe('native EV wiring shim', () => {
         ...device,
         capabilitiesObj: {
           ...device.capabilitiesObj,
-          charging_button: { value: true, setable: true },
+          charging_button: { value: false, setable: true },
           charge_mode: { value: 'Charging finished' },
           'alarm_generic.car_connected': { value: true },
         },
@@ -590,7 +590,7 @@ describe('native EV wiring shim', () => {
       capabilities: [...device.capabilities!],
       capabilityObj: {
         ...device.capabilitiesObj,
-        charging_button: { value: true, setable: true },
+        charging_button: { value: false, setable: true },
         charge_mode: { value: 'Charging finished' },
         'alarm_generic.car_connected': { value: true },
       },
@@ -615,8 +615,8 @@ describe('native EV wiring shim', () => {
 
     expect(chargingOverlay.capabilityObj.evcharger_charging?.value).toBe(true);
     expect(chargingOverlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in_charging');
-    expect(finishedOverlay.capabilityObj.evcharger_charging?.value).toBe(true);
-    expect(finishedOverlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in_paused');
+    expect(finishedOverlay.capabilityObj.evcharger_charging?.value).toBe(false);
+    expect(finishedOverlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in');
     expect(disconnectedOverlay.capabilityObj.evcharger_charging?.value).toBe(false);
     expect(disconnectedOverlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_out');
   });
@@ -679,7 +679,7 @@ describe('native EV wiring shim', () => {
     expect(normalizedButtonUpdate).toEqual([{ capabilityId: 'evcharger_charging', value: true }]);
     expect(normalizedChargeModeUpdate).toEqual([{
       capabilityId: 'evcharger_charging_state',
-      value: 'plugged_in_paused',
+      value: 'plugged_in',
     }]);
   });
 

@@ -187,6 +187,10 @@ describe('app init plan service wiring', () => {
       debugLoggingTopics: new Set(),
       getStructuredDebugEmitter: () => vi.fn(),
     });
+    serviceCtx.deviceManager = {
+      getAssociatedCar: () => undefined,
+      getSnapshot: () => serviceCtx.latestTargetSnapshot,
+    } as unknown as AppContext['deviceManager'];
     const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx));
 
     const planDevices = (service as unknown as {
@@ -204,6 +208,10 @@ describe('app init plan service wiring', () => {
   it('fails fast when plan engine wiring is missing', () => {
     const ctx = createAppContextMock({
       planEngine: undefined,
+      deviceManager: {
+        getAssociatedCar: () => undefined,
+        getSnapshot: () => [],
+      } as unknown as AppContext['deviceManager'],
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
       isBudgetExempt: () => false,
@@ -213,6 +221,16 @@ describe('app init plan service wiring', () => {
 
     expect(() => createPlanService(ctx, buildMainHomeScope(ctx))).toThrow(
       'PlanEngine must be initialized before plan service setup.',
+    );
+  });
+
+  it('fails fast when plan service device manager wiring is missing', () => {
+    const ctx = createAppContextMock({
+      deviceManager: undefined,
+    });
+
+    expect(() => createPlanService(ctx, buildMainHomeScope(ctx))).toThrow(
+      'DeviceTransport must be initialized before plan engine setup.',
     );
   });
 

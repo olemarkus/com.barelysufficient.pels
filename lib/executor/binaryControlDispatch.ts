@@ -8,7 +8,10 @@ import {
   buildFlowBackedBinaryControlRequestLogMessage,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
-import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
+import {
+  EV_START_COMMAND_PENDING_MS,
+  resolveBinaryCommandPendingMs,
+} from '../observer/pendingBinaryCommandTypes';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
@@ -146,11 +149,13 @@ export async function dispatchBinaryControlDecision(params: {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
+    transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
     emitBinaryCommandSuccess({
       decision,
     });
     return { ok: true };
   } catch (caughtError) {
+    transport.pendingBinaryCommandStore.recordDispatchFailed(decision.deviceId, decision);
     transport.pendingBinaryCommandStore.clear(decision.deviceId);
     emitBinaryCommandFailure({
       decision,
@@ -170,7 +175,9 @@ function recordPendingForDispatch(params: {
     capabilityId: decision.capabilityId,
     desired: decision.desired,
     startedMs: Date.now(),
-    pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel),
+    pendingMs: decision.capabilityId === 'evcharger_charging' && decision.desired
+      ? EV_START_COMMAND_PENDING_MS
+      : resolveBinaryCommandPendingMs(snapshot?.communicationModel),
     flowBackedControl: decision.flowBackedControl,
     logContext: decision.logContext,
     restoreSource: decision.restoreSource,
