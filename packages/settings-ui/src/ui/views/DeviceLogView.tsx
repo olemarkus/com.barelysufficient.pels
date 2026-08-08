@@ -21,30 +21,73 @@ const DeviceLogEmpty = ({ message }: { message: string }) => (
   <p class="pels-text-supporting muted device-log__empty">{message}</p>
 );
 
+// Consecutive entries whose visible content is identical (state chip, power,
+// usage, status) collapse into one row with a repeat count — fifteen identical
+// "Idle / Measured: 0.00 kW" cards read as a stuck ticker, not a log.
+type CollapsedLogEntry = {
+  entry: SettingsUiDeviceLogEntry;
+  repeatCount: number;
+  firstAtMs: number;
+};
+
+const entrySignature = (entry: SettingsUiDeviceLogEntry): string => (
+  [entry.stateMsg, entry.powerMsg ?? '', entry.usageMsg, entry.statusMsg].join('\u0000')
+);
+
+export const collapseRepeatedLogEntries = (
+  entries: SettingsUiDeviceLogEntry[],
+): CollapsedLogEntry[] => {
+  const collapsed: CollapsedLogEntry[] = [];
+  for (const entry of entries) {
+    const previous = collapsed[collapsed.length - 1];
+    if (previous && entrySignature(previous.entry) === entrySignature(entry)) {
+      previous.repeatCount += 1;
+      // Entries arrive newest-first; the run's oldest timestamp is the last
+      // one seen, so the caption can say since when it has been repeating.
+      previous.firstAtMs = entry.atMs;
+      continue;
+    }
+    collapsed.push({ entry, repeatCount: 1, firstAtMs: entry.atMs });
+  }
+  return collapsed;
+};
+
 const DeviceLogEntryRow = ({
-  entry,
+  item,
   formatTimestamp,
 }: {
-  entry: SettingsUiDeviceLogEntry;
+  item: CollapsedLogEntry;
   formatTimestamp: (atMs: number) => string;
-}) => (
-  <li class="device-log__entry">
-    <div class="device-log__entry-head">
-      <span
-        class={`plan-chip plan-chip--${chipModifierForTone(entry.stateTone)}`}
-        data-state-tone={entry.stateTone}
-      >
-        {entry.stateMsg}
-      </span>
-      <time class="pels-text-caption muted device-log__time">{formatTimestamp(entry.atMs)}</time>
-    </div>
-    {entry.powerMsg ? (
-      <p class="pels-text-caption muted device-log__line">{entry.powerMsg}</p>
-    ) : null}
-    <p class="pels-text-caption muted device-log__line">{entry.usageMsg}</p>
-    <p class="pels-text-body device-log__line">{entry.statusMsg}</p>
-  </li>
-);
+}) => {
+  const { entry } = item;
+  return (
+    <li class="device-log__entry">
+      <div class="device-log__entry-head">
+        <span
+          class={`plan-chip plan-chip--${chipModifierForTone(entry.stateTone)}`}
+          data-state-tone={entry.stateTone}
+        >
+          {entry.stateMsg}
+        </span>
+        <time class="pels-text-caption muted device-log__time">{formatTimestamp(entry.atMs)}</time>
+      </div>
+      {entry.powerMsg ? (
+        <p class="pels-text-caption muted device-log__line">{entry.powerMsg}</p>
+      ) : null}
+      <p class="pels-text-caption muted device-log__line">{entry.usageMsg}</p>
+      {/* A chip-only entry keeps the chip as its headline — an empty body row
+          rendered as a broken-looking card. */}
+      {entry.statusMsg ? (
+        <p class="pels-text-body device-log__line">{entry.statusMsg}</p>
+      ) : null}
+      {item.repeatCount > 1 ? (
+        <p class="pels-text-caption muted device-log__line">
+          {`Repeated ${item.repeatCount} times since ${formatTimestamp(item.firstAtMs)}`}
+        </p>
+      ) : null}
+    </li>
+  );
+};
 
 const DeviceLogRoot = ({ state, formatTimestamp }: DeviceLogViewProps) => {
   if (state.status === 'loading') {
@@ -61,10 +104,10 @@ const DeviceLogRoot = ({ state, formatTimestamp }: DeviceLogViewProps) => {
   }
   return (
     <ol class="device-log__list">
-      {state.entries.map((entry) => (
+      {collapseRepeatedLogEntries(state.entries).map((item) => (
         <DeviceLogEntryRow
-          key={`${entry.atMs}-${entry.stateMsg}`}
-          entry={entry}
+          key={`${item.entry.atMs}-${item.entry.stateMsg}`}
+          item={item}
           formatTimestamp={formatTimestamp}
         />
       ))}
