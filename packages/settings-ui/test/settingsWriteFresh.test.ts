@@ -12,6 +12,7 @@ const loadHelper = async () => {
   const setSetting = vi.fn().mockResolvedValue(undefined);
   const logSettingsError = vi.fn().mockResolvedValue(undefined);
   const showToastError = vi.fn().mockResolvedValue(undefined);
+  const showToast = vi.fn().mockResolvedValue(undefined);
 
   vi.doMock('../src/ui/homey.ts', () => ({
     getSettingFresh,
@@ -21,7 +22,7 @@ const loadHelper = async () => {
     logSettingsError,
   }));
   vi.doMock('../src/ui/toast.ts', () => ({
-    showToast: vi.fn().mockResolvedValue(undefined),
+    showToast,
     showToastError,
   }));
 
@@ -31,6 +32,7 @@ const loadHelper = async () => {
     getSettingFresh,
     setSetting,
     logSettingsError,
+    showToast,
     showToastError,
     ...module,
   };
@@ -274,6 +276,56 @@ describe('writeFreshSetting snapshot-fallback semantics', () => {
       'other-device': true,
       'heater-1': true,
     });
+  });
+});
+
+describe('debounced Saved confirmation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it('coalesces a burst of successful writes into one Saved toast', async () => {
+    const { getSettingFresh, writeFreshSetting, showToast } = await loadHelper();
+    getSettingFresh.mockResolvedValue({});
+    const params = {
+      key: 'k',
+      context: 'test',
+      logMessage: 'log',
+      toastMessage: 'toast',
+      fallbackValue: {},
+      mutate: (value: Record<string, unknown>) => value,
+    };
+    await writeFreshSetting(params);
+    await writeFreshSetting(params);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('Saved', 'ok', { durationMs: 1500 });
+  });
+
+  it('cancels a pending Saved toast when a later write fails', async () => {
+    const { getSettingFresh, setSetting, writeFreshSetting, showToast, showToastError } = await loadHelper();
+    getSettingFresh.mockResolvedValue({});
+    const params = {
+      key: 'k',
+      context: 'test',
+      logMessage: 'log',
+      toastMessage: 'toast',
+      fallbackValue: {},
+      mutate: (value: Record<string, unknown>) => value,
+    };
+    await writeFreshSetting(params);
+    setSetting.mockRejectedValueOnce(new Error('sdk blip'));
+    await writeFreshSetting(params);
+    await vi.advanceTimersByTimeAsync(500);
+    // The failure toast must not be overwritten by the stale Saved confirm.
+    expect(showToast).not.toHaveBeenCalled();
+    expect(showToastError).toHaveBeenCalled();
   });
 });
 
