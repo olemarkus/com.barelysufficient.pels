@@ -4975,7 +4975,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .detail-diagnostics-card h4 {
-  margin: 0 0 10px;
+  margin: 0 0 var(--spacing-3);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text);
@@ -5419,6 +5419,7 @@ details[open] > summary .disclosure-chevron {
   display: grid;
   gap: var(--spacing-2);
   margin: 0;
+  align-content: start;
 }
 
 .detail-diagnostics-list div {

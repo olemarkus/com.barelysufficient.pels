@@ -44,8 +44,12 @@ const formatHours = (durationMs: number): string => {
   return `${Math.round(durationMs / 1000)}s`;
 };
 
+// Cycle metrics count different populations: a limited→resumed average needs a
+// completed cycle inside the window, while resumed→limited intervals can exist
+// without one (a device already limited when the window opened). "None in
+// window" keeps the empty label from contradicting a populated neighbour.
 const formatCycleDuration = (durationMs: number | null): string => {
-  if (durationMs === null || !Number.isFinite(durationMs)) return 'No cycles';
+  if (durationMs === null || !Number.isFinite(durationMs)) return 'None in window';
   if (durationMs < 60 * 1000) return `${Math.round(durationMs / 1000)}s`;
   if (durationMs < 60 * 60 * 1000) return `${Math.round(durationMs / (60 * 1000))}m`;
   return `${(durationMs / (60 * 60 * 1000)).toFixed(1)}h`;
@@ -195,8 +199,10 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   });
   const starvationContext = formatStarvationContext(starvation);
   if (deviceDetailDiagnosticsStatus) {
+    // "Restart backoff", not "penalty": the counter tracks the failed-restart
+    // backoff ladder, and "penalty" read as PELS punishing the device.
     deviceDetailDiagnosticsStatus.textContent = [
-      `Current penalty level: L${summary.currentPenaltyLevel}.`,
+      `Restart backoff level: ${summary.currentPenaltyLevel}.`,
       `Status: ${starvationStatus}${starvationContext ? ` - ${starvationContext}` : ''}.`,
     ].join(' ');
   }
@@ -224,11 +230,11 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
       createDiagnosticsMetric('Available power wait', formatHours(windowSummary.blockedByHeadroomMs)),
       createDiagnosticsMetric('Retry wait', formatHours(windowSummary.blockedByCooldownBackoffMs)),
       createDiagnosticsMetric('Failed activations', `${windowSummary.failedActivationCount}`),
-      createDiagnosticsMetric('Avg limit -> resume', formatCycleDuration(windowSummary.avgShedToRestoreMs)),
-      createDiagnosticsMetric('Avg / shortest resume -> limited', restoreToSetbackLabel),
+      createDiagnosticsMetric('Limited → resumed (avg)', formatCycleDuration(windowSummary.avgShedToRestoreMs)),
+      createDiagnosticsMetric('Resumed → limited (avg / shortest)', restoreToSetbackLabel),
       createDiagnosticsMetric(
-        'Penalty history',
-        `Max L${windowSummary.maxPenaltyLevelSeen} · bumps ${windowSummary.penaltyBumpCount}`,
+        'Restart backoff',
+        `Highest level ${windowSummary.maxPenaltyLevelSeen} · raised ${windowSummary.penaltyBumpCount}×`,
       ),
     );
     card.append(title, list);
@@ -246,7 +252,13 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   starvationList.append(
     createDiagnosticsMetric('State', starvationStatus),
     createDiagnosticsMetric('Held-back time', formatStarvationDuration(starvation.starvedAccumulatedMs)),
-    createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
+  );
+  if (starvation.currentTemperatureC !== null || starvation.intendedNormalTargetC !== null) {
+    starvationList.append(
+      createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
+    );
+  }
+  starvationList.append(
     createDiagnosticsMetric(
       'Current reason',
       starvation.starvationCause

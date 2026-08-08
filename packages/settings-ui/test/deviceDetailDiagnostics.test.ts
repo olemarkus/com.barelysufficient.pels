@@ -198,7 +198,7 @@ describe('device detail diagnostics', () => {
     expect(homey.api.mock.calls).toEqual(expect.arrayContaining([
       expect.arrayContaining(['GET', '/ui_device_diagnostics']),
     ]));
-    expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Current penalty level: L2');
+    expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Restart backoff level: 2');
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
       .toContain('Status: Held back for 23m - Waiting for available power');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
@@ -206,7 +206,7 @@ describe('device detail diagnostics', () => {
     expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
     expect(getDiagnosticsMetricValue('Held-back time')).toBe('23m');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Restart backoff');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Held-back details');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('18.2 °C / 22.0 °C');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:00:00');
