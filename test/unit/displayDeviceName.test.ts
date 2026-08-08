@@ -38,4 +38,8 @@ describe('formatDisplayDeviceName', () => {
   it('keeps a meaningful parenthetical that is not a stringified absence', () => {
     expect(formatDisplayDeviceName('Heater (garage)')).toBe('Heater (garage)');
   });
+
+  it('keeps a name that is entirely the artifact rather than stripping to blank', () => {
+    expect(formatDisplayDeviceName('(null)')).toBe('(null)');
+  });
 });
