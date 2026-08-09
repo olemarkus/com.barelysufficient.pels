@@ -1,139 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isEvBoostBlockedByPlugState,
-  isEvChargerNotResumableForDevice,
-  isEvSessionInactiveForDevice,
-  resolveCommandableNow,
-  resolveEvBlockReasonForDevice,
-} from '../../packages/shared-domain/src/commandableNow';
-import { EV_COMMANDABLE_NOW_REASONS } from '../../packages/shared-domain/src/commandableNowReason';
-import type { CommandableNowResolveInput } from '../../packages/shared-domain/src/commandableNow';
+import { isCommandableNow, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 
 const EV = { controlCapabilityId: 'evcharger_charging' as const };
 
-const evSub = (dev: CommandableNowResolveInput) => {
-  const { evBlockReason, evSessionInactive, evChargerNotResumable } = resolveCommandableNow({ dev });
-  return { evBlockReason, evSessionInactive, evChargerNotResumable };
-};
-
-describe('resolveCommandableNow — EV plug-state sub-classification', () => {
-  it('leaves the EV sub-fields commandable for a non-EV device', () => {
-    expect(evSub({ controlCapabilityId: 'onoff' })).toEqual({
-      evBlockReason: null,
-      evSessionInactive: false,
-      evChargerNotResumable: false,
-    });
-    expect(evSub({ deviceClass: 'thermostat' })).toEqual({
-      evBlockReason: null,
-      evSessionInactive: false,
-      evChargerNotResumable: false,
-    });
+describe('resolveCommandableNow', () => {
+  it('is a boolean over two observed facts — plug-state and availability', () => {
+    expect(resolveCommandableNow({ ...EV, evChargingState: 'plugged_in_charging' })).toBe(true);
+    expect(resolveCommandableNow({ ...EV, evChargingState: 'plugged_out' })).toBe(false);
+    expect(resolveCommandableNow({ ...EV, evChargingState: 'plugged_in_paused', available: false })).toBe(false);
+    expect(resolveCommandableNow({ deviceClass: 'thermostat', available: true })).toBe(true);
+    expect(resolveCommandableNow({ deviceClass: 'thermostat', available: false })).toBe(false);
   });
 
-  it('classifies each blocking plug-state for an EV device', () => {
-    expect(evSub({ ...EV, evChargingState: 'plugged_out' })).toEqual({
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_out,
-      evSessionInactive: true,
-      evChargerNotResumable: false,
-    });
-    expect(evSub({ ...EV, evChargingState: 'plugged_in_discharging' })).toEqual({
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging,
-      evSessionInactive: true,
-      evChargerNotResumable: false,
-    });
+  it('asks the plug-state question only of EV devices', () => {
+    // A non-EV device carries no plug-state at all — absence here means exactly
+    // "not an EV charger", never "an EV charger we could not read".
+    expect(resolveCommandableNow({ deviceClass: 'thermostat' })).toBe(true);
   });
 
-  it('leaves `plugged_in` commandable while still marking it not-resumable', () => {
-    // The two questions are separate: PELS may command a bare-connected charger
-    // (no block reason), but the SoC behind it is not creditable progress until
-    // the state moves to `plugged_in_charging` — so the flat bit stays true and
-    // `diagnosticProgress` keeps reporting honestly.
-    expect(evSub({ ...EV, evChargingState: 'plugged_in' })).toEqual({
-      evBlockReason: null,
-      evSessionInactive: false,
-      evChargerNotResumable: true,
-    });
-  });
-
-  it('treats the commandable states as not-blocked', () => {
-    for (const evChargingState of ['plugged_in_charging', 'plugged_in_paused'] as const) {
-      expect(evSub({ ...EV, evChargingState })).toEqual({
-        evBlockReason: null,
-        evSessionInactive: false,
-        evChargerNotResumable: false,
-      });
-    }
-  });
-
-  it('blocks an unread plug-state (undefined)', () => {
-    expect(evSub(EV)).toEqual({
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.state_unknown,
-      evSessionInactive: false,
-      evChargerNotResumable: false,
-    });
-  });
-
-  it('keeps the EV block reason distinct from the general unavailable reason', () => {
-    // An unavailable EV that is otherwise commandable: `reason` reports the
-    // general block, but the EV sub-field stays EV-specific (null).
-    const resolution = resolveCommandableNow({
-      dev: { ...EV, evChargingState: 'plugged_in_charging', available: false },
-    });
-    expect(resolution.commandableNow).toBe(false);
-    expect(resolution.reason).toBe('device unavailable');
-    expect(resolution.evBlockReason).toBeNull();
+  it('leaves an EV device with no plug-state commandable', () => {
+    // Invariant-impossible: such a charger is dropped at the parse boundary. If
+    // one ever reached here it reads as commandable, which is the safe direction —
+    // refusing to command is a one-way door, since shed selection does not consult
+    // commandability while both restore paths do.
+    expect(resolveCommandableNow(EV)).toBe(true);
   });
 });
 
-describe('device-shaped EV resolvers — single materialized input (raw arm retired)', () => {
-  it('reads the producer-resolved flat fields', () => {
-    const dev = {
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_out,
-      evSessionInactive: true,
-      evChargerNotResumable: false,
-    };
-    expect(isEvSessionInactiveForDevice(dev)).toBe(true);
-    expect(isEvChargerNotResumableForDevice(dev)).toBe(false);
-    expect(resolveEvBlockReasonForDevice(dev)).toBe(EV_COMMANDABLE_NOW_REASONS.plugged_out);
-    expect(isEvBoostBlockedByPlugState(dev)).toBe(true);
+describe('isCommandableNow', () => {
+  it('reads the producer-resolved bit and nothing else', () => {
+    expect(isCommandableNow({ commandableNow: false })).toBe(false);
+    expect(isCommandableNow({ commandableNow: true })).toBe(true);
   });
 
-  it('keeps boost unblocked for a not-resumable device (the two questions are separate)', () => {
-    // What the producer materializes for `plugged_in`: no block reason (PELS may
-    // command it), but not-resumable stays true for SoC crediting. Boost reads the
-    // block reason — the same input actuation reads — so it must NOT block here.
-    const dev = {
-      evBlockReason: null,
-      evSessionInactive: false,
-      evChargerNotResumable: true,
-    };
-    expect(isEvSessionInactiveForDevice(dev)).toBe(false);
-    expect(isEvChargerNotResumableForDevice(dev)).toBe(true);
-    expect(resolveEvBlockReasonForDevice(dev)).toBeNull();
-    expect(isEvBoostBlockedByPlugState(dev)).toBe(false);
-  });
-
-  it('defaults to not-blocked when the flat bits are absent (non-EV device)', () => {
-    // The raw `evChargingState` consumer arm is retired: a device with no
-    // materialized flat bits — every non-EV device, and the footgun case of a
-    // hand-constructed input that previously could smuggle in a raw plug-state —
-    // now resolves to not-blocked. The producer is the only reader of the raw
-    // plug-state, so this is the only safe single-input contract.
-    expect(isEvSessionInactiveForDevice({})).toBe(false);
-    expect(isEvChargerNotResumableForDevice({})).toBe(false);
-    expect(resolveEvBlockReasonForDevice({})).toBeNull();
-    expect(isEvBoostBlockedByPlugState({})).toBe(false);
-  });
-
-  it('cannot be bypassed by a hand-constructed non-EV input carrying a stale plug-state', () => {
-    // Previously the device-shaped resolvers dual-read the raw `evChargingState`,
-    // so a non-EV input that smuggled in `evChargingState: 'plugged_out'` would
-    // be classified as session-inactive (the resolvers themselves do not gate on
-    // `isEvDevice`). With the raw arm gone, an unknown extra property is inert —
-    // only the producer-materialized flat bits are honoured.
-    const handConstructed = { evChargingState: 'plugged_out' } as unknown as { evSessionInactive?: boolean; evBlockReason?: string | null };
-    expect(isEvSessionInactiveForDevice(handConstructed)).toBe(false);
-    expect(isEvChargerNotResumableForDevice(handConstructed)).toBe(false);
-    expect(isEvBoostBlockedByPlugState(handConstructed)).toBe(false);
+  it('ignores raw fields sitting alongside the bit', () => {
+    // The dual-read is deleted: raw fields must not change the answer. That
+    // fallback is what made every plan device read "charger state unknown" once
+    // `withEvDiscriminant` stripped the plug-state — it saw absence and answered.
+    const withRawFields = {
+      commandableNow: true,
+      available: false,
+      evChargingState: 'plugged_out',
+    } as unknown as Parameters<typeof isCommandableNow>[0];
+    expect(isCommandableNow(withRawFields)).toBe(true);
   });
 });

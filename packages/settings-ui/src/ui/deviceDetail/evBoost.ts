@@ -3,7 +3,6 @@ import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../contracts/src/evBoost.ts';
 import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/commandableNowReason.ts';
-import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import {
   deviceDetailEvBoost,
@@ -82,7 +81,10 @@ function buildEvBoostStatusText(params: {
 }): string {
   const { device, enabled, boostBelowPercent } = params;
   if (!enabled) return '';
-  const boostBlock = resolveEvBoostBlockReason(isEvObserved(device) ? device : {});
+  // Pass the device straight through: the shared resolver narrows EV-ness itself
+  // and answers off the same plug-state the runtime boost gate uses, so the panel
+  // cannot promise something the runtime will contradict.
+  const boostBlock = resolveEvBoostBlockReason(device);
   if (boostBlock) return boostBlock;
   const stateOfCharge = device.stateOfCharge;
   if (!stateOfCharge || stateOfCharge.status === 'unknown') {

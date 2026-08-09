@@ -68,10 +68,9 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // orthogonal to the stepped axis and off the base, so the `...device`
       // spread does not carry it at the type level. Re-source it explicitly from
       // the prior plan device (which `...device` previously carried wholesale),
-      // then regroup through `withEvDiscriminant`. The flat EV plug-state
-      // sub-fields (`evBlockReason` / `evSessionInactive` / `evChargerNotResumable`)
-      // are base fields re-sourced from the live device so the producer-resolved
-      // decisions follow the freshest observation. Runtime values are byte-identical.
+      // then regroup through `withEvDiscriminant`. The observed `evChargingState`
+      // is re-sourced from the LIVE device (it is an observation, so the freshest
+      // one wins), and `commandableNow` with it.
       const evDevice = isEvPlanDevice(device) ? device : null;
       // The temperature cluster (`currentTarget` / `currentTemperature`) is
       // orthogonal to the stepped axis and off the base, so the `...device`
@@ -82,10 +81,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
         ...device,
         commandableNow: live.commandableNow,
-        commandableNowReason: live.commandableNowReason,
-        evBlockReason: live.evBlockReason,
-        evSessionInactive: live.evSessionInactive,
-        evChargerNotResumable: live.evChargerNotResumable,
+        evChargingState: isEvPlanDevice(live) ? live.evChargingState : undefined,
         evBoost: evDevice?.evBoost,
         evBoostActive: evDevice?.evBoostActive,
         stateOfCharge: evDevice?.stateOfCharge,

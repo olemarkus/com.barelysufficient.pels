@@ -1,5 +1,4 @@
 import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
-import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
@@ -190,12 +189,12 @@ export const applyDeferredBinaryCommand = async (
     });
   }
 
-  // Restore only an off-but-commandable device — i.e. released. Reads the binary
-  // truth (`binaryControl.on`) + producer-resolved commandability, not any
-  // device-specific state string.
-  // Raw snapshot, not a producer-resolved carrier: call the producer explicitly
-  // rather than a helper that would guess from whichever fields are present.
-  if (isBinaryOnOrUnknown(snapshot) || !resolveCommandableNow({ dev: snapshot }).commandableNow) return false;
+  // Restore only an off device — i.e. released. Reads the binary truth
+  // (`binaryControl.on`), not any device-specific state string. Commandability is
+  // NOT re-derived here: `canApplyRestoreSnapshot` below runs the same gate
+  // through `canTurnOnDevice` and logs the skip, so a second silent copy of it
+  // only added a way for the two to disagree.
+  if (isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,

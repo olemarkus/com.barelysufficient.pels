@@ -88,10 +88,18 @@ function applyEvChargingStateObservation(
 ): boolean {
     const snapshot = nextSnapshot;
     if (typeof observation.value !== 'string') return false;
-    // An out-of-enum value is a real transition out of a known state, so
-    // normalise it to `undefined` and apply it — never strand the stale (and
-    // possibly commandable) prior state. A non-string value (above) is ignored.
-    const normalized = isEvChargingState(observation.value) ? observation.value : undefined;
+    // A value outside the Homey enum is a capability-contract violation, and the
+    // contract is enforced by DROPPING the device at parse — an EV charger in the
+    // snapshot always has a valid plug-state (`EvObservedFields`). So this seam
+    // cannot write the violation inward: it ignores the event and lets the next
+    // parse drop the device, which strands the prior state for at most one refresh
+    // (~60 s, `STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS`), with the measured
+    // power axis contradicting a wrongly-retained "charging" belief meanwhile.
+    // This reverses the previous rule here ("normalise to `undefined` and apply it,
+    // never strand the stale state"), which could only be right while an EV device
+    // was allowed to carry no plug-state at all.
+    if (!isEvChargingState(observation.value)) return false;
+    const normalized = observation.value;
     snapshot.evChargingStateObservedAtMs = observation.observedAt;
     if (snapshot.evChargingState === normalized) return false;
     snapshot.evChargingState = normalized;
@@ -114,16 +122,12 @@ function applyEvChargingStateObservation(
     } else {
         delete snapshot.binaryControlObservation;
     }
-    // Session-boundary tracking needs a known plug-state; a normalised-unknown
-    // (`undefined`) transition has no session semantics.
-    if (normalized !== undefined) {
-        updateStateOfChargeSessionBoundary({
-            snapshot,
-            evChargingState: normalized,
-            observedAtMs: observation.observedAt,
-            nowMs: observation.observedAt,
-        });
-    }
+    updateStateOfChargeSessionBoundary({
+        snapshot,
+        evChargingState: normalized,
+        observedAtMs: observation.observedAt,
+        nowMs: observation.observedAt,
+    });
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;

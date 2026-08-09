@@ -323,22 +323,28 @@ describe('EV charger integration', { retry: 2 }, () => {
     },
   );
 
-  it('normalises a vendor charging state outside the enum and fails closed', async () => {
-    // The producer (`getEvChargingState`) maps any value outside the
-    // `evcharger_charging_state` enum to `undefined`, so an unrecognised state is
-    // never surfaced verbatim. Resume now requires affirmative connected
-    // evidence, so the resulting absence blocks rather than issuing a blind ON.
+  it('drops a charger whose vendor state is outside the enum instead of managing it half-blind', async () => {
+    // P0 resolution, at the boundary. `evcharger_charging_state` is a closed Homey
+    // enum; a charger reporting outside it does not implement the capability
+    // contract, so the producer drops the device exactly as it drops one missing
+    // the capability. PELS therefore never sheds it — which is what closes the
+    // one-way door: shed selection does not consult commandability, so a charger
+    // PELS could turn off but not classify was one it could turn off and never
+    // turn back on, parked `inactive` with its starvation clock paused (no card,
+    // no "Let it run now", no diagnostics entry).
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('mystery');
     const app = await createEvApp(charger);
 
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
-    const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.plannedState).toBe('inactive');
+    expect(plan.devices.some((device) => device.id === charger.idValue)).toBe(false);
     expect(charger.getCommandSequence()).toEqual([]);
     // The unrecognised vendor value never reaches a consumer.
     expect(charger.commandLog.some((entry) => entry.value === 'mystery')).toBe(false);
+
+    const snapshot = await refreshSnapshot(app);
+    expect(snapshot.some((entry) => entry.id === charger.idValue)).toBe(false);
   });
 
   it('resumes a paused plugged-in charger during a planned EV deadline bucket', async () => {

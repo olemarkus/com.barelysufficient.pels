@@ -95,7 +95,7 @@ end-to-end, including charger pause/resume actuation:
   `admission.ts` emits `binary_restore`/`binary_release` intents per cycle;
   `lib/plan/planBuilder.ts` collects them via `attachDeferredReleaseIntents`;
   `lib/executor/binaryExecutor.ts` (`applyDeferredBinaryCommand`) actuates pause when the charger
-  is drawing and resume only with affirmative connected evidence — `plugged_in` or
+  is drawing and resume for every state the plug-state does not block — `plugged_in` and
   `plugged_in_paused`; a charger already reporting `plugged_in_charging` is converged;
   `lib/executor/planExecutor.ts` runs stability checks
   (`hasStableBinaryReleaseActuation`). Integration tests under
@@ -104,29 +104,68 @@ end-to-end, including charger pause/resume actuation:
 
 ### Plug-state is not a commandability oracle
 
-PELS attempts resume only from `plugged_in` and `plugged_in_paused`. It blocks
-`plugged_out`, `plugged_in_discharging`, and an absent `evcharger_charging_state`. `resolveEvBlockReasonKey`
-(`packages/shared-domain/src/commandableNowReason.ts`) is the only place that decision is made;
-commandability, the boost gate, and the boost-panel copy all derive from it.
+PELS blocks exactly two plug-states: `plugged_out` and `plugged_in_discharging`.
+Every other state is commandable. `isEvPlugStateCommandable`
+(`packages/shared-domain/src/evPlugState.ts`) is the only place that decision is
+made; commandability, the boost gate, and the boost-panel copy all derive from
+it, and nothing carries a derived copy of the answer — the plug-state itself is
+what the plan device carries, on the EV cluster.
 
-The value is vendor-defined and inconsistent, so nothing finer can be read from it. Easee maps op
-mode 6 "Ready to Charge" AND 7 "Awaiting Authentication" to `plugged_in`, and its Homey
-`evcharger_charging` write calls the Easee `start_charging` command — the authorization the charger
-is waiting for. Wallbox maps its own `Paused` state to `plugged_in` and never emits
-`plugged_in_paused` at all, so treating `plugged_in` as a block meant PELS could not resume a
-charger it had paused itself. go-e and Zaptec can use it for a finished session. PELS therefore
-probes this state: a rejected write fails immediately; an accepted write must produce fresh
-charger-state, measured-power, or associated-car charging evidence within 90 seconds. Failure
-backs off for 15, then 30, then 60 minutes while other loads remain eligible. Verified on production 2026-07-26: PELS wrote
-`evcharger_charging=true` on a charger waiting for approval and the session started.
+The value is vendor-defined and inconsistent, so nothing finer can be read from
+it. Easee maps op mode 6 "Ready to Charge" AND 7 "Awaiting Authentication" to
+`plugged_in`, and its Homey `evcharger_charging` write calls the Easee
+`start_charging` command — the authorization the charger is waiting for. Wallbox
+maps its own `Paused` state to `plugged_in` and never emits `plugged_in_paused`
+at all, so treating `plugged_in` as a block meant PELS could not resume a charger
+it had paused itself. go-e and Zaptec can use it for a finished session. PELS
+therefore probes this state: a rejected write fails immediately; an accepted
+write must produce fresh charger-state, measured-power, or associated-car
+charging evidence within 90 seconds. Failure backs off for 15, then 30, then 60
+minutes while other loads remain eligible. Verified on production 2026-07-26:
+PELS wrote `evcharger_charging=true` on a charger waiting for approval and the
+session started.
 
-Absence is resolved at the capability read and fails closed because it collapses a vendor value
-outside the enum, a cold start, and a transient observation gap. None is affirmative evidence that
-a load-adding command can land.
+**There is no "unknown plug-state" to classify.** Every EV charger has a
+plug-state axis, and PELS requires it of every `evcharger`
+(`managerNativeEv.resolveCandidateCapabilities`, ahead of both control-axis
+bypasses) — `target_power` / stepped-load is the amp/step axis and does not
+substitute for it. `evcharger_charging_state` is a closed Homey enum, so a device
+that claims the capability and reports outside it does not implement the
+contract, and the producer DROPS it
+(`managerParse.shouldDropForEvPlugStateContract`). Consumers therefore never see
+an EV device with an unreadable plug-state, `evChargingState` is REQUIRED on the
+narrowed shape (`isEvObserved` tests EV-ness alone), and no layer needs a policy
+for absence.
 
-Separately: `plugged_in` still means the SoC behind it is NOT creditable objective progress
-(`isEvChargerNotResumable` → `diagnosticProgress`). May-we-command and is-there-a-session are
-different questions; only the second keys off that bit.
+Two absences are distinguished at that gate, and the distinction is load-bearing:
+a payload that REPORTS the capability with a non-enum value is a violation (drop,
+even if an older valid value is retained — keeping it would strand a stale
+plug-state), while a payload that OMITS the capability is an ordinary partial
+`device.update` (retain the last observation; drop only if there has never been
+one). Getting this wrong evicts healthy chargers on every partial update.
+
+Blocking such a charger instead of dropping it was the earlier design, and it was
+a one-way door: shed selection does not consult commandability
+(`lib/plan/shedding/candidateBuilders.ts` gates on writability and observed draw)
+while both restore paths do, so PELS could turn the charger off and never turn it
+back on — parked `inactive`, which also pauses its starvation clock, leaving the
+owner no card, no "Let it run now", and no diagnostics entry. A dropped device is
+never shed in the first place, so the door never opens.
+
+The control axis is what varies, not the state axis: an `evcharger` may be driven
+through `target_power` or a stepped-load profile and never expose
+`evcharger_charging`, which is why those two bypasses exist. They waive the
+CONTROL capability only. Verified against production: the `Elbillader`
+(`8996261a-…`, Zaptec via `charging_button`, `ev_charger_1_phase` preset) is
+exactly that population and its logs carry 282 `evcharger_charging_state`
+observations — the earlier claim in
+`test/integration/evChargerShedReassertCooldownFreeze.test.ts` that it had no
+state capability was wrong, and its fixture has been corrected.
+
+Separately: `plugged_in` still means the SoC behind it is NOT creditable
+objective progress (`isEvChargerNotResumable` → `diagnosticProgress`).
+May-we-command and is-there-a-session are different questions; only the second
+keys off that bit.
 
 ## Where the trust gap is today
 

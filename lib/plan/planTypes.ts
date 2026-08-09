@@ -1,5 +1,6 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { EvChargingState } from '../../packages/contracts/src/types';
+import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -106,11 +107,23 @@ export type NonSteppedLoadKind = Record<never, never>;
  * does not guarantee.
  *
  * The flat EV plug-state sub-fields (`evBlockReason` / `evSessionInactive` /
- * `evChargerNotResumable`) are NOT here: they live on `DevicePlanDeviceBase`
- * alongside `commandableNow`, materialized once by the producer from the
- * observed `evChargingState` (the observer owns the raw plug-state).
+ * `evChargerNotResumable`) are gone: each duplicated a semantic `evChargingState`
+ * already carries, so consumers derive them through
+ * `packages/shared-domain/src/evPlugState.ts` instead.
  */
 export type EvKind = {
+  /**
+   * The observed plug-state, REQUIRED on the narrowed shape for the same reason
+   * `BinaryControlKind.currentOn` is: the parse boundary guarantees it. Every EV
+   * charger exposes `evcharger_charging_state` (the amp/step axis — `target_power`,
+   * stepped-load — is a different axis, not a substitute), and a device that
+   * cannot report a member of the Homey enum for it is dropped rather than
+   * managed. Every plug-state question is answered from this value via
+   * `packages/shared-domain/src/evPlugState.ts`; no derived bit is carried
+   * alongside, and `scripts/check-ev-vocab.mjs` keeps consumers from re-inlining
+   * `plugged_*` literals.
+   */
+  evChargingState: EvChargingState;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -263,16 +276,24 @@ export type EvDiscriminantProbe = {
  * spread upstream could still carry a stale copy in; strip and discard it here so
  * it can never survive onto the regrouped result.
  */
-export function withEvDiscriminant<TBase extends object>(
+export function withEvDiscriminant<TBase extends { deviceClass?: string; controlCapabilityId?: string }>(
   loose: TBase & EvDiscriminantProbe,
-): Omit<TBase, keyof EvDiscriminantProbe> & EvKind {
+):
+  | (Omit<TBase, keyof EvDiscriminantProbe> & EvKind)
+  | Omit<TBase, keyof EvDiscriminantProbe> {
   const {
-    evBoost, evBoostActive, stateOfCharge,
-    evChargingState: _evChargingState,
-    ...base
+    evBoost, evBoostActive, stateOfCharge, evChargingState, ...base
   } = loose;
+  // Discriminated like `withBinaryDiscriminant`: the cluster is attached only to
+  // an actual EV device, so a non-EV device cannot carry a stale plug-state a
+  // spread dragged in. The cast mirrors that regrouper's `?? { on: false }` — an
+  // EV device always has a plug-state (the parse boundary drops one that cannot
+  // report a valid member), so `undefined` here means a hand-built fixture
+  // dropped the value, not a state the planner has to model.
+  if (!isEvDevice(base)) return base;
   return {
     ...base,
+    evChargingState: evChargingState as EvChargingState,
     ...(evBoost !== undefined ? { evBoost } : {}),
     ...(evBoostActive !== undefined ? { evBoostActive } : {}),
     ...(stateOfCharge !== undefined ? { stateOfCharge } : {}),
@@ -434,10 +455,6 @@ type DevicePlanDeviceBase = {
    * fabricated `currentOn: true`.
    */
   commandableNow: boolean;
-  commandableNowReason?: string | null;
-  evBlockReason?: string | null;
-  evSessionInactive?: boolean;
-  evChargerNotResumable?: boolean;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;

@@ -1,10 +1,12 @@
 import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
-import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
+import type {
+  DeviceDescriptor,
+  EvObservedProbe,
+  ObservedDeviceState,
+} from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
-import {
-  isCanSetControl,
-  resolveCommandableNow,
-} from '../device/deviceActionProjection';
+import { isCanSetControl } from '../device/deviceActionProjection';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import {
   type ActivationAttemptSource,
   closeActivationAttemptForShed,
@@ -45,13 +47,18 @@ const isShedThrottled = (params: {
  * the raw producer `TargetDeviceSnapshot`. The full snapshot stays assignable.
  */
 export type CanTurnOnDeviceSnapshot = ObservedDeviceState
-  & Pick<DeviceDescriptor, 'deviceClass' | 'controlCapabilityId' | 'capabilities' | 'canSetControl'>;
+  & Pick<DeviceDescriptor, 'deviceClass' | 'controlCapabilityId' | 'capabilities' | 'canSetControl'>
+  // Producer-fed funnel: `ObservedDeviceState` omits `evChargingState` by design,
+  // but the transport snapshots this gate is called with physically carry it, and
+  // the gate resolves commandability from it. Widening with the probe is what
+  // makes that read visible in the type instead of happening behind its back.
+  & EvObservedProbe;
 
 export const canTurnOnDevice = (snapshot?: CanTurnOnDeviceSnapshot): boolean => {
   if (!snapshot) return false;
   // `canTurnOnDevice` takes a raw observed snapshot, so this IS the producer
   // call — the one sanctioned reader of the plug-state for this carrier.
-  if (!resolveCommandableNow({ dev: snapshot }).commandableNow) return false;
+  if (!resolveCommandableNow(snapshot)) return false;
   if (!isCanSetControl({
     controlCapabilityId: snapshot.controlCapabilityId,
     capabilities: snapshot.capabilities,

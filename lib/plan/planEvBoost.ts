@@ -33,10 +33,9 @@ export function emitEvBoostStateChange(params: {
     percent: typeof stateOfCharge?.percent === 'number' ? stateOfCharge.percent : null,
     boostBelowPercent: typeof boostBelowPercent === 'number' ? boostBelowPercent : null,
     status: stateOfCharge?.status ?? null,
-    // Observer owns the raw `evChargingState`; the planner carries the resolved
-    // block reason as a flat base field. Log that instead (null when the charger
-    // is commandable).
-    evBlockReason: dev.evBlockReason ?? null,
+    // The plug-state itself, off the EV cluster: it is what every commandability
+    // question is answered from, so it is what the log should show.
+    evChargingState: ev?.evChargingState ?? null,
   });
 }
 
@@ -51,9 +50,12 @@ export function buildBoostPlanDeviceFields(params: {
   | 'temperatureBoostActive'
   | 'boostActive'
   | 'surplusAbsorbActive'
-> & EvKind {
+> & Partial<EvKind> {
   const { dev, temperatureBoostActive, evBoostActive, surplusAbsorbActive } = params;
-  // The EV cluster (`evBoost`, `stateOfCharge`) is sourced only from EV
+  // Returns the EV cluster as a PARTIAL: these fields are collected into a loose
+  // bag that only becomes an `EvKind` when `withEvDiscriminant` regroups it at the
+  // construction site — which is also where EV-ness is decided.
+  // The EV cluster (`evChargingState`, `evBoost`, `stateOfCharge`) is sourced only from EV
   // devices; gate the reads on the EV narrowing. `evBoostActive` is resolved by
   // the caller and carried regardless (it is `false` for non-EV devices). The
   // returned `EvKind` is regrouped onto the variant by `withEvDiscriminant` at
@@ -66,6 +68,7 @@ export function buildBoostPlanDeviceFields(params: {
     temperatureBoostActive,
     boostActive: resolveBoostActive({ temperatureBoostActive, evBoostActive }),
     surplusAbsorbActive,
+    evChargingState: ev?.evChargingState,
     evBoost: ev?.evBoost,
     evBoostActive,
     stateOfCharge: ev?.stateOfCharge,

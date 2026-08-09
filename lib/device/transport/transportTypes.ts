@@ -213,11 +213,24 @@ export const createPeakPowerLogState = (): Map<string, { signature: string; emit
 // field cannot leave a second construction site behind.
 export { buildEmptyLivePowerReport } from './managerFetch';
 
+/**
+ * Whether a raw capability write may stand as binary settlement evidence.
+ *
+ * Never for `evcharger_charging`: a charger's binary axis is
+ * session-state-authoritative, so the plug-state observation is the evidence and
+ * the raw boolean is not. The "unless the plug-state is absent" escape this used
+ * to carry is gone with the case it covered — a device exposing
+ * `evcharger_charging` must also expose `evcharger_charging_state` (capability
+ * gate, `managerParse.ts`) and that capability must report a member of the Homey
+ * enum or the device is dropped (contract gate, `managerParseDeviceFields.ts`).
+ * An `evcharger` with no plug-state at all is the `target_power`/stepped-load
+ * population, which has no `evcharger_charging` capability to ask about.
+ */
 export function isRawBinarySettlementEvidenceAllowed(
-    snapshot: TransportDeviceSnapshot,
+    _snapshot: TransportDeviceSnapshot,
     capabilityId: string,
 ): boolean {
-    return capabilityId !== 'evcharger_charging' || snapshot.evChargingState === undefined;
+    return capabilityId !== 'evcharger_charging';
 }
 
 export function summarizeSnapshotRefreshMetrics(snapshot: TransportDeviceSnapshot[]): SnapshotRefreshMetrics {

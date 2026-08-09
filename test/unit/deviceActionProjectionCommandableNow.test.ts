@@ -15,84 +15,69 @@ import {
   isEvPhysicallyUnplugged,
   resolveBoostActive,
   resolveCanSetControl,
-  resolveCommandableNow,
 } from '../../lib/device/deviceActionProjection';
-import { isEvSessionInactive } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
 
 describe('resolveCommandableNow — EV plug state', () => {
   it('returns commandableNow=false when the charger is plugged_out', () => {
-    const result = resolveCommandableNow({
-      dev: {
+    const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_out',
-      },
     });
-    expect(result.commandableNow).toBe(false);
-    expect(result.reason).toBe('charger is unplugged');
+    expect(commandableNow).toBe(false);
   });
 
   it('returns commandableNow=true when the charger is plugged_in_charging', () => {
-    const result = resolveCommandableNow({
-      dev: {
+    const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
-      },
     });
-    expect(result.commandableNow).toBe(true);
-    expect(result.reason).toBeNull();
+    expect(commandableNow).toBe(true);
   });
 
   it('returns commandableNow=true when the charger is plugged_in_paused', () => {
-    const result = resolveCommandableNow({
-      dev: {
+    const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
-      },
     });
-    expect(result.commandableNow).toBe(true);
+    expect(commandableNow).toBe(true);
   });
 
   it('returns commandableNow=false when discharging', () => {
-    const result = resolveCommandableNow({
-      dev: {
+    const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_discharging',
-      },
     });
-    expect(result.commandableNow).toBe(false);
-    expect(result.reason).toBe('charger is discharging');
+    expect(commandableNow).toBe(false);
   });
 });
 
 describe('resolveCommandableNow — availability', () => {
   it('returns commandableNow=false when available is explicitly false', () => {
-    const result = resolveCommandableNow({ dev: { available: false } });
-    expect(result.commandableNow).toBe(false);
-    expect(result.reason).toBe('device unavailable');
+    expect(resolveCommandableNow({ available: false })).toBe(false);
   });
 
   it('returns commandableNow=true for a generic non-EV available device', () => {
-    const result = resolveCommandableNow({ dev: { deviceClass: 'thermostat', available: true } });
-    expect(result.commandableNow).toBe(true);
-    expect(result.reason).toBeNull();
+    expect(resolveCommandableNow({ deviceClass: 'thermostat', available: true })).toBe(true);
   });
 });
 
 describe('resolveCommandableNow — no trusted plug state', () => {
-  it('fails closed when an EV charger has no evChargingState', () => {
-    const result = resolveCommandableNow({
-      dev: {
+  it('stays commandable when an EV charger has no evChargingState', () => {
+    const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: undefined,
-      },
     });
-    expect(result.commandableNow).toBe(false);
-    expect(result.reason).toBe('charger state is unknown');
+    // Fails OPEN: an unclassifiable vendor value is permanent, shed does not
+    // consult commandability, and blocking would leave the charger off with no
+    // way back. PELS probes instead — see `resolveEvPlugBlock`.
+    expect(commandableNow).toBe(true);
   });
 });
 
@@ -235,26 +220,25 @@ describe('isEvSessionInactive — shared plug-state predicate', () => {
     expect(isEvSessionInactive('plugged_in_charging')).toBe(false);
     expect(isEvSessionInactive('plugged_in_paused')).toBe(false);
     expect(isEvSessionInactive('plugged_in')).toBe(false);
-    expect(isEvSessionInactive(undefined)).toBe(false);
+
   });
 
   it('composes the isEvDevice guard with the producer-resolved session bit', () => {
     // The bare plug-state predicate does NOT gate on EV-ness; isEvPhysicallyUnplugged
-    // adds the isEvDevice guard so a non-EV device is never an "EV physical block".
-    // The session decision itself now reads the producer-materialized
-    // `evSessionInactive` flat bit (the raw `evChargingState` consumer arm is retired).
+    // narrows through `isEvObserved` first, so a device carrying a stray plug-state
+    // without an EV identity is never an "EV physical block".
     expect(isEvSessionInactive('plugged_out')).toBe(true);
     // Materialized session-inactive but NOT an EV device → not a physical block.
-    expect(isEvPhysicallyUnplugged({ evSessionInactive: true })).toBe(false);
+    expect(isEvPhysicallyUnplugged({ evChargingState: 'plugged_out' })).toBe(false);
     expect(isEvPhysicallyUnplugged({
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
-      evSessionInactive: true,
+      evChargingState: 'plugged_out',
     })).toBe(true);
     expect(isEvPhysicallyUnplugged({
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
-      evSessionInactive: false,
+      evChargingState: 'plugged_in_charging',
     })).toBe(false);
   });
 });

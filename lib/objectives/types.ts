@@ -1,4 +1,5 @@
 import type {
+  EvChargingState,
   BinaryControlCapabilityId,
   DeviceStateOfChargeSnapshot,
   SteppedLoadProfile,
@@ -44,12 +45,19 @@ export type ObjectiveDeviceInput = {
   controlCapabilityId?: BinaryControlCapabilityId;
   steppedLoadProfile?: SteppedLoadProfile;
   priority?: number;
-  // Producer-resolved EV plug-state decisions (the observer owns the raw
-  // `evChargingState`); read via the shared `isEvSessionInactiveForDevice` /
-  // `isEvChargerNotResumableForDevice` resolvers (materialized-only — the raw
-  // `evChargingState` consumer arm is retired).
-  evSessionInactive?: boolean;
-  evChargerNotResumable?: boolean;
+  // The observed `evcharger_charging_state` capability, produced by the transport
+  // parser (`lib/device/transport/managerParseDeviceFields.ts`) and forwarded
+  // unchanged on the `PlanInputDevice` that reaches this layer. Present for every
+  // EV charger — the parser requires the capability of every `evcharger` and a
+  // member of the Homey enum for its value, dropping the device otherwise — and
+  // absent for everything else, which is why it is optional on this contract.
+  // A partial `device.update` that omits the capability retains the previous
+  // valid observation; only a device with no valid observation at all is dropped.
+  // Read through `isEvObserved` + the shared `isEvSessionInactive` /
+  // `isEvChargerNotResumable` classifiers — never by re-inlining plug-state
+  // literals. The flat `evSessionInactive` / `evChargerNotResumable` bits this
+  // replaced were producer-materialized duplicates of exactly this value.
+  evChargingState?: EvChargingState;
   // Producer-resolved "Leave off until turned on again" posture: the user turned
   // the device off outside PELS and asked PELS to respect that. Structurally
   // assignable from `PlanInputDevice`, which carries the same flat bit.

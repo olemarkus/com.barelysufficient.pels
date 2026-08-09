@@ -1,7 +1,7 @@
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { resolveCommandabilityDetail } from '../../packages/shared-domain/src/commandableNowReason';
 import {
   getBinaryControlPlan,
-  getEvRestoreBlockReason,
 } from '../../lib/plan/planBinaryControl';
 import {
   createPendingBinaryCommandStore,
@@ -211,12 +211,10 @@ describe('plan binary control helpers', () => {
       canSetControl: false,
     }))).toEqual({ capabilityId: 'evcharger_charging', canSet: false });
 
-    // Resume requires affirmative connected evidence; absence fails closed.
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' }))).toBe('charger state is unknown');
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' }))).toBe('charger state is unknown');
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' }))).toBe('charger is unplugged');
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in_discharging' }))).toBe('charger is discharging');
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' }))).toBeNull();
+    // The executor's restore-skip wording comes from the same resolver the device
+    // card uses, over the same observed plug-state.
+    expect(resolveCommandabilityDetail(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' }))).toBe('charger is unplugged');
+    expect(resolveCommandabilityDetail(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in_discharging' }))).toBe('charger is discharging');
   });
 
   it('handles EV and standard binary control actions', async () => {

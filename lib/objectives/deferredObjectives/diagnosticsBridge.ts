@@ -9,7 +9,8 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { isEvSessionInactiveForDevice } from '../../../packages/shared-domain/src/commandableNow';
+import { isEvSessionInactive } from '../../../packages/shared-domain/src/evPlugState';
+import { isEvObserved } from '../../../packages/shared-domain/src/evObservedState';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
@@ -366,7 +367,7 @@ const resolveExternalOffReportedStatus = (
   if (device?.externalOffHoldActive !== true) return diagnostic;
   // An EV that is also unplugged keeps its own, more immediate reason; the hold
   // is still stored and reappears once the car is reconnected.
-  if (isEvSessionInactiveForDevice(device)) return diagnostic;
+  if (isEvObserved(device) && isEvSessionInactive(device.evChargingState)) return diagnostic;
   return { ...diagnostic, externalOffHoldActive: true };
 };
 

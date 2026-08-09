@@ -44,7 +44,8 @@
 
 import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
-import { resolveCommandableNow } from '../lib/device/deviceActionProjection';
+import { isEvSessionInactive } from '../packages/shared-domain/src/evPlugState';
+import { isEvObserved } from '../packages/shared-domain/src/evObservedState';
 import type {
   EvObservedProbe,
   TargetDeviceSnapshot,
@@ -99,7 +100,10 @@ export function toExternalOffHoldObservedDevice(
     binaryAxisObservedAtMs: device.controlCapabilityId === 'evcharger_charging'
       ? device.evChargingObservedAtMs
       : device.binaryControlObservation?.observedAtMs,
-    evSessionInactive: resolveCommandableNow({ dev: device }).evSessionInactive,
+    // The device's own session question, asked directly of the decided
+    // plug-state — this seam wants only that bit, not a whole commandability
+    // resolution it would then throw away.
+    evSessionInactive: isEvObserved(device) && isEvSessionInactive(device.evChargingState),
   };
 }
 

@@ -56,6 +56,6 @@ export function buildPlanInputDevice(
     // leaving it undefined, so no consumer can read absence as "not commandable".
     // Spread LAST and `??`-guarded so an explicit `commandableNow: undefined`
     // override cannot erase the required field, while an explicit `false` stands.
-    commandableNow: commandableNow ?? resolveCommandableNow({ dev: rest }).commandableNow,
+    commandableNow: commandableNow ?? resolveCommandableNow(rest),
   } as unknown as PlanInputDevice;
 }

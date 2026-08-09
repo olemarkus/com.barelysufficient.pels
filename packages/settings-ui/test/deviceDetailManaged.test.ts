@@ -1906,14 +1906,24 @@ describe('device detail managed state saves', () => {
 
   it.each([
     {
-      title: 'blocks EV boost when charger state is unavailable',
+      // The runtime boosts (and probes) a charger whose plug-state it could not
+      // classify, so the panel must not promise the opposite — it falls through
+      // to the battery-level line like any other connected charger.
+      title: 'does not block EV boost when the charger state could not be classified',
       evChargingState: undefined,
-      expected: 'Charger state is unavailable. Boost will not activate.',
+      expected: 'Boost active when planning: 32% < 40%.',
     },
     {
       title: 'allows EV boost for a bare-connected charger',
       evChargingState: 'plugged_in' as const,
       expected: 'Boost active when planning: 32% < 40%.',
+    },
+    {
+      // The panel still blocks on the two states the runtime blocks on, and the
+      // copy comes from the same classification the boost gate uses.
+      title: 'blocks EV boost when no car is connected',
+      evChargingState: 'plugged_out' as const,
+      expected: 'Car not connected. Boost will not activate.',
     },
   ])('$title', async ({ evChargingState, expected }) => {
     vi.doMock('../src/ui/devices.ts', () => ({
