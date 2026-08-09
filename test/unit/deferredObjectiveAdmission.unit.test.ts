@@ -2,6 +2,7 @@ import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjective
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredReleaseIntents,
   buildDeferredTargetOverrides,
 } from '../../lib/objectives/deferredObjectives/admission';
 import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
@@ -65,6 +66,11 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
   plannedBuckets: [],
   usesDeadlineReserve: false,
   priceDeferralEligible: false,
+  // Self-consistent with the booked current bucket above. Cases that mean "the task
+  // booked nothing here" override the bucket and the claim together — the producer
+  // resolves both from the same allocation, so a fixture that moved only one would
+  // describe a plan the producers cannot emit.
+  currentHourClaim: 'claimed',
   ...overrides,
 });
 
@@ -105,6 +111,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'dev1',
       horizonPlan: buildHorizonPlan({
         currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentHourClaim: 'released',
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
@@ -123,6 +130,7 @@ describe('applyDeferredObjectiveAdmission', () => {
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
         currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentHourClaim: 'released',
       }),
     });
     const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
@@ -143,6 +151,7 @@ describe('applyDeferredObjectiveAdmission', () => {
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
         currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentHourClaim: 'released',
       }),
     });
     expect(applyDeferredObjectiveAdmission([idle], [device]).get('ev1'))
@@ -170,6 +179,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     };
     const idleHorizon = {
       currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+      currentHourClaim: 'released' as const,
     };
     for (const horizon of [{}, idleHorizon]) {
       const evDecision = applyDeferredObjectiveAdmission(
@@ -187,17 +197,89 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('returns idle when the current bucket is missing entirely', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
-      horizonPlan: buildHorizonPlan({ currentBucket: null }),
+      horizonPlan: buildHorizonPlan({ currentBucket: null, currentHourClaim: 'released' }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
     expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
+  });
+
+  // An hour can be booked at 0 simply because the soft daily budget's forecast
+  // controlled share for it was 0, which is not a reason to stop a task that is
+  // behind. These four pin the split: the same unbooked hour releases the device
+  // when the plan is covered, and leaves it on the planner's normal lane when it
+  // is not.
+  const shortUnbookedHour = {
+    currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+    status: 'cannot_meet' as const,
+    statusDetail: 'target_cannot_be_met' as const,
+    plannedUsefulEnergyKWh: 0.5,
+    unplannedUsefulEnergyKWh: 1,
+    currentHourClaim: 'unclaimed' as const,
+  };
+
+  it('returns unclaimed for an unbooked hour while the booked hours do not cover the need', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'dev1',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      horizonPlan: buildHorizonPlan(shortUnbookedHour),
+    });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    expect(decisions.get('dev1')).toEqual({ kind: 'unclaimed', budgetExempt: false });
+  });
+
+  it('does not command a binary EV charger off in an unbooked hour while the task is short', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveId: 'ev1:ev_soc',
+      objectiveKind: 'ev_soc',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', ...shortUnbookedHour }),
+    });
+    const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
+    const decision = applyDeferredObjectiveAdmission([diagnostic], [device]).get('ev1');
+    expect(decision).toEqual({ kind: 'unclaimed', budgetExempt: false });
+    expect(decision).not.toHaveProperty('releaseIntent');
+  });
+
+  it('hands an unclaimed cap-off device to the planner as managed without seeding the shed set', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveId: 'ev1:ev_soc',
+      objectiveKind: 'ev_soc',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', ...shortUnbookedHour }),
+    });
+    const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    const applied = applyDeferredAdmissionToInput([device], decisions);
+    // Managed, so it competes on its own priority in the normal shed/restore lane.
+    expect(applied.devices[0]?.controllable).toBe(true);
+    // Not force-shed, and none of the claims a planned hour would carry.
+    expect(applied.forceShedSet.has('ev1')).toBe(false);
+    expect(applied.devices[0]).not.toHaveProperty('forceBoostActive');
+    expect(applied.devices[0]?.budgetExempt).toBeUndefined();
+    expect(applied.devices[0]?.reservesStartupPower).toBeUndefined();
+    expect(buildDeferredReleaseIntents(decisions)).toEqual({});
+  });
+
+  it('stamps no deadline floor target on an unclaimed hour', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      objectiveKind: 'temperature',
+      targetTemperatureC: 70,
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      horizonPlan: buildHorizonPlan(shortUnbookedHour),
+    });
+    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
   });
 
   it('returns inactive when the goal is already satisfied so the device falls back to its normal behavior', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
       trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
     expect(decisions.get('dev1')).toEqual({ kind: 'inactive', budgetExempt: false });
@@ -208,7 +290,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
       trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
@@ -220,7 +304,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
       trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     const device = buildEvDevice({ id: 'ev1', controllable: true });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
@@ -232,7 +318,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'heater1',
       objectiveKind: 'temperature',
       trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
@@ -248,7 +336,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'heater2',
       objectiveKind: 'temperature',
       trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     // Cap-on devices stay on the planner's normal lane; emitting a release intent there would
     // race the planner's own decisions.
@@ -324,7 +414,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'dev2',
       trajectory: { kind: 'resolved', status: 'satisfied' },
       budgetExemptApplied: true,
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     expect(applyDeferredObjectiveAdmission([satisfied]).get('dev2'))
       .toEqual({ kind: 'inactive', budgetExempt: false });
@@ -341,6 +433,7 @@ describe('applyDeferredObjectiveAdmission', () => {
           plannedUsefulEnergyKWh: 0,
           expectedStepId: null,
         },
+        currentHourClaim: 'released',
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([idle]);
@@ -368,7 +461,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'dev2',
       trajectory: { kind: 'resolved', status: 'satisfied' },
       limitLowerPriorityApplied: true,
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     expect(applyDeferredObjectiveAdmission([satisfied]).get('dev2'))
       .toEqual({ kind: 'inactive', budgetExempt: false });
@@ -393,7 +488,9 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'dev2',
       trajectory: { kind: 'resolved', status: 'satisfied' },
       pauseLowerPriorityApplied: true,
-      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
     });
     expect(applyDeferredObjectiveAdmission([satisfied]).get('dev2'))
       .toEqual({ kind: 'inactive', budgetExempt: false });
@@ -422,7 +519,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('idles a price-deferred current hour and emits shed_release for a cap-off device', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
-      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true }),
+      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
@@ -432,7 +529,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('idles a price-deferred current hour with no release intent for a cap-on device', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
-      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true }),
+      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
     });
     const device = buildEvDevice({ id: 'heater1', controllable: true });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
@@ -443,7 +540,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
-      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', priceDeferralEligible: true }),
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', priceDeferralEligible: true, currentHourClaim: 'released' }),
     });
     const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
@@ -479,6 +576,7 @@ describe('buildDeferredTargetOverrides', () => {
       deviceId: 'heater1',
       horizonPlan: buildHorizonPlan({
         currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentHourClaim: 'released',
       }),
     });
     expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
@@ -491,7 +589,7 @@ describe('buildDeferredTargetOverrides', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       targetTemperatureC: 65,
-      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true }),
+      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
     });
     expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
   });
@@ -512,6 +610,7 @@ describe('resolveDeferredAvoidDeviceIds', () => {
         status: 'at_risk',
         statusDetail: 'feasible_above_floor',
         priceDeferralEligible: true,
+        currentHourClaim: 'released',
       }),
     });
     expect(resolveDeferredAvoidDeviceIds([diagnostic]).has('heater1')).toBe(true);

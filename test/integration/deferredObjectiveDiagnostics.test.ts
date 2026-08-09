@@ -1,4 +1,9 @@
-import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
+import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
+import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
+import {
+  resolvedTrajectoryStatus,
+  type DeferredObjectiveDiagnostic,
+} from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
@@ -41,6 +46,22 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // `evChargingState` (mirroring the production producer `toPlanDevice`) so these
 // objective-diagnostics fixtures exercise the materialized path the planner
 // actually consumes, not the raw snapshot-fallback arm of the dual-read.
+// Every diagnostic the bridge emits must carry the claim its OWN reported cause
+// implies — the cause the recorder will persist and the frozen read will replay.
+// Bridge overlays that rewrite `reasonCode` after the plan is built are what can
+// break it (`resolveHigherPriorityContentionStatus`), so this is asserted wherever
+// an overlay is in play rather than only where the values happen to differ today.
+const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | undefined): void => {
+  const plan = diag?.horizonPlan;
+  expect(plan).toBeDefined();
+  expect(plan?.currentHourClaim).toBe(resolveCurrentHourClaim({
+    currentBucketBookedKWh: plan?.currentBucket?.plannedUsefulEnergyKWh ?? null,
+    priceDeferralEligible: plan?.priceDeferralEligible === true,
+    coldStartReleaseEligible: plan?.coldStartReleaseEligible === true,
+    floorShortfallCause: resolveFloorShortfallCause(diag?.reasonCode),
+  }));
+};
+
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
 ): PlanInputDevice => withMaterializedEvPlugState({
@@ -1057,6 +1078,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       replaceCommitment: true,
     });
     expect(lowHours.every((hour) => !highHours.has(hour))).toBe(true);
+
+    // The contention overlay rewrites `statusDetail` AFTER the plan resolved its
+    // claim, and the recorder derives the persisted `floorShortfallCause` from the
+    // rewritten `reasonCode`. So the claim has to be re-resolved with it: inheriting
+    // the pre-override one splits the fresh path from the frozen replay of the very
+    // revision this cycle persists, and the device would be stood down at the `:58`
+    // settle and restored mid-hour, once an hour, for as long as contention lasts.
+    expectClaimMatchesReportedCause(low);
   });
 
   it('allows lower-priority tasks to share hours when both admission powers fit', () => {
@@ -1724,8 +1753,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // allocator); only the `:58` settle window / bootstrap re-allocates. The frozen
   // assembler stamps `frozen-` bucket ids, which the allocator never produces — a
   // reliable marker for "which path ran" without mocking the allocator.
-  const buildCommittedEvPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV1 => {
-    const hours = [
+  const buildCommittedEvPlans = (
+    deadlineAtMs: number,
+    latestOverrides: Record<string, unknown> = {},
+    hourOverrides: Array<{ startsAtMs: number; plannedKWh: number }> | null = null,
+  ): DeferredObjectiveActivePlansV1 => {
+    const hours = hourOverrides ?? [
       { startsAtMs: NOW_MS, plannedKWh: 1 },
       { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
     ];
@@ -1737,6 +1770,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       hours,
       energyNeededKWh: 2,
       planStatus: 'on_track' as const,
+      ...latestOverrides,
     };
     return {
       version: 1,
@@ -1785,6 +1819,52 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settle = run(NOW_MS + 58 * 60 * 1000);
     const settleBuckets = settle?.horizonPlan?.plannedBuckets ?? [];
     expect(settleBuckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+  });
+
+  // The frozen read replays the settle's persisted `floorShortfallCause` into a
+  // control decision, and `isOptionalFloorShortfallCause` (`activePlanSettings.ts`)
+  // admits ANY string so a cause from a newer build survives rehydration. These pin
+  // the cause -> claim contract end to end through the real bridge, including that an
+  // unrecognised string can only ever read as the release posture — never as a claim
+  // on the hour.
+  const frozenClaimForCause = (cause: unknown): string | undefined => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    // Commit only a LATER hour, so the current hour is one the commitment skipped —
+    // the case where the cause decides between `unclaimed` and `released`.
+    const activePlans = buildCommittedEvPlans(
+      deadlineAtMs,
+      { floorShortfallCause: cause },
+      [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }],
+    );
+    return buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    })[0]?.horizonPlan?.currentHourClaim;
+  };
+
+  it('keeps an unbooked frozen hour for a known budget-bound cause', () => {
+    expect(frozenClaimForCause('budget')).toBe('unclaimed');
+    expect(frozenClaimForCause('time_capacity')).toBe('unclaimed');
+  });
+
+  it('releases an unbooked frozen hour for a cause the task can finish without', () => {
+    expect(frozenClaimForCause('step_power')).toBe('released');
+    expect(frozenClaimForCause('none')).toBe('released');
+    expect(frozenClaimForCause(undefined)).toBe('released');
+  });
+
+  it('degrades an unrecognised persisted cause to the release posture, not a claim', () => {
+    // A forward-compat string from a newer build, and outright garbage that slipped
+    // the permissive validator. Neither may invent a claim on the hour.
+    expect(frozenClaimForCause('some_future_cause')).toBe('released');
+    expect(frozenClaimForCause('')).toBe('released');
   });
 
   it('releases an expired frozen commitment at the exact deadline boundary', () => {

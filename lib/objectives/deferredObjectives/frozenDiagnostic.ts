@@ -1,4 +1,5 @@
 import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanStatusV1,
@@ -25,6 +26,12 @@ import {
 // allocator (see `buildFrozenHorizonPlan`).
 export type FrozenReadInputs = {
   planStatus: DeferredObjectiveActivePlanStatusV1;
+  // The settled revision's verdict on what bound the floor schedule. Read rather
+  // than recomputed so the mid-hour claim (`resolveCurrentHourClaim`) stays on the
+  // hour-boundary clock the two-clock design puts control decisions on. Absent on
+  // revisions an older build persisted, which resolve to `'none'` — the "task can
+  // finish without this hour" reading, i.e. the pre-change release posture.
+  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
   // The SETTLED revision's hours (`latest.hours`), NOT the schedule-floor
   // `commitment.hours`. A `:58` revision that refines kWh on the same hour set
   // (`rate_refined`, `measured_deviation`) updates `latest` but not `commitment`
@@ -40,6 +47,29 @@ export type FrozenReadInputs = {
 const FROZEN_DEADLINE_RESERVE_MS = 60 * 60 * 1000;
 const FROZEN_EPSILON_KWH = 0.001;
 const ONE_HOUR_MS = 60 * 60 * 1000;
+
+// Persisted-cause classification for the frozen read. `isOptionalFloorShortfallCause`
+// (`activePlanSettings.ts`) deliberately admits ANY string, so a cause written by a
+// newer build survives rehydration on an older one. That was harmless while the field
+// only fed UI recourse copy; it now feeds a control decision through
+// `resolveCurrentHourClaim`.
+//
+// This changes no behaviour today — an unrecognised string already misses that
+// resolver's known-cause set and degrades to `'released'`. It makes the degradation
+// INTENTIONAL rather than incidental: the adapter that reads persisted settings owns
+// the complete classification (root `AGENTS.md`, "Validation belongs at the
+// boundary"), so a later change to how the resolver handles an unmatched cause cannot
+// silently turn an unknown string into a claim on the hour. Non-string garbage cannot
+// reach here — the validator rejects it — so `'none'` covers both absence and any
+// forward-compat string.
+const KNOWN_FLOOR_SHORTFALL_CAUSES: ReadonlySet<string> = new Set([
+  'budget', 'step_power', 'estimate', 'time_capacity', 'none',
+]);
+const toKnownFloorShortfallCause = (
+  value: DeferredObjectiveActivePlanFloorShortfallCause | undefined,
+): DeferredObjectiveActivePlanFloorShortfallCause => (
+  typeof value === 'string' && KNOWN_FLOOR_SHORTFALL_CAUSES.has(value) ? value : 'none'
+);
 
 // Resolve the frozen-read inputs for the per-cycle (mid-hour) path, or null when
 // the allocator must run instead. A frozen read requires a coherent active plan
@@ -66,6 +96,7 @@ const resolveFrozenReadInputs = (params: {
   const { latest } = activePlan;
   return {
     planStatus: latest.planStatus,
+    floorShortfallCause: toKnownFloorShortfallCause(latest.floorShortfallCause),
     // Settled revision's hours (freshest floored plan). The active-plan accessor
     // already rejected legacy/corrupt shapes without a latest revision, so the
     // frozen path never falls back to the commitment floor for control data.
@@ -130,6 +161,7 @@ export const buildFrozenDiagnostic = (params: {
     deadlineMarginMs: FROZEN_DEADLINE_RESERVE_MS,
     committedHours: frozenRead.hours,
     planStatus: frozenRead.planStatus,
+    floorShortfallCause: frozenRead.floorShortfallCause,
     energyNeededKWh: profileEnergy.energyNeededKWh,
     aheadOfHourMilestone,
     steps,

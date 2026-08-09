@@ -2,7 +2,6 @@ import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-import type { DeferredObjectiveHorizonPlan } from './types';
 
 export type { DeferredReleaseIntent };
 
@@ -19,7 +18,15 @@ export type DeferredAdmissionDecision =
       expectedStepId: string | null;
       releaseIntent?: 'binary_restore';
     }
-  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' };
+  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' }
+  // The task booked nothing into this hour but is still short on the hours it did
+  // book, so it neither claims the hour nor gives it up. The device is handed to
+  // the planner as managed and then competes on its own priority like any other
+  // load — no forced shed, no release intent, no deadline floor, and none of the
+  // rescue claims a planned hour carries. See `resolveCurrentHourClaim`.
+  // `releaseIntent?: never` is the load-bearing half: not claiming an hour must never
+  // command the device anywhere, so this kind cannot carry one even by accident.
+  | { kind: 'unclaimed'; budgetExempt: false; releaseIntent?: never };
 
 // `satisfied` falls back to inactive: the goal is met, so the objective should
 // not keep forcing the device on. `cannot_meet` still drives the device — the
@@ -65,24 +72,6 @@ const resolveReleaseIntentForCapOff = (
   usesBinaryReleaseControl(device) ? 'binary_release' : 'shed_release'
 );
 
-// A deferred current hour is "released" when the device is idled this cycle rather
-// than run. Four causes: there is no current bucket, the current bucket carries no
-// booked energy, the producer flagged the hour price-deferral-eligible (the device
-// is already at/above this hour's trajectory milestone AND a later hour is
-// cheaper), or the producer flagged a cold-start release (a later hour is
-// meaningfully cheaper and the full need fits into the cheaper future hours at the
-// device's real/climbed step — so a fast device must not dump its catch-up into
-// this expensive hour). Single source of truth shared by `resolveDecision` (which
-// idles the device) and `buildDeferredTargetOverrides` (which must NOT stamp a
-// deadline floor target on a released device — otherwise `resolvePlannedTarget`
-// would command it to run despite the release).
-const isReleasedCurrentHour = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
-  !horizonPlan.currentBucket
-  || horizonPlan.currentBucket.plannedUsefulEnergyKWh <= 0
-  || horizonPlan.priceDeferralEligible === true
-  || horizonPlan.coldStartReleaseEligible === true
-);
-
 const resolveDecision = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
@@ -109,10 +98,18 @@ const resolveDecision = (
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };
   const releasesViaBinary = usesBinaryReleaseControl(device);
-  if (isReleasedCurrentHour(horizonPlan)) {
+  // The producer resolved which of the three claims this hour carries
+  // (`resolveCurrentHourClaim`); admission maps it 1:1 and adds only the release
+  // ROUTING, which is a device-modality question the producer cannot answer.
+  if (horizonPlan.currentHourClaim !== 'claimed') {
+    // Unclaimed: nothing booked here, and the task cannot finish without the hour —
+    // so there is nothing to defer into. Hand the device to the planner as managed
+    // and let it compete on its own priority; the task takes whatever the normal
+    // shed/restore lane gives it rather than commanding a stand-down.
+    if (horizonPlan.currentHourClaim === 'unclaimed') return { kind: 'unclaimed', budgetExempt: false };
     // Released bucket: hold the device in its configured release posture. Besides
-    // genuine idle hours (no current bucket / no booked energy), this also fires
-    // when the producer flagged the hour price-deferral-eligible — the device is
+    // genuine idle hours (nothing booked here and nothing left to deliver), this also
+    // fires when the producer flagged the hour price-deferral-eligible — the device is
     // already at/above this hour's trajectory milestone and a later hour is
     // cheaper, so release the device this cycle. This is a live per-cycle control decision on the
     // admission path; the clock-driven recorder is insulated, so no revision is
@@ -276,11 +273,12 @@ export const buildDeferredTargetOverrides = (
     if (diag.objectiveKind !== 'temperature') continue;
     if (!PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diag))) continue;
     const horizonPlan = diag.horizonPlan;
-    // Skip released hours (mirrors `resolveDecision`'s idle gate via the shared
-    // `isReleasedCurrentHour`): an idle / price-deferred device must not be
-    // commanded to the deadline floor, or `resolvePlannedTarget` would lift the
-    // setpoint and run it in the very hour we released it from.
-    if (!horizonPlan || isReleasedCurrentHour(horizonPlan)) continue;
+    // Skip every hour the task does not claim, reading the SAME producer verdict
+    // `resolveDecision` maps so the two cannot drift: a released, price-deferred OR
+    // unclaimed device must not be commanded to the deadline floor, or
+    // `resolvePlannedTarget` would lift the setpoint and run it in an hour the task
+    // either released it from or never claimed.
+    if (!horizonPlan || horizonPlan.currentHourClaim !== 'claimed') continue;
     // Defensive: persisted settings can yield NaN/Infinity on corrupt reads; the type-level
     // `number` invariant does not survive Homey settings drift. See feedback_homey_sdk_unreliable.
     if (!Number.isFinite(diag.targetTemperatureC)) continue;

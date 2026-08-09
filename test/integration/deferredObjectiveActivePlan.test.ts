@@ -76,6 +76,10 @@ const makeHorizon = (
     currentBucket: null,
     plannedBuckets: buckets,
     usesDeadlineReserve: false,
+    // `currentBucket: null` above, but these fixtures drive the RECORDER, which
+    // never reads the claim; keep the plan internally valid and let the specs that
+    // exercise admission own the claim semantics.
+    currentHourClaim: 'released' as const,
     priceDeferralEligible: false,
     ...overrides,
   };

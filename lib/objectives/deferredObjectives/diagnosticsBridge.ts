@@ -16,6 +16,7 @@ import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
 import { isPastHourSettleMark } from './settleWindow';
+import { resolveHigherPriorityContentionStatus } from './contentionOverlay';
 import {
   resolveObjectiveProgress,
   type DeferredObjectiveProgressResolution,
@@ -233,37 +234,6 @@ export const buildDeferredObjectiveDiagnostics = (params: {
 const shouldForceFreshAllocation = (
   higherTaskBootstrapped: boolean, legacyCommitmentNeedsMigration: boolean, previewForced: boolean,
 ): boolean => [higherTaskBootstrapped, legacyCommitmentNeedsMigration, previewForced].includes(true);
-
-const CONTENTION_EPSILON_KWH = 0.001;
-
-const resolveHigherPriorityContentionStatus = (params: {
-  diagnostic: DeferredObjectiveDiagnostic;
-  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
-  buildWithoutReservations: () => DeferredObjectiveDiagnostic;
-}): DeferredObjectiveDiagnostic => {
-  const plan = params.diagnostic.horizonPlan;
-  if (
-    params.higherPriorityReservations.length === 0
-    || !plan
-    || plan.frozenRead
-    || plan.unplannedUsefulEnergyKWh <= CONTENTION_EPSILON_KWH
-  ) return params.diagnostic;
-  const control = params.buildWithoutReservations();
-  if ((control.horizonPlan?.unplannedUsefulEnergyKWh ?? Number.POSITIVE_INFINITY) > CONTENTION_EPSILON_KWH) {
-    return params.diagnostic;
-  }
-  const horizonPlan = {
-    ...plan,
-    status: 'at_risk' as const,
-    statusDetail: 'limited_by_higher_priority_task' as const,
-  };
-  return {
-    ...params.diagnostic,
-    trajectory: { kind: 'resolved', status: 'at_risk' },
-    reasonCode: 'limited_by_higher_priority_task',
-    horizonPlan,
-  };
-};
 
 // True once the active-plan recorder has committed a `latest` revision for this
 // exact (device, deadline) run. Used to suppress stall resolution on a

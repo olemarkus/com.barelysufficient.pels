@@ -1,7 +1,9 @@
 import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import { resolveCurrentHourClaim } from './currentHourClaim';
 import { selectMinimumStepForEnergy } from './stepSelection';
 import type {
   DeferredObjectiveHorizonPlan,
@@ -117,6 +119,9 @@ export const buildFrozenHorizonPlan = (params: {
   deadlineMarginMs: number;
   committedHours: readonly DeferredObjectiveActivePlanHourV1[];
   planStatus: DeferredObjectiveActivePlanStatusV1;
+  // The `:58` settle's verdict, replayed rather than recomputed — see the
+  // `floorShortfallCause` doc on `resolveCurrentHourClaim`.
+  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
   energyNeededKWh: number;
   aheadOfHourMilestone: boolean;
   steps: DeferredObjectiveStep[];
@@ -124,7 +129,8 @@ export const buildFrozenHorizonPlan = (params: {
 }): DeferredObjectiveHorizonPlan => {
   const {
     nowMs, objectiveId, objectiveKind, enforcement, deadlineAtMs, deadlineMarginMs,
-    committedHours, planStatus, energyNeededKWh, aheadOfHourMilestone, steps, epsilonKWh,
+    committedHours, planStatus, floorShortfallCause, energyNeededKWh, aheadOfHourMilestone,
+    steps, epsilonKWh,
   } = params;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   const currentHour = committedHours.find((hour) => hour.startsAtMs === currentHourStartMs) ?? null;
@@ -154,6 +160,7 @@ export const buildFrozenHorizonPlan = (params: {
 
   const status = toPlannableStatus(planStatus);
   const plannedUsefulEnergyKWh = futureHours.reduce((sum, hour) => sum + Math.max(0, hour.plannedKWh), 0);
+  const unplannedUsefulEnergyKWh = Math.max(0, energyNeededKWh - plannedUsefulEnergyKWh);
 
   return {
     objectiveId,
@@ -170,7 +177,7 @@ export const buildFrozenHorizonPlan = (params: {
     // Shortfall estimate from frozen state (live buffered need minus the committed
     // current+future energy); the authoritative value is recomputed at the `:58`
     // settle. Keeps a `cannot_meet`/`at_risk` plan from reporting a 0 kWh shortfall.
-    unplannedUsefulEnergyKWh: Math.max(0, energyNeededKWh - plannedUsefulEnergyKWh),
+    unplannedUsefulEnergyKWh,
     expectedStepId: currentBucket?.expectedStepId ?? null,
     currentBucket,
     plannedBuckets,
@@ -182,6 +189,15 @@ export const buildFrozenHorizonPlan = (params: {
     // Cold-start is the allocator's `:58` booking decision (current hour booked 0 ⇒
     // deferred); the frozen read never asserts it mid-hour.
     coldStartReleaseEligible: false,
+    // Resolved through the SAME function as the fresh path, on the settle's
+    // persisted verdict — so the mid-hour answer cannot drift from the one the
+    // allocator reached, and cannot move within the hour.
+    currentHourClaim: resolveCurrentHourClaim({
+      currentBucketBookedKWh: currentBucket?.plannedUsefulEnergyKWh ?? null,
+      priceDeferralEligible,
+      coldStartReleaseEligible: false,
+      floorShortfallCause,
+    }),
     // Declares "no new allocation here" to the recorder — see the field doc on
     // `DeferredObjectiveHorizonPlan`.
     frozenRead: true,
