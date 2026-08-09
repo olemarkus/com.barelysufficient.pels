@@ -129,7 +129,7 @@ export const buildDiagnosticBase = (params: {
     objectiveId: `${params.deviceId}:${params.objective.kind}`,
     enforcement: params.objective.enforcement,
     ...(params.objective.rescue ? { rescue: params.objective.rescue } : {}),
-    status: 'unknown',
+    trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
     reasonCode: 'objective_progress_stale',
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     currentPercent: params.currentPercent,
@@ -189,12 +189,19 @@ const resolveProfileSnapshot = (params: {
   };
 };
 
-export const withUnknown = (
+/**
+ * "No trajectory could be computed, and here is why."
+ *
+ * Named for what it produces rather than for the sentinel it used to stamp: the
+ * result carries no verdict at all, so a consumer cannot read a data problem as
+ * `on_track`.
+ */
+export const withUnavailableTrajectory = (
   diagnostic: DeferredObjectiveDiagnostic,
   reasonCode: DeferredObjectiveDiagnosticReasonCode,
 ): DeferredObjectiveDiagnostic => ({
   ...diagnostic,
-  status: 'unknown',
+  trajectory: { kind: 'unavailable', reasonCode },
   reasonCode,
   expectedStepId: null,
 });

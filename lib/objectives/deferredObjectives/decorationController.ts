@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { BuildPriceHorizon } from './diagnosticsBridge';
@@ -161,7 +162,7 @@ export const resolveDeferredAvoidDeviceIds = (
       avoidIds.add(diag.deviceId);
       continue;
     }
-    if (diag.status !== 'on_track') continue;
+    if (resolvedTrajectoryStatus(diag) !== 'on_track') continue;
     const currentBucket = diag.horizonPlan?.currentBucket;
     const currentHourUnbooked = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;
     if (currentHourUnbooked) avoidIds.add(diag.deviceId);

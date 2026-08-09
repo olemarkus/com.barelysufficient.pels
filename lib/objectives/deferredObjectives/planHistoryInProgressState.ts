@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
@@ -218,13 +219,13 @@ export const buildKey = (deviceId: string, deadlineAtMs: number): InProgressKey 
   `${deviceId}|${deadlineAtMs}`
 );
 
-export const isPlannableStatus = (status: DeferredObjectiveDiagnostic['status']): boolean => (
-  status !== 'unknown' && status !== 'invalid'
-);
+export const isPlannableStatus = (
+  status: ReturnType<typeof resolvedTrajectoryStatus>,
+): boolean => status !== undefined && status !== 'invalid';
 
-export const isSatisfiedStatus = (status: DeferredObjectiveDiagnostic['status']): boolean => (
-  status === 'satisfied'
-);
+export const isSatisfiedStatus = (
+  status: ReturnType<typeof resolvedTrajectoryStatus>,
+): boolean => status === 'satisfied';
 
 // The postmortem reasons about the raw trajectory verdict, not the live
 // user-facing status. `diagnosticsBridge` may resolve the top-level
@@ -236,7 +237,9 @@ export const isSatisfiedStatus = (status: DeferredObjectiveDiagnostic['status'])
 // top-level status on the unknown/invalid paths that carry no `horizonPlan`.
 export const rawHorizonStatus = (
   diag: DeferredObjectiveDiagnostic,
-): DeferredObjectiveDiagnostic['status'] => diag.horizonPlan?.status ?? diag.status;
+): ReturnType<typeof resolvedTrajectoryStatus> => (
+  diag.horizonPlan?.status ?? resolvedTrajectoryStatus(diag)
+);
 
 const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : null

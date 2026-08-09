@@ -6,7 +6,7 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 
 const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   deviceId: string;
-  status: DeferredObjectiveDiagnostic['status'];
+  trajectory: DeferredObjectiveDiagnostic['trajectory'];
 }): DeferredObjectiveDiagnostic => ({
   deviceName: 'Boiler',
   objectiveId: `${overrides.deviceId}:temperature`,
@@ -47,12 +47,12 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     const transitions: string[] = [];
     bus.onTransition((snapshot) => transitions.push(snapshot.status));
 
-    const diag = baseDiagnostic({ deviceId: 'heater-1', status: 'on_track' });
+    const diag = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'on_track' } });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1 });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 2 });
     expect(transitions).toEqual(['on_track']);
 
-    const next = baseDiagnostic({ deviceId: 'heater-1', status: 'at_risk' });
+    const next = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'at_risk' } });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [next], statusBus: bus, nowMs: 3 });
     expect(transitions).toEqual(['on_track', 'at_risk']);
   });
@@ -66,7 +66,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     // so it can grace-bound the disarm while the release settles.
     const bus = createDeferredObjectiveStatusBus();
     const onDeadlineReached = vi.fn();
-    const diag = baseDiagnostic({ deviceId: 'heater-1', status: 'at_risk', deadlineAtMs: 1_000 });
+    const diag = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'at_risk' }, deadlineAtMs: 1_000 });
 
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlineReached });
     expect(onDeadlineReached).not.toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     const onDeadlineReached = vi.fn();
     const diag = baseDiagnostic({
       deviceId: 'ev-1',
-      status: 'cannot_meet',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
       objectiveKind: 'ev_soc',
       deadlineAtMs: 1_000,
     });
@@ -97,7 +97,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     const diag = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999 });
@@ -112,7 +112,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     const bus = createDeferredObjectiveStatusBus();
     const diag = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 5_000 });
@@ -124,7 +124,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     const atRisk = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [atRisk], statusBus: bus, nowMs: 1_500 });
@@ -132,7 +132,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     const cannotMeet = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'cannot_meet',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [cannotMeet], statusBus: bus, nowMs: 1_600 });
@@ -147,7 +147,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     const initialDeadline = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [initialDeadline], statusBus: bus, nowMs: 1_500 });
@@ -156,7 +156,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     // User reschedules to a future time without changing status.
     const rescheduled = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 5_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [rescheduled], statusBus: bus, nowMs: 2_000 });
@@ -174,7 +174,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     const diag = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
     // Pre-deadline: no callback.
@@ -203,7 +203,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     const satisfied = baseDiagnostic({
       deviceId: 'heater-1',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({
@@ -219,7 +219,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
   it('forgets devices no longer present in diagnostics', () => {
     const bus = createDeferredObjectiveStatusBus();
     emitDeferredObjectiveStatusTransitions({
-      diagnostics: [baseDiagnostic({ deviceId: 'heater-1', status: 'on_track' })],
+      diagnostics: [baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'on_track' } })],
       statusBus: bus,
       nowMs: 0,
     });

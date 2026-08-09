@@ -18,7 +18,7 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
   enforcement: 'soft',
-  status: 'on_track',
+  trajectory: { kind: 'resolved', status: 'on_track' },
   reasonCode: 'objective_progress_stale',
   targetPercent: null,
   currentPercent: null,

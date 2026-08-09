@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { unitForObjectiveKind } from './objectiveUnit';
 import type {
@@ -97,7 +98,10 @@ const processDiagnosticTransition = (params: {
   const { diagnostic, statusBus, nowMs, onDeadlineReached } = params;
   const previous = statusBus.getCurrent(diagnostic.deviceId);
   const previousStatus = previous?.status ?? 'none';
-  const nextStatus: DeferredObjectivePublishedStatus = diagnostic.status;
+  // The publish boundary, and the only place a missing verdict becomes the
+  // `'unknown'` the UI shows. Inside the module it stays a separate arm, so no
+  // consumer can read it as a trajectory claim.
+  const nextStatus: DeferredObjectivePublishedStatus = resolvedTrajectoryStatus(diagnostic) ?? 'unknown';
   const { deadlineMissed } = computeMissedTransition({
     diagnostic,
     previous,

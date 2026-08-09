@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
@@ -25,7 +26,7 @@ export type DeferredAdmissionDecision =
 // planner's lowest-step allocation is what we _can_ deliver, not a reason to
 // stop trying; runtime is free to step up when headroom appears, so a
 // hard-cap miss should still get us as close to the target as possible.
-const PLANNABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
+const PLANNABLE_STATUSES = new Set<ReturnType<typeof resolvedTrajectoryStatus>>([
   'on_track',
   'at_risk',
   'cannot_meet',
@@ -43,7 +44,7 @@ const shouldEmitTerminalRelease = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
 ): boolean => (
-  diagnostic.status === 'satisfied'
+  resolvedTrajectoryStatus(diagnostic) === 'satisfied'
   && device?.controllable === false
 );
 
@@ -89,18 +90,18 @@ const resolveDecision = (
   // Producer-resolved flat flag: the smart task's exempt-from-budget permission is active
   // for the current planned bucket. Idle/background cycles must not inherit a standing
   // budget exemption from a future planned bucket.
-  const budgetExempt = diagnostic.budgetExemptApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
+  const plannable = PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic));
+  const budgetExempt = diagnostic.budgetExemptApplied === true && plannable;
   // The limit-lower-priority permission engages the device's boost, but only while the task
   // is in its planned hours (the 'planned' decision below) — so it claims capacity from
   // lower-priority devices only when it is actually scheduled to run.
-  const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
+  const engageBoost = diagnostic.limitLowerPriorityApplied === true && plannable;
   // Boost-free sibling of engageBoost: the pause-lower-priority permission entitles the device to
   // reserve the power it needs to start, so cycling loads cannot nibble the block away. The plan
   // layer (lib/plan/admission/headroomReserve.ts) owns the amount, the release, and the bound —
   // here we only surface the granted intent for planned hours.
-  const reservesStartupPower = diagnostic.pauseLowerPriorityApplied === true
-    && PLANNABLE_STATUSES.has(diagnostic.status);
-  if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
+  const reservesStartupPower = diagnostic.pauseLowerPriorityApplied === true && plannable;
+  if (!plannable) {
     if (!shouldEmitTerminalRelease(diagnostic, device)) return { kind: 'inactive', budgetExempt: false };
     const releaseIntent = resolveReleaseIntentForCapOff(device);
     return { kind: 'inactive', budgetExempt: false, releaseIntent };
@@ -273,7 +274,7 @@ export const buildDeferredTargetOverrides = (
   const overrides: Record<string, number> = {};
   for (const diag of diagnostics) {
     if (diag.objectiveKind !== 'temperature') continue;
-    if (!PLANNABLE_STATUSES.has(diag.status)) continue;
+    if (!PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diag))) continue;
     const horizonPlan = diag.horizonPlan;
     // Skip released hours (mirrors `resolveDecision`'s idle gate via the shared
     // `isReleasedCurrentHour`): an idle / price-deferred device must not be

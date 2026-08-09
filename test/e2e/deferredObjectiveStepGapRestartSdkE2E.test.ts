@@ -14,6 +14,7 @@
 // plan through a live step-ladder gap (protections hold, `expectedStepId`
 // degrades to null, the cycle is marked `liveStepsUnavailable`), while a task
 // with no commitment to serve still resolves `unknown`.
+import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { describe, expect, it } from 'vitest';
 import {
   normalizeDeferredObjectiveSettings,
@@ -209,7 +210,7 @@ const commitPlanAndPersist = (): DeferredObjectiveActivePlansV1 => {
   });
   const device = buildDevice(START_C, START_MS, { withSteps: true });
   const diag = buildDiagnostic(START_MS, device, recorder.getActivePlansSnapshot());
-  expect(diag?.status).toBe('on_track');
+  expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
   recorder.observe(diag ? [diag] : [], START_MS);
   recorder.flushIfDirty();
   if (!persisted) throw new Error('bootstrap cycle did not persist a committed plan');
@@ -234,7 +235,7 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
     expect(diag).toBeDefined();
     // The 2026-08-01 failure mode: status collapsed to `unknown`
     // (`objective_missing_charge_rate`) despite the persisted commitment.
-    expect(diag?.status).toBe('on_track');
+    expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
     expect(diag?.liveStepsUnavailable).toBe(true);
     expect(diag?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh ?? 0).toBeGreaterThan(0);
     // No ladder ⇒ no step to expect; the executor drives the device via its
@@ -255,7 +256,7 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
     // Past the `:58` settle mark the fresh allocator would normally run; without
     // steps it cannot, and the committed plan must still be served rather than
     // flapping to `unknown` for the settle window.
-    expect(diag?.status).toBe('on_track');
+    expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
     expect(diag?.liveStepsUnavailable).toBe(true);
   });
 
@@ -264,7 +265,7 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
     const freshRecorder = new DeferredObjectiveActivePlanRecorder({ load: () => null, save: () => true });
     const diag = buildDiagnostic(RESTART_MS, device, freshRecorder.getActivePlansSnapshot());
 
-    expect(diag?.status).toBe('unknown');
+    expect(diag && resolvedTrajectoryStatus(diag)).toBeUndefined();
     expect(diag?.reasonCode).toBe('objective_missing_charge_rate');
     expect(diag?.liveStepsUnavailable).toBeUndefined();
 
@@ -325,7 +326,7 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
       const diag = buildDiagnostic(nowMs, device, recorder.getActivePlansSnapshot());
       // Never `unknown` while the commitment covers the hour — including the
       // settle cycles, where the replan is deferred.
-      expect(diag?.status).toBe('on_track');
+      expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
       expect(diag?.liveStepsUnavailable).toBe(true);
       recorder.observe(diag ? [diag] : [], nowMs);
       recorder.flushIfDirty();
