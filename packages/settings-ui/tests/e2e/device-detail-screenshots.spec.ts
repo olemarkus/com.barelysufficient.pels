@@ -62,11 +62,17 @@ test('shedding section with conditional row', async ({ page }) => {
 
 test('stepped load (zaptec)', async ({ page }) => {
   await openDeviceDetail(page, 'dev_zaptec');
-  await page.locator('#device-detail-stepped-section').scrollIntoViewIfNeeded();
+  const section = page.locator('#device-detail-stepped-section');
+  await section.scrollIntoViewIfNeeded();
+  // The step-profile section is taller than the viewport, and an element
+  // screenshot stitches scrolled tiles — the tiles outside the slide panel's
+  // clip picked up the devices list beneath. Grow the viewport to fit the
+  // section so the whole element sits inside the panel before shooting.
+  const sectionHeight = await section.evaluate((el) => el.scrollHeight + 120);
+  await page.setViewportSize({ width: 480, height: Math.min(4000, Math.max(900, sectionHeight)) });
+  await section.scrollIntoViewIfNeeded();
   await page.waitForTimeout(200);
-  await page.locator('#device-detail-stepped-section').screenshot({
-    path: `${OUT}/stepped-zaptec.png`,
-  });
+  await section.screenshot({ path: `${OUT}/stepped-zaptec.png` });
 });
 
 test('setup section', async ({ page }) => {

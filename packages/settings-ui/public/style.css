@@ -2785,6 +2785,15 @@ md-filled-button.is-busy {
   flex-wrap: wrap;
 }
 
+/* Device-hero decorator (after the canonical rule per the cascade idiom):
+   the trailing power fact reads at the supporting size beside a
+   display-size state word, and centre alignment floats it mid-cap-height —
+   this hero's headline row aligns to baseline instead (the Overview metric
+   row makes the same choice). */
+.device-detail-live-status .plan-hero__headline-row {
+  align-items: baseline;
+}
+
 /* M3: one tonal story per surface. Hero rim + status chip carry the warn/alert
    signal; the headline value stays neutral. */
 .plan-hero__headline {
@@ -5398,6 +5407,18 @@ details[open] > summary .disclosure-chevron {
    forked bg/border with a hardcoded `10px` radius (a token violation) and
    `12px` literal padding; rebinding onto the canonical dropped those forks.
    Sub-element typography (e.g. `.detail-diagnostics-card h4`) stays here. */
+
+/* The diagnostics grid stretches row siblings to equal height, and the
+   canonical card is a grid whose auto rows absorb that extra space evenly —
+   which floated the shorter Held-back card's list off its title. Pack the
+   stretched card's rows to the top, scoped to the grid that causes the
+   stretch (the card's own base rule stays retired — cardPrimitiveRebind
+   guard); the list already packs its own rows (`.detail-diagnostics-list`
+   below). First proven by the populated held-back capture
+   (mw-onoff-waterheater-full.png). */
+.detail-diagnostics-grid > .detail-diagnostics-card {
+  align-content: start;
+}
 
 .detail-diagnostics-list {
   display: grid;

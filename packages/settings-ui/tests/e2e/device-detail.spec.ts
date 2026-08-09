@@ -228,6 +228,10 @@ test.describe('Device detail panel', () => {
       'device-detail-diagnostics-section',
     ]);
     await expect(page.locator('#device-detail-charging-section #device-detail-shed-statement')).toBeVisible();
+    // Unmanaged devices are absent from the plan payload, so the page must
+    // render no hero — no fabricated status. Guards the fixture-truth rule
+    // (an unmanaged charger once shipped in every capture as "held back").
+    await expect(page.locator('#device-detail-live-status')).toBeHidden();
     await page.locator('#device-detail-close').click();
 
     // Thermostat: per-mode targets lead; limiting closes the open cards.
