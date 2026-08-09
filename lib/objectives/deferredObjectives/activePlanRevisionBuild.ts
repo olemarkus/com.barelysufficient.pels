@@ -322,13 +322,10 @@ export const buildRevision = (params: {
   // null) when the resolver short-circuited or the value isn't usable; see
   // `resolveRateMean`.
   const rateMean = resolveRateMean(params.diag);
-  // Only persist `dailyBudgetExhaustedBucketCount` when non-zero so older
-  // persisted plans without the field stay byte-stable across revisions and
-  // consumers that haven't been updated keep falling back to zero.
-  const exhaustedBuckets = params.diag.dailyBudgetExhaustedBucketCount;
   // Producer-resolved floor-shortfall verdict. Suppress `none` so steady
-  // on-track plans stay byte-stable; `budget` covers the squeeze case
-  // (`dailyBudgetExhaustedBucketCount: 0` but the per-bucket cap still binds)
+  // on-track plans stay byte-stable. `budget` is now the ONLY budget signal a
+  // consumer gets: the per-hour share either binds or it doesn't, and there is
+  // no separate "the day total was reached" state to report.
   // — see the contract type for the full mapping.
   const floorShortfallCause = resolveFloorShortfallCause(params.diag.reasonCode);
   const energyNeededKWh = roundKWh(horizonPlan.energyNeededKWh);
@@ -377,7 +374,6 @@ export const buildRevision = (params: {
     // misleading `null`.
     ...(source !== null ? { speedMode: resolveSpeedMode(source) } : {}),
     ...(rateMean !== null ? { rateMean } : {}),
-    ...(exhaustedBuckets > 0 ? { dailyBudgetExhaustedBucketCount: exhaustedBuckets } : {}),
     ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
@@ -422,7 +418,6 @@ const isProvenanceConfidence = (
 // true when consumer-visible status fields drifted across the same set of
 // charging hours. Tracked fields and the UI signal each drives:
 //   - `planStatus`                       → "Can't fully meet" chip
-//   - `dailyBudgetExhaustedBucketCount`  → per-bucket headroom explanation
 //   - `floorShortfallCause`              → hero recourse routing
 //     (budget-bound → `Open Budget`, otherwise device-side). Squeeze-case
 //     repro: `at_risk` stays put while cause flips from `feasible_above_floor`
@@ -439,7 +434,6 @@ export const hasMetadataDriftedWithinSchedule = (params: {
 }): boolean => {
   const { latest, horizonPlan, diag } = params;
   return latest.planStatus !== reportedPlanStatus(diag, horizonPlan)
-    || (latest.dailyBudgetExhaustedBucketCount ?? 0) !== diag.dailyBudgetExhaustedBucketCount
     || (latest.floorShortfallCause ?? 'none') !== resolveFloorShortfallCause(diag.reasonCode);
 };
 

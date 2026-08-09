@@ -468,7 +468,6 @@ describe('app init plan service wiring', () => {
       kwhPerUnitLastAcceptedAtMs: 0,
       planningSpeedKw: 1,
       horizonBucketCount: 6,
-      dailyBudgetExhaustedBucketCount: 0,
       expectedStepId: null,
     }], 0);
     recorder.observe([], 6 * 60 * 60 * 1000); // deadline-passed → finalized → dirty
@@ -589,7 +588,6 @@ describe('app init plan service wiring', () => {
       kwhPerUnitLastAcceptedAtMs: 0,
       planningSpeedKw: 1,
       horizonBucketCount: 6,
-      dailyBudgetExhaustedBucketCount: 0,
       expectedStepId: null,
     }], 0);
     recorder.observe([], 1_000);

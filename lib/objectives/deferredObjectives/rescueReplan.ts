@@ -18,14 +18,6 @@ const DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1000;
 
 type ResolvedHorizonBuckets = Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>['buckets'];
 
-// The rescue resolver hands back the horizon plan plus the budget-exhaustion count of the
-// horizon it actually used. The exempt rebuild lifts the per-bucket caps, so its count is 0
-// — consumers must use this rather than the pre-rescue horizon's count.
-type RescueHorizonResult = {
-  plan: DeferredObjectiveHorizonPlan;
-  dailyBudgetExhaustedBucketCount: number;
-};
-
 // Resolve the horizon plan, applying the "exempt from budget" permission when it is set
 // to 'always' (the only mode the action card sets in phase 1): the policy horizon is
 // rebuilt with the per-bucket daily-budget cap lifted, so the device plans against the
@@ -70,7 +62,7 @@ export const resolveHorizonPlanWithRescue = (params: {
   // the min-step floor even with both rescue permissions set.
   devicePriority?: number;
   higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
-}): RescueHorizonResult => {
+}): DeferredObjectiveHorizonPlan => {
   const {
     nowMs,
     deviceId,
@@ -125,10 +117,7 @@ export const resolveHorizonPlanWithRescue = (params: {
   });
 
   if (objective.rescue?.exemptFromBudget !== 'always') {
-    return {
-      plan: planForBuckets(policyHorizon.buckets),
-      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
-    };
+    return planForBuckets(policyHorizon.buckets);
   }
   const exemptHorizon = buildDeferredObjectivePolicyHorizon({
     nowMs,
@@ -141,18 +130,8 @@ export const resolveHorizonPlanWithRescue = (params: {
     higherPriorityReservations: params.higherPriorityReservations,
   });
   if (exemptHorizon.reasonCode) {
-    // Exempt rebuild failed — fall back to the budget-capped baseline and its real count.
-    return {
-      plan: planForBuckets(policyHorizon.buckets),
-      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
-    };
+    // Exempt rebuild failed — fall back to the budget-capped baseline.
+    return planForBuckets(policyHorizon.buckets);
   }
-  // Exempt rebuild succeeded: the per-bucket caps are lifted for this device, so no bucket's
-  // cap collapsed on its account. The exhaustion count otherwise reflects source-bucket budget
-  // state regardless of the exemption, so report 0 here — a capacity/time-limited cannot_meet
-  // must not be misattributed to the daily budget this task is exempt from.
-  return {
-    plan: planForBuckets(exemptHorizon.buckets),
-    dailyBudgetExhaustedBucketCount: 0,
-  };
+  return planForBuckets(exemptHorizon.buckets);
 };

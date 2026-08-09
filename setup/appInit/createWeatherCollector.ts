@@ -6,6 +6,7 @@ import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
+import { snapshotShowsBudgetExhausted } from '../../packages/shared-domain/src/deferredPlanHistoryShared';
 import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
@@ -63,8 +64,11 @@ export function deadlineMissedToBudgetOnDay(
   if (!recorder) return false;
   return recorder.getHistorySnapshot().entries.some((entry) => {
     if (entry.outcome !== 'missed') return false;
-    const causalPlan = entry.finalPlan ?? entry.originalPlan;
-    if ((causalPlan?.dailyBudgetExhaustedBucketCount ?? 0) <= 0) return false;
+    // Shared producer-side resolver: reads `floorShortfallCause` on entries
+    // this build finalized and the retired bucket count on older history.
+    // Reading either raw field here would silently stop censoring budget-caused
+    // misses out of the energy-signature fit.
+    if (!snapshotShowsBudgetExhausted(entry.finalPlan ?? entry.originalPlan)) return false;
     return getDateKeyInTimeZone(new Date(entry.deadlineAtMs), timeZone) === dateKey;
   });
 }

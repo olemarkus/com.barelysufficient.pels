@@ -1,4 +1,5 @@
 import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -99,17 +100,42 @@ const isRevisionSnapshot = (
   // anything else means the persisted snapshot was tampered with so drop it.
   if (v.kwhPerUnitMean !== undefined
     && (!isFiniteNumber(v.kwhPerUnitMean) || v.kwhPerUnitMean <= 0)) return false;
-  // `dailyBudgetExhaustedBucketCount` added in v2.7.2 PR 3. Optional;
-  // when present must be a finite non-negative count. The recorder only
-  // writes positive counts (zero is suppressed via `captureRevisionSnapshot`
-  // to keep persisted entries byte-stable), but the validator accepts zero
-  // so legacy tools that round-trip persisted history (or hand-written
-  // fixtures in tests) don't get dropped on read. Consumer's "treat
-  // absence as zero" rule keeps either shape consistent.
-  if (v.dailyBudgetExhaustedBucketCount !== undefined
-    && (!isFiniteNumber(v.dailyBudgetExhaustedBucketCount)
-      || v.dailyBudgetExhaustedBucketCount < 0)) return false;
+  if (!hasValidBudgetSignalFields(v)) return false;
   return hasValidMissAttributionFields(v);
+};
+
+// The two budget signals a snapshot can carry, both optional.
+//
+// `floorShortfallCause` (v2.9.1) is what every newly finalized entry carries —
+// the producer-resolved reason the floor fell short.
+// `dailyBudgetExhaustedBucketCount` (v2.7.2 PR 3) is RETIRED: nothing writes it
+// any more, but history persisted by an older build still has it and must not
+// be dropped on read, so the count is still accepted when finite and
+// non-negative (including zero, which round-tripping tools can emit).
+//
+// Split out of `isRevisionSnapshot` to keep that guard under the
+// cyclomatic-complexity cap.
+// Keyed by the contract union so adding a cause fails to COMPILE here rather
+// than silently reading as unknown and dropping the revision. The literal set
+// has to live on this side: `packages/contracts` is types-only at runtime, so
+// it cannot export a value for the guard to import.
+const FLOOR_SHORTFALL_CAUSES: Record<DeferredObjectiveActivePlanFloorShortfallCause, true> = {
+  budget: true,
+  step_power: true,
+  estimate: true,
+  time_capacity: true,
+  none: true,
+};
+
+const isFloorShortfallCause = (value: unknown): boolean => (
+  typeof value === 'string' && Object.hasOwn(FLOOR_SHORTFALL_CAUSES, value)
+);
+
+const hasValidBudgetSignalFields = (v: Record<string, unknown>): boolean => {
+  if (v.floorShortfallCause !== undefined && !isFloorShortfallCause(v.floorShortfallCause)) return false;
+  return v.dailyBudgetExhaustedBucketCount === undefined
+    || (isFiniteNumber(v.dailyBudgetExhaustedBucketCount)
+      && v.dailyBudgetExhaustedBucketCount >= 0);
 };
 
 // Miss-attribution provenance added in v2.7.4. All optional — absence is the

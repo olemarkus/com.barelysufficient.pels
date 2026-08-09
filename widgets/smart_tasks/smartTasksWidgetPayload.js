@@ -1076,7 +1076,11 @@ function formatTimeInTimeZone(date, options, timeZone) {
 // packages/shared-domain/src/deferredPlanHistoryShared.ts
 var MINUTE_MS = 60 * 1e3;
 var HOUR_MS2 = 60 * MINUTE_MS;
-var snapshotShowsBudgetExhausted = (snapshot) => snapshot !== null && typeof snapshot.dailyBudgetExhaustedBucketCount === "number" && snapshot.dailyBudgetExhaustedBucketCount > 0;
+var snapshotShowsBudgetExhausted = (snapshot) => {
+  if (snapshot === null) return false;
+  if (snapshot.floorShortfallCause === "budget") return true;
+  return typeof snapshot.dailyBudgetExhaustedBucketCount === "number" && snapshot.dailyBudgetExhaustedBucketCount > 0;
+};
 var pickLastPlan = (entry) => (
   // Prefer the final plan's status — it reflects the planner's last word
   // before finalization. Fall back to the original snapshot when the run

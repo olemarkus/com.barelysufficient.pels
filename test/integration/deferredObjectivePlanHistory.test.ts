@@ -1339,6 +1339,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // snapshot capture path. Original revision keeps the field absent
       // (matches the typical timeline: budget collapse appears mid-run).
       latestDailyBudgetExhaustedBucketCount?: number;
+      // Mirrors `DeferredObjectiveActivePlanRevisionV1.floorShortfallCause` —
+      // the signal that REPLACED the retired count above.
+      latestFloorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
       latestPlanStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
     }) => ({
       version: 1 as const,
@@ -1381,6 +1384,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
             planStatus: params.latestPlanStatus ?? 'on_track' as const,
             ...(params.latestDailyBudgetExhaustedBucketCount !== undefined
               ? { dailyBudgetExhaustedBucketCount: params.latestDailyBudgetExhaustedBucketCount }
+              : {}),
+            ...(params.latestFloorShortfallCause !== undefined
+              ? { floorShortfallCause: params.latestFloorShortfallCause }
               : {}),
           },
         },
@@ -1713,6 +1719,51 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
       const entry = saved()!.entries[0]!;
       expect(entry.finalPlan?.dailyBudgetExhaustedBucketCount).toBe(4);
+    });
+
+    it('captures `floorShortfallCause` on the final snapshot so a miss keeps its attribution', () => {
+      // The signal that replaced `dailyBudgetExhaustedBucketCount`. It must
+      // reach the persisted snapshot or `snapshotShowsBudgetExhausted` goes
+      // permanently false for new history — which stops
+      // `deadlineMissedToBudgetOnDay` censoring budget-caused misses out of the
+      // weather energy-signature fit that drives auto-applied daily budgets.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 2,
+        latestRevisedAtMs: HOUR_MS,
+        latestHourStarts: [HOUR_MS, 2 * HOUR_MS],
+        latestPlanStatus: 'at_risk',
+        latestFloorShortfallCause: 'budget',
+      });
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.finalPlan?.floorShortfallCause).toBe('budget');
+    });
+
+    it('omits `floorShortfallCause` when the revision reports no shortfall', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 1,
+        latestRevisedAtMs: 0,
+        latestHourStarts: [HOUR_MS],
+        latestFloorShortfallCause: 'none',
+      });
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(saved()!.entries[0]!.finalPlan?.floorShortfallCause).toBeUndefined();
     });
 
     it('omits `dailyBudgetExhaustedBucketCount` when the revision reports zero buckets', () => {

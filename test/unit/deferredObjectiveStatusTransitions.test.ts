@@ -33,7 +33,6 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   kWhPerUnitBanded: 0.3,
   rateConfidence: null,
   horizonBucketCount: 1,
-  dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: null,
   ...overrides,
   // Spreading a `Partial<DeferredObjectiveDiagnostic>` (itself a union) widens

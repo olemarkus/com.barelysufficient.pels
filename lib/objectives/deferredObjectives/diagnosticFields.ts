@@ -150,7 +150,6 @@ export const buildDiagnosticBase = (params: {
     kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
     planningSpeedKw: resolvePlanningSpeedKw(params.device),
     horizonBucketCount: 0,
-    dailyBudgetExhaustedBucketCount: 0,
     expectedStepId: null,
   };
   if (params.objective.kind === 'temperature') {

@@ -227,7 +227,6 @@ const buildHoursRemainingDiagnostic = (
   kwhPerUnitLastAcceptedAtMs: null,
   planningSpeedKw: 2,
   horizonBucketCount: 2,
-  dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: null,
   ...overrides,
 } as DeferredObjectiveDiagnostic);

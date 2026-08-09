@@ -4,6 +4,7 @@
 // by the per-revision log. Lives next to the recorder so the recorder can
 // stay close to the 500-LOC ESLint cap.
 import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -122,6 +123,16 @@ const pickDailyBudgetExhaustedBucketCount = (
   const value = revision.dailyBudgetExhaustedBucketCount;
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
   return value;
+};
+
+// Producer-resolved floor-shortfall cause, carried onto the snapshot so a
+// finalized entry keeps its attribution. `none` is suppressed for the same
+// byte-stability reason the recorder suppresses it on the revision.
+const pickFloorShortfallCause = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+): DeferredObjectiveActivePlanFloorShortfallCause | undefined => {
+  const value = revision.floorShortfallCause;
+  return value === undefined || value === 'none' ? undefined : value;
 };
 
 // Plan-time confidence band of the learned rate, pulled from the active
@@ -246,6 +257,7 @@ export const captureRevisionSnapshot = (
 ): DeferredObjectivePlanHistoryRevisionSnapshot => {
   const kwhPerUnitMean = pickKwhPerUnitMean(plan);
   const dailyBudgetExhaustedBucketCount = pickDailyBudgetExhaustedBucketCount(revision);
+  const floorShortfallCause = pickFloorShortfallCause(revision);
   const rateConfidence = pickRateConfidence(plan);
   const acceptedSamples = pickAcceptedSamples(plan);
   const planningSpeedKw = pickPlanningSpeedKw(plan);
@@ -258,6 +270,7 @@ export const captureRevisionSnapshot = (
     ...(dailyBudgetExhaustedBucketCount !== undefined
       ? { dailyBudgetExhaustedBucketCount }
       : {}),
+    ...(floorShortfallCause !== undefined ? { floorShortfallCause } : {}),
     ...(rateConfidence !== undefined ? { rateConfidence } : {}),
     ...(acceptedSamples !== undefined ? { acceptedSamples } : {}),
     ...(planningSpeedKw !== undefined ? { planningSpeedKw } : {}),

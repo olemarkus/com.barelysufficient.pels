@@ -596,7 +596,6 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
     ...(extra ?? {}),
     horizonBucketCount: policyHorizon.horizonBucketCount,
-    dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
   }, reasonCode);
   if (progress.reasonCode) return unknownWithProgress(progress.reasonCode);
 

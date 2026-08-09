@@ -123,7 +123,6 @@ const diagnosticFor = (
   kwhPerUnitLastAcceptedAtMs: null,
   planningSpeedKw: null,
   horizonBucketCount: plan.plannedBuckets.length,
-  dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: plan.expectedStepId,
   horizonPlan: plan,
 });

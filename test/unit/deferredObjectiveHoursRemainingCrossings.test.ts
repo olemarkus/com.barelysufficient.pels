@@ -38,7 +38,6 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   kwhPerUnitLastAcceptedAtMs: null,
   planningSpeedKw: null,
   horizonBucketCount: 1,
-  dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: null,
   ...overrides,
 } as DeferredObjectiveDiagnostic);

@@ -25,7 +25,6 @@ import {
 // allocator (see `buildFrozenHorizonPlan`).
 export type FrozenReadInputs = {
   planStatus: DeferredObjectiveActivePlanStatusV1;
-  dailyBudgetExhaustedBucketCount: number;
   // The SETTLED revision's hours (`latest.hours`), NOT the schedule-floor
   // `commitment.hours`. A `:58` revision that refines kWh on the same hour set
   // (`rate_refined`, `measured_deviation`) updates `latest` but not `commitment`
@@ -67,7 +66,6 @@ const resolveFrozenReadInputs = (params: {
   const { latest } = activePlan;
   return {
     planStatus: latest.planStatus,
-    dailyBudgetExhaustedBucketCount: latest.dailyBudgetExhaustedBucketCount ?? 0,
     // Settled revision's hours (freshest floored plan). The active-plan accessor
     // already rejected legacy/corrupt shapes without a latest revision, so the
     // frozen path never falls back to the commitment floor for control data.
@@ -90,7 +88,6 @@ export const resolveDeadlineBoundFrozenReadInputs = (params: {
 export const EMPTY_POLICY_HORIZON: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }> = {
   buckets: [],
   horizonBucketCount: 0,
-  dailyBudgetExhaustedBucketCount: 0,
   reasonCode: null,
 };
 
@@ -144,7 +141,6 @@ export const buildFrozenDiagnostic = (params: {
     reasonCode: horizonPlan.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: frozenRead.hours.length,
-    dailyBudgetExhaustedBucketCount: frozenRead.dailyBudgetExhaustedBucketCount,
     expectedStepId: horizonPlan.expectedStepId,
     ...(params.liveStepsUnavailable === true ? { liveStepsUnavailable: true as const } : {}),
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'

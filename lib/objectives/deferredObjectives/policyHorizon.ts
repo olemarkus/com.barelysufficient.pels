@@ -25,18 +25,11 @@ export type DeferredObjectivePolicyHorizonResult =
   | {
     buckets: DeferredObjectiveHorizonBucket[];
     horizonBucketCount: number;
-    // Number of buckets in the horizon whose per-bucket headroom collapsed to
-    // zero because the daily budget cap had already been reached at the start
-    // of the bucket. Surfaces as a diagnostic field so the UI can explain a
-    // `cannot_meet` outcome that would otherwise look like a device or
-    // schedule problem.
-    dailyBudgetExhaustedBucketCount: number;
     reasonCode: null;
   }
   | {
     buckets: [];
     horizonBucketCount: 0;
-    dailyBudgetExhaustedBucketCount: 0;
     reasonCode: DeferredObjectivePolicyHorizonUnavailableReason;
   };
 
@@ -52,12 +45,19 @@ type PolicyBucketSource = {
   price: number;
   backgroundKWh: number | null;
   grossBackgroundKWh: number | null;
-  perBucketBudgetKWh: number | null;
-  // True when the per-bucket budget collapsed to 0 specifically because
-  // `buildAllowedCumKWh` plateaued at the daily budget cap (i.e. the cumulative
-  // had already hit `dailyBudgetKWh` before this bucket). Distinguishes the
-  // budget-cap cause from the legacy "no allowedCumKWh data" path.
-  dailyBudgetExhausted: boolean;
+  // The hour's OWN share of the daily budget available to managed load, read
+  // straight from the budget layer's `plannedControlledKWh`. `null` means the
+  // snapshot had no matching bucket (no daily-budget cap for this hour).
+  //
+  // Deliberately NOT derived by differencing `allowedCumKWh`. That curve is
+  // clamped at the day total (`buildAllowedCumKWh`), so differencing it returns
+  // an hour's share only until the cumulative meets the cap and zero for every
+  // hour after — which silently unbooks the tail of any day whose plan sums past
+  // its budget. The soft daily budget does exactly that by design: an hour's
+  // overspend must not penalise later hours, so the per-hour plan legitimately
+  // sums above `dailyBudgetKWh`. See `notes/safe-pace-two-constraints.md` for
+  // the axis this quantity lives on.
+  controlledShareKWh: number | null;
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -94,8 +94,8 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // snapshot, which is now only the budget overlay below.
   priceHorizon: PriceHorizonEntry[];
   // OPTIONAL budget overlay. When a day-bucket matches a price-horizon hour
-  // (its `startUtc` floors to the same epoch hour), its `perBucketBudgetKWh` /
-  // `backgroundKWh` / `grossBackgroundKWh` / `dailyBudgetExhausted` are overlaid onto that bucket.
+  // (its `startUtc` floors to the same epoch hour), its `controlledShareKWh` /
+  // `backgroundKWh` / `grossBackgroundKWh` are overlaid onto that bucket.
   // When absent, the bucket runs with no daily-budget cap and the per-hour
   // hard cap becomes the only constraint.
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -145,7 +145,6 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
       higherPriorityReservations,
     ),
     horizonBucketCount: sourceBuckets.length,
-    dailyBudgetExhaustedBucketCount: countDailyBudgetExhausted(sourceBuckets),
     reasonCode: null,
   };
 };
@@ -229,16 +228,11 @@ export const buildDeferredObjectivePolicyWindowPrices = (
   return series;
 };
 
-const countDailyBudgetExhausted = (buckets: PolicyBucketSource[]): number => (
-  buckets.reduce((count, bucket) => count + (bucket.dailyBudgetExhausted ? 1 : 0), 0)
-);
-
 const unavailable = (
   reasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
 ): DeferredObjectivePolicyHorizonResult => ({
   buckets: [],
   horizonBucketCount: 0,
-  dailyBudgetExhaustedBucketCount: 0,
   reasonCode,
 });
 
@@ -247,19 +241,17 @@ const unavailable = (
 type BudgetOverlay = {
   backgroundKWh: number | null;
   grossBackgroundKWh: number | null;
-  perBucketBudgetKWh: number | null;
-  dailyBudgetExhausted: boolean;
+  controlledShareKWh: number | null;
 };
 
 // No matching snapshot bucket: run with no daily-budget cap. `backgroundKWh = 0`
 // (NOT null) is REQUIRED so `resolveReservedHeadroomKw` returns `hardCapKw` (the
-// per-hour hard cap becomes the constraint); `perBucketBudgetKWh = null` keeps
+// per-hour hard cap becomes the constraint); `controlledShareKWh = null` keeps
 // `resolveMaxUsefulEnergyKWh` null (no daily-budget cap).
 const NO_BUDGET_OVERLAY: BudgetOverlay = {
   backgroundKWh: 0,
   grossBackgroundKWh: 0,
-  perBucketBudgetKWh: null,
-  dailyBudgetExhausted: false,
+  controlledShareKWh: null,
 };
 
 // Build the allocation base buckets from the PRICE-LAYER horizon (price + grid)
@@ -310,8 +302,7 @@ const collectPriceBuckets = (params: {
       price: entry.price,
       backgroundKWh: overlay.backgroundKWh,
       grossBackgroundKWh: overlay.grossBackgroundKWh,
-      perBucketBudgetKWh: overlay.perBucketBudgetKWh,
-      dailyBudgetExhausted: overlay.dailyBudgetExhausted,
+      controlledShareKWh: overlay.controlledShareKWh,
     }];
   });
   if (allBuckets.length === 0) return null;
@@ -337,8 +328,7 @@ const buildBudgetOverlayByHour = (
         byHour.set(hour, {
           backgroundKWh: overlay.backgroundKWh,
           grossBackgroundKWh: overlay.grossBackgroundKWh,
-          perBucketBudgetKWh: overlay.perBucketBudgetKWh,
-          dailyBudgetExhausted: overlay.dailyBudgetExhausted,
+          controlledShareKWh: overlay.controlledShareKWh,
         });
       }
     }
@@ -350,38 +340,31 @@ const collectDayBudgetOverlays = (
   day: DailyBudgetDayPayload,
 ): Array<BudgetOverlay & { startMs: number }> => {
   // A DISABLED daily budget imposes no soft cap. The disabled-state snapshot
-  // still carries an `allowedCumKWh` array (all-zero), which `resolvePerBucketBudget`
-  // would read as a per-bucket budget of 0 — clamping every smart task's allocation
-  // to zero useful energy (`cannot_meet`) whenever the user has daily budget off.
-  // Contribute NO overlay so each bucket falls through to `NO_BUDGET_OVERLAY` and the
-  // per-hour hard cap becomes the only constraint, matching the "no daily budget ⇒
-  // hard cap only" contract.
+  // still carries an all-zero `plannedControlledKWh` array, which would read as a
+  // controlled share of 0 — clamping every smart task's allocation to zero useful
+  // energy (`cannot_meet`) whenever the user has daily budget off. Contribute NO
+  // overlay so each bucket falls through to `NO_BUDGET_OVERLAY` and the per-hour
+  // hard cap becomes the only constraint, matching the "no daily budget ⇒ hard cap
+  // only" contract.
   if (!day.budget.enabled) return [];
   const starts = day.buckets.startUtc;
   if (!Array.isArray(starts)) return [];
-  const allowedCumKWh = day.buckets.allowedCumKWh;
+  const plannedControlledKWh = Array.isArray(day.buckets.plannedControlledKWh)
+    ? day.buckets.plannedControlledKWh
+    : [];
   const plannedUncontrolledKWh = Array.isArray(day.buckets.plannedUncontrolledKWh)
     ? day.buckets.plannedUncontrolledKWh
     : [];
   const plannedGrossUncontrolledKWh = day.buckets.plannedGrossUncontrolledKWh;
-  // Reached only for enabled days (disabled returned above), so no `: null` branch.
-  const dailyBudgetKWh = day.budget.dailyBudgetKWh;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
     if (!Number.isFinite(startMs)) return [];
-    const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
     const backgroundKWh = finiteOrNull(plannedUncontrolledKWh[index]);
     return [{
       startMs,
       backgroundKWh,
       grossBackgroundKWh: finiteOrNull(plannedGrossUncontrolledKWh?.[index]) ?? backgroundKWh,
-      perBucketBudgetKWh,
-      dailyBudgetExhausted: isDailyBudgetExhausted({
-        allowedCumKWh,
-        index,
-        perBucketBudgetKWh,
-        dailyBudgetKWh,
-      }),
+      controlledShareKWh: nonNegativeOrNull(plannedControlledKWh[index]),
     }];
   });
 };
@@ -402,12 +385,14 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
   const starts = day.buckets.startUtc;
   const prices = day.buckets.price;
   if (!Array.isArray(starts) || !Array.isArray(prices)) return [];
-  const allowedCumKWh = day.buckets.allowedCumKWh;
+  const plannedControlledKWh = Array.isArray(day.buckets.plannedControlledKWh)
+    ? day.buckets.plannedControlledKWh
+    : [];
   const plannedUncontrolledKWh = Array.isArray(day.buckets.plannedUncontrolledKWh)
     ? day.buckets.plannedUncontrolledKWh
     : [];
   const plannedGrossUncontrolledKWh = day.buckets.plannedGrossUncontrolledKWh;
-  const dailyBudgetKWh = day.budget.enabled ? day.budget.dailyBudgetKWh : null;
+  const budgetEnabled = day.budget.enabled;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
     const endMs = resolveBucketEndMs(starts, index);
@@ -421,7 +406,6 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
     ) {
       return [];
     }
-    const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
     const backgroundKWh = finiteOrNull(plannedUncontrolledKWh[index]);
     return [{
       id: startIso,
@@ -431,13 +415,9 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
       price,
       backgroundKWh,
       grossBackgroundKWh: finiteOrNull(plannedGrossUncontrolledKWh?.[index]) ?? backgroundKWh,
-      perBucketBudgetKWh,
-      dailyBudgetExhausted: isDailyBudgetExhausted({
-        allowedCumKWh,
-        index,
-        perBucketBudgetKWh,
-        dailyBudgetKWh,
-      }),
+      // A disabled budget imposes no soft cap — mirrors the `!day.budget.enabled`
+      // early return in `collectDayBudgetOverlays`.
+      controlledShareKWh: budgetEnabled ? nonNegativeOrNull(plannedControlledKWh[index]) : null,
     }];
   });
 };
@@ -446,42 +426,17 @@ const finiteOrNull = (value: number | undefined): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-const resolvePerBucketBudget = (
-  allowedCumKWh: number[] | undefined,
-  index: number,
-): number | null => {
-  if (!Array.isArray(allowedCumKWh)) return null;
-  const current = allowedCumKWh[index];
-  if (typeof current !== 'number' || !Number.isFinite(current)) return null;
-  const previous = index > 0 ? allowedCumKWh[index - 1] : 0;
-  if (typeof previous !== 'number' || !Number.isFinite(previous)) return null;
-  return Math.max(0, current - previous);
-};
-
-// True when the per-bucket budget is 0 specifically because the cumulative
-// allowed already reached `dailyBudgetKWh` before this bucket. `buildAllowedCumKWh`
-// clamps `total` at the cap, so plateau buckets always share the same value as
-// the previous one. We require both the plateau and a meeting/exceeding-cap
-// reading so the legacy "no budget data" path (perBucketBudgetKWh === null)
-// stays distinguishable.
-const DAILY_BUDGET_CAP_EPSILON_KWH = 1e-6;
-const isDailyBudgetExhausted = (params: {
-  allowedCumKWh: number[] | undefined;
-  index: number;
-  perBucketBudgetKWh: number | null;
-  dailyBudgetKWh: number | null;
-}): boolean => {
-  const { allowedCumKWh, index, perBucketBudgetKWh, dailyBudgetKWh } = params;
-  // `perBucketBudgetKWh` is the difference of two cumulative floats; the
-  // `Math.max(0, ...)` in `resolvePerBucketBudget` clamps negative noise but
-  // leaves tiny positive residues. Treat anything within the daily-budget
-  // epsilon as a plateau so precision drift doesn't hide an exhausted bucket.
-  if (perBucketBudgetKWh === null || perBucketBudgetKWh > DAILY_BUDGET_CAP_EPSILON_KWH) return false;
-  if (dailyBudgetKWh === null || dailyBudgetKWh <= 0) return false;
-  if (!Array.isArray(allowedCumKWh)) return false;
-  const current = allowedCumKWh[index];
-  if (typeof current !== 'number' || !Number.isFinite(current)) return false;
-  return current >= dailyBudgetKWh - DAILY_BUDGET_CAP_EPSILON_KWH;
+// A controlled share is an energy quantity: negative is malformed, not a valid
+// "no room this hour" decision. Resolve it to `null` (no daily-budget cap for
+// this bucket) rather than letting it read as a 0 cap, which would silently
+// make the hour unbookable on junk data — the same failure this PR fixes, from
+// a different direction. Mirrors `normalizeReservedHeadroomKw` in
+// `bucketAllocation.ts`, which resolves a negative headroom forecast to
+// "unavailable" at the same boundary. A genuine zero share is preserved: it is
+// the budget layer's real answer that this hour has nothing for managed load.
+const nonNegativeOrNull = (value: number | undefined): number | null => {
+  const finite = finiteOrNull(value);
+  return finite === null || finite < 0 ? null : finite;
 };
 
 const resolveBucketEndMs = (starts: string[], index: number): number => {
@@ -580,7 +535,7 @@ const splitPolicyBucketsAtReservationBoundaries = (
       endMs,
       backgroundKWh: prorateNullableEnergy(bucket.backgroundKWh, fraction),
       grossBackgroundKWh: prorateNullableEnergy(bucket.grossBackgroundKWh, fraction),
-      perBucketBudgetKWh: prorateNullableEnergy(bucket.perBucketBudgetKWh, fraction),
+      controlledShareKWh: prorateNullableEnergy(bucket.controlledShareKWh, fraction),
     };
   });
 });
@@ -645,6 +600,15 @@ const resolveMaxUsefulEnergyKWh = (
   // bucket falls back to the device's step capacity in allocation, and physical
   // limits are enforced downstream (admission / capacity guard).
   if (exemptFromBudget) return null;
-  if (bucket.perBucketBudgetKWh === null || bucket.backgroundKWh === null) return null;
-  return Math.max(0, bucket.perBucketBudgetKWh - bucket.backgroundKWh);
+  // The hour's own controlled share, as the budget layer allocated it.
+  //
+  // Numerically this equals `plannedKWh - plannedUncontrolledKWh`: both
+  // producers conserve the split exactly (`buildPlanBreakdown` derives
+  // uncontrolled from a share then floors the remainder; `buildPlannedSplit`
+  // returns `plannedUncontrolled = planned - plannedControlled`). We read the
+  // field rather than re-subtract because the split is the budget layer's to
+  // define — including the controlled floor and uncontrolled reserve that shape
+  // it — and a consumer recomputing it would fork that definition the next time
+  // it changes.
+  return bucket.controlledShareKWh;
 };

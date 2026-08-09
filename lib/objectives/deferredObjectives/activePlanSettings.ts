@@ -135,10 +135,9 @@ const isOptionalFiniteNonNegative = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value >= 0)
 );
 
-// `dailyBudgetExhaustedBucketCount` is the count of zero-cap horizon buckets.
-// Recorder suppresses zero to keep persisted revisions byte-stable; the
-// validator still accepts zero so a fixture or hand-edited payload that
-// round-trips through normalize() isn't dropped.
+// `dailyBudgetExhaustedBucketCount` is a RETIRED field: the recorder no longer
+// writes it. The validator still accepts it so revisions persisted by an older
+// build round-trip instead of being dropped on upgrade.
 const isOptionalNonNegativeCount = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value >= 0)
 );
@@ -166,7 +165,7 @@ const isOptionalFloorShortfallCause = (value: unknown): boolean => (
 // revision the recorder writes (see `buildRevision` in `activePlanRecorder.ts`),
 // but the previous validator never checked them — a tampered or downgraded
 // payload could carry an unknown status string or NaN energy figure all the
-// way to the hero/status chip. `energyExpectedKWh`,
+// way to the hero/status chip. `energyExpectedKWh`, the retired
 // `dailyBudgetExhaustedBucketCount`, and `floorShortfallCause` are optional
 // but must round-trip cleanly when the recorder did persist them. Split out
 // of `isRevision` so the top-level guard stays under the cyclomatic-complexity
