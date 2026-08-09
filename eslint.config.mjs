@@ -335,7 +335,7 @@ export default tseslint.config(
     rules: {
       // Perf-focused loop refactors may use local mutation; immutability is still enforced elsewhere.
       'functional/immutable-data': 'off',
-      'unicorn/no-array-for-each': 'error',
+      'unicorn/no-for-each': 'error',
       // TODO(perf): tighten to { allowSimpleOperations: false } after remaining reducers are migrated.
       'unicorn/no-array-reduce': ['error', { allowSimpleOperations: true }],
       'no-restricted-syntax': [
