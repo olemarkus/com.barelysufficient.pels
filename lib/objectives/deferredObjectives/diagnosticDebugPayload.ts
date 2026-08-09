@@ -12,6 +12,14 @@ const horizonPlanFields = (
   unplannedUsefulEnergyKWh: horizonPlan?.unplannedUsefulEnergyKWh ?? null,
   usesDeadlineReserve: horizonPlan?.usesDeadlineReserve ?? null,
   priceDeferralEligible: horizonPlan?.priceDeferralEligible ?? null,
+  coldStartReleaseEligible: horizonPlan?.coldStartReleaseEligible ?? null,
+  // The producer's claim on the current hour, and therefore the admission decision:
+  // `claimed` runs the device, `released` stands it down, `unclaimed` leaves it to
+  // the planner's own priority call. Without it a log reader cannot tell "on because
+  // its task claimed the hour" from "on because its task could not claim the hour
+  // but still needs it" — the exact discrimination the investigation that produced
+  // this state needed and could not make.
+  currentHourClaim: horizonPlan?.currentHourClaim ?? null,
   plannedBuckets: horizonPlan?.plannedBuckets.map((bucket) => ({
     id: bucket.id, startMs: bucket.startMs, endMs: bucket.endMs,
     price: bucket.price, reserve: bucket.reserve, current: bucket.current,

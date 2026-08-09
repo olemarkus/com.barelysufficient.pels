@@ -29,6 +29,34 @@ export type DeferredObjectiveHorizonStatusDetail =
   | 'planned_with_margin'
   | 'target_cannot_be_met';
 
+/**
+ * What claim a smart task has on the CURRENT hour.
+ *
+ * Owned by the plan producers: `horizonPlanner` on the fresh allocation and
+ * `frozenHorizonPlan` on the mid-hour read of the commitment, both through the one
+ * resolver `resolveCurrentHourClaim` (`currentHourClaim.ts`), which is where the
+ * semantics and the cause table live.
+ *
+ * Invariants a caller may rely on:
+ * - Exactly one of the three holds per cycle, and it is resolved once. Consumers
+ *   (`admission.resolveDecision`, `decorationController.resolveDeferredAvoidDeviceIds`,
+ *   `diagnosticFields.isCurrentBucketPlanned`) read it and must not re-derive it from
+ *   `currentBucket.plannedUsefulEnergyKWh`, `priceDeferralEligible` or the status.
+ * - `claimed` ⇒ the hour carries booked energy and the device should be driven.
+ * - `unclaimed` ⇒ the hour carries NO booked energy and the task cannot finish
+ *   without it. The device is neither driven nor stood down: it goes to the planner
+ *   as managed and competes on its own priority.
+ * - `released` ⇒ the task is not using the hour and can finish anyway. The device is
+ *   stood down in its configured release posture.
+ * - The fresh and frozen producers answer identically for the same settled state:
+ *   the frozen path replays the `:58` settle's persisted `floorShortfallCause`
+ *   rather than recomputing sufficiency from the live need.
+ *
+ * Governing note: `notes/deferred-load-objectives/README.md` § "An unbooked hour is
+ * not a stand-down".
+ */
+export type DeferredObjectiveCurrentHourClaim = 'claimed' | 'released' | 'unclaimed';
+
 export type DeferredObjective = {
   id: string;
   kind: DeferredObjectiveKind;
@@ -214,6 +242,13 @@ export type DeferredObjectiveHorizonPlan = {
   // back-compat: absent ⇒ not released. See
   // notes/deferred-load-objectives/execution-adaptation.md (cold-start feasibility).
   coldStartReleaseEligible?: boolean;
+  // What claim this task has on the CURRENT hour, resolved once by the producer
+  // (`resolveCurrentHourClaim`) and mapped 1:1 onto an admission decision. Required,
+  // deliberately: a new plan producer must answer it rather than inherit a default,
+  // because absence would silently mean "unclaimed" and hand the planner a
+  // controllable device. Full semantics and the reason the middle state exists live
+  // on `resolveCurrentHourClaim` in `currentHourClaim.ts`.
+  currentHourClaim: DeferredObjectiveCurrentHourClaim;
   // This plan is a frozen mid-hour projection of the PERSISTED commitment — the
   // allocator did not run (see `buildFrozenHorizonPlan`). It carries no new
   // allocation to settle: its `statusDetail` is a representative placeholder

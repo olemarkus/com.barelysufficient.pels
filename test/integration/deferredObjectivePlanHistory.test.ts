@@ -47,6 +47,7 @@ const makeHorizon = (
   currentBucket: null,
   plannedBuckets: [],
   usesDeadlineReserve: false,
+  currentHourClaim: 'claimed' as const,
   priceDeferralEligible: false,
   ...overrides,
 });

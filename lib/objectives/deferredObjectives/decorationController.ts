@@ -117,17 +117,28 @@ export class DeferredObjectiveDecorationController {
 }
 
 // Devices whose deferred objective is currently GOVERNING them: a `planned` or
-// `idle` admission decision this cycle. `inactive` (task disabled, satisfied, or
-// otherwise not plannable) is deliberately excluded — a finished/disabled smart
-// task must not keep a device out of the planner's standing surplus dump-load
-// hold forever. Consumed by the planner as `admittedDeviceIds` (smart-task
-// precedence, plan-side): a governed device is never surplus-held.
+// `idle` admission decision this cycle. Consumed by the planner as
+// `admittedDeviceIds` — its only consumer is the surplus dump-load hold
+// (`planBuilderSurplus` → `shedding/surplusHold`), which a governed device is
+// exempt from.
+//
+// `inactive` (task disabled, satisfied, or otherwise not plannable) is excluded so
+// a finished smart task cannot keep a device out of the hold forever.
+//
+// `unclaimed` is excluded too, and that is a decision rather than an inheritance.
+// The task is explicitly NOT claiming this hour, so it is not governing the device
+// during it — and the whole point of the state is that the device falls back to how
+// it would behave anyway. For a device the user put on "Run on solar surplus", how
+// it behaves anyway is: wait for surplus. Admitting it here would instead let the
+// ordinary restore lane start it on GRID import in exactly the hour the budget
+// forecast zeroed, which is usually the dearest one — defeating the feature the
+// user turned on, and doing so silently.
 const resolveAdmittedDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): ReadonlySet<string> => {
   const admitted = new Set<string>();
   for (const [deviceId, decision] of decisions) {
-    if (decision.kind !== 'inactive') admitted.add(deviceId);
+    if (decision.kind === 'planned' || decision.kind === 'idle') admitted.add(deviceId);
   }
   return admitted;
 };
@@ -163,9 +174,12 @@ export const resolveDeferredAvoidDeviceIds = (
       continue;
     }
     if (resolvedTrajectoryStatus(diag) !== 'on_track') continue;
-    const currentBucket = diag.horizonPlan?.currentBucket;
-    const currentHourUnbooked = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;
-    if (currentHourUnbooked) avoidIds.add(diag.deviceId);
+    // Read the producer's claim rather than re-deriving "is the current hour
+    // unbooked" from the bucket. An `unclaimed` hour is one the task could not book
+    // but still needs, so the device is NOT waiting for anything cheaper — labelling
+    // it so would state the opposite of the admission decision, and (per the comment
+    // above) would also drop a genuinely starved device out of starvation counting.
+    if (diag.horizonPlan?.currentHourClaim === 'released') avoidIds.add(diag.deviceId);
   }
   return avoidIds;
 };

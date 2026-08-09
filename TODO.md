@@ -1222,6 +1222,77 @@ program) remain deferred.*
       legacy read is safe. Source: 2026-08-09 investigation of a smart task that skipped the last
       two hours of an overspent day. [P2]
 
+- [ ] **Name the daily budget when it is a contributing cause of a smart-task miss, not only the
+      sole one.** `resolveStatus` reaches `limited_by_daily_budget` only when lifting the per-bucket
+      cap would close the gap outright (`resolveBudgetBoundFeasibility`). A plan whose floor was
+      squeezed by the soft budget but that misses for a compounding reason lands on
+      `target_cannot_be_met` → `floorShortfallCause: 'time_capacity'`, so the surface says
+      "Cannot finish" with no mention of the budget and no route to the "may go over daily budget"
+      permission that would actually help. The producer already has both numbers to resolve the
+      contributing-cause signal (the capped allocation and the uncapped probe), so this is a flat
+      boolean onto the diagnostic + persisted revision plus the copy branch — deliberately NOT a
+      change to the primary status, which stays honest about whether the target is reachable at all.
+      Note that `notes/deferred-load-objectives/budget-bound-false-cannot-meet.md` claims a P1 for
+      this is tracked here; it was not, hence this entry. Files:
+      `lib/objectives/deferredObjectives/horizonPlanner.ts`, `.../floorShortfallCause.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`. Source: 2026-08-09 investigation of an EV smart
+      task reporting `time_capacity` while every hour of its plan was budget-shaped. [P2]
+
+- [ ] **`resolveDeferredAvoidDeviceIds` still classifies release provenance itself.** The second
+      half now reads the producer's `currentHourClaim`, but the early branch above it still tests
+      `priceDeferralEligible || coldStartReleaseEligible` directly — because a price-released device
+      gets the "Waiting for cheaper hours" framing at ANY status, while an ordinary released hour
+      gets it only while `on_track`. That distinction is real, so the consumer is branching on which
+      release reason applies, which the resolution-in-producer rule forbids. Fixing it means the
+      producer exposing the distinction, and the obvious shape — a fourth claim value, or a
+      companion flag — re-expands the very contract collapsing into three states was worth doing.
+      Wants a deliberate answer, not a mechanical one; possibly the avoid-framing itself should key
+      on something other than release provenance. Source: CodeRabbit on PR #2059. [P2]
+
+- [ ] **Pin that the daily-budget pace still holds an `unclaimed` smart-task device.** The whole
+      justification for `unclaimed` is that the plan layer, not the smart task, decides whether the
+      device may run — and by reading, it does: `headroomLedger.availableFor` returns
+      `min(capacity, budget)` for a non-exempt device and `shedding/candidates.ts` keeps it a shed
+      candidate under a daily-binding limit. Nothing pins it. `smartTaskUnclaimedHourLifecycle`
+      cannot: it has no `PlanBuilder`, so it models an unclaimed device as running. Wants a spec
+      driving the plan layer with a budget-bound soft limit and an unclaimed device, asserting it is
+      held — ideally a true `createApp` SDK-boundary e2e, which would also close the tier gap below.
+      Source: pels-runtime-reality and Codex on the unclaimed-hour change, 2026-08-09. [P1]
+
+- [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
+      window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —
+      and with it the claim — runs on every cycle in that window (~12 in `homey_energy` mode, more
+      and irregular under `power_source = flow`). The two-clock design says a control decision moves
+      only at the settle; this is the one seam where it can move repeatedly within one. The
+      asymmetry is what makes it worth closing: `released` fires a lifecycle release with no
+      cooldown gate, while `unclaimed` can only re-admit through the 60-300 s restore cooldown, so
+      an alternation is not symmetric churn. Resolve the claim once on the first fresh pass at/after
+      the mark and reuse it for the rest of the window, the way `cheaperHourAhead` is stamped once
+      at the booking revision. Also covers the no-commitment case, where no frozen fallback exists
+      and the fresh path runs every cycle for the whole hour. Source: pels-runtime-reality on
+      PR #2059. [P2]
+
+- [ ] **Decide whether a `cannot_meet` task should keep claiming its dearest hours.**
+      `target_cannot_be_met` maps to `time_capacity`, which keeps an unbooked hour — so a task that
+      by definition cannot finish now competes in every forecast-zeroed hour. Those correlate with
+      the *expensive* hours, because the daily budget price-shapes the controlled share downward
+      there, and in an unbooked hour neither mid-hour backstop can release it
+      (`priceDeferralEligible` requires a booked current hour; `coldStartReleaseEligible` is false
+      on the frozen path). Buying marginal progress at maximum price is defensible for `at_risk`;
+      for `cannot_meet` it is a real product question. Options: split `target_cannot_be_met` out of
+      `CAUSES_THAT_KEEP_THE_HOUR`, or gate the `cannot_meet` case on `!cheaperHourAhead`. Source:
+      pels-runtime-reality on PR #2059. [P2]
+
+- [ ] **`test/e2e/deferredObjectiveColdStartSdkE2E.test.ts` is integration by the taxonomy's own
+      rule.** It drives the stack by calling `buildDeferredObjectiveDiagnostics` /
+      `applyDeferredObjectiveAdmission` and asserts on their returns, which
+      `notes/testing-taxonomy.md` § "The border cases" classifies as integration, not e2e — yet
+      `lib/objectives/deferredObjectives/AGENTS.md` names it "the canonical harness" for
+      deferred-objective **e2e**. Two repo docs disagree, and the next person writing a
+      deferred-objective test inherits the contradiction (this one did). Either move it and reword
+      the module AGENTS.md to say the harness defines what may be SIMULATED rather than which tier
+      it is, or rewrite it as a `createApp` SDK-boundary spec. Source: Codex on PR #2059. [P2]
+
 - [ ] **Flow stepped-load runtime state still duplicates exact watts after transport admission.**
       `reportSteppedLoadActualStep` admits exact power into the transport-owned reported-step
       cluster, but `SteppedLoadReportedRuntimeState.planningPowerW` keeps a second setup-layer copy

@@ -91,14 +91,15 @@ export const mergeProgressFields = (
 
 // "Is the current bucket actually running this cycle?" — gates the
 // `budgetExemptApplied` diagnostic. A price-deferral-eligible OR cold-start-released
-// hour is released (admission idles the device), so the budget exemption is NOT
-// active even though the committed bucket still carries booked energy; report it
-// false so the structured log matches what the device is actually doing. Mirrors
-// admission's `isReleasedCurrentHour` for the booked-but-released cases.
+// hour is released (admission idles the device), and an `unclaimed` hour makes no
+// claim at all, so in neither case is the budget exemption active even when the
+// committed bucket still carries booked energy; report it false so the structured
+// log matches what the device is actually doing.
+//
+// Reads the producer's claim rather than re-deriving the condition, so this cannot
+// drift from the decision admission actually makes.
 export const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
-  !horizonPlan.priceDeferralEligible
-  && !horizonPlan.coldStartReleaseEligible
-  && (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0
+  horizonPlan.currentHourClaim === 'claimed'
 );
 
 export const buildDiagnosticBase = (params: {

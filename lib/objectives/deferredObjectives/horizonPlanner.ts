@@ -13,6 +13,8 @@ import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
 import { resolveColdStartReleaseEligible } from './coldStartRelease';
+import { resolveCurrentHourClaim } from './currentHourClaim';
+import { resolveFloorShortfallCause } from './floorShortfallCause';
 import type {
   DeferredObjectiveCurrentBucketPlan,
   DeferredObjectiveHorizonInput,
@@ -488,6 +490,14 @@ const buildPlanFromAllocation = (params: {
     usesDeadlineReserve: allocation.usesDeadlineReserve,
     priceDeferralEligible,
     coldStartReleaseEligible,
+    // Same signal the recorder persists onto the revision, so the frozen mid-hour
+    // read replays exactly this verdict instead of recomputing one.
+    currentHourClaim: resolveCurrentHourClaim({
+      currentBucketBookedKWh: currentBucket?.plannedUsefulEnergyKWh ?? null,
+      priceDeferralEligible,
+      coldStartReleaseEligible,
+      floorShortfallCause: resolveFloorShortfallCause(statusResult.statusDetail),
+    }),
   };
 };
 
@@ -600,6 +610,11 @@ const buildEmptyPlan = (params: {
     plannedBuckets: [],
     usesDeadlineReserve: false,
     priceDeferralEligible: false,
+    // An empty plan has no schedule at all — a passed deadline, or a price window
+    // that failed to cover the horizon. There is nothing demanding this hour and no
+    // allocation whose shortfall could speak for it, so the device keeps its
+    // pre-existing release posture rather than becoming unclaimed.
+    currentHourClaim: 'released',
   };
 };
 

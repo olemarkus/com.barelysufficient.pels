@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
-import type { DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlanFloorShortfallCause, DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveStep } from '../../lib/objectives/deferredObjectives/types';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -15,6 +15,9 @@ const build = (overrides: {
   aheadOfHourMilestone?: boolean;
   objectiveKind?: 'temperature' | 'ev_soc';
   planStatus?: 'on_track' | 'at_risk' | 'cannot_meet';
+  // The settle's verdict the frozen read replays. `'none'` (no floor shortfall) is
+  // the covered case, so an hour the commitment skipped is one the task can give up.
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
 }) => buildFrozenHorizonPlan({
   nowMs: NOW_MS,
   objectiveId: 'dev:temperature',
@@ -23,6 +26,7 @@ const build = (overrides: {
   deadlineAtMs: NOW_MS + 6 * HOUR_MS,
   deadlineMarginMs: HOUR_MS,
   committedHours: overrides.committedHours,
+  floorShortfallCause: overrides.floorShortfallCause ?? 'none',
   planStatus: overrides.planStatus ?? 'on_track',
   energyNeededKWh: 3,
   aheadOfHourMilestone: overrides.aheadOfHourMilestone ?? false,
