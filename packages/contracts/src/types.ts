@@ -167,9 +167,33 @@ export type DeviceControlAdapterSnapshot = {
     activationEnabled: boolean;
 };
 
+/**
+ * Why PELS has no battery level for a charger.
+ *
+ * Both arms are STATEMENTS ABOUT THE SESSION, never about age or trust: a level
+ * is reported on change and can only change while a car is attached, so nothing
+ * decays. `not_reported` means no reading belongs to the session running now —
+ * none has arrived, or the one PELS holds was taken before this car plugged in.
+ * `not_connected` means there is no session: a disconnect is recorded and no
+ * reconnect has been observed since.
+ */
+export type EvSocUnavailableReason = 'not_reported' | 'not_connected';
+
 export type DeviceStateOfChargeSnapshot = {
+    /**
+     * The level PELS stands behind, or nothing.
+     *
+     * `unavailable` means there IS no level — not a doubtful one. Consumers read
+     * this and nothing else to decide usability; there is no freshness, age, or
+     * currency signal to combine it with, and inventing one is the defect this
+     * union exists to prevent.
+     */
+    level:
+        | { kind: 'known'; percent: number }
+        | { kind: 'unavailable'; reasonCode: EvSocUnavailableReason };
     percent: number;
     observedAtMs?: number;
+    /** @deprecated Superseded by `level`; removed once every consumer has moved. */
     status: 'unknown' | 'fresh' | 'stale' | 'invalid';
     capabilityId?: string;
     sessionStartedAtMs?: number;

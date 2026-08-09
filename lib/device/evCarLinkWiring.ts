@@ -75,9 +75,9 @@ export const buildEvCarLinkChargerViews = (
         // accuracy — silencing the evidence channel for exactly the chargers under
         // test.
         ...(hasObservedStateOfCharge(snapshot)
-            && snapshot.stateOfCharge.status === 'fresh'
+            && snapshot.stateOfCharge.level.kind === 'known'
             && snapshot.stateOfCharge.source !== 'car'
-            ? { reportedSocPct: snapshot.stateOfCharge.percent }
+            ? { reportedSocPct: snapshot.stateOfCharge.level.percent }
             : {}),
     }];
 });

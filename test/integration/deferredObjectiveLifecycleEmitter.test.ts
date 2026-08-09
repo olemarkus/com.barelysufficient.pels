@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, it, expect, vi } from 'vitest';
 import {
   DeferredObjectiveLifecycleEmitter,
@@ -30,7 +31,7 @@ const buildEvDevice = (
   name: 'Driveway EV',
   deviceClass: 'evcharger',
   evChargingState: 'plugged_in_paused',
-  stateOfCharge: { percent: 40, status: 'fresh', observedAtMs: NOW_MS },
+  stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {
     model: 'stepped_load',
     steps: [

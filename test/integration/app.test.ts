@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
@@ -1462,12 +1463,7 @@ describe('MyApp initialization', () => {
         name: 'Garage Charger',
         deviceClass: 'evcharger',
         targets: [],
-        stateOfCharge: {
-          percent: 42,
-          observedAtMs: Date.now(),
-          status: 'fresh',
-          capabilityId: 'measure_battery',
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.now(), capabilityId: 'measure_battery' }),
       },
     ]);
     const requestSpy = vi.spyOn((app as any).planRebuildScheduler, 'request');
@@ -3434,11 +3430,7 @@ describe('periodic snapshot refresh scheduling', () => {
             flowBacked: true,
             flowBackedCapabilityIds: ['measure_battery'],
             targets: [],
-            stateOfCharge: {
-              percent: previousPercent,
-              observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
-              status: 'fresh',
-            },
+            stateOfCharge: stateOfChargeFixture({ percent: previousPercent, observedAtMs: Date.parse('2026-03-20T09:00:00Z') }),
           },
         ],
       });
@@ -3484,12 +3476,7 @@ describe('periodic snapshot refresh scheduling', () => {
           flowBacked: true,
           flowBackedCapabilityIds: ['evcharger_charging'],
           targets: [],
-          stateOfCharge: {
-            percent: 42,
-            observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
-            status: 'fresh',
-            capabilityId: 'measure_battery',
-          },
+          stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-20T09:00:00Z'), capabilityId: 'measure_battery' }),
         },
       ],
     });
@@ -3525,11 +3512,7 @@ describe('periodic snapshot refresh scheduling', () => {
           name: 'Garage Charger',
           deviceClass: 'evcharger',
           targets: [],
-          stateOfCharge: {
-            percent: 42,
-            observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
-            status: 'fresh',
-          },
+          stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-20T09:00:00Z') }),
         },
       ],
     });
@@ -3568,11 +3551,7 @@ describe('periodic snapshot refresh scheduling', () => {
           name: 'Battery Sensor',
           deviceClass: 'sensor',
           targets: [],
-          stateOfCharge: {
-            percent: 42,
-            observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
-            status: 'fresh',
-          },
+          stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-20T09:00:00Z') }),
         },
       ],
     });
@@ -3666,11 +3645,7 @@ describe('periodic snapshot refresh scheduling', () => {
       flowBacked: true,
       flowBackedCapabilityIds: ['measure_battery'],
       targets: [],
-      stateOfCharge: {
-        percent: 32,
-        observedAtMs: previousReportedAt,
-        status: 'stale',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32, observedAtMs: previousReportedAt, unavailable: 'not_reported' }),
     }];
     (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => snapshot,
@@ -3715,11 +3690,7 @@ describe('periodic snapshot refresh scheduling', () => {
       flowBacked: true,
       flowBackedCapabilityIds: ['evcharger_charging'],
       targets: [],
-      stateOfCharge: {
-        percent: 32,
-        observedAtMs: previousReportedAt,
-        status: 'stale',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32, observedAtMs: previousReportedAt, unavailable: 'not_reported' }),
     }];
     (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => snapshot,
@@ -3852,11 +3823,7 @@ describe('periodic snapshot refresh scheduling', () => {
       flowBacked: true,
       flowBackedCapabilityIds: ['measure_battery'],
       targets: [],
-      stateOfCharge: {
-        percent: 80,
-        observedAtMs: initialReportedAt,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: initialReportedAt }),
     }];
     const dispatchObservedStateForDevice = vi.fn();
     (app as any).evBoostSettings = { 'ev-1': { enabled: true, boostBelowPercent: 40 } };

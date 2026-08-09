@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { testExports } from '../src/ui/deadlinesList.ts';
 import type {
@@ -80,7 +81,7 @@ const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeO
     name: 'EV charger',
     targets: [],
     binaryControl: { on: false },
-    stateOfCharge: { percent: 45, status: 'fresh' },
+    stateOfCharge: stateOfChargeFixture({ percent: 45 }),
   },
 ];
 

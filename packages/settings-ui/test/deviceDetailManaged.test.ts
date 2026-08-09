@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   EvObservedProbe,
@@ -456,11 +457,7 @@ describe('device detail managed state saves', () => {
       deviceClass: 'evcharger',
       deviceType: 'onoff',
       targets: [],
-      stateOfCharge: {
-        percent: 42,
-        observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-        status: 'stale',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z'), unavailable: 'not_reported' }),
     })];
     state.managedMap = { 'ev-1': true };
     state.controllableMap = { 'ev-1': true };
@@ -1087,10 +1084,7 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
     })];
     state.managedMap = { 'charger-1': true };
     state.controllableMap = { 'charger-1': true };
@@ -1420,10 +1414,7 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging'],
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -1519,10 +1510,7 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging'],
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
     })];
     state.managedMap = { 'charger-1': true };
     state.controllableMap = { 'charger-1': true };
@@ -1603,10 +1591,7 @@ describe('device detail managed state saves', () => {
         ],
       },
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
     })];
     state.managedMap = { 'charger-1': true };
     state.controllableMap = { 'charger-1': true };
@@ -1669,10 +1654,7 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging', 'charging_button'],
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
     })];
     state.managedMap = { 'charger-1': true };
     state.controllableMap = { 'charger-1': true };
@@ -1741,10 +1723,7 @@ describe('device detail managed state saves', () => {
       },
       capabilities: ['measure_power', 'evcharger_charging'],
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
     })];
     state.managedMap = { 'charger-1': true };
     state.controllableMap = { 'charger-1': true };
@@ -1871,10 +1850,14 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging'],
       evChargingState: 'plugged_in_paused',
-      stateOfCharge: {
+      stateOfCharge: stateOfChargeFixture({
         percent: 32,
-        status: 'stale',
-      },
+        // Reported once, then retired by a session change — which is what the
+        // legacy `stale` arm means. Without `observedAtMs` this would be the
+        // never-reported case, and the copy differs.
+        observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
+        unavailable: 'not_reported',
+      }),
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -1969,10 +1952,7 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging'],
       ...(evChargingState ? { evChargingState } : {}),
-      stateOfCharge: {
-        percent: 32,
-        status: 'fresh',
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [

@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
@@ -52,7 +53,7 @@ const buildEvDevice = (
   deviceClass: 'evcharger',
   controlCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
-  stateOfCharge: { percent: 40, status: 'fresh', observedAtMs: NOW_MS },
+  stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {
     model: 'stepped_load',
     steps: [
@@ -730,7 +731,7 @@ describe('previewDeferredObjectivePlan', () => {
 
   it('returns satisfied with no scheduled hours when the target is already met', () => {
     const ctx: PreviewContext = {
-      device: buildEvDevice({ stateOfCharge: { percent: 80, status: 'fresh', observedAtMs: NOW_MS } }),
+      device: buildEvDevice({ stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: NOW_MS }) }),
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,

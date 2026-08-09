@@ -71,14 +71,28 @@ export function buildObjectiveProfileSample(
     };
   }
 
-  if (isEvDevice(device) && hasObservedStateOfCharge(device) && device.stateOfCharge.status === 'fresh') {
+  if (isEvDevice(device) && hasObservedStateOfCharge(device)) {
+    // `level` answers usability, and no `Number.isFinite` re-check follows it —
+    // the producer stands behind the level or reports none.
+    const { level } = device.stateOfCharge;
+    if (level.kind !== 'known') return null;
     const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
     if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
-    if (!isFreshObservationTime(observedAtMs, nowMs)) return null;
-    if (!Number.isFinite(device.stateOfCharge.percent)) return null;
+    // The age bound stays, and it is NOT a freshness gate on the level. A sample
+    // is a (level, time, power) triple, and the profile bills energy as
+    // `previousSample.crediblePowerW × (thisSample.observedAtMs − previous)`
+    // (`calculateWindowEnergyKwh`). `measure_battery` is change-only, so a
+    // charger PELS resumes reports its level hours before it draws anything:
+    // pairing that timestamp with the current charging power would bill the
+    // whole paused interval at full power and replace the bootstrap with a
+    // wildly inflated kWh/%. The level itself stays usable everywhere else —
+    // boost, progress, display — because that question is about the value, and
+    // this one is about whether the timestamp and the power describe the same
+    // interval. Decision-relative, so it belongs here and not in the producer.
+    if (!isUsableSampleObservationTime(observedAtMs, nowMs)) return null;
     return {
       observedAtMs,
-      value: device.stateOfCharge.percent,
+      value: level.percent,
       unit: 'percent',
       ...resolveCredibleDevicePower(device),
     };
@@ -102,6 +116,18 @@ function isFreshTemperatureDevice(
 }
 
 function isFreshObservationTime(observedAtMs: number, nowMs: number): boolean {
+  return isUsableSampleObservationTime(observedAtMs, nowMs);
+}
+
+/**
+ * Whether an observation's timestamp can be paired with a power reading taken
+ * now and still describe one interval.
+ *
+ * A future-dated stamp is corrupt; one older than the window cannot be joined to
+ * current power without misattributing everything in between. Neither is a
+ * judgement about the observed VALUE — the producer already resolved that.
+ */
+function isUsableSampleObservationTime(observedAtMs: number, nowMs: number): boolean {
   return observedAtMs <= nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS
     && nowMs - observedAtMs <= OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS;
 }
