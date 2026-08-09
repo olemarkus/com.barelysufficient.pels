@@ -1,7 +1,8 @@
-// Device-detail one-line live status (2026-07 coherence train, PR-5): the
-// first content row under the app bar shows the SAME producer-resolved state
-// word + current draw the Overview card renders, so the page answers "is
-// PELS seeing this device right now?" before the ~20 controls below.
+// Device-detail hero (2026-07 coherence train PR-5; onto the `.pels-hero`
+// primitive 2026-08): the first block under the app bar shows the SAME
+// producer-resolved state word + current draw the Overview card renders, so
+// the page answers "is PELS seeing this device right now?" before the ~20
+// controls below.
 //
 // Data source: the plan-snapshot device from the `/ui_plan` API cache (primed
 // on every realtime plan push), resolved through the shared card grammar
@@ -82,6 +83,7 @@ const getRow = (): {
   factEl: HTMLElement | null;
   reasonEl: HTMLElement;
   smartTaskEl: HTMLAnchorElement | null;
+  chipRowEl: HTMLElement | null;
 } | null => {
   const row = document.getElementById('device-detail-live-status');
   const stateEl = document.getElementById('device-detail-live-state');
@@ -95,6 +97,7 @@ const getRow = (): {
     factEl: document.getElementById('device-detail-live-fact'),
     reasonEl,
     smartTaskEl: document.getElementById('device-detail-live-smart-task') as HTMLAnchorElement | null,
+    chipRowEl: document.getElementById('device-detail-live-chip-row'),
   };
 };
 
@@ -229,6 +232,10 @@ const renderHeroRows = (params: {
   if (mounts.smartTaskEl) {
     const hasTask = hasActiveDeadlineObjective(params.deviceId, params.nowMs);
     mounts.smartTaskEl.hidden = !hasTask;
+    // The chip rail collapses with its only chip: an empty visible rail
+    // would still occupy a hero grid row and double the gap above the
+    // headline.
+    if (mounts.chipRowEl) mounts.chipRowEl.hidden = !hasTask;
     if (hasTask) mounts.smartTaskEl.href = buildDeadlineHref(params.deviceId);
   }
   mounts.row.hidden = false;

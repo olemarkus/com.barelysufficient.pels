@@ -1042,24 +1042,13 @@ md-primary-tab.tab[active] {
   white-space: nowrap;
 }
 
-/* Device-detail live status: the first content row under the app bar — the
-   same state word + draw grammar the Overview card uses (state word toned by
-   `data-state-kind`, matching the card's role-toned text). */
-.device-detail-live-status {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-1);
-}
-
-.device-detail-live-status__state {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
-}
-
+/* Device-detail hero: layout, surface, and type roles come from the shared
+   `.pels-hero` primitive (state word = `.plan-hero__headline` display role,
+   fact/reason = `.plan-hero__subline`). This block only binds the card
+   grammar's state tones to the state word (`data-state-kind`, matching the
+   Overview card's role-toned text) and the power fact's supporting role —
+   the neutral-surface rule (`notes/overview-hero-spec.md`) holds because the
+   toned WORD carries the meaning, never the surface. */
 .device-detail-live-status[data-state-kind="held"] .device-detail-live-status__state {
   color: var(--color-state-warning-text);
 }
@@ -1073,24 +1062,14 @@ md-primary-tab.tab[active] {
 }
 
 .device-detail-live-status__power {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+  color: var(--pels-text-supporting-color);
   white-space: nowrap;
 }
 
-.device-detail-live-status__fact {
-  flex-basis: 100%;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
 .device-detail-live-status__reason {
-  flex-basis: 100%;
   overflow-wrap: anywhere;
-}
-
-.device-detail-live-status__smart-task {
-  align-self: center;
 }
 
 .settings-detail-panel {

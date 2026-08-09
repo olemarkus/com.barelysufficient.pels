@@ -757,21 +757,34 @@
       </div>
 
       <div class="slide-panel__content">
-        <!-- One-line live status: the same producer-resolved state word +
-             draw the Overview card renders, so the page answers "is PELS
-             seeing this device right now?" before the controls below.
-             Populated by deviceDetail/liveStatus.ts; hidden until the plan
-             snapshot carries this device. -->
-        <div id="device-detail-live-status" class="device-detail-live-status" hidden>
-          <span id="device-detail-live-state" class="device-detail-live-status__state"></span>
-          <span id="device-detail-live-power" class="device-detail-live-status__power"></span>
-          <!-- One modality fact line (temperature/target, charging/battery/level)
-               and the same reason ladder the Overview card renders — the hero is
-               the continuity anchor that makes the card→page tap feel like the
-               card opened. -->
-          <span id="device-detail-live-fact" class="device-detail-live-status__fact" hidden></span>
-          <span id="device-detail-live-reason" class="device-detail-live-status__reason pels-text-status-line" hidden></span>
-          <a id="device-detail-live-smart-task" class="plan-chip plan-chip--info plan-chip--link device-detail-live-status__smart-task" data-tooltip="Open smart task" hidden>Smart task</a>
+        <!-- Device hero: the same producer-resolved card grammar the Overview
+             card renders (state word, power fact, modality fact, reason
+             ladder, smart-task chip), on the shared `.pels-hero` primitive so
+             the page opens on the app's canonical carded surface — every
+             other surface leads with this block, and the state word carries
+             the display type role instead of being outranked by the section
+             titles below it. Populated by deviceDetail/liveStatus.ts; hidden
+             until the plan snapshot carries this device. -->
+        <div id="device-detail-live-status" class="plan-hero pels-hero device-detail-live-status" hidden>
+          <div id="device-detail-live-chip-row" class="plan-hero__chips" hidden>
+            <a id="device-detail-live-smart-task" class="plan-chip plan-chip--info plan-chip--link" data-tooltip="Open smart task" hidden>Smart task</a>
+          </div>
+          <!-- Headline and sublines share one `.plan-hero__section` like every
+               other hero (the chips rail stays outside, as on the Overview):
+               the hero grid's outer gap separates SECTIONS, and the section's
+               tighter gap separates these lines. -->
+          <div class="plan-hero__section">
+            <div class="plan-hero__headline-row">
+              <span id="device-detail-live-state" class="plan-hero__headline device-detail-live-status__state"></span>
+              <span id="device-detail-live-power" class="device-detail-live-status__power"></span>
+            </div>
+            <!-- One modality fact line (temperature/target, charging/battery/level)
+                 and the same reason ladder the Overview card renders — the hero is
+                 the continuity anchor that makes the card→page tap feel like the
+                 card opened. -->
+            <span id="device-detail-live-fact" class="plan-hero__subline plan-hero__subline--muted device-detail-live-status__fact" hidden></span>
+            <span id="device-detail-live-reason" class="plan-hero__subline device-detail-live-status__reason pels-text-status-line" hidden></span>
+          </div>
         </div>
         <section class="detail-section" id="device-detail-modes-section">
           <details class="settings-collapse detail-collapse" open>
