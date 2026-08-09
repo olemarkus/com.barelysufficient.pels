@@ -1,6 +1,7 @@
 import type { DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 import type { DeviceCapabilityMap } from './managerControl';
 
 const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [
@@ -57,16 +58,33 @@ function resolveLatestLastUpdated(...values: Array<string | number | Date | null
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
+/**
+ * Zaptec reports `charge_mode` as either the raw operation-mode name or its
+ * display label, so both spellings of each state are matched here.
+ *
+ * `Connected_Finishing` and `Charging finished` are the SAME Zaptec state — a
+ * session that has ended, which for a car at its own charge limit is where it
+ * parks. Both therefore resolve to `plugged_in`, the probed state: a start
+ * command may or may not land, and only the probe can tell. They previously
+ * disagreed (the enum resolved to `plugged_in_paused`, the label to
+ * `plugged_in`), which was invisible while both states were commanded
+ * identically; once `plugged_in_paused` stopped being probed
+ * (`resolveEvStartProbePosture`, `setup/appInit/toPlanDevice.ts`) the
+ * disagreement would have meant a full car commanded every cycle forever, with
+ * no probe and no back-off.
+ *
+ * `Connected_Requesting` is the opposite case and keeps `plugged_in_paused`:
+ * the car is asking for current, so the resume is expected to land. That is
+ * also the transition a Zaptec makes when a full car starts accepting charge
+ * again, which is what releases it from any back-off the finished session
+ * accrued.
+ */
 function resolveZaptecChargingStateFromChargeMode(chargeMode: unknown): string | undefined {
   if (chargeMode === 'Connected_Charging' || chargeMode === 'Charging') return 'plugged_in_charging';
-  if (
-    chargeMode === 'Connected_Requesting'
-    || chargeMode === 'Connected_Finishing'
-    || chargeMode === 'Connecting to car'
-  ) {
+  if (chargeMode === 'Connected_Requesting' || chargeMode === 'Connecting to car') {
     return 'plugged_in_paused';
   }
-  if (chargeMode === 'Charging finished') return 'plugged_in';
+  if (chargeMode === 'Connected_Finishing' || chargeMode === 'Charging finished') return 'plugged_in';
   if (chargeMode === 'Disconnected') return 'plugged_out';
   return undefined;
 }
@@ -87,7 +105,12 @@ function resolveZaptecChargingState(capabilityObj: DeviceCapabilityMap): string 
 
   const chargeModeState = resolveZaptecChargingStateFromChargeMode(chargeMode);
   if (chargeModeState) return chargeModeState;
-  if (carConnected === true) return 'plugged_in_paused';
+  // Reached only when `charge_mode` is absent or carries a value outside the
+  // mapping above (a firmware that renamed a mode, say). All that is known is
+  // that a car is attached — not whether a session is running, paused, or
+  // finished — so this resolves to the AMBIGUOUS `plugged_in`, which is probed,
+  // rather than claiming a resumable pause that is commanded without one.
+  if (carConnected === true) return 'plugged_in';
   if (carConnected === false) return 'plugged_out';
   return undefined;
 }
@@ -203,15 +226,25 @@ export function normalizeNativeEvCapabilityUpdate(params: {
     return nextState ? [{ capabilityId: 'evcharger_charging_state', value: nextState }] : [];
   }
 
+  // `alarm_generic.car_connected` carries ONE bit: a car is attached. It says
+  // nothing about whether a session is running, paused, or finished, so it may
+  // only promote a DISCONNECTED charger — never reclassify a connected one.
+  // Reclassifying is how a finished session (`plugged_in`) used to be rewritten
+  // as `plugged_in_paused` by a single realtime event: `charge_mode` is
+  // change-only push and a car parked at its charge limit never changes it, so
+  // the wrong state then stood until the next snapshot refresh (:25 / :55).
+  // That matters now that only `plugged_in` is probed — it moved a full car into
+  // the lane that is commanded without a probe and never backs off.
   if (capabilityId === 'alarm_generic.car_connected' && typeof value === 'boolean') {
     if (value === false) {
       return [{ capabilityId: 'evcharger_charging_state', value: 'plugged_out' }];
     }
     return [{
       capabilityId: 'evcharger_charging_state',
-      value: snapshot.evChargingState === 'plugged_in_charging'
-        ? 'plugged_in_charging'
-        : 'plugged_in_paused',
+      value: snapshot.evChargingState !== undefined
+        && isEvPlugStateConnected(snapshot.evChargingState)
+        ? snapshot.evChargingState
+        : 'plugged_in',
     }];
   }
 

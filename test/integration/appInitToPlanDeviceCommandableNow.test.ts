@@ -88,4 +88,54 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     }));
     expect(result.canSetControlResolved).toBe(false);
   });
+
+  // The probe exists to disambiguate `plugged_in`, which carries BOTH an Easee
+  // awaiting authorization (the write is the authorization — it lands) and a
+  // finished session behind a full car (it never will). A paused session is not
+  // ambiguous, so probing it would only expose it to a back-off nothing can
+  // clear: `plugged_in_paused` is where a Zaptec parks a car that started
+  // wanting current again, and it never leaves that state on its own.
+  describe('EV start-probe posture', () => {
+    const posture = (evChargingState: EvObservedProbe['evChargingState']) => {
+      const captured: Array<{ eligibleForStartProbe: boolean; activityObserved: boolean }> = [];
+      toPlanDevice(ctxAtFixedNow(), buildEvSnapshot({ evChargingState }), {
+        projectCommandability: (params) => {
+          captured.push({
+            eligibleForStartProbe: params.eligibleForStartProbe,
+            activityObserved: params.activityObserved,
+          });
+          return params.base;
+        },
+      });
+      return captured[0];
+    };
+
+    it('probes a bare plugged_in charger', () => {
+      expect(posture('plugged_in')).toEqual({
+        eligibleForStartProbe: true,
+        activityObserved: false,
+      });
+    });
+
+    it('never probes a paused session, so no back-off can strand it', () => {
+      expect(posture('plugged_in_paused')).toEqual({
+        eligibleForStartProbe: false,
+        activityObserved: false,
+      });
+    });
+
+    it('reports observed activity while charging, and does not probe it', () => {
+      expect(posture('plugged_in_charging')).toEqual({
+        eligibleForStartProbe: false,
+        activityObserved: true,
+      });
+    });
+
+    it('does not probe an unplugged charger', () => {
+      expect(posture('plugged_out')).toEqual({
+        eligibleForStartProbe: false,
+        activityObserved: false,
+      });
+    });
+  });
 });
