@@ -7,11 +7,15 @@ import {
 // 2026-02-10T12:00Z → local day "2026-02-10" in UTC.
 const DEADLINE_MS = Date.UTC(2026, 1, 10, 12, 0, 0);
 
+type Snapshot = {
+  dailyBudgetExhaustedBucketCount?: number;
+  floorShortfallCause?: string;
+};
 type Entry = {
   outcome: string;
   deadlineAtMs: number;
-  finalPlan: { dailyBudgetExhaustedBucketCount?: number } | null;
-  originalPlan: { dailyBudgetExhaustedBucketCount?: number } | null;
+  finalPlan: Snapshot | null;
+  originalPlan: Snapshot | null;
 };
 
 const recorderWith = (entries: Entry[]): DeferredObjectivePlanHistoryRecorder => ({
@@ -44,6 +48,21 @@ describe('deadlineMissedToBudgetOnDay', () => {
   it('falls back to originalPlan only when finalPlan is wholly absent (unrevised run)', () => {
     const entry = missed({ finalPlan: null, originalPlan: { dailyBudgetExhaustedBucketCount: 2 } });
     expect(deadlineMissedToBudgetOnDay(recorderWith([entry]), '2026-02-10', 'UTC')).toBe(true);
+  });
+
+  it('censors a miss attributed by floorShortfallCause, the signal new entries carry', () => {
+    // The retired `dailyBudgetExhaustedBucketCount` is no longer written, so
+    // everything finalized from now on arrives with `floorShortfallCause`
+    // instead. Missing this is not a cosmetic history gap: the day stops being
+    // censored out of the weather energy-signature fit and a deliberately
+    // withheld day biases the auto-applied daily budget.
+    const entry = missed({ finalPlan: { floorShortfallCause: 'budget' } });
+    expect(deadlineMissedToBudgetOnDay(recorderWith([entry]), '2026-02-10', 'UTC')).toBe(true);
+  });
+
+  it('does not censor a miss attributed to a non-budget cause', () => {
+    const entry = missed({ finalPlan: { floorShortfallCause: 'time_capacity' } });
+    expect(deadlineMissedToBudgetOnDay(recorderWith([entry]), '2026-02-10', 'UTC')).toBe(false);
   });
 
   it('ignores non-missed outcomes and other days, and a missing recorder', () => {

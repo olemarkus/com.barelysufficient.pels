@@ -154,7 +154,10 @@ const buildDay = (params: {
       plannedWeight: Array.from({ length: 24 }, () => 1 / 24),
       plannedKWh: Array.from({ length: 24 }, () => 1),
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.2),
-      plannedControlledKWh: Array.from({ length: 24 }, () => 0),
+      // Self-consistent with `plannedKWh`/`plannedUncontrolledKWh`: the hour's
+      // controlled share is what the budget layer allocates to managed load, and
+      // it is what the policy horizon caps a smart task against.
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0.8),
       actualKWh: Array.from({ length: 24 }, () => 0),
       actualControlledKWh: Array.from({ length: 24 }, () => null),
       actualUncontrolledKWh: Array.from({ length: 24 }, () => null),

@@ -67,7 +67,6 @@ export const buildHorizonUnavailableDiagnostic = (
 ): DeferredObjectiveDiagnostic => withUnavailableTrajectory({
   ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, ctx),
   horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
-  dailyBudgetExhaustedBucketCount: rawPolicyHorizon.dailyBudgetExhaustedBucketCount,
 }, rawPolicyHorizon.reasonCode);
 
 // Fresh-path diagnostic: run the allocator (via the rescue resolver) and shape the
@@ -96,7 +95,7 @@ export const buildFreshDiagnostic = (params: {
     priceOptimizationEnabled, priceHorizon, dailyBudgetSnapshot, steps, commitment,
     aheadOfHourMilestone, profileEnergy,
   } = params;
-  const { plan: horizonPlan, dailyBudgetExhaustedBucketCount } = resolveHorizonPlanWithRescue({
+  const horizonPlan = resolveHorizonPlanWithRescue({
     nowMs,
     deviceId,
     objective,
@@ -135,7 +134,6 @@ export const buildFreshDiagnostic = (params: {
     reasonCode: planWithPriceWatermark.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
-    dailyBudgetExhaustedBucketCount,
     expectedStepId: planWithPriceWatermark.expectedStepId,
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
       && isCurrentBucketPlanned(planWithPriceWatermark),

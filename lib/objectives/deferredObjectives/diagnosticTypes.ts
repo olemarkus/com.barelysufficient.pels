@@ -142,11 +142,6 @@ type BaseDeferredObjectiveDiagnostic = {
   // so permission edits invalidate stale committed schedules.
   rescue?: DeferredObjectiveRescuePermissions;
   horizonBucketCount: number;
-  // Number of buckets in the horizon whose per-bucket cap collapsed to zero
-  // because the daily budget cap had already been reached at the start of the
-  // bucket. Lets the UI explain a `cannot_meet` outcome that would otherwise
-  // look like a device or schedule problem.
-  dailyBudgetExhaustedBucketCount: number;
   expectedStepId: string | null;
   // The live step ladder was unavailable this cycle and the diagnostic was served
   // from the frozen committed plan instead of degrading to `unknown` (a

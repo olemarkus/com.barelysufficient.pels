@@ -52,7 +52,6 @@ const makeDiag = (
     kwhPerUnitLastAcceptedAtMs: 0,
     planningSpeedKw: 2,
     horizonBucketCount: 6,
-    dailyBudgetExhaustedBucketCount: 0,
     expectedStepId: 'low',
     ...overrides,
   } as DeferredObjectiveDiagnostic;

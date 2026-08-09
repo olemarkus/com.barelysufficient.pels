@@ -569,8 +569,8 @@ export class DeferredObjectiveActivePlanRecorder {
     // Same charging hours but consumer-visible status fields drifted — see
     // `hasMetadataDriftedWithinSchedule` for the field list. Covers
     // `planStatus` transitions (drives the "Can't fully meet" chip) and
-    // `dailyBudgetExhaustedBucketCount` (drives the per-bucket headroom
-    // explanation). Per-cycle drift in `plannedKWh` / `energyNeededKWh` is
+    // `floorShortfallCause` (drives hero recourse routing). Per-cycle drift in
+    // `plannedKWh` / `energyNeededKWh` is
     // intentionally excluded to keep settings I/O budget in check on actively
     // charging EVs.
     // Any kwhPerUnitSource change is a replan trigger so persisted metadata

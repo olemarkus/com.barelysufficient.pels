@@ -109,7 +109,6 @@ const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetT
     rateConfidence: 'high',
     kwhPerUnitSource: 'learned',
     horizonBucketCount: 3,
-    dailyBudgetExhaustedBucketCount: 0,
     expectedStepId: 'low',
     horizonPlan: makeHorizon([
       makeBucket(2 * HOUR_MS, 1.5),
@@ -2663,8 +2662,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
   it('emits a schedule_revised revision when metadata drifts within an unchanged price horizon', () => {
     // Same horizon end across revisions and same set of charging hours — only
-    // `dailyBudgetExhaustedBucketCount` flipped (the planner observed budget
-    // pressure mid-day). `prices_revised` would mis-label this as
+    // the floor-shortfall cause flipped (the planner observed budget pressure
+    // mid-day). `prices_revised` would mis-label this as
     // "Tomorrow's prices published"; the recorder now emits
     // `schedule_revised` instead. This is the per-cycle replan pattern
     // reported 2026-05-18 as firing "several times per hour".
@@ -2674,14 +2673,14 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 0,
+      reasonCode: 'planned_with_margin',
     })], HOUR_MS);
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      // Same horizon, same charging hours — only the daily-budget signal
+      // Same horizon, same charging hours — only the daily-budget attribution
       // shifted. Triggers a metadata-only revision write.
-      dailyBudgetExhaustedBucketCount: 2,
+      reasonCode: 'limited_by_daily_budget',
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
@@ -2829,7 +2828,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 48 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 0,
+      reasonCode: 'planned_with_margin',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2845,7 +2844,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 48 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 2,
+      reasonCode: 'limited_by_daily_budget',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2861,7 +2860,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
   it('labels a metadata drift schedule_revised when the price-availability horizon is unchanged', () => {
     // The price-data far edge is identical across revisions (no fresh Nordpool
-    // publish); only `dailyBudgetExhaustedBucketCount` drifted. This is an
+    // publish); only the floor-shortfall cause drifted. This is an
     // internal reshuffle, not a price publication, so it must stay
     // `schedule_revised`.
     const { deps } = buildPersistDeps();
@@ -2870,7 +2869,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 48 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 0,
+      reasonCode: 'planned_with_margin',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2883,7 +2882,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deadlineAtMs: 48 * HOUR_MS,
       // Same committed schedule + SAME price-availability watermark; only the
       // daily-budget signal shifted.
-      dailyBudgetExhaustedBucketCount: 2,
+      reasonCode: 'limited_by_daily_budget',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2910,7 +2909,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 48 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 0,
+      reasonCode: 'planned_with_margin',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2925,7 +2924,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 48 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 2,
+      reasonCode: 'limited_by_daily_budget',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2940,7 +2939,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 48 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 0,
+      reasonCode: 'planned_with_margin',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2954,45 +2953,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.revision).toBe(3);
   });
 
-  it('persists dailyBudgetExhaustedBucketCount only when the diagnostic flagged exhaustion', () => {
-    const { deps, saved } = buildPersistDeps();
-    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
-
-    recorder.observe([makeDiag({
-      deviceId: 'dev',
-      deadlineAtMs: 6 * HOUR_MS,
-      dailyBudgetExhaustedBucketCount: 0,
-    })], HOUR_MS);
-    recorder.flushIfDirty();
-    const onTrack = saved()!.plansByDeviceId.dev;
-    expect(onTrack.latest?.dailyBudgetExhaustedBucketCount).toBeUndefined();
-
-    // Simulate the cycle where the daily budget plateaus mid-horizon: the
-    // count rises from 0 to 3, the planner now reports cannot_meet, and the
-    // recorder must persist the count so the UI can explain it.
-    recorder.observe([makeDiag({
-      deviceId: 'dev',
-      deadlineAtMs: 6 * HOUR_MS,
-      trajectory: { kind: 'resolved', status: 'cannot_meet' },
-      reasonCode: 'target_cannot_be_met',
-      dailyBudgetExhaustedBucketCount: 3,
-      horizonPlan: makeHorizon([], {
-        status: 'cannot_meet',
-        statusDetail: 'target_cannot_be_met',
-        plannedUsefulEnergyKWh: 0,
-        unplannedUsefulEnergyKWh: 4.5,
-      }),
-    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
-    recorder.flushIfDirty();
-    const exhausted = saved()!.plansByDeviceId.dev;
-    expect(exhausted.latest?.planStatus).toBe('cannot_meet');
-    expect(exhausted.latest?.dailyBudgetExhaustedBucketCount).toBe(3);
-    expect(exhausted.latest?.revision).toBe(2);
-  });
-
   it('persists floorShortfallCause from the diagnostic reasonCode (squeeze case)', () => {
-    // Prod squeeze repro: per-bucket background-squeeze leaves
-    // `dailyBudgetExhaustedBucketCount` at 0, but the planner still resolves
+    // Prod squeeze repro: the hour's own share is what binds, and the planner
+    // resolves
     // `limited_by_daily_budget` as the statusDetail because the floor only
     // fits with the per-bucket cap lifted. The recorder must persist
     // `floorShortfallCause: 'budget'` so the hero copy routes the recourse
@@ -3005,7 +2968,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deadlineAtMs: 6 * HOUR_MS,
       trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'limited_by_daily_budget',
-      dailyBudgetExhaustedBucketCount: 0,
       horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1)], {
         status: 'at_risk',
         statusDetail: 'limited_by_daily_budget',
@@ -3017,8 +2979,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     const plan = saved()!.plansByDeviceId.dev;
     expect(plan.latest?.floorShortfallCause).toBe('budget');
-    // Squeeze case: bucketCount stays at 0, but the cause is still budget.
-    expect(plan.latest?.dailyBudgetExhaustedBucketCount).toBeUndefined();
     expect(plan.latest?.planStatus).toBe('at_risk');
   });
 
@@ -3119,9 +3079,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
   it('omits floorShortfallCause when no shortfall is in play (byte-stable on healthy plans)', () => {
     // Steady on-track plan with `planned_with_margin` resolves to
     // `floorShortfallCause: 'none'` in the helper, which the recorder
-    // suppresses (sibling to the dailyBudgetExhaustedBucketCount: 0
-    // suppression) so legacy plans without the field stay byte-stable
-    // across revisions.
+    // suppresses so legacy plans without the field stay byte-stable across
+    // revisions.
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -4017,11 +3976,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(normalized.plansByDeviceId.dev).toBeUndefined();
       });
 
-      it('accepts dailyBudgetExhaustedBucketCount = 0 (legacy tools that round-trip)', () => {
-        // The recorder suppresses zero to keep persisted revisions byte-stable
-        // (see comment in `activePlanRecorder.ts`), but a hand-written fixture
-        // or downstream tool could emit zero. The validator stays lenient so
-        // those payloads still load.
+      it('accepts a retired dailyBudgetExhaustedBucketCount = 0 (legacy payload)', () => {
+        // The recorder no longer writes this field at all, but revisions
+        // persisted by an older build still carry it. The validator stays
+        // lenient so those payloads load instead of being dropped on upgrade.
         const persisted = {
           version: 1,
           plansByDeviceId: {
@@ -4035,7 +3993,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(0);
       });
 
-      it('accepts dailyBudgetExhaustedBucketCount > 0 (production shape)', () => {
+      it('accepts a retired dailyBudgetExhaustedBucketCount > 0 (legacy payload)', () => {
         const persisted = {
           version: 1,
           plansByDeviceId: {
@@ -4391,7 +4349,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs,
-        dailyBudgetExhaustedBucketCount: 0,
+        reasonCode: 'planned_with_margin',
       })], HOUR_MS);
       // Metadata-only drift (matches the recorder's documented
       // `schedule_revised` path): same hours, same horizon end, only the
@@ -4400,7 +4358,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs,
-        dailyBudgetExhaustedBucketCount: 2,
+        reasonCode: 'limited_by_daily_budget',
       })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const writes = events.filter((e) => e.event === 'active_plan_revision_written');

@@ -85,7 +85,6 @@ export const buildDeferredObjectiveDebugPayload = (
   deadlineAtMs: diagnostic.deadlineAtMs,
   deadlineLocalTime: diagnostic.deadlineLocalTime,
   horizonBucketCount: diagnostic.horizonBucketCount,
-  dailyBudgetExhaustedBucketCount: diagnostic.dailyBudgetExhaustedBucketCount,
   expectedStepId: diagnostic.expectedStepId,
   // Degradation marker: this cycle was served from the frozen committed plan
   // because the live step ladder was unavailable. Without it, a horizon_planned

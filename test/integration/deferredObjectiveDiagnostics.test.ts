@@ -196,6 +196,7 @@ const buildSnapshot = (params: {
   prices?: number[];
   plannedUncontrolledKWh?: number[];
   plannedGrossUncontrolledKWh?: number[];
+  plannedControlledKWh?: number[];
   allowedCumKWh?: number[];
 } = {}): DailyBudgetUiPayload => {
   const nowMs = params.nowMs ?? NOW_MS;
@@ -207,6 +208,7 @@ const buildSnapshot = (params: {
     prices: params.prices,
     plannedUncontrolledKWh: params.plannedUncontrolledKWh,
     plannedGrossUncontrolledKWh: params.plannedGrossUncontrolledKWh,
+    plannedControlledKWh: params.plannedControlledKWh,
     allowedCumKWh: params.allowedCumKWh,
   });
   const days: DailyBudgetUiPayload['days'] = { [today.dateKey]: today };
@@ -219,6 +221,7 @@ const buildSnapshot = (params: {
       prices: params.prices,
       plannedUncontrolledKWh: params.plannedUncontrolledKWh,
       plannedGrossUncontrolledKWh: params.plannedGrossUncontrolledKWh,
+      plannedControlledKWh: params.plannedControlledKWh,
       allowedCumKWh: params.allowedCumKWh,
     });
     days[tomorrow.dateKey] = tomorrow;
@@ -238,6 +241,7 @@ const buildDay = (params: {
   prices?: number[];
   plannedUncontrolledKWh?: number[];
   plannedGrossUncontrolledKWh?: number[];
+  plannedControlledKWh?: number[];
   allowedCumKWh?: number[];
 }): DailyBudgetDayPayload => {
   const startUtc = Array.from({ length: 24 }, (_, index) => new Date(params.startMs + index * HOUR_MS).toISOString());
@@ -263,22 +267,24 @@ const buildDay = (params: {
       confidence: 1,
       priceShapingActive: true,
     },
-    // `plannedUncontrolledKWh` stays CONDITIONAL: the policy horizon keys its
-    // per-bucket background cap off this field's presence, so the legacy-snapshot
-    // fixtures (which omit it) must NOT carry a fabricated zero array — that would
-    // introduce a daily-budget cap the legacy path never had. The current contract
-    // marks the field required, so cast the literal at this fixture boundary.
+    // `plannedControlledKWh` and `plannedUncontrolledKWh` stay CONDITIONAL. The
+    // policy horizon reads the hour's own controlled share for the daily-budget
+    // cap and the uncontrolled forecast for physical headroom, keying both off
+    // field presence — so the legacy-snapshot fixtures (which omit them) must NOT
+    // carry a fabricated zero array; that would introduce caps the legacy path
+    // never had. The current contract marks the fields required, so cast the
+    // literal at this fixture boundary.
     buckets: {
       startUtc,
       startLocalLabels: startUtc.map((_, index) => `${String(index).padStart(2, '0')}:00`),
       plannedWeight: Array.from({ length: 24 }, () => 1 / 24),
       plannedKWh: Array.from({ length: 24 }, () => 1),
-      plannedControlledKWh: Array.from({ length: 24 }, () => 1),
       actualKWh: Array.from({ length: 24 }, () => 0),
       actualControlledKWh: Array.from({ length: 24 }, () => 0),
       actualUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       allowedCumKWh: params.allowedCumKWh ?? Array.from({ length: 24 }, (_, index) => index + 1),
       price: prices,
+      ...(params.plannedControlledKWh ? { plannedControlledKWh: params.plannedControlledKWh } : {}),
       ...(params.plannedUncontrolledKWh ? { plannedUncontrolledKWh: params.plannedUncontrolledKWh } : {}),
       ...(params.plannedGrossUncontrolledKWh
         ? { plannedGrossUncontrolledKWh: params.plannedGrossUncontrolledKWh }
@@ -522,15 +528,13 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     expect(prices).toContain(10);
   });
 
-  it('sets per-bucket maxUsefulEnergyKWh from per-bucket budget minus uncontrolled forecast', () => {
-    // allowedCumKWh advances by 3 kWh per bucket → 3 kWh budget per hour.
-    // plannedUncontrolledKWh = 0.5 per hour → 2.5 kWh headroom per bucket.
+  it("sets per-bucket maxUsefulEnergyKWh from the hour's own controlled share", () => {
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
-        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 3),
+        plannedControlledKWh: Array.from({ length: 24 }, () => 2.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
     });
@@ -540,13 +544,39 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     }
   });
 
-  it('clamps the per-bucket cap to zero when uncontrolled forecast exceeds the per-bucket budget', () => {
+  it('caps a bucket at its own share even when the cumulative allowance has plateaued', () => {
+    // The regression this whole change exists for. `allowedCumKWh` plateaus at the
+    // 20 kWh day total from index 9 on — the soft budget's ordinary shape once a
+    // day has run hot, because an hour's overspend must not claw back later hours.
+    // Every bucket in the horizon still holds a real 0.75 kWh share, and each must
+    // be offered it. Differencing the plateaued cumulative used to return 0 here
+    // and silently unbook the entire tail of the day.
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
-        allowedCumKWh: Array.from({ length: 24 }, (_, index) => index + 1),
+        allowedCumKWh: Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20)),
+        plannedControlledKWh: Array.from({ length: 24 }, () => 0.75),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.25),
+      }),
+    });
+    expect(result.reasonCode).toBeNull();
+    expect(result.buckets.length).toBeGreaterThan(0);
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBeCloseTo(0.75);
+    }
+  });
+
+  it("caps at zero when the hour's controlled share is zero (background swamps the slice)", () => {
+    // The producer already floors the share at zero (`buildPlanBreakdown`), so a
+    // background-swamped hour arrives as a plain 0 rather than a negative to clamp.
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        plannedControlledKWh: Array.from({ length: 24 }, () => 0),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 5),
       }),
     });
@@ -556,7 +586,28 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     }
   });
 
-  it('omits the per-bucket cap when uncontrolled forecast is missing (legacy snapshot)', () => {
+  it('treats a NEGATIVE controlled share as unavailable, not as a zero cap', () => {
+    // Negative energy is malformed, not a valid "no room this hour" answer.
+    // Reading it as a 0 cap would make the hour unbookable on junk data — the
+    // same silent unbooking this whole change fixes, arriving from the other
+    // direction. Resolve to "no daily-budget cap" and let the hard cap bind.
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        plannedControlledKWh: Array.from({ length: 24 }, () => -1),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+      }),
+    });
+    expect(result.reasonCode).toBeNull();
+    expect(result.buckets.length).toBeGreaterThan(0);
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBeUndefined();
+    }
+  });
+
+  it('omits the per-bucket cap when the controlled share is missing (legacy snapshot)', () => {
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
@@ -569,37 +620,12 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     }
   });
 
-  it('counts buckets whose per-bucket cap collapsed because the daily budget is exhausted', () => {
-    // dailyBudgetKWh defaults to 20. allowedCumKWh plateaus at 20 from index 9
-    // onwards, simulating `buildAllowedCumKWh` clamping the cumulative once it
-    // reaches the cap. NOW_MS is hour 17 UTC, so all four buckets in the
-    // horizon (17–20) sit on the plateau and the diagnostic should be able to
-    // explain that the daily budget cap — not background load — caused the
-    // zero capacity.
-    const plateauedAllowed = Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20));
-    const result = buildDeferredObjectivePolicyHorizon({
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
-      dailyBudgetSnapshot: buildSnapshot({
-        allowedCumKWh: plateauedAllowed,
-        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
-      }),
-    });
-    expect(result.reasonCode).toBeNull();
-    expect(result.dailyBudgetExhaustedBucketCount).toBe(4);
-    for (const bucket of result.buckets) {
-      expect(bucket.maxUsefulEnergyKWh).toBe(0);
-    }
-  });
-
   it('lifts the per-bucket cap entirely when exempt from budget, even on an exhausted budget', () => {
     // Same budget-exhausted plateau as the exhaustion test (caps collapse to 0), but with
     // exemptFromBudget the daily-budget per-bucket cap is removed so the device can plan
     // against step capacity. The physical hard cap stays enforced downstream.
-    const plateauedAllowed = Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20));
     const snapshot = {
-      allowedCumKWh: plateauedAllowed,
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0),
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
     };
     const capped = buildDeferredObjectivePolicyHorizon({
@@ -621,27 +647,13 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     expect(exempt.buckets.every((bucket) => bucket.maxUsefulEnergyKWh === undefined)).toBe(true);
   });
 
-  it('does not flag exhaustion when the per-bucket cap is non-zero', () => {
-    const result = buildDeferredObjectivePolicyHorizon({
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
-      dailyBudgetSnapshot: buildSnapshot({
-        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 3),
-        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
-      }),
-    });
-    expect(result.reasonCode).toBeNull();
-    expect(result.dailyBudgetExhaustedBucketCount).toBe(0);
-  });
-
   it('deducts higher-priority physical and energy reservations from the matching hour', () => {
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
-        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 4),
+        plannedControlledKWh: Array.from({ length: 24 }, () => 3.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
       hardCapKw: 10,
@@ -766,13 +778,13 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     expect(result.buckets[2]?.higherPriorityEnergyReservations).toBeUndefined();
   });
 
-  it('uses gross background for reservedHeadroomKw but net background for the daily-budget cap', () => {
+  it("uses gross background for reservedHeadroomKw and the hour's share for the daily-budget cap", () => {
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
-        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 2),
+        plannedControlledKWh: Array.from({ length: 24 }, () => 1.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
         plannedGrossUncontrolledKWh: Array.from({ length: 24 }, () => 2.5),
       }),
@@ -1532,11 +1544,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.horizonPlan?.plannedBuckets.every((bucket) => bucket.price === 5)).toBe(true);
   });
 
-  it('reports zero budget-exhausted buckets for an exempt-from-budget task on an exhausted budget', () => {
-    // NOW_MS is 17:00 UTC; allowedCumKWh plateaus at the 20 kWh cap from index 9, so the
-    // whole 17:00-22:00 horizon sits on the exhausted plateau.
+  it('drops the budget attribution for an exempt-from-budget task on a spent budget', () => {
+    // Every hour's controlled share is 0 — the budget has nothing left to give.
     const exhausted = {
-      allowedCumKWh: Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20)),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0),
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
     };
     const baseSettings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' }));
@@ -1556,11 +1567,13 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     })[0];
 
-    // Control: without rescue the exhausted budget collapses the per-bucket caps to zero.
-    expect(run(baseSettings)?.dailyBudgetExhaustedBucketCount).toBeGreaterThan(0);
-    // Exempt-always lifts the caps, so the diagnostic must not report budget exhaustion —
-    // otherwise a capacity/time-limited cannot_meet is misattributed to the daily budget.
-    expect(run(exemptSettings)?.dailyBudgetExhaustedBucketCount).toBe(0);
+    // Control: without rescue the spent budget collapses the per-bucket caps to zero
+    // and the plan is attributed to the daily budget.
+    expect(run(baseSettings)?.reasonCode).toBe('limited_by_daily_budget');
+    // Exempt-always lifts the caps, so the plan must NOT be attributed to the daily
+    // budget — otherwise a capacity/time-limited miss is misattributed to a budget
+    // this task is exempt from.
+    expect(run(exemptSettings)?.reasonCode).not.toBe('limited_by_daily_budget');
   });
 
   it('re-solves a committed schedule when budget rescue is enabled after the first plan', () => {
@@ -2340,13 +2353,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeGreaterThan(0);
   });
 
-  it('surfaces dailyBudgetExhaustedBucketCount on a budget-bound at_risk plan so the UI can explain the constraint', () => {
-    // allowedCumKWh plateaus at the 20 kWh daily cap from index 9 onwards, so
-    // every horizon bucket (17–20 with the default 21:00 deadline) inherits a
-    // 0 kWh per-bucket cap purely because the daily budget cap was already hit
-    // before now. The diagnostic must carry that signal so the UI can tell the
-    // user the budget — not the device or schedule — is the constraint.
-    const plateauedAllowed = Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20));
+  it('attributes a budget-bound at_risk plan to the daily budget so the UI can explain it', () => {
+    // Every horizon bucket (17-20 with the default 21:00 deadline) has a zero
+    // controlled share: the budget has nothing left for managed load. The
+    // diagnostic must carry that so the UI can tell the user the budget — not the
+    // device or the schedule — is the constraint.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -2355,21 +2366,19 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({
         prices: Array.from({ length: 24 }, () => 5),
-        allowedCumKWh: plateauedAllowed,
+        plannedControlledKWh: Array.from({ length: 24 }, () => 0),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
       priceOptimizationEnabled: true,
     });
 
-    // Cumulative budget exhaustion is budget-bound (uncapped it would fit), so
-    // the verdict is at_risk/limited_by_daily_budget rather than a physical
-    // cannot_meet; the exhausted-bucket count still explains the constraint.
+    // Budget-bound (uncapped it would fit), so the verdict is
+    // at_risk/limited_by_daily_budget rather than a physical cannot_meet.
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
     expect(diagnostic?.reasonCode).toBe('limited_by_daily_budget');
-    expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(4);
   });
 
-  it('reports zero exhausted buckets when the daily budget is not yet exhausted', () => {
+  it('is on track and unattributed to the budget when the budget still has room', () => {
     // Use a 22:00 deadline so the 4 kWh need at 1 kW fits inside the primary
     // window without dipping into the 1-hour deadline reserve.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
@@ -2383,7 +2392,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
-    expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(0);
+    expect(diagnostic?.reasonCode).not.toBe('limited_by_daily_budget');
   });
 
   it('plans a temperature objective from a quiescent thermostat whose last observation has aged out', () => {

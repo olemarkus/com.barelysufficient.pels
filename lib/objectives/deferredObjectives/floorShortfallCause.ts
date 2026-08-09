@@ -5,13 +5,12 @@ import type {
 // Producer-side mapping from the planner's `statusDetail` (carried on the
 // diagnostic as `reasonCode`) to the consumer-facing flat-resolved
 // `floorShortfallCause`:
-//   `budget`        = soft daily budget net of forecast background bound the
-//                     floor — includes both the cumulative-exhaustion case
-//                     (`dailyBudgetExhaustedBucketCount > 0`) AND the
-//                     per-bucket background-squeeze case (count = 0 but the
-//                     floor still fits only because the per-bucket cap is
-//                     binding). Squeeze case was the original motivation for
-//                     persisting this signal — `bucketCount` alone misses it.
+//   `budget`        = the hour's own share of the soft daily budget bound the
+//                     floor. This is the ONLY budget signal a consumer gets.
+//                     There is deliberately no companion "the day total was
+//                     reached" count: the day total is not a per-hour fact, and
+//                     reading it as one is what used to unbook the tail hours of
+//                     any day whose plan sums past its budget.
 //   `step_power`    = floor-step undercount (climbing within budget fits).
 //   `estimate`      = within the producer's variance buffer; the mean rate
 //                     would fit and only the `k·SE` padding causes the gap.

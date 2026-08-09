@@ -1,4 +1,5 @@
 import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanStatusV1,
 } from './deferredObjectiveActivePlans.js';
@@ -71,6 +72,16 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   // legacy v3 entries and revisions written before this field shipped
   // persist without it — consumers treat absence as zero. Added in v2.7.2.
   dailyBudgetExhaustedBucketCount?: number;
+  // Producer-resolved reason the guaranteed floor fell short when this revision
+  // was written. Mirrors
+  // `DeferredObjectiveActivePlanRevisionV1.floorShortfallCause`. This is the
+  // ONLY budget signal newly finalized entries carry — it replaced the retired
+  // `dailyBudgetExhaustedBucketCount` above, which asked whether the DAY total
+  // had been reached rather than whether this run was budget-bound. Consumers
+  // must read it through `snapshotShowsBudgetExhausted`, which also honours the
+  // retired count so history written by an older build still classifies.
+  // Optional: absent when the run had no shortfall. Added in v2.9.1.
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
   // Plan-time provenance of the learned kWh-per-unit rate that backed this
   // revision, pulled from the active plan's `kwhPerUnitProvenance` at snapshot
   // time. Persisted so a finalized `missed` entry can be attributed to a

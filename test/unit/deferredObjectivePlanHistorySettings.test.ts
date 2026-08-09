@@ -306,6 +306,40 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(result.entries[0]!.finalPlan?.dailyBudgetExhaustedBucketCount).toBe(3);
   });
 
+  it('accepts a revision snapshot carrying a valid floorShortfallCause', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'at_risk',
+      revisedAtMs: 0,
+      floorShortfallCause: 'budget',
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'cause-1', originalPlan: snapshot, finalPlan: snapshot }],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.finalPlan?.floorShortfallCause).toBe('budget');
+  });
+
+  it('drops a revision snapshot whose floorShortfallCause is not a contract literal', () => {
+    // The guard is a type predicate: letting an arbitrary string through would
+    // assert a `DeferredObjectiveActivePlanFloorShortfallCause` that is not one,
+    // and that value reaches the miss-attribution logic.
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'at_risk',
+      revisedAtMs: 0,
+      floorShortfallCause: 'budget_typo',
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'cause-bad', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
+
   it('drops a revision snapshot whose dailyBudgetExhaustedBucketCount is negative', () => {
     const snapshot = {
       hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],

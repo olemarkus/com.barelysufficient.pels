@@ -32,19 +32,30 @@ export const formatClockTime = (ms: number, timeZone: string): string | null => 
   }, timeZone);
 };
 
-// True when the snapshot recorded the planner's daily-budget cap collapsing
-// on at least one bucket in the run-up. The recorder persists positive
-// counts only (`captureRevisionSnapshot` filters zeros), so the helper
-// treats absence and zero identically — the budget was either not checked
-// or was fine. Producer-side resolver so consumers never branch on the raw
-// optional field.
+// True when the snapshot recorded the soft daily budget as what bound the
+// planner's floor. Two shapes answer that, and BOTH must be honoured:
+//
+//   - `floorShortfallCause === 'budget'` — what every newly finalized entry
+//     carries. The hour's own share of the budget is what the floor could not
+//     clear.
+//   - a positive `dailyBudgetExhaustedBucketCount` — the RETIRED signal, still
+//     present on history an older build persisted. Kept so a run finalized
+//     before the upgrade keeps its attribution instead of silently
+//     reclassifying as a device or schedule problem.
+//
+// Producer-side resolver so consumers never branch on either raw optional
+// field. Load-bearing beyond the history UI: `deadlineMissedToBudgetOnDay`
+// censors a budget-caused miss out of the weather energy-signature fit, so a
+// false negative here feeds a deliberately-withheld day into the model that
+// auto-applies daily budgets.
 export const snapshotShowsBudgetExhausted = (
   snapshot: DeferredObjectivePlanHistoryRevisionSnapshot | null,
-): boolean => (
-  snapshot !== null
-    && typeof snapshot.dailyBudgetExhaustedBucketCount === 'number'
-    && snapshot.dailyBudgetExhaustedBucketCount > 0
-);
+): boolean => {
+  if (snapshot === null) return false;
+  if (snapshot.floorShortfallCause === 'budget') return true;
+  return typeof snapshot.dailyBudgetExhaustedBucketCount === 'number'
+    && snapshot.dailyBudgetExhaustedBucketCount > 0;
+};
 
 export const pickLastPlan = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
