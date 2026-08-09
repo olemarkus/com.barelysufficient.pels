@@ -7,11 +7,10 @@ import type {
  * Builds a `DeviceStateOfChargeSnapshot` the way the producer builds one, so a
  * fixture cannot describe a state the producer would never emit.
  *
- * The pairing is the point: `level` and the legacy `status` are derived from one
- * argument here, exactly as `resolveLevelFields` derives them in
- * `lib/device/transport/stateOfCharge.ts`. Hand-written literals had drifted
- * apart from each other (`status: 'stale'` beside a usable percentage), and a
- * consumer test then proved behaviour against a snapshot that cannot occur.
+ * One argument decides both the raw `percent` the observation layer keeps and the
+ * resolved `level` consumers act on, exactly as the producer does. Hand-written
+ * literals had drifted apart from each other, and a consumer test then proved
+ * behaviour against a snapshot the producer cannot emit.
  *
  * Pass `unavailable` to build the no-level case — the percentage is still
  * carried, because the producer carries it too; what it does not do is call it
@@ -31,11 +30,8 @@ export const stateOfChargeFixture = (params: {
   return {
     percent,
     ...rest,
-    ...(unavailable === undefined
-      ? { level: { kind: 'known', percent }, status: 'fresh' }
-      : {
-        level: { kind: 'unavailable', reasonCode: unavailable },
-        status: params.observedAtMs === undefined ? 'unknown' : 'stale',
-      }),
+    level: unavailable === undefined
+      ? { kind: 'known', percent }
+      : { kind: 'unavailable', reasonCode: unavailable },
   };
 };

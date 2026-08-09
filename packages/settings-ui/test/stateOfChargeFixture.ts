@@ -10,8 +10,8 @@ import type {
  * into the runtime test tree, so consolidating these two would cross the package
  * boundary the architecture rules draw (`AGENTS.md` — "accept code duplication
  * if consolidation would violate an architectural boundary"). Both build the
- * snapshot the way the producer does, so `level` and the legacy `status` cannot
- * drift apart inside a fixture.
+ * snapshot the way the producer does, so a fixture cannot describe a state the
+ * producer would never emit.
  */
 export const stateOfChargeFixture = (params: {
   percent: number;
@@ -27,11 +27,8 @@ export const stateOfChargeFixture = (params: {
   return {
     percent,
     ...rest,
-    ...(unavailable === undefined
-      ? { level: { kind: 'known', percent }, status: 'fresh' }
-      : {
-        level: { kind: 'unavailable', reasonCode: unavailable },
-        status: params.observedAtMs === undefined ? 'unknown' : 'stale',
-      }),
+    level: unavailable === undefined
+      ? { kind: 'known', percent }
+      : { kind: 'unavailable', reasonCode: unavailable },
   };
 };

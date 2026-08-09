@@ -1,4 +1,8 @@
-import type { BinaryControlCapabilityId, EvChargingState } from '../../contracts/src/types.js';
+import type {
+  BinaryControlCapabilityId,
+  DeviceStateOfChargeSnapshot,
+  EvChargingState,
+} from '../../contracts/src/types.js';
 import {
   buildComparableDeviceReason,
   formatDeviceReasonUserFacing,
@@ -74,8 +78,7 @@ export type DeviceOverviewSnapshot = {
   // normalized plannedTarget is unchanged.
   surplusAbsorbActive?: boolean;
   stateOfCharge?: {
-    percent: number;
-    status: 'unknown' | 'fresh' | 'stale' | 'invalid';
+    level: DeviceStateOfChargeSnapshot['level'];
   };
 };
 
@@ -247,10 +250,10 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
 const formatEvSocStatus = (
   stateOfCharge: DeviceOverviewSnapshot['stateOfCharge'],
 ): string | null => {
-  if (!stateOfCharge || stateOfCharge.status === 'unknown' || stateOfCharge.status === 'invalid') {
-    return null;
-  }
-  return deviceOverviewEvBatteryStatus(stateOfCharge.percent, stateOfCharge.status === 'stale');
+  // No level, no line. The card is a glance; there is nothing to qualify,
+  // because there is no number.
+  const level = stateOfCharge?.level;
+  return level?.kind === 'known' ? deviceOverviewEvBatteryStatus(level.percent) : null;
 };
 
 const formatUsageText = (params: {

@@ -1,3 +1,4 @@
+import { stateOfChargeLevelsDiffer } from './stateOfChargeLevel';
 import type { DeviceStateOfChargeSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
@@ -26,7 +27,7 @@ export function hasCarStateOfChargeChanged(
   if (previous.source !== 'car' || previous.sourceDeviceId !== carId) return true;
   return previous.percent !== next.percent
     || previous.observedAtMs !== next.observedAtMs
-    || previous.status !== next.status;
+    || stateOfChargeLevelsDiffer(previous.level, next.level);
 }
 
 /**

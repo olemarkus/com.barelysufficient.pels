@@ -581,7 +581,7 @@ describe('registerFlowCards', () => {
             stateOfCharge: {
               percent: 42,
               observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-              status: 'fresh',
+              level: { kind: 'known', percent: 42 },
             },
           },
         ]),
@@ -605,7 +605,7 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      status: 'fresh',
+      level: { kind: 'known', percent: 42 },
     }));
   });
 
@@ -626,7 +626,7 @@ describe('registerFlowCards', () => {
             stateOfCharge: {
               percent: 42,
               observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-              status: 'fresh',
+              level: { kind: 'known', percent: 42 },
             },
           },
         ]),
@@ -663,7 +663,7 @@ describe('registerFlowCards', () => {
             stateOfCharge: {
               percent: 39,
               observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-              status: 'fresh',
+              level: { kind: 'known', percent: 39 },
             },
           },
         ]),
@@ -723,7 +723,10 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      status: 'unknown',
+      // The post-report lookup failed, so there is no snapshot to resolve a level
+      // from. The event carries `null` rather than claiming the charger has no
+      // level — the report itself may have succeeded.
+      level: null,
     }));
     expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'ev_charger_snapshot_reload_failed',

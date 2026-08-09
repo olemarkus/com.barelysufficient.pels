@@ -191,10 +191,14 @@ export type DeviceStateOfChargeSnapshot = {
     level:
         | { kind: 'known'; percent: number }
         | { kind: 'unavailable'; reasonCode: EvSocUnavailableReason };
+    /**
+     * The raw last-reported percentage, kept for the observation layer's own
+     * bookkeeping (carry-forward across a refresh, change detection). It is NOT
+     * the device's level and must not be read as one — `level` is the answer to
+     * that, and it is the only one a consumer may act on.
+     */
     percent: number;
     observedAtMs?: number;
-    /** @deprecated Superseded by `level`; removed once every consumer has moved. */
-    status: 'unknown' | 'fresh' | 'stale' | 'invalid';
     capabilityId?: string;
     sessionStartedAtMs?: number;
     invalidatedAtMs?: number;

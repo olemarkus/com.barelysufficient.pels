@@ -23,14 +23,15 @@ export function setDeviceDetailSocState(device: SettingsUiDeviceDetailItem | nul
     return;
   }
 
-  if (soc.status === 'unknown') {
-    deviceDetailSocValue.textContent = 'Not reported';
-  } else if (soc.status === 'invalid') {
-    deviceDetailSocValue.textContent = 'Invalid report';
-  } else if (soc.status === 'stale') {
-    deviceDetailSocValue.textContent = `${soc.percent} % - stale`;
+  // Two outcomes, because the producer has two: a level, or a reason there is
+  // none. `N % - stale` is gone — a qualified number invited the reader to use
+  // it anyway, and PELS itself does not.
+  if (soc.level.kind === 'known') {
+    deviceDetailSocValue.textContent = `${soc.level.percent} %`;
   } else {
-    deviceDetailSocValue.textContent = `${soc.percent} %`;
+    deviceDetailSocValue.textContent = soc.level.reasonCode === 'not_connected'
+      ? 'No car connected'
+      : 'Not reported';
   }
 
   // The value line above already states the consequence in plain words ("N % - stale",

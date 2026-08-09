@@ -201,9 +201,13 @@ level 6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
 exception reason line. An EV charger's fact line carries the car's battery
 level in the slot a temperature device uses for its measured value — that is
 the number the owner is asking the card for, not only the amps PELS set. It
-appears only for a `fresh` reading; a stale or invalid one is dropped rather
-than qualified, because the card is a glance and 320 px is the floor (device
-detail spells out `stale` / `Invalid report`). Quiet states render no chip and no reason. `Off` is now
+appears only when PELS actually has a level; when it does not there is no number
+to show and nothing to qualify, so the line is dropped (device detail says why,
+in one of two plain sentences). **Retired 2026-08-08: `N % - stale`,
+`Invalid report`, and `EV battery: N %, stale`.** A qualified number invited the
+reader to use it anyway, and PELS itself does not — the producer either stands
+behind a level or reports none. Device detail now reads `Not reported` or
+`No car connected`. Quiet states render no chip and no reason. `Off` is now
 one of the shared state words; the older modality-specific bare `On`/`Off`
 output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.

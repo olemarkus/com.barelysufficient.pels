@@ -293,7 +293,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       percent: 63,
       source: 'car',
       sourceDeviceId: CAR_ID,
-      status: 'fresh',
+      level: { kind: 'known', percent: 63 },
     });
 
     // Unplug ends the association, and the car's level goes with it: there is no
