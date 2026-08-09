@@ -1,5 +1,6 @@
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { PowerEstimateState } from '../../lib/device/devicePowerEstimate';
+import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const logger = {
@@ -13,7 +14,7 @@ const logger = {
 
 const buildState = (): Required<PowerEstimateState> => ({
   expectedPowerKwOverrides: {} as Record<string, { kw: number; ts: number }>,
-  lastKnownPowerKw: {} as Record<string, number>,
+  lastKnownPowerKw: {} as LearnedPeaksByDeviceId,
   lastEstimateDecisionLogByDevice: new Map(),
   lastPeakPowerLogByDevice: new Map(),
 });
@@ -122,8 +123,6 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
     });
-
-    expect(result.loadKw).toBeUndefined();
     expect(result.expectedPowerSource).toBe('default');
     expect(result.expectedPowerKw).toBe(1);
   });
@@ -140,11 +139,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
     });
-
-    expect(result.loadKw).toBeCloseTo(0.65, 3);
     expect(result.expectedPowerSource).toBe('load-setting');
     expect(result.expectedPowerKw).toBeCloseTo(0.65, 3);
-    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('passes measuredPowerKw through while using a load-setting estimate', () => {
@@ -160,7 +156,6 @@ describe('estimatePower', () => {
 
     expect(result.expectedPowerSource).toBe('load-setting');
     expect(result.expectedPowerKw).toBeCloseTo(0.65, 3);
-    expect(result.measuredPowerKw).toBeCloseTo(0.125, 6);
   });
 
   it('uses Homey energy approximation delta (usageOn - usageOff) when available', () => {
@@ -185,7 +180,6 @@ describe('estimatePower', () => {
     expect(result.expectedPowerKw).toBeCloseTo(0.1, 6);
     expect(result.expectedPowerKw).toBeCloseTo(0.1, 6);
     expect(result.hasEnergyEstimate).toBe(true);
-    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('uses canonical device settings energy values when available (usageOn - usageOff)', () => {
@@ -214,7 +208,6 @@ describe('estimatePower', () => {
     expect(result.expectedPowerKw).toBeCloseTo(0.0125, 6);
     expect(result.expectedPowerKw).toBeCloseTo(0.0125, 6);
     expect(result.hasEnergyEstimate).toBe(true);
-    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('ignores Homey energy usageConstant when delta/on-state estimates are unavailable', () => {
@@ -237,7 +230,6 @@ describe('estimatePower', () => {
     expect(result.expectedPowerSource).toBe('default');
     expect(result.expectedPowerKw).toBe(1);
     expect(result.hasEnergyEstimate).toBeUndefined();
-    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('falls back to energyObj.W when approximation is unavailable', () => {
@@ -276,6 +268,28 @@ describe('estimatePower', () => {
     expect(result.expectedPowerKw).toBe(1);
     expect(result.hasEnergyEstimate).toBeUndefined();
   });
+  // The raw candidates are no longer published on `PowerEstimateResult` — they
+  // are inputs to a decision the result reports the OUTPUT of. They are still
+  // recorded, against the decision, by the estimator itself. This is the
+  // diagnostic that would have named the reported bug in one line.
+  it('records the losing candidates on the decision log, not on the result', () => {
+    const state = buildState();
+    const result = estimatePower({
+      device: buildDevice(650), deviceId: 'dev-1', deviceLabel: 'Device 1',
+      measuredPowerKw: 2.1, now: Date.now(), state, logger,
+    });
+
+    expect(result).not.toHaveProperty('measuredPowerKw');
+    expect(result).not.toHaveProperty('loadKw');
+    expect(logger.structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_estimate_source_changed',
+      source: 'load-setting',
+      estimatedKw: 0.65,
+      measuredPowerKw: 2.1,
+      loadKw: 0.65,
+    }));
+  });
+
   // ── The one ordered ladder ──────────────────────────────────────────────────
   // manual › settings.load › measured peak › homey-energy › default.
   // One test per rung, plus the two precedence rules that changed with it.
@@ -283,7 +297,7 @@ describe('estimatePower', () => {
   it('rung 1 — a manual override outranks every other source', () => {
     const state = buildState();
     state.expectedPowerKwOverrides['dev-1'] = { kw: 2.4, ts: 0 };
-    state.lastKnownPowerKw['dev-1'] = 3.1;
+    state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(650), deviceId: 'dev-1', deviceLabel: 'Device 1',
       now: Date.now(), state, logger,
@@ -326,7 +340,7 @@ describe('estimatePower', () => {
     // Decided precedence: a declared load is what the device says about itself,
     // and the way to correct a wrong one is the manual override on the rung above.
     const state = buildState();
-    state.lastKnownPowerKw['dev-1'] = 3.1;
+    state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(900), deviceId: 'dev-1', deviceLabel: 'Device 1',
       now: Date.now(), state, logger,
@@ -337,7 +351,7 @@ describe('estimatePower', () => {
 
   it('rung 3 — the learned peak wins once no load is declared', () => {
     const state = buildState();
-    state.lastKnownPowerKw['dev-1'] = 3.1;
+    state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-1', deviceLabel: 'Device 1',
       now: Date.now(), state, logger,

@@ -1,3 +1,4 @@
+import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceTransport } from '../device/deviceTransport';
@@ -234,8 +235,8 @@ export type AppContext = {
   set debugLoggingTopics(value: Set<DebugLoggingTopic>);
   get defaultComputeDynamicSoftLimit(): (() => number) | undefined;
   set defaultComputeDynamicSoftLimit(value: (() => number) | undefined);
-  get lastKnownPowerKw(): Record<string, number>;
-  get expectedPowerKwOverrides(): Record<string, { kw: number; ts: number }>;
+  get lastKnownPowerKw(): LearnedPeaksByDeviceId;
+  get expectedPowerKwOverrides(): ExpectedPowerOverridesByDeviceId;
   get lastPositiveMeasuredPowerKw(): Record<string, { kw: number; ts: number }>;
   get lastNotifiedOperatingMode(): string;
   set lastNotifiedOperatingMode(value: string);

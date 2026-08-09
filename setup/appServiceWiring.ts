@@ -107,7 +107,9 @@ export type AppServiceWiringDeps = {
     allowPendingOwnershipGeneration: boolean,
   ) => void;
   hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
-  loadFlowReportedCapabilities: () => void;
+  loadPersistedState: () => void;
+  persistLearnedPowerPeaks: () => void;
+  flushLearnedPowerPeaks: () => void;
   loadPowerCalibrationStore: () => void;
   startPowerTrackerPruning: () => void;
   persistPowerTrackerState: (reason: PowerTrackerPersistReason) => void;
@@ -199,8 +201,8 @@ export class AppServiceWiring {
     await runStartupStep('loadCapacitySettings', () => ctx.loadCapacitySettings(), logStartupStepFailure);
     await runStartupStep('initDailyBudgetService', () => this.deps.initDailyBudgetService(), logStartupStepFailure);
     await runStartupStep(
-      'loadFlowReportedCapabilities',
-      () => this.deps.loadFlowReportedCapabilities(),
+      'loadPersistedState',
+      () => this.deps.loadPersistedState(),
       logStartupStepFailure,
     );
     await runStartupStep(
@@ -526,6 +528,10 @@ export class AppServiceWiring {
     // last persist tick reach settings before shutdown. Without this, samples
     // recorded inside the persist-debounce window are lost on restart.
     this.deps.flushPowerCalibration();
+    // Same reason for the learned peaks, which are rate-limited to one write a
+    // minute: the peak observed in the last minute of a run is precisely the one
+    // a restart would drop, and the trailing flush timer is already gone by now.
+    this.deps.flushLearnedPowerPeaks();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.
     persistDeferredObjectiveObservationWatermark(ctx, ctx.deferredObjectivePlanHistoryRecorder);

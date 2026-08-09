@@ -35,6 +35,11 @@ import {
 } from '../../lib/device/transport/managerHomeyApi';
 import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type Homey from 'homey';
+import { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import { mockHomeyInstance } from '../mocks/homey';
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -263,11 +268,11 @@ describe('device manager support helpers', () => {
   it('updates runtime device manager power state helpers', async () => {
     const logger = createLogger();
     const state = {
-      lastKnownPowerKw: { dev1: 0.5 },
+      lastKnownPowerKw: { dev1: { kw: 0.5, observedAtMs: 0 } },
       lastPeakPowerLogByDevice: new Map(),
     };
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1' });
-    expect(state.lastKnownPowerKw.dev1).toBe(1.2);
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1', nowMs: 0 });
+    expect(state.lastKnownPowerKw.dev1?.kw).toBe(1.2);
 
     const mockGet = vi.fn().mockResolvedValue([{ id: 'direct' }]);
     setRestClient({ get: mockGet, put: vi.fn() });
@@ -297,16 +302,71 @@ describe('device manager support helpers', () => {
     expect(stringFailureCall?.err).toBeInstanceOf(Error);
     expect((stringFailureCall?.err as Error).message).toBe('string boom');
   });
+  it('announces a re-anchored window even when the peak reads the same', () => {
+    // The persistence write-back hangs off this callback. A reading equal to the
+    // standing peak changes no calibration input, so the seam it used to hang off
+    // never fired — and the log dedupe below would swallow it too, which is why
+    // the announcement sits ahead of it.
+    const logger = createLogger();
+    const state = {
+      lastKnownPowerKw: { dev1: { kw: 2, observedAtMs: 0 } },
+      lastPeakPowerLogByDevice: new Map(),
+    };
+    const onPeakChanged = vi.fn();
+
+    updateLastKnownPower({
+      state, logger, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: 60_000, onPeakChanged,
+    });
+    expect(state.lastKnownPowerKw.dev1?.observedAtMs).toBe(60_000);
+    expect(onPeakChanged).toHaveBeenCalledTimes(1);
+
+    // A lower reading inside the open window moves nothing, so it announces nothing.
+    updateLastKnownPower({
+      state, logger, deviceId: 'dev1', measuredKw: 1, deviceLabel: 'Device 1', nowMs: 61_000, onPeakChanged,
+    });
+    expect(onPeakChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards the learned-peak announcement from the transport parse path', () => {
+    // Covers the wiring the persistence depends on end to end: the callback is
+    // handed to `DeviceTransport` on its power bag and has to reach
+    // `updateLastKnownPower` through the parse pipeline.
+    const onLearnedPeakChanged = vi.fn();
+    const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger() as unknown as Logger,
+      {},
+      { lastKnownPowerKw, onLearnedPeakChanged },
+    );
+
+    deviceManager.parseDeviceListForTests([{
+      id: 'heater-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['onoff', 'measure_power'],
+      available: true,
+      ready: true,
+      capabilitiesObj: {
+        onoff: { value: true },
+        measure_power: { value: 1800 },
+      },
+    } as unknown as HomeyDeviceLike]);
+
+    expect(lastKnownPowerKw['heater-1']?.kw).toBeCloseTo(1.8);
+    expect(onLearnedPeakChanged).toHaveBeenCalled();
+  });
+
   it('dedupes peak-power updates within the same rounded band', () => {
     const logger = createLogger();
     const state = {
-      lastKnownPowerKw: { dev1: 1.231 },
+      lastKnownPowerKw: { dev1: { kw: 1.231, observedAtMs: 0 } },
       lastPeakPowerLogByDevice: new Map(),
     };
 
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.232, deviceLabel: 'Device 1' });
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.234, deviceLabel: 'Device 1' });
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.29, deviceLabel: 'Device 1' });
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.232, deviceLabel: 'Device 1', nowMs: 0 });
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.234, deviceLabel: 'Device 1', nowMs: 0 });
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.29, deviceLabel: 'Device 1', nowMs: 0 });
 
     expect(logger.structuredLog.debug).toHaveBeenCalledTimes(2);
     expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(1, expect.objectContaining({

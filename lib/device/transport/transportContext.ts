@@ -25,7 +25,6 @@ import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { DeviceFetchResult } from './managerFetch';
 import type { HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
 import type { ZoneTreeCache } from './zoneTreeCache';
-import type { PowerEstimateState } from '../devicePowerEstimate';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import type { DeviceTransportObservationState } from './managerObservation';
 import type { RecentLocalCapabilityWrites } from './managerRealtimeSupport';
@@ -39,6 +38,7 @@ import type {
 import type {
   BinarySettleDepsForTransport,
   DeviceTransportBinarySettleOps,
+  ResolvedTransportPowerState,
   SteppedLoadFlowTriggerCard,
   TransportObservedStateDispatcher,
 } from './transportTypes';
@@ -142,7 +142,7 @@ export type TransportContext = {
   // --- Snapshot-refresh pipeline collaborators (snapshotRefresh.ts) ---
   // Parse-binding inputs (stable references built once in the constructor).
   readonly providers: DeviceTransportParseProviders;
-  readonly powerState: Required<PowerEstimateState>;
+  readonly powerState: ResolvedTransportPowerState;
   readonly measuredPowerResolver: DeviceMeasuredPowerResolver;
   readonly observedStateDispatcher: TransportObservedStateDispatcher | undefined;
   // Per-device targeted-miss grace state — stable Map, mutated in place.

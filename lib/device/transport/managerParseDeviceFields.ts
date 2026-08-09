@@ -12,7 +12,7 @@ import {
     resolveZoneId,
     resolveZoneLabel,
 } from './managerHelpers';
-import { estimatePower, type PowerEstimateState } from '../devicePowerEstimate';
+import { estimatePower } from '../devicePowerEstimate';
 import {
     type FlowReportedCapabilityId,
     type FlowReportedCapabilitiesForDevice,
@@ -61,6 +61,7 @@ import type {
     DeviceTransportParseProviders,
     ParseDevicePurpose,
 } from './managerParseDevice';
+import type { ResolvedTransportPowerState } from './transportTypes';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -168,7 +169,7 @@ function resolveDeviceControlBundle(params: {
     const available = resolveAvail(
         controlCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
     );
-    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
+    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType: overlay.flowAugmentedDeviceType,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
@@ -248,6 +249,7 @@ export function assembleDeviceSnapshot(params: {
         targetCaps,
         controlCapabilityId: control.controlCapabilityId,
         powerEstimate,
+        measuredPowerKw: measuredPower.measuredPowerKw,
         powerCapable: control.powerCapable,
         binaryControl: control.binaryControl,
         evCharging: control.evCharging,
@@ -371,6 +373,7 @@ function buildParsedDeviceSnapshot(params: {
     available: boolean;
     reportedStepId?: string; reportedStepPowerW?: number; reportedStepObservedAtMs?: number;
     suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
+    measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
@@ -406,6 +409,7 @@ function buildParsedDeviceSnapshot(params: {
         available,
         reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
+        measuredPowerKw,
         measuredPowerObservedAtMs,
         lastFreshDataMs,
         lastLocalWriteMs,
@@ -433,7 +437,7 @@ function buildParsedDeviceSnapshot(params: {
         evChargingStateObservedAtMs,
         stateOfCharge,
         currentTemperature,
-        measuredPowerKw: powerEstimate.measuredPowerKw,
+        measuredPowerKw,
         measuredPowerObservedAtMs,
         zone: resolveZoneLabel(device),
         zoneId: resolveZoneId(device),
@@ -466,7 +470,7 @@ function resolveDevicePowerState(params: {
     livePowerWByDeviceId: LiveDevicePowerWatts;
     now: number;
     measuredPowerResolver: DeviceMeasuredPowerResolver;
-    powerState: Required<PowerEstimateState>;
+    powerState: ResolvedTransportPowerState;
     logger: Logger;
 }): {
     currentTemperature: number | undefined;

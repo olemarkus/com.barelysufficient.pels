@@ -1,3 +1,8 @@
+import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../lib/device/devicePowerPeak';
+import {
+  createLearnedPowerPeakState,
+  type LearnedPowerPeakState,
+} from './appInit/learnedPowerPeakState';
 import type Homey from 'homey';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import {
@@ -16,6 +21,7 @@ import {
 import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
 import { normalizeError } from '../lib/utils/errorUtils';
+import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { SettingsRepository } from './settingsRepository';
@@ -84,7 +90,10 @@ export type AppFlowBackedDeps = {
   getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
   hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
   getSteppedLoadProfile: (deviceId: string) => unknown;
-  getExpectedPowerKwOverrides: () => Record<string, { kw: number; ts: number }>;
+  getExpectedPowerKwOverrides: () => ExpectedPowerOverridesByDeviceId;
+  getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
+  /** Owns the learned-peak trailing flush registered by `learnedPowerPeakState`. */
+  timers: TimerRegistry;
   syncHeadroomUsageObservation: (params: { deviceId: string; usageObservation: { kw: number } }) => void;
 }
 
@@ -94,7 +103,36 @@ export class AppFlowBacked {
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
 
-  constructor(private readonly deps: AppFlowBackedDeps) {}
+  /** True until a settings read has told us which figures are already stored. */
+  private expectedPowerOverridesUnread = true;
+
+  /**
+   * Devices whose in-memory figure has NOT reached settings. Held so a retry of
+   * the same value is not mistaken for "nothing changed" — that equality return
+   * is what turned one failed write into a permanently unpersisted override.
+   */
+  private readonly unpersistedExpectedOverrideDeviceIds = new Set<string>();
+
+  private readonly learnedPowerPeakState: LearnedPowerPeakState;
+
+  constructor(private readonly deps: AppFlowBackedDeps) {
+    this.learnedPowerPeakState = createLearnedPowerPeakState({
+      settingsRepository: deps.settingsRepository,
+      getPeaks: () => deps.getLearnedPowerPeaks(),
+      timers: deps.timers,
+      getStructuredLogger: () => deps.getStructuredLogger('devices'),
+    });
+  }
+
+  /** Rate-limited, change-gated write of the learned measured peaks. */
+  persistLearnedPeaks(): void {
+    this.learnedPowerPeakState.persist();
+  }
+
+  /** Shutdown flush for a learned peak the rate limit is still holding. */
+  flushLearnedPeaks(): void {
+    this.learnedPowerPeakState.flush();
+  }
 
   setExpectedOverride(deviceId: string, kw: number): boolean {
     if (this.deps.getSteppedLoadProfile(deviceId)) {
@@ -105,10 +143,18 @@ export class AppFlowBacked {
     }
     const overrides = this.deps.getExpectedPowerKwOverrides();
     const existing = overrides[deviceId];
-    if (typeof existing?.kw === 'number' && Math.abs(existing.kw - kw) <= EXPECTED_OVERRIDE_EQUALS_EPSILON_KW) {
+    if (
+      !this.unpersistedExpectedOverrideDeviceIds.has(deviceId)
+      && typeof existing?.kw === 'number'
+      && Math.abs(existing.kw - kw) <= EXPECTED_OVERRIDE_EQUALS_EPSILON_KW
+    ) {
       return false;
     }
     overrides[deviceId] = { kw, ts: Date.now() };
+    // Persist immediately. This is the owner's own figure for a device, entered
+    // deliberately; losing it to a restart is how it used to silently revert to
+    // whatever PELS could infer.
+    this.persistExpectedPowerOverrides(deviceId, overrides);
     this.deps.syncHeadroomUsageObservation({
       deviceId,
       usageObservation: { kw },
@@ -116,7 +162,75 @@ export class AppFlowBacked {
     return true;
   }
 
-  loadFlowReportedCapabilities(): void {
+  /**
+   * Write the manual figures, keeping the in-memory record and settings honest
+   * about each other.
+   *
+   * The in-memory mutation stands either way — the run must honour what the
+   * owner typed — but a device whose write did not land stays marked, so the
+   * equality short-circuit above lets the same value through again instead of
+   * reporting "unchanged" for a figure that never reached settings.
+   */
+  private persistExpectedPowerOverrides(
+    deviceId: string,
+    overrides: ExpectedPowerOverridesByDeviceId,
+  ): void {
+    // Never write over a record nobody has read. The boot read classifies an
+    // unreadable key as `unavailable`, and writing the map we happen to hold
+    // would erase every figure the owner typed on an earlier run.
+    if (this.expectedPowerOverridesUnread && !this.loadExpectedPowerOverrides()) {
+      this.unpersistedExpectedOverrideDeviceIds.add(deviceId);
+      return;
+    }
+    try {
+      this.deps.settingsRepository.saveExpectedPowerOverrides(overrides);
+      this.unpersistedExpectedOverrideDeviceIds.delete(deviceId);
+    } catch (error) {
+      this.unpersistedExpectedOverrideDeviceIds.add(deviceId);
+      this.deps.getStructuredLogger('devices')?.error({
+        event: 'expected_power_override_write_failed',
+        deviceId,
+        err: normalizeError(error),
+      });
+    }
+  }
+
+  /**
+   * Restore the owner's manual expected-power figures at boot, answering whether
+   * the read RESOLVED.
+   *
+   * `unavailable` is an unreadable key, not an empty record, so the in-memory
+   * map is left alone and the write path stays fenced until a read succeeds
+   * (`feedback_homey_sdk_unreliable`, `notes/persisted-settings-state.md`). A
+   * resolved-empty record is a real answer and adopts normally.
+   */
+  private loadExpectedPowerOverrides(): boolean {
+    const read = this.deps.settingsRepository.loadExpectedPowerOverrides();
+    if (read.state === 'unavailable') return false;
+    const current = this.deps.getExpectedPowerKwOverrides();
+    // Held wins per device: this can run after the owner has already typed a
+    // figure this run (the retry inside `persistExpectedPowerOverrides`), and
+    // that figure is the newer instruction.
+    const adopted = { ...read.overrides, ...current };
+    for (const key of Object.keys(current)) delete current[key];
+    Object.assign(current, adopted);
+    this.expectedPowerOverridesUnread = false;
+    return true;
+  }
+
+  /**
+   * Restore every persisted record this helper owns: flow-reported capabilities,
+   * the owner's manual expected-power figures, and the peaks PELS observed for
+   * itself. One entry point because they share the transient-miss rule below and
+   * are all restored in the same startup step.
+   */
+  loadPersistedState(): void {
+    this.loadFlowReportedCapabilities();
+    void this.loadExpectedPowerOverrides();
+    this.learnedPowerPeakState.load();
+  }
+
+  private loadFlowReportedCapabilities(): void {
     const parsed = this.deps.settingsRepository.loadFlowReportedCapabilities();
     // Homey SDK reads can transiently return falsy/empty data even when the
     // underlying setting is intact (see `feedback_homey_sdk_unreliable`). If

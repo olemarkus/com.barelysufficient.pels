@@ -7,7 +7,8 @@ import type { MainMeterSelection } from '../../../packages/contracts/src/mainMet
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
-import { estimatePower, type PowerEstimateState } from '../devicePowerEstimate';
+import { estimatePower } from '../devicePowerEstimate';
+import type { ResolvedTransportPowerState } from './transportTypes';
 import { type FlowReportedCapabilitiesForDevice } from './flowReportedCapabilities';
 import { type DeviceCapabilityMap } from '../managerControl';
 import {
@@ -72,12 +73,13 @@ export type DeviceTransportParseDeps = {
     logger: Logger;
     debugStructured?: StructuredDebugEmitter;
     providers: DeviceTransportParseProviders;
-    powerState: Required<PowerEstimateState>;
+    powerState: ResolvedTransportPowerState;
     measuredPowerResolver: DeviceMeasuredPowerResolver;
     getCapabilityObj: (device: HomeyDeviceLike) => DeviceCapabilityMap;
     isPowerCapable: (
         device: HomeyDeviceLike,
         capsStatus: { hasPower: boolean },
+        measuredPower: { measuredPowerKw?: number },
         powerEstimate: ReturnType<typeof estimatePower>,
     ) => boolean;
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
@@ -178,11 +180,14 @@ export function parseDevice(params: {
 export function isDevicePowerCapable(params: {
     device: HomeyDeviceLike;
     capsStatus: { hasPower: boolean };
+    measuredPower: { measuredPowerKw?: number };
     powerEstimate: ReturnType<typeof estimatePower>;
 }): boolean {
-    const { device, capsStatus, powerEstimate } = params;
+    const { device, capsStatus, measuredPower, powerEstimate } = params;
+    // The live reading comes from its own producer (`resolveMeasuredPowerKw`),
+    // which the caller already holds — the estimate no longer echoes it back.
     return capsStatus.hasPower
-        || typeof powerEstimate.measuredPowerKw === 'number'
+        || typeof measuredPower.measuredPowerKw === 'number'
         || hasPotentialHomeyEnergyEstimate(device)
         || powerEstimate.hasEnergyEstimate === true;
 }

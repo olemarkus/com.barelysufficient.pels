@@ -32,7 +32,6 @@ import { projectObservedState } from './observedStateProjection';
 import { createCarStateOfChargeAdoption, resolveAssociatedCar } from './transport/carAssociation';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { TargetedMissState } from './transport/targetedSnapshotMerge';
-import type { PowerEstimateState } from './devicePowerEstimate';
 import type { LiveDevicePowerWatts } from './managerEnergy';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
@@ -79,6 +78,7 @@ import {
   type DeviceTransportBinarySettleOps,
   type DeviceTransportOptions,
   type DeviceTransportPowerState,
+  type ResolvedTransportPowerState,
   type SnapshotRefreshMetrics,
   type TransportObservedStateDispatcher,
 } from './transport/transportTypes';
@@ -173,7 +173,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // fires when a realtime device.update commits an entry with a changed
     // `zoneId`; invoked contained in `deviceUpdateHandling.ts`.
     private onDeviceZoneChanged?: () => void;
-    private powerState: Required<PowerEstimateState>;
+    private powerState: ResolvedTransportPowerState;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
@@ -260,6 +260,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             lastEstimateDecisionLogByDevice:
                 powerState?.lastEstimateDecisionLogByDevice ?? createEstimateDecisionLogState(),
             lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? createPeakPowerLogState(),
+            onLearnedPeakChanged: powerState?.onLearnedPeakChanged,
         };
         this.measuredPowerResolver = new DeviceMeasuredPowerResolver({
             logger: this.logger,

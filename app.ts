@@ -1,3 +1,5 @@
+import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
+
 import Homey from 'homey';
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
@@ -294,8 +296,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   public canContributeCurtailmentSurplus?: () => boolean;
   public defaultComputeDynamicSoftLimit: (() => number) | undefined = undefined;
-  public lastKnownPowerKw: Record<string, number> = {};
-  public expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
+  public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
+  public expectedPowerKwOverrides: ExpectedPowerOverridesByDeviceId = {};
   private overheadToken?: Homey.FlowToken;
   public lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   public lastNotifiedOperatingMode = 'Home';
@@ -420,6 +422,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
     getSteppedLoadProfile: (deviceId) => this.deviceControlHelpers.getSteppedLoadProfile(deviceId),
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,
+    getLearnedPowerPeaks: () => this.lastKnownPowerKw,
+    timers: this.timers,
     syncHeadroomUsageObservation: (params) => { this.planService?.syncHeadroomUsageObservation(params); },
   });
   private readonly nativeWiring = new AppNativeWiring({
@@ -500,7 +504,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       (deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId, membership, allowPending),
     ),
     hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
-    loadFlowReportedCapabilities: () => this.loadFlowReportedCapabilities(),
+    loadPersistedState: () => this.flowBacked.loadPersistedState(),
+    persistLearnedPowerPeaks: () => this.flowBacked.persistLearnedPeaks(),
+    flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),
     loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
     startPowerTrackerPruning: () => this.startPowerTrackerPruning(),
     persistPowerTrackerState: (reason) => this.persistPowerTrackerState(reason),
@@ -518,10 +524,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   });
   public setExpectedOverride(deviceId: string, kw: number): boolean {
     return this.flowBacked.setExpectedOverride(deviceId, kw);
-  }
-
-  private loadFlowReportedCapabilities(): void {
-    this.flowBacked.loadFlowReportedCapabilities();
   }
 
   public getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (

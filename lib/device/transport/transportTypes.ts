@@ -33,9 +33,28 @@ import type {
 export const MIN_SIGNIFICANT_POWER_W = 5;
 export const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 
-export type DeviceTransportPowerState = PowerEstimateState & {
+/**
+ * Announced when a reading MOVES a device's learned peak — a new entry, a higher
+ * one, or a re-anchored window. Deliberately NOT on `PowerEstimateState`: the
+ * estimator only reads that bag, and this is a wiring seam.
+ *
+ * The learned-peak write-back hangs off this rather than the snapshot-mutation
+ * seam, which fires on a CHANGED calibration input: a reading equal to the
+ * standing peak changes none of them while still re-anchoring `observedAtMs`, so
+ * the window of the steadiest devices would expire in settings while memory said
+ * it was fresh.
+ */
+type LearnedPeakChangedListener = { onLearnedPeakChanged?: () => void };
+
+export type DeviceTransportPowerState = PowerEstimateState & LearnedPeakChangedListener & {
     lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
 };
+
+/**
+ * The transport's own power bag: every estimator field resolved, plus the
+ * learned-peak notification the parse path forwards to `updateLastKnownPower`.
+ */
+export type ResolvedTransportPowerState = Required<PowerEstimateState> & LearnedPeakChangedListener;
 
 export type SnapshotRefreshMetrics = {
     availableDevices: number;

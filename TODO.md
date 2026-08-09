@@ -585,16 +585,6 @@ What remains open is below.*
       users mid-day, so it wants its own change with a migration thought through.
       Source: adversarial review of the measured-draw collapse, 2026-08-08. [P1]
 
-- [ ] **Snapshot absence drops the learned measured-peak baseline.**
-      `evictMissingDeviceCacheEntries(ctx, snapshot)`
-      (`setup/homeRuntime/planDevicePrePass.ts:79`) clears per-device cache entries for
-      any device missing from the snapshot, which includes the `measured-peak`
-      baseline `estimatePower` builds up. A device that drops out for one refresh —
-      Homey reads transiently fail — restarts its learning from nothing. Wants the
-      same abandon-grace treatment as other transient-absence handling
-      (`notes/persisted-settings-state.md`). Source: adversarial review of the
-      measured-draw collapse, 2026-08-08. [P2]
-
 - [ ] **The executor's observed draw is unnamed and undocumented at its seam.**
       `lib/executor/executablePlanProjection.ts:234` puts `snapshot.measuredPowerKw`
       on `ExecutableObservedSteppedLoadState`. It IS consumed —

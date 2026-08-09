@@ -77,6 +77,8 @@ export type DeviceTransportWiringDeps = {
   getObservedDeviceStateProjection: () => ObservedDeviceStateProjection;
   setObservedDeviceStateProjection: (projection: ObservedDeviceStateProjection) => void;
   isManagedFilterActive: () => boolean;
+  /** Rate-limited, change-gated write of the learned measured peaks. */
+  persistLearnedPowerPeaks: () => void;
   resolveNativeWiringEnabled: (deviceId: string) => boolean;
   getDeviceDriverIdOverride: (deviceId: string) => string | undefined;
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
@@ -216,6 +218,13 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     expectedPowerKwOverrides: ctx.expectedPowerKwOverrides,
     lastKnownPowerKw: ctx.lastKnownPowerKw,
     lastPositiveMeasuredPowerKw: ctx.lastPositiveMeasuredPowerKw,
+    // Driven off the learned-peak mutation, NOT the snapshot-mutation seam
+    // below. That seam fires on a changed calibration input, and a reading equal
+    // to the standing peak changes none of them while still re-anchoring the
+    // window — so the peak of the steadiest devices, the ones the estimate most
+    // depends on, would have expired in settings while memory said it was fresh.
+    // The persist is itself rate-limited and change-gated.
+    onLearnedPeakChanged: () => deps.persistLearnedPowerPeaks(),
   }, {
     debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
     getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),

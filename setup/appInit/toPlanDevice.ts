@@ -442,11 +442,28 @@ function evictMissingFromRecord<V>(
  * Source: chunk-2 producer review flagged unbounded growth on device
  * deletion; this sweep closes that gap without changing any in-cycle
  * behaviour for devices that still exist.
+ *
+ * AN EMPTY SNAPSHOT EVICTS NOTHING. Homey SDK reads fail transiently, and a
+ * refresh that comes back empty is overwhelmingly "the read failed", not "the
+ * user deleted every device" — a home with no devices at all has nothing to
+ * evict either way, so the guard costs nothing and the symmetric mistake is
+ * expensive. It used to be merely wasteful, because the peak was in-memory and a
+ * restart rebuilt it; now that the store is persisted, one bad read would
+ * otherwise erase learning the fleet took weeks to accumulate
+ * (`feedback_homey_sdk_unreliable`, `notes/persisted-settings-state.md`).
+ *
+ * `expectedPowerKwOverrides` is deliberately NOT swept here. It is the owner's
+ * own configuration, and the snapshot is a MANAGED view — the managed filter
+ * drops devices from it — so evicting on absence would delete a saved figure the
+ * moment someone un-manages a device, and silently fail to restore it when they
+ * changed their mind. It is bounded by the number of devices a person has ever
+ * typed a figure for.
  */
 export function evictMissingDeviceCacheEntries(
   ctx: AppContext,
   snapshot: ReadonlyArray<TargetDeviceSnapshot>,
 ): void {
+  if (snapshot.length === 0) return;
   const presentIds = new Set<string>(snapshot.map((device) => device.id));
   evictMissingFromRecord(ctx.lastKnownPowerKw, presentIds);
 }
