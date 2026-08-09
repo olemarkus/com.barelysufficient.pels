@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import { testExports } from '../src/ui/deadlinePlan.ts';
 import { pendingChipTone } from '../src/ui/deadlinePlanPending.ts';
@@ -1536,7 +1537,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: Number.NaN, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: Number.NaN }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -1963,7 +1964,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2040,7 +2041,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2124,7 +2125,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2227,7 +2228,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2333,7 +2334,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2417,7 +2418,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2511,7 +2512,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2598,7 +2599,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];

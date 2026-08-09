@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { normalizeEvBoostSettings } from '../../packages/contracts/src/evBoost';
 import { buildBoostPlanDeviceFields, resolveEvBoostActive } from '../../lib/plan/planEvBoost';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
@@ -37,7 +38,7 @@ describe('resolveEvBoostActive', () => {
     // Preserve explicit-`undefined` overrides (`evBoost: undefined`,
     // `stateOfCharge: undefined`) rather than defaulting them via destructuring.
     const cluster: EvDiscriminantProbe = {
-      stateOfCharge: 'stateOfCharge' in overrides ? stateOfCharge : { percent: 32, status: 'fresh' as const },
+      stateOfCharge: 'stateOfCharge' in overrides ? stateOfCharge : stateOfChargeFixture({ percent: 32 }),
       evBoost: 'evBoost' in overrides ? evBoost : { enabled: true, boostBelowPercent: 40 },
     };
     return withEvCluster(
@@ -62,19 +63,19 @@ describe('resolveEvBoostActive', () => {
     const dev = buildEvDevice({
       forceBoostActive: true,
       evBoost: undefined,
-      stateOfCharge: { percent: 90, status: 'fresh' as const },
+      stateOfCharge: stateOfChargeFixture({ percent: 90 }),
     });
     expect(resolveEvBoostActive(dev)).toBe(true);
   });
 
   it('stops at the target threshold without hysteresis', () => {
-    const dev = buildEvDevice({ stateOfCharge: { percent: 40, status: 'fresh' as const } });
+    const dev = buildEvDevice({ stateOfCharge: stateOfChargeFixture({ percent: 40 }) });
     expect(resolveEvBoostActive(dev)).toBe(false);
   });
 
   it('does not activate for stale, missing, or unplugged EV state', () => {
     expect(resolveEvBoostActive(buildEvDevice({
-      stateOfCharge: { percent: 20, status: 'stale' as const },
+      stateOfCharge: stateOfChargeFixture({ percent: 20, unavailable: 'not_reported' }),
     }))).toBe(false);
     expect(resolveEvBoostActive(buildEvDevice({ stateOfCharge: undefined }))).toBe(false);
     expect(resolveEvBoostActive(buildEvDevice({ evChargingState: 'plugged_out' }))).toBe(false);
@@ -87,7 +88,7 @@ describe('resolveEvBoostActive', () => {
     // declines or never starts drawing.
     expect(resolveEvBoostActive(buildEvDevice({
       evChargingState: 'plugged_in',
-      stateOfCharge: { percent: 20, status: 'fresh' as const },
+      stateOfCharge: stateOfChargeFixture({ percent: 20 }),
     }))).toBe(true);
   });
 
@@ -96,14 +97,14 @@ describe('resolveEvBoostActive', () => {
       buildPlanInputDevice({ deviceClass: 'evcharger' }),
       {
         evBoost: { enabled: true, boostBelowPercent: 40 },
-        stateOfCharge: { percent: 20, status: 'fresh' },
+        stateOfCharge: stateOfChargeFixture({ percent: 20 }),
       },
     ))).toBe(false);
     expect(resolveEvBoostActive(withEvCluster(
       steppedInputDevice({}),
       {
         evBoost: { enabled: true, boostBelowPercent: 40 },
-        stateOfCharge: { percent: 20, status: 'fresh' },
+        stateOfCharge: stateOfChargeFixture({ percent: 20 }),
       },
     ))).toBe(false);
   });

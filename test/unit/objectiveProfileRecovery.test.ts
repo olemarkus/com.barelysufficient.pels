@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
@@ -37,11 +38,7 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedP
   deviceClass: 'evcharger',
   binaryControl: { on: true },
   measuredPowerKw: 7,
-  stateOfCharge: {
-    percent: 40,
-    status: 'fresh',
-    observedAtMs: startMs,
-  },
+  stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs }),
   ...overrides,
 });
 
@@ -640,7 +637,7 @@ describe('EV charger sharp-drop handling', () => {
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [evDevice({
-        stateOfCharge: { percent: 80, status: 'fresh', observedAtMs: startMs },
+        stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: startMs }),
       })],
       nowMs: startMs,
       debugStructured,
@@ -648,11 +645,7 @@ describe('EV charger sharp-drop handling', () => {
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [evDevice({
-        stateOfCharge: {
-          percent: 80 - SHARP_FALL_SOC_PERCENT,
-          status: 'fresh',
-          observedAtMs: startMs + hourMs,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 80 - SHARP_FALL_SOC_PERCENT, observedAtMs: startMs + hourMs }),
       })],
       nowMs: startMs + hourMs,
       debugStructured,
@@ -671,11 +664,7 @@ describe('EV charger sharp-drop handling', () => {
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [evDevice({
-        stateOfCharge: {
-          percent: 80,
-          status: 'fresh',
-          observedAtMs: startMs + 2 * hourMs,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: startMs + 2 * hourMs }),
       })],
       nowMs: startMs + 2 * hourMs,
     });

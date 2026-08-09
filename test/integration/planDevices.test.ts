@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import {
@@ -287,7 +288,7 @@ describe('buildInitialPlanDevices', () => {
         targets: [],
         budgetExempt: false,
         evChargingState: 'plugged_in_charging',
-        stateOfCharge: { percent: 32, status: 'fresh' },
+        stateOfCharge: stateOfChargeFixture({ percent: 32 }),
         evBoost: { enabled: true, boostBelowPercent: 40 },
       })]),
       state,

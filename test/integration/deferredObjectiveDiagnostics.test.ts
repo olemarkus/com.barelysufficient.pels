@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   buildDeferredObjectivePolicyHorizon as buildDeferredObjectivePolicyHorizonRaw,
@@ -49,11 +50,7 @@ const buildDevice = (
   deviceClass: 'evcharger',
   controlCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
-  stateOfCharge: {
-    percent: 40,
-    status: 'fresh',
-    observedAtMs: NOW_MS,
-  },
+  stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {
     model: 'stepped_load',
     steps: [
@@ -821,11 +818,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
     controlCapabilityId: 'evcharger_charging',
     evChargingState: 'plugged_in_paused',
     priority: 1,
-    stateOfCharge: {
-      percent: 40,
-      status: 'fresh',
-      observedAtMs: NOW_MS,
-    },
+    stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
     steppedLoadProfile: {
       model: 'stepped_load',
       steps: [
@@ -1786,7 +1779,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const device = buildDevice({
       controllable: false,
       controlModel: 'binary_power',
-      stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: NOW_MS },
+      stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: NOW_MS }),
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
@@ -1985,7 +1978,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
-      devices: [buildDevice({ stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: NOW_MS } })],
+      devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: NOW_MS }) })],
       settings,
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
@@ -2042,7 +2035,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: settleNowMs,
       timeZone: 'UTC',
-      devices: [buildDevice({ stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: settleNowMs } })],
+      devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: settleNowMs }) })],
       settings,
       powerTracker: buildPowerTracker({
         objectiveProfiles: {
@@ -2579,11 +2572,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 40,
-          status: 'stale',
-          observedAtMs: NOW_MS - HOUR_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS - HOUR_MS, unavailable: 'not_reported' }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings()),
       powerTracker: buildPowerTracker(),
@@ -2607,11 +2596,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 70,
-          status: 'fresh',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
       powerTracker: buildPowerTracker(),
@@ -2622,11 +2607,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS + HOUR_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 40,
-          status: 'stale',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS, unavailable: 'not_reported' }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
       powerTracker: buildPowerTracker(),
@@ -2655,11 +2636,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 70,
-          status: 'fresh',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
@@ -2688,7 +2665,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       timeZone: 'UTC',
       devices: [buildDevice({
         evChargingState: 'plugged_in',
-        stateOfCharge: { percent: 70, status: 'fresh', observedAtMs: NOW_MS },
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
@@ -2710,11 +2687,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 70,
-          status: 'fresh',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({
         deadlineLocalTime: '16:00',
@@ -2776,11 +2749,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 70,
-          status: 'fresh',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: trackingSettings,
       powerTracker: buildPowerTracker(),
@@ -2791,11 +2760,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 40,
-          status: 'fresh',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
       })],
       settings: trackingSettings,
       powerTracker: buildPowerTracker(),
@@ -3174,11 +3139,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
-        stateOfCharge: {
-          percent: 70,
-          status: 'fresh',
-          observedAtMs: NOW_MS,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
         steppedLoadProfile: undefined,
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
@@ -3334,11 +3295,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       priority: 1,
-      stateOfCharge: {
-        percent: 40,
-        status: 'fresh',
-        observedAtMs: NOW_MS,
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -3743,7 +3700,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
       // verdict; the committed plan and the hold are both unaffected by it.
       devices: [buildDevice({
         externalOffHoldActive: true,
-        stateOfCharge: { percent: 40, status: 'stale', observedAtMs: NOW_MS - 86_400_000 },
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS - 86_400_000, unavailable: 'not_reported' }),
       })],
     });
     // Guard the guard: if this ever stops degrading the live verdict, the case

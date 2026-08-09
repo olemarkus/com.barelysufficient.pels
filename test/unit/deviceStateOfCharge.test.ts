@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   resolveStateOfChargeSnapshot,
   updateStateOfChargeFromCarObservation,
@@ -31,7 +32,7 @@ describe('resolveStateOfChargeSnapshot', () => {
     expect(snapshot).toEqual(expect.objectContaining({
       percent: 55,
       capabilityId: 'measure_soc_level',
-      status: 'fresh',
+      level: { kind: 'known', percent: 55 },
     }));
   });
 
@@ -69,7 +70,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in',
       chargingStateAt: SOC_AT + 2 * 60_000,
       nowMs: SOC_AT + 3 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
   });
 
   // The charger republishes only on a level change, which cannot happen while
@@ -80,7 +81,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT,
       charging: false,
       nowMs: SOC_AT + 6 * 60 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
   });
 
   // An Easee can leave `evcharger_charging` lingering `true` across a pause, and
@@ -91,7 +92,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT,
       charging: true,
       nowMs: SOC_AT + 41 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
   });
 
   // The gate this replaced measured age in TOTAL wall-clock, so the moment PELS
@@ -113,7 +114,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: true,
       nowMs: SOC_AT + 3 * 60 * 60_000 + 1_000,
       retainedSession: paused,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
   });
 
   // The deliberate behaviour change: a level belongs to its session, not to a
@@ -127,7 +128,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT,
       charging: true,
       nowMs: SOC_AT + 6 * 60 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
   });
 
   // The mirror of the case above, and the second direction the old gate got
@@ -148,7 +149,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: false,
       nowMs: SOC_AT + 6 * 60 * 60_000 + 1_000,
       retainedSession: charging,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
   });
 
   // V2G: a discharging car is attached, so a reconnect observed in that state
@@ -168,12 +169,12 @@ describe('resolveStateOfChargeSnapshot', () => {
     })?.sessionStartedAtMs).toBe(SOC_AT + 3 * 60_000);
   });
 
-  it('marks the reading stale once the car is unplugged', () => {
+  it('reports no level once the car is unplugged', () => {
     expect(resolve({
       chargingState: 'plugged_out',
       chargingStateAt: SOC_AT + 60_000,
       nowMs: SOC_AT + 2 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, status: 'stale' }));
+    })?.level).toEqual({ kind: 'unavailable', reasonCode: 'not_connected' });
   });
 
   // A refresh sees only the CURRENT plug state, so the retained session is the
@@ -259,9 +260,7 @@ describe('car-sourced state of charge', () => {
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
       eligibleCarIds: ['car-1'],
-      retainedStateOfCharge: {
-        percent: 63, observedAtMs: 1_500, status: 'fresh', source: 'car', sourceDeviceId: 'car-1',
-      },
+      retainedStateOfCharge: stateOfChargeFixture({ percent: 63, observedAtMs: 1_500, source: 'car', sourceDeviceId: 'car-1' }),
     });
     expect(resolved).toMatchObject({ percent: 63, source: 'car', sourceDeviceId: 'car-1' });
   });
@@ -304,7 +303,7 @@ describe('car-sourced state of charge', () => {
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
       eligibleCarIds: ['car-1'],
-      retainedStateOfCharge: { percent: 71, observedAtMs: 1_500, status: 'fresh' },
+      retainedStateOfCharge: stateOfChargeFixture({ percent: 71, observedAtMs: 1_500 }),
     })).toBeUndefined();
   });
 
@@ -335,7 +334,7 @@ describe('car-sourced state of charge', () => {
   it('leaves a charger-owned level alone when a session ends', () => {
     const snapshot = {
       id: 'charger-1', name: 'Elbillader', deviceClass: 'evcharger', targets: [],
-      stateOfCharge: { percent: 71, observedAtMs: 1_000, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 71, observedAtMs: 1_000 }),
     } as unknown as Parameters<typeof clearCarStateOfCharge>[0]['snapshot'];
     expect(clearCarStateOfCharge({ snapshot })).toBe(false);
     expect(snapshot.stateOfCharge).toMatchObject({ percent: 71 });

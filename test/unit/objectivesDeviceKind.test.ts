@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import { buildObjectiveProfileSample } from '../../lib/objectives/samples';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
@@ -45,7 +46,7 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
       id: 'ev-cap',
       name: 'EV (capability only)',
       controlCapabilityId: 'evcharger_charging',
-      stateOfCharge: { status: 'fresh', percent: 55, observedAtMs: NOW },
+      stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: NOW }),
       lastFreshDataMs: NOW,
     } as unknown as TargetDeviceSnapshot;
     const sample = buildObjectiveProfileSample(device, NOW);
