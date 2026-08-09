@@ -86,12 +86,30 @@ export type DeferredObjective = {
   deadlineMarginMs?: number;
 };
 
+/**
+ * One rung of a device's ladder, as the planner works with it.
+ *
+ * `usefulPowerKw` is the rate energy lands in the tank/battery/car;
+ * `admissionPowerKw` is what the device draws from the grid, which is what
+ * competes for the hard cap. They differ for a device with conversion losses or
+ * gain, and are equal for a resistive load.
+ *
+ * Both are REQUIRED and both are finite and non-negative. That is a producer
+ * guarantee, not a hope: `resolveObjectiveSteps` (from a device's calibrated
+ * profile) and `normalizeObjectiveSteps` (from planner input) are the only two
+ * ways a step is built, and each resolves `admissionPowerKw` — falling back to
+ * `usefulPowerKw`, the right default for a resistive load, when no distinct
+ * admission calibration exists.
+ *
+ * It was previously optional "for backward-compatible callers". There were none:
+ * both producers always set it, so the fallback ran at all five consumer sites and
+ * could never fire, while the type still told each consumer it had to handle
+ * absence. Consumers read the field directly.
+ */
 export type DeferredObjectiveStep = {
   id: string;
   usefulPowerKw: number;
-  // Optional for backward-compatible callers; normalization falls back to
-  // useful power when no distinct admission calibration is available.
-  admissionPowerKw?: number;
+  admissionPowerKw: number;
 };
 
 export type DeferredObjectiveHorizonBucket = {
@@ -112,15 +130,41 @@ export type DeferredObjectiveHorizonBucket = {
   // deferral.
   price?: number | null;
   maxUsefulEnergyKWh?: number;
-  // Producer-resolved per-bucket forecast of physical headroom available to a
-  // fully-reserved smart task: hard cap minus the gross background forecast
-  // (`plannedGrossUncontrolledKWh / duration`). This stays separate from the net
-  // `plannedUncontrolledKWh` daily-budget cap input, because solar can make net
-  // background lower than physical background load. Consumed by `resolveFloorStep`
-  // to promote the committed floor when the objective is fully reserved.
-  // Optional/backward-compat: missing means "no forecast" and the floor stays at
-  // min step.
+  // Producer-resolved per-bucket forecast of the physical headroom a smart task
+  // has in this hour: hard cap minus the gross background forecast
+  // (`plannedGrossUncontrolledKWh / duration`) minus higher-priority smart-task
+  // claims. This stays separate from the net `plannedUncontrolledKWh` daily-budget
+  // cap input, because solar can make net background lower than physical
+  // background load. Note it is built from the RAW configured hard cap, without
+  // the capacity safety margin the live guard applies — so it is marginally more
+  // generous than what the runtime will actually admit.
+  //
+  // Two consumers, with different fallbacks when it is missing:
+  //   - `resolveStepForBucket` (`horizonPlanner.ts`) promotes a FULLY-RESERVED
+  //     task's committed floor to the highest rung this forecast admits. No
+  //     forecast ⇒ the floor stays at the min step: a commitment may not promise
+  //     more than the producer has verified.
+  //   - `resolveHighestStepWithinHeadroom` (`stepSelection.ts`) bounds the
+  //     feasibility PROBES for every task, fully reserved or not. No forecast ⇒ the
+  //     top rung, since nothing physical is known and a probe should not invent a
+  //     limit.
+  //
+  // Optional/backward-compat: missing means "no forecast".
   reservedHeadroomKw?: number;
+  // The concurrent DRAW higher-priority smart tasks have already claimed in this
+  // hour, in kW — the part of `reservedHeadroomKw`'s subtraction that is a real
+  // rate rather than an hourly average.
+  //
+  // Kept separate because the two components must be enforced differently. The
+  // background term is a forecast AVERAGE (`grossBackgroundKWh / duration`) against
+  // an hourly ENERGY allowance, so it bounds how much a device may take, not
+  // whether it may run: an hour with 0.86 kW of room holds 0.86 kWh, which a 1.38 kW
+  // charger takes in 37 minutes. A higher-priority claim is different in kind — that
+  // task really will be drawing that power at the same time — so a rung that does
+  // not fit the residual cannot share the hour, and the hour is not the lower task's
+  // to plan on. Consumed by `resolveBucketStepCapacityKWh`, which applies the rate
+  // test only when this is positive. Optional: absent/zero means no contention.
+  higherPriorityAdmissionPowerKw?: number;
   // Higher-priority useful-energy claims retain their actual coverage so a
   // current/deadline-split segment subtracts the overlap after the base hourly
   // budget is prorated, avoiding a second proration of the higher task's kWh.

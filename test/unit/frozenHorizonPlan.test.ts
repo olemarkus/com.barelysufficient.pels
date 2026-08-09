@@ -6,8 +6,8 @@ import type { DeferredObjectiveStep } from '../../lib/objectives/deferredObjecti
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0); // hour-aligned
 const STEPS: DeferredObjectiveStep[] = [
-  { id: 'low', usefulPowerKw: 2 },
-  { id: 'high', usefulPowerKw: 4 },
+  { id: 'low', usefulPowerKw: 2, admissionPowerKw: 2 },
+  { id: 'high', usefulPowerKw: 4, admissionPowerKw: 4 },
 ];
 
 const build = (overrides: {

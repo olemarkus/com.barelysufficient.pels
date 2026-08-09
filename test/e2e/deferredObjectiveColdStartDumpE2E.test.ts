@@ -48,9 +48,9 @@ const STANDBY_LOSS_C_PER_H = 0.3; // tank cools while held
 // Booked steps: the commitment is sized at `low` (1.25 kW), but the device CAN
 // climb to its real element. `max` represents the physical element.
 const STEPS: DeferredObjectiveStep[] = [
-  { id: 'off', usefulPowerKw: 0 },
-  { id: 'low', usefulPowerKw: 1.25 },
-  { id: 'max', usefulPowerKw: REAL_ELEMENT_KW },
+  { id: 'off', usefulPowerKw: 0, admissionPowerKw: 0 },
+  { id: 'low', usefulPowerKw: 1.25, admissionPowerKw: 1.25 },
+  { id: 'max', usefulPowerKw: REAL_ELEMENT_KW, admissionPowerKw: REAL_ELEMENT_KW },
 ];
 
 const bucketsFrom = (nowMs: number): DeferredObjectiveHorizonBucket[] => {

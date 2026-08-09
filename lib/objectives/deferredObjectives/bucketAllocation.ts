@@ -4,7 +4,6 @@ import type {
   DeferredObjectivePlannedBucket,
   DeferredObjectiveStep,
 } from './types';
-import { resolveStepAdmissionPowerKw } from './stepSelection';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -100,6 +99,7 @@ type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
 > & {
   usefulEnergyCapKWh: number;
   reservedHeadroomKw: number | undefined;
+  higherPriorityAdmissionPowerKw: number | undefined;
 };
 
 // Per-bucket step resolver. Each bucket may commit at a different step when
@@ -127,6 +127,9 @@ type BucketSegment = {
   reserve: boolean;
   current: boolean;
   usefulEnergyCapKWh: number;
+  // Concurrent draw already claimed by higher-priority tasks in this hour; see the
+  // field doc on `DeferredObjectiveHorizonBucket`. Drives the RATE test below.
+  higherPriorityAdmissionPowerKw: number | undefined;
   // Per-bucket physical headroom forecast (hard-cap minus uncontrolled
   // background, divided across concurrent eligible tasks). Caps the
   // per-hour kWh the allocator can commit so a hour with low forecast
@@ -511,6 +514,7 @@ const buildBucketSegment = (params: {
     current: startMs <= nowMs && endMs > nowMs,
     usefulEnergyCapKWh: Math.max(0, usefulEnergyCapKWh - higherPriorityReservedKWh),
     reservedHeadroomKw: normalizeReservedHeadroomKw(bucket.reservedHeadroomKw),
+    higherPriorityAdmissionPowerKw: normalizeReservedHeadroomKw(bucket.higherPriorityAdmissionPowerKw),
   };
 };
 
@@ -648,8 +652,25 @@ const resolveBucketStepCapacityKWh = (
   bucket: NormalizedBucket,
   step: DeferredObjectiveStep,
 ): number => {
-  const admissionPowerKw = resolveStepAdmissionPowerKw(step);
-  if (bucket.reservedHeadroomKw !== undefined && admissionPowerKw > bucket.reservedHeadroomKw) {
+  // Rate test, but ONLY against concurrent contention. A higher-priority task's
+  // claim is a real simultaneous draw, so a rung that does not fit the residual
+  // cannot share the hour and the hour is not this task's to plan on.
+  //
+  // It deliberately does NOT apply when the only thing consuming headroom is the
+  // background forecast. That is an hourly AVERAGE against an hourly ENERGY
+  // allowance (`notes/safe-pace-two-constraints.md`: `hourlyAllowanceKWh`, with
+  // `sustainableRateKw` "the same value read as a rate"), so it bounds how much the
+  // hour can hold, not whether the device may run in it — an hour with 0.86 kW of
+  // room holds 0.86 kWh, which a 1.38 kW charger takes in 37 minutes. Zeroing such
+  // an hour is what made a budget-bound plan read as physically impossible, and it
+  // enforced an instantaneous limit the live capacity guard already owns, at plan
+  // time, from a forecast average.
+  if (
+    bucket.higherPriorityAdmissionPowerKw !== undefined
+    && bucket.higherPriorityAdmissionPowerKw > 0
+    && bucket.reservedHeadroomKw !== undefined
+    && step.admissionPowerKw > bucket.reservedHeadroomKw
+  ) {
     return 0;
   }
   const stepCapacityKWh = step.usefulPowerKw * bucket.durationHours;
@@ -683,7 +704,7 @@ const buildPlannedBuckets = (params: {
       current: bucket.current,
       usefulEnergyCapacityKWh: resolveBucketStepCapacityKWh(bucket, step),
       plannedUsefulEnergyKWh,
-      plannedAdmissionPowerKw: plannedUsefulEnergyKWh > 0 ? resolveStepAdmissionPowerKw(step) : 0,
+      plannedAdmissionPowerKw: plannedUsefulEnergyKWh > 0 ? step.admissionPowerKw : 0,
     };
   });
 };

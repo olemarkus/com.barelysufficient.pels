@@ -3678,9 +3678,16 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
+      // `at_risk`, not `cannot_meet`: ev-1's commitment reserves 1 kW of the 3 kW
+      // cap, leaving ev-2 a genuine 2 kW of forecast headroom — enough at the `mid`
+      // rung to cover its 6 kWh over the four primary hours. It is short at its
+      // FLOOR, which is what the rest of this test is about, but it is not beyond
+      // reach. (This read `cannot_meet` while both feasibility probes ran at the
+      // absolute `top` rung: 3 kW exceeds ev-2's 2 kW headroom, so the capacity gate
+      // zeroed every bucket and both probes reported "does not fit" no matter what.)
       expect(byDevice.get('ev-2')).toMatchObject({
         devicePriority: 2,
-        trajectory: { kind: 'resolved', status: 'cannot_meet' },
+        trajectory: { kind: 'resolved', status: 'at_risk' },
       });
       expect(byDevice.get('ev-1')?.expectedStepId).toBe('min');
       expect(byDevice.get('ev-2')?.horizonPlan?.plannedBuckets

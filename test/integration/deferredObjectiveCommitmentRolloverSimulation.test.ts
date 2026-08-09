@@ -48,7 +48,7 @@ const BASE_HOUR = Date.UTC(2026, 4, 30, 20); // 22:00 local-ish; absolute, DST-a
 // The recorder settles a replan revision once per clock hour, at/after :58, so
 // each simulated cycle ticks at the :58 mark of its hour to exercise the settle.
 const SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1000;
-const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1.25 };
+const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1.25, admissionPowerKw: 1.25 };
 
 const TARGET_TEMPERATURE_C = 65;
 const DEVICE_ID = 'water-heater';

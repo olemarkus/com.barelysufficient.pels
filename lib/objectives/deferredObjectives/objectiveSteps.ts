@@ -6,16 +6,41 @@ import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { drawWhenActivelyDrawingKw, firstPositiveFinite } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
 
+// Grid draw for a step: the calibrated admission power when one exists, else the
+// nameplate. `null` when neither yields a usable figure — the caller then DROPS the
+// rung rather than planning with a made-up one.
+//
+// `DeferredObjectiveStep.admissionPowerKw` promises finite and non-negative and
+// consumers now read it flat on that promise, so this is one of the two producers
+// that has to make it true. The stepped-profile caller derives the nameplate as
+// `planningPowerW / 1000`, so junk upstream would otherwise arrive as NaN and
+// poison the priority-reservation sum, publishing `reservedHeadroomKw: NaN` to every
+// lower-priority task.
+//
+// Substituting 0 would be worse than the NaN, not better: a rung claiming to draw
+// nothing while delivering positive useful power passes every headroom check and
+// could be planned straight past the hard cap. Absence is absence — see the root
+// AGENTS.md ("never fabricate `0`") and `hard-cap-is-physical`.
 const resolveAdmissionPowerKw = (
   device: ObjectiveDeviceInput,
   stepId: string,
   fallbackKw: number,
-): number => {
+): number | null => {
   const calibrated = device.stepPowerCalibration?.[stepId]?.admissionPowerKw;
-  return typeof calibrated === 'number' && Number.isFinite(calibrated) && calibrated > 0
-    ? calibrated
-    : fallbackKw;
+  if (typeof calibrated === 'number' && Number.isFinite(calibrated) && calibrated > 0) return calibrated;
+  return Number.isFinite(fallbackKw) && fallbackKw >= 0 ? fallbackKw : null;
 };
+
+// Drop a rung whose grid draw could not be resolved. A ladder is allowed to be
+// shorter than the device's nameplate profile; it is not allowed to contain a rung
+// the planner cannot cost.
+const withResolvedAdmission = (
+  steps: Array<{ id: string; usefulPowerKw: number; admissionPowerKw: number | null }>,
+): DeferredObjectiveStep[] => steps.flatMap((step) => (
+  step.admissionPowerKw === null
+    ? []
+    : [{ id: step.id, usefulPowerKw: step.usefulPowerKw, admissionPowerKw: step.admissionPowerKw }]
+));
 
 // Resolves the per-objective step list the horizon planner consumes. Stepped
 // devices expose their full ladder via `steppedLoadProfile`; EV chargers and
@@ -28,31 +53,31 @@ const resolveAdmissionPowerKw = (
 export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObjectiveStep[] => {
   const profile = device.steppedLoadProfile;
   if (profile) {
-    return sortSteppedLoadSteps(profile.steps).map((step) => {
+    return withResolvedAdmission(sortSteppedLoadSteps(profile.steps).map((step) => {
       const nameplateKw = step.planningPowerW / 1000;
       return {
         id: step.id,
         usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, nameplateKw),
         admissionPowerKw: resolveAdmissionPowerKw(device, step.id, nameplateKw),
       };
-    });
+    }));
   }
   const planning = device.planningPowerKw;
   if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
-    return [{
+    return withResolvedAdmission([{
       id: 'charge',
       usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning),
       admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', planning),
-    }];
+    }]);
   }
   if (isEvDevice(device)) {
     const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
     if (expected !== null) {
-      return [{
+      return withResolvedAdmission([{
         id: 'charge',
         usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected),
         admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', expected),
-      }];
+      }]);
     }
   }
   // Thermal-without-stepped-controls fallback: emit one synthetic "charge"
@@ -78,11 +103,11 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
       device.powerKw,
     ]);
     if (expected !== null) {
-      return [{
+      return withResolvedAdmission([{
         id: 'charge',
         usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected),
         admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', expected),
-      }];
+      }]);
     }
   }
   return [];

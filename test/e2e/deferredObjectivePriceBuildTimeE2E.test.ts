@@ -42,7 +42,7 @@ const DEADLINE_HOUR = 18;
 const NOW_MS = DAY_START_MS + CURRENT_HOUR * HOUR_MS + 30 * 60 * 1000;
 const DEADLINE_MS = DAY_START_MS + DEADLINE_HOUR * HOUR_MS;
 const DEVICE_ID = 'water-heater';
-const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1 };
+const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1, admissionPowerKw: 1 };
 
 // Build a real DailyBudgetUiPayload carrying `horizonPrices` on hours 12..17.
 // Non-horizon hours get a flat filler price — they are filtered out before the

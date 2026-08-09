@@ -9,9 +9,10 @@ import {
 import {
   getActiveObjectiveSteps,
   normalizeObjectiveSteps,
-  resolveStepAdmissionPowerKw,
+  resolveHighestStepWithinHeadroom,
   selectMinimumStepForEnergy,
 } from './stepSelection';
+
 import { resolveColdStartReleaseEligible } from './coldStartRelease';
 import { resolveCurrentHourClaim } from './currentHourClaim';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
@@ -270,23 +271,30 @@ const resolveClimbedBandFeasibility = (params: {
   floorUnplannedKWh: number;
   // Per-bucket floor step resolver used by the floor pass. With per-bucket
   // promotion, different buckets land at different steps; the probe runs
-  // at the *uniform* max step for every bucket as the feasibility upper
-  // bound. The probe is skipped when no bucket would gain capacity by
-  // climbing (climb step ≤ every bucket's floor step).
+  // at the highest step each bucket's own headroom forecast admits, which is
+  // the feasibility upper bound the executor could actually reach there. The
+  // probe is skipped when no bucket would gain capacity by climbing.
   stepForBucket: StepForBucket;
 }): boolean => {
   if (params.floorUnplannedKWh <= params.epsilonKWh) return false;
-  const climbStep = params.activeSteps[params.activeSteps.length - 1];
-  // No bucket can gain capacity if climb step doesn't exceed every bucket's
-  // floor step. (For non-fully-reserved / single-step devices the floor is
-  // always `activeSteps[0]`, so this only short-circuits when activeSteps
-  // has a single rung.)
+  const topStep = params.activeSteps[params.activeSteps.length - 1];
+  // Highest rung each bucket's own headroom admits; the top rung when it has no
+  // forecast. `resolveBucketStepCapacityKWh` ZEROES a bucket whose step draws more
+  // than its headroom, so probing the uniform top rung answered "does not fit" for
+  // every device whose ladder reaches past the hard cap, whatever the budget did.
+  const climbStepFor = (bucket: { reservedHeadroomKw?: number | undefined }): DeferredObjectiveStep => (
+    resolveHighestStepWithinHeadroom(params.activeSteps, bucket.reservedHeadroomKw) ?? topStep
+  );
+  // No bucket can gain capacity if its climb step doesn't exceed its floor step.
+  // (For non-fully-reserved / single-step devices the floor is always
+  // `activeSteps[0]`, so this short-circuits on a single-rung ladder — and now
+  // also when every bucket's headroom already pins the climb back to the floor.)
   const climbAddsCapacity = params.buckets.some(
-    (bucket) => climbStep.usefulPowerKw > params.stepForBucket(bucket).usefulPowerKw,
+    (bucket) => climbStepFor(bucket).usefulPowerKw > params.stepForBucket(bucket).usefulPowerKw,
   );
   if (!climbAddsCapacity) return false;
   const climbed = resolveAllocation({
-    stepForBucket: () => climbStep,
+    stepForBucket: climbStepFor,
     buckets: params.buckets,
     committed: params.committed,
     committedHours: params.committedHours,
@@ -326,29 +334,25 @@ const resolveStepForBucket = (
   fullyReserved: boolean,
 ): DeferredObjectiveStep => {
   if (!fullyReserved || activeSteps.length === 1) return activeSteps[0];
-  const headroom = bucket.reservedHeadroomKw;
-  if (typeof headroom !== 'number' || !Number.isFinite(headroom)) return activeSteps[0];
-  // `activeSteps` is sorted ascending by `usefulPowerKw` (see
-  // `normalizeObjectiveSteps`). Pick the rightmost step that fits; default to
-  // the min step when even it does not.
-  let promotedIndex = 0;
-  for (let i = 1; i < activeSteps.length; i += 1) {
-    if (resolveStepAdmissionPowerKw(activeSteps[i]) <= headroom) {
-      promotedIndex = i;
-    }
-  }
-  return activeSteps[promotedIndex];
+  // Same scan the feasibility probes use, with the opposite default: no forecast ⇒
+  // the FLOOR step, because we cannot promise more than the producer has verified.
+  return resolveHighestStepWithinHeadroom(activeSteps, bucket.reservedHeadroomKw) ?? activeSteps[0];
 };
 
 // A floor shortfall that disappears once the per-bucket daily-budget cap is
-// lifted — with everything else held constant — is *budget-bound*, not
-// physical: the soft daily budget (the per-bucket pacing slice net of forecast
-// background) is the binding constraint, while physical capacity and time would
-// fit. We re-allocate the highest active step on a copy of the buckets with the
-// per-bucket cap removed (`usefulEnergyCapKWh → Infinity`), mirroring the floor
-// pass's commitment mode so that only the budget cap changes between the two
-// passes. If the energy then fits, the shortfall is the daily budget's doing →
-// recoverable `at_risk`, not a physical `cannot_meet`.
+// lifted is *budget-bound*, not physical: the soft daily budget (the per-bucket
+// pacing slice net of forecast background) is the binding constraint, while
+// physical capacity and time would fit. We re-allocate on a copy of the buckets
+// with the per-bucket cap removed (`usefulEnergyCapKWh → Infinity`), mirroring the
+// floor pass's commitment mode.
+//
+// Only the soft cap is lifted: `reservedHeadroomKw` still bounds each hour, so the
+// probe cannot answer "yes" on room the hard cap does not have — and the step is
+// the highest rung that headroom admits, not the ladder's top rung, or the capacity
+// gate would zero every bucket for a device whose ladder reaches past the cap.
+//
+// If the energy then fits, the shortfall is the daily budget's doing → recoverable
+// `at_risk`, not a physical `cannot_meet`.
 //
 // Distinct from the climbed-band probe, which keeps the budget cap and only
 // raises the step — that cannot rescue a budget-bound shortfall because the cap
@@ -377,9 +381,12 @@ const resolveBudgetBoundFeasibility = (params: {
     ...bucket,
     usefulEnergyCapKWh: Number.POSITIVE_INFINITY,
   }));
-  const climbStep = params.activeSteps[params.activeSteps.length - 1];
   const uncapped = resolveAllocation({
-    stepForBucket: () => climbStep,
+    // Same per-bucket climb as the band probe, for the same reason.
+    stepForBucket: (bucket) => resolveHighestStepWithinHeadroom(
+      params.activeSteps,
+      bucket.reservedHeadroomKw,
+    ) ?? params.activeSteps[params.activeSteps.length - 1],
     buckets: uncappedBuckets,
     committed: params.committed,
     committedHours: params.committedHours,
