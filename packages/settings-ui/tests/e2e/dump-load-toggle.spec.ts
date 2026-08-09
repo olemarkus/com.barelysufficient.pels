@@ -23,9 +23,13 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await detailButton.scrollIntoViewIfNeeded();
   await detailButton.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible({ timeout: 10000 });
-  // The Control cluster (managed / price / surplus switch rows) lives inside the
-  // collapsed setup disclosure — expand it so the rows are physically visible.
-  await page.locator('#device-detail-setup-section summary').click();
+  // The Control cluster (managed / price / surplus switch rows) lives inside
+  // the setup disclosure. Ensure it is OPEN rather than blindly clicking the
+  // summary: for binary devices the page auto-expands Setup on open, and a
+  // blind click would toggle it closed again.
+  await page.locator('#device-detail-setup-section details').evaluate((el) => {
+    (el as HTMLDetailsElement).open = true;
+  });
 };
 
 const readHomeySetting = async <T,>(page: Page, key: string): Promise<T> => page.evaluate(
