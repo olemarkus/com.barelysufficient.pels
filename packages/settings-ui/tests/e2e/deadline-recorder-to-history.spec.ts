@@ -22,13 +22,14 @@ type DeferredObjectiveDiagnosticLike = {
   objectiveId: string;
   objectiveKind: 'temperature' | 'ev_soc';
   enforcement: 'soft' | 'hard';
-  status:
-    | 'unknown'
-    | 'invalid'
-    | 'at_risk'
-    | 'cannot_meet'
-    | 'on_track'
-    | 'satisfied';
+  // Mirrors `BaseDeferredObjectiveDiagnostic.trajectory`. The recorder reads this
+  // through `resolvedTrajectoryStatus`, so a fixture carrying the retired flat
+  // `status` dereferences `undefined` and the lane throws before any history is
+  // produced. This shape is duplicated rather than imported (see above), so it
+  // has to be kept in step by hand.
+  trajectory:
+    | { kind: 'resolved'; status: 'invalid' | 'at_risk' | 'cannot_meet' | 'on_track' | 'satisfied' }
+    | { kind: 'unavailable'; reasonCode: string };
   reasonCode: string;
   targetPercent: number | null;
   currentPercent: number | null;
@@ -100,7 +101,7 @@ const MISSED_DEADLINE_MS = DEADLINE_MS + HOUR_MS;
 type TemperatureDiagOverrides = {
   deviceId: string;
   deviceName: string;
-  status: DeferredObjectiveDiagnosticLike['status'];
+  trajectory: DeferredObjectiveDiagnosticLike['trajectory'];
   currentTemperatureC: number;
   targetTemperatureC: number;
   deadlineAtMs: number;
@@ -112,7 +113,7 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
   enforcement: 'soft',
-  status: overrides.status,
+  trajectory: overrides.trajectory,
   reasonCode: 'planned_with_margin',
   targetPercent: null,
   currentPercent: null,
@@ -139,39 +140,39 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV4> => {
   // recorder the full set of active diagnostics each cycle. dev_connected300 reaches its
   // target by T0+5h ('satisfied'); dev_pool_pump stalls at 58 °C and misses its deadline.
   const connected300Diag = (
-    status: DeferredObjectiveDiagnosticLike['status'],
+    trajectory: DeferredObjectiveDiagnosticLike['trajectory'],
     currentTemperatureC: number,
   ): DeferredObjectiveDiagnosticLike => buildTemperatureDiag({
     deviceId: 'dev_connected300',
     deviceName: 'Connected 300',
-    status,
+    trajectory,
     currentTemperatureC,
     targetTemperatureC: 65,
     deadlineAtMs: DEADLINE_MS,
   });
   const poolPumpDiag = (
-    status: DeferredObjectiveDiagnosticLike['status'],
+    trajectory: DeferredObjectiveDiagnosticLike['trajectory'],
     currentTemperatureC: number,
   ): DeferredObjectiveDiagnosticLike => buildTemperatureDiag({
     deviceId: 'dev_pool_pump',
     deviceName: 'Pool pump',
-    status,
+    trajectory,
     currentTemperatureC,
     targetTemperatureC: 65,
     deadlineAtMs: MISSED_DEADLINE_MS,
   });
 
   recorder.observe([
-    connected300Diag('on_track', 50),
-    poolPumpDiag('at_risk', 50),
+    connected300Diag({ kind: 'resolved', status: 'on_track' }, 50),
+    poolPumpDiag({ kind: 'resolved', status: 'at_risk' }, 50),
   ], T0);
   recorder.observe([
-    connected300Diag('on_track', 60),
-    poolPumpDiag('at_risk', 55),
+    connected300Diag({ kind: 'resolved', status: 'on_track' }, 60),
+    poolPumpDiag({ kind: 'resolved', status: 'at_risk' }, 55),
   ], T0 + 3 * HOUR_MS);
   recorder.observe([
-    connected300Diag('satisfied', 65),
-    poolPumpDiag('cannot_meet', 58),
+    connected300Diag({ kind: 'resolved', status: 'satisfied' }, 65),
+    poolPumpDiag({ kind: 'resolved', status: 'cannot_meet' }, 58),
   ], T0 + 5 * HOUR_MS);
 
   // Final tick past both deadlines — no live diagnostics, both records finalize as deadline_passed.

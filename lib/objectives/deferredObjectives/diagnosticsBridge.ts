@@ -40,10 +40,11 @@ import {
   classificationImpliesStallSatisfied,
   type IdleClassification,
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
-import type {
-  BuildPriceHorizon,
-  DeferredObjectiveDiagnostic,
-  DeferredObjectiveDiagnosticReasonCode,
+import {
+  resolvedTrajectoryStatus,
+  type BuildPriceHorizon,
+  type DeferredObjectiveDiagnostic,
+  type DeferredObjectiveDiagnosticReasonCode,
 } from './diagnosticTypes';
 import {
   buildDiagnosticBase,
@@ -51,7 +52,7 @@ import {
   mergeProgressFields,
   progressCurrentValue,
   resolveProgressEnergy,
-  withUnknown,
+  withUnavailableTrajectory,
   ZERO_ENERGY_RESOLUTION,
 } from './diagnosticFields';
 import {
@@ -258,7 +259,7 @@ const resolveHigherPriorityContentionStatus = (params: {
   };
   return {
     ...params.diagnostic,
-    status: 'at_risk',
+    trajectory: { kind: 'resolved', status: 'at_risk' },
     reasonCode: 'limited_by_higher_priority_task',
     horizonPlan,
   };
@@ -293,11 +294,9 @@ const hasEstablishedActivePlan = (
 // alone, and `unresponsive` (a likely fault) never counts as satisfied
 // (`classificationImpliesStallSatisfied`). Mirrors the postmortem's
 // `stallClassificationToMetReason`.
-const STALL_RESOLVABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
-  'on_track',
-  'at_risk',
-  'cannot_meet',
-]);
+const STALL_RESOLVABLE_STATUSES = new Set<ReturnType<typeof resolvedTrajectoryStatus>>(
+  ['on_track', 'at_risk', 'cannot_meet'],
+);
 
 const resolveStallReportedStatus = (
   diagnostic: DeferredObjectiveDiagnostic,
@@ -309,10 +308,10 @@ const resolveStallReportedStatus = (
   // belongs to THIS objective. See `hasEstablishedActivePlan`.
   if (!hasEstablishedPlan) return diagnostic;
   if (!classificationImpliesStallSatisfied(classification)) return diagnostic;
-  if (!STALL_RESOLVABLE_STATUSES.has(diagnostic.status)) return diagnostic;
+  if (!STALL_RESOLVABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) return diagnostic;
   return {
     ...diagnostic,
-    status: 'satisfied',
+    trajectory: { kind: 'resolved', status: 'satisfied' },
     reasonCode: classification === 'capped_idle'
       ? 'objective_stalled_device_capped'
       : 'objective_stalled_near_target',
@@ -440,11 +439,11 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   // Sub-home scope check FIRST: the device may well be present (or main-only
   // planner scoping may have dropped it) — either way the honest story is "out
   // of the main home's meter scope", never "missing device".
-  if (params.deviceInSubHome) return withUnknown(base, 'objective_device_in_sub_home');
-  if (!device) return withUnknown(base, 'objective_missing_device');
+  if (params.deviceInSubHome) return withUnavailableTrajectory(base, 'objective_device_in_sub_home');
+  if (!device) return withUnavailableTrajectory(base, 'objective_missing_device');
 
   if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= 0) {
-    return withUnknown(base, 'objective_invalid_deadline');
+    return withUnavailableTrajectory(base, 'objective_invalid_deadline');
   }
   const withDeadline = base;
   // Allocation-horizon price source, resolved by the wiring-injected producer.
@@ -593,7 +592,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   const unknownWithProgress = (
     reasonCode: DeferredObjectiveDiagnosticReasonCode,
     extra?: ReturnType<typeof buildKnownEnergyFields>,
-  ) => withUnknown({
+  ) => withUnavailableTrajectory({
     ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
     ...(extra ?? {}),
     horizonBucketCount: policyHorizon.horizonBucketCount,
@@ -642,7 +641,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   // intact. No hours ⇒ never ahead.
   //
   // PRECONDITION: this point is only reached on `progress.reasonCode === null`
-  // (every stale/missing/invalid read short-circuits to `withUnknown` above) and
+  // (every stale/missing/invalid read short-circuits to `withUnavailableTrajectory` above) and
   // `energyNeededKWh` is the buffered floor for the current remaining units. A
   // stale read returns `remainingUnits: 0 ⇒ energyNeededKWh: 0`, which would
   // falsely read "ahead" — so the gate must never be relocated past that guard.

@@ -94,7 +94,7 @@ const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetT
     objectiveId: `${overrides.deviceId}:temperature`,
     objectiveKind: 'temperature',
     enforcement: 'soft',
-    status: 'on_track',
+    trajectory: { kind: 'resolved', status: 'on_track' },
     reasonCode: 'planned_with_margin',
     targetPercent: null,
     currentPercent: null,
@@ -264,7 +264,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       diagnostic: makeDiag({
         deviceId: 'dev',
         deadlineAtMs: 6 * HOUR_MS,
-        status: 'unknown',
+        trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_device' },
         reasonCode: 'objective_missing_device',
         horizonPlan: undefined,
       }),
@@ -339,7 +339,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       diagnostic: makeDiag({
         deviceId: 'dev',
         deadlineAtMs: 6 * HOUR_MS,
-        status: 'unknown',
+        trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_device' },
         reasonCode: 'objective_missing_device',
         horizonPlan: undefined,
       }),
@@ -1205,7 +1205,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
@@ -1219,7 +1219,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       reasonCode: 'planned_with_margin',
       energyNeededKWh: 2,
       horizonPlan: makeHorizon([
@@ -1334,7 +1334,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
@@ -1757,7 +1757,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         // Top-level status mirrors horizonPlan.status in production
         // (`diagnosticsBridge` sets `status: horizonPlan.status`); the recorder's
         // published-status drift check reads the (resolvable) top-level status.
-        status: 'at_risk',
+        trajectory: { kind: 'resolved', status: 'at_risk' },
         horizonPlan: makeHorizon([
           makeBucket(2 * HOUR_MS, 1.5),
           makeBucket(3 * HOUR_MS, 1.5),
@@ -2023,7 +2023,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       planningSpeedKw: 2,
       energyNeededKWh: 4.5,
       // Top-level status mirrors horizonPlan.status in production (see note above).
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
       ], {
@@ -2205,7 +2205,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2243,7 +2243,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2270,7 +2270,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
@@ -2479,7 +2479,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], {
@@ -2535,7 +2535,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
@@ -2547,7 +2547,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       energyNeededKWh: 2,
       horizonPlan: makeHorizon([
         makeBucket(4 * HOUR_MS, 1),
@@ -2566,7 +2566,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       energyNeededKWh: 2,
       horizonPlan: makeHorizon([
         makeBucket(4 * HOUR_MS, 1),
@@ -2608,7 +2608,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'cannot_meet',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
       reasonCode: 'no_bucket_capacity',
       energyNeededKWh: 4.5,
       horizonPlan: makeHorizon([], {
@@ -2799,7 +2799,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
       kwhPerUnitSource: null,
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met', energyNeededKWh: 0, plannedUsefulEnergyKWh: 0 }),
@@ -2973,7 +2973,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'cannot_meet',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
       reasonCode: 'target_cannot_be_met',
       dailyBudgetExhaustedBucketCount: 3,
       horizonPlan: makeHorizon([], {
@@ -3003,7 +3003,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'limited_by_daily_budget',
       dailyBudgetExhaustedBucketCount: 0,
       horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1)], {
@@ -3098,7 +3098,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deviceId: 'dev',
         deadlineAtMs: 6 * HOUR_MS,
         kwhPerUnitSource: null,
-        status: 'satisfied',
+        trajectory: { kind: 'resolved', status: 'satisfied' },
         reasonCode: 'energy_already_met',
         energyNeededKWh: 0,
         horizonPlan: makeHorizon([], {
@@ -3149,7 +3149,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'feasible_above_floor',
       horizonPlan: { ...sharedPlan, status: 'at_risk', statusDetail: 'feasible_above_floor' },
     })], HOUR_MS);
@@ -3158,7 +3158,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'limited_by_daily_budget',
       horizonPlan: { ...sharedPlan, status: 'at_risk', statusDetail: 'limited_by_daily_budget' },
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);

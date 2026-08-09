@@ -140,7 +140,7 @@ export const buildFrozenDiagnostic = (params: {
   });
   return {
     ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-    status: horizonPlan.status,
+    trajectory: { kind: 'resolved', status: horizonPlan.status },
     reasonCode: horizonPlan.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: frozenRead.hours.length,

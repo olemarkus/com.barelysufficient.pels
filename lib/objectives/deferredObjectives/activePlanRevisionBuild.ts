@@ -8,6 +8,7 @@
  *
  * Behaviour is identical to the previous in-file definitions — moved verbatim.
  */
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanReservationSegmentV1,
@@ -50,14 +51,14 @@ export const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): numbe
 // parked/stalled device reports `satisfied` to Flows, agreeing with the status
 // chip — NOT the raw `horizonPlan.status`, which stays the trajectory verdict
 // that drives commitment/energy. They are identical except when
-// `diagnosticsBridge` resolved a stalled device to `satisfied`. `diag.status`
-// is never `unknown` here (callers only reach this with `horizonPlan` present),
-// but narrow it to satisfy the non-`unknown` `planStatus` type.
+// `diagnosticsBridge` resolved a stalled device to `satisfied`. The trajectory
+// is always resolved here (callers only reach this with `horizonPlan` present);
+// the fallback keeps that from being an assumption.
 export const reportedPlanStatus = (
   diag: DeferredObjectiveDiagnostic,
   horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
 ): DeferredObjectiveActivePlanRevisionV1['planStatus'] => (
-  diag.status === 'unknown' ? horizonPlan.status : diag.status
+  resolvedTrajectoryStatus(diag) ?? horizonPlan.status
 );
 
 export type ActivePlanPersistDeps = {

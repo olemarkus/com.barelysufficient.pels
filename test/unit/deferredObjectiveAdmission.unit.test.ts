@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
@@ -24,7 +25,7 @@ const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { dev
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
   enforcement: 'soft',
-  status: 'on_track',
+  trajectory: { kind: 'resolved', status: 'on_track' },
   reasonCode: 'planned_with_margin',
   targetPercent: null,
   currentPercent: null,
@@ -195,7 +196,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('returns inactive when the goal is already satisfied so the device falls back to its normal behavior', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
@@ -206,7 +207,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
@@ -218,7 +219,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
     const device = buildEvDevice({ id: 'ev1', controllable: true });
@@ -230,7 +231,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       objectiveKind: 'temperature',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
@@ -246,7 +247,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater2',
       objectiveKind: 'temperature',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
     // Cap-on devices stay on the planner's normal lane; emitting a release intent there would
@@ -256,15 +257,22 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('heater2')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
-  it('returns inactive for unknown / invalid statuses', () => {
-    for (const status of ['unknown', 'invalid'] as const) {
+  it('returns inactive for an invalid verdict and for no verdict at all', () => {
+    const trajectories = [
+      { label: 'invalid', trajectory: { kind: 'resolved', status: 'invalid' } as const },
+      {
+        label: 'unavailable',
+        trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' } as const,
+      },
+    ];
+    for (const { label, trajectory } of trajectories) {
       const diagnostic = buildDiagnostic({
-        deviceId: `dev_${status}`,
-        status,
+        deviceId: `dev_${label}`,
+        trajectory,
         horizonPlan: undefined,
       });
       const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-      expect(decisions.get(`dev_${status}`)).toEqual({ kind: 'inactive', budgetExempt: false });
+      expect(decisions.get(`dev_${label}`)).toEqual({ kind: 'inactive', budgetExempt: false });
     }
   });
 
@@ -277,7 +285,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     // headroom appears at runtime.
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
-      status: 'cannot_meet',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
       horizonPlan: buildHorizonPlan({
         status: 'cannot_meet',
         statusDetail: 'target_cannot_be_met',
@@ -299,7 +307,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('produces one decision per diagnostic device id', () => {
     const decisions = applyDeferredObjectiveAdmission([
       buildDiagnostic({ deviceId: 'dev_a', horizonPlan: buildHorizonPlan() }),
-      buildDiagnostic({ deviceId: 'dev_b', status: 'unknown', horizonPlan: undefined }),
+      buildDiagnostic({ deviceId: 'dev_b', trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }, horizonPlan: undefined }),
     ]);
     expect(decisions.size).toBe(2);
     expect(decisions.get('dev_a')?.kind).toBe('planned');
@@ -314,7 +322,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     // Not applied once the task is no longer being pursued.
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       budgetExemptApplied: true,
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
@@ -358,7 +366,7 @@ describe('applyDeferredObjectiveAdmission', () => {
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       limitLowerPriorityApplied: true,
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
@@ -383,7 +391,7 @@ describe('applyDeferredObjectiveAdmission', () => {
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       pauseLowerPriorityApplied: true,
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
@@ -499,7 +507,7 @@ describe('resolveDeferredAvoidDeviceIds', () => {
     // case must bypass both the no-energy and the on_track gates.
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       horizonPlan: buildHorizonPlan({
         status: 'at_risk',
         statusDetail: 'feasible_above_floor',
@@ -512,5 +520,31 @@ describe('resolveDeferredAvoidDeviceIds', () => {
   it('does not flag a normally-planned device that is running this hour', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'heater1', horizonPlan: buildHorizonPlan() });
     expect(resolveDeferredAvoidDeviceIds([diagnostic]).has('heater1')).toBe(false);
+  });
+});
+
+/**
+ * The property the split exists for: a diagnostic that could not be computed
+ * carries no verdict at all, so no consumer can read a data problem as a
+ * trajectory claim. Before the split this was a `status: 'unknown'` arm sitting
+ * beside the real verdicts, and forgetting to branch on it shipped a bug —
+ * gating the external-off overlay on the live status reverted every surface to a
+ * cached "On track" while the device was held off.
+ */
+describe('a diagnostic with no trajectory', () => {
+  it('answers no verdict, not a wrong one', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_charge_rate' },
+      horizonPlan: undefined,
+    });
+
+    expect(resolvedTrajectoryStatus(diagnostic)).toBeUndefined();
+    // Not `on_track`, not `satisfied`, not `cannot_meet` — no status at all.
+    for (const status of ['on_track', 'at_risk', 'cannot_meet', 'satisfied', 'invalid'] as const) {
+      expect(resolvedTrajectoryStatus(diagnostic)).not.toBe(status);
+    }
+    expect(applyDeferredObjectiveAdmission([diagnostic]).get('heater1'))
+      .toEqual({ kind: 'inactive', budgetExempt: false });
   });
 });

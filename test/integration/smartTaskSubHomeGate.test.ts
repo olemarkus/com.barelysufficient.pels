@@ -242,7 +242,10 @@ describe('diagnostics: existing task whose device is in a sub-home', () => {
       isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
     }));
     expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].status).toBe('unknown');
+    expect(diagnostics[0].trajectory).toEqual({
+      kind: 'unavailable',
+      reasonCode: 'objective_device_in_sub_home',
+    });
     expect(diagnostics[0].reasonCode).toBe('objective_device_in_sub_home');
   });
 

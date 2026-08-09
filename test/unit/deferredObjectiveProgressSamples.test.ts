@@ -32,7 +32,7 @@ const makeDiag = (
     objectiveId: 'dev:temperature',
     objectiveKind: 'temperature',
     enforcement: 'soft',
-    status: 'on_track',
+    trajectory: { kind: 'resolved', status: 'on_track' },
     reasonCode: 'planned_with_margin',
     targetPercent: null,
     currentPercent: null,

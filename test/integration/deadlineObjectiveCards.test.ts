@@ -213,7 +213,7 @@ const buildHoursRemainingDiagnostic = (
   objectiveId: `${overrides.deviceId}:ev_soc`,
   objectiveKind: 'ev_soc' as const,
   enforcement: 'soft' as const,
-  status: 'on_track' as const,
+  trajectory: { kind: 'resolved', status: 'on_track' } as const,
   reasonCode: 'objective_progress_stale' as const,
   targetPercent: 80,
   currentPercent: 60,

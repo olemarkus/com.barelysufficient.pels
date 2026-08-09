@@ -87,7 +87,7 @@ const diagnosticFor = (
   objectiveId: `${DEVICE_ID}:temperature`,
   objectiveKind: 'temperature',
   enforcement: 'soft',
-  status: plan.status,
+  trajectory: { kind: 'resolved', status: plan.status },
   reasonCode: plan.statusDetail,
   targetPercent: null,
   currentPercent: null,
