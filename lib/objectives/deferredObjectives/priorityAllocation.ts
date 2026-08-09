@@ -17,7 +17,6 @@ import type {
 } from './settings';
 import { rankActiveDevicePriorities } from '../../../packages/shared-domain/src/modePriorities';
 import {
-  resolveStepAdmissionPowerKw,
   selectMinimumStepForEnergy,
 } from './stepSelection';
 import { ELIGIBILITY_ABANDON_GRACE_MS } from './concurrentEligibleTasks';
@@ -246,7 +245,7 @@ const resolveLegacyAdmissionPowerKw = (params: {
       durationHours,
       epsilonKWh: EPSILON_KWH,
     });
-    if (step) return resolveStepAdmissionPowerKw(step);
+    if (step) return step.admissionPowerKw;
   }
   return typeof params.hardCapKw === 'number' && Number.isFinite(params.hardCapKw) && params.hardCapKw > 0
     ? params.hardCapKw

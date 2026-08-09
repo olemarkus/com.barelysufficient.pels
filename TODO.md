@@ -1259,6 +1259,56 @@ program) remain deferred.*
       held — ideally a true `createApp` SDK-boundary e2e, which would also close the tier gap below.
       Source: pels-runtime-reality and Codex on the unclaimed-hour change, 2026-08-09. [P1]
 
+- [ ] **`feasible_above_floor` credits a climb the runtime often will not allow.**
+      `resolveClimbedBandFeasibility` asks "would the booked hours cover the need if the device
+      climbed?" and answers from step capacity alone. At runtime
+      `blockSteppedRestoreForShedInvariant` (`lib/plan/restore/steppedRestoreAdmission.ts`) pins a
+      stepped device to its lowest non-zero rung whenever anything else is shed — bypassed only by
+      an active boost, which requires a CLAIMED hour of a `limitLowerPriorityDevices: 'always'`
+      task. And `admitSteppedRestore` grants one rung per restore cooldown, so a multi-rung climb
+      costs 5-25 minutes that the probe credits in full. A device in a house tight enough to produce
+      the shortfall is exactly the device that cannot climb.
+      That verdict now also drives a control decision: `step_power` releases an unbooked hour
+      (`currentHourClaim`), so a wrongly optimistic probe stands a device down. Pre-existing, but PR
+      #2061 widened who reaches it — devices whose top rung exceeds an hour's headroom used to fail
+      the probe outright and land on `cannot_meet`. Residual exposure is narrow: it needs the hour's
+      BUDGET slice to be zero (a zero headroom forecast no longer empties an hour), and in that
+      state the daily-budget pace would hold a non-exempt device anyway — but `released` commands it
+      off rather than merely holding it. Wants the probe to account for what the restore lane will
+      actually grant. Source: pels-runtime-reality on PR #2061. [P2]
+
+- [ ] **A budget exemption is granted per cycle, not per booked kWh.** `budgetExemptApplied` is
+      `rescue.exemptFromBudget === 'always' && isCurrentBucketPlanned(plan)`, and
+      `isCurrentBucketPlanned` asks only whether the hour booked anything at all. So an hour booked
+      0.253 kWh confers the same exemption as one booked 3 kWh, and the exemption does not bound
+      itself to the booked energy — the device runs at its floor step for as long as admission
+      allows, which can spend more budget than the hour planned for. Production makes such slivers
+      routinely through the daily-budget slice: the 2026-08-09 Elbillader plan booked 0.253 / 0.388
+      / 0.438 kWh into hours whose floor rung is 1.38 kW.
+      *Scoped deliberately narrow:* this does NOT reach the boost —
+      `limitLowerPriorityApplied` is ungated by the booking (see
+      `deferredObjectiveTwoBoostTasksBudgetOnE2E`, where the unbooked task carries
+      `budgetExemptApplied: false, limitLowerPriorityApplied: true`) — and it never blocks
+      admission, only grants. The UI is honest too: surfaces render the hour's kWh, so a sliver
+      reads as a sliver. Mitigations are real (opt-in permission, soft budget, hourly re-settle), so
+      the open question is whether the exemption should be proportional at all, not a defect to
+      rush. Source: 2026-08-10, PR #2061 investigation. [P2]
+
+- [ ] **`reservedHeadroomKw` is built from the RAW hard cap, while the live guard sheds against
+      `limitKw − marginKw`.** `getHardCapKw: () => ctx.capacitySettings.limitKw`
+      (`setup/homeRuntime/homeScope.ts`, `setup/appInit/deferredObjectiveLifecycle.ts`) feeds
+      `policyHorizon.resolveReservedHeadroomKw`, but `CapacityGuard.getSoftLimit()` is
+      `max(0, limitKw − softMarginKw)`. So the forecast is one safety margin more generous than what
+      the runtime will admit. That was tolerable while the value was only a kWh ceiling; it now also
+      SELECTS the rung the feasibility probes test, so any rung sitting in the
+      `(limitKw − marginKw, limitKw]` band is probed as reachable when the guard will never admit
+      it. Direction is optimistic-only and the probes are classification-only, so the failure mode
+      is a status label — `at_risk` / `limited_by_daily_budget` where `cannot_meet` was honest,
+      offering a budget remedy that will not actually free the device. Fixing it means subtracting
+      the margin at both wirings, which also tightens `resolveStepForBucket`'s committed floor
+      promotion — hence its own change rather than a rider. Source: pels-layering-guardian on
+      PR #2061. [P2]
+
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
       window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —
       and with it the claim — runs on every cycle in that window (~12 in `homey_energy` mode, more

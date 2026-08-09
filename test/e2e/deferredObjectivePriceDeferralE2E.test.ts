@@ -45,7 +45,7 @@ const DEVICE_ID = 'water-heater';
 // A single low element. Concrete kW is irrelevant to the price test — the
 // committed plan supplies the per-hour booked energy (the floor the live
 // deferral overrides).
-const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1 };
+const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1, admissionPowerKw: 1 };
 
 const objective = (deadlineHourIndex: number, energyNeededKWh: number): DeferredObjective => ({
   id: `${DEVICE_ID}:temperature`,

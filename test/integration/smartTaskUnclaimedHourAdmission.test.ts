@@ -63,7 +63,7 @@ const DEVICE_ID = 'water-heater';
 const DEADLINE_HOUR = 8;
 // One 1 kW element, so an hour of runway is worth exactly 1 kWh and the arithmetic
 // below is readable by eye.
-const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1 };
+const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1, admissionPowerKw: 1 };
 
 // Spread well beyond `PRICE_BAND_MARGIN` (~5%), so the fill order is a strict
 // cheapest-first and no two hours tie into the time tiebreak. Cheapest are h2 (30)

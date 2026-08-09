@@ -488,6 +488,9 @@ const mapPolicyBuckets = (
       price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),
+      ...(higher && higher.admissionPowerKw > 0
+        ? { higherPriorityAdmissionPowerKw: higher.admissionPowerKw }
+        : {}),
       ...(higher && higher.energySegments.length > 0
         ? { higherPriorityEnergyReservations: higher.energySegments }
         : {}),
