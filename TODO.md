@@ -1679,14 +1679,68 @@ program) remain deferred.*
       the hero (and card) show Off with no why. A temperature counterpart in shared-domain closes
       the redesign's one remaining mystery-copy hero. Source: 2026-08-08 stack review,
       pels-ux-fit P1-3. [P2]
-- [ ] **Populated-state captures for the device-page redesign features.**
-      *Persona:* reviewer of the next device-page change.
-      *Hypothesis:* every full-page capture is a quiet/empty state — the hero reason ladder, the
-      activity-log repeat collapse, and the relabelled diagnostics have no rendered pixels in
-      docs; held/limited, populated-log, and populated-diagnostics fixtures in
-      `device-detail-full-screenshot.spec.ts` would prove them (and `stepped-zaptec.png` needs a
-      regenerate — devices-list rows bleed through the element screenshot). Source: 2026-08-08
-      stack review, pels-ux-fit + pels-m3-critic. [P2]
+- [ ] **The e2e stub's Overview meta contradicts its own device draws.**
+      *Persona:* reviewer reading a landing/docs capture top to bottom.
+      *Hypothesis:* `homey.stub.js` plan meta claims `totalKw 1.5 / controlledKw 1.2` while the
+      same snapshot's devices measure ~4.7 kW (water heater 2.1, Zaptec 1.38, heat pump 1.2) —
+      on the real Overview the whole-home reading renders smaller than one device card beneath
+      it. Fixing it cascades: specs assert the 1.5 = 1.2 + 0.3 arithmetic and every landing/docs
+      capture re-renders with a different mood (higher draw flips the pace chips), so this is a
+      deliberate follow-up seed-truth pass, not an inline fix. Source: 2026-08-09 pre-PR
+      pels-ux-fit walk. [P2]
+- [ ] **Advanced-diagnostics copy batch: jargon and robotic empties the populated captures exposed.**
+      *Persona:* owner reading the Held-back details card on a calm device.
+      *Hypothesis:* four small copy defects, one card — "No active service block" as Current
+      reason is planner jargon (say what it means: nothing is holding the device back);
+      "Restart backoff" surfaces a term `notes/ui-terminology.md` keeps internal with no
+      advanced-surface carve-out; "Started: None" reads robotic; and "Resumed" actually renders
+      the PREVIOUS episode's end (label it "Last resumed" so a Started/Resumed pair can never
+      read as time running backwards). Files: `deviceDetail/diagnostics.ts`,
+      `notes/ui-terminology.md`. Source: 2026-08-09 pre-PR pels-ux-fit walk; route through
+      pels-copy-and-terminology. [P3]
+- [ ] **A price-adjusted target gets no reason line on the hero or card.**
+      *Persona:* owner seeing hero "target 25 °C" above a Home-mode row saying 21 °C during a
+      cheap hour.
+      *Hypothesis:* the solar lift has its explaining line ("Raised to use your solar power",
+      `planTemperatureCardText.ts`) but the cheap-hour boost / expensive-hour reduction has no
+      sibling, so the owner must reconstruct hero = mode + price delta themselves. A symmetric
+      line ("Raised for cheap hours" / "Lowered for expensive hours"), sourced from the plan's
+      price-adjust fact whenever plannedTarget diverges from the active mode target, closes the
+      gap. Source: 2026-08-09 post-merge review, pels-ux-fit. [P2]
+- [ ] **"Reported 2.1 kW" is mystery copy on the hero and Overview card.**
+      *Persona:* owner reading the held water heater's power fact.
+      *Hypothesis:* the qualifier marks the plan-holds-it-but-meter-sees-draw conflict, but
+      "Reported" names neither the reporter nor the conflict; "Still drawing 2.1 kW" states the
+      same fact in owner language. Shared generic-card grammar (`planCardGrammar` power fact +
+      `liveStatus.ts` mirror) — change both surfaces or neither. Source: 2026-08-09 post-merge
+      review, pels-ux-fit. [P3]
+- [ ] **Charge-boost hint quotes its own field label mid-sentence.**
+      *Persona:* EV owner reading "while the car's battery is below the Boost below level".
+      *Hypothesis:* the hint embeds the field name "Boost below" as a noun phrase, producing a
+      tongue-twister; "while the car's battery is below the level set here" (or renaming the
+      field "Boost until battery reaches") reads naturally. Files:
+      `packages/settings-ui/public/index.html` (charging card hint). Source: 2026-08-09
+      post-merge review, pels-ux-fit. [P3]
+- [ ] **Car card opens with an instruction there is nothing to act on.**
+      *Persona:* EV-charger owner with no car app installed.
+      *Hypothesis:* "Tick the cars that charge here…" renders directly above "No cars found" —
+      a dead imperative; suppressing the intro (or ordering the empty-state line first) when the
+      list is empty lets the empty state carry the card. Files:
+      `deviceDetail/carAssociation.ts`. Source: 2026-08-09 post-merge review, pels-ux-fit +
+      pels-m3-critic. [P3]
+- [ ] **A satisfied thermostat reads "Running · 0.0 kW".**
+      *Persona:* owner opening the bedroom thermostat at 22.8 °C over a 20 °C target.
+      *Hypothesis:* owners read "Running" as actively heating; the satisfied-target case would
+      read better as Idle, but the state word comes from the shared card grammar
+      (`resolveDisplayStateKind` + `isSatisfiedTargetOnlyDevice`), so any change lands on the
+      Overview card and hero together or not at all. Source: 2026-08-09 post-merge review,
+      pels-ux-fit. [P3]
+- [ ] **The hero's Smart task chip carries no status.**
+      *Persona:* owner wondering whether the linked task is on track without tapping through.
+      *Hypothesis:* the chip is a bare route badge; a short status tail (the smart-task list's
+      own status word, e.g. "Smart task · on track") would answer the question in place, using
+      `resolveSmartTaskListStatus` so the surfaces cannot disagree. Files:
+      `deviceDetail/liveStatus.ts`. Source: 2026-08-09 post-merge review, pels-ux-fit. [P3]
 - [ ] **Verify: leave-off row on switchable binaries, hero chip touch target, real-device dark pass.**
       *Persona:* owner on a real phone.
       *Hypothesis:* three spot checks the stack review could not settle from fixtures — the

@@ -211,8 +211,16 @@
           plannedState: 'keep',
           controlModel: 'temperature_target',
           deviceClass: 'thermostat',
+          // `currentTarget` is the OBSERVED device target (the device fixture
+          // reports 22); `plannedTarget` is planner-owned and follows the
+          // active Home mode (21, see mode_device_targets). They legitimately
+          // differ mid-transition, and the card grammar renders the honest
+          // arrow form (`target 22 °C → 21 °C`) — a fixture that forces them
+          // equal hides that state, and one that diverges them with NO arrow
+          // (the old 22/22 against a 21 mode row) reads as numbers that
+          // don't reconcile.
           currentTarget: 22,
-          plannedTarget: 22,
+          plannedTarget: 21,
           currentTemperature: 20.3,
           priority: 1,
           controllable: true,
@@ -231,7 +239,11 @@
           controllable: true,
           expectedPowerKw: 2.0,
           measuredPowerKw: 2.1,
-          reason: { code: 'capacity', detail: 'high household load' },
+          // Production capacity sheds carry the recomputed, swap-aware
+          // shortfall (PR #1973); without it the hero/card reason ladder can
+          // only render its bare fallback, so no capture ever proved the
+          // "N kW more needed" clause.
+          reason: { code: 'capacity', detail: 'high household load', shortfallKw: 0.8 },
           shedAction: 'turn_off',
         },
         {
@@ -256,8 +268,10 @@
           plannedState: 'keep',
           controlModel: 'temperature_target',
           deviceClass: 'thermostat',
-          currentTarget: 22,
-          plannedTarget: 22,
+          // Observed device target 16 (see target_devices_snapshot), planner
+          // moving it to the Home mode's 20 — same split as dev_heatpump.
+          currentTarget: 16,
+          plannedTarget: 20,
           currentTemperature: 22.8,
           priority: 3,
           controllable: true,
@@ -386,28 +400,12 @@
             commandPending: false,
           },
         },
-        {
-          id: 'dev_evcharger',
-          name: 'Generic EV Charger',
-          currentState: 'off',
-          plannedState: 'keep',
-          priority: 6,
-          controllable: true,
-          expectedPowerKw: 7.2,
-          measuredPowerKw: 0,
-          reason: {
-            code: 'insufficient_headroom',
-            needKw: 7.2,
-            availableKw: 1.4,
-            postReserveMarginKw: null,
-            minimumRequiredPostReserveMarginKw: null,
-            penaltyExtraKw: null,
-            swapReserveKw: null,
-            effectiveAvailableKw: null,
-            swapTargetName: null,
-          },
-          shedAction: 'turn_off',
-        },
+        // dev_evcharger is deliberately ABSENT from the plan payload: the
+        // fixture marks it unmanaged (managed_devices), and production never
+        // plans an unmanaged device. Its detail page renders no hero
+        // (liveStatus.ts hides the row when the plan carries no entry) — a
+        // plan entry here once baked an unmanaged device "held back" into
+        // every capture.
       ],
     };
   };
@@ -547,16 +545,20 @@
     expectedPowerKw: 7.2,
     capabilities: ['evcharger_charging', 'evcharger_charging_state'],
   };
+  // Only injected for specs that flip the charger managed (see
+  // ensureEvSupportState). Shaped like a production plan row: structured
+  // reason (the runtime boundary rejects prose reasons) and the priority the
+  // capacity_priorities map actually assigns this device.
   const evPlanDevice = {
     id: 'dev_evcharger',
     name: 'Generic EV Charger',
     currentState: 'off',
-    plannedState: 'keep',
-    priority: 3,
+    plannedState: 'shed',
+    priority: 6,
     controllable: true,
     expectedPowerKw: 7.2,
     measuredPowerKw: 0,
-    reason: 'Waiting for headroom',
+    reason: { code: 'capacity', shortfallKw: 5.8 },
     shedAction: 'turn_off',
   };
 
@@ -868,7 +870,13 @@
     if (!hasEvDevice) {
       settings.target_devices_snapshot = [...settings.target_devices_snapshot, { ...evDeviceSnapshot }];
     }
-    if (!hasEvPlanDevice) {
+    // Only a MANAGED charger may appear in the plan: production never plans
+    // an unmanaged device, and its detail page proves it by rendering no
+    // hero. Explicit `=== true`, matching the UI's own managed resolver
+    // (state.ts): a sparse scenario map without the key means unmanaged,
+    // and injecting a plan row for it would fabricate the exact hero this
+    // gate exists to prevent.
+    if (!hasEvPlanDevice && settings.managed_devices?.[evPlanDevice.id] === true) {
       settings.plan_snapshot = {
         ...settings.plan_snapshot,
         devices: [...(settings.plan_snapshot?.devices ?? []), { ...evPlanDevice }],

@@ -100,7 +100,7 @@ Top-level controls:
 | **Limit** | PELS may lower or turn off this device to stay under the hard cap. |
 | **Price** | PELS adjusts the temperature target around electricity prices. |
 
-Device detail sections. The page composes per device kind — an EV charger, a thermostat, a stepped load (such as a water heater), and a plain on/off device each lead with the sections that matter for that device, and sections that do not apply are not shown. The top of every page is a live status header: state, current draw, one fact line (temperature and target, or charging state, battery, and level), the reason the device is limited when it is, and a Smart task link when one is scheduled.
+Device detail sections. The page composes per device kind — an EV charger, a thermostat, a stepped load (such as a water heater), and a plain on/off device each lead with the sections that matter for that device, and sections that do not apply are not shown. The top of every managed device's page is a live status header: state, current draw, one fact line (temperature and target, or charging state, battery, and level), the reason the device is limited when it is, and a Smart task link when one is scheduled. A device PELS does not manage has no live status to report, so its page shows no header, and its Setup section starts expanded.
 
 | Section | Shown for | What it contains |
 | --- | --- | --- |
