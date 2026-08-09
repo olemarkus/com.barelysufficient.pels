@@ -55,11 +55,18 @@ describe('session predicates', () => {
 });
 
 describe('resolveEvStartProbePosture', () => {
-  it('arms the probe for the connected-but-idle states', () => {
+  it('arms the probe for the ambiguous connected state', () => {
     expect(resolveEvStartProbePosture('plugged_in'))
       .toEqual({ eligibleForStartProbe: true, activityObserved: false });
+  });
+
+  // A paused session can resume, so probing it would only expose it to a
+  // backoff nothing can clear: a full car never leaves `plugged_in_paused` on
+  // its own, and none of the reachability tracker's recovery triggers can fire
+  // while it sits there. Staying out of the eligible set IS the release.
+  it('never arms the probe for a paused session', () => {
     expect(resolveEvStartProbePosture('plugged_in_paused'))
-      .toEqual({ eligibleForStartProbe: true, activityObserved: false });
+      .toEqual({ eligibleForStartProbe: false, activityObserved: false });
   });
 
   it('reports observed activity while charging, and nothing to probe when unplugged', () => {

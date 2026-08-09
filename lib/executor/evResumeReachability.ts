@@ -8,9 +8,26 @@ import { EV_START_COMMAND_PENDING_MS } from '../observer/pendingBinaryCommandTyp
 const logger = getLogger('executor/ev-resume-reachability');
 const RETRY_DELAYS_MS = [15, 30, 60].map((minutes) => minutes * 60 * 1000);
 
+/**
+ * What kind of failure armed `retryAtMs`, because the two are scoped
+ * differently:
+ *
+ * - `probe` — the write was ACCEPTED and no charging evidence followed. That is
+ *   a statement about the plug-state's ambiguity, so it only gates a device
+ *   still sitting in the probed state (`eligibleForStartProbe`).
+ * - `transport` — the write was REJECTED outright. That is a statement about
+ *   reaching the device at all, which no plug-state makes untrue, so it gates
+ *   regardless. Without this split a rejected write on a non-probed charger
+ *   would skip the ladder entirely: the dispatcher clears the pending command
+ *   and `recordFailure` requests a rebuild, and that rebuild would re-dispatch
+ *   the same failing write on the next cycle, forever.
+ */
+type ReachabilityGate = 'probe' | 'transport';
+
 type ReachabilityState = {
   failures: number;
   retryAtMs?: number;
+  gate?: ReachabilityGate;
   eligible: boolean;
   available: boolean;
   scheduledKind?: 'settlement' | 'retry';
@@ -75,6 +92,7 @@ function resolveNextReachabilityState(params: {
     next: {
       failures: params.previous?.failures ?? 0,
       retryAtMs: params.previous?.retryAtMs,
+      gate: params.previous?.gate,
       eligible: params.eligible,
       available: params.available,
       scheduledKind: params.previous?.scheduledKind,
@@ -114,7 +132,7 @@ function clearReachabilityFailure(
   clearScheduled(deviceId);
   if (!current || current.failures === 0) return;
   stateByDevice.set(deviceId, {
-    ...current, failures: 0, retryAtMs: undefined, scheduledKind: undefined,
+    ...current, failures: 0, retryAtMs: undefined, gate: undefined, scheduledKind: undefined,
   });
 }
 
@@ -140,6 +158,7 @@ export function createEvResumeReachability(params: {
     stateByDevice.set(event.deviceId, {
       failures,
       retryAtMs,
+      gate: reason === 'dispatch_failed' ? 'transport' : 'probe',
       eligible: current?.eligible ?? true,
       available: current?.available ?? true,
       scheduledKind: 'retry',
@@ -167,6 +186,10 @@ export function createEvResumeReachability(params: {
         stateByDevice.set(event.deviceId, {
           failures: current?.failures ?? 0,
           retryAtMs: current?.retryAtMs,
+          // Carried, not dropped: `retryAtMs` survives an accepted dispatch, so
+          // the gate that armed it has to survive alongside or a transport
+          // window would silently weaken to a probe one.
+          gate: current?.gate,
           eligible: current?.eligible ?? true,
           available: current?.available ?? true,
           scheduledKind: 'settlement',
@@ -209,8 +232,14 @@ export function createEvResumeReachability(params: {
       if (recovered && previous?.scheduledKind === 'retry') {
         scheduled.clear(deviceId);
       }
-      if (!eligible || !availableNow || !base) return base;
-      if (next.retryAtMs !== undefined && Date.now() < next.retryAtMs) return false;
+      if (!availableNow || !base) return base;
+      // A live retry window gates a device still in the probed state, and gates
+      // ANY device whose last write was REJECTED — see ReachabilityGate. Without
+      // the second arm a rejected write on a non-probed charger skips the ladder
+      // entirely, because the dispatcher clears the pending command and
+      // `recordFailure` asks for a rebuild that would re-issue the same write.
+      const gated = next.retryAtMs !== undefined && Date.now() < next.retryAtMs;
+      if (gated && (eligible || next.gate === 'transport')) return false;
       return base;
     },
     prune: (presentDeviceIds) => {

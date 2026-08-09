@@ -137,6 +137,39 @@ an EV device with an unreadable plug-state, `evChargingState` is REQUIRED on the
 narrowed shape (`isEvObserved` tests EV-ness alone), and no layer needs a policy
 for absence.
 
+**Only `plugged_in` is probed.** `plugged_in_paused` is resumed outright
+(`resolveEvStartProbePosture`, `packages/shared-domain/src/evPlugState.ts`). The split is what makes the
+back-off releasable. `plugged_in` is ambiguous — the Easee awaiting authorization and the Zaptec
+holding a car at its own charge limit report the same value, and only the probe separates them.
+`plugged_in_paused` is not ambiguous: it means a session that can resume, so gating it behind a
+back-off buys nothing and costs everything. Nothing in a full car's own state ever changes —
+it stays plugged in, available, and not charging — so had both states been probed, none of
+`hasRecovered`'s three triggers could fire and the only way out would be the 60-minute retry.
+Because the Zaptec moves a car that starts wanting current again from a finished session to
+`Connected_Requesting`, LEAVING the probed state is the recovery signal: `project` short-circuits
+on `!eligible` and the charger is commandable on the next rebuild.
+
+That makes every producer of `plugged_in_paused` load-bearing, which none of them were before —
+the state used to differ from `plugged_in` only in wording. Three fed it in `nativeEvWiring.ts`,
+and all three had to agree that a FINISHED session is not a paused one:
+
+- the `charge_mode` mapping, under both spellings Zaptec uses — the operation-mode name
+  `Connected_Finishing` and the display label `Charging finished`. They disagreed until 2026-08-09;
+- the realtime `alarm_generic.car_connected` normalizer, which rewrote ANY non-charging state to
+  `plugged_in_paused`. It carries one bit — a car is attached — so it may now only promote a
+  DISCONNECTED charger and otherwise preserves what is there. `charge_mode` is change-only push and
+  a car parked at its limit never re-sends it, so the overwrite used to stand until the :25/:55
+  snapshot;
+- the snapshot fallback for an absent or unmapped `charge_mode`, which now resolves to the probed
+  `plugged_in` rather than claiming a resumable pause.
+
+The rule they share: when all PELS knows is that a car is attached, the honest state is the
+ambiguous one. Probing costs 90 seconds and is bounded; the unprobed lane is not.
+
+This applies only to Zaptec models that do NOT publish both official EV capabilities; when the app
+publishes `evcharger_charging_state` itself, `applyNativeEvWiringOverlay` defers to it and the
+vendor owns the classification.
+
 Two absences are distinguished at that gate, and the distinction is load-bearing:
 a payload that REPORTS the capability with a non-enum value is a violation (drop,
 even if an older valid value is retained — keeping it would strand a stale

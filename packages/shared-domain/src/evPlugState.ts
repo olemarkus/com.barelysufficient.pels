@@ -150,11 +150,32 @@ export const isEvChargerNotResumable = (evChargingState: EvChargingState): boole
  *   per-cycle retry.
  * - `activityObserved` — affirmative evidence that charge is flowing, which
  *   clears any recorded probe failure.
+ *
+ * Only `plugged_in` is eligible, and the asymmetry is the point. That state is
+ * ambiguous: an Easee at op mode 7 "Awaiting Authentication" lands there and the
+ * `evcharger_charging` write IS the authorization, so PELS must try — while a
+ * Zaptec holding a car at its own charge limit reports the same value and will
+ * never start. No capability separates them, so only the attempt does.
+ *
+ * `plugged_in_paused` is not ambiguous. It means a session that can resume, so
+ * a backoff would buy nothing and cost the one escape the ladder has. Nothing
+ * about a full car ever changes — it stays plugged in, available, and not
+ * charging — so were it probed too, none of `hasRecovered`'s triggers could
+ * fire and the only way out would be the 60-minute retry. Because a charger
+ * whose car starts asking for current again moves to this state, LEAVING the
+ * eligible set is what releases the backoff: the projection short-circuits on
+ * `!eligibleForStartProbe` and hands back base commandability.
+ *
+ * That makes the boundary a decision rather than a wording difference, so every
+ * producer of `plugged_in_paused` has to mean it — see
+ * `resolveZaptecChargingStateFromChargeMode` and the realtime normalizer in
+ * `lib/device/nativeEvWiring.ts`, which resolve a FINISHED or merely-unknown
+ * session to `plugged_in` instead.
  */
 export const resolveEvStartProbePosture = (evChargingState: EvChargingState): {
   eligibleForStartProbe: boolean;
   activityObserved: boolean;
 } => ({
-  eligibleForStartProbe: evChargingState === 'plugged_in' || evChargingState === 'plugged_in_paused',
+  eligibleForStartProbe: evChargingState === 'plugged_in',
   activityObserved: evChargingState === 'plugged_in_charging',
 });
