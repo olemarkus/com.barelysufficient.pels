@@ -174,11 +174,11 @@ For EV chargers, resume is only attempted when the charger is currently resumabl
 
 ## Power Estimation
 
-PELS needs to estimate how much power a device will draw when turned on:
+PELS needs to estimate how much power a device will draw when turned on. One ordered ladder decides it, and it always produces a number — there is no "unknown" left for a consumer to interpret:
 
-1. **Manual override**: From the "Set expected power for device" Flow action; takes precedence over other sources when present and remains until a higher measured reading arrives. Note: this Flow action refuses to set an override while `settings.load > 0` is configured.
-2. **`settings.load` (legacy/custom app setting)**: If present and > 0 (and no manual override is active), use it as expected power
-3. **Measured peak**: Last known peak derived from `measure_power`/`meter_power` (and Homey live report `values.W` for measured updates)
+1. **Manual override**: From the "Set expected power for device" Flow action. A manual value is an instruction, so it wins outright — including over a higher measured reading, and including on a device that declares `settings.load`. (The action is still rejected for stepped-load devices, which are sized per configured step.)
+2. **`settings.load` (legacy/custom app setting)**: If present and > 0, use it as expected power
+3. **Measured peak**: Highest draw PELS has actually observed, from `measure_power`/`meter_power` (and Homey live report `values.W` for measured updates)
 4. **Device Energy settings (Homey Advanced Settings → Energy)**:
    - Use controllable delta when both are set: `energy_value_on - energy_value_off` (clamped to >= 0)
    - Otherwise use `energy_value_on`
@@ -186,7 +186,9 @@ PELS needs to estimate how much power a device will draw when turned on:
    - Approximation delta: `approximation.usageOn - approximation.usageOff` (clamped to >= 0)
    - Approximation on-state: `approximation.usageOn`
    - Fallback to `W` when the device is not explicitly off
-6. **Fallback**: Assume 1 kW if no better estimate is available
+6. **Fallback**: Assume 1 kW when nothing above describes the device — 1.38 kW for an EV charger, the typical single-phase charging start
+
+A declared `settings.load` deliberately outranks the measured peak: it is what the device says about itself, and the way to correct a wrong one is the manual override on the rung above.
 
 For devices configured with the built-in **stepped load** control model, resume planning uses the configured per-step **planning power** instead of this generic estimator. In that mode:
 - The selected step, measured power, and planning power are intentionally separate values.
@@ -303,10 +305,9 @@ The **"Is there available power for device?"** Flow condition answers "Can this 
 
 - Current available power (safe pace minus current load)
 - Same-device cooldown state after recent step-downs or PELS limit/resume events
-- Device's expected usage (estimator order: flow override → `settings.load` → measured peak from `measure_power`/`meter_power`/Homey live `values.W` → device Energy settings (`energy_value_on`/`energy_value_off`) → Homey Energy metadata (`usageOn-usageOff`, `usageOn`, `W`) → fallback **1 kW**). If `settings.load` is configured for a device, the Flow action uses `settings.load` directly and the override is skipped.
-- A conservative fallback of **1 kW** when no estimate exists, so PELS never reports phantom capacity
+- Device's expected usage, from the single ladder in [Power Estimation](#power-estimation): manual override → `settings.load` → measured peak → device Energy settings → Homey Energy metadata → **1 kW** (1.38 kW for an EV charger)
 
-PELS never reports available power against a zero or unknown estimate — the answer is always grounded in a real number.
+PELS never reports available power against a zero or unknown estimate — the ladder ends on a fallback rather than on absence, so the answer is always grounded in a real number.
 
 ### Thermostats and Water Heaters
 

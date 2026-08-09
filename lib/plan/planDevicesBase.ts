@@ -14,7 +14,7 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { getRestoreDrawKw } from '../observer/observedPower';
+import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import {
   isSteppedLoadDevice,
@@ -36,7 +36,7 @@ function resolveExpectedPowerKw(
   currentState: string,
   plannedState: 'shed' | 'keep',
   effectiveDesiredStepId: string | undefined,
-): number | undefined {
+): number {
   const steppedExpectedPowerKw = resolveSteppedExpectedPowerKw({
     dev,
     currentState,
@@ -44,8 +44,7 @@ function resolveExpectedPowerKw(
     effectiveDesiredStepId,
   });
   if (steppedExpectedPowerKw !== null) return steppedExpectedPowerKw;
-  if (!hasKnownPowerFields(dev)) return undefined;
-  return getRestoreDrawKw(dev).kw;
+  return getHighestKnownPowerKw(dev).kw;
 }
 function resolveSteppedExpectedPowerKw(params: {
   dev: PlanInputDevice;
@@ -81,19 +80,6 @@ function resolveSteppedExpectedPowerKw(params: {
   }
   return null;
 }
-// Is there evidence of this device's power draw at all? `currentDrawKw` is
-// always finite, so finiteness proves nothing here — a 0 with no meter behind it
-// (the gate refused the device) is absence, not a reading. Only a positive draw
-// counts as measured evidence; without any evidence the device gets NO
-// `expectedPowerKw` rather than the restore-axis fallback constant, because
-// inventing a nameplate for an unmeasured device is the defect this replaces.
-function hasKnownPowerFields(dev: PlanInputDevice): boolean {
-  return dev.currentDrawKw > 0
-    || Number.isFinite(dev.expectedPowerKw)
-    || Number.isFinite(dev.planningPowerKw)
-    || Number.isFinite(dev.powerKw);
-}
-
 // Source the temperature sensor reading from the input device through the
 // temperature narrowing (the plan-input base omits `currentTemperature`). Kept
 // as a standalone helper so `buildBasePlanDevice` stays under the complexity cap.
@@ -230,7 +216,6 @@ export function buildBasePlanDevice(params: {
     stepCommandRetryCount: dev.stepCommandRetryCount,
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
     priority,
-    powerKw: dev.powerKw,
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     planningPowerKw: dev.planningPowerKw,
     expectedPowerSource: dev.expectedPowerSource,

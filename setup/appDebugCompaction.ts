@@ -213,7 +213,6 @@ export const compactPelsTargetSnapshot = (
     binaryControl: snapshot.binaryControl,
     currentTemperature: snapshot.currentTemperature,
     targets: snapshot.targets,
-    powerKw: snapshot.powerKw,
     expectedPowerKw: snapshot.expectedPowerKw,
     measuredPowerKw: snapshot.measuredPowerKw,
     reportedStepId: snapshot.reportedStepId,

@@ -654,7 +654,6 @@ describe('previewDeferredObjectivePlan', () => {
         steppedLoadProfile: undefined,
         currentDrawKw: 0,
         expectedPowerKw: undefined,
-        powerKw: undefined,
         planningPowerKw: undefined,
       }),
       powerTracker: buildTemperaturePowerTracker(),

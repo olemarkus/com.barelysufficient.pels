@@ -21,6 +21,14 @@ describe('buildPlanInputDevice', () => {
       // fixture declares no power at all, and the producer answers 0 for a device
       // nobody described — it no longer invents a generic 1 kW.
       currentDrawKw: 0,
+      // The draw-when-running twin, also required. Unlike `currentDrawKw` this
+      // one DOES end on a fallback: "draws nothing when running" is not an answer,
+      // so the ladder resolves the 1 kW default rather than absence.
+      expectedPowerKw: 1,
+      // Which rung produced that number — required alongside it, so absence is
+      // not a state any consumer can observe. A fixture nobody described lands
+      // on the same last rung the 1 kW above came from.
+      expectedPowerSource: 'default',
     });
   });
 
@@ -44,15 +52,13 @@ describe('buildPlanInputDevice', () => {
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
       priority: 4,
-      powerKw: 7.2,
+      expectedPowerKw: 7.2,
     });
 
     expect(device.deviceClass).toBe('evcharger');
     expect(device.controlCapabilityId).toBe('evcharger_charging');
     expect(device.priority).toBe(4);
-    expect(device.powerKw).toBe(7.2);
-    // Sanity: unrelated optionals stay absent rather than being defaulted.
-    expect(device.expectedPowerKw).toBeUndefined();
+    expect(device.expectedPowerKw).toBe(7.2);
     expect((device as PlanInputDevice & EvDiscriminantProbe).evChargingState).toBeUndefined();
   });
 

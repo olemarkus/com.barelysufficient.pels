@@ -97,7 +97,7 @@ const buildPlan = (): DevicePlan => ({
     headroomKw: 4,
   },
   devices: [
-    withTemperatureDiscriminant({ currentDrawKw: 0,
+    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -120,7 +120,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     headroomKw: 4,
   },
   devices: [
-    withTemperatureDiscriminant({ currentDrawKw: 0,
+    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -414,6 +414,7 @@ describe('PlanExecutor declined actuator requests', () => {
     const persistLastControlledMs = vi.fn();
     const { executor } = buildExecutor(state, [{
       id: 'dev-1',
+      expectedPowerKw: 1,
       name: 'Heater',
       controlCapabilityId: 'onoff',
       canSetControl: true,
@@ -590,6 +591,7 @@ describe('PlanExecutor restore logging', () => {
     const snapshot = [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1081,6 +1083,7 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1124,6 +1127,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager, state: nextState, deps } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1187,6 +1191,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1253,6 +1258,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1282,6 +1288,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager } = buildExecutor(createPlanEngineState(), [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1303,6 +1310,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1332,6 +1340,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Connected 300',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1356,6 +1365,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1421,6 +1431,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1457,6 +1468,7 @@ describe('PlanExecutor pending target commands', () => {
     const snapshot = [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1512,6 +1524,7 @@ describe('PlanExecutor pending target commands', () => {
     const { executor, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         controlCapabilityId: 'onoff',
         canSetControl: true,
@@ -1549,6 +1562,7 @@ describe('PlanExecutor stepped loads', () => {
     > = {},
   ): (TargetDeviceSnapshot & EvObservedProbe)[] => [{
     id: 'dev-1',
+    expectedPowerKw: 1,
     name: 'Tank',
     controlCapabilityId: 'onoff',
     canSetControl: true,
@@ -1586,7 +1600,7 @@ describe('PlanExecutor stepped loads', () => {
         headroomKw: 4,
       },
       devices: [
-        withTemperatureDiscriminant(withSteppedDiscriminant({ currentDrawKw: 0,
+        withTemperatureDiscriminant(withSteppedDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           ...merged,
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
@@ -1884,6 +1898,7 @@ describe('PlanExecutor stepped loads', () => {
   it('projects target updates after awaited stepped-load work in the same cycle', async () => {
     const snapshot = [{
       id: 'dev-1',
+      expectedPowerKw: 1,
       name: 'Tank',
       controlCapabilityId: 'onoff' as const,
       canSetControl: true,
@@ -2649,6 +2664,7 @@ describe('PlanExecutor stepped loads', () => {
     const noTargetsSnapshot = [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Tank',
         available: true,
         binaryControl: { on: true },
@@ -2677,6 +2693,7 @@ describe('PlanExecutor stepped loads', () => {
     const missingCapabilitySnapshot = [
       {
         id: 'dev-1',
+        expectedPowerKw: 1,
         name: 'Heater',
         available: true,
         binaryControl: { on: true },
@@ -3185,6 +3202,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   ): PlanInputDevice[] => {
     const merged = {
       id: 'dev-1',
+      expectedPowerKw: 1,
       name: 'Tank',
       targets: [],
       steppedLoadProfile: steppedProfile,
@@ -3211,6 +3229,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { selectedStepId: _selectedStepId, ...snapshotOverrides } = overrides;
     return [{
       id: 'dev-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Tank',
       controlCapabilityId: 'onoff' as const,
       canSetControl: true,
@@ -3655,6 +3674,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const snapshot = buildSnapshot({
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      expectedPowerKw: 1,
     });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
@@ -3901,12 +3921,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       currentTarget: null, controllable: true, reason: CAPACITY_REASON,
       controlCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
-      currentDrawKw: 0,
+      currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       currentTarget: null, controllable: true, reason: KEEP_REASON, commandableNow: true,
-      currentDrawKw: 0,
+      currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
       controlCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,
@@ -4356,6 +4376,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     };
     const chargerSnapshot = (overrides: Record<string, unknown>) => ([{
       id: 'dev-1',
+      expectedPowerKw: 1,
       name: 'Elbillader',
       controlCapabilityId: 'evcharger_charging',
       canSetControl: true,

@@ -142,8 +142,12 @@ describe('Headroom for device condition', () => {
       expectedPowerSource?: string;
       measuredPowerKw?: number;
     }>).find((entry) => entry.id === 'dev-1');
-    expect(raisedMeasurementSnapshot?.expectedPowerKw).toBeCloseTo(2.87);
-    expect(raisedMeasurementSnapshot?.expectedPowerSource).toBe('measured-peak');
+    // The manual value STAYS — it is an instruction, and a higher measurement no
+    // longer rewrites it. The headroom answer below is unaffected, because the
+    // condition sizes on the highest KNOWN source and the live 2.87 kW reaches it
+    // through the measured axis rather than by overwriting what the owner typed.
+    expect(raisedMeasurementSnapshot?.expectedPowerKw).toBeCloseTo(1.75);
+    expect(raisedMeasurementSnapshot?.expectedPowerSource).toBe('manual');
     expect(raisedMeasurementSnapshot?.measuredPowerKw).toBeCloseTo(2.87);
 
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
@@ -185,8 +189,11 @@ describe('Headroom for device condition', () => {
       expectedPowerSource?: string;
       measuredPowerKw?: number;
     }>).find((entry) => entry.id === 'dev-1');
-    expect(snapshot?.expectedPowerKw).toBeCloseTo(2.87);
-    expect(snapshot?.expectedPowerSource).toBe('measured-peak');
+    // Same inversion as above: the manual value survives the higher measurement,
+    // and the condition still allows because it sizes on the highest known
+    // source, which the live 2.87 kW reaches through the measured axis.
+    expect(snapshot?.expectedPowerKw).toBeCloseTo(1.75);
+    expect(snapshot?.expectedPowerSource).toBe('manual');
     expect(snapshot?.measuredPowerKw).toBeCloseTo(2.87);
 
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);

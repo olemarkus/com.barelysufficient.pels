@@ -32,7 +32,6 @@ type RemainingSheddablePowerFields = {
   currentDrawKw: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  powerKw?: number;
 };
 
 type RemainingSheddableResidualFields = {
@@ -293,7 +292,6 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
-    powerKw: device.powerKw,
     ...(device.residualKw ? { residualKw: device.residualKw } : {}),
   };
 }

@@ -62,6 +62,7 @@ const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OU
 // stands in — exactly the prod shape that makes `resolveObjectiveSteps` return [].
 const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
   id: DEVICE_ID,
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
   commandableNow: true,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],

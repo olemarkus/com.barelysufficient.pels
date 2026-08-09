@@ -16,6 +16,7 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
   // behaviourally identical, since the field is never read on this path.
   withBinaryDiscriminant(withTemperatureDiscriminant({
     id: deviceId,
+    expectedPowerKw: 1,
     name,
     deviceType: 'temperature' as const,
     binaryControl: { on: true },
@@ -28,7 +29,7 @@ const buildPlanDevice = (
   name: string,
   currentTarget: number,
   plannedTarget: number,
-): DevicePlan['devices'][number] => withTemperatureDiscriminant({ currentDrawKw: 0,
+): DevicePlan['devices'][number] => withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
   id: deviceId,
   name,
   commandableNow: true,

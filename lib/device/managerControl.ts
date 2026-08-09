@@ -304,10 +304,8 @@ function buildEvSnapshotChangeLines(
       + `-> ${nextEv.controlCapabilityId ?? 'unknown'}`,
     );
   }
-  const previousPower = previousEv.powerKw ?? previousEv.measuredPowerKw;
-  const nextPower = nextEv.powerKw ?? nextEv.measuredPowerKw;
-  if (previousPower !== nextPower) {
-    changes.push(`powerKw ${previousPower ?? 'unknown'} -> ${nextPower ?? 'unknown'}`);
+  if (previousEv.expectedPowerKw !== nextEv.expectedPowerKw) {
+    changes.push(`expectedPowerKw ${previousEv.expectedPowerKw} -> ${nextEv.expectedPowerKw}`);
   }
   return changes;
 }
@@ -317,7 +315,7 @@ function formatEvSnapshotDiscovery(snapshot: TransportDeviceSnapshot): string {
     `currentOn=${String(resolveBinaryOn(snapshot))}`,
     `evState=${snapshot.evChargingState ?? 'unknown'}`,
     `available=${snapshot.available !== false}`,
-    `powerKw=${snapshot.powerKw ?? snapshot.measuredPowerKw ?? 'unknown'}`,
+    `expectedPowerKw=${snapshot.expectedPowerKw}`,
     `control=${snapshot.controlCapabilityId ?? 'unknown'}`,
   ].join(', ');
 }
@@ -332,7 +330,7 @@ function formatEvSnapshotDetails(
   ];
   if (includePower) {
     details.push(`available=${snapshot?.available !== false}`);
-    details.push(`powerKw=${snapshot?.powerKw ?? snapshot?.measuredPowerKw ?? 'unknown'}`);
+    details.push(`expectedPowerKw=${snapshot?.expectedPowerKw ?? 'unknown'}`);
   }
   return details.join(', ');
 }

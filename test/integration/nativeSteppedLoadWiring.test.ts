@@ -73,6 +73,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
     buildExecutableSteppedLoadIntent(device),
     buildExecutableObservedDeviceState({
       id: device.id,
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: device.name,
       // Rebuild the observed snapshot's binaryControl from the plan device's
       // resolved on/off truth (`currentOn`); the plan kinds no longer carry the
@@ -794,6 +795,7 @@ describe('native stepped-load wiring', () => {
   it('uses native stepped-load feedback instead of flow reports when native wiring is enabled', () => {
     const flowSnapshot = {
       id: 'hoiax-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Connected 300',
       targets: [],
       binaryControl: { on: true },
@@ -854,6 +856,7 @@ describe('native stepped-load wiring', () => {
     };
     const nativeSnapshot = {
       id: 'hoiax-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Connected 300',
       targets: [],
       binaryControl: { on: true },
@@ -1350,6 +1353,7 @@ describe('native stepped-load wiring', () => {
     );
     deviceManager.setSnapshotForTests([{
       id: 'flow-step-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Flow backed charger',
       targets: [],
       binaryControl: { on: true },
@@ -1458,6 +1462,7 @@ describe('native stepped-load wiring', () => {
     );
     deviceManager.setSnapshotForTests([{
       id: 'flow-step-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Flow backed charger',
       targets: [],
       binaryControl: { on: true },
@@ -1507,6 +1512,7 @@ describe('native stepped-load wiring', () => {
       );
       deviceManager.setSnapshotForTests([{
         id: 'flow-step-1',
+        expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Flow backed charger',
         targets: [],
         binaryControl: { on: true },

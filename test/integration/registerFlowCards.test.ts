@@ -31,6 +31,7 @@ const nativeSteppedSnapshot = (
 ): TargetDeviceSnapshot & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'dev-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
   targets: [],
   binaryControl: { on: true },
@@ -108,7 +109,6 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getHomeyDevicesForFlow: vi.fn().mockResolvedValue([]),
     reportFlowBackedCapability: vi.fn(() => stateChangedOutcome()),
     reportSteppedLoadActualStep: vi.fn((): ReportSteppedLoadActualStepResult => 'changed'),
-    getDeviceLoadSetting: vi.fn().mockResolvedValue(null),
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
     rebuildPlan: vi.fn(),
@@ -343,6 +343,7 @@ describe('registerFlowCards', () => {
       getSnapshot: vi.fn().mockResolvedValue([
         nativeSteppedSnapshot({
           id: 'ev-1',
+          expectedPowerKw: 1,
           name: 'My Easee Charger',
           deviceClass: 'evcharger',
           deviceType: 'onoff',
@@ -362,6 +363,7 @@ describe('registerFlowCards', () => {
         }),
         {
           id: 'binary-1',
+          expectedPowerKw: 1,
           name: 'Binary Charger',
           targets: [],
           binaryControl: { on: false },
@@ -569,11 +571,12 @@ describe('registerFlowCards', () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
-          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [] },
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
         ])
         .mockResolvedValueOnce([
           {
             id: 'ev-1',
+            expectedPowerKw: 1,
             name: 'Zaptec Go',
             deviceClass: 'evcharger',
             binaryControl: { on: false },
@@ -614,11 +617,12 @@ describe('registerFlowCards', () => {
       areFlowBackedCardsAvailable: () => false,
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
-          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [] },
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
         ])
         .mockResolvedValueOnce([
           {
             id: 'ev-1',
+            expectedPowerKw: 1,
             name: 'Zaptec Go',
             deviceClass: 'evcharger',
             binaryControl: { on: false },
@@ -651,11 +655,12 @@ describe('registerFlowCards', () => {
       reportFlowBackedCapability: vi.fn(() => stateChangedOutcome({ rebuildPlan: true })),
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
-          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [] },
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
         ])
         .mockResolvedValueOnce([
           {
             id: 'ev-1',
+            expectedPowerKw: 1,
             name: 'Zaptec Go',
             deviceClass: 'evcharger',
             binaryControl: { on: false },
@@ -682,7 +687,7 @@ describe('registerFlowCards', () => {
   it('rejects EV charger battery reports outside 0-100 or non-numeric input', async () => {
     const { deps, actionListeners } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
-        { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [] },
+        { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
       ]),
     });
 
@@ -706,7 +711,7 @@ describe('registerFlowCards', () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
-          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [] },
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
         ])
         .mockRejectedValueOnce(new Error('snapshot unavailable')),
     });

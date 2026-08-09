@@ -175,6 +175,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
     const waterHeater: PlanInputDevice = {
       id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       commandableNow: true, currentDrawKw: 0,
     };
     const idleHorizon = {

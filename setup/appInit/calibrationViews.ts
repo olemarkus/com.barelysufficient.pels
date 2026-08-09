@@ -57,12 +57,11 @@ function buildEvChargerCalibrationView(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot,
 ): Record<string, StepPowerCalibrationView> | undefined {
-  const nameplateKw = firstPositiveFinite([
-    device.planningPowerKw,
-    device.expectedPowerKw,
-    device.powerKw,
-  ]);
-  if (nameplateKw === null) return undefined;
+  // `planningPowerKw` is the decorated per-step figure and still wins when the
+  // decorator supplied one; otherwise the producer's resolved expected power is
+  // the answer. No `?? powerKw` tail and no null arm — `expectedPowerKw` is
+  // required and positive, so an EV charger can no longer fail to get a view.
+  const nameplateKw = firstPositiveFinite([device.planningPowerKw]) ?? device.expectedPowerKw;
   const snapshot = ctx.getPowerCalibrationSnapshot();
   const stepId = 'charge';
   // Even when no calibration entries exist yet we expose the nameplate

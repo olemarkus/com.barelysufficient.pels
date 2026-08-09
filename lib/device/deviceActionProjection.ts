@@ -23,7 +23,6 @@ import type {
   EvObservedProbe,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
-  TargetDeviceSnapshot,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import {
@@ -169,7 +168,20 @@ export function resolveTemperatureBoostActive(dev: TemperatureBoostResolveInput)
   return isBelowBoostFloor({ current: currentTemperature, boostFloor: boostBelowC });
 }
 
-export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryControlPlan | null {
+/**
+ * Exactly the fields the binary control plan reads. Narrow on purpose: both call
+ * sites pass a PROJECTED snapshot shape (`BinaryControlDecisionSnapshot` in plan,
+ * `ExecutorDeviceSnapshot` in executor), never a whole `TargetDeviceSnapshot`.
+ * Declaring the parameter as the full descriptor only type-checked for as long as
+ * every descriptor field happened to be optional, so the first required one broke
+ * both callers — and the `canSetOnOff` cast below existed for the same reason.
+ */
+export type BinaryControlPlanInput = BinaryCapabilityResolveInput & {
+  canSetControl?: boolean;
+  canSetOnOff?: boolean;
+};
+
+export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryControlPlan | null {
   const capabilityId = resolveBinaryCapabilityId(snapshot);
   if (!snapshot || !capabilityId) return null;
   return {
@@ -181,7 +193,7 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
       controlCapabilityId: snapshot.controlCapabilityId,
       capabilities: snapshot.capabilities,
       canSetControl: snapshot.canSetControl,
-      canSetOnOff: (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff,
+      canSetOnOff: snapshot.canSetOnOff,
     }),
   };
 }

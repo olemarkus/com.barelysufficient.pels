@@ -24,11 +24,18 @@ function parseExpectedPowerW(payload: { power_w?: number } | null): number {
   return powerW;
 }
 
-async function assertNoConfiguredLoad(
-  deps: {
-    getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-    getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
-  },
+/**
+ * A stepped-load device is sized per configured step, so a single whole-device
+ * figure has nothing to apply to.
+ *
+ * The old sibling guard — refusing the override while `settings.load > 0` — is
+ * gone. A manual value now outranks `settings.load` in the one expected-power
+ * ladder (`lib/device/devicePowerEstimate.ts`), so refusing to accept one from a
+ * device that declares a load made the ladder's top rung unreachable for exactly
+ * the owner most likely to need it: someone whose declared load is wrong.
+ */
+async function assertOverrideSupported(
+  deps: { getSnapshot: () => Promise<TargetDeviceSnapshot[]> },
   deviceId: string,
 ): Promise<void> {
   const snapshot = await deps.getSnapshot();
@@ -38,10 +45,6 @@ async function assertNoConfiguredLoad(
       'Stepped load devices use configured planning power per step; '
       + 'expected power override is not supported.',
     );
-  }
-  const configuredLoad = await deps.getDeviceLoadSetting(deviceId);
-  if (configuredLoad !== null && configuredLoad > 0) {
-    throw new Error('Device already has load configured in settings; remove it before overriding expected power.');
   }
 }
 
@@ -54,7 +57,6 @@ export function registerExpectedPowerCard(
   homey: ActionCardHomey,
   deps: {
     getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-    getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
     setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
     rebuildPlan: () => void;
@@ -68,7 +70,7 @@ export function registerExpectedPowerCard(
     const deviceId = extractDeviceId(payload);
     const powerW = parseExpectedPowerW(payload);
     const requestedKw = powerW / 1000;
-    await assertNoConfiguredLoad(deps, deviceId);
+    await assertOverrideSupported(deps, deviceId);
 
     const snapshot = await deps.getSnapshot();
     const changed = deps.setExpectedOverride(deviceId, requestedKw);
@@ -94,10 +96,12 @@ export function registerExpectedPowerCard(
       // non-controllable, so an expected-power override on it is a no-op pick.
       // Keyed on the immutable observe-only ROLE (same predicate as the
       // settings-UI hide + deviceSettingsCards), not on the live flag.
+      // A configured `loadKw` no longer excludes a device: a manual value
+      // outranks `settings.load`, so overriding a wrong declared load is the
+      // point rather than a conflict.
       snapshot.filter(
         (d) => !isObserveOnlyRoleClassKey(d.deviceClass)
-          && d.controlModel !== 'stepped_load'
-          && (!d.loadKw || d.loadKw <= 0),
+          && d.controlModel !== 'stepped_load',
       ),
       query,
     );

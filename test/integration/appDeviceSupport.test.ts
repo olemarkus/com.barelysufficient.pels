@@ -21,7 +21,7 @@ const makeSettings = (initial: Record<string, unknown>) => {
   };
 };
 
-const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({
+const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'vt-1',
   name: 'VThermo',
   deviceType: 'temperature',
@@ -29,7 +29,7 @@ const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
 });
 
-const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({
+const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'socket-1',
   name: 'Garage Socket',
   deviceType: 'onoff',
@@ -156,7 +156,7 @@ describe('disableUnsupportedDevices', () => {
       [CONTROLLABLE_DEVICES]: { 'ev1': true, 'socket-1': true },
     });
     const debugStructured = vi.fn();
-    const evDevice: TargetDeviceSnapshot = {
+    const evDevice: TargetDeviceSnapshot = { expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev1',
       name: 'EV Charger',
       deviceType: 'onoff',
@@ -212,7 +212,7 @@ describe('seedMissingModeTargets', () => {
     __resetSeedSkipDedupeForTests();
   });
 
-  const buildThermostat = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+  const buildThermostat = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
     id: 't-1',
     name: 'Stue',
     deviceType: 'temperature',

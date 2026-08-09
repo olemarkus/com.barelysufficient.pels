@@ -66,6 +66,7 @@ const buildDevice = (
   overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
 ): PlanInputDevice => withMaterializedEvPlugState({
   id: 'ev-1',
+  expectedPowerKw: 1,
   name: 'Driveway EV',
   targets: [],
   binaryControl: { on: false },
@@ -88,6 +89,7 @@ const buildTemperatureDevice = (
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
 ): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: 'heater-1',
+  expectedPowerKw: 1,
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
@@ -843,7 +845,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
   // predicate (priority 1, both rescue permissions `'always'`, enabled
   // objective). Each helper creates one task; the per-test code stitches them
   // into a settings map and device map.
-  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ currentDrawKw: 0,
+  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
     id,
     name: id,
     targets: [],
@@ -856,7 +858,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
     steppedLoadProfile: {
       model: 'stepped_load',
       steps: [
-        { id: 'off', planningPowerW: 0 },
+        { id: 'off', planningPowerW: 0, expectedPowerKw: 1 },
         { id: 'low', planningPowerW: 1000 },
       ],
     },
@@ -3019,6 +3021,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // horizon plan from the live draw and the smart task can progress.
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Mill v2 Panel Heater',
       commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3117,8 +3120,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       lastFreshDataMs: NOW_MS,
       // Heater is currently idle — measured draw is zero.
       measuredPowerKw: 0,
-      expectedPowerKw: 2.0,
-      powerKw: 2.0,
+      expectedPowerKw: 2.0, expectedPowerSource: 'default',
     })) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
@@ -3161,16 +3163,22 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic!.expectedStepId).toBe('charge');
   });
 
-  it('still reports missing_charge_rate for a thermostat without any usable power source', () => {
-    // The thermal fallback only fires when at least one of
-    // `measuredPowerKw` / `expectedPowerKw` / `powerKw` is positive-finite.
-    // A device without `measure_power`, without a load setting, and without
-    // Homey Energy data still ends up at `objective_missing_charge_rate` —
-    // which `activePlanRecorder` will surface as `pendingReason:
-    // missing_capacity` for thermal kinds (intentional cold-start hero
-    // copy). Guards against the fallback over-reaching.
+  // `objective_missing_charge_rate` is no longer reachable for a plain thermostat.
+  // The thermal fallback used to require a positive `measuredPowerKw` /
+  // `expectedPowerKw` / `powerKw`, and a device nobody had described failed that
+  // test; the producer now ends its ladder on a positive default, so such a
+  // device plans against 1 kW instead of stalling. That is the outcome the open
+  // water-heater P1 asked for.
+  //
+  // What DOES still reach the gap is the case the protection was built for: a
+  // device CONFIGURED as a stepped load whose live `steppedLoadProfile` is
+  // missing this cycle (`controlModel === 'stepped_load'` with no profile). Both
+  // halves are asserted below; the SDK-boundary regression for the 2026-08-01
+  // incident lives in `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
+  it('plans a thermostat with no declared power instead of reporting missing_charge_rate', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
       id: 'heater-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Powerless Thermostat',
       commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3214,6 +3222,64 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       },
       powerTracker,
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
+    expect(diagnostic!.expectedStepId).toBe('charge');
+  });
+
+  it('reports the step-ladder gap for a stepped-configured device with no live profile', () => {
+    // Keyed on the ladder's absence, not on the power figure. The power figure
+    // was only ever a proxy for it, and it stopped working as one the moment
+    // `expectedPowerKw` became a guaranteed positive number.
+    const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+      id: 'heater-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
+      name: 'Water heater with no live ladder',
+      commandableNow: true,
+      targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
+      binaryControl: { on: false },
+      controlCapabilityId: 'onoff' as const,
+      deviceClass: 'thermostat',
+      deviceType: 'temperature' as const,
+      controlModel: 'stepped_load' as const,
+      currentTemperature: 19,
+      lastFreshDataMs: NOW_MS,
+      // No `steppedLoadProfile`: configured stepped, but the ladder is missing.
+    })) as PlanInputDevice;
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [tank],
+      settings: {
+        version: 1,
+        objectivesByDeviceId: {
+          'heater-1': {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs,
+          },
+        },
+      },
+      powerTracker: {
+        objectiveProfiles: {
+          'heater-1': {
+            kind: 'temperature',
+            updatedAtMs: NOW_MS,
+            lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+            kwhPerUnit: {
+              sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
+            },
+            acceptedSamples: 4,
+            rejectedSamples: 0,
+          },
+        },
+      },
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
     });
@@ -3376,7 +3442,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ currentDrawKw: 0,
+    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
       id,
       name: id,
       targets: [],
@@ -3389,7 +3455,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
-          { id: 'off', planningPowerW: 0 },
+          { id: 'off', planningPowerW: 0, expectedPowerKw: 1 },
           { id: 'min', planningPowerW: 1000 },
           { id: 'mid', planningPowerW: 2000 },
           { id: 'top', planningPowerW: 3000 },

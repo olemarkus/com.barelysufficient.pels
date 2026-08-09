@@ -49,14 +49,15 @@ export const buildHomeyStateComparisonSource = (
 };
 /* eslint-enable complexity */
 
+// Compares what PELS believes against what the device reports, so the meter is
+// the only admissible answer. The `powerKw` nameplate arm this replaces made an
+// unmetered device compare its rated power against Homey's reading and call the
+// difference a discrepancy.
 const resolveComparisonPowerW = (
   snapshot: PelsTargetSnapshotSummary | (TargetDeviceSnapshot & MeasuredPowerObservedProbe),
 ): number | null => {
   if (typeof snapshot.measuredPowerKw === 'number') {
     return Math.round(snapshot.measuredPowerKw * 1000);
-  }
-  if (typeof snapshot.powerKw === 'number') {
-    return Math.round(snapshot.powerKw * 1000);
   }
   return null;
 };

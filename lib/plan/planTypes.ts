@@ -12,6 +12,7 @@ import type {
   DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  ExpectedPowerSource,
   PlannedDeviceState,
   RestorePowerSource,
   SteppedLoadCommandStatus,
@@ -463,10 +464,11 @@ type DevicePlanDeviceBase = {
   // observed-state idempotency.
   deferredReleaseIntent?: 'binary_restore' | 'binary_release' | 'shed_release';
   priority?: number;
-  powerKw?: number;
-  expectedPowerKw?: number;
+  /** Draw when running, in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
+  expectedPowerKw: number;
   planningPowerKw?: number;
-  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
+  /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
+  expectedPowerSource: ExpectedPowerSource;
   /** Current draw in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
   currentDrawKw: number;
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.

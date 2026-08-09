@@ -93,7 +93,6 @@ const buildContext = (): AppContext => {
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentPriceLevel: vi.fn(),
     getCurrentHourPriceLevel: vi.fn(() => ({ cheap: false, expensive: false })),
-    getDeviceLoadSetting: vi.fn(async () => null),
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),

@@ -6,7 +6,7 @@ import type {
   TargetCapabilitySnapshot,
 } from '../../packages/contracts/src/types';
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
-import { getRestoreDrawKw } from '../observer/observedPower';
+import { getHighestKnownPowerKw } from '../observer/observedPower';
 import {
   clearSurplusEligibility,
   SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
@@ -183,7 +183,7 @@ function composeSurplusPool(params: {
  * The willing set is the union of BOTH surplus modalities in ONE pool, ordered
  * purely by user priority: temperature devices with a real lift
  * (`willingWithLift`) and binary dump loads carrying the producer-resolved
- * `surplusOnly` posture. Both reserve `getRestoreDrawKw` from the same pool and
+ * `surplusOnly` posture. Both reserve `getHighestKnownPowerKw` from the same pool and
  * run the same settle/dwell/hard-off gate, so a thermostat and a pool pump can
  * never both engage on the same export.
  */
@@ -254,7 +254,7 @@ export function resolveSurplusEligibility(params: {
         deviceId: dev.id,
         willing: true,
         availableSurplusKw: null,
-        expectedDrawKw: getRestoreDrawKw(dev).kw,
+        expectedDrawKw: getHighestKnownPowerKw(dev).kw,
         hardOff,
         nowTs,
       });
@@ -273,7 +273,7 @@ export function resolveSurplusEligibility(params: {
   // Top priority first (PELS priority `1` is highest — ascending order).
   const ordered = [...willing].sort((a, b) => getPriority(a.id) - getPriority(b.id));
   for (const dev of ordered) {
-    const expectedDrawKw = getRestoreDrawKw(dev).kw;
+    const expectedDrawKw = getHighestKnownPowerKw(dev).kw;
     const { eligible } = syncSurplusEligibilityState({
       state,
       deviceId: dev.id,

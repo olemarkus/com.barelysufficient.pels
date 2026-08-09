@@ -19,6 +19,7 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
 
 const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe => ({
   id: 'heater-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
   targets: [],
   deviceType: 'temperature',

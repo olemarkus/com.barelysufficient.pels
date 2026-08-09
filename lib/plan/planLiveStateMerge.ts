@@ -100,7 +100,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         nextStepCommandRetryAtMs: live.nextStepCommandRetryAtMs ?? device.nextStepCommandRetryAtMs,
         reportedStepId: liveStepState.reportedStepId,
         currentTemperature: liveTemperature?.currentTemperature,
-        powerKw: live.powerKw,
         expectedPowerKw: live.expectedPowerKw,
         planningPowerKw: live.planningPowerKw,
         expectedPowerSource: live.expectedPowerSource,

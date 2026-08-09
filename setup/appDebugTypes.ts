@@ -96,7 +96,6 @@ export type PelsTargetSnapshotSummary = {
   binaryControl?: { on: boolean };
   currentTemperature?: number;
   targets: Array<{ id: string; value?: unknown; unit: string }>;
-  powerKw?: number;
   expectedPowerKw?: number;
   measuredPowerKw?: number;
   reportedStepId?: string;

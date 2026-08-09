@@ -316,8 +316,9 @@ export function buildReservedForStartReason(holderName: string): DeviceReason {
 
 /**
  * The power the device draws once it reaches its lowest active step. Stepped devices read that
- * step's planning power; others fall back to expected/configured demand. `null` when no finite
- * positive estimate exists, in which case we decline to reserve rather than guess.
+ * step's planning power; everything else reads the producer-resolved expected demand, which is
+ * always positive. Only the stepped arm can still decline to reserve, and only because a device
+ * with no usable step genuinely has nothing to size against.
  */
 function resolveStartupPowerKw(device: DevicePlanDevice): number | null {
   if (isSteppedLoadDevice(device)) {
@@ -329,8 +330,7 @@ function resolveStartupPowerKw(device: DevicePlanDevice): number | null {
     const admissionKw = resolveStepAdmissionKw(device, lowest.id);
     return isFiniteNumber(admissionKw) && admissionKw > 0 ? admissionKw : null;
   }
-  const candidate = device.expectedPowerKw ?? device.powerKw;
-  return isFiniteNumber(candidate) && candidate > 0 ? candidate : null;
+  return device.expectedPowerKw;
 }
 
 // A device PELS cannot start gets no reserve: an external off-hold, an unavailable device, or one

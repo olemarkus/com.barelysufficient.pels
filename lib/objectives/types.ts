@@ -1,6 +1,7 @@
 import type {
   EvChargingState,
   BinaryControlCapabilityId,
+  DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -62,8 +63,20 @@ export type ObjectiveDeviceInput = {
   // the device off outside PELS and asked PELS to respect that. Structurally
   // assignable from `PlanInputDevice`, which carries the same flat bit.
   externalOffHoldActive?: true;
-  powerKw?: number;
-  expectedPowerKw?: number;
+  /**
+   * The CONFIGURED control model, structurally assignable from `PlanInputDevice`.
+   * Read only to detect a stepped device whose live `steppedLoadProfile` is
+   * missing this cycle — profile presence implies `'stepped_load'` but not the
+   * converse, so their disagreement is the step-ladder gap.
+   */
+  controlModel?: DeviceControlModel;
+  /**
+   * Producer-resolved draw when running, structurally assignable from
+   * `PlanInputDevice`. Required, like it is there: `estimatePower` ends its
+   * ladder on a default, so a smart task never has to invent a rate for a
+   * device nobody described.
+   */
+  expectedPowerKw: number;
   planningPowerKw?: number;
   /**
    * Producer-resolved current draw, structurally assignable from

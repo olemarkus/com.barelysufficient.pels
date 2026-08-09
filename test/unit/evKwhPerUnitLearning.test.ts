@@ -28,6 +28,7 @@ const evDevice = (
   overrides: Partial<TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {},
 ): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe => ({
   id: 'ev-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Charger',
   targets: [],
   deviceClass: 'evcharger',

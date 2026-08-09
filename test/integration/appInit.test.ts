@@ -161,6 +161,7 @@ describe('app init plan service wiring', () => {
       latestTargetSnapshot: [
         {
           id: 'socket-1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Socket',
           targets: [],
           capabilities: ['onoff'],
@@ -168,13 +169,14 @@ describe('app init plan service wiring', () => {
         },
         {
           id: 'ev-1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'EV',
           deviceClass: 'evcharger',
           targets: [],
           capabilities: ['evcharger_charging', 'evcharger_charging_state'],
           controlCapabilityId: 'evcharger_charging',
         },
-        {
+        { expectedPowerKw: 1, expectedPowerSource: 'default',
           id: 'temp-1',
           name: 'Thermostat',
           targets: [],

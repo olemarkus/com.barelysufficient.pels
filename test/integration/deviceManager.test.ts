@@ -257,11 +257,9 @@ describe('DeviceTransport', () => {
                 canSetControl: true,
                 available: false,
                 powerCapable: true,
-                powerKw: 0.9,
-                measuredPowerKw: 0.73,
                 expectedPowerKw: 0.9,
+                measuredPowerKw: 0.73,
                 expectedPowerSource: 'load-setting',
-                loadKw: 0.9,
                 lastFreshDataMs: new Date('2026-04-01T11:53:00.000Z').getTime(),
                 lastUpdated: new Date('2026-04-01T11:53:00.000Z').getTime(),
                 lastLocalWriteMs: undefined,
@@ -380,7 +378,7 @@ describe('DeviceTransport', () => {
                 // 0.73 kW from `measure_power`, NOT 4.2 kW from the leak channel.
                 measuredPowerKw: 0.73,
                 expectedPowerSource: 'load-setting',
-                powerKw: 0.9,
+                expectedPowerKw: 0.9,
             }));
         });
 
@@ -758,7 +756,7 @@ describe('DeviceTransport', () => {
             const heater = findSnapshotDevice(snapshot, 'dev1');
             const light = findSnapshotDevice(snapshot, 'dev2');
             expect(heater?.deviceType).toBe('temperature');
-            expect(heater?.powerKw).toBe(1);
+            expect(heater?.expectedPowerKw).toBe(1);
             // Heater exposes `onoff` only in capabilitiesObj, not the capabilities
             // list, so it is not a binary-controlled device: `binaryControl` is
             // absent (the old fabricated `currentOn: true`).
@@ -1399,9 +1397,8 @@ describe('DeviceTransport', () => {
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
-            expect(snapshot[0].loadKw).toBeUndefined();
             expect(snapshot[0].expectedPowerSource).toBe('default');
-            expect(snapshot[0].powerKw).toBe(1);
+            expect(snapshot[0].expectedPowerKw).toBe(1);
             expect(snapshot[0].powerCapable).toBe(false);
         });
 
@@ -1431,7 +1428,7 @@ describe('DeviceTransport', () => {
             expect(snapshot).toHaveLength(1);
             expect(snapshot[0].expectedPowerSource).toBe('homey-energy');
             expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.1, 6);
-            expect(snapshot[0].powerKw).toBeCloseTo(0.1, 6);
+            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.1, 6);
             expect(snapshot[0].powerCapable).toBe(true);
         });
 
@@ -1468,7 +1465,7 @@ describe('DeviceTransport', () => {
                 expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBeCloseTo(0.125, 6);
                 expect(snapshot[0].expectedPowerSource).toBe('measured-peak');
                 expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
-                expect(snapshot[0].powerKw).toBeCloseTo(0.125, 6);
+                expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
                 expect(snapshot[0].powerCapable).toBe(true);
                 expect(snapshot[0].lastFreshDataMs).toBe(new Date('2026-04-01T12:00:00.000Z').getTime());
                 expect(mockGetLiveReport).toHaveBeenCalled();
@@ -1500,7 +1497,7 @@ describe('DeviceTransport', () => {
             expect(snapshot).toHaveLength(1);
             expect(snapshot[0].powerCapable).toBe(true);
             expect(snapshot[0].expectedPowerSource).toBe('default');
-            expect(snapshot[0].powerKw).toBe(1);
+            expect(snapshot[0].expectedPowerKw).toBe(1);
         });
 
         it('uses providers to populate priority and controllable fields', async () => {
@@ -1862,7 +1859,7 @@ describe('DeviceTransport', () => {
 
             const snapshot = deviceManager.getSnapshot();
             expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
-            expect(snapshot[0].powerKw).toBe(2);
+            expect(snapshot[0].expectedPowerKw).toBe(2);
             expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_update_processed',
                 source: 'device_update',
@@ -1947,6 +1944,7 @@ describe('DeviceTransport', () => {
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -1975,6 +1973,7 @@ describe('DeviceTransport', () => {
         it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
                 targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
                 deviceClass: 'thermostat',
@@ -2033,6 +2032,7 @@ describe('DeviceTransport', () => {
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
                 targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
                 deviceClass: 'thermostat',
@@ -2204,6 +2204,7 @@ describe('DeviceTransport', () => {
             // even when it carries no lastUpdated and contradicts prior evidence.
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2327,6 +2328,7 @@ describe('DeviceTransport', () => {
                 const originalObservedAtMs = new Date('2026-06-03T06:00:00.000Z').getTime();
                 deviceManager.setSnapshotForTests([{
                     id: 'dev1',
+                    expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Heater',
                     targets: [],
                     deviceClass: 'heater',
@@ -2369,6 +2371,7 @@ describe('DeviceTransport', () => {
             const newerRawObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -2414,6 +2417,7 @@ describe('DeviceTransport', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -2477,6 +2481,7 @@ describe('DeviceTransport', () => {
             const stateObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -2559,6 +2564,7 @@ describe('DeviceTransport', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -2614,6 +2620,7 @@ describe('DeviceTransport', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -2687,6 +2694,7 @@ describe('DeviceTransport', () => {
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2731,6 +2739,7 @@ describe('DeviceTransport', () => {
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1,
                 name: 'Hall Thermostat',
                 targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
                 deviceClass: 'thermostat',
@@ -2767,6 +2776,7 @@ describe('DeviceTransport', () => {
             const observedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2800,6 +2810,7 @@ describe('DeviceTransport', () => {
         it('does not reattach cached evidence when an explicit timestamp-less boolean contradicts it', async () => {
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2847,6 +2858,7 @@ describe('DeviceTransport', () => {
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2888,6 +2900,7 @@ describe('DeviceTransport', () => {
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2924,6 +2937,7 @@ describe('DeviceTransport', () => {
         it('does not reattach cached evidence when snapshot refresh has a contradictory timestamp-less boolean', async () => {
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2962,6 +2976,7 @@ describe('DeviceTransport', () => {
         it('clears binary evidence when a device disappears from snapshot refresh', async () => {
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -2992,6 +3007,7 @@ describe('DeviceTransport', () => {
         it('clears binary evidence on destroy', async () => {
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
                 targets: [],
                 deviceClass: 'heater',
@@ -3027,6 +3043,7 @@ describe('DeviceTransport', () => {
             };
             evDeviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -3082,6 +3099,7 @@ describe('DeviceTransport', () => {
             };
             evDeviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -3138,6 +3156,7 @@ describe('DeviceTransport', () => {
             };
             evDeviceManager.setSnapshotForTests([{
                 id: 'ev1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
                 targets: [],
                 deviceClass: 'evcharger',
@@ -3206,6 +3225,7 @@ describe('DeviceTransport', () => {
                 };
                 evDeviceManager.setSnapshotForTests([{
                     id: 'ev1',
+                    expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Easee',
                     targets: [],
                     deviceClass: 'evcharger',
@@ -3277,6 +3297,7 @@ describe('DeviceTransport', () => {
                 };
                 evDeviceManager.setSnapshotForTests([{
                     id: 'ev1',
+                    expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Easee',
                     targets: [],
                     deviceClass: 'evcharger',
@@ -5020,7 +5041,7 @@ describe('DeviceTransport', () => {
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
                 measuredPowerKw: 2.865,
-                powerKw: 2.865,
+                expectedPowerKw: 2.865,
             }));
             expect(realtimeListener).not.toHaveBeenCalled();
         });
@@ -5434,6 +5455,7 @@ describe('DeviceTransport', () => {
         it('ignores realtime state of charge capability updates for non-EV devices', () => {
             deviceManager.setSnapshotForTests([{
                 id: 'sensor1',
+                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Battery Sensor',
                 deviceClass: 'sensor',
                 binaryControl: { on: true },
@@ -7792,6 +7814,7 @@ describe('DeviceTransport', () => {
                 const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
                 const previousSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
                     id: 'ev1',
+                    expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Zaptec',
                     deviceClass: 'evcharger',
                     capabilities: ['evcharger_charging'],
@@ -7840,6 +7863,7 @@ describe('DeviceTransport', () => {
                 const refreshObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
                 const previousSnapshot: TransportDeviceSnapshot[] = [{
                     id: 'ev1',
+                    expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Zaptec',
                     deviceClass: 'evcharger',
                     capabilities: ['target_power'],

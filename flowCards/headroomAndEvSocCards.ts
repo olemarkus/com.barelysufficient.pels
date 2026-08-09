@@ -28,7 +28,12 @@ export function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
   hasHeadroomForDeviceCond.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
     return buildDeviceAutocompleteOptions(
-      snapshot.filter((d) => d.controllable !== false && (!d.loadKw || d.loadKw <= 0)),
+      // A configured `settings.load` no longer excludes a device. This card is a
+      // READ — "is there available power for this device" — and a device that
+      // declares its load is precisely one PELS has a good estimate for. The
+      // exclusion mirrored the expected-power card's old refusal, which was
+      // removed when a manual value came to outrank the declared load.
+      snapshot.filter((d) => d.controllable !== false),
       query,
     );
   });

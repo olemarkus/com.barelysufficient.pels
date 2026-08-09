@@ -13,7 +13,7 @@
  * plan-cycle gates instead of branching on the device's discriminated-union
  * kind.
  *
- * The restore wiring funnels the observer-resolved `getRestoreDrawKw`
+ * The restore wiring funnels the observer-resolved `getHighestKnownPowerKw`
  * fallback into the producer so the producer module stays free of
  * `lib/observer/**` (enforced by the `no-device-residual-kw-to-plan`
  * dep-cruiser rule).
@@ -32,7 +32,7 @@ import {
   type ResidualKwShedSteppedDevice,
   type ResidualKwShedTemperatureTarget,
 } from '../../lib/device/deviceResidualKw';
-import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
+import { getCurrentDrawKw, getHighestKnownPowerKw } from '../../lib/observer/observedPower';
 import { resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
@@ -68,7 +68,7 @@ export function buildResidualKwForPlanDevice(params: {
     steppedLoad: toRestoreSteppedLoad(device, controlCapabilityId),
     // The snapshot's own resolved draw is the `measured` candidate in the
     // restore ladder; the raw field never travels past this seam.
-    restoreFallback: getRestoreDrawKw({ ...device, currentDrawKw }),
+    restoreFallback: getHighestKnownPowerKw({ ...device, currentDrawKw }),
   });
   return { shed, restore };
 }

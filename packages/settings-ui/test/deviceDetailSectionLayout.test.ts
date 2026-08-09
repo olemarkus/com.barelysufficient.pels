@@ -43,7 +43,7 @@ const buildDevice = (
   targets: [],
   binaryControl: { on: true },
   capabilities: ['measure_power', 'onoff'],
-  powerKw: 1.5,
+  expectedPowerKw: 1.5, expectedPowerSource: 'default',
   ...overrides,
 });
 

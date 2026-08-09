@@ -7,7 +7,7 @@ import {
 
 const buildDevice = (
   overrides: Partial<DecoratedDeviceSnapshot> = {},
-): DecoratedDeviceSnapshot => ({
+): DecoratedDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Heater',
   deviceType: 'temperature',

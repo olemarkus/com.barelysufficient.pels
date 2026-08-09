@@ -207,6 +207,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
   id: 'heater-sub',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
   commandableNow: true,
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
@@ -423,6 +424,7 @@ describe('smart-task membership and authority predicates', () => {
       } as unknown as AppContext['homeMembership'],
       latestTargetSnapshot: [{
         id: 'd1',
+        expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Hall heater',
         targets: [],
         binaryControl: { on: false },
@@ -448,6 +450,7 @@ describe('smart-task membership and authority predicates', () => {
     const ctx = ctxWithHomeId('main', false, new Set(['meter-1']));
     ctx.latestTargetSnapshot.push({
       id: 'meter-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Whole-home meter',
       managed: true,
       targets: [],
@@ -527,6 +530,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       planService: {
         getPlanDevices: () => [withBinaryDiscriminant({ currentDrawKw: 0,
           id: 'd1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Cabin heater',
           commandableNow: true,
           available: true,

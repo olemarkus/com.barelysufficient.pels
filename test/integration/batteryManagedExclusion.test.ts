@@ -40,6 +40,7 @@ const HEATER_ID = 'heater';
 const batteryInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice =>
   buildPlanInputDevice({
     id: BATTERY_ID,
+    expectedPowerKw: 1,
     name: 'Home Battery',
     deviceClass: 'battery',
     deviceType: 'onoff',
@@ -226,8 +227,8 @@ describe('home battery as managed observe-only — control-path exclusion lock',
 
   it('is excluded from controlled (managed) load accounting — counts only as background usage', () => {
     const devices = [
-      { id: BATTERY_ID, controllable: false, plannedState: 'keep' as const, currentDrawKw: 1.2 },
-      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, currentDrawKw: 1.5 },
+      { id: BATTERY_ID, controllable: false, plannedState: 'keep' as const, currentDrawKw: 1.2, expectedPowerKw: 1 },
+      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, currentDrawKw: 1.5, expectedPowerKw: 1 },
     ];
     // Only the heater's 1.5 kW is controlled usage; the battery's 1.2 kW is NOT.
     const controlledKw = sumControlledUsageKw(devices as Parameters<typeof sumControlledUsageKw>[0]);

@@ -1052,7 +1052,6 @@ describe('applyShedTemperatureHold', () => {
         shedAction: 'set_temperature',
         shedTemperature: 16,
         expectedPowerKw: 1,
-        powerKw: 1,
       }), true)],
       state,
       shedReasons: new Map(),

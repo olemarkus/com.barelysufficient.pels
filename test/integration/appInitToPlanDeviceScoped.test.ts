@@ -25,6 +25,7 @@ import type {
 const SURPLUS_DEVICE_ID = 'dump-load-1';
 const buildSurplusWillingSnapshot = (): TargetDeviceSnapshot & EvObservedProbe => ({
   id: SURPLUS_DEVICE_ID,
+  expectedPowerKw: 1,
   name: 'Dump load',
   targets: [],
   deviceClass: 'socket',
@@ -63,6 +64,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       capabilities: ['target_temperature', 'measure_temperature'],
       controlModel: 'binary_power',
       temperatureControlDisabled: true,
+      expectedPowerKw: 1, expectedPowerSource: 'default',
     } satisfies DecoratedDeviceSnapshot;
 
     const result = toPlanDevice(ctx, temperatureOnly);

@@ -154,7 +154,7 @@ const parseChargerSnapshot = (
 // was cooldown-blocked), shed behaviour turn_off.
 const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
   meta: { totalKw: 0.2, softLimitKw: 6.75, headroomKw: 6.55 },
-  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
+  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
     id: DEVICE_ID,
     name: 'Elbillader',

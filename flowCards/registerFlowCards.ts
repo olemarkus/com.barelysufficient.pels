@@ -94,7 +94,6 @@ export type FlowCardDeps = {
     stepId: string,
     planningPowerW?: number,
   ) => Promise<ReportSteppedLoadActualStepResult> | ReportSteppedLoadActualStepResult;
-  getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
     dateKey: string;
@@ -148,7 +147,6 @@ export function registerFlowCards(deps: FlowCardDeps): void {
   try {
     registerExpectedPowerCard(homey, {
       getSnapshot: () => deps.getSnapshot(),
-      getDeviceLoadSetting: (deviceId) => deps.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
       refreshSnapshot: () => deps.refreshSnapshot(),
       rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),

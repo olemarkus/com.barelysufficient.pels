@@ -35,7 +35,6 @@ import {
     isObserveOnlyRoleDevice,
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
-import { updateLastKnownPower } from '../managerRuntime';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
 import {
@@ -120,6 +119,7 @@ function resolveDeviceControlBundle(params: {
     deps: DeviceTransportParseDeps;
     overlay: DeviceCapabilityProfile['overlay'];
     capsStatus: DeviceCapabilityProfile['capsStatus'];
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
     powerEstimate: ReturnType<typeof estimatePower>;
     measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
     previousSnapshot?: TransportDeviceSnapshot;
@@ -127,12 +127,11 @@ function resolveDeviceControlBundle(params: {
     managedDecision: ManagedFilterDecision;
 }): DeviceControlBundle | null {
     const {
-        identity, deps, overlay, capsStatus, powerEstimate, measuredPower,
+        identity, deps, overlay, capsStatus, controlCapabilityId, powerEstimate, measuredPower,
         previousSnapshot, purpose, managedDecision,
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { logger, debugStructured, isPowerCapable } = deps;
-    const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities: overlay.capabilities });
     const evCharging = getEvCharging(overlay.capabilityObj);
     const evChargingState = getEvChargingState(overlay.capabilityObj);
     if (shouldDropForEvPlugStateContract({
@@ -208,10 +207,20 @@ export function assembleDeviceSnapshot(params: {
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { providers, debugStructured, resolveLatestLocalWriteMs } = deps;
+    // Resolved once here and handed to both consumers: the power estimate needs it
+    // for the EV rung of its default, and the control bundle needs it for
+    // everything else. It is a pure function of (deviceClassKey, capabilities), so
+    // a second call could not disagree — but one call is one fewer thing to keep
+    // in step.
+    const controlCapabilityId = getControlCapabilityId({
+        deviceClassKey,
+        capabilities: overlay.capabilities,
+    });
     const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState({
         device: effectiveDevice,
         deviceId,
         deviceLabel,
+        controlCapabilityId,
         capabilities: overlay.capabilities,
         capabilityObj: overlay.capabilityObj,
         livePowerWByDeviceId,
@@ -226,7 +235,7 @@ export function assembleDeviceSnapshot(params: {
         debugStructured,
     });
     const control = resolveDeviceControlBundle({
-        identity, deps, overlay, capsStatus, powerEstimate, measuredPower,
+        identity, deps, overlay, capsStatus, controlCapabilityId, powerEstimate, measuredPower,
         previousSnapshot, purpose, managedDecision,
     });
     if (!control) return null;
@@ -414,10 +423,8 @@ function buildParsedDeviceSnapshot(params: {
         nativeWriteCapabilities,
         targetPowerConfig,
         controlCapabilityId,
-        powerKw: powerEstimate.powerKw,
         expectedPowerKw: powerEstimate.expectedPowerKw,
         expectedPowerSource: powerEstimate.expectedPowerSource,
-        loadKw: powerEstimate.loadKw,
         powerCapable,
         binaryControl,
         evCharging,
@@ -453,6 +460,7 @@ function resolveDevicePowerState(params: {
     device: HomeyDeviceLike;
     deviceId: string;
     deviceLabel: string;
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
     capabilities: string[];
     capabilityObj: DeviceCapabilityMap;
     livePowerWByDeviceId: LiveDevicePowerWatts;
@@ -466,7 +474,7 @@ function resolveDevicePowerState(params: {
     powerEstimate: ReturnType<typeof estimatePower>;
 } {
     const {
-        device, deviceId, deviceLabel, capabilities, capabilityObj,
+        device, deviceId, deviceLabel, controlCapabilityId, capabilities, capabilityObj,
         livePowerWByDeviceId, now, measuredPowerResolver, powerState, logger,
     } = params;
     const currentTemperature = getCurrentTemperature(capabilityObj);
@@ -478,17 +486,11 @@ function resolveDevicePowerState(params: {
         device,
         deviceId,
         deviceLabel,
+        controlCapabilityId,
         measuredPowerKw: measuredPower.measuredPowerKw,
         now,
         state: powerState,
         logger,
-        updateLastKnownPower: (id, kw, label) => updateLastKnownPower({
-            state: powerState,
-            logger,
-            deviceId: id,
-            measuredKw: kw,
-            deviceLabel: label,
-        }),
     });
     return {
         currentTemperature,

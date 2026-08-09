@@ -1194,14 +1194,18 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     expect(planDevice.expectedPowerKw).toBe(0.7);
   });
 
-  it('leaves expectedPowerKw undefined when all configured power fields are non-finite', () => {
+  // The producer cannot build this device: every rung of `estimatePower` is
+  // finiteness-gated, so `expectedPowerKw` is always a finite positive number and
+  // "no usable power" is not a state the plan layer can observe. What is still
+  // worth pinning is that junk arriving here anyway resolves to 0 rather than
+  // propagating — a raw Infinity would poison every headroom sum it reached.
+  it('resolves non-finite power fields to 0 rather than propagating them', () => {
     const device = inputDevice({
       id: 'dev-1',
       name: 'Broken heater',
       currentDrawKw: Number.NaN,
       expectedPowerKw: Number.POSITIVE_INFINITY,
       planningPowerKw: Number.NaN,
-      powerKw: Number.POSITIVE_INFINITY,
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1213,7 +1217,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       deps: buildTurnOffDeps(),
     });
 
-    expect(planDevice.expectedPowerKw).toBeUndefined();
+    expect(planDevice.expectedPowerKw).toBe(0);
   });
 
   describe('deferred temperature objective override', () => {

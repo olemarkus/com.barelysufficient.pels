@@ -64,7 +64,7 @@ const offExemptHeater = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) 
   currentState: 'off',
   plannedState: 'keep',
   controllable: true,
-  powerKw: 1,
+  expectedPowerKw: 1,
   budgetExempt: true,
   ...overrides,
 });
@@ -77,7 +77,7 @@ const offThermostat = () => buildPlanDevice({
   plannedState: 'shed',
   reason: { code: PLAN_REASON_CODES.dailyBudget },
   controllable: true,
-  powerKw: 1,
+  expectedPowerKw: 1,
 });
 
 const runLane = (params: {
@@ -304,7 +304,7 @@ const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDe
   controlCapabilityId: 'onoff',
   binaryControl: { on: params.on },
   currentDrawKw: params.on ? 1.25 : 0,
-  expectedPowerKw: 1.25,
+  expectedPowerKw: 1.25, expectedPowerSource: 'default',
   budgetExempt: params.exempt,
   lastFreshDataMs: Date.now(),
 }) as PlanInputDevice;
@@ -318,7 +318,7 @@ const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscrim
   controlCapabilityId: 'onoff',
   binaryControl: { on },
   currentDrawKw: on ? 1.0 : 0,
-  expectedPowerKw: 1.0,
+  expectedPowerKw: 1.0, expectedPowerSource: 'default',
   lastFreshDataMs: Date.now(),
 }) as PlanInputDevice;
 

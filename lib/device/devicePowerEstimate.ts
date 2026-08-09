@@ -1,9 +1,26 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('device/power-estimate');
+
+/**
+ * What PELS assumes a device draws while running when no source describes it.
+ *
+ * This is an answer, not a placeholder. `expectedPowerKw` is REQUIRED on every
+ * contract it crosses, because every consumer — restore admission, the startup
+ * reserve, smart-task step sizing, the card's `≈ … kW when active` line — needs a
+ * number to size against, and each one used to invent its own when the field was
+ * absent. Resolving it once here is what lets all of them stop.
+ *
+ * `EV_DEFAULT_EXPECTED_POWER_KW` is the typical single-phase charging start. It
+ * lived in `getRestoreDrawKw` as a restore-axis fallback until this axis stopped
+ * being optional; with expected power always positive that fallback was
+ * unreachable, so the value moved to the rung that actually decides it.
+ */
+const DEFAULT_EXPECTED_POWER_KW = 1;
+const EV_DEFAULT_EXPECTED_POWER_KW = 1.38;
 
 export type PowerEstimateState = {
   expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
@@ -13,9 +30,8 @@ export type PowerEstimateState = {
 };
 
 export type PowerEstimateResult = {
-  powerKw?: number;
-  expectedPowerKw?: number;
-  expectedPowerSource?: TargetDeviceSnapshot['expectedPowerSource'];
+  expectedPowerKw: number;
+  expectedPowerSource: ExpectedPowerSource;
   measuredPowerKw?: number;
   loadKw?: number;
   hasEnergyEstimate?: boolean;
@@ -25,58 +41,93 @@ export function estimatePower(params: {
   device: HomeyDeviceLike;
   deviceId: string;
   deviceLabel: string;
+  controlCapabilityId?: BinaryControlCapabilityId;
   measuredPowerKw?: number;
   now: number;
   state: Required<PowerEstimateState>;
   logger: Logger;
-  updateLastKnownPower: (deviceId: string, measuredKw: number, deviceLabel: string) => void;
 }): PowerEstimateResult {
   const {
     device,
     deviceId,
     deviceLabel,
+    controlCapabilityId,
     measuredPowerKw,
     now,
     state,
     logger,
-    updateLastKnownPower,
   } = params;
 
   const loadW = getLoadSettingWatts(device);
-  const expectedOverride = state.expectedPowerKwOverrides[deviceId];
-  const energyEstimateW = getHomeyEnergyEstimateWatts(device);
+  const result: PowerEstimateResult = {
+    ...resolveExpectedPower({
+      override: state.expectedPowerKwOverrides[deviceId],
+      loadW,
+      peakKw: state.lastKnownPowerKw[deviceId],
+      energyEstimateW: getHomeyEnergyEstimateWatts(device),
+      controlCapabilityId,
+    }),
+    measuredPowerKw,
+    ...(loadW === null ? {} : { loadKw: loadW / 1000 }),
+  };
 
-  const result = loadW !== null
-    ? (() => {
-      return {
-        ...getPowerFromLoad({
-          deviceId,
-          deviceLabel,
-          loadW,
-          expectedOverride,
-          updateLastKnownPower,
-        }),
-        measuredPowerKw,
-      };
-    })()
-    : getPowerFromMeasurement({
-      deviceId,
-      expectedOverride,
-      energyEstimateW,
-      state,
-      measuredPowerKw,
-    });
-
-  emitEstimateDecisionLog({
-    deviceId,
-    deviceLabel,
-    expectedOverride,
-    result,
-    state,
-    logger,
-    now,
-  });
+  emitEstimateDecisionLog({ deviceId, deviceLabel, result, state, logger, now });
   return result;
+}
+
+/**
+ * The one expected-power ladder.
+ *
+ * Order is the agreed precedence, and it is deliberately not a max: a manual
+ * value is an INSTRUCTION and outranks everything, including a higher
+ * measurement. Under-declaring is safe on the axis that matters, because restore
+ * sizing takes `max(currentDraw, expected, planning)` — a device really pulling
+ * more than its declared figure still reserves what it is drawing.
+ *
+ * `settings.load` sits above the learned peak by decision: a declared load is
+ * what the owner's device says about itself, and the escape hatch for a wrong one
+ * is the manual override on the rung above.
+ *
+ * There is no branch split. The load rung used to short-circuit the whole ladder,
+ * so a metered device declaring a load never consulted its own meter and no
+ * single order existed to agree on.
+ */
+function resolveExpectedPower(params: {
+  override?: { kw: number; ts: number };
+  loadW: number | null;
+  peakKw?: number;
+  energyEstimateW: number | null;
+  controlCapabilityId?: BinaryControlCapabilityId;
+}): Pick<PowerEstimateResult, 'expectedPowerKw' | 'expectedPowerSource' | 'hasEnergyEstimate'> {
+  const { override, loadW, peakKw, energyEstimateW, controlCapabilityId } = params;
+
+  // Gated like every other rung. The two writers of the override map validate
+  // before storing, so this is defence in depth rather than a known hole — but
+  // this contract's whole promise is that `expectedPowerKw` is finite and
+  // positive, and a rung that forwards an external number unchecked leaves that
+  // promise resting on writers it does not control. A junk override falls
+  // through to the next rung instead of resolving.
+  const overrideKw = toFiniteNumber(override?.kw);
+  if (overrideKw !== null && overrideKw > 0) {
+    return { expectedPowerKw: overrideKw, expectedPowerSource: 'manual' };
+  }
+  if (loadW !== null) return { expectedPowerKw: loadW / 1000, expectedPowerSource: 'load-setting' };
+  if (peakKw !== undefined && peakKw > 0) {
+    return { expectedPowerKw: peakKw, expectedPowerSource: 'measured-peak' };
+  }
+  if (energyEstimateW !== null) {
+    return {
+      expectedPowerKw: energyEstimateW / 1000,
+      expectedPowerSource: 'homey-energy',
+      hasEnergyEstimate: true,
+    };
+  }
+  return {
+    expectedPowerKw: controlCapabilityId === 'evcharger_charging'
+      ? EV_DEFAULT_EXPECTED_POWER_KW
+      : DEFAULT_EXPECTED_POWER_KW,
+    expectedPowerSource: 'default',
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -160,107 +211,9 @@ function getLoadSettingWatts(device: HomeyDeviceLike): number | null {
   return loadW !== null && loadW > 0 ? loadW : null;
 }
 
-function getPowerFromLoad(params: {
-  deviceId: string;
-  deviceLabel: string;
-  loadW: number;
-  expectedOverride?: { kw: number; ts: number };
-  updateLastKnownPower: (deviceId: string, measuredKw: number, deviceLabel: string) => void;
-}): PowerEstimateResult {
-  const { deviceId, deviceLabel, loadW, expectedOverride, updateLastKnownPower } = params;
-  const loadKw = loadW / 1000;
-  updateLastKnownPower(deviceId, loadKw, deviceLabel);
-
-  if (expectedOverride) {
-    return {
-      powerKw: expectedOverride.kw,
-      expectedPowerKw: expectedOverride.kw,
-      expectedPowerSource: 'manual',
-      loadKw,
-    };
-  }
-  return {
-    powerKw: loadKw,
-    expectedPowerKw: loadKw,
-    expectedPowerSource: 'load-setting',
-    loadKw,
-  };
-}
-
-function getPowerFromMeasurement(params: {
-  deviceId: string;
-  expectedOverride?: { kw: number; ts: number };
-  energyEstimateW: number | null;
-  state: Required<PowerEstimateState>;
-  measuredPowerKw?: number;
-}): PowerEstimateResult {
-  const {
-    deviceId,
-    expectedOverride,
-    energyEstimateW,
-    state,
-    measuredPowerKw,
-  } = params;
-  const peak = state.lastKnownPowerKw[deviceId];
-
-  if (expectedOverride) {
-    return resolveOverrideEstimate({
-      expectedOverride,
-      measuredKw: measuredPowerKw,
-    });
-  }
-  if (peak) {
-    return {
-      powerKw: peak,
-      expectedPowerKw: peak,
-      expectedPowerSource: 'measured-peak',
-      measuredPowerKw,
-    };
-  }
-  if (energyEstimateW !== null) {
-    const energyEstimateKw = energyEstimateW / 1000;
-    return {
-      powerKw: energyEstimateKw,
-      expectedPowerKw: energyEstimateKw,
-      expectedPowerSource: 'homey-energy',
-      measuredPowerKw,
-      hasEnergyEstimate: true,
-    };
-  }
-  return {
-    powerKw: 1,
-    expectedPowerKw: undefined,
-    expectedPowerSource: 'default',
-    measuredPowerKw,
-  };
-}
-
-function resolveOverrideEstimate(params: {
-  expectedOverride: { kw: number; ts: number };
-  measuredKw?: number;
-}): PowerEstimateResult {
-  const { expectedOverride, measuredKw } = params;
-  const measuredValue = measuredKw ?? 0;
-  if (measuredKw !== undefined && measuredValue > expectedOverride.kw) {
-    return {
-      powerKw: measuredValue,
-      expectedPowerKw: measuredValue,
-      expectedPowerSource: 'measured-peak',
-      measuredPowerKw: measuredKw,
-    };
-  }
-  return {
-    powerKw: expectedOverride.kw,
-    expectedPowerKw: expectedOverride.kw,
-    expectedPowerSource: 'manual',
-    measuredPowerKw: measuredKw,
-  };
-}
-
 function emitEstimateDecisionLog(params: {
   deviceId: string;
   deviceLabel: string;
-  expectedOverride?: { kw: number; ts: number };
   result: PowerEstimateResult;
   state: Required<PowerEstimateState>;
   logger: Logger;
@@ -274,7 +227,6 @@ function emitEstimateDecisionLog(params: {
     measuredPowerKw: decision.measuredPowerKw,
     loadKw: decision.loadKw,
     peakMeasuredKw: decision.peakMeasuredKw,
-    fallbackReason: decision.fallbackReason,
     hasEnergyEstimate: result.hasEnergyEstimate === true,
   });
   if (!shouldEmitOnChange({
@@ -290,37 +242,37 @@ function emitEstimateDecisionLog(params: {
     deviceId,
     deviceName: deviceLabel,
     source: decision.source,
-    estimatedKw: decision.estimatedKw ?? undefined,
+    estimatedKw: decision.estimatedKw,
     measuredPowerKw: decision.measuredPowerKw ?? undefined,
     loadKw: decision.loadKw ?? undefined,
     peakMeasuredKw: decision.peakMeasuredKw ?? undefined,
-    fallbackReason: decision.fallbackReason ?? undefined,
     hasEnergyEstimate: result.hasEnergyEstimate === true ? true : undefined,
   });
 }
 
+// `source: 'default'` is the whole fallback story now, so the separate
+// `fallbackReason` field is gone: `default_1kw` restated the source (and would
+// have lied about an EV charger's 1.38 kW), and `override_exceeded` described a
+// promotion that no longer exists — a measurement above a manual override does
+// not supersede it.
 function buildEstimateDecisionLogFields(params: {
   deviceId: string;
-  expectedOverride?: { kw: number; ts: number };
   result: PowerEstimateResult;
   state: Required<PowerEstimateState>;
 }): {
-  source: PowerEstimateResult['expectedPowerSource'] | null;
-  estimatedKw: number | null;
+  source: ExpectedPowerSource;
+  estimatedKw: number;
   measuredPowerKw: number | null;
   loadKw: number | null;
   peakMeasuredKw: number | null;
-  fallbackReason: 'default_1kw' | 'override_exceeded' | null;
 } {
-  const { deviceId, expectedOverride, result, state } = params;
-  const source = result.expectedPowerSource ?? null;
+  const { deviceId, result, state } = params;
   return {
-    source,
-    estimatedKw: roundMaybeKw(result.powerKw ?? result.expectedPowerKw),
+    source: result.expectedPowerSource,
+    estimatedKw: roundLogValue(result.expectedPowerKw, 2),
     measuredPowerKw: roundMaybeKw(result.measuredPowerKw),
     loadKw: roundMaybeKw(result.loadKw),
-    peakMeasuredKw: resolvePeakMeasuredKw(source, deviceId, state),
-    fallbackReason: resolveFallbackReason(source, expectedOverride),
+    peakMeasuredKw: resolvePeakMeasuredKw(result.expectedPowerSource, deviceId, state),
   };
 }
 
@@ -329,19 +281,10 @@ function roundMaybeKw(value: number | undefined): number | null {
 }
 
 function resolvePeakMeasuredKw(
-  source: PowerEstimateResult['expectedPowerSource'] | null,
+  source: ExpectedPowerSource,
   deviceId: string,
   state: Required<PowerEstimateState>,
 ): number | null {
   if (source !== 'measured-peak') return null;
   return roundMaybeKw(state.lastKnownPowerKw[deviceId]);
-}
-
-function resolveFallbackReason(
-  source: PowerEstimateResult['expectedPowerSource'] | null,
-  expectedOverride?: { kw: number; ts: number },
-): 'default_1kw' | 'override_exceeded' | null {
-  if (source === 'default') return 'default_1kw';
-  if (source === 'measured-peak' && expectedOverride !== undefined) return 'override_exceeded';
-  return null;
 }

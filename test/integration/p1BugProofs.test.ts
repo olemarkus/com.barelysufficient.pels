@@ -109,7 +109,6 @@ describe('P1 bug proofs', () => {
       currentDrawKw: 0,
       expectedPowerKw: 2,
       planningPowerKw: 4,
-      powerKw: 1,
     });
 
     const highestKnown = getHighestKnownPowerKw(device)?.kw ?? 0;
@@ -187,6 +186,7 @@ describe('P1 bug proofs', () => {
       devices: [
         withBinaryDiscriminant({
           id: 'shed',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Shed',
           commandableNow: true,
           targets: [],
@@ -199,6 +199,7 @@ describe('P1 bug proofs', () => {
         withBinaryDiscriminant({
           currentDrawKw: 1,
           id: 'stale',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Stale',
           commandableNow: true,
           targets: [],

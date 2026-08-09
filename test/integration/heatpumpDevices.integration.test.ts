@@ -106,7 +106,7 @@ describe('Heatpump device integration', () => {
         expect(entry?.deviceType).toBe('temperature');
         expect(entry?.deviceClass).toBe('heatpump');
         expect(entry?.binaryControl?.on).toBe(true);
-        expect(entry?.powerKw).toBeCloseTo(2.0, 2);
+        expect(entry?.expectedPowerKw).toBeCloseTo(2.0, 2);
     });
 
     it('heatpump device has target_temperature in targets', async () => {

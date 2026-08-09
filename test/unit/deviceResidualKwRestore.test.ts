@@ -17,9 +17,9 @@
  *   - stepped + observed-off (or no positive planning kW) with non-zero
  *     restore step → `'stepped'`, value driven by the lowest-active step.
  *   - stepped + no usable step / no positive planning kW → falls through to
- *     the wiring layer's `getRestoreDrawKw` fallback (`source` ∈ `{measured,
+ *     the wiring layer's `getHighestKnownPowerKw` result (`source` ∈ `{measured,
  *     expected, planning, configured, fallback}`).
- *   - non-stepped → falls through to the wiring layer's `getRestoreDrawKw`
+ *   - non-stepped → falls through to the wiring layer's `getHighestKnownPowerKw`
  *     fallback directly.
  */
 import { describe, expect, it } from 'vitest';
@@ -44,7 +44,12 @@ const allZeroProfile: SteppedLoadProfile = {
   ],
 };
 
-const fallback = (kw: number, source: 'measured' | 'expected' | 'planning' | 'configured' | 'fallback' = 'fallback') => ({
+// `'configured'` and `'fallback'` are gone from `RestorePowerSource`. The first
+// named `powerKw`; the second named "no source carried a positive number", which
+// `expectedPowerKw` being required and always positive makes unreachable — the
+// producer now resolves the EV 1.38 kW / generic 1 kW default on the expected
+// rung itself, so these arrive labelled `'expected'`.
+const fallback = (kw: number, source: 'measured' | 'expected' | 'planning' = 'expected') => ({
   kw,
   source,
 });
@@ -56,8 +61,8 @@ describe('resolveResidualKwRestore — non-stepped device', () => {
   });
 
   it('preserves the EV / generic fallback for a device with no observed draw', () => {
-    const result = resolveResidualKwRestore({ restoreFallback: fallback(1.38, 'fallback') });
-    expect(result).toEqual({ kw: 1.38, source: 'fallback' });
+    const result = resolveResidualKwRestore({ restoreFallback: fallback(1.38, 'expected') });
+    expect(result).toEqual({ kw: 1.38, source: 'expected' });
   });
 });
 
@@ -126,9 +131,9 @@ describe('resolveResidualKwRestore — stepped device with no usable step', () =
         profile: allZeroProfile,
         currentStateIsOff: true,
       },
-      restoreFallback: fallback(1, 'fallback'),
+      restoreFallback: fallback(1, 'expected'),
     });
-    expect(result).toEqual({ kw: 1, source: 'fallback' });
+    expect(result).toEqual({ kw: 1, source: 'expected' });
   });
 
   it('falls through to restoreFallback when stepped+observed-off and planningPowerKw is missing AND restore step is zero', () => {
@@ -138,9 +143,9 @@ describe('resolveResidualKwRestore — stepped device with no usable step', () =
         currentStateIsOff: false,
         planningPowerKw: 0,
       },
-      restoreFallback: fallback(1.38, 'fallback'),
+      restoreFallback: fallback(1.38, 'expected'),
     });
-    expect(result).toEqual({ kw: 1.38, source: 'fallback' });
+    expect(result).toEqual({ kw: 1.38, source: 'expected' });
   });
 });
 

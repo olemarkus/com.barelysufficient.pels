@@ -271,8 +271,8 @@ describe('plan restore device helpers', () => {
     }))).toBeNull();
 
     const deviceMap = new Map<string, DevicePlanDevice>([
-      ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', powerKw: 1.1 })],
-      ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, powerKw: 2.2 })],
+      ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', expectedPowerKw: 1.1 })],
+      ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, expectedPowerKw: 2.2 })],
       ['ev1', makeDevice({
         id: 'ev1',
         name: 'EV 1',
@@ -305,7 +305,7 @@ describe('plan restore device helpers', () => {
       reason: fixtureDeviceReason('inactive (charger is unplugged)'),
     }));
     setDevice.mockClear();
-    deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, powerKw: 2.2 }));
+    deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, expectedPowerKw: 2.2 }));
 
     markOffDevicesStayOff({
       deviceMap,
@@ -327,8 +327,8 @@ describe('plan restore device helpers', () => {
 
   it('skips devices excluded by deviceFilter and defaults to marking every candidate', () => {
     const deviceMap = new Map<string, DevicePlanDevice>([
-      ['exempt', makeDevice({ id: 'exempt', name: 'Exempt', budgetExempt: true, powerKw: 1 })],
-      ['plain', makeDevice({ id: 'plain', name: 'Plain', powerKw: 1 })],
+      ['exempt', makeDevice({ id: 'exempt', name: 'Exempt', budgetExempt: true, expectedPowerKw: 1 })],
+      ['plain', makeDevice({ id: 'plain', name: 'Plain', expectedPowerKw: 1 })],
     ]);
     const setDevice = vi.fn();
     const timing = {

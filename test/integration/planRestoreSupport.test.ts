@@ -18,7 +18,7 @@ describe('reserveHeadroomForPendingRestores', () => {
         ...buildPlanDevice({
           id: 'dev-1',
           name: 'Heater',
-          powerKw: 2,
+          expectedPowerKw: 2,
           measuredPowerKw: 0,
         }),
         binaryControl: { on: true },

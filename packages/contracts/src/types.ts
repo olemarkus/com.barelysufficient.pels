@@ -27,17 +27,19 @@ export type PlannedDeviceState = 'shed' | 'keep' | 'inactive';
  * Provenance label for the kW used as a device's restore reservation. The
  * canonical home for this union — observer, producer, and plan-layer types
  * all import it from here so a new label can be added in one place. See
- * `lib/observer/observedPower.getRestoreDrawKw`,
+ * `lib/observer/observedPower.getHighestKnownPowerKw`,
  * `lib/device/deviceResidualKw.resolveResidualKwRestore`, and
  * `PlanInputDevice.residualKw.restore.source` for the call sites.
+ *
+ * `'configured'` and `'fallback'` are gone. The first labelled `powerKw`, which
+ * no longer exists; the second labelled "no source carried a positive number",
+ * which `expectedPowerKw` being required and always positive makes unreachable.
  */
 export type RestorePowerSource =
   | 'measured'
   | 'expected'
   | 'planning'
-  | 'configured'
-  | 'stepped'
-  | 'fallback';
+  | 'stepped';
 
 export type SteppedLoadStep = {
   id: string;
@@ -226,6 +228,21 @@ export type DeviceStateOfChargeSnapshot = {
  */
 export type BinaryControlCapabilityId = string;
 
+/**
+ * Which rung of the expected-power ladder produced `expectedPowerKw`, in
+ * precedence order. Diagnostic and explanatory only: it tells a log reader and
+ * the device page where the figure came from. It is NOT a confidence flag —
+ * `expectedPowerKw` is always a usable number, and a consumer that branches here
+ * to decide whether to trust it has reintroduced the optional this closed set
+ * exists to retire.
+ */
+export type ExpectedPowerSource =
+    | 'manual'
+    | 'load-setting'
+    | 'measured-peak'
+    | 'homey-energy'
+    | 'default';
+
 export type BinaryControlObservation = {
     valid: true;
     capabilityId: BinaryControlCapabilityId;
@@ -295,14 +312,49 @@ export type DeviceDescriptor = {
     managed?: boolean;
     budgetExempt?: boolean;
     priority?: number;
-    // Nameplate / configured power hints — a planning input, NOT measured
-    // telemetry (`measuredPowerKw` is the observed value). Kept on the
-    // descriptor per the lib/device/AGENTS.md invariant that estimated power stays distinct
-    // from observation.
-    powerKw?: number;
-    expectedPowerKw?: number;
-    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
-    loadKw?: number;
+    /**
+     * What this device draws while running — a planning input, NOT measured
+     * telemetry (`measuredPowerKw` is the observed value). Kept on the descriptor
+     * per the lib/device/AGENTS.md invariant that estimated power stays distinct
+     * from observation.
+     *
+     * REQUIRED — never null, never undefined, never absent. `estimatePower`
+     * resolves one number from the whole ladder (manual › load-setting ›
+     * measured-peak › homey-energy › default), so absence is not a state any
+     * consumer can observe. Trust it: do not substitute for it, do not fall back
+     * past it, and do not branch on `expectedPowerSource` to decide whether to
+     * believe it. The source is for diagnostics and for telling the owner where
+     * the figure came from — never for a control decision.
+     *
+     * There is deliberately no second `powerKw` field. It carried the same number
+     * on every rung but the last, where it laundered an invented 1 kW past the
+     * field that had honestly declined to guess — and every consumer's
+     * `expectedPowerKw ?? powerKw` tail then picked it up.
+     */
+    expectedPowerKw: number;
+    /**
+     * Which rung produced `expectedPowerKw`. REQUIRED — there is always a source.
+     * Every branch of the ladder returns one, and `PowerEstimateResult` has
+     * always said so; leaving it optional here made the contract disagree with
+     * the producer that fills it.
+     *
+     * It was optional to spare fixtures from stating it, defended as "no
+     * consumer may branch on it, so absence is harmless". That conflates two
+     * different properties: a field can be REQUIRED and still forbidden as a
+     * control input. Optionality was never what enforced that rule — this
+     * docblock is.
+     *
+     * Read it to tell the owner where the current figure came from (the device
+     * page does, and that is what makes an override decision informed). Never
+     * branch on it to decide behaviour.
+     */
+    expectedPowerSource: ExpectedPowerSource;
+    // No `loadKw`. `settings.load` is a SETTINGS READ, and one the producer has
+    // already consumed: if it wins the ladder it is published as
+    // `expectedPowerKw` with `expectedPowerSource: 'load-setting'`, and if it
+    // loses, a consumer reading it would be reading a figure PELS deliberately
+    // did not choose. Same defect as the deleted `powerKw` — a second answer to
+    // a question this contract answers once.
 };
 
 /**

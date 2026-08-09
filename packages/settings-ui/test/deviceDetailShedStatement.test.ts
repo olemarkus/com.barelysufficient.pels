@@ -16,7 +16,11 @@ const buildDevice = (
   targets: [],
   binaryControl: { on: true },
   capabilities: ['measure_power', 'onoff'],
-  powerKw: 1.5,
+  // The producer stamps this for every device it parses; `supportsPowerDevice`
+  // reads it and no longer infers power capability from `expectedPowerKw`, which
+  // is now present on every snapshot and so says nothing about capability.
+  powerCapable: true,
+  expectedPowerKw: 1.5, expectedPowerSource: 'default',
   ...overrides,
 });
 
@@ -183,7 +187,10 @@ describe('limiting card statement vs radiogroup', () => {
       deviceClass: 'sensor',
       deviceType: 'onoff',
       capabilities: [],
-      powerKw: undefined,
+      // `powerCapable: false` is the producer's own answer, and the only one that
+      // means "no power support" now — `expectedPowerKw` is resolved for every
+      // device, so its presence stopped carrying that signal.
+      powerCapable: false,
     });
     state.managedMap = { [device.id]: true };
 

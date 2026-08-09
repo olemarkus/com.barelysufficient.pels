@@ -88,7 +88,6 @@ describe('VThermo device integration', () => {
     expect(entry).toBeDefined();
     expect(entry?.deviceClass).toBe('thermostat');
     expect(entry?.deviceType).toBe('temperature');
-    expect(entry?.loadKw).toBeUndefined();
     expect(entry?.powerCapable).toBe(false);
 
     const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
