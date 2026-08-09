@@ -667,6 +667,121 @@ describe('native EV wiring shim', () => {
     expect(disconnectedOverlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_out');
   });
 
+  // Zaptec reports `charge_mode` as either the operation-mode name or its
+  // display label. Both spellings of one state must resolve identically —
+  // `Connected_Finishing` and `Charging finished` once disagreed
+  // (`plugged_in_paused` vs `plugged_in`), which was invisible while both were
+  // commanded the same way and became load-bearing the moment only
+  // `plugged_in` got probed.
+  it.each([
+    ['Connected_Charging', 'Charging', 'plugged_in_charging'],
+    ['Connected_Requesting', 'Connecting to car', 'plugged_in_paused'],
+    ['Connected_Finishing', 'Charging finished', 'plugged_in'],
+  ])('resolves Zaptec %s and %s alike, to %s', (operationMode, label, expected) => {
+    const device = buildZaptecDevice();
+    const resolveState = (chargeMode: string) => {
+      const capabilityObj = {
+        ...device.capabilitiesObj,
+        charge_mode: { value: chargeMode },
+        'alarm_generic.car_connected': { value: true },
+      };
+      return applyNativeEvWiringOverlay({
+        device: { ...device, capabilitiesObj: capabilityObj },
+        capabilities: [...device.capabilities!],
+        capabilityObj,
+      }).capabilityObj.evcharger_charging_state?.value;
+    };
+
+    expect(resolveState(operationMode)).toBe(expected);
+    expect(resolveState(label)).toBe(expected);
+  });
+
+  // `charge_mode` is change-only push, so a car parked at its own charge limit
+  // never re-sends it. A `car_connected` event arriving on top must therefore
+  // not overwrite the finished session with a resumable-looking one — that
+  // reclassification is invisible until the :25/:55 snapshot, and it moves a
+  // full car into the lane that is commanded without a probe.
+  it('does not let a car_connected event reclassify a finished Zaptec session', () => {
+    const normalized = normalizeNativeEvCapabilityUpdate({
+      snapshot: {
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationRequired: true,
+          activationEnabled: true,
+        },
+        binaryControl: { on: true },
+        evChargingState: 'plugged_in',
+      },
+      capabilityId: 'alarm_generic.car_connected',
+      value: true,
+    });
+
+    expect(normalized).toEqual([{
+      capabilityId: 'evcharger_charging_state',
+      value: 'plugged_in',
+    }]);
+  });
+
+  it('promotes a disconnected Zaptec to the probed state on car_connected, not to paused', () => {
+    const normalized = normalizeNativeEvCapabilityUpdate({
+      snapshot: {
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationRequired: true,
+          activationEnabled: true,
+        },
+        binaryControl: { on: false },
+        evChargingState: 'plugged_out',
+      },
+      capabilityId: 'alarm_generic.car_connected',
+      value: true,
+    });
+
+    expect(normalized).toEqual([{
+      capabilityId: 'evcharger_charging_state',
+      value: 'plugged_in',
+    }]);
+  });
+
+  // Same rule at the snapshot seam: a car_connected bit with no usable
+  // charge_mode says a car is attached and nothing more.
+  it('falls back to the probed state when charge_mode is unrecognised', () => {
+    const device = buildZaptecDevice();
+    const capabilityObj = {
+      ...device.capabilitiesObj,
+      charge_mode: { value: 'Some_Unmapped_Firmware_Mode' },
+      'alarm_generic.car_connected': { value: true },
+    };
+    const overlay = applyNativeEvWiringOverlay({
+      device: { ...device, capabilitiesObj: capabilityObj },
+      capabilities: [...device.capabilities!],
+      capabilityObj,
+    });
+
+    expect(overlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in');
+  });
+
+  // A finished session is the state a car at its own charge limit parks in, and
+  // it must land in the probed bucket: PELS cannot tell it apart from an Easee
+  // awaiting authorization without trying, and only the probe's failure gives
+  // it a reason to stop trying.
+  it('puts a finished Zaptec session in the probed plugged_in state, not paused', () => {
+    const device = buildZaptecDevice();
+    const capabilityObj = {
+      ...device.capabilitiesObj,
+      charging_button: { value: false, setable: true },
+      charge_mode: { value: 'Connected_Finishing' },
+      'alarm_generic.car_connected': { value: true },
+    };
+    const overlay = applyNativeEvWiringOverlay({
+      device: { ...device, capabilitiesObj: capabilityObj },
+      capabilities: [...device.capabilities!],
+      capabilityObj,
+    });
+
+    expect(overlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in');
+  });
+
   it('normalizes Zaptec proprietary observations into canonical EV capabilities', () => {
     const device = buildZaptecDevice({
       capabilitiesObj: {

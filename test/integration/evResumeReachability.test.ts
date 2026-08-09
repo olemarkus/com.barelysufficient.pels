@@ -66,6 +66,64 @@ describe('EV resume reachability', () => {
     expect(project(true, true)).toBe(true);
   });
 
+  // A rejected write says PELS could not reach the device, which no plug-state
+  // makes untrue. The dispatcher clears the pending command and `recordFailure`
+  // asks for a rebuild, so without a gate that rebuild re-issues the same
+  // failing write every cycle — the ladder skipped entirely on exactly the
+  // states that are no longer probed.
+  it('backs off a rejected write even for a charger that is not probed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const probe = createEvResumeReachability({
+      requestRebuild: vi.fn(),
+      scheduleRebuild: vi.fn(),
+      clearScheduledRebuild: vi.fn(),
+    });
+    // `plugged_in_paused` — commandable, but never eligible for the probe.
+    const project = () => probe.project({
+      deviceId: 'charger-1',
+      eligibleForStartProbe: false,
+      activityObserved: false,
+      available: true,
+      base: true,
+    });
+
+    expect(project()).toBe(true);
+    probe.lifecycle.onDispatchFailed?.(RESUME);
+    expect(project()).toBe(false);
+
+    vi.advanceTimersByTime(15 * 60 * 1000);
+    expect(project()).toBe(true);
+  });
+
+  // The other half of the same split: an ACCEPTED write that never produced
+  // charging evidence says only that this plug-state was ambiguous. A charger
+  // that has left the probed state is not waiting on that answer, so the
+  // timeout must not strand it — that stranding is the bug the split fixes.
+  it('does not gate a non-probed charger on an accepted write that never confirmed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const probe = createEvResumeReachability({
+      requestRebuild: vi.fn(),
+      scheduleRebuild: vi.fn(),
+      clearScheduledRebuild: vi.fn(),
+    });
+    const project = (eligibleForStartProbe: boolean) => probe.project({
+      deviceId: 'charger-1',
+      eligibleForStartProbe,
+      activityObserved: false,
+      available: true,
+      base: true,
+    });
+
+    project(true);
+    probe.lifecycle.onTimedOut?.(RESUME);
+    expect(project(true)).toBe(false);
+    // The car starts asking for current again: the charger leaves `plugged_in`,
+    // and the probe's verdict no longer applies to it.
+    expect(project(false)).toBe(true);
+  });
+
   it('ignores declined writes that were never requested', () => {
     const requestRebuild = vi.fn();
     const scheduleRebuild = vi.fn();
