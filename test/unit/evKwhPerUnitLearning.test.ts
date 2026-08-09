@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   OBJECTIVE_PROFILE_MIN_INTERVAL_MS,
   updateObjectiveProfilesFromSnapshot,
@@ -32,11 +33,7 @@ const evDevice = (
   deviceClass: 'evcharger',
   binaryControl: { on: true },
   measuredPowerKw: 7,
-  stateOfCharge: {
-    percent: 40,
-    status: 'fresh',
-    observedAtMs: startMs,
-  },
+  stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs }),
   ...overrides,
 });
 
@@ -55,11 +52,7 @@ const ingestEvSample = (params: {
       evDevice({
         ...(deviceId ? { id: deviceId } : {}),
         ...(measuredPowerKw !== undefined ? { measuredPowerKw } : {}),
-        stateOfCharge: {
-          percent,
-          status: 'fresh',
-          observedAtMs: atMs,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent, observedAtMs: atMs }),
       }),
     ],
     nowMs: atMs,

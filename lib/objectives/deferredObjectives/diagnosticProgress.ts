@@ -64,16 +64,22 @@ const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress =>
   if (isEvObserved(device) && isEvSessionInactive(device.evChargingState)) {
     return { currentPercent: null, reasonCode: 'objective_invalid_session' };
   }
-  const stateOfCharge = device.stateOfCharge;
-  if (!stateOfCharge || stateOfCharge.status !== 'fresh' || !Number.isFinite(stateOfCharge.percent)) {
+  const level = device.stateOfCharge?.level;
+  if (level === undefined) {
+    return { currentPercent: null, reasonCode: 'objective_progress_stale' };
+  }
+  if (level.kind !== 'known') {
+    // The percent is NOT carried through. Reporting a level the producer does
+    // not stand behind, alongside the reason it does not, is what let a cached
+    // "On track" survive on a device whose reading had gone.
     return {
-      currentPercent: typeof stateOfCharge?.percent === 'number' && Number.isFinite(stateOfCharge.percent)
-        ? stateOfCharge.percent
-        : null,
-      reasonCode: stateOfCharge?.status === 'invalid' ? 'objective_invalid_session' : 'objective_progress_stale',
+      currentPercent: null,
+      reasonCode: level.reasonCode === 'not_connected'
+        ? 'objective_invalid_session'
+        : 'objective_progress_stale',
     };
   }
-  return { currentPercent: stateOfCharge.percent, reasonCode: null };
+  return { currentPercent: level.percent, reasonCode: null };
 };
 
 const hasUsableTemperatureProgress = (params: {

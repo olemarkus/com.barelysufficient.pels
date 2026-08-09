@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   OBJECTIVE_PROFILE_MAX_DEVICES,
   OBJECTIVE_PROFILE_RETENTION_MS,
@@ -42,11 +43,7 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedP
   deviceClass: 'evcharger',
   binaryControl: { on: true },
   measuredPowerKw: 7,
-  stateOfCharge: {
-    percent: 40,
-    status: 'fresh',
-    observedAtMs: startMs,
-  },
+  stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs }),
   ...overrides,
 });
 
@@ -597,11 +594,7 @@ describe('objective profiles', () => {
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [evDevice({
-        stateOfCharge: {
-          percent: 50,
-          status: 'fresh',
-          observedAtMs: startMs + hourMs,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 50, observedAtMs: startMs + hourMs }),
       })],
       nowMs: startMs + hourMs,
     });
@@ -613,15 +606,27 @@ describe('objective profiles', () => {
     expect(profile?.unitPerHour?.mean).toBeCloseTo(10, 3);
   });
 
-  it('ignores stale EV SoC samples', () => {
+  // The producer no longer decays a level, so neither does this: a charger PELS
+  // paused overnight still feeds its profile the moment it is resumed. The
+  // 30-minute observation window that used to sit here was a second cutoff over
+  // a reading the producer had already resolved.
+  it('accepts an EV SoC sample the charger reported hours ago', () => {
     const state = updateObjectiveProfilesFromSnapshot({
       state: {},
       devices: [evDevice({
-        stateOfCharge: {
-          percent: 40,
-          status: 'stale',
-          observedAtMs: startMs,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs - 6 * 60 * 60_000 }),
+      })],
+      nowMs: startMs,
+    });
+
+    expect(state.objectiveProfiles?.['ev-1']?.kind).toBe('ev_soc');
+  });
+
+  it('ignores an EV SoC sample the producer has no level for', () => {
+    const state = updateObjectiveProfilesFromSnapshot({
+      state: {},
+      devices: [evDevice({
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs, unavailable: 'not_reported' }),
       })],
       nowMs: startMs,
     });
@@ -633,11 +638,7 @@ describe('objective profiles', () => {
     const state = updateObjectiveProfilesFromSnapshot({
       state: {},
       devices: [evDevice({
-        stateOfCharge: {
-          percent: 40,
-          status: 'fresh',
-          observedAtMs: startMs + 10 * 1000,
-        },
+        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs + 10 * 1000 }),
       })],
       nowMs: startMs,
     });

@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import {
   buildSettingsOverviewDeviceReadModel,
@@ -195,12 +196,7 @@ describe('settingsOverviewReadModel', () => {
     const device = buildPlanDevice({
       id: 'ev-1',
       controlCapabilityId: 'evcharger_charging',
-      stateOfCharge: {
-        percent: 64,
-        status: 'fresh',
-        observedAtMs: 1_000,
-        sessionStartedAtMs: 500,
-      },
+      stateOfCharge: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500 }),
     });
 
     // Projected to what the wire type declares: the observation layer's session

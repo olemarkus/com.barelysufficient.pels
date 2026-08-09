@@ -146,11 +146,11 @@ export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
   if (dev.forceBoostActive === true) return true;
   const config = dev.evBoost;
   if (config?.enabled !== true) return false;
-  const stateOfCharge = getTrustedStateOfCharge(dev);
-  if (!stateOfCharge) return false;
+  const percent = getTrustedStateOfCharge(dev);
+  if (percent === undefined) return false;
   const boostBelowPercent = config.boostBelowPercent;
   if (!Number.isFinite(boostBelowPercent)) return false;
-  return isBelowBoostFloor({ current: stateOfCharge.percent, boostFloor: boostBelowPercent });
+  return isBelowBoostFloor({ current: percent, boostFloor: boostBelowPercent });
 }
 
 export function resolveTemperatureBoostActive(dev: TemperatureBoostResolveInput): boolean {

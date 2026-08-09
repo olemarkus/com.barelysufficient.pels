@@ -11,6 +11,7 @@ import {
 import {
   EV_SOC_CAPABILITY_ID,
   updateStateOfChargeObservationFreshness,
+  wouldReportRestoreStateOfChargeLevel,
 } from '../lib/device/transport/stateOfCharge';
 import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
@@ -224,22 +225,12 @@ export class AppFlowBacked {
 
   private canEvSocFreshnessBecomeFreshForBoost(
     // Probe-widened: the snapshot physically carries the observed SoC bag the
-    // base type omits; this app-layer seam mutates a copy's freshness in place.
+    // base type omits. The producer answers whether the report would give this
+    // charger a level; this seam only asks.
     device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined,
     reportedAt: number,
   ): boolean {
-    const stateOfCharge = device?.stateOfCharge;
-    if (!device || !stateOfCharge || stateOfCharge.status === 'fresh') return false;
-    const nextDevice: TargetDeviceSnapshot & StateOfChargeObservedProbe = {
-      ...device,
-      targets: [...device.targets],
-      stateOfCharge: { ...stateOfCharge },
-    };
-    updateStateOfChargeObservationFreshness({
-      snapshot: nextDevice,
-      reportedAt,
-    });
-    return nextDevice.stateOfCharge?.status === 'fresh';
+    return wouldReportRestoreStateOfChargeLevel(device?.stateOfCharge, reportedAt);
   }
 
   private syncFlowBackedObservationFreshness(params: {

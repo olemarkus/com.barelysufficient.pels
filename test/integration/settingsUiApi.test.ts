@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeviceDiagnosticsPayload,
@@ -67,7 +68,7 @@ describe('settingsUiApi', () => {
         name: 'Charger',
         deviceClass: 'evcharger',
         evChargingState: 'plugged_in_charging',
-        stateOfCharge: { percent: 80, status: 'fresh' },
+        stateOfCharge: stateOfChargeFixture({ percent: 80 }),
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -404,7 +405,7 @@ describe('settingsUiApi', () => {
           name: 'Charger',
           deviceClass: 'evcharger',
           evChargingState: 'plugged_in_charging',
-          stateOfCharge: { percent: 80, status: 'fresh' },
+          stateOfCharge: stateOfChargeFixture({ percent: 80 }),
           steppedLoadProfile: {
             model: 'stepped_load',
             steps: [

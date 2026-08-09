@@ -7,9 +7,12 @@
  *    no staleness, and temperature boost trusts the latched temperature — a stale
  *    but finite reading still boosts (intended; staleness reporting lives in the
  *    observer, not the boost decision).
- *  - `getTrustedStateOfCharge` returns the SoC only when its own freshness
- *    `status === 'fresh'` and `percent` is finite. That capability-specific
- *    freshness check is the real EV-boost gate and stays.
+ *  - `getTrustedStateOfCharge` returns the level the producer stands behind, or
+ *    `undefined` when it stands behind none. It does NOT gate on freshness —
+ *    there is none to gate on. A battery level is reported on change and can
+ *    only change while a car is attached, so the producer answers usability
+ *    outright on `stateOfCharge.level` (`lib/device/transport/stateOfCharge.ts`)
+ *    and this reads that answer.
  *
  * Lives in `lib/utils/` so both `lib/observer/` and `lib/device/` can import a
  * single source (the latter cannot import `lib/observer/`).
@@ -35,9 +38,10 @@ export function getTrustedCurrentTemperatureC(
 
 export function getTrustedStateOfCharge(
   device: TrustedStateOfChargeInput,
-): DeviceStateOfChargeSnapshot | undefined {
-  const stateOfCharge = device.stateOfCharge;
-  if (!stateOfCharge || stateOfCharge.status !== 'fresh') return undefined;
-  if (!isFiniteNumber(stateOfCharge.percent)) return undefined;
-  return stateOfCharge;
+): number | undefined {
+  // No `Number.isFinite` re-check: `normalizeStateOfChargePercent` guarantees a
+  // finite percentage at the producer, and `level` already answers whether there
+  // is one at all (producer invariant).
+  const level = device.stateOfCharge?.level;
+  return level?.kind === 'known' ? level.percent : undefined;
 }

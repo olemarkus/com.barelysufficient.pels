@@ -71,14 +71,24 @@ export function buildObjectiveProfileSample(
     };
   }
 
-  if (isEvDevice(device) && hasObservedStateOfCharge(device) && device.stateOfCharge.status === 'fresh') {
+  if (isEvDevice(device) && hasObservedStateOfCharge(device)) {
+    // `level` is the whole gate. No age check and no `Number.isFinite` re-check:
+    // the producer stands behind the level or reports none, and a battery level
+    // does not decay — so the 30-minute observation window that used to sit here
+    // was a second, unrelated cutoff over a reading the producer had already
+    // resolved. `OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS` still gates the
+    // temperature branch, whose sensor reports continuously.
+    const { level } = device.stateOfCharge;
+    if (level.kind !== 'known') return null;
     const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
     if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
-    if (!isFreshObservationTime(observedAtMs, nowMs)) return null;
-    if (!Number.isFinite(device.stateOfCharge.percent)) return null;
+    // Future-dated observations are still refused. That is not an age gate: a
+    // timestamp ahead of now is corrupt, and a sample carries its own
+    // `observedAtMs` into the profile's interval arithmetic.
+    if (observedAtMs > nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS) return null;
     return {
       observedAtMs,
-      value: device.stateOfCharge.percent,
+      value: level.percent,
       unit: 'percent',
       ...resolveCredibleDevicePower(device),
     };

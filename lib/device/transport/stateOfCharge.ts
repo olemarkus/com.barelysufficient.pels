@@ -160,13 +160,35 @@ export function updateStateOfChargeFromCarObservation(params: {
     sourceDeviceId: carId,
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
-    status: resolveStateOfChargeStatus({
+    ...resolveLevelFields({
+      percent: normalized,
       observedAtMs,
       sessionStartedAtMs,
       invalidatedAtMs,
     }),
   };
   return hasCarStateOfChargeChanged(previous, snapshot.stateOfCharge, carId);
+}
+
+/**
+ * Would a report at `reportedAt` give this charger a level it does not have?
+ *
+ * The producer answers its own question. The app-wiring seam used to clone the
+ * snapshot, run the mutator on the copy and read the result back — simulating
+ * the producer in order to predict it — which is a consumer holding a private
+ * model of resolution that the producer is free to change underneath it.
+ */
+export function wouldReportRestoreStateOfChargeLevel(
+  stateOfCharge: DeviceStateOfChargeSnapshot | undefined,
+  reportedAt: number,
+): boolean {
+  if (!stateOfCharge || stateOfCharge.level.kind === 'known') return false;
+  return resolveStateOfChargeLevel({
+    percent: stateOfCharge.percent,
+    observedAtMs: Math.max(stateOfCharge.observedAtMs ?? 0, reportedAt),
+    sessionStartedAtMs: stateOfCharge.sessionStartedAtMs,
+    invalidatedAtMs: stateOfCharge.invalidatedAtMs,
+  }).kind === 'known';
 }
 
 export function updateStateOfChargeObservationFreshness(params: {
@@ -180,7 +202,8 @@ export function updateStateOfChargeObservationFreshness(params: {
   snapshot.stateOfCharge = {
     ...previous,
     observedAtMs,
-    status: resolveStateOfChargeStatus({
+    ...resolveLevelFields({
+      percent: previous.percent,
       observedAtMs,
       sessionStartedAtMs: previous.sessionStartedAtMs,
       invalidatedAtMs: previous.invalidatedAtMs,
@@ -236,7 +259,8 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
     ...next,
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
-    status: resolveStateOfChargeStatus({
+    ...resolveLevelFields({
+      percent,
       observedAtMs,
       sessionStartedAtMs,
       invalidatedAtMs,
@@ -266,18 +290,19 @@ export function updateStateOfChargeSessionBoundary(params: {
   const invalidatedAtMs = isDisconnectedEvState(evChargingState)
     ? Math.max(previous.invalidatedAtMs ?? 0, observedAtMs)
     : previous.invalidatedAtMs;
-  const status = resolveStateOfChargeStatus({
+  const levelFields = resolveLevelFields({
+    percent: previous.percent,
     observedAtMs: previous.observedAtMs,
     sessionStartedAtMs: sessionStartedAtMs || undefined,
     invalidatedAtMs: invalidatedAtMs || undefined,
   });
   snapshot.stateOfCharge = {
     ...previous,
-    status,
+    ...levelFields,
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
   };
-  return previous.status !== status
+  return previous.status !== levelFields.status
     || previous.sessionStartedAtMs !== snapshot.stateOfCharge.sessionStartedAtMs
     || previous.invalidatedAtMs !== snapshot.stateOfCharge.invalidatedAtMs;
 }
@@ -373,7 +398,8 @@ function buildStateOfChargeSnapshot(params: {
     nowMs,
     retainedSession,
   });
-  const status = resolveStateOfChargeStatus({
+  const levelFields = resolveLevelFields({
+    percent,
     observedAtMs,
     invalidatedAtMs: session.invalidatedAtMs,
     sessionStartedAtMs: session.sessionStartedAtMs,
@@ -381,7 +407,7 @@ function buildStateOfChargeSnapshot(params: {
   return {
     percent,
     ...(observedAtMs ? { observedAtMs } : {}),
-    status,
+    ...levelFields,
     capabilityId,
     ...(session.sessionStartedAtMs ? { sessionStartedAtMs: session.sessionStartedAtMs } : {}),
     ...(session.invalidatedAtMs ? { invalidatedAtMs: session.invalidatedAtMs } : {}),
@@ -405,21 +431,47 @@ function buildStateOfChargeSnapshot(params: {
  * detect it either — it produced a qualifier every consumer then had to
  * interpret, which is what this file no longer emits.
  */
-function resolveStateOfChargeStatus(params: {
+function resolveStateOfChargeLevel(params: {
+  percent: number;
   observedAtMs?: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
-}): DeviceStateOfChargeSnapshot['status'] {
-  const { observedAtMs, invalidatedAtMs, sessionStartedAtMs } = params;
-  if (!observedAtMs) return 'unknown';
+}): DeviceStateOfChargeSnapshot['level'] {
+  const {
+    percent, observedAtMs, invalidatedAtMs, sessionStartedAtMs,
+  } = params;
+  // Nothing has been reported at all.
+  if (!observedAtMs) return { kind: 'unavailable', reasonCode: 'not_reported' };
+  // A disconnect is recorded and no reconnect has been observed since, so there
+  // is no session for a level to belong to.
+  if (hasPendingReconnect({ sessionStartedAtMs, invalidatedAtMs })) {
+    return { kind: 'unavailable', reasonCode: 'not_connected' };
+  }
+  // A car IS attached, but the reading predates it: it was taken before the
+  // unplug, or before this session was anchored. Possibly a different car.
   if (
-    hasPendingReconnect({ sessionStartedAtMs, invalidatedAtMs })
-    || (invalidatedAtMs !== undefined && invalidatedAtMs >= observedAtMs)
+    (invalidatedAtMs !== undefined && invalidatedAtMs >= observedAtMs)
     || (sessionStartedAtMs !== undefined && sessionStartedAtMs > observedAtMs)
   ) {
-    return 'stale';
+    return { kind: 'unavailable', reasonCode: 'not_reported' };
   }
-  return 'fresh';
+  return { kind: 'known', percent };
+}
+
+/**
+ * The resolved level plus the legacy `status`, derived from it so the two cannot
+ * disagree while consumers are still being migrated. The `status` half goes when
+ * the field does.
+ */
+function resolveLevelFields(params: {
+  percent: number;
+  observedAtMs?: number;
+  invalidatedAtMs?: number;
+  sessionStartedAtMs?: number;
+}): Pick<DeviceStateOfChargeSnapshot, 'level' | 'status'> {
+  const level = resolveStateOfChargeLevel(params);
+  if (level.kind === 'known') return { level, status: 'fresh' };
+  return { level, status: params.observedAtMs ? 'stale' : 'unknown' };
 }
 
 function resolveEvSessionBoundary(params: {

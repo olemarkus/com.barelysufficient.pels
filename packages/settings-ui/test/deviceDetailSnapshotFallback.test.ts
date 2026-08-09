@@ -7,6 +7,7 @@
 // callsite passes its live `state.*` snapshot as the fallback so a
 // transient non-object SDK read does not erase entries for other devices.
 
+import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   EvObservedProbe,
@@ -358,7 +359,7 @@ describe('device detail snapshot-fallback wiring (defense-in-depth)', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging'],
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: { percent: 32, status: 'fresh' },
+      stateOfCharge: stateOfChargeFixture({ percent: 32 }),
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [

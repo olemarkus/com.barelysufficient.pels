@@ -1,6 +1,7 @@
 /**
  * @vitest-environment node
  */
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import type {
   StateOfChargeObservedProbe,
@@ -74,7 +75,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
         id: 'ev',
         name: 'Driveway',
         deviceClass: 'evcharger',
-        stateOfCharge: { percent: 42, status: 'fresh' },
+        stateOfCharge: stateOfChargeFixture({ percent: 42 }),
       })],
     });
     if (payload.state !== 'ready') throw new Error('expected ready');

@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   getTrustedCurrentTemperatureC,
   getTrustedStateOfCharge,
@@ -25,30 +26,20 @@ describe('observation value accessors', () => {
   });
 
   describe('getTrustedStateOfCharge', () => {
-    const freshSoC = {
-      percent: 42,
-      status: 'fresh' as const,
-    };
-
-    it('returns the snapshot when its own status is fresh', () => {
-      expect(getTrustedStateOfCharge({ stateOfCharge: freshSoC })).toEqual(freshSoC);
+    it('returns the percentage when the producer has a level', () => {
+      expect(getTrustedStateOfCharge({
+        stateOfCharge: stateOfChargeFixture({ percent: 42 }),
+      })).toBe(42);
     });
 
-    it('returns undefined when SoC status is not fresh', () => {
+    it('returns undefined when the producer has no level', () => {
+      // Both arms, and no third state: the producer either stands behind a level
+      // or it does not. There is no qualifier to interpret and nothing to age.
       expect(getTrustedStateOfCharge({
-        stateOfCharge: { ...freshSoC, status: 'stale' },
+        stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: 1_000, unavailable: 'not_reported' }),
       })).toBeUndefined();
       expect(getTrustedStateOfCharge({
-        stateOfCharge: { ...freshSoC, status: 'unknown' },
-      })).toBeUndefined();
-      expect(getTrustedStateOfCharge({
-        stateOfCharge: { ...freshSoC, status: 'invalid' },
-      })).toBeUndefined();
-    });
-
-    it('returns undefined when percent is not finite', () => {
-      expect(getTrustedStateOfCharge({
-        stateOfCharge: { ...freshSoC, percent: Number.NaN },
+        stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: 1_000, unavailable: 'not_connected' }),
       })).toBeUndefined();
     });
 
