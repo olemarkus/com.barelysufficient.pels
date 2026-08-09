@@ -455,6 +455,25 @@ export function resolveCandidateCapabilities(params: {
     steppedLoadProfile,
     debugStructured,
   } = params;
+  // The plug-state capability is required of EVERY EV charger, ahead of both
+  // control-axis bypasses below. `target_power` / stepped-load is the amp/step
+  // axis; it says nothing about whether a car is connected, so a charger driven
+  // that way still reports `evcharger_charging_state` (Zaptec's native wiring
+  // synthesises it, and this runs on the overlaid capability list so that counts).
+  // Requiring it here is what lets `evChargingState` be REQUIRED on every EV
+  // device downstream — there is no such thing as an EV charger PELS manages
+  // without a plug-state.
+  if (deviceClassKey === 'evcharger' && !capabilities.includes('evcharger_charging_state')) {
+    debugStructured?.({
+      event: 'device_skipped_missing_capability',
+      deviceClass: deviceClassKey,
+      deviceId,
+      deviceName: deviceLabel,
+      missingCapability: 'evcharger_charging_state',
+      capabilities,
+    });
+    return null;
+  }
   if (deviceClassKey === 'evcharger' && steppedLoadProfile?.model === 'stepped_load') {
     return {
       targetCaps: [],

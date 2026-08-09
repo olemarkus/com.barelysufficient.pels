@@ -10,6 +10,7 @@ import {
   isSwapTargetPendingReason,
 } from '../planContract/planDecisionSemantics';
 import type {
+  EvObservedProbe,
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
   ReportedStepObservedProbe,
@@ -173,6 +174,7 @@ export function buildExecutableObservedDeviceState(
   // (`buildObservedSteppedLoadState`) reads.
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe
+    & EvObservedProbe
     & { currentOn?: boolean; commandableNow?: boolean },
 ): ExecutableObservedDeviceState {
   return {
@@ -180,7 +182,7 @@ export function buildExecutableObservedDeviceState(
     name: snapshot.name,
     snapshot,
     available: typeof snapshot.available === 'boolean' ? snapshot.available : null,
-    commandableNow: snapshot.commandableNow ?? resolveCommandableNow({ dev: snapshot }).commandableNow,
+    commandableNow: snapshot.commandableNow ?? resolveCommandableNow(snapshot),
     binaryControl: snapshot.binaryControl,
     observedBinaryState: resolveObservedBinaryStateFromSnapshot(snapshot),
     target: buildObservedTargetState(snapshot),

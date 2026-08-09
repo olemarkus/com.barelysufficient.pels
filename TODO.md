@@ -938,10 +938,12 @@ program) remain deferred.*
       `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) — the observer-snapshot twin of
       `isEvPlanDevice` (since relocated to `packages/shared-domain/src/evObservedState.ts` by the
       field-move slice below). `getEvRestoreBlockReason` (`lib/device/deviceActionProjection.ts`)
-      narrows through it (behaviour-preserving: EV + no resolved state → `state_unknown`, as before).
+      narrows through it. Superseded 2026-08-09: an unreadable plug-state is no longer a state
+      to classify at all — the producer drops a device that claims `evcharger_charging_state`
+      and reports outside the enum.
       **EV-vocabulary de-couple landed (2026-06-07, PRs #1528/#1531/#1540/#1544/#1554/#1561/#1568/#1570/#1571):**
       every consumer in `lib/plan`/`lib/objectives`/`lib/executor`/settings-UI now reads producer-resolved
-      bits / shared-domain predicates (`isEvDevice`, `resolveEvBlockReasonForDevice`,
+      bits / shared-domain predicates (`isEvDevice`, the `evPlugState.ts` classifiers,
       `isEvSessionInactiveForDevice`, `resolveEvBoostBlockReason`) instead of raw plug-state, and
       `scripts/check-ev-vocab.mjs` (in `ci:checks`) forbids `plugged_*` literals in those three layers.
       **EV field-move landed (2026-06-07): `evChargingState` removed from `EvPlanInputKind` /
@@ -950,10 +952,12 @@ program) remain deferred.*
       `evCommandability: EvCommandabilityResolution` (`{ blockReason, sessionInactive, chargerNotResumable }`,
       new type in `@pels/contracts`) via `resolveEvCommandability` (shared-domain); it is threaded through
       the `planDevices`/`planReconcileState` carriers and the `withEvDiscriminant` regrouper. The device-shaped
-      resolvers (`isEvSessionInactiveForDevice` / `isEvChargerNotResumableForDevice` /
-      `resolveEvBlockReasonForDevice` / `isEvBoostBlockedByPlugState`) read the materialized flat bits only —
+      resolvers read the materialized flat bits only —
       the raw-`evChargingState` consumer arm was retired once every caller passed materialized fields; the sole
-      reader of the raw plug-state is the producer `resolveCommandableNow`. Architectural
+      reader of the raw plug-state was the producer `resolveCommandableNow`. **Reversed 2026-08-09:** the flat
+      bits duplicated a semantic the state already carries, so the plan device carries `evChargingState` on the
+      EV cluster again and every consumer derives from it through the shared classifiers, with
+      `scripts/check-ev-vocab.mjs` keeping plug-state literals out of plan/objectives/executor. Architectural
       correction surfaced in review: the settings-UI read model used to read `evChargingState` off the plan
       device — but the **observer** is its canonical owner (`ObservedDeviceState.evChargingState`), so
       `settingsOverviewReadModel` now sources it via a `getObservedEvChargingState` planService dep wired to
@@ -964,7 +968,8 @@ program) remain deferred.*
       **`evChargingState` typed as the `EvChargingState` union (closed enum) — foundation landed.** Field +
       every consumer type now use `EvChargingState` (no `string`, no `null`); the producer
       (`getEvChargingState` + the two realtime seams) normalises any vendor value outside the capability enum
-      to `undefined` (uncommandable / `state_unknown`), and the verbose "unknown charging state 'X'" diagnostic
+      to `undefined`, which the parse boundary now treats as a capability-contract violation and
+      DROPS the device for (2026-08-09), and the verbose "unknown charging state 'X'" diagnostic
       was dropped (unknown is ignored, not surfaced).
       **EV-observed field-move landed (2026-06-12): `evChargingState` is OFF the base
       `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.evChargingState` read is now a

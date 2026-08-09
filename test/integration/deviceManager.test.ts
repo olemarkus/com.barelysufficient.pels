@@ -1211,7 +1211,11 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('uses raw EV boolean settlement evidence only when state is absent and fresh', async () => {
+        it('drops a charger that claims evcharger_charging_state but reports no value', async () => {
+            // Contract gate: the capability is a closed Homey enum, so a claimed
+            // capability with no readable member is not implemented. The device is
+            // dropped exactly as one missing the capability is, rather than admitted
+            // with an unknown plug-state every consumer would have to re-handle.
             const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
@@ -1236,35 +1240,24 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
 
-            expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'evcharger_charging',
-                    observedValue: false,
-                    observedCapabilityIds: ['evcharger_charging'],
-                    observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
-                    source: 'snapshot_refresh',
-                },
-            }));
+            expect(evDeviceManager.getSnapshot()).toEqual([]);
 
+            evDeviceManager.destroy();
+        });
+
+        it('drops a charger whose plug-state value is outside the Homey enum', async () => {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
+            });
+            await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
-                    name: 'Easee',
+                    name: 'Zaptec',
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: '2026-04-01T12:01:00.000Z',
-                        },
-                        evcharger_charging_state: {
-                            value: 'mystery',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:01:00.000Z',
-                        },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_complete', id: 'evcharger_charging_state' },
                         measure_power: { value: 0, id: 'measure_power' },
                     },
                 },
@@ -1272,7 +1265,9 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
 
-            expect(evDeviceManager.getSnapshot()[0].binaryControlObservation).toBeUndefined();
+            expect(evDeviceManager.getSnapshot()).toEqual([]);
+
+            evDeviceManager.destroy();
         });
 
         it('excludes EV chargers without the official charging capability', async () => {
@@ -1296,10 +1291,13 @@ describe('DeviceTransport', () => {
             await evDeviceManager.refreshSnapshot();
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
+            // Both official capabilities are required; the plug-state one is checked
+            // first because it is required of EVERY charger, including those that
+            // control on the amp/step axis and never expose `evcharger_charging`.
             expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_skipped_missing_capability',
                 deviceId: 'ev1',
-                missingCapability: 'evcharger_charging',
+                missingCapability: 'evcharger_charging_state',
             }));
         });
 
@@ -4444,7 +4442,7 @@ describe('DeviceTransport', () => {
                     observedValue: true,
                 }),
             }));
-            expect(resolveCommandableNow({ dev: snapshotDevice }).commandableNow).toBe(false);
+            expect(resolveCommandableNow(snapshotDevice)).toBe(false);
         });
 
         it('emits reconcile event when target temperature changes via device.update', async () => {
@@ -4964,7 +4962,7 @@ describe('DeviceTransport', () => {
                 available: false,
                 lastFreshDataMs: undefined,
             }));
-            expect(resolveCommandableNow({ dev: deviceManager.getSnapshot()[0] }).commandableNow).toBe(false);
+            expect(resolveCommandableNow(deviceManager.getSnapshot()[0])).toBe(false);
             expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
                 reasonCode: 'missing_boolean_onoff',
@@ -5097,7 +5095,7 @@ describe('DeviceTransport', () => {
                         capabilitiesObj: {
                             evcharger_charging: { id: 'evcharger_charging', setable: true },
                             evcharger_charging_state: {
-                                value: 'plugged_in_complete',
+                                value: 'plugged_in',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
@@ -5508,7 +5506,7 @@ describe('DeviceTransport', () => {
                         capabilitiesObj: {
                             evcharger_charging: { id: 'evcharger_charging', setable: true },
                             evcharger_charging_state: {
-                                value: 'plugged_in_complete',
+                                value: 'plugged_in',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
@@ -5541,7 +5539,7 @@ describe('DeviceTransport', () => {
                         capabilitiesObj: {
                             evcharger_charging: { id: 'evcharger_charging', setable: true },
                             evcharger_charging_state: {
-                                value: 'plugged_in_complete',
+                                value: 'plugged_in',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },

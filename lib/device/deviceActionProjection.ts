@@ -20,6 +20,7 @@ import type {
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  EvObservedProbe,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TargetDeviceSnapshot,
@@ -31,23 +32,17 @@ import {
 } from '../utils/observationTrust';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
-import { resolveEvBlockReason } from '../../packages/shared-domain/src/commandableNowReason';
-import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import {
-  isEvBoostBlockedByPlugState,
   isEvDevice,
-  isEvSessionInactiveForDevice,
-  type CommandableNowResolveInput,
-} from '../../packages/shared-domain/src/commandableNow';
+  isEvPlugStateBlocked,
+  isEvSessionInactive,
+} from '../../packages/shared-domain/src/evPlugState';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 // Commandability resolution lives in shared-domain so the executor can import it
 // without crossing the no-executor-to-device-internals boundary. Re-exported
 // here for the planner/producer call sites that already import from this module.
 export {
-  resolveCommandableNow,
   isCommandableNow,
-} from '../../packages/shared-domain/src/commandableNow';
-export type {
-  CommandableNowResolveInput,
 } from '../../packages/shared-domain/src/commandableNow';
 import {
   getSteppedLoadLowestActiveStep,
@@ -76,12 +71,9 @@ type ControllableFlags = {
   available?: boolean;
 };
 
-export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & {
+export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & EvObservedProbe & {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
-  evBlockReason?: string | null;
-  evSessionInactive?: boolean;
-  evChargerNotResumable?: boolean;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -135,16 +127,20 @@ const isBelowBoostFloor = (state: MeasuredBoostState): boolean => (
 );
 
 export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
+  // Identity gate, NOT the plug-state guard: an `evcharger` driven through
+  // `target_power` or a stepped-load profile exposes no EV capabilities and has
+  // no plug state, but it still boosts on SoC like any other charger.
   if (!isEvDevice(dev)) return false;
   if (!hasSteppedLoadProfile(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   // Block boost only where PELS genuinely cannot drive the charger: unplugged or
-  // discharging. Boost is "command it on now", so this reads the producer-resolved
-  // `evBlockReason` — the same classification the restore path uses — rather than
-  // composing a second plug-state union. The settings-UI boost panel renders the
-  // matching reason STRING (`resolveEvBoostBlockReason`) off that same key, so the
-  // runtime never forces boost the UI says won't activate.
-  if (isEvBoostBlockedByPlugState(dev)) return false;
+  // discharging. Boost is "command it on now", so this asks the same question of
+  // the same plug-state the restore path does, through the one shared classifier
+  // — and only for a charger that HAS a plug-state to ask about. The settings-UI
+  // boost panel renders its wording off that same classification
+  // (`resolveEvBoostBlockReason`), so the runtime can never force a boost the UI
+  // says won't activate.
+  if (isEvObserved(dev) && isEvPlugStateBlocked(dev.evChargingState)) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
   // planned hours, independent of the device's own boost config/threshold.
   if (dev.forceBoostActive === true) return true;
@@ -190,14 +186,7 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
   };
 }
 
-export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
-  if (!snapshot || !isEvDevice(snapshot)) return null;
-  // `isEvObserved` is the only typed way to reach `evChargingState` (the field is
-  // omitted from the base snapshot by design), so the guard stays. What changed is
-  // the un-narrowed arm: resume requires affirmative connected evidence, so an
-  // EV whose state is missing is blocked at the producer boundary too.
-  return resolveEvBlockReason(isEvObserved(snapshot) ? snapshot.evChargingState : undefined);
-}
+
 
 type BinaryCapabilityResolveInput = {
   controlCapabilityId?: BinaryControlCapabilityId;
@@ -323,13 +312,13 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  * not-commandable reasons (e.g. `available === false`) are not physical
  * EV blocks and stay outside this gate.
  */
-export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
-  // Reads the producer-resolved flat `evSessionInactive` bit via the
-  // device-shaped resolver (the raw `evChargingState` consumer arm is retired;
-  // the bit is materialized once at the producer seam). The only production
-  // caller (`planOffStateReason`) passes a plan device that already carries the
-  // bit; `isEvDevice` keeps a non-EV device from ever reading as an EV block.
-  return isEvDevice(dev) && isEvSessionInactiveForDevice(dev);
+export function isEvPhysicallyUnplugged(
+  dev: { deviceClass?: string; controlCapabilityId?: string } & EvObservedProbe,
+): boolean {
+  // `isEvObserved` scopes the question to EV devices, so a non-EV device can
+  // never read as an EV block, and the plug-state it narrows to is the same one
+  // every other EV question is answered from.
+  return isEvObserved(dev) && isEvSessionInactive(dev.evChargingState);
 }
 
 // ---------------------------------------------------------------------------

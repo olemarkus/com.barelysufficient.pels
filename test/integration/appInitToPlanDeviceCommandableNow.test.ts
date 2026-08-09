@@ -10,6 +10,7 @@
  * `deviceActionProjectionCommandableNow.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
+import { isEvPlanDevice } from '../../lib/plan/planEvDevice';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
@@ -40,21 +41,27 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_in_paused' }));
     expect(result.commandableNow).toBe(true);
-    expect(result.commandableNowReason).toBeNull();
+    // The plug-state itself rides onto the EV cluster; nothing derived from it is
+    // carried alongside, so there is one place to read and one place to change.
+    expect(isEvPlanDevice(result) && result.evChargingState).toBe('plugged_in_paused');
   });
 
-  it('populates commandableNow=false with a reason for a plugged-out EV charger', () => {
+  it('populates commandableNow=false for a plugged-out EV charger', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_out' }));
     expect(result.commandableNow).toBe(false);
-    expect(result.commandableNowReason).toBe('charger is unplugged');
+    expect(isEvPlanDevice(result) && result.evChargingState).toBe('plugged_out');
   });
 
-  it('fails closed when the EV has no plug state', () => {
+  it('carries no plug-state for a charger that has no plug-state capability, and leaves it commandable', () => {
+    // The `target_power` / stepped-load charger population: `evcharger` by class,
+    // no EV capabilities, so no plug state to ask about. Commandability falls
+    // through to availability. (A charger that CLAIMS the capability and reports
+    // outside the enum never gets this far — it is dropped at parse.)
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: undefined }));
-    expect(result.commandableNow).toBe(false);
-    expect(result.commandableNowReason).toBe('charger state is unknown');
+    expect(isEvPlanDevice(result) && result.evChargingState).toBeUndefined();
+    expect(result.commandableNow).toBe(true);
   });
 
   it('does not write back into live AppContext state (pure projection)', () => {

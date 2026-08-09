@@ -1,9 +1,9 @@
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
-import {
-  resolveCanSetControl,
-  resolveCommandableNow,
-} from '../../lib/device/deviceActionProjection';
+import { resolveCanSetControl } from '../../lib/device/deviceActionProjection';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveEvStartProbePosture } from '../../packages/shared-domain/src/evPlugState';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
 import type {
   DecoratedDeviceSnapshot,
@@ -89,22 +89,20 @@ function resolvePendingBinaryCommand(
 function resolvePlanCommandability(
   device: DecoratedDeviceSnapshot & EvObservedProbe,
   opts: ToPlanDeviceOptions | undefined,
-) {
-  const base = resolveCommandableNow({
-    dev: {
-      deviceClass: device.deviceClass,
-      controlCapabilityId: device.controlCapabilityId,
-      evChargingState: device.evChargingState,
-      available: device.available,
-    },
-  });
-  const projected = opts?.projectCommandability?.({
+): boolean {
+  // Two independent inputs to the same answer: the observed facts (plug-state +
+  // availability) and the executor-owned resume-probe backoff. Only the second
+  // needs the producer, because it is runtime state no observation can express.
+  const base = resolveCommandableNow(device);
+  const probePosture = isEvObserved(device)
+    ? resolveEvStartProbePosture(device.evChargingState)
+    : { eligibleForStartProbe: false, activityObserved: false };
+  return opts?.projectCommandability?.({
     deviceId: device.id,
-    ...resolveEvStartProbePosture(device),
+    ...probePosture,
     available: device.available,
     base,
   }) ?? base;
-  return { ...base, ...projected };
 }
 
 /**
@@ -256,17 +254,6 @@ function resolveEffectiveTemperatureBoost(
   return ctx.getTemperatureBoostConfig?.(device.id);
 }
 
-function resolveEvStartProbePosture(device: EvObservedProbe): {
-  eligibleForStartProbe: boolean;
-  activityObserved: boolean;
-} {
-  return {
-    eligibleForStartProbe: device.evChargingState === 'plugged_in'
-      || device.evChargingState === 'plugged_in_paused',
-    activityObserved: device.evChargingState === 'plugged_in_charging',
-  };
-}
-
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
 // it resolves the flat EV sub-fields below and strips the raw field off the
@@ -301,7 +288,7 @@ export function toPlanDevice(
     ctx,
     device,
   );
-  const commandable = resolvePlanCommandability(device, opts);
+  const commandableNow = resolvePlanCommandability(device, opts);
   const canSetControlResolved = resolveCanSetControl({
     controlCapabilityId: device.controlCapabilityId,
     capabilities: device.capabilities,
@@ -352,12 +339,10 @@ export function toPlanDevice(
   // pair. The descriptor (`TargetDeviceSnapshot`) keeps the profile as a plain
   // optional (out of scope for this slice), so `device.steppedLoadProfile` is
   // read directly here.
-  // Strip the observer-owned raw `evChargingState` off the spread so it never
-  // rides onto the plan device; the resolved flat EV sub-fields
-  // (`evBlockReason` / `evSessionInactive` / `evChargerNotResumable`, set below
-  // from `commandable`) replace it.
+  // `evChargingState` is NOT stripped: it rides onto the EV cluster
+  // (`withEvDiscriminant` regroups it), where it is the single source every
+  // plug-state question is answered from. Nothing derived from it is carried.
   const {
-    evChargingState: _evChargingState,
     temperatureControlDisabled: _temperatureControlDisabled,
     steppedLoadProfile: _confirmedSteppedLoadProfile,
     targetPowerConfig: _targetPowerConfig,
@@ -411,11 +396,7 @@ export function toPlanDevice(
     evBoost: ctx.getEvBoostConfig?.(device.id),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
-    commandableNow: commandable.commandableNow,
-    commandableNowReason: commandable.reason,
-    evBlockReason: commandable.evBlockReason,
-    evSessionInactive: commandable.evSessionInactive,
-    evChargerNotResumable: commandable.evChargerNotResumable,
+    commandableNow,
     canSetControlResolved,
     residualKw,
     // The single place the device's draw is decided: the meter's reading, or 0.

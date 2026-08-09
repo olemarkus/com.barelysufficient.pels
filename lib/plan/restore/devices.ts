@@ -4,6 +4,7 @@ import {
   isSteppedLoadOffStep,
 } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
 import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
@@ -165,8 +166,10 @@ export function getOnDevices(
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
-  if (dev.commandableNow === false && dev.commandableNowReason) {
-    return { code: PLAN_REASON_CODES.inactive, detail: dev.commandableNowReason };
+  if (dev.commandableNow === false) {
+    // The wording is derived from the same observed state the decision was made
+    // from, at the surface that shows it — nothing carries a reason string.
+    return { code: PLAN_REASON_CODES.inactive, detail: resolveCommandabilityDetail(dev) };
   }
   if (dev.externalOffHoldActive === true) return { code: PLAN_REASON_CODES.externalOffHold };
 

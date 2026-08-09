@@ -123,9 +123,19 @@ const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): Homey
   class: 'evcharger',
   driverId: 'homey:app:com.example:charger',
   ownerUri: 'homey:app:com.example',
-  capabilities: ['measure_power', 'target_power'],
+  // `target_power` is the amp/step axis; a charger still reports the plug-state
+  // axis, which PELS requires of every EV charger.
+  capabilities: ['measure_power', 'target_power', 'evcharger_charging_state'],
+  available: true,
+  ready: true,
+  ...overrides,
+  // Merged, not replaced: a `capabilitiesObj` override that drops the plug-state
+  // entry would make the device claim `evcharger_charging_state` without
+  // reporting one, which the parse boundary treats as a capability-contract
+  // violation and drops — and these tests are about the amp/step axis.
   capabilitiesObj: {
     measure_power: { value: 1380 },
+    evcharger_charging_state: { value: 'plugged_in_charging' },
     target_power: {
       value: 1380,
       min: 0,
@@ -136,10 +146,8 @@ const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): Homey
       setable: true,
       lastUpdated: '2026-05-04T06:00:00.000Z',
     },
+    ...(overrides.capabilitiesObj ?? {}),
   },
-  available: true,
-  ready: true,
-  ...overrides,
 });
 
 const restoreMockRestClient = () => {
@@ -529,7 +537,7 @@ describe('native stepped-load wiring', () => {
 
     const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
       id: 'synthetic-target-power-1',
-      capabilities: ['measure_power'],
+      capabilities: ['measure_power', 'evcharger_charging_state'],
       capabilitiesObj: {
         measure_power: { value: 920 },
       },
@@ -537,7 +545,10 @@ describe('native stepped-load wiring', () => {
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'synthetic-target-power-1',
-      controlAdapter: undefined,
+      // No native COMMAND adapter — the charger's plug-state capability builds an
+      // adapter record, but it cannot activate, so it is not a native-EV candidate
+      // and the stepped-load projection below comes purely from the saved config.
+      controlAdapter: expect.objectContaining({ activationAvailable: false }),
       controlModel: 'stepped_load',
       targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
       steppedLoadProfile: expect.objectContaining({
@@ -562,7 +573,7 @@ describe('native stepped-load wiring', () => {
       id: 'test-device-target-power-1',
       ownerUri: 'homey:app:com.olemarkus.testdevices',
       driverId: 'homey:app:com.olemarkus.testdevices:mock',
-      capabilities: ['measure_power'],
+      capabilities: ['measure_power', 'evcharger_charging_state'],
       capabilitiesObj: {
         measure_power: { value: 460 },
       },
@@ -582,7 +593,9 @@ describe('native stepped-load wiring', () => {
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'test-device-target-power-1',
-      controlAdapter: undefined,
+      // As above: a plug-state capability builds a non-activating adapter record;
+      // the projection under test comes from the compatibility metadata.
+      controlAdapter: expect.objectContaining({ activationAvailable: false }),
       controlModel: 'stepped_load',
       targetPowerConfig: {
         preset: 'ev_charger_1_phase',

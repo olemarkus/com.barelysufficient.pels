@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EvChargingState } from '../../packages/contracts/src/types';
-import {
-  isEvChargerNotResumable,
-  isEvChargerNotResumableForDevice,
-} from '../../packages/shared-domain/src/commandableNow';
+import { isEvChargerNotResumable } from '../../packages/shared-domain/src/evPlugState';
 import {
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_WIDGET_STATUS_LABELS,
@@ -16,16 +13,11 @@ import {
 describe('isEvChargerNotResumable', () => {
   it('is true only for the connected-but-not-resumable plugged_in state', () => {
     expect(isEvChargerNotResumable('plugged_in')).toBe(true);
-    // Device-shaped form reads the producer-resolved flat bit (the raw
-    // `evChargingState` consumer arm is retired).
-    expect(isEvChargerNotResumableForDevice({ evChargerNotResumable: true })).toBe(true);
-    expect(isEvChargerNotResumableForDevice({ evChargerNotResumable: false })).toBe(false);
-    expect(isEvChargerNotResumableForDevice({})).toBe(false);
   });
 
   it('is false for the resumable / charging / unplugged states', () => {
-    const states: (EvChargingState | undefined)[] = [
-      'plugged_in_paused', 'plugged_in_charging', 'plugged_out', 'plugged_in_discharging', undefined,
+    const states: EvChargingState[] = [
+      'plugged_in_paused', 'plugged_in_charging', 'plugged_out', 'plugged_in_discharging',
     ];
     for (const state of states) {
       expect(isEvChargerNotResumable(state)).toBe(false);

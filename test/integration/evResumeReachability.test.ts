@@ -27,17 +27,17 @@ describe('EV resume reachability', () => {
       eligibleForStartProbe: true,
       activityObserved: false,
       available: true,
-      base: { commandableNow: true, reason: null },
+      base: true,
     });
 
-    expect(project().commandableNow).toBe(true);
+    expect(project()).toBe(true);
     probe.lifecycle.onDispatchFailed?.(RESUME);
-    expect(project()).toEqual({ commandableNow: false, reason: 'charging did not start' });
+    expect(project()).toBe(false);
     expect(requestRebuild).toHaveBeenCalledOnce();
     expect(scheduleRebuild).toHaveBeenCalledWith('charger-1', 1_000 + 15 * 60 * 1000);
 
     vi.advanceTimersByTime(15 * 60 * 1000);
-    expect(project().commandableNow).toBe(true);
+    expect(project()).toBe(true);
   });
 
   it('clears accumulated failures on a new plug edge or availability recovery', () => {
@@ -52,18 +52,18 @@ describe('EV resume reachability', () => {
       eligibleForStartProbe,
       activityObserved: false,
       available,
-      base: { commandableNow: eligibleForStartProbe && available, reason: 'blocked' },
+      base: eligibleForStartProbe && available,
     });
 
     project(true);
     probe.lifecycle.onTimedOut?.(RESUME);
-    expect(project(true).commandableNow).toBe(false);
+    expect(project(true)).toBe(false);
     project(false);
-    expect(project(true).commandableNow).toBe(true);
+    expect(project(true)).toBe(true);
 
     probe.lifecycle.onDispatchFailed?.(RESUME);
     project(true, false);
-    expect(project(true, true).commandableNow).toBe(true);
+    expect(project(true, true)).toBe(true);
   });
 
   it('ignores declined writes that were never requested', () => {
@@ -79,8 +79,8 @@ describe('EV resume reachability', () => {
       deviceId: 'charger-1',
       eligibleForStartProbe: true,
       activityObserved: false,
-      base: { commandableNow: true, reason: null },
-    }).commandableNow).toBe(true);
+      base: true,
+    })).toBe(true);
     expect(requestRebuild).not.toHaveBeenCalled();
     probe.lifecycle.onDispatchAccepted?.(RESUME);
     expect(scheduleRebuild).toHaveBeenCalledWith('charger-1', expect.any(Number));
@@ -152,7 +152,7 @@ describe('EV resume reachability', () => {
       deviceId: 'charger-1',
       eligibleForStartProbe: true,
       activityObserved: false,
-      base: { commandableNow: true, reason: null },
+      base: true,
     });
 
     for (const minutes of [15, 30, 60, 60]) {

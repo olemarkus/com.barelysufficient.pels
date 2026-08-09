@@ -4,6 +4,7 @@ import type {
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  EvChargingState,
   RestorePowerSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -11,6 +12,7 @@ import type {
   TargetPowerSteppedLoadConfig,
   TemperatureBoostConfig,
 } from '../../contracts/src/types.js';
+
 
 /**
  * The planner's primary INPUT contract: one device as the plan engine sees it
@@ -57,12 +59,22 @@ type NonSteppedPlanInputKind = Record<never, never>;
  * only on the output `DevicePlanDevice`).
  *
  * The EV plug-state sub-classification (`evBlockReason` / `evSessionInactive` /
- * `evChargerNotResumable`) is NOT here: it is materialized flat on the base
+ * `evChargerNotResumable`) is gone; it was materialized flat on the base
  * alongside `commandableNow` (see `PlanInputDeviceBase`). The raw observed
  * `evChargingState` is not carried at all — the observer owns it
  * (`ObservedDeviceState`).
  */
 export type EvPlanInputKind = {
+  /**
+   * The observed plug-state, REQUIRED on the narrowed shape for the same reason
+   * `BinaryPlanInputKind.currentOn` is: the parse boundary guarantees it. Every EV
+   * charger exposes `evcharger_charging_state` (the amp/step axis — `target_power`,
+   * stepped-load — is a different axis, not a substitute), and one that cannot
+   * report a member of the Homey enum for it is dropped rather than managed.
+   * Answer every plug-state question from this value through the shared
+   * classifiers in `packages/shared-domain/src/evPlugState.ts`.
+   */
+  evChargingState: EvChargingState;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
@@ -155,20 +167,6 @@ export type PlanInputDeviceBase = {
    * never be mistaken for a decision.
    */
   commandableNow: boolean;
-  /** Opaque diagnostic string; UI / diagnostics consumers only. */
-  commandableNowReason?: string | null;
-  /**
-   * Producer-resolved EV plug-state sub-classification, materialized flat
-   * alongside `commandableNow` from the observed `evChargingState` (the observer
-   * owns the raw plug-state; the planner carries only the resolved decisions).
-   * Both/all are absent for non-EV devices; consumers read them through the
-   * shared `resolveEvBlockReasonForDevice` / `isEvSessionInactiveForDevice` /
-   * `isEvChargerNotResumableForDevice` resolvers, which read only these
-   * materialized bits (the raw `evChargingState` consumer arm is retired).
-   */
-  evBlockReason?: string | null;
-  evSessionInactive?: boolean;
-  evChargerNotResumable?: boolean;
   /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
@@ -221,11 +219,9 @@ export type PlanInputDeviceBase = {
   // longer carried — it stays transport/observer-internal. `currentState` (the
   // four-valued reason/UI label) is producer-resolved at `toPlanDevice`.
   currentState?: string;
-  // EV fields (`evBoost`, `stateOfCharge`) are split off onto the orthogonal
-  // `EvPlanInputKind` cluster; reach them through the `isEvPlanDevice` guard
-  // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields
-  // (`evBlockReason` / `evSessionInactive` / `evChargerNotResumable`) live on the
-  // base alongside `commandableNow`.
+  // EV fields (`evChargingState`, `evBoost`, `stateOfCharge`) are split off onto
+  // the orthogonal `EvPlanInputKind` cluster; reach them through the
+  // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;

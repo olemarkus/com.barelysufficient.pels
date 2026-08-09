@@ -29,6 +29,7 @@ import {
     buildTargets,
     getCurrentTemperature,
     resolveDeviceCapabilities,
+    shouldDropForEvPlugStateContract,
 } from './managerParse';
 import {
     isObserveOnlyRoleDevice,
@@ -131,11 +132,20 @@ function resolveDeviceControlBundle(params: {
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { logger, debugStructured, isPowerCapable } = deps;
-    const controlCapabilityId = getControlCapabilityId({
-        deviceClassKey, capabilities: overlay.capabilities,
-    });
+    const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities: overlay.capabilities });
     const evCharging = getEvCharging(overlay.capabilityObj);
     const evChargingState = getEvChargingState(overlay.capabilityObj);
+    if (shouldDropForEvPlugStateContract({
+        deviceClassKey,
+        deviceId,
+        deviceLabel,
+        capabilities: overlay.capabilities,
+        stateReportedInPayload: overlay.capabilityObj.evcharger_charging_state !== undefined,
+        reportedStateValue: overlay.capabilityObj.evcharger_charging_state?.value,
+        evChargingState,
+        retainedEvChargingState: previousSnapshot?.evChargingState,
+        debugStructured,
+    })) return null;
     const { resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState }
         = resolveDeviceParsedControlState({
         logger,

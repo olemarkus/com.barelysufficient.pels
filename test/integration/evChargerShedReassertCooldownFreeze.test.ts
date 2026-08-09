@@ -103,9 +103,13 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   resolveLatestLocalWriteMs: () => undefined,
 });
 
-// Prod fidelity: `evcharger_charging` + `target_power` only — NO
-// `evcharger_charging_state` (the plug state is unknown), so the observed
-// on/off state rides the raw switch boolean.
+// Prod fidelity: `evcharger_charging` + `target_power` + the plug-state axis.
+// The original fixture omitted `evcharger_charging_state` on the belief that the
+// prod charger had none ("zero state events in the log"); the prod logs actually
+// carry 282 `evcharger_charging_state` observations for this device
+// (`8996261a-…`), and `target_power` is the amp/step axis, not a substitute for
+// the state axis. The plug-state tracks the switch here so the observed on/off
+// fold matches what prod saw.
 const buildChargerDevice = (params: { charging: boolean; nowIso: string }): HomeyDeviceLike => {
   const capabilitiesObj: Record<string, CapabilityValue<unknown> | undefined> = {
     measure_power: { value: params.charging ? 3_000 : 0, lastUpdated: params.nowIso },
@@ -113,6 +117,10 @@ const buildChargerDevice = (params: { charging: boolean; nowIso: string }): Home
       value: 3_450, min: 0, max: 7_360, step: 230, setable: true, lastUpdated: params.nowIso,
     },
     evcharger_charging: { value: params.charging, setable: true, lastUpdated: params.nowIso },
+    evcharger_charging_state: {
+      value: params.charging ? 'plugged_in_charging' : 'plugged_in_paused',
+      lastUpdated: params.nowIso,
+    },
   };
   return {
     id: DEVICE_ID,
@@ -120,7 +128,7 @@ const buildChargerDevice = (params: { charging: boolean; nowIso: string }): Home
     class: 'evcharger',
     driverId: 'homey:app:no.easee:charger',
     ownerUri: 'homey:app:no.easee',
-    capabilities: ['measure_power', 'target_power', 'evcharger_charging'],
+    capabilities: ['measure_power', 'target_power', 'evcharger_charging', 'evcharger_charging_state'],
     capabilitiesObj,
     available: true,
     ready: true,

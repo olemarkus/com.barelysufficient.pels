@@ -17,6 +17,7 @@ import {
   getCurrentTemperature,
   resolveDeviceCapabilities,
 } from '../../lib/device/transport/managerParse';
+import { resolveCandidateCapabilities } from '../../lib/device/managerNativeEv';
 import { getBinaryControlPlan } from '../../lib/plan/planBinaryControl';
 import {
   reconcileRealtimeDeviceUpdate,
@@ -201,7 +202,10 @@ describe('device manager support helpers', () => {
       deviceId: 'ev1',
       missingCapability: 'evcharger_charging',
     }));
-    expect(resolveDeviceCapabilities({
+    // `evcharger_charging_state` is required of EVERY charger, so the check lives
+    // one level up — at the funnel that also serves the chargers which bypass this
+    // function on the control axis (`target_power` / stepped-load).
+    expect(resolveCandidateCapabilities({
       deviceClassKey: 'evcharger',
       deviceId: 'ev2',
       deviceLabel: 'EV 2',
@@ -211,6 +215,19 @@ describe('device manager support helpers', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_skipped_missing_capability',
       deviceId: 'ev2',
+      missingCapability: 'evcharger_charging_state',
+    }));
+    expect(resolveCandidateCapabilities({
+      deviceClassKey: 'evcharger',
+      deviceId: 'ev3',
+      deviceLabel: 'EV 3',
+      capabilities: ['target_power', 'measure_power'],
+      controlAdapter: { activationAvailable: true } as never,
+      debugStructured,
+    })).toBeNull();
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_skipped_missing_capability',
+      deviceId: 'ev3',
       missingCapability: 'evcharger_charging_state',
     }));
     expect(resolveDeviceCapabilities({

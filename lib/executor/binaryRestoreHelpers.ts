@@ -2,10 +2,8 @@ import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
 } from '../plan/planExecutorSupport';
-import {
-  getEvRestoreBlockReason,
-} from '../plan/planBinaryControl';
 import { getLogger } from '../logging/logger';
+import { resolveCommandabilityDetail } from '../../packages/shared-domain/src/commandableNowReason';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import {
   type PlanExecutorBinaryContext,
@@ -48,8 +46,9 @@ export const canApplyRestoreSnapshot = (
     return false;
   }
   if (!canTurnOnDevice(snapshot)) {
-    const evReason = getEvRestoreBlockReason(snapshot);
-    const suffix = evReason ? ` (${evReason})` : '';
+    // Same wording the owner sees on the device card: both come from
+    // `resolveCommandabilityDetail` over the same observed facts.
+    const suffix = ` (${resolveCommandabilityDetail(snapshot)})`;
     logger.debug({
       event: 'restore_command_skipped',
       reasonCode: 'not_setable',

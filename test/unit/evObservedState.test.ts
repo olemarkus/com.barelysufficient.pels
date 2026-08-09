@@ -28,8 +28,15 @@ describe('isEvObserved', () => {
     expect(isEvObserved(s)).toBe(true);
   });
 
-  it('is false for an EV charger with no resolved state yet (cold start)', () => {
-    expect(isEvObserved(snap({ deviceClass: 'evcharger', evChargingState: undefined }))).toBe(false);
+  it('is true for an EV charger regardless of the fixture carrying a state', () => {
+    // The predicate is EV-ness alone: presence is a parse-boundary guarantee, not
+    // something consumers re-check. Every `evcharger` must expose
+    // `evcharger_charging_state` (`resolveCandidateCapabilities`) and report a
+    // member of the Homey enum for it (`shouldDropForEvPlugStateContract`), or it
+    // is dropped rather than managed — so "EV charger with no plug-state" is not a
+    // device that reaches a consumer. A fixture that omits it is simply not a
+    // device the producer could have built.
+    expect(isEvObserved(snap({ deviceClass: 'evcharger', evChargingState: undefined }))).toBe(true);
   });
 
   it('narrows evChargingState to a non-undefined EvChargingState', () => {

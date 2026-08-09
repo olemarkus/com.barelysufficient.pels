@@ -8,7 +8,7 @@ import type {
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type {
   DeviceStateOfChargeSnapshot, EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
@@ -100,53 +100,29 @@ const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'on
   });
 };
 
-type MaterializedEvFields = {
-  evBlockReason?: string | null;
-  evSessionInactive?: boolean;
-  evChargerNotResumable?: boolean;
-  commandableNow: boolean;
-  commandableNowReason?: string | null;
-};
-
 /**
- * Test convenience: materialize the flat EV plug-state sub-fields (and the
- * `commandableNow` bit) from a fixture's readable `evChargingState:
- * 'plugged_out'` input so the plan devices it builds carry the producer-resolved
- * decisions consumers read, and drop the raw `evChargingState` (the observer
- * owns it, not the planner — the raw `evChargingState` consumer arm is retired,
- * so an unmaterialized fixture would have NO plug-state signal at all).
+ * Test convenience: materialize the one producer-resolved bit
+ * (`commandableNow`) from a fixture's readable `evChargingState: 'plugged_out'`
+ * input, and KEEP the state itself — it is a planner field again, carried on the
+ * EV cluster, and every plug-state question is answered from it.
  *
- * Mirrors the producer (`toPlanDevice`) for EV devices: it runs the same
- * `resolveCommandableNow` and attaches `commandableNow` / `commandableNowReason`
- * alongside the EV trio, so the fixture is faithful to a real `PlanInputDevice`
- * (the executor drift path reads `commandableNow` off it). An EV with no
- * `evChargingState` fails closed because resume requires affirmative connected
- * evidence, matching the producer.
+ * Mirrors the producer (`toPlanDevice`), so a fixture is faithful to a real
+ * `PlanInputDevice`: the executor drift path reads `commandableNow` off it, and
+ * plan consumers read the plug-state through `isEvPlanDevice`.
  *
  * `commandableNow` is materialized for EVERY fixture, EV or not, because it is a
- * required base field — a fixture without it would let a consumer read `undefined`
- * as "not commandable", the exact absence-as-answer bug this field's requiredness
- * exists to prevent. The EV trio stays EV-only so non-EV fixtures are uncluttered
- * (the resolvers default an absent field to `false`/`null` anyway).
+ * required base field — a fixture without it would let a consumer read
+ * `undefined` as "not commandable", the exact absence-as-answer bug the field's
+ * requiredness exists to prevent.
  */
 export const withMaterializedEvPlugState = <T extends { deviceClass?: string; controlCapabilityId?: string }>(
   overrides: T & { evChargingState?: string },
-): Omit<T, 'evChargingState'> & MaterializedEvFields => {
-  const { evChargingState, ...rest } = overrides;
-  const commandable = resolveCommandableNow({
-    dev: { ...rest, evChargingState: evChargingState as EvChargingState | undefined },
-  });
-  if (!isEvDevice(rest)) {
-    return { ...rest, commandableNow: commandable.commandableNow, commandableNowReason: commandable.reason };
-  }
-  const evFields: MaterializedEvFields = {
-    evBlockReason: commandable.evBlockReason,
-    evSessionInactive: commandable.evSessionInactive,
-    evChargerNotResumable: commandable.evChargerNotResumable,
-    commandableNow: commandable.commandableNow,
-    commandableNowReason: commandable.reason,
+): T & { commandableNow: boolean } => {
+  const dev = {
+    ...overrides,
+    evChargingState: overrides.evChargingState as EvChargingState | undefined,
   };
-  return { ...rest, ...evFields };
+  return { ...overrides, commandableNow: resolveCommandableNow(dev) } as T & { commandableNow: boolean };
 };
 
 export const steppedProfile: SteppedLoadProfile = {

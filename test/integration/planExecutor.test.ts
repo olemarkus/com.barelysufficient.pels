@@ -2120,7 +2120,10 @@ describe('PlanExecutor stepped loads', () => {
       devices: [withEvDiscriminant(plan.devices[0]!)],
     };
 
-    expect(evPlan.devices[0]).not.toHaveProperty('evChargingState');
+    // The plug-state rides on the EV cluster now — it is the single source every
+    // commandability question is answered from, so the plan device carries it
+    // instead of a fan of derived bits.
+    expect(evPlan.devices[0]).toHaveProperty('evChargingState');
     expect(executor.hasStablePlanActuation(evPlan)).toBe(true);
   });
 

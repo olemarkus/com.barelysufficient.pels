@@ -123,18 +123,8 @@ function resolveInputBinaryControlField(
  */
 function producerResolvedDecisionFields(dev: PlanInputDevice): {
   commandableNow: boolean;
-  commandableNowReason?: string | null;
-  evBlockReason?: string | null;
-  evSessionInactive?: boolean;
-  evChargerNotResumable?: boolean;
 } {
-  return {
-    commandableNow: dev.commandableNow,
-    commandableNowReason: dev.commandableNowReason,
-    evBlockReason: dev.evBlockReason,
-    evSessionInactive: dev.evSessionInactive,
-    evChargerNotResumable: dev.evChargerNotResumable,
-  };
+  return { commandableNow: dev.commandableNow };
 }
 
 export function buildBasePlanDevice(params: {

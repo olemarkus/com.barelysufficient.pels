@@ -4272,6 +4272,12 @@ describe('stepped-load shed invariant', () => {
             selectedStepId: 'medium',
             desiredStepId: 'medium',
           }),
+          // A stepped charger with no EV capabilities — the `target_power`
+          // population, which boosts on SoC and has no plug-state. `deviceClass`
+          // is what makes it an EV device, and `withEvDiscriminant` attaches the
+          // EV cluster only to one (a non-EV device must not carry EV fields a
+          // spread dragged in).
+          deviceClass: 'evcharger',
           evBoostActive: true,
         }) as DevicePlanDevice,
         buildPlanDevice({

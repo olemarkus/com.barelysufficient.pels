@@ -4,7 +4,6 @@ import type {
   BinaryCommandLifecycleListener,
 } from '../observer/pendingBinaryCommands';
 import { EV_START_COMMAND_PENDING_MS } from '../observer/pendingBinaryCommandTypes';
-import { EV_RESUME_PROBE_FAILED_REASON } from '../../packages/shared-domain/src/commandableNowReason';
 
 const logger = getLogger('executor/ev-resume-reachability');
 const RETRY_DELAYS_MS = [15, 30, 60].map((minutes) => minutes * 60 * 1000);
@@ -17,7 +16,13 @@ type ReachabilityState = {
   scheduledKind?: 'settlement' | 'retry';
 };
 
-export type CommandabilityProjection = { commandableNow: boolean; reason: string | null };
+/**
+ * The commandability answer as it passes through the probe: a plain boolean. The
+ * probe's own veto ("commanded, never started charging") needs no reason string
+ * riding with it — the surface that renders the answer derives the wording from
+ * the same observed facts (`resolveCommandabilityDetail`).
+ */
+export type CommandabilityProjection = boolean;
 
 export type EvResumeReachability = {
   lifecycle: BinaryCommandLifecycleListener;
@@ -204,10 +209,8 @@ export function createEvResumeReachability(params: {
       if (recovered && previous?.scheduledKind === 'retry') {
         scheduled.clear(deviceId);
       }
-      if (!eligible || !availableNow || base.commandableNow === false) return base;
-      if (next.retryAtMs !== undefined && Date.now() < next.retryAtMs) {
-        return { commandableNow: false, reason: EV_RESUME_PROBE_FAILED_REASON };
-      }
+      if (!eligible || !availableNow || !base) return base;
+      if (next.retryAtMs !== undefined && Date.now() < next.retryAtMs) return false;
       return base;
     },
     prune: (presentDeviceIds) => {

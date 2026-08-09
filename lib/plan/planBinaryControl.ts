@@ -8,16 +8,12 @@ import {
   isFlowBackedBinaryControl,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
-// `getBinaryControlPlan` and `getEvRestoreBlockReason` moved to
-// `lib/device/deviceActionProjection.ts` as chunk 1 of the planner-detype
-// refactor. Re-exported here so every existing call site continues to
-// work unchanged.
+// `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts` as
+// chunk 1 of the planner-detype refactor. Re-exported here so every existing
+// call site continues to work unchanged.
 import { getBinaryControlPlan } from '../device/deviceActionProjection';
 
-export {
-  getBinaryControlPlan,
-  getEvRestoreBlockReason,
-} from '../device/deviceActionProjection';
+export { getBinaryControlPlan } from '../device/deviceActionProjection';
 
 export { type BinaryControlDecision } from './planBinaryControlHelpers';
 
