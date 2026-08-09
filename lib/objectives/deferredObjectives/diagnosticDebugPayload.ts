@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 
@@ -38,13 +39,15 @@ const rescueFields = (
 export const buildDeferredObjectiveDebugPayload = (
   diagnostic: DeferredObjectiveDiagnostic,
 ): Record<string, unknown> => ({
-  event: diagnostic.status === 'unknown' ? 'deferred_objective_unknown' : 'deferred_objective_horizon_planned',
+  event: diagnostic.trajectory.kind === 'unavailable'
+    ? 'deferred_objective_unknown'
+    : 'deferred_objective_horizon_planned',
   deviceId: diagnostic.deviceId,
   ...(diagnostic.deviceName ? { deviceName: diagnostic.deviceName } : {}),
   objectiveId: diagnostic.objectiveId,
   objectiveKind: diagnostic.objectiveKind,
   enforcement: diagnostic.enforcement,
-  status: diagnostic.status,
+  status: resolvedTrajectoryStatus(diagnostic) ?? 'unknown',
   reasonCode: diagnostic.reasonCode,
   // Logged separately from `reasonCode` because it no longer replaces it — the
   // planner's verdict and the live hold are independent facts about the cycle.

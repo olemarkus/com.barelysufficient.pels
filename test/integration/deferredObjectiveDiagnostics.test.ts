@@ -1,3 +1,4 @@
+import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
@@ -1037,9 +1038,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
       .map((bucket) => Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS) ?? [];
 
-    expect(high?.status).toBe('on_track');
+    expect(high && resolvedTrajectoryStatus(high)).toBe('on_track');
     expect(low).toMatchObject({
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'limited_by_higher_priority_task',
       replaceCommitment: true,
     });
@@ -1073,7 +1074,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       hardCapKw: 2.1,
     });
     const low = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
-    expect(low?.status).toBe('on_track');
+    expect(low && resolvedTrajectoryStatus(low)).toBe('on_track');
     expect(low?.horizonPlan?.plannedUsefulEnergyKWh).toBeCloseTo(4);
   });
 
@@ -1110,7 +1111,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       reason: 'flow_card' as const,
       hours: firstLowHours,
       energyNeededKWh: firstLow.horizonPlan!.energyNeededKWh,
-      planStatus: firstLow.status === 'unknown' ? 'on_track' as const : firstLow.status,
+      planStatus: resolvedTrajectoryStatus(firstLow) ?? 'on_track' as const,
       allocationContextSignature: firstLow.allocationContextSignature,
       devicePriority: 2,
     };
@@ -1519,7 +1520,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       reasonCode: 'planned_with_margin',
       currentPercent: 40,
       targetPercent: 60,
@@ -1627,7 +1628,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     const plannedBuckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
-    expect(diagnostic?.status).not.toBe('cannot_meet');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).not.toBe('cannot_meet');
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + HOUR_MS).toISOString())).toBeCloseTo(1);
     expect(diagnostic?.horizonPlan?.plannedUsefulEnergyKWh).toBeCloseTo(2);
   });
@@ -1795,7 +1796,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
     expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
     expect(diagnostic?.horizonPlan?.currentBucket ?? null).toBeNull();
-    expect(diagnostic?.status).toBe('cannot_meet');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('cannot_meet');
     expect(diagnostic?.reasonCode).toBe('deadline_passed');
     const decision = applyDeferredObjectiveAdmission(diagnostic ? [diagnostic] : [], [device]).get('ev-1');
     expect(decision).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
@@ -1833,7 +1834,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     // Price-dependent objective with the feature off ⇒ inactive (device returns to
     // normal control), NOT a frozen read of the stale price-optimized plan.
-    expect(diagnostic?.status).toBe('unknown');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeUndefined();
     expect(diagnostic?.reasonCode).toBe('objective_price_feature_disabled');
     expect(diagnostic?.horizonPlan).toBeUndefined();
   });
@@ -2202,7 +2203,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'temperature',
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       reasonCode: 'planned_with_margin',
       currentTemperatureC: 55,
       targetTemperatureC: 65,
@@ -2335,7 +2336,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     // 45 °C × 0.62 kWh/°C = 27.9 kWh of need, but each bucket caps at min(2 kW × 1h, 2 − 1) = 1 kWh.
     expect(diagnostic?.energyNeededKWh).toBeCloseTo(27.9);
-    expect(diagnostic?.status).toBe('cannot_meet');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('cannot_meet');
     expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeGreaterThan(0);
   });
 
@@ -2363,7 +2364,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Cumulative budget exhaustion is budget-bound (uncapped it would fit), so
     // the verdict is at_risk/limited_by_daily_budget rather than a physical
     // cannot_meet; the exhausted-bucket count still explains the constraint.
-    expect(diagnostic?.status).toBe('at_risk');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
     expect(diagnostic?.reasonCode).toBe('limited_by_daily_budget');
     expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(4);
   });
@@ -2381,7 +2382,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
 
-    expect(diagnostic?.status).toBe('on_track');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
     expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(0);
   });
 
@@ -2427,7 +2428,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'temperature',
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_temperature' },
       reasonCode: 'objective_missing_temperature',
       currentTemperatureC: null,
       energyNeededKWh: null,
@@ -2453,7 +2454,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'temperature',
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
       reasonCode: 'objective_progress_stale',
       currentTemperatureC: 55,
       energyNeededKWh: null,
@@ -2481,7 +2482,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'temperature',
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
       reasonCode: 'objective_progress_stale',
       currentTemperatureC: 55,
       energyNeededKWh: null,
@@ -2506,7 +2507,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({ objectiveKind: 'ev_soc' });
     expect(diagnostic?.reasonCode).not.toBe('objective_charger_not_resumable');
-    expect(diagnostic?.status).not.toBe('unknown');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeDefined();
   });
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
@@ -2521,7 +2522,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
       reasonCode: 'objective_missing_price_horizon',
       currentPercent: 40,
       energyNeededKWh: 4,
@@ -2542,7 +2543,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       horizonBucketCount: 23,
     });
   });
@@ -2559,7 +2560,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
       reasonCode: 'objective_price_feature_disabled',
       currentPercent: 40,
       targetPercent: 60,
@@ -2581,7 +2582,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
       reasonCode: 'objective_price_feature_disabled',
       currentPercent: null,
       targetPercent: 60,
@@ -2622,7 +2623,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     const entry = saved()!.entries[0]!;
     expect(staleBelowTarget).toMatchObject({
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
       reasonCode: 'objective_price_feature_disabled',
       currentPercent: null,
     });
@@ -2646,7 +2647,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'ev_soc',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       currentPercent: 70,
       targetPercent: 60,
@@ -2675,7 +2676,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'ev_soc',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       currentPercent: 70,
       targetPercent: 60,
@@ -2700,7 +2701,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       objectiveKind: 'ev_soc',
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       currentPercent: 70,
       targetPercent: 60,
@@ -2728,7 +2729,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
       expect(diagnostic).toMatchObject({
         objectiveKind: 'temperature',
-        status: 'satisfied',
+        trajectory: { kind: 'resolved', status: 'satisfied' },
         reasonCode: 'energy_already_met',
         currentTemperatureC: 66,
         targetTemperatureC: 65,
@@ -2769,12 +2770,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     })[0];
 
     expect(satisfied).toMatchObject({
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
     });
     expect(tracking).toMatchObject({
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       reasonCode: 'planned_with_margin',
       currentPercent: 40,
       energyNeededKWh: 4,
@@ -2798,7 +2799,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // 2% remaining × 1.0 kWh/% bootstrap = 2 kWh; planner can schedule that
       // within the horizon and reports on_track. The crucial assertion is that
       // status is no longer `unknown` and the source is `bootstrap`.
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       energyNeededKWh: 2,
       kWhPerUnitBanded: 1,
       kwhPerUnitSource: 'bootstrap',
@@ -2910,7 +2911,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_capacity' },
       reasonCode: 'objective_missing_capacity',
       kwhPerUnitSource: null,
     });
@@ -2987,7 +2988,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
 
-    // Pre-fix this would have been `status: 'unknown'`,
+    // Pre-fix this would have been `trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }`,
     // `reasonCode: 'objective_missing_charge_rate'`, `horizonPlan: undefined`.
     expect(diagnostic).toBeDefined();
     expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
@@ -3129,7 +3130,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'unknown',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_charge_rate' },
       reasonCode: 'objective_missing_charge_rate',
     });
   });
@@ -3149,7 +3150,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'satisfied',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       expectedStepId: null,
@@ -3171,7 +3172,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'on_track',
+      trajectory: { kind: 'resolved', status: 'on_track' },
       reasonCode: 'planned_with_margin',
     });
     expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(false);
@@ -3193,7 +3194,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'planned_using_deadline_reserve',
     });
     expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(true);
@@ -3220,7 +3221,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'feasible_above_floor',
     });
     expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeCloseTo(1);
@@ -3246,7 +3247,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'at_risk',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'planned_using_deadline_reserve',
     });
     expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(true);
@@ -3377,7 +3378,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         hardCapKw: HARDCAP_KW,
       });
       expect(diagnostic).toMatchObject({
-        status: 'on_track',
+        trajectory: { kind: 'resolved', status: 'on_track' },
       });
     });
 
@@ -3417,7 +3418,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // The permission is live for the planner's boost lane...
       expect(diagnostic.limitLowerPriorityApplied).toBe(true);
       // ...but the floor was NOT promoted, so the task cannot claim the top step.
-      expect(diagnostic.status).not.toBe('on_track');
+      expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).not.toBe('on_track');
     });
 
     it('normalizes equal base priorities by device id without double-booking an hour', () => {
@@ -3446,11 +3447,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((diagnostic) => [diagnostic.deviceId, diagnostic]));
-      expect(byDevice.get('ev-1')?.status).toBe('on_track');
+      expect(resolvedTrajectoryStatus(byDevice.get('ev-1')!)).toBe('on_track');
       expect(byDevice.get('ev-1')?.devicePriority).toBe(1);
       expect(byDevice.get('ev-2')).toMatchObject({
         devicePriority: 2,
-        status: 'at_risk',
+        trajectory: { kind: 'resolved', status: 'at_risk' },
       });
       const firstHours = new Set(byDevice.get('ev-1')?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
@@ -3492,9 +3493,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         hardCapKw: HARDCAP_KW,
       });
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
-      expect(byDevice.get('ev-1')).toMatchObject({ status: 'on_track' });
+      expect(byDevice.get('ev-1')).toMatchObject({ trajectory: { kind: 'resolved', status: 'on_track' } });
       expect(byDevice.get('ev-2')).toMatchObject({
-        status: 'at_risk',
+        trajectory: { kind: 'resolved', status: 'at_risk' },
         reasonCode: 'feasible_above_floor',
       });
     });
@@ -3588,7 +3589,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
-      expect(byDevice.get('ev-2')).toMatchObject({ devicePriority: 2, status: 'cannot_meet' });
+      expect(byDevice.get('ev-2')).toMatchObject({
+        devicePriority: 2,
+        trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      });
       expect(byDevice.get('ev-1')?.expectedStepId).toBe('min');
       expect(byDevice.get('ev-2')?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
@@ -3684,7 +3688,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     // on clears the live cause, but the frozen verdict would keep every surface
     // reporting risk for up to an hour. Consumers overlay it per cycle instead
     // (`resolveEffectivePlanStatus`), which is live in both directions.
-    expect(diagnostic?.status).toBe('on_track');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
     expect(diagnostic?.horizonPlan?.status).toBe('on_track');
   });
 
@@ -3705,7 +3709,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     });
     // Guard the guard: if this ever stops degrading the live verdict, the case
     // is no longer being exercised and the assertion below means nothing.
-    expect(diagnostic?.status).toBe('unknown');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeUndefined();
     expect(diagnostic?.externalOffHoldActive).toBe(true);
   });
 
@@ -3721,18 +3725,18 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 
   it('leaves the trajectory status untouched when no stall reader is supplied', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics(onTrackParams());
-    expect(diagnostic?.status).toBe('on_track');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
   });
 
   it('resolves a parked on_track device to satisfied with the near-target reason, preserving the raw status', () => {
     const params = withEstablishedPlan(onTrackParams());
-    expect(buildDeferredObjectiveDiagnostics(params)[0]?.status).toBe('on_track');
+    expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('on_track');
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       ...params,
       getStallClassification: (id: string) => (id === 'ev-1' ? 'near_target_idle' : undefined),
     });
-    expect(diagnostic?.status).toBe('satisfied');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_near_target');
     // The raw trajectory verdict stays on the horizonPlan so the postmortem
     // recorder and the structured horizon log keep the honest reading.
@@ -3741,13 +3745,13 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 
   it('resolves a parked failing device (at_risk) to satisfied with the device-capped reason', () => {
     const params = withEstablishedPlan(atRiskParams());
-    expect(buildDeferredObjectiveDiagnostics(params)[0]?.status).toBe('at_risk');
+    expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('at_risk');
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       ...params,
       getStallClassification: () => 'capped_idle',
     });
-    expect(diagnostic?.status).toBe('satisfied');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_device_capped');
     expect(diagnostic?.horizonPlan?.status).toBe('at_risk');
   });
@@ -3757,7 +3761,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
       ...withEstablishedPlan(atRiskParams()),
       getStallClassification: () => 'unresponsive',
     });
-    expect(diagnostic?.status).toBe('at_risk');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });
 
   it('ignores a stale classifier verdict on a first-seen task (no established plan yet)', () => {
@@ -3768,6 +3772,6 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
       ...atRiskParams(),
       getStallClassification: () => 'near_target_idle',
     });
-    expect(diagnostic?.status).toBe('at_risk');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });
 });

@@ -47,7 +47,27 @@ type BaseDeferredObjectiveDiagnostic = {
   deviceName?: string;
   objectiveId: string;
   enforcement: DeferredObjectiveSettingsEntry['enforcement'];
-  status: 'unknown' | DeferredObjectiveHorizonPlan['status'];
+  /**
+   * The trajectory verdict, or the reason there is none.
+   *
+   * Split deliberately. `status` used to carry a `'unknown'` arm alongside the
+   * real verdicts (`on_track` / `at_risk` / `cannot_meet` / `satisfied` /
+   * `invalid`), stamped for transient DATA problems — a missing rate, an
+   * unavailable battery level. Every consumer then had to remember to branch on
+   * a value that meant "we could not compute one", and one that forgot shipped
+   * a bug: gating the external-off overlay on the live status meant a degraded
+   * reading silently reverted every surface to a cached **On track** while the
+   * device was held off.
+   *
+   * With the union, "no verdict" cannot be mistaken for a verdict — reach the
+   * status through `resolvedTrajectoryStatus`, which answers `undefined` when
+   * there is none. The `'unknown'` arm survives only on the PUBLISHED status
+   * (`DeferredObjectivePublishedStatus`), where the UI needs something to show;
+   * `statusTransitions` maps it at that boundary and nowhere else.
+   */
+  trajectory:
+    | { kind: 'resolved'; status: DeferredObjectiveHorizonPlan['status'] }
+    | { kind: 'unavailable'; reasonCode: DeferredObjectiveDiagnosticReasonCode };
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
   /**
    * "Leave off until turned on again" is live on this device.
@@ -181,3 +201,16 @@ export type DeferredObjectiveDiagnostic =
     targetTemperatureC?: never;
     currentTemperatureC?: never;
   });
+
+/**
+ * The trajectory verdict when there is one, `undefined` when there is not.
+ *
+ * The single accessor for `trajectory`, so a consumer asking "is this task
+ * satisfied?" gets `false` for a diagnostic that could not be computed, rather
+ * than having to remember that one arm of an enum means "no answer".
+ */
+export const resolvedTrajectoryStatus = (
+  diagnostic: Pick<BaseDeferredObjectiveDiagnostic, 'trajectory'>,
+): DeferredObjectiveHorizonPlan['status'] | undefined => (
+  diagnostic.trajectory.kind === 'resolved' ? diagnostic.trajectory.status : undefined
+);

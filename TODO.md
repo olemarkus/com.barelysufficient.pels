@@ -1848,23 +1848,6 @@ program) remain deferred.*
       `resolveUnexplainedSessions` / `clearSession*`) versus observation ingest, which barely share
       state beyond `activeLinks`. Source: CodeRabbit on PR #1895. [P2]
 
-- [ ] **Smart-task `status: 'unknown'` conflates "no verdict" with a verdict, one layer above the adapter.**
-      `withUnknown()` (`diagnosticFields.ts`) stamps `status: 'unknown'` for transient DATA problems —
-      `objective_progress_stale`, `objective_missing_temperature`, `objective_missing_charge_rate`,
-      `objective_missing_capacity` — into the same field that otherwise carries genuine trajectory
-      verdicts (`on_track` / `at_risk` / `cannot_meet` / `satisfied` / `invalid`). Every consumer
-      must then branch on a value meaning "we could not compute one":
-      `activePlanRevisionBuild.ts:56` falls back to `horizonPlan.status`, `planPreview.ts`,
-      `endedEventBus.ts`, and `planHistoryInProgressState.ts` each special-case it.
-      This is the consumer-side dual of the boundary rule in `AGENTS.md`: a read failure should
-      become an explicit semantic result at the producer, not a nullable/sentinel business value
-      that flows inward. It has already produced a real bug — gating the external-off overlay on
-      the live status meant a stale SoC reading silently reverted every surface to a cached
-      **On track** while the device was held off (fixed by not consuming the degraded value at all,
-      but the shape that invited it is still there).
-      Fix shape: split availability from verdict — e.g. `{ kind: 'resolved', status } | { kind: 'unavailable', reasonCode }`
-      — so no downstream layer can accidentally treat "unknown" as a trajectory claim.
-
 - [ ] **"Leave off until turned on again": sub-home plan paths are not driven by hold changes.**
       Three related gaps, all multi-home-only and all with the same shape — the hold store is
       shared across homes but the plan paths are not, so a sub-home keeps a stale

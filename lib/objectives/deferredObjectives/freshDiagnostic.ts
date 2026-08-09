@@ -21,7 +21,7 @@ import {
   isCurrentBucketPlanned,
   mergeProgressFields,
   resolveProgressEnergy,
-  withUnknown,
+  withUnavailableTrajectory,
 } from './diagnosticFields';
 
 export const buildPolicyGatedKnownInputs = (
@@ -64,7 +64,7 @@ export const buildHorizonUnavailableDiagnostic = (
   progress: DeferredObjectiveProgressResolution,
   rawPolicyHorizon: UnavailablePolicyHorizon,
   ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
-): DeferredObjectiveDiagnostic => withUnknown({
+): DeferredObjectiveDiagnostic => withUnavailableTrajectory({
   ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, ctx),
   horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
   dailyBudgetExhaustedBucketCount: rawPolicyHorizon.dailyBudgetExhaustedBucketCount,
@@ -131,7 +131,7 @@ export const buildFreshDiagnostic = (params: {
 
   return {
     ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-    status: planWithPriceWatermark.status,
+    trajectory: { kind: 'resolved', status: planWithPriceWatermark.status },
     reasonCode: planWithPriceWatermark.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
