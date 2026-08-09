@@ -4,7 +4,7 @@ import type { DeviceCapabilityMap } from './managerControl';
 import { updateLastKnownPower } from './managerRuntime';
 import { readDeviceMeasuredPowerObservation } from './measuredPowerReader';
 import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
-import type { PowerEstimateState } from './devicePowerEstimate';
+import type { ResolvedTransportPowerState } from './transport/transportTypes';
 
 /**
  * Below this a reading is standby noise, not evidence of what the device draws
@@ -22,7 +22,7 @@ export function resolveMeasuredPowerKw(params: {
   livePowerWByDeviceId: LiveDevicePowerWatts;
   now: number;
   measuredPowerResolver: DeviceMeasuredPowerResolver;
-  powerState: Required<PowerEstimateState>;
+  powerState: ResolvedTransportPowerState;
   logger: Logger;
 }): { measuredPowerKw?: number; observedAtMs?: number } {
   const {
@@ -48,8 +48,9 @@ export function resolveMeasuredPowerKw(params: {
     }),
   });
   // Peak learning is gated at the credibility floor, NOT at "any finite reading".
-  // `updateLastKnownPower` is a max-tracker, so a standby trickle can never
-  // displace an established peak — but it CAN establish the first one, and a
+  // `updateLastKnownPower` keeps the max within its window, so a standby trickle
+  // can rarely displace an established peak — but it CAN establish the first one,
+  // and (once the window has closed on an unrepeated spike) re-anchor to one. A
   // device whose only observed draw so far is 3 W would then carry
   // `expectedPowerSource: 'measured-peak'` with a 3 W expectation into the restore
   // axis. Before `MIN_SIGNIFICANT_POWER_W` was removed from the resolver, such a
@@ -66,6 +67,11 @@ export function resolveMeasuredPowerKw(params: {
       deviceId,
       measuredKw: measuredPower.measuredPowerKw,
       deviceLabel,
+      // WHEN PELS READ IT, not the capability's `lastUpdated`: Homey reports on
+      // change, so a device steady at its peak stops republishing and would
+      // otherwise have its peak expire for holding still.
+      nowMs: now,
+      onPeakChanged: powerState.onLearnedPeakChanged,
     });
   }
   return measuredPower;

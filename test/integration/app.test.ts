@@ -274,7 +274,7 @@ describe('MyApp initialization', () => {
       });
 
       const app = createApp();
-      (app as any).loadFlowReportedCapabilities();
+      (app as any).flowBacked.loadPersistedState();
 
       expect((app as any).flowReportedCapabilities).toEqual({});
       expect(mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES)).toEqual({});
@@ -305,7 +305,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, undefined);
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
-    (app as any).loadFlowReportedCapabilities();
+    (app as any).flowBacked.loadPersistedState();
 
     expect((app as any).flowReportedCapabilities).toEqual(existing);
     // Must not persist anything — we don't know the state is really empty.
@@ -335,7 +335,7 @@ describe('MyApp initialization', () => {
     (app as any).flowReportedCapabilities = { ...existing };
 
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, incoming);
-    (app as any).loadFlowReportedCapabilities();
+    (app as any).flowBacked.loadPersistedState();
 
     expect((app as any).flowReportedCapabilities).toEqual(incoming);
   });

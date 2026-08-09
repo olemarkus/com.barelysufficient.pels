@@ -1,3 +1,4 @@
+import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import type { Mock, MockInstance } from 'vitest';
 
 import { DeviceTransport } from '../../lib/device/deviceTransport';
@@ -16,7 +17,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     };
     // Shared state objects
     let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
-    let lastKnownPowerKw: Record<string, number>;
+    let lastKnownPowerKw: LearnedPeaksByDeviceId;
     let lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
     let apiGetSpy: MockInstance;
 

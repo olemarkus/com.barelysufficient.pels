@@ -1,3 +1,4 @@
+import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { vi } from 'vitest';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
@@ -117,7 +118,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let shedBehaviors: Record<string, ShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
-  const lastKnownPowerKw: Record<string, number> = {};
+  const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   let lastNotifiedOperatingMode = 'Home';
   let powerSampleRebuildState = { lastMs: 0, lastRebuildPowerW: 0 };
   const latestTargetSnapshot = latestTargetSnapshotOverride ?? [];

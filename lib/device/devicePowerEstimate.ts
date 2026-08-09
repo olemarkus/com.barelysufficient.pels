@@ -1,4 +1,5 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
+import { resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getLogger } from '../logging/logger';
@@ -24,16 +25,27 @@ const EV_DEFAULT_EXPECTED_POWER_KW = 1.38;
 
 export type PowerEstimateState = {
   expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
-  lastKnownPowerKw?: Record<string, number>;
+  lastKnownPowerKw?: LearnedPeaksByDeviceId;
   lastEstimateDecisionLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
 };
 
+/**
+ * What the estimator PUBLISHES. Only the resolved answer and the rung that
+ * produced it.
+ *
+ * The raw candidates it weighed — the live reading, the declared
+ * `settings.load` — are deliberately absent. They are inputs to a decision this
+ * type reports the OUTPUT of, and republishing them hands consumers a second
+ * answer to a question already answered here. Where they are genuinely needed:
+ * the live reading has its own producer seam (`resolveMeasuredPowerKw`, whose
+ * result the parse path already holds), and both are recorded against the
+ * decision by `emitEstimateDecisionLog` below — at the point the decision is
+ * made, rather than by exporting them for someone else to log.
+ */
 export type PowerEstimateResult = {
   expectedPowerKw: number;
   expectedPowerSource: ExpectedPowerSource;
-  measuredPowerKw?: number;
-  loadKw?: number;
   hasEnergyEstimate?: boolean;
 };
 
@@ -59,19 +71,29 @@ export function estimatePower(params: {
   } = params;
 
   const loadW = getLoadSettingWatts(device);
-  const result: PowerEstimateResult = {
-    ...resolveExpectedPower({
-      override: state.expectedPowerKwOverrides[deviceId],
-      loadW,
-      peakKw: state.lastKnownPowerKw[deviceId],
-      energyEstimateW: getHomeyEnergyEstimateWatts(device),
-      controlCapabilityId,
-    }),
-    measuredPowerKw,
-    ...(loadW === null ? {} : { loadKw: loadW / 1000 }),
-  };
+  const result: PowerEstimateResult = resolveExpectedPower({
+    override: state.expectedPowerKwOverrides[deviceId],
+    loadW,
+    peakKw: resolveLearnedPeakKw(state.lastKnownPowerKw[deviceId], now),
+    energyEstimateW: getHomeyEnergyEstimateWatts(device),
+    controlCapabilityId,
+  });
 
-  emitEstimateDecisionLog({ deviceId, deviceLabel, result, state, logger, now });
+  // The losing candidates are passed to the log, not returned. They are what
+  // makes the event diagnostic — `source: 'default', estimatedKw: 1,
+  // measuredPowerKw: 2.1` states in one line that PELS invented a figure while
+  // the meter was reading 2.1 kW — and that is a reason to record them here, at
+  // the decision, not a reason to publish them.
+  emitEstimateDecisionLog({
+    deviceId,
+    deviceLabel,
+    result,
+    measuredPowerKw,
+    loadKw: loadW === null ? undefined : loadW / 1000,
+    state,
+    logger,
+    now,
+  });
   return result;
 }
 
@@ -95,7 +117,7 @@ export function estimatePower(params: {
 function resolveExpectedPower(params: {
   override?: { kw: number; ts: number };
   loadW: number | null;
-  peakKw?: number;
+  peakKw: number | null;
   energyEstimateW: number | null;
   controlCapabilityId?: BinaryControlCapabilityId;
 }): Pick<PowerEstimateResult, 'expectedPowerKw' | 'expectedPowerSource' | 'hasEnergyEstimate'> {
@@ -112,7 +134,7 @@ function resolveExpectedPower(params: {
     return { expectedPowerKw: overrideKw, expectedPowerSource: 'manual' };
   }
   if (loadW !== null) return { expectedPowerKw: loadW / 1000, expectedPowerSource: 'load-setting' };
-  if (peakKw !== undefined && peakKw > 0) {
+  if (peakKw !== null && peakKw > 0) {
     return { expectedPowerKw: peakKw, expectedPowerSource: 'measured-peak' };
   }
   if (energyEstimateW !== null) {
@@ -215,6 +237,8 @@ function emitEstimateDecisionLog(params: {
   deviceId: string;
   deviceLabel: string;
   result: PowerEstimateResult;
+  measuredPowerKw?: number;
+  loadKw?: number;
   state: Required<PowerEstimateState>;
   logger: Logger;
   now: number;
@@ -258,6 +282,8 @@ function emitEstimateDecisionLog(params: {
 function buildEstimateDecisionLogFields(params: {
   deviceId: string;
   result: PowerEstimateResult;
+  measuredPowerKw?: number;
+  loadKw?: number;
   state: Required<PowerEstimateState>;
 }): {
   source: ExpectedPowerSource;
@@ -270,8 +296,8 @@ function buildEstimateDecisionLogFields(params: {
   return {
     source: result.expectedPowerSource,
     estimatedKw: roundLogValue(result.expectedPowerKw, 2),
-    measuredPowerKw: roundMaybeKw(result.measuredPowerKw),
-    loadKw: roundMaybeKw(result.loadKw),
+    measuredPowerKw: roundMaybeKw(params.measuredPowerKw),
+    loadKw: roundMaybeKw(params.loadKw),
     peakMeasuredKw: resolvePeakMeasuredKw(result.expectedPowerSource, deviceId, state),
   };
 }
@@ -286,5 +312,5 @@ function resolvePeakMeasuredKw(
   state: Required<PowerEstimateState>,
 ): number | null {
   if (source !== 'measured-peak') return null;
-  return roundMaybeKw(state.lastKnownPowerKw[deviceId]);
+  return roundMaybeKw(state.lastKnownPowerKw[deviceId]?.kw);
 }

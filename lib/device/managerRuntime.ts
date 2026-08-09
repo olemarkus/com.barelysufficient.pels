@@ -22,6 +22,7 @@ import {
   type ExplicitControlObservation,
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
+import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 
 const moduleLogger = getLogger('device/manager-runtime');
 
@@ -42,15 +43,33 @@ type RealtimeReconcileResult = {
   currentSnapshot: TransportDeviceSnapshot | null;
 };
 
+/**
+ * Record a measured reading against the device's learned peak.
+ *
+ * The max/expiry policy lives in `devicePowerPeak.ts`; this owns the mutation,
+ * the change log, and telling the wiring the record moved. `nowMs` is
+ * when PELS took the reading — see that module for why the window must not be
+ * anchored on the capability's `lastUpdated`.
+ */
 export function updateLastKnownPower(params: {
   state: {
-    lastKnownPowerKw: Record<string, number>;
+    lastKnownPowerKw: LearnedPeaksByDeviceId;
     lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   };
   logger: Logger;
   deviceId: string;
   measuredKw: number;
   deviceLabel: string;
+  nowMs: number;
+  /**
+   * Fired when the record actually moved — a new entry, a higher one, or a
+   * re-anchored window. Persistence hangs off this rather than the
+   * snapshot-mutation seam, because that seam fires on a CHANGED calibration
+   * input and a reading equal to the standing peak changes none while still
+   * re-anchoring `observedAtMs`: the window a steady device is keeping alive
+   * would otherwise expire in settings while memory said it was fresh.
+   */
+  onPeakChanged?: () => void;
 }): void {
   const {
     state,
@@ -58,20 +77,26 @@ export function updateLastKnownPower(params: {
     deviceId,
     measuredKw,
     deviceLabel,
+    nowMs,
+    onPeakChanged,
   } = params;
-  const previousPeak = state.lastKnownPowerKw[deviceId] || 0;
-  if (measuredKw <= previousPeak) return;
+  const previous = state.lastKnownPowerKw[deviceId];
+  const next = nextLearnedPeak(previous, measuredKw, nowMs);
+  if (!next) return;
 
-  state.lastKnownPowerKw[deviceId] = measuredKw;
-  const previousPeakKw = roundLogValue(previousPeak, 2);
-  const peakKw = roundLogValue(measuredKw, 2);
+  state.lastKnownPowerKw[deviceId] = next;
+  // Announced before the log dedupe below, which returns early for a peak that
+  // reads the same as last time — exactly the re-anchored window this exists for.
+  onPeakChanged?.();
+  const previousPeakKw = roundLogValue(previous?.kw ?? 0, 2);
+  const peakKw = roundLogValue(next.kw, 2);
   const signature = JSON.stringify({ peakKw });
   if (!state.lastPeakPowerLogByDevice) return;
   if (!shouldEmitOnChange({
     state: state.lastPeakPowerLogByDevice,
     key: deviceId,
     signature,
-    now: Date.now(),
+    now: nowMs,
   })) {
     return;
   }

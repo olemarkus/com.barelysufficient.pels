@@ -103,6 +103,10 @@ export const EXTERNAL_OFF_HOLDS = 'external_off_holds';
 // `power_calibration_initialized`.
 export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
+/** Learned measured peaks, `{ kw, observedAtMs }` per device (`lib/device/devicePowerPeak.ts`). */
+export const DEVICE_POWER_PEAKS = 'device_power_peaks';
+/** The owner's manual expected-power figures, `{ kw, ts }` per device. */
+export const DEVICE_EXPECTED_POWER_OVERRIDES = 'device_expected_power_overrides';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 // The cars each charger MAY associate: `Record<chargerId, { carIds }>` (absent or
 // empty = off for that charger). An eligibility set, never an association — the
