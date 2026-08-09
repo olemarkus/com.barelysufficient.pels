@@ -818,31 +818,31 @@ describe('battery level on the EV charger fact line', () => {
   it('shows the level beside the amps while charging', () => {
     expect(resolveSteppedLevelFact(evCard({
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: { percent: 64, status: 'fresh' },
+      stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBe('Charging · 64 % · level 16 A');
   });
 
   it('shows the level when connected but not charging', () => {
     expect(resolveSteppedLevelFact(evCard({
       evChargingState: 'plugged_in',
-      stateOfCharge: { percent: 64, status: 'fresh' },
+      stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBe('64 % · Level 16 A');
   });
 
   it('rounds to a whole percent', () => {
     expect(resolveSteppedLevelFact(evCard({
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: { percent: 63.6, status: 'fresh' },
+      stateOfCharge: { level: { kind: 'known', percent: 63.6 } },
     }))).toBe('Charging · 64 % · level 16 A');
   });
 
-  it('drops a reading that is not fresh rather than qualifying it', () => {
-    // The card is a glance and 320 px is the floor; device detail already spells
-    // out "stale" / "Invalid report" for anyone who needs the reason.
-    for (const status of ['stale', 'invalid', 'unknown']) {
+  it('shows no battery fact when the producer has no level', () => {
+    // There is no number to qualify: the producer stands behind a level or
+    // reports none. Device detail says which of the two reasons applies.
+    for (const reasonCode of ['not_reported', 'not_connected'] as const) {
       expect(resolveSteppedLevelFact(evCard({
         evChargingState: 'plugged_in_charging',
-        stateOfCharge: { percent: 64, status },
+        stateOfCharge: { level: { kind: 'unavailable', reasonCode } },
       }))).toBe('Charging · level 16 A');
     }
   });
@@ -859,14 +859,14 @@ describe('battery level on the EV charger fact line', () => {
     // percentage must not render one.
     expect(resolveSteppedLevelFact(evCard({
       controlCapabilityId: 'onoff',
-      stateOfCharge: { percent: 64, status: 'fresh' },
+      stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBe('Level 16 A');
   });
 
   it('says nothing at all when the charger is off', () => {
     expect(resolveSteppedLevelFact(evCard({
       currentState: 'off',
-      stateOfCharge: { percent: 64, status: 'fresh' },
+      stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBeNull();
   });
 });

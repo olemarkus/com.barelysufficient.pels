@@ -3672,7 +3672,7 @@ describe('periodic snapshot refresh scheduling', () => {
     });
     expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
       observedAtMs: nextReportedAt,
-      status: 'fresh',
+      level: { kind: 'known', percent: 32 },
     }));
   });
 
@@ -3717,7 +3717,9 @@ describe('periodic snapshot refresh scheduling', () => {
     });
     expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
       observedAtMs: previousReportedAt,
-      status: 'stale',
+      // The reading predates the session anchor, so it belongs to no session
+      // running now — not "there is no car".
+      level: { kind: 'unavailable', reasonCode: 'not_reported' },
     }));
   });
 

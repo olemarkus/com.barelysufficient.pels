@@ -1,4 +1,8 @@
-import type { EvChargingState, SteppedLoadProfile } from '../../contracts/src/types';
+import type {
+  DeviceStateOfChargeSnapshot,
+  EvChargingState,
+  SteppedLoadProfile,
+} from '../../contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 import {
@@ -334,7 +338,7 @@ export const resolveSteppedLevelFact = (device: {
   steppedLoad?: SteppedLoadCardState;
   evChargingState?: EvChargingState;
   controlCapabilityId?: string;
-  stateOfCharge?: { percent: number; status: string };
+  stateOfCharge?: { level: DeviceStateOfChargeSnapshot['level'] };
 }): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
   const stepId = device.steppedLoad?.reportedStepId ?? null;
@@ -358,17 +362,14 @@ export const resolveSteppedLevelFact = (device: {
  * where a temperature device shows its measured value, rather than only the amps
  * PELS set.
  *
- * Shown ONLY for a `fresh` reading. A stale, invalid or unknown one is dropped
- * rather than qualified: the card is a glance, the qualifier costs width the
- * 320 px floor does not have, and the device-detail readout already spells out
- * `stale` / `Invalid report` for anyone who needs to know why.
+ * Shown only when the producer has a level. When it has none there is no number
+ * to show and nothing to qualify — the device-detail readout says why.
  */
 const resolveBatteryFact = (
-  stateOfCharge: { percent: number; status: string } | undefined,
+  stateOfCharge: { level: DeviceStateOfChargeSnapshot['level'] } | undefined,
 ): string | null => {
-  if (stateOfCharge?.status !== 'fresh') return null;
-  if (!Number.isFinite(stateOfCharge.percent)) return null;
-  return `${Math.round(stateOfCharge.percent)} %`;
+  const level = stateOfCharge?.level;
+  return level?.kind === 'known' ? `${Math.round(level.percent)} %` : null;
 };
 
 /**

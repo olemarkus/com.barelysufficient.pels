@@ -194,7 +194,12 @@ function buildEvSocLogPayload(params: {
     chargerName: updatedCharger?.name ?? charger.name,
     percent,
     observedAtMs: updatedCharger?.stateOfCharge?.observedAtMs ?? observedAtMs,
-    status: updatedCharger?.stateOfCharge?.status ?? 'unknown',
+    // `null`, not a fabricated `unavailable`: when the post-report snapshot read
+    // failed there is no charger to resolve a level from, and the flow report
+    // itself may well have succeeded. Asserting `not_reported` here would put a
+    // domain claim in the canonical event that nothing established. The read
+    // failure is reported separately as `ev_charger_snapshot_reload_failed`.
+    level: updatedCharger?.stateOfCharge?.level ?? null,
   };
 }
 

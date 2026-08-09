@@ -199,13 +199,11 @@ export function buildSettingsOverviewDeviceReadModel(
     surplusAbsorbActive: device.surplusAbsorbActive,
     evBoost: ev?.evBoost,
     evBoostActive: ev?.evBoostActive,
-    // Projected to the two properties the wire type declares rather than passed
+    // Projected to the one property the wire type declares rather than passed
     // whole: the observation layer's session/invalidation bookkeeping is its own
-    // business, and `status` already answers everything a card needs to know
-    // about the reading's currency (`notes/ev-soc-layering.md`).
-    stateOfCharge: ev?.stateOfCharge
-      ? { percent: ev.stateOfCharge.percent, status: ev.stateOfCharge.status }
-      : undefined,
+    // business, and `level` is the producer's complete answer to whether this
+    // charger has a battery level (`notes/ev-soc-layering.md`).
+    stateOfCharge: ev?.stateOfCharge ? { level: ev.stateOfCharge.level } : undefined,
     // Display-only staleness, sourced from the observer (not the plan device).
     observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,

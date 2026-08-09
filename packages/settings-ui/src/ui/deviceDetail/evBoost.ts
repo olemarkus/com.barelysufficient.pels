@@ -86,16 +86,17 @@ function buildEvBoostStatusText(params: {
   // cannot promise something the runtime will contradict.
   const boostBlock = resolveEvBoostBlockReason(device);
   if (boostBlock) return boostBlock;
-  const stateOfCharge = device.stateOfCharge;
-  if (!stateOfCharge || stateOfCharge.status === 'unknown') {
-    return 'Battery level not reported. Boost will not activate.';
+  const level = device.stateOfCharge?.level;
+  if (level === undefined) return 'Battery level not reported. Boost will not activate.';
+  if (level.kind !== 'known') {
+    return level.reasonCode === 'not_connected'
+      ? 'No car connected. Boost will not activate.'
+      : 'Battery level not reported. Boost will not activate.';
   }
-  if (stateOfCharge.status === 'stale') return 'Battery level is stale. Boost will not activate.';
-  if (stateOfCharge.status === 'invalid') return 'Battery level is invalid. Boost will not activate.';
-  if (stateOfCharge.percent < boostBelowPercent) {
-    return `Boost active when planning: ${stateOfCharge.percent}% < ${boostBelowPercent}%.`;
+  if (level.percent < boostBelowPercent) {
+    return `Boost active when planning: ${level.percent}% < ${boostBelowPercent}%.`;
   }
-  return `Target reached: ${stateOfCharge.percent}% >= ${boostBelowPercent}%.`;
+  return `Target reached: ${level.percent}% >= ${boostBelowPercent}%.`;
 }
 
 export const initEvBoostHandlers = (deps: EvBoostHandlerDeps) => {

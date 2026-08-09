@@ -202,7 +202,7 @@ describe('settingsOverviewReadModel', () => {
     // Projected to what the wire type declares: the observation layer's session
     // bookkeeping is its own business (`notes/ev-soc-layering.md`).
     expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge)
-      .toEqual({ percent: 64, status: 'fresh' });
+      .toEqual({ level: { kind: 'known', percent: 64 } });
   });
 
   it('emits no battery reading for a device that has none', () => {
