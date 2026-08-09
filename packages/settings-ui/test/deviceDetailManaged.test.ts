@@ -474,9 +474,9 @@ describe('device detail managed state saves', () => {
 
     expect((document.querySelector('#device-detail-soc-row') as HTMLElement | null)?.hidden).toBe(false);
     expect((document.querySelector('#device-detail-soc-value') as HTMLElement | null)?.textContent)
-      .toBe('42 % - stale');
-    // The subline carries only the freshness time; the raw status enum must not leak —
-    // the value line above ("42 % - stale") already states the consequence in plain words.
+      .toBe('Not reported');
+    // The subline carries only the observation time; no status enum leaks, and
+    // there is no percentage to leak either — the producer has no level here.
     const updated = (document.querySelector('#device-detail-soc-updated') as HTMLElement | null)?.textContent;
     expect(updated).toContain('Updated');
     expect(updated).not.toContain('Status:');
@@ -1884,7 +1884,7 @@ describe('device detail managed state saves', () => {
     const temperatureBoost = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
     const status = document.querySelector('#device-detail-ev-boost-status') as HTMLElement | null;
     expect(temperatureBoost?.hidden).toBe(true);
-    expect(status?.textContent).toBe('Battery level is stale. Boost will not activate.');
+    expect(status?.textContent).toBe('Battery level not reported. Boost will not activate.');
   });
 
   it.each([

@@ -6,16 +6,32 @@ The observation layer (`lib/device/transport/stateOfCharge.ts`,
 `lib/device/transport/managerObservation.ts`,
 `lib/device/transport/flowReportedCapabilities.ts`) is responsible for resolving a
 device's SoC from whichever inputs are available — native capability values,
-flow-reported synthetic values, freshness timestamps. Downstream layers
-(plan / executor / contracts / UI) read the resolved `DeviceStateOfChargeSnapshot`
-and act on `{ percent, status, observedAtMs, sessionStartedAtMs,
-invalidatedAtMs }`.
+flow-reported synthetic values, session timestamps. Downstream layers
+(plan / executor / contracts / UI) read `level` off the resolved
+`DeviceStateOfChargeSnapshot` and act on that alone:
+
+```ts
+level: { kind: 'known'; percent } | { kind: 'unavailable'; reasonCode }
+```
+
+**The producer publishes no staleness, freshness, or currency signal, and no
+consumer may invent one.** A battery level is reported on change and can only
+change while a car is attached, so the SESSION decides whether PELS has a level —
+never a clock. A 40-minute age gate (`EV_SOC_STALE_MS`) used to live here and was
+deleted on 2026-08-08: it marked a reading stale the instant a longer pause
+ended, and resurrected an aged-out one at the next idle observation. The four-arm
+`status` flag it fed went with it, along with the five different policies its
+consumers had each invented over it.
+
+`percent` remains on the snapshot for the observation layer's own bookkeeping
+(carry-forward across a refresh, change detection). It is not the device's level
+and must not be read as one.
 
 Source-of-evidence metadata — "did this value come from a native capability
 or a flow-reported synthetic input?" — does **not** belong on the public
 snapshot. It is observation-layer detail that consumers never need in order
-to make a decision: `status` already tells you whether the reading is fresh,
-stale, unknown, or invalid; `observedAtMs` already tells you when it was
+to make a decision: `level` already tells you whether PELS has a battery level
+for this charger, and `observedAtMs` already tells you when the reading was
 captured.
 
 `capabilityId` stays on the snapshot because the observation layer itself
@@ -67,8 +83,9 @@ wrong without it:
   reading against itself.
 
 The original rule still holds for everything it covered: charger-side provenance
-stays in the observation layer, and `status` remains the answer to "can I trust
-this reading". `source` answers "whose reading is it", which no other field does.
+stays in the observation layer, and `level` is the complete answer to "does PELS
+have a battery level here". `source` answers "whose reading is it", which no
+other field does.
 
 Revisit if:
 

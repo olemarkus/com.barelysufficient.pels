@@ -194,7 +194,7 @@ function buildEvSocLogPayload(params: {
     chargerName: updatedCharger?.name ?? charger.name,
     percent,
     observedAtMs: updatedCharger?.stateOfCharge?.observedAtMs ?? observedAtMs,
-    status: updatedCharger?.stateOfCharge?.status ?? 'unknown',
+    level: updatedCharger?.stateOfCharge?.level ?? { kind: 'unavailable', reasonCode: 'not_reported' },
   };
 }
 

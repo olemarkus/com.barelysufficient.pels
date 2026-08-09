@@ -10,6 +10,7 @@ import type {
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { hasCarStateOfChargeChanged } from './carStateOfChargeWrite';
+import { stateOfChargeLevelsDiffer } from './stateOfChargeLevel';
 
 export const EV_SOC_CAPABILITY_ID = 'measure_battery' as const;
 export const EV_SOC_NATIVE_CAPABILITY_IDS = [
@@ -269,7 +270,7 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
   return !previous
     || previous.percent !== next.percent
     || previous.observedAtMs !== next.observedAtMs
-    || previous.status !== next.status;
+    || stateOfChargeLevelsDiffer(previous.level, next.level);
 }
 
 export function updateStateOfChargeSessionBoundary(params: {
@@ -302,7 +303,7 @@ export function updateStateOfChargeSessionBoundary(params: {
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
   };
-  return previous.status !== levelFields.status
+  return stateOfChargeLevelsDiffer(previous.level, levelFields.level)
     || previous.sessionStartedAtMs !== snapshot.stateOfCharge.sessionStartedAtMs
     || previous.invalidatedAtMs !== snapshot.stateOfCharge.invalidatedAtMs;
 }
@@ -458,20 +459,13 @@ function resolveStateOfChargeLevel(params: {
   return { kind: 'known', percent };
 }
 
-/**
- * The resolved level plus the legacy `status`, derived from it so the two cannot
- * disagree while consumers are still being migrated. The `status` half goes when
- * the field does.
- */
 function resolveLevelFields(params: {
   percent: number;
   observedAtMs?: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
-}): Pick<DeviceStateOfChargeSnapshot, 'level' | 'status'> {
-  const level = resolveStateOfChargeLevel(params);
-  if (level.kind === 'known') return { level, status: 'fresh' };
-  return { level, status: params.observedAtMs ? 'stale' : 'unknown' };
+}): Pick<DeviceStateOfChargeSnapshot, 'level'> {
+  return { level: resolveStateOfChargeLevel(params) };
 }
 
 function resolveEvSessionBoundary(params: {

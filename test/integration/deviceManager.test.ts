@@ -5301,7 +5301,7 @@ describe('DeviceTransport', () => {
                 // reading stands — there is no session anchor to move.
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 51,
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 51 },
                 }));
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge?.sessionStartedAtMs).toBeUndefined();
 
@@ -5337,7 +5337,7 @@ describe('DeviceTransport', () => {
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 52,
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 52 },
                 }));
 
                 evDeviceManager.destroy();
@@ -5414,7 +5414,7 @@ describe('DeviceTransport', () => {
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 52,
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 52 },
                     capabilityId: 'measure_battery',
                 }));
                 expect(liveStateListener).toHaveBeenCalledOnce();
@@ -5648,7 +5648,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 61,
                     capabilityId: 'measure_battery',
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 61 },
                 }));
 
                 evDeviceManager.destroy();
@@ -5753,7 +5753,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 61,
                     capabilityId: 'measure_battery',
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 61 },
                 }));
 
                 evDeviceManager.destroy();
@@ -5858,7 +5858,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 61,
                     capabilityId: 'measure_soc_level',
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 61 },
                 }));
 
                 evDeviceManager.destroy();
@@ -5907,10 +5907,10 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
-                    status: 'fresh',
+                    level: { kind: 'known', percent: 50 },
                 }));
 
-                // The status moves because the SESSION ended, not because time
+                // The level goes because the SESSION ended, not because time
                 // passed: a level is retired by a plug-out and by nothing else.
                 vi.setSystemTime(new Date('2026-03-20T06:45:00.000Z'));
                 evDeviceManager.injectDeviceUpdateForTest({
@@ -5941,7 +5941,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
-                    status: 'stale',
+                    level: { kind: 'unavailable', reasonCode: 'not_connected' },
                 }));
 
                 await evDeviceManager.refreshSnapshot();
@@ -5949,7 +5949,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
-                    status: 'stale',
+                    level: { kind: 'unavailable', reasonCode: 'not_connected' },
                 }));
 
                 evDeviceManager.destroy();

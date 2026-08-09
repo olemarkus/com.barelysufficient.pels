@@ -70,6 +70,6 @@ export const DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER = 'Waiting for availabl
 // --- Usage readout (`usageMsg`) ---
 // Diagnostic data readout, not a vocabulary label, but pinned here so the
 // device-overview surface owns its strings in one module.
-export const deviceOverviewEvBatteryStatus = (percent: number, stale: boolean): string => (
-  `EV battery: ${percent} %${stale ? ', stale' : ''}`
+export const deviceOverviewEvBatteryStatus = (percent: number): string => (
+  `EV battery: ${percent} %`
 );

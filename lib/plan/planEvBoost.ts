@@ -32,7 +32,7 @@ export function emitEvBoostStateChange(params: {
     previousActive,
     percent: typeof stateOfCharge?.percent === 'number' ? stateOfCharge.percent : null,
     boostBelowPercent: typeof boostBelowPercent === 'number' ? boostBelowPercent : null,
-    status: stateOfCharge?.status ?? null,
+    level: stateOfCharge?.level ?? null,
     // The plug-state itself, off the EV cluster: it is what every commandability
     // question is answered from, so it is what the log should show.
     evChargingState: ev?.evChargingState ?? null,

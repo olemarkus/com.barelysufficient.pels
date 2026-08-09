@@ -100,24 +100,21 @@ describe('device overview formatter', () => {
       plannedState: 'keep',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: {
-        percent: 42,
-        status: 'fresh',
-      },
+      stateOfCharge: { level: { kind: 'known', percent: 42 } },
       reason: r('keep'),
     }).statusMsg).toBe('EV battery: 42 %');
 
+    // Unplugged: the producer has no level, so the card shows no battery line at
+    // all rather than a number carrying a qualifier ("42 %, stale") the reader
+    // was invited to use anyway.
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'inactive',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
-      stateOfCharge: {
-        percent: 42,
-        status: 'stale',
-      },
+      stateOfCharge: { level: { kind: 'unavailable', reasonCode: 'not_connected' } },
       reason: r('inactive (charger is unplugged)'),
-    }).statusMsg).toBe('Off for now (charger is unplugged) — EV battery: 42 %, stale');
+    }).statusMsg).toBe('Off for now (charger is unplugged)');
   });
 
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {

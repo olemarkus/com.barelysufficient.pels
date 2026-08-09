@@ -180,7 +180,7 @@ describe('resolveStateOfChargeSnapshot', () => {
   // A refresh sees only the CURRENT plug state, so the retained session is the
   // only evidence that the connected charger was replugged — possibly with a
   // different car — since the reading was taken.
-  it('marks the reading stale after a replug reported through the retained session', () => {
+  it('reports no level after a replug reported through the retained session', () => {
     const unplugged = resolve({
       chargingState: 'plugged_out',
       chargingStateAt: SOC_AT + 60_000,
@@ -193,8 +193,9 @@ describe('resolveStateOfChargeSnapshot', () => {
       nowMs: SOC_AT + 4 * 60_000,
       retainedSession: unplugged,
     })).toEqual(expect.objectContaining({
-      percent: 34,
-      status: 'stale',
+      // A car is attached again, but this reading predates it — possibly a
+      // different car.
+      level: { kind: 'unavailable', reasonCode: 'not_reported' },
       sessionStartedAtMs: SOC_AT + 3 * 60_000,
     }));
   });
