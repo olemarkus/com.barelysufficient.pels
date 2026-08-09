@@ -92,7 +92,6 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 2, expectedPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),

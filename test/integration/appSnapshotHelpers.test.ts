@@ -180,7 +180,6 @@ describe('appSnapshotHelpers', () => {
       id: 'dev-1',
       name: 'Heater',
       binaryControl: { on: true },
-      powerKw: 1.2,
       expectedPowerKw: 1.2,
       measuredPowerKw: 1.2,
     }];

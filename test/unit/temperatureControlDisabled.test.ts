@@ -40,6 +40,7 @@ const UNAVAILABLE = { devices: {}, state: 'unavailable' as const };
 
 const thermostat = (): TargetDeviceSnapshot => ({
   id: 'thermostat-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Thermostat',
   deviceType: 'temperature',
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -118,6 +119,7 @@ describe('disabled temperature control', () => {
       deviceId: 'charger',
       device: {
         id: 'charger', name: 'EV charger', deviceType: 'onoff', deviceClass: 'evcharger', targets: [],
+        expectedPowerKw: 1, expectedPowerSource: 'default',
       },
     })).toBe(false);
     expect(resolveTemperatureControlDisabled({

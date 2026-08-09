@@ -19,7 +19,11 @@ describe('Expected power flow card', () => {
     vi.clearAllTimers();
   });
 
-  it('omits devices with settings.load from autocomplete lists', async () => {
+  // Neither autocomplete excludes a device that declares `settings.load` any
+  // more. For the expected-power action a manual value outranks the declared
+  // load, so overriding a wrong one is the point rather than a conflict; for the
+  // headroom condition the exclusion never had a reason of its own.
+  it('offers devices with settings.load in both autocompletes', async () => {
     const deviceWithLoad = new MockDevice('dev-load', 'With Load', ['target_temperature', 'measure_power']);
     await deviceWithLoad.setCapabilityValue('measure_power', 800);
     deviceWithLoad.setSettings({ load: 800 });
@@ -36,13 +40,23 @@ describe('Expected power flow card', () => {
     const actionAutocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.set_expected_power_usage?.device;
     expect(actionAutocomplete).toBeDefined();
     const actionOptions = await actionAutocomplete?.('') || [];
-    expect(actionOptions).toEqual([{ id: 'dev-noload', name: 'No Load' }]);
+    expect(actionOptions).toEqual([
+      { id: 'dev-noload', name: 'No Load' },
+      { id: 'dev-load', name: 'With Load' },
+    ]);
 
-    // Headroom condition also filters out devices with settings.load
+    // The headroom condition no longer filters them out either. `loadKw` is gone
+    // from the snapshot — `settings.load` is a settings read the producer already
+    // consumed — and the exclusion had no reason of its own here: this card is a
+    // READ ("is there available power for this device"), and a device declaring
+    // its load is precisely one PELS has a good estimate for.
     const condAutocompleteListener = (mockHomeyInstance.flow as any)._conditionCardAutocompleteListeners?.has_headroom_for_device?.device;
     expect(condAutocompleteListener).toBeDefined();
     const condOptions = await condAutocompleteListener?.('') || [];
-    expect(condOptions).toEqual([{ id: 'dev-noload', name: 'No Load' }]);
+    expect(condOptions).toEqual([
+      { id: 'dev-noload', name: 'No Load' },
+      { id: 'dev-load', name: 'With Load' },
+    ]);
 
     await app.onUninit?.();
   });
@@ -80,7 +94,11 @@ describe('Expected power flow card', () => {
     await app.onUninit?.();
   });
 
-  it('sets temporary expected power until real measurement arrives', async () => {
+  // A manual value is an instruction and is NOT temporary: a later, higher
+  // measurement no longer replaces it. The live draw still reaches restore sizing
+  // through the measured axis (`getHighestKnownPowerKw` takes the max), so the
+  // only thing that changed is that PELS stops rewriting what the owner typed.
+  it('keeps the manual expected power when a real measurement arrives', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await device.setCapabilityValue('onoff', true);
 
@@ -92,18 +110,17 @@ describe('Expected power flow card', () => {
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ device: { id: 'dev-1' }, power_w: 1500 })).resolves.toBe(true);
 
-    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapDev = snapshot.find((d) => d.id === 'dev-1');
-    expect(snapDev?.powerKw).toBeCloseTo(1.5);
+    expect(snapDev?.expectedPowerKw).toBeCloseTo(1.5);
 
     // When the device reports real power again, override is cleared
     await device.setCapabilityValue('measure_power', 2000);
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const refreshedSnapshot = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const refreshedSnapshot = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const refreshedDev = refreshedSnapshot.find((d) => d.id === 'dev-1');
-    expect(refreshedDev?.powerKw).toBeCloseTo(2.0);
-    // Override remains stored but measurement took precedence because it is newer
+    expect(refreshedDev?.expectedPowerKw).toBeCloseTo(1.5);
     expect((app as any).expectedPowerKwOverrides['dev-1']).toBeTruthy();
   });
 
@@ -121,18 +138,31 @@ describe('Expected power flow card', () => {
     expect((app as any).expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.25, ts: 12345 });
   });
 
-  it('fails when device has configured load setting', async () => {
+  // Was: rejected with "Device already has load configured in settings". That
+  // refusal contradicted the agreed precedence — a manual value outranks
+  // `settings.load` — and made the ladder's top rung unreachable for exactly the
+  // owner most likely to need it: someone whose declared load is wrong.
+  it('accepts an override on a device that declares settings.load, and that override wins', async () => {
     const device = new MockDevice('dev-2', 'Heater', ['target_temperature', 'measure_power']);
     await device.setCapabilityValue('measure_power', 1000);
     device.setSettings({ load: 500 });
 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-2': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-2': true });
 
     const app = createApp();
     await app.onInit();
 
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
-    await expect(runAction({ device: { id: 'dev-2' }, power_w: 1200 })).rejects.toThrow('Device already has load configured in settings');
+    await expect(runAction({ device: { id: 'dev-2' }, power_w: 1200 })).resolves.toBe(true);
+
+    const snapshot = (app as any).latestTargetSnapshot as Array<{
+      id: string; expectedPowerKw?: number; expectedPowerSource?: string;
+    }>;
+    const snapDev = snapshot.find((d) => d.id === 'dev-2');
+    expect(snapDev?.expectedPowerKw).toBeCloseTo(1.2);
+    expect(snapDev?.expectedPowerSource).toBe('manual');
   });
 
   it('rejects invalid payloads and stepped-load devices', async () => {
@@ -198,7 +228,9 @@ describe('Expected power flow card', () => {
     );
   });
 
-  it('uses settings.load before overrides or measurements, then newest override/measurement, else 1kW', async () => {
+  // The whole ladder, end to end, in its agreed order:
+  // manual › settings.load › measured peak › homey-energy › 1 kW default.
+  it('walks the ladder: load, then a manual value that outranks it and survives measurement, else 1 kW', async () => {
     const device = new MockDevice('dev-3', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     device.setSettings({ load: 700 });
     await device.setCapabilityValue('onoff', true);
@@ -209,9 +241,9 @@ describe('Expected power flow card', () => {
     await app.onInit();
 
     // With load set, should use it
-    const snapshotWithLoad = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const snapshotWithLoad = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapWithLoad = snapshotWithLoad.find((d) => d.id === 'dev-3');
-    expect(snapWithLoad?.powerKw).toBeCloseTo(0.7);
+    expect(snapWithLoad?.expectedPowerKw).toBeCloseTo(0.7);
 
     // Remove load to test recency between override and measurement
     device.setSettings({ load: 0 });
@@ -219,23 +251,29 @@ describe('Expected power flow card', () => {
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await runAction({ device: { id: 'dev-3' }, power_w: 1500 }); // override first
     await (app as any).refreshTargetDevicesSnapshot();
-    const snapshotOverride = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const snapshotOverride = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapOverride = snapshotOverride.find((d) => d.id === 'dev-3');
-    expect(snapOverride?.powerKw).toBeCloseTo(1.5);
+    expect(snapOverride?.expectedPowerKw).toBeCloseTo(1.5);
 
-    // Now report a measurement (later timestamp) - should NOT lower the expected value
+    // A measurement below the manual value does not lower it.
     await device.setCapabilityValue('measure_power', 900);
     await (app as any).refreshTargetDevicesSnapshot();
-    const snapshotMeasured = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const snapshotMeasured = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapMeasured = snapshotMeasured.find((d) => d.id === 'dev-3');
-    expect(snapMeasured?.powerKw).toBeCloseTo(1.5); // Still 1.5kW because 0.9 < 1.5
+    expect(snapMeasured?.expectedPowerKw).toBeCloseTo(1.5);
 
-    // But if measurement exceeds override, it should update
+    // A measurement ABOVE the manual value no longer replaces it either. The old
+    // ladder promoted it to `measured-peak`, so the number the owner typed could
+    // be rewritten from underneath them; restore sizing still sees the live
+    // 1.6 kW through the measured axis.
     await device.setCapabilityValue('measure_power', 1600);
     await (app as any).refreshTargetDevicesSnapshot();
-    const snapshotHigh = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const snapshotHigh = (app as any).latestTargetSnapshot as Array<{
+      id: string; expectedPowerKw?: number; expectedPowerSource?: string;
+    }>;
     const snapHigh = snapshotHigh.find((d) => d.id === 'dev-3');
-    expect(snapHigh?.powerKw).toBeCloseTo(1.6);
+    expect(snapHigh?.expectedPowerKw).toBeCloseTo(1.5);
+    expect(snapHigh?.expectedPowerSource).toBe('manual');
 
     // Clear overrides and measurements -> fallback to 1kW
     Object.keys((app as any).expectedPowerKwOverrides).forEach((k) => delete (app as any).expectedPowerKwOverrides[k]);
@@ -251,6 +289,6 @@ describe('Expected power flow card', () => {
         settings: {},
       },
     ]);
-    expect(snapshotFallback[0]?.powerKw).toBe(1);
+    expect(snapshotFallback[0]?.expectedPowerKw).toBe(1);
   });
 });

@@ -632,10 +632,15 @@ export class AppSnapshotHelpers {
   }
 }
 
+// The meter's answer or nothing. The field this feeds is named `currentPowerW`,
+// and it used to fall back to the nameplate `powerKw` — so a device that had
+// never reported a watt logged its rated power as what it was drawing, in the
+// very event that says telemetry went stale. `expectedPowerKw` is NOT the
+// replacement fallback: it is a projection of what the device draws when active,
+// which is the one thing this field must not silently become.
 function resolveSnapshotPowerW(device: TargetDeviceSnapshot & MeasuredPowerObservedProbe): number | null {
   // `hasObservedMeasuredPower` proves `measuredPowerKw` is PRESENT (a finite value
   // is the producer invariant the write seams uphold, not something the guard
-  // re-checks); the trailing `Number.isFinite` still guards the `powerKw` fallback.
-  const kw = hasObservedMeasuredPower(device) ? device.measuredPowerKw : device.powerKw;
-  return typeof kw === 'number' && Number.isFinite(kw) ? kw * 1000 : null;
+  // re-checks).
+  return hasObservedMeasuredPower(device) ? device.measuredPowerKw * 1000 : null;
 }

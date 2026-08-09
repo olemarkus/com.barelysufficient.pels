@@ -4,6 +4,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 
 const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
   id: 'dev',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Device',
   commandableNow: true,
   targets: [],

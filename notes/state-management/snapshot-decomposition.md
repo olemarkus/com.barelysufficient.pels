@@ -83,7 +83,9 @@ helpers. The observer was created but never handed the observation contract.
    devices, not part of the stepped cluster), `nativeWriteCapabilities`, `flowConflict`,
    `capabilities`, `flowBacked*`, `canSetControl`,
    `powerCapable`, `controllable`/`managed`/`budgetExempt`/`priority`, the nameplate
-   power hints (`powerKw`/`expectedPowerKw`/`loadKw`/`expectedPowerSource`). Consumed
+   power hints (`expectedPowerKw`/`loadKw`/`expectedPowerSource` — `powerKw` was
+   deleted as a duplicate of `expectedPowerKw`, and the surviving two are now
+   REQUIRED). Consumed
    by settings-UI, native-wiring, `isRuntimePlannedDevice`. Never realtime-merged, so
    peeling it off de-risks the observer surface (UI re-renders can't race the merge).
 3. **Planning projection → resolved in `toPlanDevice`/producer, off the snapshot

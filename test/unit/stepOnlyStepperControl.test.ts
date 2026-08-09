@@ -180,7 +180,7 @@ describe('raw-snapshot currentOn stamping (powerSample / headroom seams)', () =>
 
 describe('sumControlledUsageKw — step-only steppers', () => {
   it('counts a shed step-only stepper parked at its off step as 0, not unknown', () => {
-    const total = sumControlledUsageKw([{
+    const total = sumControlledUsageKw([{ expectedPowerKw: 1,
       currentDrawKw: 0,
       controllable: true,
       plannedState: 'shed',

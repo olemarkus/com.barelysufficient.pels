@@ -77,7 +77,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         // Refresh to populate measured power
         await deviceManager.refreshSnapshot();
         let snapshot = deviceManager.getSnapshot();
-        expect(snapshot[0].powerKw).toBe(1.67);
+        expect(snapshot[0].expectedPowerKw).toBe(1.67);
         expect(snapshot[0].expectedPowerKw).toBe(1.67);
 
         // 2. Flow action: Set expected power to 3.0 kW
@@ -104,7 +104,12 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
     });
 
-    it('should increase expected power if measured exceeds expected (safety)', async () => {
+    // A manual value is an INSTRUCTION, so a higher measurement no longer
+    // supersedes it. Safety is unaffected: restore sizing takes
+    // max(currentDraw, expected, planning), so the live 3.5 kW still drives the
+    // reservation through `currentDrawKw` — it just stops silently rewriting what
+    // the owner typed.
+    it('keeps the manual override when a higher measurement arrives', async () => {
         await deviceManager.init();
         const deviceId = 'dev1';
 
@@ -130,11 +135,13 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         await deviceManager.refreshSnapshot();
         const snapshot = deviceManager.getSnapshot();
 
-        // Should auto-bump to 3.5 kW
-        expect(snapshot[0].expectedPowerKw).toBe(3.5);
+        expect(snapshot[0].expectedPowerKw).toBe(3.0);
     });
 
-    it('should drop expected power when measured settles to the override', async () => {
+    // The lowered override applies at once. It used to wait for measurement to
+    // settle down to it, which meant a user correcting an over-estimate saw
+    // nothing change until the device happened to agree.
+    it('applies a lowered manual override immediately', async () => {
         await deviceManager.init();
         const deviceId = 'dev1';
 
@@ -161,7 +168,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expectedPowerKwOverrides[deviceId] = { kw: 2.0, ts: Date.now() };
         await deviceManager.refreshSnapshot();
         snapshot = deviceManager.getSnapshot();
-        expect(snapshot[0].expectedPowerKw).toBe(3.0);
+        expect(snapshot[0].expectedPowerKw).toBe(2.0);
 
         // Measured power settles to 2.0 kW.
         apiGetSpy.mockResolvedValue({

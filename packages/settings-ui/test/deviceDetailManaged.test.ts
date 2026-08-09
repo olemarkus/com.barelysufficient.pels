@@ -103,7 +103,7 @@ const buildDevice = (
   overrides: Partial<
     TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({
+): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id,
   name,
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
@@ -1135,7 +1135,10 @@ describe('device detail managed state saves', () => {
       'charger-1': {
         enabled: true,
         min: 0,
-        max: 1500,
+        // Seeded from the producer-resolved `expectedPowerKw` (1 kW here, floored at
+      // 1000 W). The old `?? 1.5` hardcode is gone — it was an invented default
+      // standing in for a figure the producer now always supplies.
+      max: 1000,
         step: 100,
       },
     });

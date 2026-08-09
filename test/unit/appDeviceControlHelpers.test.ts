@@ -55,6 +55,7 @@ const baseSnapshot = (
 ): TargetDeviceSnapshot & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'dev-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
   targets: [],
   deviceType: 'onoff',
@@ -907,9 +908,10 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.selectedStepId).toBe('low');
     // No reported step → selectedStepId is the planning fallback (lowest active).
     expect(decorated.planningPowerKw).toBe(1.25);
-    // expectedPowerKw is NOT overwritten — it retains the original snapshot value
-    // (undefined here). Step-derived power is available via planningPowerKw.
-    expect(decorated.expectedPowerKw).toBeUndefined();
+    // expectedPowerKw is NOT overwritten — it retains the original snapshot
+    // value, which the producer always resolves (no longer undefined).
+    // Step-derived power stays available via planningPowerKw.
+    expect(decorated.expectedPowerKw).toBe(1);
     expect(decorated.binaryControl?.on).toBe(true);
   });
 

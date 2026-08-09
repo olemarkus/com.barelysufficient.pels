@@ -26,6 +26,7 @@ const hourMs = 60 * 60 * 1000;
 
 const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'heater-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
   targets: [],
   deviceType: 'temperature',
@@ -38,6 +39,7 @@ const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & Temperature
 
 const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'ev-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Charger',
   targets: [],
   deviceClass: 'evcharger',

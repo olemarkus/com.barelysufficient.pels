@@ -99,7 +99,7 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
   controlCapabilityId: 'onoff',
   binaryControl: { on },
   currentDrawKw: on ? 1.5 : 0,
-  expectedPowerKw: 1.2,
+  expectedPowerKw: 1.2, expectedPowerSource: 'default',
   lastFreshDataMs: Date.now(),
 }) as PlanInputDevice;
 

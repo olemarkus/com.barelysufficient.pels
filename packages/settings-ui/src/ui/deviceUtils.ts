@@ -27,7 +27,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
-    | 'powerCapable' | 'powerKw' | 'expectedPowerKw' | 'loadKw'
+    | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
     | 'controlAdapter' | 'controlCapabilityId'
   >;
 
@@ -56,13 +56,16 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
     evBoost?: EvBoostConfig;
   };
 
+// `expectedPowerKw` is deliberately NOT a rung here. The producer resolves one
+// for every device it parses, so testing its presence answers "did this snapshot
+// come from the producer", not "can PELS manage this device's power" — it would
+// make this predicate true for everything. `powerCapable` is the producer's own
+// answer and is what normally decides; the tail below is for a snapshot that
+// predates it.
 export const supportsPowerDevice = (device?: SettingsUiDeviceListItem | null): boolean => {
   if (!device) return false;
   if (device.powerCapable !== undefined) return device.powerCapable;
-  return typeof device.powerKw === 'number'
-    || typeof device.expectedPowerKw === 'number'
-    || typeof device.measuredPowerKw === 'number'
-    || typeof device.loadKw === 'number';
+  return typeof device.measuredPowerKw === 'number';
 };
 
 export const supportsTemperatureDevice = (device?: SettingsUiDeviceListItem | null): boolean => {

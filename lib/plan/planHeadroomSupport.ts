@@ -54,7 +54,6 @@ const TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS = Math.max(
 export type HeadroomCardDeviceLike = {
   id: string;
   name: string;
-  powerKw?: number;
   expectedPowerKw?: number;
   currentDrawKw: number;
   lastFreshDataMs?: number;

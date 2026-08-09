@@ -84,8 +84,14 @@ describe('resolveHeadroomReserves', () => {
     expect(armed.heater).toBe(NOW - 1000);
   });
 
-  it('declines to reserve when it cannot estimate the device\'s startup power', () => {
-    expect(run([waiting({ id: 'heater', priority: 1, reservesStartupPower: true })]).reserves).toEqual([]);
+  // A non-stepped device can no longer fail to produce a startup estimate: the
+  // producer resolves `expectedPowerKw` for every device, ending on a default
+  // rather than on absence. Only the stepped arm can still decline, and only
+  // because a device with no usable step genuinely has nothing to size against.
+  it('reserves the producer-resolved expected power when no other estimate exists', () => {
+    const { reserves } = run([waiting({ id: 'heater', priority: 1, reservesStartupPower: true })]);
+    expect(reserves).toHaveLength(1);
+    expect(reserves[0].kw).toBe(1);
   });
 
   it('withholds the reserve for a device that cannot start', () => {
@@ -116,7 +122,7 @@ describe('resolveHeadroomReserves', () => {
       { available: false },
       { deviceClass: 'evcharger', evChargingState: 'plugged_out' },
       // No power estimate at all this cycle: the `unknown_device_power` stamp-preservation path.
-      { expectedPowerKw: undefined, powerKw: undefined },
+      { expectedPowerKw: undefined},
     ];
     for (const blip of blips) {
       const { armed } = run(

@@ -26,9 +26,7 @@ const resolveEstimatedMaxPlanningPowerW = (
   const knownKw = [
     device.planningPowerKw,
     device.expectedPowerKw,
-    device.loadKw,
     device.measuredPowerKw,
-    device.powerKw,
   ].find((value) => typeof value === 'number' && Number.isFinite(value) && value > 0);
   return roundPowerW((knownKw ?? (DEFAULT_MAX_PLANNING_POWER_W / 1000)) * 1000) || DEFAULT_MAX_PLANNING_POWER_W;
 };
@@ -120,9 +118,6 @@ export const applyLocalDeviceControlProfile = (
     delete device.desiredStepId;
     delete device.selectedStepId;
     delete device.planningPowerKw;
-    if ((device.expectedPowerSource as string) === 'step-planning') {
-      delete device.expectedPowerSource;
-    }
     return;
   }
 

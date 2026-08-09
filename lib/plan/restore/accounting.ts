@@ -11,7 +11,7 @@ import {
   RECENT_SHED_RESTORE_MULTIPLIER,
 } from '../planConstants';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
-import { getRestoreDrawKw } from '../../observer/observedPower';
+import { getHighestKnownPowerKw } from '../../observer/observedPower';
 import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
@@ -66,7 +66,7 @@ function resolveRestorePower(
   if (dev.residualKw?.restore) return dev.residualKw.restore;
   const stepped = resolveSteppedRestorePower(dev);
   if (stepped !== null) return stepped;
-  return getRestoreDrawKw(dev);
+  return getHighestKnownPowerKw(dev);
 }
 
 function resolveSteppedRestorePower(

@@ -11,6 +11,8 @@ import type {
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
+import { estimatePower } from '../../lib/device/devicePowerEstimate';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 
@@ -154,11 +156,59 @@ export const fixtureCurrentDrawKw = (o: {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  powerKw?: number;
   [key: string]: unknown;
 }): number => (
   typeof o.currentDrawKw === 'number' ? o.currentDrawKw : getCurrentDrawKw(o)
 );
+
+const noopEstimateLogger = { structuredLog: { debug: () => {} } } as unknown as Logger;
+const evidenceFreeEstimateByCapability = new Map<string, number>();
+
+/**
+ * The draw a fixture device is presumed to pull WHEN RUNNING, when the test did
+ * not say.
+ *
+ * DELEGATES to the production ladder, `estimatePower`, for the same reason
+ * `fixtureCurrentDrawKw` delegates to `getCurrentDrawKw`: a fixture that
+ * restates the producer's rungs keeps them after production drops one, and that
+ * is how 5,400 tests stayed green over three real defects. So this does not
+ * hardcode 1 (or 1.38 for a charger) — it asks the producer what an
+ * evidence-free device resolves to and uses the answer.
+ *
+ * A device with no `settings` and no `energyObj` lands on the ladder's last rung
+ * by construction: `getLoadSettingWatts` and `getHomeyEnergyEstimateWatts` both
+ * return `null`, and the override/peak stores are empty. Memoised per
+ * `controlCapabilityId`, so the producer is asked twice per process rather than
+ * once per fixture.
+ *
+ * A spec whose SUBJECT is the expected power should pass `expectedPowerKw`
+ * explicitly rather than lean on this.
+ */
+export const fixtureExpectedPowerKw = (o: {
+  expectedPowerKw?: number;
+  controlCapabilityId?: BinaryControlCapabilityId;
+}): number => {
+  if (typeof o.expectedPowerKw === 'number') return o.expectedPowerKw;
+  const key = o.controlCapabilityId ?? '';
+  const memoised = evidenceFreeEstimateByCapability.get(key);
+  if (memoised !== undefined) return memoised;
+  const resolved = estimatePower({
+    device: { id: 'fixture', name: 'fixture' } as HomeyDeviceLike,
+    deviceId: 'fixture',
+    deviceLabel: 'fixture',
+    controlCapabilityId: o.controlCapabilityId,
+    now: 0,
+    state: {
+      expectedPowerKwOverrides: {},
+      lastKnownPowerKw: {},
+      lastEstimateDecisionLogByDevice: new Map(),
+      lastPeakPowerLogByDevice: new Map(),
+    },
+    logger: noopEstimateLogger,
+  }).expectedPowerKw;
+  evidenceFreeEstimateByCapability.set(key, resolved);
+  return resolved;
+};
 
 export const buildPlanDevice = (
   // `currentOn`/`binaryControl` live on the orthogonal `BinaryControlKind` cluster
@@ -208,6 +258,16 @@ DevicePlanDevice => {
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // Stamped AFTER the caller spread, like `currentDrawKw`: an explicit
+    // `expectedPowerKw: undefined` in a fixture must not ship a required field
+    // as missing, which would propagate as NaN through every restore
+    // reservation and headroom sum.
+    expectedPowerKw: fixtureExpectedPowerKw(overrides),
+    // Same treatment, same reason: the contract makes the source REQUIRED, and
+    // this builder's cast is the one place that could still ship it absent.
+    // `'default'` is what the producer emits for a device nothing is known
+    // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
+    expectedPowerSource: overrides.expectedPowerSource ?? 'default',
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
@@ -260,6 +320,16 @@ export const buildPlanInputDevice = (
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // Stamped AFTER the caller spread, like `currentDrawKw`: an explicit
+    // `expectedPowerKw: undefined` in a fixture must not ship a required field
+    // as missing, which would propagate as NaN through every restore
+    // reservation and headroom sum.
+    expectedPowerKw: fixtureExpectedPowerKw(overrides),
+    // Same treatment, same reason: the contract makes the source REQUIRED, and
+    // this builder's cast is the one place that could still ship it absent.
+    // `'default'` is what the producer emits for a device nothing is known
+    // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
+    expectedPowerSource: overrides.expectedPowerSource ?? 'default',
   }) as PlanInputDevice;
 };
 

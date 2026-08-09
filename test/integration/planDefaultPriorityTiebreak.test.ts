@@ -13,7 +13,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 // vs restore could disagree). These tests pin a single, stable deviceId order
 // on BOTH sides.
 
-const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant({
+const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id,
   name: id,
   commandableNow: true,

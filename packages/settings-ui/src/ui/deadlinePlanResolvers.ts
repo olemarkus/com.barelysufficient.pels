@@ -6,8 +6,9 @@ import type {
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type {
-  DecoratedDeviceSnapshot,
+  ObservedDeviceState,
   StateOfChargeObservedProbe,
+  SteppedLoadProfile,
   TemperatureObservedProbe,
 } from '../../../contracts/src/types.ts';
 import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
@@ -26,7 +27,16 @@ import { isFiniteNumber } from './deadlinePlanData.ts';
 // the full hour (see `resolveAllocation` in `lib/objectives/deferredObjectives/
 // horizonPlanner.ts`). The Plan inputs card surfaces that committed power so
 // the user can sanity-check "Needs X kWh" against the realistic per-hour cap.
-export const resolveLowestActiveStepKw = (device: DecoratedDeviceSnapshot): number | null => {
+// Probe-widened onto the observed base rather than typed as the whole decorated
+// snapshot: this reads a stepped profile and a planning power, nothing else, and
+// declaring the full descriptor only type-checked for as long as every one of its
+// fields stayed optional.
+type LowestActiveStepInput = ObservedDeviceState & {
+  steppedLoadProfile?: SteppedLoadProfile;
+  planningPowerKw?: number;
+};
+
+export const resolveLowestActiveStepKw = (device: LowestActiveStepInput): number | null => {
   const profile = device.steppedLoadProfile;
   if (profile) {
     const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
@@ -58,8 +68,9 @@ export const resolveProgress = (params: {
   // Probe-widened: the live reading (temperature or SoC) rides on the
   // `/ui_devices` snapshot the base type omits; `hasObservedTemperature` /
   // `hasObservedStateOfCharge` narrow it (present implies finite), falling back to
-  // the profile sample when there is no live reading.
-  device: DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
+  // the profile sample when there is no live reading. Widened onto the observed
+  // base, not the decorated snapshot: no descriptor field is read here.
+  device: ObservedDeviceState & TemperatureObservedProbe & StateOfChargeObservedProbe;
   objective: DeferredObjectiveSettingsEntry;
   profile: DeviceObjectiveProfile | null;
 }): DeadlineProgress | null => {

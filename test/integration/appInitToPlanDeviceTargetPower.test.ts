@@ -23,6 +23,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
     const runtimeConfig = { ...baseConfig, reachability };
     const device: DecoratedDeviceSnapshot = {
       id: 'charger',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Charger',
       targets: [],
       controlModel: 'stepped_load',

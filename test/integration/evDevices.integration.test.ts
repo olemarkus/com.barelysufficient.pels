@@ -35,7 +35,7 @@ type InternalApp = {
     getSnapshot(): DailyBudgetUiPayload | null;
   };
   capacityGuard: {
-    reportTotalPower(powerKw: number): void;
+    reportTotalPower(expectedPowerKw: number): void;
   };
   powerTracker: {
     lastTimestamp?: number;
@@ -59,7 +59,7 @@ type SnapshotEntry = {
   binaryControl?: { on: boolean };
   evChargingState?: string;
   expectedPowerSource?: string;
-  powerKw?: number;
+  expectedPowerKw?: number;
 };
 
 type PlanDeviceEntry = {
@@ -239,7 +239,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(entry).toEqual(expect.objectContaining({
       binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
-      powerKw: 7.2,
+      expectedPowerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
     }));
 

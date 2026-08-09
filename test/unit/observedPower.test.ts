@@ -1,46 +1,8 @@
 import {
   getCurrentDrawKw,
   getHighestKnownPowerKw,
-  getRestoreDrawKw,
   isActivelyDrawing,
 } from '../../lib/observer/observedPower';
-
-describe('getRestoreDrawKw', () => {
-  it('returns the highest known non-zero value across all configured sources', () => {
-    const result = getRestoreDrawKw({
-      currentDrawKw: 0.8,
-      expectedPowerKw: 1.4,
-      planningPowerKw: 1.0,
-      powerKw: 3,
-    });
-    expect(result).toEqual({ kw: 3, source: 'configured' });
-  });
-
-  it('is stable across observed-on/off state changes — current draw does not erase configured demand', () => {
-    // The two inputs must actually DIFFER on the draw, or the assertion proves
-    // nothing. A thermostat mid-duty-cycle reads 0 one moment and 0.6 the next;
-    // the restore reservation must not move with it.
-    const off = getRestoreDrawKw({ currentDrawKw: 0, expectedPowerKw: 1 });
-    const on = getRestoreDrawKw({ currentDrawKw: 0.6, expectedPowerKw: 1 });
-    expect(off.kw).toBe(1);
-    expect(on.kw).toBe(1);
-  });
-
-  it('falls back to the EV default for evcharger_charging with no known power', () => {
-    expect(getRestoreDrawKw({ currentDrawKw: 0, controlCapabilityId: 'evcharger_charging' }).kw).toBeCloseTo(1.38, 6);
-  });
-
-  it('falls back to the default for any other device with no known power', () => {
-    expect(getRestoreDrawKw({ currentDrawKw: 0}).kw).toBe(1);
-    expect(getRestoreDrawKw({ currentDrawKw: 0, expectedPowerKw: -1 }).kw).toBe(1);
-  });
-
-  it('reports the source label that drove the result', () => {
-    expect(getRestoreDrawKw({ currentDrawKw: 2 }).source).toBe('measured');
-    expect(getRestoreDrawKw({ currentDrawKw: 0, powerKw: 1 }).source).toBe('configured');
-    expect(getRestoreDrawKw({ currentDrawKw: 0}).source).toBe('fallback');
-  });
-});
 
 describe('getCurrentDrawKw', () => {
   it('is the meter reading, including a true zero', () => {
@@ -74,20 +36,45 @@ describe('getCurrentDrawKw', () => {
   });
 });
 
+// Absorbed `getRestoreDrawKw`, which was deleted: it existed only to answer the
+// case where every candidate was absent, and `expectedPowerKw` being a required,
+// always-positive producer output means the producer no longer emits that case.
+// The `'configured'` and `'fallback'` source labels went with it — the first
+// named `powerKw`, the second named a state that cannot occur.
 describe('getHighestKnownPowerKw', () => {
-  it('returns null when no source is positive', () => {
-    expect(getHighestKnownPowerKw({ currentDrawKw: 0})).toBeNull();
-    expect(getHighestKnownPowerKw({ currentDrawKw: 0, expectedPowerKw: -1 })).toBeNull();
-  });
-
-  it('returns the highest non-zero value across all sources', () => {
+  it('returns the highest value across measured / expected / planning', () => {
     const result = getHighestKnownPowerKw({
       currentDrawKw: 0.8,
-      expectedPowerKw: 1.4,
+      expectedPowerKw: 3,
       planningPowerKw: 1.0,
-      powerKw: 3,
     });
-    expect(result).toEqual({ kw: 3, source: 'configured' });
+    expect(result).toEqual({ kw: 3, source: 'expected' });
+  });
+
+  it('is total — the expected demand is the floor, so there is no null arm', () => {
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0, expectedPowerKw: 1 }))
+      .toEqual({ kw: 1, source: 'expected' });
+  });
+
+  it('is stable across observed-on/off changes — current draw does not erase expected demand', () => {
+    // The two inputs must actually DIFFER on the draw, or the assertion proves
+    // nothing. A thermostat mid-duty-cycle reads 0 one moment and 0.6 the next;
+    // the restore reservation must not move with it.
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0, expectedPowerKw: 1 }).kw).toBe(1);
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0.6, expectedPowerKw: 1 }).kw).toBe(1);
+  });
+
+  it('resolves a tie to the earliest candidate, so a device measuring its expected draw reads measured', () => {
+    // Order is load-bearing beyond the max: reordering the candidate list to put
+    // the guaranteed field first silently relabels every tie as `'expected'`.
+    expect(getHighestKnownPowerKw({ currentDrawKw: 1.8, expectedPowerKw: 1.8 }).source).toBe('measured');
+  });
+
+  it('reports the source label that drove the result', () => {
+    expect(getHighestKnownPowerKw({ currentDrawKw: 2, expectedPowerKw: 1 }).source).toBe('measured');
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0, expectedPowerKw: 1 }).source).toBe('expected');
+    expect(getHighestKnownPowerKw({ currentDrawKw: 0, expectedPowerKw: 1, planningPowerKw: 4 }).source)
+      .toBe('planning');
   });
 });
 

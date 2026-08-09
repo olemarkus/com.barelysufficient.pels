@@ -1119,7 +1119,7 @@ describe('MyApp initialization', () => {
         name: 'Heater',
         targets: [],
         measuredPowerKw: 1.2,
-        powerKw: 1.2,
+        expectedPowerKw: 1.2,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -1460,6 +1460,7 @@ describe('MyApp initialization', () => {
     (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'ev-1',
+        expectedPowerKw: 1,
         name: 'Garage Charger',
         deviceClass: 'evcharger',
         targets: [],
@@ -1878,7 +1879,7 @@ describe('MyApp initialization', () => {
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
         binaryControl: { on: true },
         controllable: true,
-        powerKw: 1,
+        expectedPowerKw: 1,
       },
     ]);
 
@@ -3151,6 +3152,7 @@ describe('periodic snapshot refresh scheduling', () => {
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-1',
+          expectedPowerKw: 1,
           name: 'Zaptec Go',
           deviceClass: 'evcharger',
           deviceType: 'onoff',
@@ -3218,6 +3220,7 @@ describe('periodic snapshot refresh scheduling', () => {
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-native-1',
+          expectedPowerKw: 1,
           name: 'Zaptec Go',
           deviceClass: 'evcharger',
           deviceType: 'onoff',
@@ -3288,6 +3291,7 @@ describe('periodic snapshot refresh scheduling', () => {
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-active-1',
+          expectedPowerKw: 1,
           name: 'Zaptec Go',
           deviceClass: 'evcharger',
           deviceType: 'onoff',
@@ -3425,6 +3429,7 @@ describe('periodic snapshot refresh scheduling', () => {
         getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
           {
             id: 'ev-1',
+            expectedPowerKw: 1, expectedPowerSource: 'default',
             name: 'Garage Charger',
             deviceClass: 'evcharger',
             flowBacked: true,
@@ -3471,6 +3476,7 @@ describe('periodic snapshot refresh scheduling', () => {
       getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           id: 'ev-1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Garage Charger',
           deviceClass: 'evcharger',
           flowBacked: true,
@@ -3509,6 +3515,7 @@ describe('periodic snapshot refresh scheduling', () => {
       getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           id: 'ev-1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Garage Charger',
           deviceClass: 'evcharger',
           targets: [],
@@ -3548,6 +3555,7 @@ describe('periodic snapshot refresh scheduling', () => {
       getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           id: 'battery-1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Battery Sensor',
           deviceClass: 'sensor',
           targets: [],
@@ -3640,6 +3648,7 @@ describe('periodic snapshot refresh scheduling', () => {
     };
     const snapshot: (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       id: 'ev-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
       flowBacked: true,
@@ -3685,6 +3694,7 @@ describe('periodic snapshot refresh scheduling', () => {
     };
     const snapshot: (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       id: 'ev-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
       flowBacked: true,
@@ -3728,7 +3738,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TargetDeviceSnapshot[] = [{
+    const snapshot: TargetDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3780,7 +3790,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TargetDeviceSnapshot[] = [{
+    const snapshot: TargetDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3820,6 +3830,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const nextReportedAt = initialReportedAt + 60_000;
     const snapshot: (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       id: 'ev-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
       flowBacked: true,
@@ -3860,6 +3871,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
     const snapshot: TargetDeviceSnapshot[] = [{
       id: 'ev-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
       flowBacked: true,

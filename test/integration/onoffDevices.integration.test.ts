@@ -87,7 +87,7 @@ describe('On/off device integration', () => {
       deviceClass?: string;
       targets?: Array<unknown>;
       binaryControl?: { on: boolean };
-      powerKw?: number;
+      expectedPowerKw?: number;
     }>;
     const entry = snapshot.find((snap) => snap.id === 'device-a');
 
@@ -95,7 +95,7 @@ describe('On/off device integration', () => {
     expect(entry?.deviceClass).toBe('socket');
     expect(entry?.targets?.length ?? 0).toBe(0);
     expect(entry?.binaryControl?.on).toBe(true);
-    expect(entry?.powerKw).toBeCloseTo(1.2, 2);
+    expect(entry?.expectedPowerKw).toBeCloseTo(1.2, 2);
   });
 
   it('does not apply mode targets for on/off devices', async () => {
@@ -161,7 +161,6 @@ describe('On/off device integration', () => {
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
-      powerKw?: number;
       expectedPowerKw?: number;
       expectedPowerSource?: string;
     }>;
@@ -172,7 +171,7 @@ describe('On/off device integration', () => {
       expectedPowerSource: 'homey-energy',
     });
     expect(entry?.expectedPowerKw).toBeCloseTo(0.1, 6);
-    expect(entry?.powerKw).toBeCloseTo(0.1, 6);
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.1, 6);
   });
 
   it('uses canonical settings energy values for on/off devices when present', async () => {
@@ -200,7 +199,6 @@ describe('On/off device integration', () => {
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
-      powerKw?: number;
       expectedPowerKw?: number;
       expectedPowerSource?: string;
     }>;
@@ -211,7 +209,7 @@ describe('On/off device integration', () => {
       expectedPowerSource: 'homey-energy',
     }));
     expect(entry?.expectedPowerKw).toBeCloseTo(0.0125, 6);
-    expect(entry?.powerKw).toBeCloseTo(0.0125, 6);
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.0125, 6);
   });
 
   it('supports on/off devices using Homey live report when power capabilities are absent', async () => {
@@ -239,9 +237,8 @@ describe('On/off device integration', () => {
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
-      powerKw?: number;
-      measuredPowerKw?: number;
       expectedPowerKw?: number;
+      measuredPowerKw?: number;
       expectedPowerSource?: string;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
@@ -250,7 +247,7 @@ describe('On/off device integration', () => {
     expect(entry?.expectedPowerSource).toBe('measured-peak');
     expect(entry?.measuredPowerKw).toBeCloseTo(0.125, 6);
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
-    expect(entry?.powerKw).toBeCloseTo(0.125, 6);
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
   });
 
   it('supports on/off devices with Homey energy W fallback when approximation is missing', async () => {
@@ -274,7 +271,6 @@ describe('On/off device integration', () => {
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
-      powerKw?: number;
       expectedPowerKw?: number;
       expectedPowerSource?: string;
     }>;
@@ -285,7 +281,7 @@ describe('On/off device integration', () => {
       expectedPowerSource: 'homey-energy',
     }));
     expect(entry?.expectedPowerKw).toBeCloseTo(0.000125, 9);
-    expect(entry?.powerKw).toBeCloseTo(0.000125, 9);
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.000125, 9);
   });
 
   it('does not use Homey energy W fallback for explicitly off on/off devices but keeps them power-capable', async () => {
@@ -309,14 +305,14 @@ describe('On/off device integration', () => {
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
-      powerKw?: number;
+      expectedPowerKw?: number;
       expectedPowerSource?: string;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
     expect(entry).toBeDefined();
     expect(entry?.powerCapable).toBe(true);
     expect(entry?.expectedPowerSource).toBe('default');
-    expect(entry?.powerKw).toBe(1);
+    expect(entry?.expectedPowerKw).toBe(1);
   });
 
   it('keeps usageConstant-only on/off devices out of the snapshot when no flow-backed power exists', async () => {
@@ -341,7 +337,7 @@ describe('On/off device integration', () => {
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
-      powerKw?: number;
+      expectedPowerKw?: number;
       expectedPowerSource?: string;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
@@ -484,14 +480,14 @@ describe('On/off device integration', () => {
       id: string;
       powerCapable?: boolean;
       expectedPowerSource?: string;
-      powerKw?: number;
+      expectedPowerKw?: number;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
     expect(entry).toBeDefined();
     expect(entry).toEqual(expect.objectContaining({
       powerCapable: true,
       expectedPowerSource: 'default',
-      powerKw: 1,
+      expectedPowerKw: 1,
     }));
 
     const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;

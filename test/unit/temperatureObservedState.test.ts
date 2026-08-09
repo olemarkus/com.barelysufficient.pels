@@ -8,7 +8,7 @@ import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packa
 // the fixture against the same shape the guard narrows.
 const snap = (
   over: Partial<TargetDeviceSnapshot & TemperatureObservedProbe>,
-): TargetDeviceSnapshot & TemperatureObservedProbe => ({
+): TargetDeviceSnapshot & TemperatureObservedProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'd1',
   name: 'D',
   targets: [],

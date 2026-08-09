@@ -300,7 +300,6 @@ const buildDeps = (overrides: {
     getHomeyDevicesForFlow: async () => [],
     reportFlowBackedCapability: () => ({ kind: 'noop', valueChanged: false, freshnessAdvanced: false, refreshSnapshot: false, rebuildPlan: false }) as never,
     reportSteppedLoadActualStep: () => 'unchanged' as never,
-    getDeviceLoadSetting: async () => null,
     setExpectedOverride: () => false,
     storeFlowPriceData: () => ({ dateKey: '', storedCount: 0, missingHours: [] }),
     rebuildPlan,

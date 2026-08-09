@@ -1057,7 +1057,7 @@ describe('settings script', () => {
           deviceType: 'onoff',
           targets: [],
           powerCapable: true,
-          powerKw: 0.125,
+          expectedPowerKw: 0.125,
         },
       ],
     });
@@ -1111,7 +1111,7 @@ describe('settings script', () => {
           binaryControl: { on: false },
           powerCapable: true,
           expectedPowerSource: 'default',
-          powerKw: 1,
+          expectedPowerKw: 1,
         },
       ],
     });

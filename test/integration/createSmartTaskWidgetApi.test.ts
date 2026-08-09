@@ -33,6 +33,7 @@ const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> 
 
 const evDevice: TargetDeviceSnapshot = {
   id: 'ev-1',
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Driveway',
   targets: [],
   binaryControl: { on: false },

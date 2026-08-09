@@ -35,10 +35,10 @@ export const createContinuousTargetPowerConfig = (
 ): TargetPowerSteppedLoadConfig => {
   const existing = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
   if (existing && !existing.preset) return { ...existing, enabled: true };
-  const max = Math.max(
-    1000,
-    Math.round((device.expectedPowerKw ?? device.measuredPowerKw ?? device.powerKw ?? 1.5) * 1000),
-  );
+  // Seeds an editable draft, so one producer-resolved figure is enough — the
+  // `?? measuredPowerKw ?? powerKw ?? 1.5` tail existed only because
+  // `expectedPowerKw` used to be absent for a device nobody had described.
+  const max = Math.max(1000, Math.round(device.expectedPowerKw * 1000));
   const step = 100;
   return {
     enabled: true,

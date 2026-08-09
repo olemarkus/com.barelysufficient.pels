@@ -145,7 +145,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
     });
 
     it('projects the complete exact-step observation cluster', () => {
-        const snapshot: TransportDeviceSnapshot = {
+        const snapshot: TransportDeviceSnapshot = { expectedPowerKw: 1, expectedPowerSource: 'default',
             id: 'ev-1',
             name: 'Charger',
             targets: [],
@@ -233,7 +233,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(h.projection.getObservedState('dev1')).toBeUndefined();
 
         h.transport.setSnapshotForTests([
-            { id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true } },
+            { id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true }, expectedPowerKw: 1 },
         ] as unknown as Parameters<typeof h.transport.setSnapshotForTests>[0]);
 
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
@@ -498,6 +498,7 @@ describe('ObservedDeviceStateProjection apply guard', () => {
 // exercise the seed's interaction with the ordered apply guard directly.
 describe('ObservedDeviceStateProjection seedMissing', () => {
     const baseObserved = (id: string, currentOn: boolean) => ({
+    expectedPowerKw: 1,
         id,
         name: id,
         targets: [],

@@ -5,6 +5,7 @@ import type {
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   EvChargingState,
+  ExpectedPowerSource,
   RestorePowerSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -222,10 +223,26 @@ export type PlanInputDeviceBase = {
   // EV fields (`evChargingState`, `evBoost`, `stateOfCharge`) are split off onto
   // the orthogonal `EvPlanInputKind` cluster; reach them through the
   // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
-  powerKw?: number;
-  expectedPowerKw?: number;
+  /**
+   * What the device draws while running, as the producer resolved it. REQUIRED —
+   * never null, never undefined, never absent. The twin of `currentDrawKw` below:
+   * that one is what the meter says now, this one is what to size a restore,
+   * a reserve, or a smart-task step against.
+   *
+   * `estimatePower` ends its ladder on a default rather than on absence, so
+   * "nothing is known about this device" never reaches a consumer. Trust it: do
+   * not substitute for it, do not fall back past it, and do not branch on
+   * `expectedPowerSource` to decide whether to believe it.
+   *
+   * The old `powerKw` twin is gone. It held the same number on every rung but the
+   * last, where it laundered an invented 1 kW past the field that had honestly
+   * declined to guess — and every `expectedPowerKw ?? powerKw` tail in the
+   * planner, the objectives layer, and the settings UI then picked it up.
+   */
+  expectedPowerKw: number;
   planningPowerKw?: number;
-  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
+  /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
+  expectedPowerSource: ExpectedPowerSource;
   /**
    * The device's current draw in kW, as the producer resolved it. REQUIRED —
    * never null, never undefined, never absent.

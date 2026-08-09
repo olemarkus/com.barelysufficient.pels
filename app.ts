@@ -29,7 +29,6 @@ import type { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
 import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
-import { getDeviceLoadSetting } from './lib/device/load';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -963,13 +962,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   public async applyPriceOptimization() {
     return this.priceCoordinator.applyPriceOptimization();
-  }
-  public async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
-    return getDeviceLoadSetting({
-      deviceId,
-      snapshot: this.latestTargetSnapshot,
-      error: (...args: unknown[]) => this.error(...args),
-    });
   }
   // Main's resolver ranks by the GLOBAL mode; a sub-home scope ranks by its
   // own effective mode through the same shared helper (one formula).

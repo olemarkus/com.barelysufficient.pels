@@ -6,7 +6,7 @@ import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contr
 // is the contract under test), so the fixture builds the owner-side widened
 // shape the guard narrows from. Fully typed (no cast) so the compiler validates
 // the fixture against the same shape the guard narrows.
-const snap = (over: Partial<TargetDeviceSnapshot & EvObservedProbe>): TargetDeviceSnapshot & EvObservedProbe => ({
+const snap = (over: Partial<TargetDeviceSnapshot & EvObservedProbe>): TargetDeviceSnapshot & EvObservedProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'd1',
   name: 'D',
   targets: [],

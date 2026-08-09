@@ -60,6 +60,7 @@ const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]!
 
 const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
   id: DEVICE_ID,
+  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
   commandableNow: true,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],

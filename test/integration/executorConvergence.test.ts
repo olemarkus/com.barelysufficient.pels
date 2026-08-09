@@ -627,7 +627,6 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         currentTarget: 20,
         plannedTarget: 20,
-        powerKw: 1,
         expectedPowerKw: 1,
         currentDrawKw: 1,
       })]);
@@ -639,7 +638,6 @@ describe('executorConvergence stepped device drift', () => {
         binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        powerKw: 2,
         expectedPowerKw: 2,
         currentDrawKw: 2,
       })];

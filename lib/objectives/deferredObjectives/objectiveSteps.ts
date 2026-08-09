@@ -3,7 +3,7 @@ import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
-import { drawWhenActivelyDrawingKw, firstPositiveFinite } from './planningSpeed';
+import { drawWhenActivelyDrawingKw } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
 
 // Grid draw for a step: the calibrated admission power when one exists, else the
@@ -42,6 +42,20 @@ const withResolvedAdmission = (
     : [{ id: step.id, usefulPowerKw: step.usefulPowerKw, admissionPowerKw: step.admissionPowerKw }]
 ));
 
+// The single synthetic rung a device without a stepped ladder gets. Both callers
+// route through the same calibrated lookups so the allocator's per-step useful
+// power and the hero's planning-speed reading cannot disagree. It yields the
+// LOOSE shape on purpose: `withResolvedAdmission` above still has to be able to
+// drop it when its grid draw cannot be costed.
+const buildSyntheticChargeStep = (
+  device: ObjectiveDeviceInput,
+  nameplateKw: number,
+): { id: string; usefulPowerKw: number; admissionPowerKw: number | null } => ({
+  id: 'charge',
+  usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', nameplateKw),
+  admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', nameplateKw),
+});
+
 // Resolves the per-objective step list the horizon planner consumes. Stepped
 // devices expose their full ladder via `steppedLoadProfile`; EV chargers and
 // thermal devices without stepped controls route through the same calibrated
@@ -70,45 +84,44 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
       admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', planning),
     }]);
   }
+  // Configured as a stepped load, but carrying no live ladder this cycle. Answer
+  // "no steps" so the committed task serves its frozen plan (`liveStepsUnavailable`
+  // → `resolveServedFrozenRead`) instead of replanning against one synthetic rung.
+  //
+  // This is the condition that protection was always FOR. It used to be reached
+  // by accident, via "no usable power figure" — a proxy that stopped working the
+  // moment `expectedPowerKw` became a guaranteed positive number, because every
+  // device could then produce a rung. Keyed on the real fact instead: the profile
+  // is the live ladder and `controlModel` is the configured intent, and profile
+  // presence implies `controlModel === 'stepped_load'` but not the converse, so
+  // their disagreement IS the gap. Prod 2026-08-01: a stepped water heater lost
+  // its profile across a restart and its committed task degraded to `unknown` for
+  // 9.5 h; regression-guarded at the SDK boundary by
+  // `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
+  if (device.controlModel === 'stepped_load') return [];
   if (isEvDevice(device)) {
-    const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
-    if (expected !== null) {
-      return withResolvedAdmission([{
-        id: 'charge',
-        usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected),
-        admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', expected),
-      }]);
-    }
+    return withResolvedAdmission([buildSyntheticChargeStep(device, device.expectedPowerKw)]);
   }
   // Thermal-without-stepped-controls fallback: emit one synthetic "charge"
-  // step from measured/expected/nameplate power so the bucket allocator can
-  // build a horizon plan instead of leaving the smart task stuck on
-  // `objective_missing_charge_rate` / `pendingReason: missing_capacity`.
+  // step so the bucket allocator can build a horizon plan instead of leaving
+  // the smart task stuck on `objective_missing_charge_rate` /
+  // `pendingReason: missing_capacity`.
   // The live draw (`currentDrawKw`) is preferred — on a heating cycle it is the
   // most accurate nameplate we have for these devices; `drawWhenActivelyDrawingKw`
-  // ignores a standby trickle, so an idle heater falls through to
-  // `expectedPowerKw` / `powerKw` (which the power estimator populates from
-  // the load setting / Homey Energy approximation). EV chargers do not use
-  // the live draw here because their `expectedPowerKw` is the calibrated
-  // 1-step view from `appInit/calibrationViews.buildEvChargerCalibrationView` and the
-  // existing branch above is the documented invariant for EV planning speed.
+  // ignores a standby trickle, so an idle heater falls through to the producer's
+  // resolved `expectedPowerKw`. EV chargers do not use the live draw here because
+  // their `expectedPowerKw` is the calibrated 1-step view from
+  // `appInit/calibrationViews.buildEvChargerCalibrationView` and the existing
+  // branch above is the documented invariant for EV planning speed.
   // Mill-/Adax-/Glamox-shaped Norwegian panel heaters report class
   // `thermostat`, `onoff` + `target_temperature` + `measure_power`, no
   // stepped controls; before this branch they kept `pendingReason:
   // missing_capacity` indefinitely even with a converged learned profile.
   if (isTemperatureControlDevice(device)) {
-    const expected = firstPositiveFinite([
-      drawWhenActivelyDrawingKw(device.currentDrawKw),
-      device.expectedPowerKw,
-      device.powerKw,
+    const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
+    return withResolvedAdmission([
+      buildSyntheticChargeStep(device, activeDrawKw ?? device.expectedPowerKw),
     ]);
-    if (expected !== null) {
-      return withResolvedAdmission([{
-        id: 'charge',
-        usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected),
-        admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', expected),
-      }]);
-    }
   }
   return [];
 };

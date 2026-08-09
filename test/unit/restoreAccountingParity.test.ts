@@ -42,7 +42,7 @@ import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/cont
 import {
   resolveResidualKwRestore,
 } from '../../lib/device/deviceResidualKw';
-import { getRestoreDrawKw } from '../../lib/observer/observedPower';
+import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
 import { steppedProfile, buildPlanDevice } from '../utils/planTestUtils';
 
 // Local fixture shape: the discriminated output device plus the orthogonal
@@ -108,7 +108,7 @@ function withProducerResolvedRestore(dev: RestoreFixture): RestoreFixture {
           : {}),
       }
       : undefined,
-    restoreFallback: getRestoreDrawKw(dev),
+    restoreFallback: getHighestKnownPowerKw(dev),
   });
   return {
     ...dev,
@@ -271,10 +271,13 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   // equality through the same branch. If a future refactor changes which
   // branch handles a fixture, this assertion fires.
   it('edge-case fixtures exercise the intended resolution sources', () => {
-    expect(resolveRestorePowerSource(deviceE)).toBe('fallback');
+    // Was `'fallback'`, the label for "no source carried a positive number".
+    // `expectedPowerKw` being required and always positive makes that unreachable.
+    expect(resolveRestorePowerSource(deviceE)).toBe('expected');
     expect(resolveRestorePowerSource(deviceF)).toBe('stepped');
     expect(resolveRestorePowerSource(deviceG)).toBe('stepped');
-    // Path-3 with measuredPowerKw set returns source 'measured'.
+    // Path-3 with a measured draw returns source 'measured' — equal to its expected
+    // draw here, and ties resolve to the earliest candidate.
     expect(resolveRestorePowerSource(deviceH)).toBe('measured');
   });
 

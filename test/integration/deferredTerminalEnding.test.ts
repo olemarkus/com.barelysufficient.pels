@@ -94,6 +94,7 @@ describe('readTerminalObserved — 2-state read of the producer binaryControl.on
     overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe,
   ): PlanInputDevice => withBinaryDiscriminant({
     id: 'b1',
+    expectedPowerKw: 1,
     name: 'Water heater',
     // A binary device carries its control capability: it is the discriminant for
     // binary status (`isBinaryPlanDevice`), so `binaryControl` without it is no
@@ -139,6 +140,7 @@ describe('readTerminalObserved — EV charger reads the same 2-state binaryContr
     overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & EvDiscriminantProbe,
   ): PlanInputDevice => withBinaryDiscriminant(withEvDiscriminant({
     id: 'ev1',
+    expectedPowerKw: 1,
     name: 'EV charger',
     deviceClass: 'evcharger',
     controlCapabilityId: 'evcharger_charging',
@@ -169,6 +171,7 @@ describe('readTerminalObserved — EV charger reads the same 2-state binaryContr
 describe('resolveTerminalShedCommand — set_temperature setpoint normalization', () => {
   const thermostat = (overrides: Partial<PlanInputDevice['targets'][number]> = {}): PlanInputDevice => ({ currentDrawKw: 0,
     id: 't1',
+    expectedPowerKw: 1, expectedPowerSource: 'default',
     name: 'Thermostat',
     commandableNow: true,
     binaryControl: { on: true },
@@ -220,6 +223,7 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
     overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
   ): PlanInputDevice => withBinaryDiscriminant({
     id: 'd1',
+    expectedPowerKw: 1,
     name: 'Panel heater',
     binaryControl: { on: true },
     targets: [],
@@ -317,6 +321,7 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
       deviceWithoutTarget({
         controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+        expectedPowerKw: 1,
       }),
       'temperature',
       { action: 'set_temperature', temperature: 5 },

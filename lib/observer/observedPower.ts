@@ -6,7 +6,6 @@
  * carried the value.
  */
 import type {
-  BinaryControlCapabilityId,
   DeviceControlModel,
   RestorePowerSource,
   SteppedLoadProfile,
@@ -14,10 +13,11 @@ import type {
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
-// Re-export the canonical type so existing observer importers keep working.
-export type { RestorePowerSource } from '../../packages/contracts/src/types';
-
-type KnownPowerSource = Exclude<RestorePowerSource, 'fallback' | 'stepped'>;
+// The observer-side re-export of `RestorePowerSource` is gone with
+// `getRestoreDrawKw` — it existed so callers of that function could name its
+// return type without reaching into contracts, and nothing imports it from here
+// any more. The canonical declaration stays in `packages/contracts/src/types`.
+type KnownPowerSource = Exclude<RestorePowerSource, 'stepped'>;
 
 export type ObservedPowerInput = {
   /**
@@ -27,10 +27,13 @@ export type ObservedPowerInput = {
    * from a snapshot resolves it with `getCurrentDrawKw` first.
    */
   currentDrawKw: number;
-  expectedPowerKw?: number;
+  /**
+   * The producer-resolved expected draw. REQUIRED, and always positive:
+   * `estimatePower` ends its ladder on a default rather than on absence, so
+   * "nothing is known about this device" is not a state that reaches here.
+   */
+  expectedPowerKw: number;
   planningPowerKw?: number;
-  powerKw?: number;
-  controlCapabilityId?: BinaryControlCapabilityId;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
 };
@@ -50,30 +53,35 @@ export type ActivelyDrawingInput = {
   currentDrawKw: number;
 };
 
-// Restore-axis fallbacks ONLY: what to reserve for a device that is about to be
-// switched on and has no positive number anywhere (measured, expected, planning,
-// configured). They are no longer reachable from the current-draw axis —
-// `getCurrentDrawKw` used to end in this same ladder, and that is exactly how an
-// unmeasured device came to be credited an invented draw. Module-private so the
-// only way back to them is through `getRestoreDrawKw`.
-const EV_MIN_START_FALLBACK_KW = 1.38;
-const DEFAULT_FALLBACK_KW = 1;
 export const MIN_ACTIVE_MEASURED_POWER_KW = 0.05;
 
 /**
- * Highest known non-zero of measured / expected / planning / configured, or
- * null when no source carries a positive value. Lower-level building block —
- * `getRestoreDrawKw` is the higher-level "restore reservation" entry point;
- * plan-side helpers that need raw observational max evidence use this directly.
+ * What the device is assumed to draw when restored / active — the reservation
+ * target for restore admission, pending-restore accounting, and the device's
+ * `expectedPowerKw` projection on plan snapshots. Plan-state-blind *and*
+ * cycle-blind by design: independent of plannedState, currentOn, and current
+ * measurement state, so headroom math, overshoot detection, and overview copy
+ * see a stable value across thermostat duty cycles. Drawing a stable configured
+ * demand is what avoids over-granting restores when a binary-on thermostat is
+ * mid-cycle and momentarily reports `measure_power = 0`.
+ *
+ * The highest of measured / expected / planning, and TOTAL — there is no null
+ * arm and no fallback constant, because `expectedPowerKw` is a required,
+ * always-positive producer output. The old `getRestoreDrawKw` wrapper existed
+ * only to answer the case where every candidate was absent; the producer no
+ * longer emits that case, so the two functions are one. Closes TODO §43.
+ *
+ * The `'configured'` rung is gone with `powerKw`: it carried the same number as
+ * `'expected'` except on the last rung of the estimator, where it smuggled an
+ * invented 1 kW past the field that had declined to guess.
  */
 export function getHighestKnownPowerKw(
   device: ObservedPowerInput,
-): { kw: number; source: KnownPowerSource } | null {
+): { kw: number; source: KnownPowerSource } {
   const candidates: Array<{ source: KnownPowerSource; value?: number }> = [
     { source: 'measured', value: device.currentDrawKw },
     { source: 'expected', value: device.expectedPowerKw },
     { source: 'planning', value: device.planningPowerKw },
-    { source: 'configured', value: device.powerKw },
   ];
   let best: { kw: number; source: KnownPowerSource } | null = null;
   for (const candidate of candidates) {
@@ -81,7 +89,19 @@ export function getHighestKnownPowerKw(
     if (value === null) continue;
     if (best === null || value > best.kw) best = { kw: value, source: candidate.source };
   }
-  return best;
+  // Candidate ORDER is load-bearing beyond the max: ties resolve to the earliest
+  // entry, so a device measuring exactly what it is expected to draw still
+  // reports `'measured'`. Reordering this list to put the guaranteed field first
+  // silently relabels every such tie.
+  //
+  // `expectedPowerKw` is required and always positive, so the loop cannot come up
+  // empty and this tail is unreachable under the contract. It answers `0` rather
+  // than passing `device.expectedPowerKw` through, because the only way to get
+  // here is for that value to have FAILED the finiteness filter above — and
+  // handing a raw `Infinity`/`NaN` to consumers that trust this number implicitly
+  // is precisely what the boundary rule forbids. `0` under-reserves; junk
+  // poisons every headroom sum it reaches.
+  return best ?? { kw: 0, source: 'expected' };
 }
 
 /**
@@ -131,31 +151,6 @@ export function getCurrentDrawKw(device: CurrentDrawInput): number {
   // A rejected reading is absence, and absence resolves to 0 here for the same
   // reason a device with no meter does — nothing is known to be drawn.
   return normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0;
-}
-
-/**
- * What the device is assumed to draw when restored / active — the reservation
- * target for restore admission, pending-restore accounting, and the device's
- * `expectedPowerKw` projection on plan snapshots. Plan-state-blind *and*
- * cycle-blind by design: independent of plannedState, currentOn, and current
- * measurement state, so headroom math, overshoot detection, and overview copy
- * see a stable value across thermostat duty cycles. Drawing a stable
- * configured demand is what avoids over-granting restores when a binary-on
- * thermostat is mid-cycle and momentarily reports `measure_power = 0`.
- *
- * Picks the highest known non-zero of measured / expected / planning /
- * configured. Falls back to the EV typical-start (1.38 kW) or generic
- * (1.0 kW) value when no source carries a positive number. Closes TODO §43.
- */
-export function getRestoreDrawKw(
-  device: ObservedPowerInput,
-): { kw: number; source: RestorePowerSource } {
-  const highest = getHighestKnownPowerKw(device);
-  if (highest !== null) return { kw: highest.kw, source: highest.source };
-  if (device.controlCapabilityId === 'evcharger_charging') {
-    return { kw: EV_MIN_START_FALLBACK_KW, source: 'fallback' };
-  }
-  return { kw: DEFAULT_FALLBACK_KW, source: 'fallback' };
 }
 
 /**

@@ -33,7 +33,7 @@ const buildHomesPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'dev-main',
   name: 'Hall heater',
   deviceClass: 'heater',

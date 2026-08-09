@@ -35,7 +35,7 @@ const mockSharedModules = () => {
   }));
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Test Device',
   targets: [],
@@ -173,7 +173,7 @@ describe('devices render — redesign shell', () => {
     state.priceOptimizationSettings = { 'h1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 } };
     state.budgetExemptMap = {};
     state.latestDevices = [
-      buildDevice({ id: 'h1', name: 'Heater', deviceClass: 'heater', powerCapable: true, loadKw: 1 }),
+      buildDevice({ id: 'h1', name: 'Heater', deviceClass: 'heater', powerCapable: true}),
     ];
 
     renderDevices(state.latestDevices);

@@ -83,7 +83,6 @@ export function registerAppFlowCards(ctx: AppContext): void {
     reportSteppedLoadActualStep: (deviceId, stepId, planningPowerW) => (
       ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId, planningPowerW)
     ),
-    getDeviceLoadSetting: (deviceId) => ctx.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
     rebuildPlan: (source) => ctx.requestFlowPlanRebuild(source),

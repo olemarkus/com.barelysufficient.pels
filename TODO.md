@@ -174,17 +174,24 @@ patch releases, not release blockers; each item carries its own source/date.
       reports were being discarded as `native_wiring_enabled`. The committed-plan consequence
       (protections stripped to `unknown`) is fixed — a committed task now serves its frozen plan
       through the gap (`liveStepsUnavailable`) — but actuation still degrades to binary+setpoint
-      (`expectedStepId: null`) for as long as the gap lasts. Establish why the ladder/planning
-      power never re-resolved (native-wiring rebuild after restart? objective-input lane missing
-      the calibrated/configured estimate the overview lane had?) and close that re-establishment
-      gap. Source: 2026-08-02 task-6 regrounding of the 2026-08-01 per-axis-admission
-      investigation. [P1]
+      (`expectedStepId: null`) for as long as the gap lasts. **The second hypothesis is now
+      structurally foreclosed, though not proven to have been the cause**:
+      `ObjectiveDeviceInput.expectedPowerKw` is REQUIRED as of the expected-power producer
+      collapse and is structurally assignable from `PlanInputDevice`, so the objective lane can no
+      longer carry less than the overview lane did. Note what that does NOT establish — the
+      thermal fallback has existed since 2026-05-30, so it was already present during the
+      incident, and why it found nothing while the overview lane showed `expectedPowerKw: 1` was
+      never determined. What remains open is the FIRST hypothesis: why the stepped ladder itself
+      (`steppedLoadProfile` / `planningPowerKw`) never re-resolved after the restart, which is
+      what still degrades actuation to binary+setpoint. Source: 2026-08-02 task-6 regrounding of
+      the 2026-08-01 per-axis-admission investigation; narrowed by the expected-power producer
+      collapse, 2026-08-09. [P1]
 
 - [ ] **Limit/pause-lower-priority rescue is silently ineffective during a step-ladder gap.**
       While a committed task is served frozen through a missing step ladder, the decoration still
       grants `forceBoostActive`/`reservesStartupPower`, but `resolveTemperatureBoostActive` /
       `resolveEvBoostActive` reject a device without a stepped profile BEFORE consulting
-      `forceBoostActive`, and the startup reservation cannot resolve a positive power amount — so
+      `forceBoostActive` — so
       under cap contention the task cannot actually claim power from lower-priority devices while
       the structured log's `limitLowerPriorityApplied`/`pauseLowerPriorityApplied` read true
       (those flags were config echoes before the gap-serve too). Strictly better than pre-fix
@@ -657,18 +664,6 @@ What remains open is below.*
       not disappearance. Fix: also scan `previousDevicesById` for ids missing from
       the current map. Source: adversarial review of the measured-draw collapse,
       2026-08-08. [P2]
-
-- [ ] **`hasKnownPowerFields` disagrees with the ladder it gates.**
-      `lib/plan/planDevicesBase.ts` gates on `currentDrawKw > 0 ||
-      Number.isFinite(expected|planning|powerKw)` and then calls
-      `getRestoreDrawKw`, whose `getHighestKnownPowerKw` requires each candidate
-      to be `> 0`. A device whose only configured field is `expectedPowerKw: 0`
-      passes the gate, finds no positive source, and is handed the 1 kW generic
-      fallback — the invented nameplate the surrounding comment says it prevents.
-      Pre-dates the measured-draw collapse and sits on the `expectedPowerKw` axis,
-      so it was left alone. Fix: drop the predicate and return
-      `getHighestKnownPowerKw(dev)?.kw`, so absence yields `undefined`. Source:
-      adversarial review of the measured-draw collapse, 2026-08-08. [P2]
 
 - [ ] **Retire the `suppressed_flow` step-state machinery.** `lib/plan/planSteppedLoadState.ts`
       still carries the `source: 'suppressed_flow'` arm, `SuppressedFlowStepInput`,

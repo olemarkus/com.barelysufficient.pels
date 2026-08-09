@@ -1515,7 +1515,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       binaryControl: { on: true },
       available: true,
       measuredPowerKw: 4,
-      expectedPowerKw: 4,
+      expectedPowerKw: 4, expectedPowerSource: 'default',
     } as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
     const setCapability = vi.fn(async () => undefined);
     const deviceManager = withGetSnapshotByDeviceId({

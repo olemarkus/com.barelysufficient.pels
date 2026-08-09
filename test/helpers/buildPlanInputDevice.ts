@@ -1,6 +1,6 @@
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import { fixtureCurrentDrawKw } from '../utils/planTestUtils';
+import { fixtureCurrentDrawKw, fixtureExpectedPowerKw } from '../utils/planTestUtils';
 
 /**
  * Test fixture builder for `PlanInputDevice`. Applies a small set of safe
@@ -52,6 +52,12 @@ export function buildPlanInputDevice(
     // explicit `currentDrawKw: undefined` cannot ship a required field as
     // missing — which is exactly how four fixtures came to carry `undefined`.
     currentDrawKw: fixtureCurrentDrawKw({ ...overrides, currentDrawKw, measuredPowerKw }),
+    expectedPowerKw: fixtureExpectedPowerKw(overrides),
+    // Same treatment, same reason: the contract makes the source REQUIRED, and
+    // this builder's cast is the one place that could still ship it absent.
+    // `'default'` is what the producer emits for a device nothing is known
+    // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
+    expectedPowerSource: overrides.expectedPowerSource ?? 'default',
     // Required base field: resolve it the way the producer does rather than
     // leaving it undefined, so no consumer can read absence as "not commandable".
     // Spread LAST and `??`-guarded so an explicit `commandableNow: undefined`

@@ -161,7 +161,7 @@ describe('deadline plan page payload', () => {
   it('builds a device plan from saved objective settings and stops at the deadline', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -239,7 +239,7 @@ describe('deadline plan page payload', () => {
   it('uses the learned objective sample when live temperature is missing', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -297,7 +297,7 @@ describe('deadline plan page payload', () => {
   it('accepts legacy combined prices stored as a plain array', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -354,7 +354,7 @@ describe('deadline plan page payload', () => {
   it('returns a pending render input when an active plan is marked pending', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -417,7 +417,7 @@ describe('deadline plan page payload', () => {
   it('returns a pending render input when no active plan record exists yet', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -464,7 +464,7 @@ describe('deadline plan page payload', () => {
   it('carries original and current plan allocations for changed chart hours', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -528,7 +528,7 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
     const actualHour = atLocalHour(now, 1).toISOString();
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -598,7 +598,7 @@ describe('deadline plan page payload', () => {
   it('surfaces planInputs for a temperature device using the learned rate and the lowest step', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -655,7 +655,7 @@ describe('deadline plan page payload', () => {
   it('planInputs maxPowerLabel uses the lowest non-zero stepped-load step', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -720,7 +720,7 @@ describe('deadline plan page payload', () => {
   it('planInputs maxPowerLabel uses the plan-level learned speed with sub-2 kW precision', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -777,7 +777,7 @@ describe('deadline plan page payload', () => {
   it('surfaces smart-task extra permissions in the learned inputs card', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -844,7 +844,7 @@ describe('deadline plan page payload', () => {
     // must compute energy from the stored allocation, not the absent profile.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -909,7 +909,7 @@ describe('deadline plan page payload', () => {
     // both a warning chip and the shortfall to the user.
     const now = new Date(2026, 0, 1, 4, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1017,7 +1017,7 @@ describe('deadline plan page payload', () => {
     // over and the gate becomes moot.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1100,7 +1100,7 @@ describe('deadline plan page payload', () => {
     // not regress to device-blaming shortfall copy.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1181,7 +1181,7 @@ describe('deadline plan page payload', () => {
     // device` button.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1257,7 +1257,7 @@ describe('deadline plan page payload', () => {
     // device-side `Adjust device` button as expected for step-bound floors.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1342,7 +1342,7 @@ describe('deadline plan page payload', () => {
     // Deadline at 16:00 local; first planned hour at 14:00 (offset 2) — the
     // live headline reads `Heating from 14:00` per `resolveHeroHeadline`.
     const deadline = atLocalHour(now, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1422,7 +1422,7 @@ describe('deadline plan page payload', () => {
   it('routes a passed deadline to the completed state on the History tab', () => {
     const now = new Date(2026, 0, 1, 7, 0, 0, 0);
     const deadline = atLocalHour(now, -1); // already passed
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1471,7 +1471,7 @@ describe('deadline plan page payload', () => {
   it('returns no_current_reading when the device has no temperature and no profile sample', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1533,7 +1533,7 @@ describe('deadline plan page payload', () => {
     // than rendering NaN% — this pins that contract end-to-end.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -1611,7 +1611,7 @@ describe('deadline plan page payload', () => {
     // null so the row is omitted.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1668,7 +1668,7 @@ describe('deadline plan page payload', () => {
   it('falls back to the pending hero when prices do not cover the deadline window', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1723,7 +1723,7 @@ describe('deadline plan page payload', () => {
   it('renders the price-feature-disabled pending hero when the active plan carries that reason', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1781,7 +1781,7 @@ describe('deadline plan page payload', () => {
     // "no energy estimate".
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1844,7 +1844,7 @@ describe('deadline plan page payload', () => {
   it('renders the device_data_missing pending hero when the recorder flagged a progress-side failure', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -1899,7 +1899,7 @@ describe('deadline plan page payload', () => {
   it('renders the EV device_data_missing pending hero', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -1960,7 +1960,7 @@ describe('deadline plan page payload', () => {
   it('falls back to the pending hero for EVs when prices do not cover the deadline window', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2037,7 +2037,7 @@ describe('deadline plan page payload', () => {
   it('shows the bootstrap kWh-per-percent value and refining note when the latest revision was sourced from bootstrap', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2121,7 +2121,7 @@ describe('deadline plan page payload', () => {
   it('omits the bootstrap note once the revision has been refined to learned data', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2224,7 +2224,7 @@ describe('deadline plan page payload', () => {
     // from the persisted rate (0.22) to prove the flat field wins.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2330,7 +2330,7 @@ describe('deadline plan page payload', () => {
     // the bootstrap note must both come from the flat fields.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2414,7 +2414,7 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const lastAccepted = new Date(2026, 0, 1, 11, 0, 0, 0);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2508,7 +2508,7 @@ describe('deadline plan page payload', () => {
   it('surfaces a single "Starting estimate" provenance row when the plan still uses bootstrap', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2595,7 +2595,7 @@ describe('deadline plan page payload', () => {
   it('returns an empty provenance row list when the plan has no provenance snapshot', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -2677,7 +2677,7 @@ describe('deadline plan page payload', () => {
     const planStart = new Date(2026, 0, 1, 10, 0, 0, 0);
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -2756,7 +2756,7 @@ describe('deadline plan page payload', () => {
   it('surfaces flow-scheme actionable copy when the missing horizon is on the user’s Flow', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -2813,7 +2813,7 @@ describe('deadline plan page payload', () => {
   it('keeps managed-scheme copy neutral and surfaces last-update time when present', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -2870,7 +2870,7 @@ describe('deadline plan page payload', () => {
   it('omits the last-update hint when combinedPrices has no lastFetched', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -2931,7 +2931,7 @@ describe('deadline plan page payload', () => {
   it('orders live hero chips as [kind, ?cannotMeet, ?confidence]', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -2993,7 +2993,7 @@ describe('deadline plan page payload', () => {
     // 15:00" instead of the bare "Waiting until 15:00".
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3058,7 +3058,7 @@ describe('deadline plan page payload', () => {
     // projection landed at-or-above target (TODO 344; smart-task hero walk).
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3120,7 +3120,7 @@ describe('deadline plan page payload', () => {
   it('shows planning speed and estimated duration when the latest revision carries them', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3202,7 +3202,7 @@ describe('deadline plan page payload', () => {
   it('renders the Paused — unplugged pending hero when the active plan reports invalid_session', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },
@@ -3265,7 +3265,7 @@ describe('deadline plan page payload', () => {
   it('renders the Learning energy use pending hero when the active plan reports missing_capacity', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Bathroom heater',
       binaryControl: { on: false },
@@ -3324,7 +3324,7 @@ describe('deadline plan page payload', () => {
   it('omits the revision-reason readout line on hours that have not changed', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3383,7 +3383,7 @@ describe('deadline plan page payload', () => {
   it('sets the revision-reason readout line on changed hours and null on unchanged hours', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3448,7 +3448,7 @@ describe('deadline plan page payload', () => {
   it('builds the trajectory payload: staircase to target, run bands, ready stateline', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3542,7 +3542,7 @@ describe('deadline plan page payload', () => {
   it('flags the trajectory shortfall when booked energy cannot reach the target', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3617,7 +3617,7 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13, 30, 0, 0);
     const hourStart = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(hourStart, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -3972,7 +3972,7 @@ describe('deadline plan page payload', () => {
         )),
       },
     };
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -4037,7 +4037,7 @@ describe('deadline plan page payload', () => {
   it('treats a zero-kWh hour as unplanned on every surface', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -4109,7 +4109,7 @@ describe('deadline plan page payload', () => {
   it('omits the stateline status word when the plan status is invalid', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -4172,7 +4172,7 @@ describe('deadline plan page payload', () => {
   it('verifies the "Cheaper than now" claim against the actual prices', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -4383,7 +4383,7 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
     const { energyExpectedKWh, planStatus = 'on_track', coldStartProvenance = false } = options;
     const now = new Date(2026, 0, 1, 12, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -5117,7 +5117,7 @@ describe('cost + delivered-so-far hero lines', () => {
     return bootstrap;
   };
 
-  const buildHeaterDevice = (currentTemperature: number): (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] => ([{
+  const buildHeaterDevice = (currentTemperature: number): (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] => ([{ expectedPowerKw: 1, expectedPowerSource: 'default',
     id: 'heater',
     name: 'Connected 300',
     binaryControl: { on: false },
@@ -5728,7 +5728,7 @@ describe('pending hero producer wiring', () => {
   it('lets a separate-meter diagnostic override a committed cached revision', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -5795,7 +5795,7 @@ describe('pending hero producer wiring', () => {
   it('threads deviceName + deadlineTime into the pending hero so headlineReason resolves', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
@@ -5852,7 +5852,7 @@ describe('pending hero producer wiring', () => {
   it('emits no recourse on the EV unplugged pending hero — plugging in is a physical action', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev',
       name: 'Garage EV',
       binaryControl: { on: false },

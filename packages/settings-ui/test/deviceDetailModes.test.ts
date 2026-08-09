@@ -10,7 +10,7 @@ const setupDom = () => {
   document.body.replaceChildren(section);
 };
 
-const buildDevice = (): TargetDeviceSnapshot => ({
+const buildDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Hall Heater',
   deviceType: 'temperature',
@@ -18,7 +18,7 @@ const buildDevice = (): TargetDeviceSnapshot => ({
   targets: [{ id: 'target_temperature', value: 20, unit: '°C', step: 0.5 }],
 });
 
-const buildOnOffDevice = (): TargetDeviceSnapshot => ({
+const buildOnOffDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'charger-1',
   name: 'EV Charger',
   deviceType: 'onoff',

@@ -7,8 +7,8 @@ import { splitControlledUsageKw, sumControlledUsageKw } from '../../lib/plan/pla
 describe('sumControlledUsageKw', () => {
   it('returns 0 when no controllable devices are present', () => {
     const result = sumControlledUsageKw([
-      { controllable: false, currentDrawKw: 1 },
-      { currentDrawKw: 3, controllable: false },
+      { expectedPowerKw: 1, controllable: false, currentDrawKw: 1 },
+      { expectedPowerKw: 1, currentDrawKw: 3, controllable: false },
     ]);
 
     expect(result).toBe(0);
@@ -16,16 +16,16 @@ describe('sumControlledUsageKw', () => {
 
   it('sums the resolved draw of every controllable device', () => {
     const result = sumControlledUsageKw([
-      { controllable: true, currentDrawKw: 1.2 },
-      { currentDrawKw: 0.8, controllable: true },
-      { controllable: false, currentDrawKw: 10 },
+      { expectedPowerKw: 1, controllable: true, currentDrawKw: 1.2 },
+      { expectedPowerKw: 1, currentDrawKw: 0.8, controllable: true },
+      { expectedPowerKw: 1, controllable: false, currentDrawKw: 10 },
     ]);
 
     expect(result).toBeCloseTo(2.0, 6);
   });
 
   it('treats an undefined `controllable` as controllable, matching the planner filter', () => {
-    expect(sumControlledUsageKw([{ currentDrawKw: 0.4, controllable: undefined }]))
+    expect(sumControlledUsageKw([{ expectedPowerKw: 1, currentDrawKw: 0.4, controllable: undefined }]))
       .toBeCloseTo(0.4, 6);
   });
 
@@ -40,9 +40,8 @@ describe('sumControlledUsageKw', () => {
         controlCapabilityId: 'onoff',
         currentOn: false,
         currentDrawKw: 0,
-        expectedPowerKw: 1.2,
         planningPowerKw: 1.4,
-        powerKw: 2.5,
+        expectedPowerKw: 2.5,
       },
     ]);
 
@@ -52,7 +51,7 @@ describe('sumControlledUsageKw', () => {
   it('keeps counting a shed device that is still drawing', () => {
     const result = sumControlledUsageKw([
       { controllable: true, plannedState: 'shed', currentDrawKw: 0.4, expectedPowerKw: 1.2 },
-      { controllable: true, currentDrawKw: 0.6 },
+      { expectedPowerKw: 1, controllable: true, currentDrawKw: 0.6 },
     ]);
 
     expect(result).toBeCloseTo(1.0, 6);
@@ -62,8 +61,8 @@ describe('sumControlledUsageKw', () => {
     expect(splitControlledUsageKw({
       totalKw: 1,
       devices: [
-        { controllable: true, currentDrawKw: 0.7 },
-        { currentDrawKw: 0.8, controllable: true },
+        { expectedPowerKw: 1, controllable: true, currentDrawKw: 0.7 },
+        { expectedPowerKw: 1, currentDrawKw: 0.8, controllable: true },
       ],
     })).toEqual({
       controlledKw: 1,
@@ -75,8 +74,8 @@ describe('sumControlledUsageKw', () => {
     expect(splitControlledUsageKw({
       totalKw: -1,
       devices: [
-        { controllable: true, currentDrawKw: 0.7 },
-        { currentDrawKw: 0.8, controllable: true },
+        { expectedPowerKw: 1, controllable: true, currentDrawKw: 0.7 },
+        { expectedPowerKw: 1, currentDrawKw: 0.8, controllable: true },
       ],
     })).toEqual({
       controlledKw: 0,
@@ -88,7 +87,7 @@ describe('sumControlledUsageKw', () => {
     // Only the managed side became certain; the house meter can still fail.
     expect(splitControlledUsageKw({
       totalKw: null,
-      devices: [{ controllable: true, currentDrawKw: 0.7 }],
+      devices: [{ expectedPowerKw: 1, controllable: true, currentDrawKw: 0.7 }],
     })).toEqual({
       controlledKw: 0.7,
       uncontrolledKw: null,

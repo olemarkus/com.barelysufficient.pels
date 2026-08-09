@@ -129,7 +129,7 @@ const buildDevice = (
   overrides: Partial<
     TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({
+): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id,
   name: id,
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],

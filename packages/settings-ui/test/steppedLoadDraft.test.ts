@@ -24,7 +24,7 @@ const setupDom = (): void => {
 const buildSteppedDevice = (
   id: string,
   steps: SteppedLoadProfile['steps'],
-): TargetDeviceSnapshot & SteppedLoadDescriptorProbe => ({
+): TargetDeviceSnapshot & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id,
   name: `Stepped Device ${id}`,
   binaryControl: { on: true },

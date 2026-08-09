@@ -50,6 +50,7 @@ const HEATER_ID = 'heater';
 const solarInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice =>
   buildPlanInputDevice({
     id: SOLAR_ID,
+    expectedPowerKw: 1,
     name: 'Solar Panel',
     deviceClass: 'solarpanel',
     deviceType: 'onoff',
@@ -196,8 +197,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
   it('its POSITIVE production is excluded from controlled AND background/uncontrolled load accounting', () => {
     const devices = [
       // Solar producing +3.0 kW. controllable:false → never controlled usage.
-      { id: SOLAR_ID, controllable: false, plannedState: 'keep' as const, currentDrawKw: 3.0 },
-      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, currentDrawKw: 1.5 },
+      { id: SOLAR_ID, controllable: false, plannedState: 'keep' as const, currentDrawKw: 3.0, expectedPowerKw: 1 },
+      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, currentDrawKw: 1.5, expectedPowerKw: 1 },
     ];
     // Only the heater's 1.5 kW is controlled usage; the solar's +3.0 kW is NOT.
     const controlledKw = sumControlledUsageKw(devices as Parameters<typeof sumControlledUsageKw>[0]);
@@ -249,10 +250,12 @@ describe('solar device as managed observe-only — control-path exclusion lock',
     const getLatestTargetSnapshot = (nowMs: number) => ([
       {
         id: SOLAR_ID, name: 'Solar Panel', targets: [], deviceClass: 'solarpanel',
+        expectedPowerKw: 1,
         measuredPowerKw: 3.0, measuredPowerObservedAtMs: nowMs, controllable: false,
       },
       {
         id: HEATER_ID, name: 'Heater', targets: [], deviceClass: 'heater',
+        expectedPowerKw: 1,
         measuredPowerKw: 1.5, measuredPowerObservedAtMs: nowMs, controllable: true,
       },
     ]);

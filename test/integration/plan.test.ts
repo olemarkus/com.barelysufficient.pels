@@ -1048,7 +1048,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater',
         targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
-        powerKw: 1.2,
+        expectedPowerKw: 1.2,
         binaryControl: { on: true },
       },
     ]);
@@ -1598,7 +1598,7 @@ describe('Device plan snapshot', () => {
           plannedState: 'keep',
           currentState: 'off',
           currentTarget: null,
-          powerKw: 2, // needs at least 2 + margin headroom
+          expectedPowerKw: 2, // needs at least 2 + margin headroom
           controllable: true,
           reason: fixtureDeviceReason('keep'),
         },
@@ -1640,7 +1640,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 2.5,
+        expectedPowerKw: 2.5,
         priority: 1,
         binaryControl: { on: false },
         controllable: true,
@@ -1670,7 +1670,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 1,
+        expectedPowerKw: 1,
         priority: 1,
         binaryControl: { on: false },
         controllable: true,
@@ -1771,7 +1771,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         measuredPowerKw: 1,
-        powerKw: 1,
+        expectedPowerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -1782,7 +1782,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater B',
         targets: [],
         measuredPowerKw: 1,
-        powerKw: 1,
+        expectedPowerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -1802,7 +1802,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 1,
+        expectedPowerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -1812,7 +1812,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-2',
         name: 'Heater B',
         targets: [],
-        powerKw: 1,
+        expectedPowerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: false },
         controllable: true,
@@ -1979,7 +1979,7 @@ describe('Device plan snapshot', () => {
     };
 
     const parsed = (app as any).deviceManager.parseDeviceListForTests([sampleDevice]);
-    expect(parsed[0].powerKw).toBeCloseTo(0.45, 2);
+    expect(parsed[0].expectedPowerKw).toBeCloseTo(0.45, 2);
     expect(parsed[0].targets[0].value).toBe(22);
   });
 
@@ -2050,7 +2050,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 1,
+        expectedPowerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -2136,7 +2136,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 1,
+        expectedPowerKw: 1,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -2189,7 +2189,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 0.5,
+        expectedPowerKw: 0.5,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -2263,7 +2263,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           controllable: true,
           controlCapabilityId: 'onoff',
-          powerKw: 0.5,
+          expectedPowerKw: 0.5,
           reason: fixtureDeviceReason('keep'),
         },
       ],
@@ -2312,7 +2312,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           controllable: true,
           controlCapabilityId: 'onoff',
-          powerKw: 0.5,
+          expectedPowerKw: 0.5,
           reason: fixtureDeviceReason('keep'),
         },
       ],
@@ -2343,7 +2343,7 @@ describe('Device plan snapshot', () => {
 
     const snapshot = getLatestTargetSnapshotForTests();
     const device = snapshot.find((d: any) => d.id === 'dev-1');
-    expect(device!.powerKw).toBeCloseTo(1.2, 3);
+    expect(device!.expectedPowerKw).toBeCloseTo(1.2, 3);
   });
 
   it('includes Hoiax water heater in device snapshot with target_temperature', async () => {
@@ -2363,7 +2363,7 @@ describe('Device plan snapshot', () => {
     expect(snapshot[0]).toMatchObject({
       id: 'hoiax-1',
       name: 'Connected 300',
-      powerKw: 3, // 3000W = 3kW
+      expectedPowerKw: 3, // 3000W = 3kW
     });
     expect(snapshot[0].targets[0]).toMatchObject({
       id: 'target_temperature',
@@ -2435,7 +2435,7 @@ describe('Device plan snapshot', () => {
         name: 'Connected 300',
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
-        powerKw: 3,
+        expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3200,7 +3200,7 @@ describe('Dry run mode', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
-        powerKw: 2,
+        expectedPowerKw: 2,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3243,7 +3243,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         targets: [],
         measuredPowerKw: 2,
-        powerKw: 2,
+        expectedPowerKw: 2,
         controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
@@ -3453,7 +3453,7 @@ describe('Dry run mode', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
-        powerKw: 1,
+        expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3517,7 +3517,7 @@ describe('Dry run mode', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [{ id: 'target_temperature', value: 40, unit: '°C' }],
-        powerKw: 1,
+        expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3564,7 +3564,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: 50, unit: '°C' }],
-        powerKw: 1,
+        expectedPowerKw: 1,
         binaryControl: { on: true },
       },
     ]);
@@ -3622,7 +3622,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
         measuredPowerKw: 2,
-        powerKw: 2,
+        expectedPowerKw: 2,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3855,7 +3855,7 @@ describe('Dry run mode', () => {
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-1' ? 15 : 20, unit: '°C' }],
         measuredPowerKw: 1,
-        powerKw: 1,
+        expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3865,7 +3865,7 @@ describe('Dry run mode', () => {
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-2' ? 15 : 20, unit: '°C' }],
         measuredPowerKw: 1,
-        powerKw: 1,
+        expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
       },
@@ -4070,7 +4070,7 @@ describe('Dry run mode', () => {
           currentState: 'off',
           currentTarget: null,
           controllable: true,
-          powerKw: 0.2,
+          expectedPowerKw: 0.2,
         },
       ],
     };
@@ -4327,7 +4327,6 @@ describe('Dry run mode', () => {
         binaryControl: { on: false }, // currently shed/off
         controllable: true,
         measuredPowerKw: 0,
-        powerKw: 0.05,
         expectedPowerKw: 0.05,
         lastFreshDataMs: Date.now(),
       },
@@ -4339,7 +4338,6 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
         measuredPowerKw: 0.6,
-        powerKw: 0.6,
         expectedPowerKw: 0.6,
         lastFreshDataMs: Date.now(),
       },
@@ -4404,7 +4402,6 @@ describe('Dry run mode', () => {
         binaryControl: { on: false },
         controllable: true,
         measuredPowerKw: 0,
-        powerKw: 0.05,
         expectedPowerKw: 0.05,
         lastFreshDataMs: Date.now(),
       },
@@ -4416,7 +4413,6 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
         measuredPowerKw: 0.6,
-        powerKw: 0.6,
         expectedPowerKw: 0.6,
         lastFreshDataMs: Date.now(),
       },

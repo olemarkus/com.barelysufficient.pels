@@ -135,6 +135,7 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
     const ctx = createAppContextMock({
       latestTargetSnapshot: [{
         id: 'sub-dev',
+        expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Annex heater',
         targets: [],
         controlCapabilityId: 'onoff',
@@ -251,6 +252,7 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
       const ctx = createAppContextMock({
         latestTargetSnapshot: [{
           id: 'heater-1',
+          expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Water heater',
           targets: [],
           controlCapabilityId: 'onoff',

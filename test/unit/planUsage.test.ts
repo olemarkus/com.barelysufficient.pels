@@ -45,12 +45,12 @@ describe('plan usage budget exemption helpers', () => {
 
   it('ignores budget-exempt devices with capacity control disabled', () => {
     expect(sumBudgetExemptProjectedUsageKw([
-      {
+      { expectedPowerKw: 1,
         budgetExempt: true,
         controllable: false,
         currentDrawKw: 5,
       },
-      {
+      { expectedPowerKw: 1,
         budgetExempt: true,
         controllable: true,
         currentDrawKw: 1.5,
@@ -62,9 +62,9 @@ describe('plan usage budget exemption helpers', () => {
     expect(splitControlledUsageKw({
       totalKw: 4,
       devices: [
-        { currentState: 'on', currentDrawKw: 1.5, controllable: true },
+        { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 1.5, controllable: true },
         { currentDrawKw: 0.5, currentState: 'on', expectedPowerKw: 0.5, controllable: true },
-        { currentState: 'on', currentDrawKw: 2, controllable: false },
+        { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 2, controllable: false },
       ],
     })).toEqual({
       controlledKw: 2,
@@ -76,8 +76,8 @@ describe('plan usage budget exemption helpers', () => {
     expect(splitControlledUsageKw({
       totalKw: 4,
       devices: [
-        { currentState: 'on', currentDrawKw: 1.5, controllable: true },
-        { currentDrawKw: 0, currentState: 'on', powerKw: 1, controllable: true },
+        { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 1.5, controllable: true },
+        { currentDrawKw: 0, currentState: 'on', expectedPowerKw: 1, controllable: true },
       ],
     })).toEqual({
       controlledKw: 1.5,

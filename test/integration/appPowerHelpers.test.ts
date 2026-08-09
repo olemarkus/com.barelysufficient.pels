@@ -2127,6 +2127,8 @@ describe('recordPowerSampleForApp', () => {
     const getLatestTargetSnapshot = () => ([
       {
         id: 'dev-budget',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Budget exempt heater',
         targets: [],
         measuredPowerKw: 0.4,
@@ -2134,6 +2136,8 @@ describe('recordPowerSampleForApp', () => {
       },
       {
         id: 'dev-other',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Other heater',
         targets: [],
         measuredPowerKw: 0.6,
@@ -2192,6 +2196,7 @@ describe('recordPowerSampleForApp', () => {
         binaryControl: { on: false },
         measuredPowerKw: 0,
         expectedPowerKw: 0.8,
+        expectedPowerSource: 'default' as const,
         budgetExempt: true,
       },
     ]);
@@ -2238,6 +2243,8 @@ describe('recordPowerSampleForApp', () => {
     const getLatestTargetSnapshot = () => ([
       {
         id: 'dev-budget',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Budget exempt heater',
         targets: [],
         measuredPowerKw: 0.8,
@@ -2289,6 +2296,8 @@ describe('recordPowerSampleForApp', () => {
     const getLatestTargetSnapshot = () => ([
       {
         id: 'fresh-heater',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Fresh heater',
         targets: [],
         measuredPowerKw: 1.2,
@@ -2296,6 +2305,8 @@ describe('recordPowerSampleForApp', () => {
       },
       {
         id: 'stale-heater',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Stale heater',
         targets: [],
         measuredPowerKw: 0.8,
@@ -2303,6 +2314,8 @@ describe('recordPowerSampleForApp', () => {
       },
       {
         id: 'future-heater',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Future heater',
         targets: [],
         measuredPowerKw: 0.9,
@@ -2313,6 +2326,7 @@ describe('recordPowerSampleForApp', () => {
         name: 'Estimated heater',
         targets: [],
         expectedPowerKw: 0.5,
+        expectedPowerSource: 'default' as const,
       },
     ]);
 
@@ -2361,6 +2375,8 @@ describe('recordPowerSampleForApp', () => {
     const getLatestTargetSnapshot = () => ([
       {
         id: 'idle-heater',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Idle heater',
         targets: [],
         measuredPowerKw: 0,
@@ -2435,6 +2451,8 @@ describe('recordPowerSampleForApp', () => {
     const getLatestTargetSnapshot = () => ([
       {
         id: 'heater-objective',
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default' as const,
         name: 'Objective heater',
         targets: [],
         deviceType: 'temperature' as const,
@@ -2499,6 +2517,7 @@ describe('recordPowerSampleForApp', () => {
     const drawingSnapshot = (observedAtMs: number) => () => ([
       {
         id: 'heater-a',
+        expectedPowerKw: 1,
         name: 'Heater A',
         targets: [],
         measuredPowerKw: 1.2,
@@ -2506,6 +2525,7 @@ describe('recordPowerSampleForApp', () => {
       },
       {
         id: 'heater-b',
+        expectedPowerKw: 1,
         name: 'Heater B',
         targets: [],
         measuredPowerKw: 0.8,
@@ -2564,6 +2584,7 @@ describe('recordPowerSampleForApp', () => {
         getLatestTargetSnapshot: () => ([
           {
             id: 'home-battery',
+            expectedPowerKw: 1,
             name: 'Home battery',
             targets: [],
             controllable: false,
@@ -2659,6 +2680,7 @@ describe('createCalibrationSnapshotMutationHook', () => {
   ): TargetDeviceSnapshot & MeasuredPowerObservedProbe
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
     id: 'hoiax-1',
+    expectedPowerKw: 1,
     name: 'Connected 300',
     targets: [],
     controlModel: 'stepped_load',

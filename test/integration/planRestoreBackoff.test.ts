@@ -197,8 +197,8 @@ describe('restore cooldown backoff', () => {
 
     const result = applyRestorePlan({
       planDevices: [
-        buildPlanDevice({ id: 'dev-off', name: 'Off', priority: 10, currentState: 'off', measuredPowerKw: 0, powerKw: 1, expectedPowerKw: 1 }),
-        buildPlanDevice({ id: 'dev-on', name: 'On', priority: 90, currentState: 'on', measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2 }),
+        buildPlanDevice({ id: 'dev-off', name: 'Off', priority: 10, currentState: 'off', measuredPowerKw: 0, expectedPowerKw: 1 }),
+        buildPlanDevice({ id: 'dev-on', name: 'On', priority: 90, currentState: 'on', measuredPowerKw: 2, expectedPowerKw: 2 }),
       ],
       context: buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
@@ -232,7 +232,7 @@ describe('restore cooldown backoff', () => {
           name: 'Priority heater',
           priority: 10,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 0.7, expectedPowerKw: 0.7,
+          measuredPowerKw: 0, expectedPowerKw: 0.7,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -278,7 +278,7 @@ describe('restore cooldown backoff', () => {
           name: 'Priority heater',
           priority: 10,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 0.7, expectedPowerKw: 0.7,
+          measuredPowerKw: 0, expectedPowerKw: 0.7,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -322,7 +322,7 @@ describe('restore cooldown backoff', () => {
           name: 'Priority heater',
           priority: 10,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 0.7, expectedPowerKw: 0.7,
+          measuredPowerKw: 0, expectedPowerKw: 0.7,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -361,7 +361,6 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -406,7 +405,6 @@ describe('restore cooldown backoff', () => {
           plannedState: 'keep',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -457,7 +455,6 @@ describe('restore cooldown backoff', () => {
           reason: fixtureDeviceReason('swapped out for Critical heater')!,
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,
-          powerKw: 1.5,
         }),
         buildPlanDevice({
           id: 'dev-target',
@@ -467,7 +464,6 @@ describe('restore cooldown backoff', () => {
           reason: fixtureDeviceReason('swap pending')!,
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -515,7 +511,6 @@ describe('restore cooldown backoff', () => {
           reason: fixtureDeviceReason('swap pending')!,
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -558,7 +553,6 @@ describe('restore cooldown backoff', () => {
           plannedState: 'keep',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -610,7 +604,6 @@ describe('restore cooldown backoff', () => {
           },
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,
-          powerKw: 1.5,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -667,7 +660,6 @@ describe('restore cooldown backoff', () => {
           plannedState: 'keep',
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,
-          powerKw: 1.5,
         }),
       ],
       context: buildContext({
@@ -968,7 +960,6 @@ describe('restore cooldown backoff', () => {
           },
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,
-          powerKw: 1.5,
         }),
         buildPlanDevice({
           id: 'dev-off',
@@ -977,7 +968,6 @@ describe('restore cooldown backoff', () => {
           plannedState: 'keep',
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,
-          powerKw: 1.5,
         }),
       ],
       context: buildContext({
@@ -1108,8 +1098,7 @@ describe('restore cooldown backoff', () => {
           id: 'dev-off',
           name: 'Heater',
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -1190,8 +1179,7 @@ describe('restore cooldown backoff', () => {
           id: 'dev-off',
           name: 'Heater',
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -1276,8 +1264,7 @@ describe('restore cooldown backoff', () => {
           id: 'dev-off',
           name: 'Heater',
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
       context: buildContext({
@@ -1310,8 +1297,7 @@ describe('restore cooldown backoff', () => {
           id: 'dev-off',
           name: 'Heater',
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -1371,8 +1357,7 @@ describe('restore cooldown backoff', () => {
           currentState: 'on',
           binaryControl: { on: true },
           plannedState: 'shed',
-          measuredPowerKw: 2, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 2, expectedPowerKw: 2,
         }),
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -1424,8 +1409,7 @@ describe('restore cooldown backoff', () => {
           currentState: 'on',
           binaryControl: { on: true },
           plannedState: 'shed',
-          measuredPowerKw: 2, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 2, expectedPowerKw: 2,
         }),
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -1478,8 +1462,7 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           binaryControl: { on: false },
           plannedState: 'shed',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -1546,7 +1529,7 @@ describe('restore cooldown backoff', () => {
           binaryControl: { on: true },
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2,
+          measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
       // Headroom too small to escalate low -> medium outright (needs ~0.95kW), forcing the swap
@@ -1609,7 +1592,7 @@ describe('restore cooldown backoff', () => {
           binaryControl: { on: true },
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2,
+          measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
@@ -1644,8 +1627,7 @@ describe('restore cooldown backoff', () => {
           id: 'dev-off',
           name: 'Heater',
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
       context: buildContext({
@@ -1718,16 +1700,14 @@ describe('restore cooldown backoff', () => {
           name: 'Priority Heater',
           priority: 1,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
         buildPlanDevice({
           id: 'dev-waiting',
           name: 'Waiting Heater',
           priority: 2,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
       context: buildContext({
@@ -1765,16 +1745,14 @@ describe('restore cooldown backoff', () => {
           name: 'Priority Heater',
           priority: 1,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
         buildPlanDevice({
           id: 'dev-waiting',
           name: 'Waiting Heater',
           priority: 2,
           currentState: 'off',
-          measuredPowerKw: 0, powerKw: 2,
-          expectedPowerKw: 2,
+          measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
       context: buildContext({
@@ -1860,7 +1838,6 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -1896,7 +1873,6 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -2112,7 +2088,6 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -2149,7 +2124,6 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -2224,7 +2198,6 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 5, headroom: 5 }),
@@ -2301,7 +2274,6 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 2.2, headroom: 2.2 }),
@@ -2322,7 +2294,6 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           currentState: 'off',
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 3.5, headroom: 3.5 }),
@@ -2509,7 +2480,6 @@ describe('restore admission — headroom and penalty gates', () => {
           currentState: 'on',
           expectedPowerKw: 2,
           measuredPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: freshBatchContext(0),
@@ -2548,7 +2518,6 @@ describe('restore admission — headroom and penalty gates', () => {
           binaryControl: { on: false },
           expectedPowerKw: 2,
           measuredPowerKw: 0,
-          powerKw: 2,
         }),
       ],
       context: freshBatchContext(3),
@@ -2583,7 +2552,6 @@ describe('restore admission — headroom and penalty gates', () => {
           binaryControl: { on: true },
           expectedPowerKw: 2,
           measuredPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: freshBatchContext(3),
@@ -2696,9 +2664,8 @@ describe('restore admission — headroom and penalty gates', () => {
           id: 'dev',
           name: 'Heater',
           currentState: 'off',
-          expectedPowerKw: 0,
           measuredPowerKw: 0,
-          powerKw: 2,
+          expectedPowerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.25, headroom: 0.25 }),
@@ -2826,7 +2793,6 @@ describe('restore admission — headroom and penalty gates', () => {
           currentState: 'on',
           expectedPowerKw: 3,
           measuredPowerKw: 3,
-          powerKw: 3,
         }),
       ],
       context: buildContext({ headroomRaw: 0, headroom: 0 }),
@@ -2866,7 +2832,6 @@ describe('restore admission — headroom and penalty gates', () => {
           shedAction: 'set_temperature',
           shedTemperature: 18,
           measuredPowerKw: 1.0, expectedPowerKw: 1.0,
-          powerKw: 1.0,
         }),
       ],
       state,
@@ -2917,7 +2882,6 @@ describe('restore admission — headroom and penalty gates', () => {
           shedAction: 'set_temperature',
           shedTemperature: 18,
           measuredPowerKw: 1.0, expectedPowerKw: 1.0,
-          powerKw: 1.0,
         }),
       ],
       state,
@@ -3116,7 +3080,6 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         shedAction: 'set_temperature',
         shedTemperature: 16,
         measuredPowerKw: 1.0, expectedPowerKw: 1.0,
-        powerKw: 1.0,
       })],
       state,
       shedReasons: new Map(),
@@ -3523,7 +3486,7 @@ describe('stepped-load shed invariant', () => {
 
   it('rejects stepped upgrade from medium to max while another device is shed', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, measuredPowerKw: 0, powerKw: 1, expectedPowerKw: 1 }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, measuredPowerKw: 0, expectedPowerKw: 1 }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -3924,7 +3887,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 0, expectedPowerKw: 2,
-          powerKw: 2,
         }),
         steppedPlanDevice({
           id: 'dev-step',
@@ -3963,7 +3925,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'off',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 0, powerKw: 0.1, expectedPowerKw: 0.1,
+          measuredPowerKw: 0, expectedPowerKw: 0.1,
         }),
         buildBinarySteppedPlanDevice({
           id: 'stepped-high-priority',
@@ -4006,7 +3968,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'off',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 0, powerKw: 0.1, expectedPowerKw: 0.1,
+          measuredPowerKw: 0, expectedPowerKw: 0.1,
         }),
         buildBinarySteppedPlanDevice({
           id: 'stepped-low-priority',
@@ -4061,7 +4023,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 0, expectedPowerKw: 0.1,
-          powerKw: 0.1,
         }),
       ],
       context: buildContext({ headroomRaw: 1, headroom: 1, powerFreshnessState: 'fresh' }),
@@ -4102,7 +4063,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 1, powerKw: 1, expectedPowerKw: 1,
+          measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
       context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
@@ -4166,7 +4127,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 2, expectedPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
@@ -4218,7 +4178,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 2, expectedPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
@@ -4290,7 +4249,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 2, expectedPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
@@ -4339,7 +4297,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 2, expectedPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
@@ -4375,7 +4332,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 0, expectedPowerKw: 2,
-          powerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
@@ -4418,7 +4374,6 @@ describe('stepped-load shed invariant', () => {
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.
           measuredPowerKw: 0.1, expectedPowerKw: 0.1,
-          powerKw: 0.1,
         }),
       ],
       context: buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
@@ -4462,7 +4417,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 0.1, powerKw: 0.1, expectedPowerKw: 0.1,
+          measuredPowerKw: 0.1, expectedPowerKw: 0.1,
         }),
       ],
       context: buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
@@ -4510,7 +4465,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 2, powerKw: 2, expectedPowerKw: 2,
+          measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
       context: buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
@@ -4552,7 +4507,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 1, powerKw: 1, expectedPowerKw: 1,
+          measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
       context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
@@ -4616,7 +4571,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 1, powerKw: 1, expectedPowerKw: 1,
+          measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
       context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
@@ -4661,7 +4616,7 @@ describe('stepped-load shed invariant', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          measuredPowerKw: 1, powerKw: 1, expectedPowerKw: 1,
+          measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
       context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),

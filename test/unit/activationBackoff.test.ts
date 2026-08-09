@@ -82,7 +82,6 @@ const buildTrackedDevice = (overrides: Record<string, unknown> = {}) => ({
   available: true,
   expectedPowerKw: 0,
   currentDrawKw: 0,
-  powerKw: 0,
   ...overrides,
 });
 
@@ -146,7 +145,6 @@ describe('activation backoff', () => {
       lastFreshDataMs: start,
       measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
-      powerKw: 1.2,
     });
     const decision = evaluateHeadroomForDevice({
       state,
@@ -179,7 +177,6 @@ describe('activation backoff', () => {
       lastFreshDataMs: start - (45 * 60 * 1000),
       measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
-      powerKw: 1.2,
     });
     const decision = evaluateHeadroomForDevice({
       state,
@@ -210,7 +207,6 @@ describe('activation backoff', () => {
       available: false,
       lastFreshDataMs: start,
       expectedPowerKw: 1.5,
-      powerKw: 1.5,
     };
     const decision = evaluateHeadroomForDevice({
       state,
@@ -686,7 +682,6 @@ describe('activation backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           currentDrawKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -731,7 +726,6 @@ describe('activation backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           currentDrawKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -917,7 +911,6 @@ describe('activation backoff', () => {
           currentState: 'off',
           expectedPowerKw: 2,
           currentDrawKw: 0,
-          powerKw: 2,
         }),
       ],
       context: buildContext({
@@ -950,7 +943,6 @@ describe('activation backoff', () => {
       lastFreshDataMs: start,
       expectedPowerKw: 0,
       currentDrawKw: 0,
-      powerKw: 0,
     };
 
     expect(evaluateHeadroomForDevice({
@@ -969,7 +961,6 @@ describe('activation backoff', () => {
       lastFreshDataMs: start + 60 * 1000,
       expectedPowerKw: 3.2,
       currentDrawKw: 3.2,
-      powerKw: 3.2,
     };
     evaluateHeadroomForDevice({
       state,
@@ -986,7 +977,6 @@ describe('activation backoff', () => {
       lastFreshDataMs: start + 2 * 60 * 1000,
       expectedPowerKw: 1,
       currentDrawKw: 1,
-      powerKw: 1,
     };
     const setbackDecision = evaluateHeadroomForDevice({
       state,
@@ -1006,7 +996,6 @@ describe('activation backoff', () => {
       lastFreshDataMs: start + 3 * 60 * 1000,
       expectedPowerKw: 3.2,
       currentDrawKw: 3.2,
-      powerKw: 3.2,
     };
     const recoveredDecision = evaluateHeadroomForDevice({
       state,
@@ -1039,7 +1028,6 @@ describe('activation backoff', () => {
         available: true,
         expectedPowerKw: 3.2,
         currentDrawKw: 3.2,
-        powerKw: 3.2,
       }],
       nowTs: start,
     });
@@ -1122,7 +1110,6 @@ describe('activation backoff', () => {
         available: true,
         expectedPowerKw: 3.2,
         currentDrawKw: 3.2,
-        powerKw: 3.2,
       }],
       nowTs: start,
     });
@@ -1173,9 +1160,9 @@ describe('activation backoff', () => {
     syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, powerKw: 3.2, lastFreshDataMs: start + 1_000 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, powerKw: 2.4, lastFreshDataMs: start + 1_500 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, powerKw: 1.8, lastFreshDataMs: start + 2_000 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, lastFreshDataMs: start + 1_000 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, lastFreshDataMs: start + 1_500 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, lastFreshDataMs: start + 2_000 }),
       ] as any,
       nowTs: start,
     });
@@ -1184,9 +1171,9 @@ describe('activation backoff', () => {
     expect(syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, powerKw: 3.2, lastFreshDataMs: start + 4_000 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, powerKw: 2.4, lastFreshDataMs: start + 4_500 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, powerKw: 1.8, lastFreshDataMs: start + 5_000 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, lastFreshDataMs: start + 4_000 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, lastFreshDataMs: start + 4_500 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, lastFreshDataMs: start + 5_000 }),
       ] as any,
       nowTs: start + 5_000,
       reconciliationContext: 'snapshot_refresh',
@@ -1217,7 +1204,6 @@ describe('activation backoff', () => {
         name: 'Heater',
         currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
-        powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
       })] as any,
       nowTs: start,
@@ -1231,7 +1217,6 @@ describe('activation backoff', () => {
         name: 'Heater',
         currentDrawKw: 0.2,
         expectedPowerKw: 0.2,
-        powerKw: 0.2,
         lastFreshDataMs: start + 1_000,
       })] as any,
       nowTs: start + 6_000,
@@ -1265,7 +1250,6 @@ describe('activation backoff', () => {
         binaryControl: { on: true },
         currentState: 'on',
         expectedPowerKw: 1.2,
-        powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
       })] as any,
       nowTs: start,
@@ -1286,7 +1270,6 @@ describe('activation backoff', () => {
         binaryControl: { on: false },
         currentState: 'off',
         expectedPowerKw: 0,
-        powerKw: 0,
         lastFreshDataMs: start + 1_000,
       })] as any,
       nowTs: start + 7_000,
@@ -1318,7 +1301,6 @@ describe('activation backoff', () => {
         binaryControl: { on: true },
         currentState: 'on',
         expectedPowerKw: 0,
-        powerKw: 0,
         lastFreshDataMs: start + 5_000,
       })] as any,
       nowTs: start,
@@ -1340,7 +1322,6 @@ describe('activation backoff', () => {
         currentOn: false,
         currentState: 'off',
         expectedPowerKw: 0,
-        powerKw: 0,
         lastFreshDataMs: start + 7_000,
       })] as any,
       nowTs: start + 7_000,
@@ -1376,7 +1357,6 @@ describe('activation backoff', () => {
         currentState: 'on',
         currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
-        powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
       })] as any,
       nowTs: start,
@@ -1413,9 +1393,9 @@ describe('activation backoff', () => {
     syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 3.2, expectedPowerKw: 3.2, powerKw: 3.2 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 2.4, expectedPowerKw: 2.4, powerKw: 2.4 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 1.8, expectedPowerKw: 1.8, powerKw: 1.8 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 3.2, expectedPowerKw: 3.2}),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 2.4, expectedPowerKw: 2.4}),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 1.8, expectedPowerKw: 1.8}),
       ] as any,
       nowTs: start,
     });
@@ -1423,9 +1403,9 @@ describe('activation backoff', () => {
     expect(syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 0.8, expectedPowerKw: 0.8, powerKw: 0.8 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 0.5, expectedPowerKw: 0.5, powerKw: 0.5 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 0.2, expectedPowerKw: 0.2, powerKw: 0.2 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 0.8, expectedPowerKw: 0.8}),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 0.5, expectedPowerKw: 0.5}),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 0.2, expectedPowerKw: 0.2}),
       ] as any,
       nowTs: start + 5_000,
       reconciliationContext: 'snapshot_refresh',
@@ -1471,7 +1451,6 @@ describe('activation backoff', () => {
         available: true,
         expectedPowerKw: 0,
         currentDrawKw: 0,
-        powerKw: 0,
       }],
       nowTs: start,
     });
@@ -1485,7 +1464,6 @@ describe('activation backoff', () => {
         available: true,
         expectedPowerKw: 1.0,
         currentDrawKw: 0,
-        powerKw: 0,
       }],
       nowTs: start + 5_000,
       reconciliationContext: 'snapshot_refresh',
@@ -1505,7 +1483,6 @@ describe('activation backoff', () => {
         available: true,
         expectedPowerKw: 0,
         currentDrawKw: 0,
-        powerKw: 0,
       }],
       nowTs: start + 24_000,
       diagnostics: diagnostics as any,
@@ -1538,7 +1515,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + 5_000,
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1568,7 +1545,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + (2 * 60 * 1000),
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1597,7 +1574,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS),
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1627,7 +1604,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + 45_000,
       diagnostics: diagnostics as any,
     })).toBe(false);
@@ -1660,7 +1637,7 @@ describe('activation backoff', () => {
 
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, currentDrawKw: 1.0 })] as any,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })] as any,
       nowTs: start + 5_000,
       diagnostics: diagnostics as any,
     })).toBe(false);

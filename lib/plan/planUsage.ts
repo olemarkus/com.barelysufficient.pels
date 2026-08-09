@@ -15,9 +15,8 @@ type UsageDevice = {
   selectedStepId?: string;
   plannedState?: string;
   currentDrawKw: number;
-  expectedPowerKw?: number;
+  expectedPowerKw: number;
   planningPowerKw?: number;
-  powerKw?: number;
 };
 
 /**
@@ -113,6 +112,6 @@ const resolveBudgetExemptProjectedKw = (dev: UsageDevice): number => {
   if (dev.currentDrawKw > 0) return dev.currentDrawKw;
   if (!isPlanDeviceObservedOff(dev)) return dev.currentDrawKw;
   // Reached only when the draw is 0, so the fallback arm is 0 — not "the draw".
-  return getHighestKnownPowerKw(dev)?.kw ?? 0;
+  return getHighestKnownPowerKw(dev).kw;
 };
 

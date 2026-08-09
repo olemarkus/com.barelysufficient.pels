@@ -150,7 +150,7 @@ const buildDevice = (params: {
   currentTemperature: params.currentTemperatureC,
   lastFreshDataMs: params.nowMs,
   currentDrawKw: params.currentOn ? 1.5 : 0,
-  expectedPowerKw: params.currentOn ? 1.5 : 0,
+  expectedPowerKw: params.currentOn ? 1.5 : 0, expectedPowerSource: 'default',
   planningPowerKw: params.currentOn ? 1.5 : 0,
   // This fixture models the semantic `HomeScope` producer output. A sole
   // active device is always relative rank 1, regardless of its stored rank.
@@ -239,7 +239,7 @@ const buildContender = (params: {
   controlCapabilityId: 'onoff',
   binaryControl: { on: params.currentOn },
   measuredPowerKw: params.currentOn ? 1.5 : 0,
-  expectedPowerKw: 1.5,
+  expectedPowerKw: 1.5, expectedPowerSource: 'default',
   planningPowerKw: 1.5,
   priority: params.priority ?? 2,
   lastFreshDataMs: params.nowMs,

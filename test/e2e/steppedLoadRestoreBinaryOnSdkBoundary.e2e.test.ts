@@ -220,7 +220,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 // off. Plain DevicePlan — the real executable projection derives the intent.
 const buildRestoreToLowPlan = (): DevicePlan => ({
   meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
-  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
+  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
     id: DEVICE_ID,
     name: 'Connected 300',

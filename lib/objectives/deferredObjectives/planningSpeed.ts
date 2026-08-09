@@ -91,11 +91,13 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
     // and the bucket allocator agree on the value.
     return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', planning));
   }
+  // Same step-ladder gap `resolveObjectiveSteps` answers `[]` for: a stepped
+  // device with no live profile has no speed to report, and reporting one here
+  // while the planner serves a frozen plan is exactly the producer/consumer
+  // disagreement the comment below warns about.
+  if (device.controlModel === 'stepped_load') return null;
   if (isEvDevice(device)) {
-    const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
-    if (expected !== null) {
-      return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
-    }
+    return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', device.expectedPowerKw));
   }
   // Mirror the thermostat-class fallback in `objectiveSteps.ts` so the hero
   // meta line (`kW · duration · mode`) and the planner's per-active-hour
@@ -104,14 +106,9 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
   // to the `hoursLeft` form — a producer/consumer disagreement that hides
   // the rate the user is actually being charged against.
   if (isTemperatureControlDevice(device)) {
-    const expected = firstPositiveFinite([
-      drawWhenActivelyDrawingKw(device.currentDrawKw),
-      device.expectedPowerKw,
-      device.powerKw,
-    ]);
-    if (expected !== null) {
-      return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
-    }
+    const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
+    const expected = activeDrawKw ?? device.expectedPowerKw;
+    return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
   }
   return null;
 };

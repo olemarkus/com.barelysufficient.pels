@@ -103,8 +103,8 @@ describe('homeyApiMock', () => {
       const homey = createHomeyMock({
         uiState: {
           devices: [
-            { id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
-            { id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
+            { expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
+            { expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
           ],
         },
       });
@@ -113,8 +113,8 @@ describe('homeyApiMock', () => {
 
       expect(result).toEqual({
         devices: [
-          { id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
-          { id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
+          { expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
+          { expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
         ],
         hasManagedSolarDevice: false,
         hasExhibitedExport: false,
@@ -124,13 +124,13 @@ describe('homeyApiMock', () => {
     it('returns the same explicit array shape from /ui_refresh_devices', async () => {
       const homey = createHomeyMock({
         uiState: {
-          devices: [{ id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
+          devices: [{ expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
         },
       });
 
       await expect(callHomeyApi(homey, 'POST', SETTINGS_UI_REFRESH_DEVICES_PATH))
         .resolves.toEqual({
-          devices: [{ id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
+          devices: [{ expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,
         });
@@ -164,7 +164,7 @@ describe('homeyApiMock', () => {
         },
         uiState: {
           devices: [
-            { id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
+            { expectedPowerKw: 1, expectedPowerSource: 'default', id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
           ],
         },
       });
@@ -172,7 +172,7 @@ describe('homeyApiMock', () => {
       await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
         .resolves.toEqual({
           devices: [
-            { id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
+            { expectedPowerKw: 1, expectedPowerSource: 'default', id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
           ],
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,
