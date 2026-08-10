@@ -1,3 +1,4 @@
+import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import {
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
@@ -17,7 +18,7 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
   powerSource: 'measured',
 });
 
-const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe => ({
+const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
   id: 'heater-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',

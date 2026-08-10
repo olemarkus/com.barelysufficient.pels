@@ -16,6 +16,7 @@ import {
   recordPowerSampleForApp,
   type SplitControlledUsage,
   type SumBudgetExemptUsage,
+  type UpdateObjectiveProfiles,
 } from '../../lib/power/sampleIngest';
 import {
   type PowerSampleRebuildState,
@@ -2289,7 +2290,15 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.exemptBuckets?.[bucketKey]).toBe(0);
   });
 
-  it('records per-device buckets only from fresh measured device power', async () => {
+  // Membership in the per-device buckets is a PRESENCE question and nothing
+  // else. Homey reports capabilities on change, so an unchanged reading is the
+  // current reading however old its timestamp — the per-capability age gate that
+  // used to sit here dropped a legitimately-steady device out of its own bucket
+  // for as long as it stayed correct (prod thermostat, true 0 W for 16 h). What
+  // still must NOT be bucketed is a device with no meter at all: booking it at 0
+  // would claim it used nothing, when the truth is PELS cannot see it and its
+  // consumption belongs in the "Other" remainder.
+  it('records per-device buckets from any present measured reading, and none without one', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let observedAtMs = start;
@@ -2304,22 +2313,21 @@ describe('recordPowerSampleForApp', () => {
         measuredPowerObservedAtMs: observedAtMs,
       },
       {
-        id: 'stale-heater',
+        id: 'steady-heater',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
-        name: 'Stale heater',
+        name: 'Steady heater (unchanged for over a minute)',
         targets: [],
         measuredPowerKw: 0.8,
         measuredPowerObservedAtMs: observedAtMs - 61_000,
       },
       {
-        id: 'future-heater',
+        id: 'timestampless-heater',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
-        name: 'Future heater',
+        name: 'Heater whose capability carries no timestamp',
         targets: [],
         measuredPowerKw: 0.9,
-        measuredPowerObservedAtMs: observedAtMs + 1,
       },
       {
         id: 'estimated-heater',
@@ -2363,8 +2371,8 @@ describe('recordPowerSampleForApp', () => {
 
     const bucketKey = new Date(start).toISOString();
     expect(tracker.deviceBuckets?.['fresh-heater']?.[bucketKey]).toBeCloseTo(0.6, 3);
-    expect(tracker.deviceBuckets?.['stale-heater']).toBeUndefined();
-    expect(tracker.deviceBuckets?.['future-heater']).toBeUndefined();
+    expect(tracker.deviceBuckets?.['steady-heater']?.[bucketKey]).toBeCloseTo(0.4, 3);
+    expect(tracker.deviceBuckets?.['timestampless-heater']?.[bucketKey]).toBeCloseTo(0.45, 3);
     expect(tracker.deviceBuckets?.['estimated-heater']).toBeUndefined();
   });
 
@@ -2463,8 +2471,15 @@ describe('recordPowerSampleForApp', () => {
       },
     ]);
 
-    const updateProfiles = (params: Parameters<typeof updateObjectiveProfilesFromSnapshot>[0]) => (
-      updateObjectiveProfilesFromSnapshot({ ...params, debugStructured })
+    // Mirrors the production wiring (`setup/powerSamplePipeline.ts`): the raw
+    // snapshots go through the producer boundary so the profile sees a resolved
+    // `currentDrawKw`, not a raw `measuredPowerKw`.
+    const updateProfiles: UpdateObjectiveProfiles = (params) => (
+      updateObjectiveProfilesFromSnapshot({
+        ...params,
+        devices: params.devices.map(withHeadroomCurrentOn),
+        debugStructured,
+      })
     );
 
     await recordPowerSampleForApp({

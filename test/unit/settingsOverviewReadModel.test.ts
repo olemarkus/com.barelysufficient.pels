@@ -281,11 +281,11 @@ describe('settingsOverviewReadModel', () => {
   });
   it('does not label a drawing target-only device as idle', () => {
     // `isSatisfiedTargetOnlyDevice` (shared-domain) decides "idle" partly on
-    // `measuredPowerKw <= 0.05`. That name belongs to the SNAPSHOT shape the
-    // settings UI feeds it; a plan device carries `currentDrawKw` instead, and the
-    // field is OPTIONAL on the shared type — so passing the plan device straight
-    // through compiles, reads `undefined`, and labels every at-target thermostat
-    // idle even while it is drawing. Pin the adaptation.
+    // `currentDrawKw <= 0.05`. The shared shape used to name that field
+    // `measuredPowerKw` and make it optional, so a carrier that did not adapt
+    // compiled clean, read `undefined`, and labelled every at-target thermostat
+    // idle even while it was drawing. Both halves are fixed at the type — same
+    // producer-resolved name, required — and this pins the behaviour.
     // `currentState: 'not_applicable'` is what makes a device target-ONLY: no
     // on/off handle, so its state word cannot be read from a binary axis.
     const drawing = buildPlanDevice({

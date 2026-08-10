@@ -56,7 +56,7 @@ describe('dump-load Overview card lines', () => {
     const card = renderCard(buildDumpLoad({
       currentState: 'on',
       plannedState: 'keep',
-      measuredPowerKw: 1.0,
+      currentDrawKw: 1.0,
       surplusAbsorbActive: true,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     }));
@@ -80,7 +80,7 @@ describe('dump-load Overview card lines', () => {
     const card = renderCard(buildDumpLoad({
       currentState: 'on',
       plannedState: 'keep',
-      measuredPowerKw: 1.0,
+      currentDrawKw: 1.0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     }));
     expect(card.textContent).not.toContain(BINARY_SURPLUS_ACTIVE_REASON);
@@ -94,7 +94,7 @@ describe('dump-load Overview card lines', () => {
     const card = renderCard(buildDumpLoad({
       currentState: 'on',
       plannedState: 'shed',
-      measuredPowerKw: 1.0,
+      currentDrawKw: 1.0,
       reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     }));
     const reason = card.querySelector('.plan-card__reason')?.textContent ?? '';
@@ -108,7 +108,7 @@ describe('dump-load Overview card lines', () => {
     const card = renderCard(buildDumpLoad({
       currentState: 'on',
       plannedState: 'shed',
-      measuredPowerKw: 1.0,
+      currentDrawKw: 1.0,
       reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
     }), true);
     const reason = card.querySelector('.plan-card__reason')?.textContent ?? '';

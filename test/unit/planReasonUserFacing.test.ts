@@ -246,9 +246,9 @@ describe('resolveReportedLoadAfterPauseText', () => {
   // packages/settings-ui/src/ui/views/PlanDeviceCards.tsx so the test
   // anchors the helper's output to the wording the Overview generic card
   // shipped before the move into shared-domain.
-  const referenceFormat = (measuredPowerKw: number | undefined, detailRaw: unknown): string => {
-    const measured = typeof measuredPowerKw === 'number' && Number.isFinite(measuredPowerKw)
-      ? measuredPowerKw.toFixed(1)
+  const referenceFormat = (currentDrawKw: number | undefined, detailRaw: unknown): string => {
+    const measured = typeof currentDrawKw === 'number' && Number.isFinite(currentDrawKw)
+      ? currentDrawKw.toFixed(1)
       : '–';
     const detail = typeof detailRaw === 'string' && detailRaw.trim().length > 0
       ? detailRaw.trim()
@@ -259,51 +259,51 @@ describe('resolveReportedLoadAfterPauseText', () => {
   };
 
   it('renders the plain "Still drawing … kW" sentence with the usage-consequence tail', () => {
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 1.234, detail: null }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 1.234, detail: null }))
       .toBe('Still drawing 1.2 kW — this still counts toward your usage');
   });
 
   it('appends the trimmed detail with an em-dash separator when present', () => {
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 7.2, detail: '  EV charger ignored pause  ' }))
       .toBe('Still drawing 7.2 kW — EV charger ignored pause');
   });
 
   it('drops the phantom "after pause" framing in simulation mode (dryRun)', () => {
     // Simulation never actually paused the device, so the real-mode "after
     // pause" wording would assert an action that did not happen.
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: null, dryRun: true }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 2.1, detail: null, dryRun: true }))
       .toBe('Would still draw 2.1 kW — this still counts toward your usage (simulation)');
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: 'high household load', dryRun: true }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 2.1, detail: 'high household load', dryRun: true }))
       .toBe('Would still draw 2.1 kW — high household load (simulation)');
   });
 
-  it('falls back to "–" when measuredPowerKw is missing or non-finite', () => {
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: undefined, detail: null }))
+  it('falls back to "–" when currentDrawKw is missing or non-finite', () => {
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: undefined, detail: null }))
       .toBe('Still drawing – kW — this still counts toward your usage');
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: Number.NaN, detail: null }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: Number.NaN, detail: null }))
       .toBe('Still drawing – kW — this still counts toward your usage');
   });
 
   it('drops non-string and empty detail values silently', () => {
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: undefined }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 2, detail: undefined }))
       .toBe('Still drawing 2.0 kW — this still counts toward your usage');
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: '   ' }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 2, detail: '   ' }))
       .toBe('Still drawing 2.0 kW — this still counts toward your usage');
-    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: 42 }))
+    expect(resolveReportedLoadAfterPauseText({ currentDrawKw: 2, detail: 42 }))
       .toBe('Still drawing 2.0 kW — this still counts toward your usage');
   });
 
   it('matches the pre-extraction inline formatter character-for-character', () => {
-    const cases: ReadonlyArray<{ measuredPowerKw: number | undefined; detail: unknown }> = [
-      { measuredPowerKw: 1.234, detail: null },
-      { measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' },
-      { measuredPowerKw: 0.06, detail: 'still drawing' },
-      { measuredPowerKw: undefined, detail: 'unknown source' },
-      { measuredPowerKw: Number.NaN, detail: null },
-      { measuredPowerKw: 2, detail: '   ' },
+    const cases: ReadonlyArray<{ currentDrawKw: number | undefined; detail: unknown }> = [
+      { currentDrawKw: 1.234, detail: null },
+      { currentDrawKw: 7.2, detail: '  EV charger ignored pause  ' },
+      { currentDrawKw: 0.06, detail: 'still drawing' },
+      { currentDrawKw: undefined, detail: 'unknown source' },
+      { currentDrawKw: Number.NaN, detail: null },
+      { currentDrawKw: 2, detail: '   ' },
     ];
     for (const c of cases) {
-      expect(resolveReportedLoadAfterPauseText(c)).toBe(referenceFormat(c.measuredPowerKw, c.detail));
+      expect(resolveReportedLoadAfterPauseText(c)).toBe(referenceFormat(c.currentDrawKw, c.detail));
     }
   });
 });
@@ -312,18 +312,18 @@ describe('resolveSurplusHoldReportedLoadText', () => {
   // Surplus-held dump load the user switched on by hand: names the reconcile,
   // NOT "after pause" (a baseline-off device was never paused).
   it('names the surplus reconcile with the measured draw', () => {
-    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: 1.0 }))
+    expect(resolveSurplusHoldReportedLoadText({ currentDrawKw: 1.0 }))
       .toBe('Still reporting 1.0 kW — switching off to wait for solar surplus');
   });
 
   it('never uses the "after pause" phrasing', () => {
-    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: 2.4 })).not.toContain('after pause');
+    expect(resolveSurplusHoldReportedLoadText({ currentDrawKw: 2.4 })).not.toContain('after pause');
   });
 
   it('falls back to "–" when the measured draw is missing or non-finite', () => {
-    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: undefined }))
+    expect(resolveSurplusHoldReportedLoadText({ currentDrawKw: undefined }))
       .toBe('Still reporting – kW — switching off to wait for solar surplus');
-    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: Number.NaN }))
+    expect(resolveSurplusHoldReportedLoadText({ currentDrawKw: Number.NaN }))
       .toBe('Still reporting – kW — switching off to wait for solar surplus');
   });
 });

@@ -174,7 +174,11 @@ const withCommandSessionReportedStep = (
       on: observed.steppedLoad?.on ?? null,
       stepId: reportedStepId,
       reportedStepId,
-      measuredPowerKw: observed.steppedLoad?.measuredPowerKw,
+      // The `?? 0` covers a MISSING stepped-load state, not a missing draw: this
+      // synthesizes one for a device the projection did not classify as stepped,
+      // and about such a device's draw nothing is known — the same answer the
+      // producer gives for an unmetered device.
+      currentDrawKw: observed.steppedLoad?.currentDrawKw ?? 0,
     },
   };
 };
@@ -366,15 +370,14 @@ const resolveObservedStepForShed = (
     } : undefined;
   }
   if (intent.shedAction !== 'set_step') return undefined;
-  if (
-    typeof observed?.measuredPowerKw !== 'number'
-    || !Number.isFinite(observed.measuredPowerKw)
-    || observed.measuredPowerKw <= 0
-  ) {
+  // The producer's number is finite by construction (`getCurrentDrawKw`
+  // normalizes or answers 0); only "is it drawing?" is still worth asking —
+  // the same test `resolvePlanStepForShed` applies on the plan-device path.
+  if (observed === null || observed === undefined || observed.currentDrawKw <= 0) {
     return undefined;
   }
   return {
     stepId: 'unknown',
-    planningPowerW: Math.round(observed.measuredPowerKw * 1000),
+    planningPowerW: Math.round(observed.currentDrawKw * 1000),
   };
 };

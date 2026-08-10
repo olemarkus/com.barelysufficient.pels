@@ -405,7 +405,7 @@ export function readDeviceReasonDetail(reason: unknown): unknown {
 // at the snapshot boundary; non-string values are dropped silently rather
 // than rendered as `[object Object]`.
 export function resolveReportedLoadAfterPauseText(params: {
-  measuredPowerKw: number | undefined;
+  currentDrawKw: number | undefined;
   detail: unknown;
   // Simulation mode: PELS never actually paused the device, so the real-mode
   // "after pause" framing would assert an action that did not happen — the
@@ -413,8 +413,8 @@ export function resolveReportedLoadAfterPauseText(params: {
   // the (real) live draw hypothetically instead, with no phantom pause.
   dryRun?: boolean;
 }): string {
-  const measured = typeof params.measuredPowerKw === 'number' && Number.isFinite(params.measuredPowerKw)
-    ? params.measuredPowerKw.toFixed(1)
+  const measured = typeof params.currentDrawKw === 'number' && Number.isFinite(params.currentDrawKw)
+    ? params.currentDrawKw.toFixed(1)
     : '–';
   const detail = typeof params.detail === 'string' && params.detail.trim().length > 0
     ? params.detail.trim()
@@ -440,14 +440,14 @@ export function resolveReportedLoadAfterPauseText(params: {
 // doing (switching it off to wait for export) so the reconcile contract reads
 // coherently on the card. Shared-domain so logs and UI match.
 export function resolveSurplusHoldReportedLoadText(params: {
-  measuredPowerKw: number | undefined;
+  currentDrawKw: number | undefined;
   // Simulation mode: PELS never actually switches the dump load off, so the
   // real-mode "switching off" framing would assert an action that did not
   // happen. State it hypothetically instead (simulation-honesty rule).
   dryRun?: boolean;
 }): string {
-  const measured = typeof params.measuredPowerKw === 'number' && Number.isFinite(params.measuredPowerKw)
-    ? params.measuredPowerKw.toFixed(1)
+  const measured = typeof params.currentDrawKw === 'number' && Number.isFinite(params.currentDrawKw)
+    ? params.currentDrawKw.toFixed(1)
     : '–';
   const action = params.dryRun ? 'would switch off' : 'switching off';
   // Trailing `(simulation)` tag on the hypothetical variant — same rule as

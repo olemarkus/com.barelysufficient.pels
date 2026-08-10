@@ -341,7 +341,7 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: fixtureDeviceReason('keep')!,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
       controllable: true,
     });
@@ -395,7 +395,7 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: fixtureDeviceReason('keep')!,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
       controllable: true,
     });

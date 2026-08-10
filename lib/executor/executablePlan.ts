@@ -89,7 +89,15 @@ export type ExecutableObservedSteppedLoadState = {
   // `stepId` is the assumed fallback.
   stepId?: string;
   reportedStepId?: string;
-  measuredPowerKw?: number;
+  /**
+   * Producer-resolved current draw (`getCurrentDrawKw`), REQUIRED. Read by
+   * exactly one consumer: `resolveObservedStepForShed` prices an unknown-step
+   * `set_step` shed from it when no step id is available. It used to be an
+   * optional `measuredPowerKw`, fed the raw snapshot field on one path and an
+   * adapted `currentDrawKw` on the other — one name for two provenances, with
+   * nothing at either end saying who read it.
+   */
+  currentDrawKw: number;
 };
 
 export type ExecutableBinaryIntent =

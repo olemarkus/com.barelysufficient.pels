@@ -49,7 +49,8 @@ export type IdleClassifierDeviceInput = {
    * plan device stopped carrying that name; because the field was OPTIONAL,
    * nothing failed to compile and the classifier silently saw `undefined` for
    * every device, which reads as "drawing" and made every idle/unresponsive
-   * state unreachable. Required, so that cannot recur.
+   * state unreachable. Required, so that cannot recur — and `IdleDetectorInput`
+   * downstream now carries the same required field under the same name.
    */
   currentDrawKw: number;
   currentTemperature?: number;
@@ -78,7 +79,7 @@ const toDetectorInput = (
 ): IdleDetectorInput => ({
   deviceId: device.id,
   now,
-  measuredPowerKw: device.currentDrawKw,
+  currentDrawKw: device.currentDrawKw,
   currentTemperature: device.currentTemperature,
   targetTemperature: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
   observedOn: device.currentState === 'on',

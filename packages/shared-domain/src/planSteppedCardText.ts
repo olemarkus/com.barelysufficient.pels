@@ -284,11 +284,11 @@ export const resolveSteppedTemperatureText = (device: {
 };
 
 export const resolveSteppedPowerText = (device: {
-  measuredPowerKw?: number;
+  currentDrawKw?: number;
 }): string | null => {
-  const { measuredPowerKw } = device;
-  if (typeof measuredPowerKw !== 'number') return null;
-  return `${measuredPowerKw.toFixed(1)} kW`;
+  const { currentDrawKw } = device;
+  if (typeof currentDrawKw !== 'number') return null;
+  return `${currentDrawKw.toFixed(1)} kW`;
 };
 
 const EV_CHARGING_STATE_LABELS: Record<string, string> = {

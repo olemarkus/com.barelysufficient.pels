@@ -339,8 +339,15 @@ export class PowerSamplePipeline {
           devices: params.devices.map(withHeadroomCurrentOn),
         }),
         sumBudgetExemptUsage: (devices) => sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn)),
+        // Same producer boundary as the two usage seams above, for the same
+        // reason: rate learning reads the device's DRAW, and the raw
+        // `measuredPowerKw` does not travel past the producer. Resolving here
+        // means `lib/objectives` never sees a raw reading — and because
+        // `ObjectiveSampleDevice.currentDrawKw` is required, dropping this map
+        // is a compile error rather than a fleet learning at 0 W.
         updateObjectiveProfiles: (params) => updateObjectiveProfilesFromSnapshot({
           ...params,
+          devices: params.devices.map(withHeadroomCurrentOn),
           debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
           outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
         }),

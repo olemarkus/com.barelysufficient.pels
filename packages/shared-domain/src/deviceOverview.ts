@@ -47,7 +47,22 @@ export type DeviceOverviewSnapshot = {
   controlModel?: 'temperature_target' | 'binary_power' | 'stepped_load';
   controlCapabilityId?: BinaryControlCapabilityId;
   evChargingState?: EvChargingState;
-  measuredPowerKw?: number;
+  /**
+   * The PRODUCER-RESOLVED current draw (`getCurrentDrawKw`), never the raw
+   * `measure_power` observation. REQUIRED: every carrier of this shape — the
+   * plan read model, the overview log seam, the settings-UI plan snapshot — is
+   * fed from a plan device, which resolves the draw once at `toPlanDevice` and
+   * carries it as a required field. An unmetered device resolves to `0`, so
+   * there is no absent case for a consumer to invent an answer for.
+   *
+   * It was an OPTIONAL `measuredPowerKw` carrying exactly this value, and both
+   * halves of that were hazards: the name invited consumers to treat it as raw
+   * telemetry, and the optionality meant a carrier that forgot to populate it
+   * compiled clean and silently read `undefined` — which
+   * `isSatisfiedTargetOnlyDevice` scores as `0 kW` and labels a drawing device
+   * "Idle".
+   */
+  currentDrawKw: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
   reason: DeviceReason;
@@ -262,7 +277,11 @@ const formatEvSocStatus = (
 };
 
 const formatUsageText = (params: {
-  measuredKw?: number;
+  // Required, mirroring `DeviceOverviewSnapshot.currentDrawKw`: the only caller
+  // reads that field, and an unmetered device resolves to `0` rather than to
+  // absence. The `Number.isFinite` gate below still stands as the wire-boundary
+  // guard.
+  measuredKw: number;
   expectedKw?: number;
   // Stepped devices report PLANNING power (the capacity the selected step
   // reserves), which tracked the reported step one moment and the target step
@@ -303,7 +322,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   }
 
   let usageMsg = formatUsageText({
-    measuredKw: device.measuredPowerKw,
+    measuredKw: device.currentDrawKw,
     expectedKw: getDeviceOverviewExpectedPowerKw(device),
     expectedLabel: isSteppedLoadDevice(device) ? 'Planned' : 'Expected',
   });
@@ -348,7 +367,7 @@ export const buildDeviceOverviewTransitionSignature = (
     binaryCommandPending: device.binaryCommandPending === true,
     shedAction: device.shedAction ?? null,
     minTemperatureRestoreActive: isMinTemperatureRestoreActive(device),
-    measuredPowerKw: normalizeSignatureNumber(device.measuredPowerKw),
+    currentDrawKw: normalizeSignatureNumber(device.currentDrawKw),
     expectedPowerKw: normalizeSignatureNumber(getDeviceOverviewExpectedPowerKw(device)),
     reason: buildComparableDeviceReason(device.reason),
     surplusAbsorbActive: device.surplusAbsorbActive === true,

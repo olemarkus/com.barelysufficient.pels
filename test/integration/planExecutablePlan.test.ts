@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildExecutableObservedDeviceState,
+  buildExecutableObservedDeviceStateFromSnapshot,
   buildExecutablePlan,
   hasExecutableShedDevices,
 } from '../../lib/executor/executablePlanProjection';
@@ -30,7 +30,7 @@ describe('planExecutablePlan', () => {
       // executable observed state must reflect the folded on/off truth, NOT the raw
       // binary axis (which would say 'on'). A revert to reading only `binaryControl`
       // would make this assertion fail.
-      const folded = buildExecutableObservedDeviceState({
+      const folded = buildExecutableObservedDeviceStateFromSnapshot({
         id: 'dev-1',
         name: 'Tank',
         currentOn: false,
@@ -43,7 +43,7 @@ describe('planExecutablePlan', () => {
     it('falls back to the raw binary axis when no producer currentOn is present (executor/dispatch path)', () => {
       // Raw transport-snapshot input carries `binaryControl` but no `currentOn`, so
       // the projection reads the binary axis directly.
-      const rawOn = buildExecutableObservedDeviceState({
+      const rawOn = buildExecutableObservedDeviceStateFromSnapshot({
         id: 'dev-1',
         name: 'Tank',
         binaryControl: { on: true },
@@ -99,7 +99,7 @@ describe('planExecutablePlan', () => {
       plannedTarget: 21,
     });
     const intent = buildExecutableTargetIntent(thermostat);
-    const observed = buildExecutableObservedDeviceState({
+    const observed = buildExecutableObservedDeviceStateFromSnapshot({
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
@@ -284,7 +284,7 @@ describe('planExecutablePlan', () => {
       plannedTarget: 20,
     });
     const intent = buildExecutableTargetIntent(thermostat);
-    const observed = buildExecutableObservedDeviceState({
+    const observed = buildExecutableObservedDeviceStateFromSnapshot({
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },

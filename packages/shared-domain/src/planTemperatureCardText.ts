@@ -14,7 +14,6 @@ import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
-  measuredPowerKw?: number;
   currentTemperature?: number;
   currentTarget?: unknown;
   plannedTarget?: number;

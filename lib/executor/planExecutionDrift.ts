@@ -57,14 +57,11 @@ export function hasPlanDeviceExecutionDrift(params: {
   if (liveDevice.externalOffHoldActive === true) return false;
   return hasExecutableDeviceExecutionDrift({
     intent: buildExecutableDeviceIntent(planDevice),
-    // `buildExecutableObservedDeviceState` serves real SNAPSHOTS as well, so it
-    // reads the draw under the snapshot's name. A plan device carries the
-    // resolved `currentDrawKw` instead, so adapt here rather than relying on the
-    // raw field riding along on a spread.
-    observed: buildExecutableObservedDeviceState({
-      ...liveDevice,
-      measuredPowerKw: liveDevice.currentDrawKw,
-    }),
+    // The plan device carries the producer-resolved `currentDrawKw` the observed
+    // state requires, so it passes straight through. The raw-snapshot callers go
+    // via `buildExecutableObservedDeviceStateFromSnapshot`, which resolves the
+    // draw at that boundary instead.
+    observed: buildExecutableObservedDeviceState(liveDevice),
     runtime: buildDriftRuntimeState(planDevice, liveDevice),
     // The planned current step is the plan device's producer-resolved effective
     // step; drift compares it against the live observed step. It is read from the

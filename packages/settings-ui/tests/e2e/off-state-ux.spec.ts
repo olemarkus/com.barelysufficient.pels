@@ -46,7 +46,7 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
       currentTarget: 5,
       plannedTarget: 5,
       currentTemperature: 18.7,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       reason,
     });
     const externalReason = { code: 'external_off_hold' };
@@ -63,7 +63,7 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
           plannedState: 'inactive',
           stateKind: 'idle',
           stateTone: 'idle',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           reason: externalReason,
         },
         {
@@ -72,7 +72,7 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
           plannedState: 'inactive',
           stateKind: 'idle',
           stateTone: 'idle',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           reason: externalReason,
         },
         {
@@ -81,7 +81,7 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
           plannedState: 'inactive',
           stateKind: 'unavailable',
           stateTone: 'unavailable',
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           reason: externalReason,
         },
       ],

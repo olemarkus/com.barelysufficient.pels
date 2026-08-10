@@ -161,13 +161,13 @@ export function buildSettingsOverviewDeviceReadModel(
   // owner), NOT the plan device — see `getObservedEvChargingState`.
   const ev = isEvPlanDevice(device) ? device : null;
   const temperature = resolveOverviewTemperatureState(device, deps);
-  // The shared-domain label resolvers below take a `DeviceOverviewSnapshot`,
-  // which names the draw `measuredPowerKw` because the settings UI feeds them
-  // real snapshots. Adapt once here rather than at each call.
+  // The shared-domain label resolvers below take a `DeviceOverviewSnapshot`, which
+  // names the draw `currentDrawKw` — the same producer-resolved field the plan
+  // device carries — so the device passes through with only the temperature
+  // overlay applied.
   const overviewShape = {
     ...device,
     ...temperature,
-    measuredPowerKw: device.currentDrawKw,
   };
   return {
     id: device.id,
@@ -190,7 +190,7 @@ export function buildSettingsOverviewDeviceReadModel(
     currentTarget: temperature.currentTarget,
     plannedTarget: temperature.plannedTarget,
     currentTemperature: temperature.currentTemperature,
-    measuredPowerKw: device.currentDrawKw,
+    currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
     budgetExempt: device.budgetExempt,
@@ -214,13 +214,13 @@ export function buildSettingsOverviewDeviceReadModel(
     targetStepId: device.targetStepId,
     binaryCommandPending: device.binaryCommandPending,
     pendingTargetCommand: device.pendingTargetCommand,
-    // These read `measuredPowerKw` off a `DeviceOverviewSnapshot`, a shape shared
-    // with the settings UI (which reads real snapshots). A plan device does not
-    // carry that name, and the field is OPTIONAL on the shared type — so passing
-    // the plan device compiles and silently reads `undefined`, which
-    // `isSatisfiedTargetOnlyDevice` then treats as `0 kW` and labels a drawing
-    // target-only device "Idle". Feed them the resolved draw under the name the
-    // shared type uses, exactly as `planOverviewEmit` does for the log seam.
+    // These read the draw off a `DeviceOverviewSnapshot`, where `currentDrawKw`
+    // is REQUIRED — a carrier that does not populate it no longer compiles. It
+    // used to be optional, and a carrier that forgot it silently read
+    // `undefined`, which `isSatisfiedTargetOnlyDevice` treats as `0 kW` and
+    // labels a drawing target-only device "Idle". Since both sides now name the
+    // producer-resolved `currentDrawKw`, the plan device satisfies the shape
+    // directly and there is no adapter left to forget.
     stateKind: resolvePlanStateKind(overviewShape),
     stateTone: resolvePlanStateTone(overviewShape),
     reason: device.reason,

@@ -58,7 +58,7 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
     plannedState: params.plannedState ?? 'keep',
     priority: 1,
     controllable: true,
-    measuredPowerKw: 0.5,
+    currentDrawKw: 0.5,
     reason: params.plannedState === 'shed'
       ? { code: 'capacity' }
       : { code: 'keep', detail: null },

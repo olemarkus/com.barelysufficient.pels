@@ -15,7 +15,7 @@ import {
 const baseInput = (overrides: Partial<IdleDetectorInput> = {}): IdleDetectorInput => ({
   deviceId: 'dev-1',
   now: 1_000_000,
-  measuredPowerKw: 0,
+  currentDrawKw: 0,
   currentTemperature: 62,
   targetTemperature: 65,
   observedOn: true,
@@ -59,7 +59,7 @@ describe('classifyIdleState — eligibility gates', () => {
   });
 
   it('returns active when measured draw exceeds the idle threshold', () => {
-    const result = classifyIdleState(baseInput({ measuredPowerKw: 0.1 }), new Map());
+    const result = classifyIdleState(baseInput({ currentDrawKw: 0.1 }), new Map());
     expect(result.classification).toBe('active');
   });
 });
@@ -106,7 +106,7 @@ describe('classifyIdleState — near_target_idle', () => {
     classifyIdleState(baseInput({ now: t0 }), state);
     classifyIdleState(baseInput({ now: t0 + IDLE_HOLD_MIN_DURATION_MS }), state);
     const resumed = classifyIdleState(
-      baseInput({ now: t0 + IDLE_HOLD_MIN_DURATION_MS + 1_000, measuredPowerKw: 0.8 }),
+      baseInput({ now: t0 + IDLE_HOLD_MIN_DURATION_MS + 1_000, currentDrawKw: 0.8 }),
       state,
     );
     expect(resumed.classification).toBe('active');
@@ -125,7 +125,7 @@ describe('classifyIdleState — near_target_idle', () => {
     classifyIdleState(baseInput({ now: t0 + IDLE_HOLD_MIN_DURATION_MS }), state);
     const heldDuration = IDLE_HOLD_MIN_DURATION_MS + 90_000;
     const resumed = classifyIdleState(
-      baseInput({ now: t0 + heldDuration, measuredPowerKw: 1.1 }),
+      baseInput({ now: t0 + heldDuration, currentDrawKw: 1.1 }),
       state,
     );
     expect(resumed.idleDurationMs).toBe(heldDuration);
@@ -272,7 +272,7 @@ describe('classifyIdleState — unresponsive', () => {
     // widened band must keep it benign even past the unresponsive window.
     const state: IdleDetectorState = new Map();
     const t0 = 1_000_000;
-    const inBand = baseInput({ currentTemperature: 59.4, targetTemperature: 65, measuredPowerKw: 0 });
+    const inBand = baseInput({ currentTemperature: 59.4, targetTemperature: 65, currentDrawKw: 0 });
     classifyIdleState({ ...inBand, now: t0 }, state);
     const result = classifyIdleState(
       { ...inBand, now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS },
@@ -303,7 +303,7 @@ describe('classifyIdleState — unresponsive', () => {
       state,
     );
     const resumed = classifyIdleState(
-      { ...coldInput, now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 1_000, measuredPowerKw: 1.5 },
+      { ...coldInput, now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 1_000, currentDrawKw: 1.5 },
       state,
     );
     expect(resumed.classification).toBe('active');
@@ -349,7 +349,7 @@ describe('classifyIdleState — temperature sensor stopped reporting', () => {
       state,
     );
     const resumed = classifyIdleState(
-      { ...sensorDark(), now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 1_000, measuredPowerKw: 1.5 },
+      { ...sensorDark(), now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 1_000, currentDrawKw: 1.5 },
       state,
     );
     expect(resumed.classification).toBe('active');
@@ -405,7 +405,7 @@ describe('classifyIdleState — capped_idle', () => {
       classifyIdleState(
         baseInput({
           now: cursor,
-          measuredPowerKw: drawing ? params.onPowerKw : 0,
+          currentDrawKw: drawing ? params.onPowerKw : 0,
           currentTemperature: params.tempC,
           targetTemperature: params.targetC,
         }),
@@ -438,7 +438,7 @@ describe('classifyIdleState — capped_idle', () => {
     const result = classifyIdleState(
       baseInput({
         now: cursor,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         currentTemperature: 58,
         targetTemperature: 65,
       }),
@@ -485,7 +485,7 @@ describe('classifyIdleState — capped_idle', () => {
     const result = classifyIdleState(
       baseInput({
         now: cursor,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         currentTemperature: 63,
         targetTemperature: 65,
       }),
@@ -508,7 +508,7 @@ describe('classifyIdleState — capped_idle', () => {
       classifyIdleState(
         baseInput({
           now: cursor,
-          measuredPowerKw: drawing ? 1.5 : 0,
+          currentDrawKw: drawing ? 1.5 : 0,
           currentTemperature: temp,
           targetTemperature: 65,
         }),
@@ -521,7 +521,7 @@ describe('classifyIdleState — capped_idle', () => {
     const result = classifyIdleState(
       baseInput({
         now: cursor,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         currentTemperature: temp,
         targetTemperature: 65,
       }),
@@ -538,15 +538,15 @@ describe('classifyIdleState — capped_idle', () => {
     const state: IdleDetectorState = new Map();
     const t0 = 1_000_000;
     classifyIdleState(
-      baseInput({ now: t0, measuredPowerKw: 1.2, currentTemperature: 60, targetTemperature: 65 }),
+      baseInput({ now: t0, currentDrawKw: 1.2, currentTemperature: 60, targetTemperature: 65 }),
       state,
     );
     classifyIdleState(
-      baseInput({ now: t0 + 60_000, measuredPowerKw: 0, currentTemperature: 60, targetTemperature: 65 }),
+      baseInput({ now: t0 + 60_000, currentDrawKw: 0, currentTemperature: 60, targetTemperature: 65 }),
       state,
     );
     const result = classifyIdleState(
-      baseInput({ now: t0 + 120_000, measuredPowerKw: 0, currentTemperature: 60, targetTemperature: 65 }),
+      baseInput({ now: t0 + 120_000, currentDrawKw: 0, currentTemperature: 60, targetTemperature: 65 }),
       state,
     );
     expect(result.classification).not.toBe('capped_idle');
@@ -568,7 +568,7 @@ describe('classifyIdleState — capped_idle', () => {
     const t0 = 1_000_000;
     // First-half: one drawing tick at t=0, then immediate silence.
     classifyIdleState(
-      baseInput({ now: t0, measuredPowerKw: 1.2, currentTemperature: 58, targetTemperature: 65 }),
+      baseInput({ now: t0, currentDrawKw: 1.2, currentTemperature: 58, targetTemperature: 65 }),
       state,
     );
     // Second-half: nothing but idle samples for the rest of the window.
@@ -577,7 +577,7 @@ describe('classifyIdleState — capped_idle', () => {
       classifyIdleState(
         baseInput({
           now: cursor,
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           currentTemperature: 58, // tank thermal mass holds temp inside the 1 °C band
           targetTemperature: 65,
         }),
@@ -586,7 +586,7 @@ describe('classifyIdleState — capped_idle', () => {
       cursor += 60_000;
     }
     const result = classifyIdleState(
-      baseInput({ now: cursor, measuredPowerKw: 0, currentTemperature: 58, targetTemperature: 65 }),
+      baseInput({ now: cursor, currentDrawKw: 0, currentTemperature: 58, targetTemperature: 65 }),
       state,
     );
     expect(result.classification).not.toBe('capped_idle');

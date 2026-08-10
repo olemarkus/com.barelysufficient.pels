@@ -24,7 +24,7 @@ describe('overview transition signature', () => {
       reason: r('keep'),
       controllable: true,
       available: true,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       currentTarget: 16,
     };
     const running = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 14 });
@@ -41,7 +41,7 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 3,
     })).toEqual({
       powerMsg: 'on',
@@ -59,7 +59,7 @@ describe('device overview formatter', () => {
       currentState: 'not_applicable',
       plannedState: 'keep',
       reason: r('keep'),
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 1,
       currentTarget: 16,
     };
@@ -72,11 +72,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'inactive',
+      currentDrawKw: 0,
       reason: r('inactive (charger is unplugged)'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
-      usageMsg: 'Unknown',
+      usageMsg: 'Measured: 0.00 kW',
       statusMsg: 'Off for now (charger is unplugged)',
     });
   });
@@ -85,11 +86,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'inactive',
+      currentDrawKw: 0,
       reason: r('inactive (charger is unplugged)'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
-      usageMsg: 'Unknown',
+      usageMsg: 'Measured: 0.00 kW',
       statusMsg: 'Off for now (charger is unplugged)',
     });
   });
@@ -101,6 +103,7 @@ describe('device overview formatter', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',
       stateOfCharge: { level: { kind: 'known', percent: 42 } },
+      currentDrawKw: 0,
       reason: r('keep'),
     }).statusMsg).toBe('EV battery: 42 %');
 
@@ -113,6 +116,7 @@ describe('device overview formatter', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
       stateOfCharge: { level: { kind: 'unavailable', reasonCode: 'not_connected' } },
+      currentDrawKw: 0,
       reason: r('inactive (charger is unplugged)'),
     }).statusMsg).toBe('Off for now (charger is unplugged)');
   });
@@ -121,23 +125,25 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'keep',
+      currentDrawKw: 0,
       reason: r('meter settling (10s remaining)'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Resuming',
-      usageMsg: 'Unknown',
+      usageMsg: 'Measured: 0.00 kW',
       statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
 
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'shed',
+      currentDrawKw: 0,
       reason: r('cooldown (restore, 10s remaining)'),
       shedAction: 'turn_off',
     })).toEqual({
       powerMsg: 'on → off',
       stateMsg: 'Turned off',
-      usageMsg: 'Unknown',
+      usageMsg: 'Measured: 0.00 kW',
       statusMsg: 'Waiting before resuming (10s)',
     });
   });
@@ -146,12 +152,13 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'shed',
+      currentDrawKw: 0,
       reason: r('meter settling (10s remaining)'),
       shedAction: 'turn_off',
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Turned off',
-      usageMsg: 'Unknown',
+      usageMsg: 'Measured: 0.00 kW',
       statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
   });
@@ -160,11 +167,13 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
+      currentDrawKw: 0,
       reason: r('meter settling (10s remaining)'),
     }).statusMsg).toBe('Waiting for power meter to stabilise (10s)');
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
+      currentDrawKw: 0,
       reason: r('cooldown (restore, 10s remaining)'),
     }).statusMsg).toBe('Waiting before resuming (10s)');
   });
@@ -177,7 +186,7 @@ describe('device overview formatter', () => {
       shedAction: 'set_step',
       targetStepId: 'max',
       planningPowerKw: 3,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       reason: r('shed due to capacity'),
     })).toEqual({
       powerMsg: null,
@@ -195,7 +204,7 @@ describe('device overview formatter', () => {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       reason: r('keep'),
     }).usageMsg).toBe('Measured: 0.00 kW / Planned: 3.00 kW (reported: Low / target: Max)');
   });
@@ -208,7 +217,7 @@ describe('device overview formatter', () => {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      measuredPowerKw: 0.6,
+      currentDrawKw: 0.6,
       reason: r('cooldown (restore, 10s remaining)'),
     })).toEqual({
       powerMsg: null,
@@ -227,6 +236,7 @@ describe('device overview formatter', () => {
       desiredStepId: 'low',
       targetStepId: 'low',
       planningPowerKw: 1.25,
+      currentDrawKw: 0,
       reason: r('restore off -> low (need 1.25kW)'),
     }).stateMsg).toBe('Resuming');
   });
@@ -239,7 +249,7 @@ describe('device overview formatter', () => {
       reportedStepId: 'low',
       targetStepId: 'low',
       planningPowerKw: 1.25,
-      measuredPowerKw: 0.4,
+      currentDrawKw: 0.4,
       reason: r('keep'),
     })).toEqual({
       powerMsg: null,
@@ -257,7 +267,7 @@ describe('device overview formatter', () => {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      measuredPowerKw: 0.6,
+      currentDrawKw: 0.6,
       reason: r('cooldown (restore, 10s remaining)'),
     };
 
@@ -279,7 +289,7 @@ describe('device overview formatter', () => {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      measuredPowerKw: 0.6,
+      currentDrawKw: 0.6,
       reason: r('cooldown (restore, 10s remaining)'),
     };
 
@@ -300,6 +310,7 @@ describe('device overview formatter', () => {
       observationStale: true,
       reportedStepId: 'low',
       targetStepId: 'max',
+      currentDrawKw: 0,
       reason: r('keep'),
     })).toBe(false);
   });
@@ -312,7 +323,7 @@ describe('device overview formatter', () => {
       reportedStepId: 'max',
       targetStepId: 'max',
       planningPowerKw: 3,
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       reason: r('keep'),
     };
 
@@ -325,11 +336,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'unknown',
       plannedState: 'keep',
+      currentDrawKw: 0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     })).toEqual({
       powerMsg: 'unknown',
       stateMsg: 'State unknown',
-      usageMsg: 'Unknown',
+      usageMsg: 'Measured: 0.00 kW',
       statusMsg: '',
     });
   });
@@ -341,14 +353,14 @@ describe('device overview transition signatures', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 1,
     };
     const usageOnly = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
-      measuredPowerKw: 0.25,
+      currentDrawKw: 0.25,
       expectedPowerKw: 1,
     };
 
@@ -365,7 +377,7 @@ describe('device overview transition signatures', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
-      measuredPowerKw: 1,
+      currentDrawKw: 1,
       expectedPowerKw: 1,
       surplusAbsorbActive: false,
     };
@@ -378,22 +390,26 @@ describe('device overview transition signatures', () => {
     const restoreCooldown = {
       currentState: 'off',
       plannedState: 'keep',
+      currentDrawKw: 0,
       reason: r('meter settling (30s remaining)'),
     };
     const restoreCooldownTick = {
       currentState: 'off',
       plannedState: 'keep',
+      currentDrawKw: 0,
       reason: r('meter settling (24s remaining)'),
     };
     const activationBackoff = {
       currentState: 'off',
       plannedState: 'shed',
+      currentDrawKw: 0,
       reason: r('activation backoff (1535s remaining)'),
       shedAction: 'turn_off' as const,
     };
     const activationBackoffTick = {
       currentState: 'off',
       plannedState: 'shed',
+      currentDrawKw: 0,
       reason: r('activation backoff (1503s remaining)'),
       shedAction: 'turn_off' as const,
     };
@@ -409,12 +425,14 @@ describe('device overview transition signatures', () => {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
+      currentDrawKw: 0,
       reason: r('cooldown (restore, 30s remaining)'),
     };
     const restoreCooldownTick = {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
+      currentDrawKw: 0,
       reason: r('cooldown (restore, 24s remaining)'),
     };
 
@@ -427,12 +445,14 @@ describe('device overview transition signatures', () => {
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
+      currentDrawKw: 0,
       reason: r('shortfall (need 1.21kW, headroom -1.23kW)'),
     };
     const jitterOnly = {
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
+      currentDrawKw: 0,
       reason: r('shortfall (need 1.24kW, headroom -1.24kW)'),
     };
 
@@ -449,6 +469,7 @@ describe('device overview transition signatures', () => {
       currentState: 'off',
       plannedState: 'shed' as const,
       shedAction: 'turn_off' as const,
+      currentDrawKw: 0,
       reason,
     });
     const carriers = [
@@ -473,7 +494,7 @@ describe('device overview transition signatures', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
-      measuredPowerKw: 0,
+      currentDrawKw: 0,
       expectedPowerKw: 1,
     };
 
@@ -482,7 +503,7 @@ describe('device overview transition signatures', () => {
         currentState: 'off',
         plannedState: 'keep',
         reason: r('keep'),
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 1,
       }),
     );
@@ -492,7 +513,7 @@ describe('device overview transition signatures', () => {
         plannedState: 'shed',
         shedAction: 'turn_off' as const,
         reason: r('keep'),
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 1,
       }),
     );
@@ -501,7 +522,7 @@ describe('device overview transition signatures', () => {
         currentState: 'on',
         plannedState: 'keep',
         reason: r('restore throttled'),
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         expectedPowerKw: 1,
       }),
     );
@@ -514,6 +535,7 @@ describe('device overview transition signatures', () => {
       plannedState: 'keep',
       reportedStepId: 'low',
       targetStepId: 'low',
+      currentDrawKw: 0,
       reason: r('keep'),
     };
 
@@ -523,6 +545,7 @@ describe('device overview transition signatures', () => {
         plannedState: 'keep',
         reportedStepId: 'low',
         targetStepId: 'max',
+        currentDrawKw: 0,
         reason: r('keep'),
     }));
   });

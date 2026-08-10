@@ -28,6 +28,7 @@ import type {
   ExecutableReleaseIntent,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
+import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
@@ -75,7 +76,7 @@ export function buildExecutableObservedState(
   snapshots: ExecutorDeviceSnapshot[],
 ): ExecutableObservedState {
   return {
-    devices: snapshots.map(buildExecutableObservedDeviceState),
+    devices: snapshots.map(buildExecutableObservedDeviceStateFromSnapshot),
   };
 }
 
@@ -165,17 +166,45 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
   Boolean(planDevice.reason && isRestoreAdmissionHoldReason(planDevice.reason))
 );
 
-export function buildExecutableObservedDeviceState(
-  // Widened past the raw snapshot to carry the optional `selectedStepId`
-  // decoration: the drift path feeds a live `PlanInputDevice` (decoration
-  // present), the raw observed-state path feeds transport snapshots (absent).
-  // Producer-fed funnel: also carries the stepped-descriptor + reported-step +
-  // measured-power probes the base type omits, which the stepped-load projection
-  // (`buildObservedSteppedLoadState`) reads.
+/**
+ * The executor's producer boundary for a RAW transport snapshot: resolve the
+ * device's draw once, here, then build the observed state from the resolved
+ * value. The raw `measuredPowerKw` reaches no further into this layer.
+ *
+ * It is a separate entry point rather than a resolution inside
+ * `buildExecutableObservedDeviceState` because that function also serves the
+ * drift path, which feeds a live `PlanInputDevice` — a shape with no
+ * `measuredPowerKw` at all. Resolving inside would silently answer `0` for
+ * every device on that path.
+ */
+export function buildExecutableObservedDeviceStateFromSnapshot(
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe
     & EvObservedProbe
     & { currentOn?: boolean; commandableNow?: boolean },
+): ExecutableObservedDeviceState {
+  return buildExecutableObservedDeviceState({
+    ...snapshot,
+    currentDrawKw: getCurrentDrawKw(snapshot),
+  });
+}
+
+export function buildExecutableObservedDeviceState(
+  // Widened past the raw snapshot to carry the optional `selectedStepId`
+  // decoration: the drift path feeds a live `PlanInputDevice` (decoration
+  // present), the raw observed-state path feeds transport snapshots (absent).
+  // Producer-fed funnel: also carries the stepped-descriptor + reported-step
+  // probes the base type omits, which the stepped-load projection
+  // (`buildObservedSteppedLoadState`) reads.
+  //
+  // `currentDrawKw` is REQUIRED: a plan device carries it, and a raw snapshot
+  // gets it from `buildExecutableObservedDeviceStateFromSnapshot` above. Making
+  // it optional here would let a caller drop it without a compile error, which
+  // reads as "not drawing" and silently un-prices every unknown-step shed.
+  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+    & EvObservedProbe
+    & { currentOn?: boolean; commandableNow?: boolean; currentDrawKw: number },
 ): ExecutableObservedDeviceState {
   return {
     id: snapshot.id,
@@ -223,19 +252,19 @@ const buildObservedTargetState = (
 
 const buildObservedSteppedLoadState = (
   // Accepts the optional `selectedStepId` decoration: on the raw
-  // `buildExecutableObservedState(snapshots)` path it is always absent (the
-  // transport snapshot carries no decoration), but on the drift path
+  // `buildExecutableObservedDeviceStateFromSnapshot` path it is always absent
+  // (the transport snapshot carries no decoration), but on the drift path
   // (`planExecutionDrift` → live `PlanInputDevice`) it is the producer-resolved
   // effective step. The read must survive both, so widen past the raw snapshot.
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
-    & MeasuredPowerObservedProbe & ReportedStepObservedProbe & { currentOn?: boolean },
+    & ReportedStepObservedProbe & { currentOn?: boolean; currentDrawKw: number },
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {
     on: typeof snapshot.currentOn === 'boolean' ? snapshot.currentOn : isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
-    measuredPowerKw: snapshot.measuredPowerKw,
+    currentDrawKw: snapshot.currentDrawKw,
   };
 };
 

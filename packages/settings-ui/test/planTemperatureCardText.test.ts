@@ -11,6 +11,7 @@ import {
 describe('resolveTemperatureLine', () => {
   it('shows the planned target when the target is stable', () => {
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTemperature: 20.2,
       currentTarget: 21,
       plannedTarget: 21,
@@ -20,6 +21,7 @@ describe('resolveTemperatureLine', () => {
 
   it('shows the current target to planned target transition when PELS is changing it', () => {
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTemperature: 20.2,
       currentTarget: 18,
       plannedTarget: 21,
@@ -29,6 +31,7 @@ describe('resolveTemperatureLine', () => {
 
   it('reports sensor offline when the planned target is known but currentTemperature is missing', () => {
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTarget: 21,
       plannedTarget: 21,
       reason: { code: 'keep', detail: null },
@@ -37,6 +40,7 @@ describe('resolveTemperatureLine', () => {
 
   it('shows the external target when PELS has no planned temperature', () => {
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTemperature: 20.3,
       currentTarget: 22,
       reason: { code: 'keep', detail: null },
@@ -45,6 +49,7 @@ describe('resolveTemperatureLine', () => {
 
   it('reports the sensor unavailable when only the external target is known', () => {
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTarget: 22,
       reason: { code: 'keep', detail: null },
     })).toBe('target 22 °C · sensor unavailable');
@@ -52,12 +57,14 @@ describe('resolveTemperatureLine', () => {
 
   it('does not format non-finite temperature observations or targets', () => {
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTemperature: Number.NaN,
       currentTarget: 22,
       plannedTarget: undefined,
       reason: { code: 'keep', detail: null },
     })).toBe('target 22 °C · sensor unavailable');
     expect(resolveTemperatureLine({
+      currentDrawKw: 0,
       currentTemperature: 20,
       currentTarget: Number.POSITIVE_INFINITY,
       plannedTarget: Number.NaN,
@@ -73,6 +80,7 @@ describe('resolveTemperatureReasonLine', () => {
   // is not a shape any producer can emit, so there is nothing else to test here.
   it('shows the admission-accurate gap when reserve margins are present', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'shed',
       currentTemperature: 20.2,
@@ -92,6 +100,7 @@ describe('resolveTemperatureReasonLine', () => {
 
   it('does not show idle as a reason line', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'inactive',
       currentTemperature: 20.2,
@@ -102,6 +111,7 @@ describe('resolveTemperatureReasonLine', () => {
 
   it('explains an external off hold even when temperature evidence is unavailable', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'inactive',
       reason: { code: 'external_off_hold' },
@@ -110,6 +120,7 @@ describe('resolveTemperatureReasonLine', () => {
 
   it('suppresses stale external-off guidance when the device is unavailable', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'inactive',
       stateKind: 'unavailable',
@@ -123,6 +134,7 @@ describe('resolveTemperatureReasonLine', () => {
   // device is waiting.
   it('states the shortfall, not the ceiling, for a daily-budget hold', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'shed',
       currentTemperature: 20.2,
@@ -133,6 +145,7 @@ describe('resolveTemperatureReasonLine', () => {
 
   it('falls back to the bare waiting line when a budget hold carries no shortfall', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'shed',
       currentTemperature: 20.2,
@@ -155,6 +168,7 @@ describe('resolveTemperatureReasonLine', () => {
       { code: 'daily_budget' },
       { code: 'daily_budget', shortfallKw: 0.5 },
     ] as const).map((reason) => resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'shed',
       currentTemperature: 20.2,
@@ -176,6 +190,7 @@ describe('resolveTemperatureReasonLine', () => {
 
   it('renders the deferred-objective avoid status for smart-task waiting', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'off',
       plannedState: 'shed',
       currentTemperature: 20.2,
@@ -195,6 +210,7 @@ describe('resolveTemperatureReasonLine', () => {
       plannedState: 'shed' as const,
       currentTemperature: 22.8,
       plannedTarget: 20,
+      currentDrawKw: 0,
       reason: { code: 'keep' as const, detail: null },
     };
     expect(resolveTemperatureReasonLine(unattributed)).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
@@ -206,6 +222,7 @@ describe('resolveTemperatureReasonLine', () => {
   // held card — the old "Turned off by PELS" said less than the state word did.
   it('states the shortfall on a binary-commanded card without a planned target', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'on',
       plannedState: 'shed',
       currentTemperature: 20.3,
@@ -217,6 +234,7 @@ describe('resolveTemperatureReasonLine', () => {
 
   it('never claims PELS turned the device off', () => {
     expect(resolveTemperatureReasonLine({
+      currentDrawKw: 0,
       currentState: 'on',
       plannedState: 'shed',
       currentTemperature: 20.3,

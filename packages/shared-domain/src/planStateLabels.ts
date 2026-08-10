@@ -226,7 +226,11 @@ export const isSatisfiedTargetOnlyDevice = (device: DeviceOverviewSnapshot): boo
   const plannedTarget = asFiniteNumber(device.plannedTarget);
   const effectiveTarget = plannedTarget !== null ? Math.max(currentTarget, plannedTarget) : currentTarget;
   if (currentTemperature < effectiveTarget - 0.1) return false;
-  return (asFiniteNumber(device.measuredPowerKw) ?? 0) <= 0.05;
+  // Read directly: `currentDrawKw` is required and producer-resolved, so there is
+  // no absence to default and re-validating here would be a consumer distrusting
+  // its producer. Coercing to `0` would also be the wrong way to fail — it reads
+  // a junk value as "drawing nothing" and labels a live device idle.
+  return device.currentDrawKw <= 0.05;
 };
 
 export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateKind => {
