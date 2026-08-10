@@ -1,3 +1,4 @@
+import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   OBJECTIVE_PROFILE_MIN_INTERVAL_MS,
@@ -26,7 +27,7 @@ const MIN_SOC_RISE_PERCENT = 0.2;
 
 const evDevice = (
   overrides: Partial<TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {},
-): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe => ({
+): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Charger',

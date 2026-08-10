@@ -1,7 +1,7 @@
 /**
  * Idle-state classification for devices commanded on but drawing ~0 W.
  * Output is consumed by the Settings UI and structured logs only — the
- * planner already treats `measuredPowerKw = 0` correctly via
+ * planner already treats `currentDrawKw = 0` correctly via
  * `getCurrentDrawKw`, so this module does not feed back into plan or restore
  * accounting.
  *
@@ -103,7 +103,15 @@ const SAMPLE_HISTORY_MAX = 200;
 export type IdleDetectorInput = {
   deviceId: string;
   now: number;
-  measuredPowerKw?: number;
+  /**
+   * Producer-resolved current draw. REQUIRED and named for what it is: the only
+   * caller (`idleClassifier`) is fed plan devices, which carry the resolved
+   * draw. It used to be an optional `measuredPowerKw`, which is what let the
+   * classifier hand over `undefined` for every device without a compile error —
+   * `measuredIsIdle(undefined)` is false, so every idle/unresponsive state went
+   * unreachable. Required, so that cannot recur.
+   */
+  currentDrawKw: number;
   currentTemperature?: number;
   targetTemperature?: number;
   /** True when the device is observably on right now (binary or stepped). */
@@ -472,7 +480,7 @@ export function classifyIdleState(
   // current session so window coverage survives buffer pruning.
   const samples = appendSample(previousEntry?.samples ?? [], {
     atMs: input.now,
-    powerKw: input.measuredPowerKw,
+    powerKw: input.currentDrawKw,
     temperatureC: input.currentTemperature,
   }, input.now);
   const firstSampleAtMs = previousEntry?.firstSampleAtMs ?? input.now;
@@ -483,7 +491,7 @@ export function classifyIdleState(
   if (shouldUseCappedIdle({ gap, samples, firstSampleAtMs, now: input.now })) {
     return buildCappedIdleResult(ctx);
   }
-  if (!measuredIsIdle(input.measuredPowerKw)) {
+  if (!measuredIsIdle(input.currentDrawKw)) {
     return buildDrawingActiveResult(ctx);
   }
   return buildMeasuredIdleResult(ctx);

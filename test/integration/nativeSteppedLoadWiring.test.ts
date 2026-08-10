@@ -15,7 +15,7 @@ import { __resetNativeEvWiringLogStateForTests } from '../../lib/device/managerN
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import { setObservedNativeSteppedLoadStep } from '../../lib/device/managerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
-import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
   buildExecutableSteppedLoadIntent,
@@ -71,7 +71,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
   ) as DevicePlanDevice;
   return buildExecutableSteppedLoadDevice(
     buildExecutableSteppedLoadIntent(device),
-    buildExecutableObservedDeviceState({
+    buildExecutableObservedDeviceStateFromSnapshot({
       id: device.id,
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: device.name,

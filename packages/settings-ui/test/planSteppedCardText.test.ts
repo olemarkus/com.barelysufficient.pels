@@ -38,6 +38,9 @@ const profileWithOff: SteppedLoadProfile = {
 
 const baseDevice = {
   reason: { code: 'keep' as const, detail: null },
+  // `currentDrawKw` is required on `DeviceOverviewSnapshot` — the producer
+  // resolves an unmetered device to 0, so there is no absent case to fixture.
+  currentDrawKw: 0,
 };
 
 const steppedLoad = (

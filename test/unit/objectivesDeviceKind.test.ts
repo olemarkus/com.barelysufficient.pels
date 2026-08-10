@@ -1,10 +1,9 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
-import { buildObjectiveProfileSample } from '../../lib/objectives/samples';
+import { buildObjectiveProfileSample, type ObjectiveSampleDevice } from '../../lib/objectives/samples';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // Regression coverage for the de-kind widening: objectives now identify EV
 // chargers via the canonical `isEvDevice` (deviceClass OR the
@@ -48,7 +47,9 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
       controlCapabilityId: 'evcharger_charging',
       stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: NOW }),
       lastFreshDataMs: NOW,
-    } as unknown as TargetDeviceSnapshot;
+      // Producer-resolved: this charger has no meter, which resolves to 0 kW.
+      currentDrawKw: 0,
+    } as unknown as ObjectiveSampleDevice;
     const sample = buildObjectiveProfileSample(device, NOW);
     expect(sample?.value).toBe(55);
     expect(sample?.unit).toBe('percent');

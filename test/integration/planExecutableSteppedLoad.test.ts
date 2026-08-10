@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildExecutableObservedDeviceState,
+  buildExecutableObservedDeviceStateFromSnapshot,
 } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
@@ -25,7 +25,7 @@ const buildObservedState = (
   // keep the optional read + fallback rather than asserting it.
   const observedOn = (isBinaryPlanDevice(device) ? device.currentOn : undefined)
     ?? device.currentState === 'on';
-  return buildExecutableObservedDeviceState({
+  return buildExecutableObservedDeviceStateFromSnapshot({
     id: device.id,
     name: device.name,
     binaryControl: { on: observedOn },
@@ -254,7 +254,7 @@ describe('planExecutableSteppedLoad', () => {
       steppedLoadProfile: rawSteppedLoadProfile,
     } as unknown as TargetDeviceSnapshot;
 
-    const observed = buildExecutableObservedDeviceState(rawSnapshot);
+    const observed = buildExecutableObservedDeviceStateFromSnapshot(rawSnapshot);
     const action = buildExecutableSteppedLoadDevice(
       buildExecutableSteppedLoadIntent(planDevice),
       observed,

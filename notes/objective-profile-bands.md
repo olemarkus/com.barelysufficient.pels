@@ -23,7 +23,7 @@ The buffer is updated only when `kWhPerUnit` is known (`crediblePowerW` was pres
 
 `crediblePowerW` is resolved by `resolveCredibleDevicePower` in `lib/objectives/samples.ts`. It draws from one of two sources:
 
-1. `measuredPowerKw` — an inline meter on the device capability set.
+1. `currentDrawKw` — the producer-resolved draw, i.e. an inline meter on the device capability set. The raw `measuredPowerKw` does not reach this layer; the wiring (`setup/powerSamplePipeline.ts`) resolves it, and a device with no meter arrives as `0`, which fails the 5 W credibility floor.
 2. `steppedLoadProfile.steps[reportedStepId].planningPowerW` — the user-configured planning power for the device's currently reported step.
 
 If neither is available, `crediblePowerW` is omitted from the sample. The next accepted sample then enters `buildAcceptedProfileSample` with `windowEnergyKwh = undefined` (the open sub-interval has no left-edge power), so `kwhPerUnit` is `undefined`, `resolveBandedUpdate` returns `{}`, and the band buffer never grows. Adaptive learning silently stalls.
@@ -39,7 +39,7 @@ Semantics (`lib/objectives/noPowerSourceDiagnostic.ts`):
 - **Tracks the sample's own `crediblePowerW`, not the just-closed window's `kwhPerUnit`** — the sample's `crediblePowerW` becomes the *next* window's left-edge power, so a single valid sample after a silent run is the first one that lets training resume going forward. Tracking the closed window's `kwhPerUnit` would never reset because the closed window still bills at the silent baseline.
 - **One-shot per device per process** — the diagnostic fires at most once per device per app start. A device that flips from "silent" to "valid" and back doesn't re-emit during the same process lifetime. An app restart re-arms.
 - **Counter resets on any valid `crediblePowerW`** — an intermittent SDK gap does not lock the device into "perpetually silent"; if power readings start arriving the counter drops back to zero and the threshold has to be crossed again from scratch.
-- **No persisted state** — per `feedback_homey_sdk_unreliable`, the counter and emitted flag live in process memory only. A transient SDK outage that drops `measuredPowerKw` should not have to fight stale persisted state on restart.
+- **No persisted state** — per `feedback_homey_sdk_unreliable`, the counter and emitted flag live in process memory only. A transient SDK outage that drops the meter reading (and so resolves `currentDrawKw` to 0) should not have to fight stale persisted state on restart.
 
 ### Adaptive band fitter
 

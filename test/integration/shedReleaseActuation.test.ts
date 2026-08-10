@@ -269,7 +269,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         binaryControl: { on: false },
         observedBinaryState: 'off',
-        steppedLoad: { on: false, stepId: 'high' },
+        steppedLoad: { on: false, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: {
         id: 'dev-1',
@@ -295,7 +295,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high' },
+        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -323,7 +323,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high' },
+        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -340,7 +340,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: null }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high' },
+        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -355,7 +355,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'low' },
+        steppedLoad: { on: true, stepId: 'low', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -370,7 +370,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'mid' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'low' },
+        steppedLoad: { on: true, stepId: 'low', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -399,7 +399,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: undefined },
+        steppedLoad: { on: true, stepId: undefined, currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -414,7 +414,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile' },
+        steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -434,7 +434,7 @@ describe('applyShedReleaseIntent', () => {
         } as never,
       }),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high' },
+        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -451,7 +451,7 @@ describe('applyShedReleaseIntent', () => {
         nextStepCommandRetryAtMs: Date.now() + 60_000,
       }),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high' },
+        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,

@@ -37,7 +37,7 @@ import {
 } from './binaryExecutor';
 import { applyShedReleaseIntent } from './shedReleaseActuation';
 import {
-  buildExecutableObservedDeviceState,
+  buildExecutableObservedDeviceStateFromSnapshot,
   buildExecutableObservedState,
   buildExecutablePlan,
   findDroppedSteppedShedIntents,
@@ -167,7 +167,7 @@ const resolveLatestObservedDevice = (
   observed: ExecutableObservedDeviceState | undefined,
 ): ExecutableObservedDeviceState | undefined => {
   const snapshot = core.latestTargetSnapshot().find((entry) => entry.id === deviceId);
-  return snapshot ? buildExecutableObservedDeviceState(snapshot) : observed;
+  return snapshot ? buildExecutableObservedDeviceStateFromSnapshot(snapshot) : observed;
 };
 
 const buildTargetUpdateAction = (

@@ -9,6 +9,10 @@ const baseDevice = {
   controllable: true,
   available: true,
   plannedState: 'keep',
+  // The producer resolves an unmetered device to 0 kW, so that is the base case
+  // here too — `currentDrawKw` is required on `DeviceOverviewSnapshot` and there
+  // is no "absent reading" a consumer could see.
+  currentDrawKw: 0,
 };
 
 describe('planStateLabels', () => {
@@ -50,15 +54,16 @@ describe('planStateLabels', () => {
         ...targetOnly,
         currentTemperature: 20.8,
         currentTarget: 16,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
       })).toBe('idle');
     });
 
-    it('treats a missing power measurement as not drawing (unmetered thermostat)', () => {
+    it('treats an unmetered thermostat (producer-resolved 0 kW) as not drawing', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
         currentTemperature: 21.5,
         currentTarget: 21,
+        currentDrawKw: 0,
       })).toBe('idle');
     });
 
@@ -67,7 +72,7 @@ describe('planStateLabels', () => {
         ...targetOnly,
         currentTemperature: 18.4,
         currentTarget: 21,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
       })).toBe('active');
     });
 
@@ -76,7 +81,7 @@ describe('planStateLabels', () => {
         ...targetOnly,
         currentTemperature: 21.0,
         currentTarget: 21,
-        measuredPowerKw: 0.8,
+        currentDrawKw: 0.8,
       })).toBe('active');
     });
 
@@ -95,7 +100,7 @@ describe('planStateLabels', () => {
         plannedState: 'shed',
         currentTemperature: 22,
         currentTarget: 16,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
       })).toBe('held');
     });
 
@@ -110,7 +115,7 @@ describe('planStateLabels', () => {
         shedTemperature: 16,
         currentTemperature: 20.8,
         currentTarget: 16,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
       })).toBe('active');
     });
 
@@ -119,7 +124,7 @@ describe('planStateLabels', () => {
         ...targetOnly,
         currentTarget: 16,
         plannedTarget: 21,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
       };
       // Room above the lowered live setpoint but below the planned comfort
       // target: still work to do once the raise lands.
@@ -133,7 +138,7 @@ describe('planStateLabels', () => {
         ...targetOnly,
         currentTemperature: 21.5,
         currentTarget: 21,
-        measuredPowerKw: 0,
+        currentDrawKw: 0,
         pendingTargetCommand: { targetC: 22 },
       })).toBe('active');
     });

@@ -1,3 +1,4 @@
+import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   updateDeviceObjectiveProfile,
@@ -19,7 +20,7 @@ import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDevi
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;
 
-const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe => ({
+const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
   id: 'heater-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
@@ -32,7 +33,7 @@ const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & Temperature
   ...overrides,
 });
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe => ({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Charger',

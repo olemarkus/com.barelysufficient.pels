@@ -7,7 +7,6 @@ import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../pac
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { POWER_TRACKER_STATE } from '../utils/settingsKeys';
-import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 
 /**
  * Whole-home power sample ingest pipeline.
@@ -60,9 +59,8 @@ export function recordDailyBudgetCap(params: {
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }
 
-const buildFreshMeasuredDevicePowerWById = (params: {
+const buildMeasuredDevicePowerWById = (params: {
   devices: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[];
-  nowMs: number;
 }): Record<string, number> | undefined => {
   const entries = params.devices.flatMap((device) => {
     // A solar device is a PRODUCER: its `measure_power` is POSITIVE when generating, so
@@ -78,20 +76,38 @@ const buildFreshMeasuredDevicePowerWById = (params: {
     // (home consumed it, no device credited). PV's positive `measure_power` is the
     // opposite — generation, not draw — so the asymmetry is correct.
     if (device.deviceClass === 'solarpanel') return [];
-    // `hasObservedMeasuredPower` proves `measuredPowerKw` is finite (producer
-    // invariant); the cluster guard does NOT prove `measuredPowerObservedAtMs`,
-    // so this staleness-sensitive consumer still checks the observation time
-    // independently (the timestamp is optional on the narrowed shape).
+    // PRESENCE, and nothing else.
+    //
+    // The presence question is real and this is the one consumer that needs it:
+    // a device with no meter must be EXCLUDED from the per-device buckets, not
+    // booked at 0 kW. Numerically the two are identical (`accumulateDevicePower`
+    // integrates the previous reading, and 0 W accrues 0 kWh, so the Usage tab's
+    // "Other" remainder is the same either way) — but the buckets are also the
+    // per-device breakdown's membership list. An unmetered heater booked at 0
+    // would render as "used 0.00 kWh", which is a claim about the device;
+    // leaving it out keeps its consumption in the honest "Other" remainder.
+    // This is why the seam reads the raw cluster rather than `currentDrawKw`,
+    // which deliberately collapses "no meter" and "meter reads zero" into 0.
+    //
+    // The per-capability AGE gate that used to follow is gone (TODO 2026-08-08).
+    // Homey reports capabilities ON CHANGE, so an old `lastUpdated` means
+    // "nothing has happened", not "the reading was lost" — the gate made the
+    // longer a reading stayed stable the less PELS trusted it, and dropped a
+    // legitimately-unchanging device out of its own energy bucket for as long as
+    // it stayed correct (confirmed on a real thermostat holding a true 0 W for
+    // 16 h). Freshness still guards the WHOLE-HOME sample
+    // (the plan's `powerSampleAgeMs` freshness gate) and observation trust —
+    // those ask "is the pipeline alive", which is a different question from "is
+    // this capability value current". Do not conflate them again.
+    // Availability IS still consulted, and it is a different question from age.
+    // Homey retains the last capability value when a device goes offline, so
+    // without this an unavailable device's final positive reading would be
+    // integrated into its bucket on every subsequent sample, indefinitely —
+    // overstating that device's row and understating the honest "Other"
+    // remainder. Age said "nothing has changed"; `available: false` says "the
+    // device is gone", and only the second is grounds to stop counting it.
+    if (device.available === false) return [];
     if (!hasObservedMeasuredPower(device)) return [];
-    const observedAtMs = device.measuredPowerObservedAtMs;
-    if (
-      typeof observedAtMs !== 'number'
-      || !Number.isFinite(observedAtMs)
-      || observedAtMs > params.nowMs
-      || params.nowMs - observedAtMs >= POWER_SAMPLE_STALE_THRESHOLD_MS
-    ) {
-      return [];
-    }
     return [[device.id, Math.max(0, device.measuredPowerKw * 1000)] as const];
   });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
@@ -224,7 +240,7 @@ export async function recordPowerSampleForApp(params: {
   const exemptKw = snapshot.length ? sumBudgetExemptUsage(snapshot) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
-  const currentDevicePowerWById = buildFreshMeasuredDevicePowerWById({ devices: snapshot, nowMs });
+  const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices: snapshot });
   const profilingState = updateObjectiveProfiles({
     state: powerTracker,
     devices: snapshot,

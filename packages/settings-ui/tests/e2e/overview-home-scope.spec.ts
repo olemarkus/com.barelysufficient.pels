@@ -47,7 +47,7 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     plannedState: 'keep',
     priority: 1,
     controllable: true,
-    measuredPowerKw: 0.5,
+    currentDrawKw: 0.5,
     reason: { code: 'keep', detail: null },
   }],
 });

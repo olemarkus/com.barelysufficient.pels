@@ -56,9 +56,18 @@ helpers. The observer was created but never handed the observation contract.
    is the producer invariant; the two fields travel together and owner seams carry
    them through the `MeasuredPowerObservedProbe` widening. Absence stops here: the
    producer seams (`toPlanDevice`, `withHeadroomCurrentOn`,
-   `buildResidualKwForPlanDevice`) resolve it once into the plan device's REQUIRED
-   `currentDrawKw` — the meter's reading, or 0 — so no plan or executor consumer
-   ever decides what an absent draw means, or asks how the producer knew),
+   `buildResidualKwForPlanDevice`, `buildExecutableObservedDeviceStateFromSnapshot`)
+   resolve it once into the REQUIRED `currentDrawKw` carried by the plan device, the
+   executor's observed state, the objectives sample contract, and the settings-UI
+   `DeviceOverviewSnapshot` — the meter's reading, or 0 — so no plan, executor,
+   objectives or UI consumer ever decides what an absent draw means, or asks how the
+   producer knew. **One consumer still reads the raw cluster, for PRESENCE only:**
+   `lib/power/sampleIngest.ts` must EXCLUDE an unmetered device from the per-device
+   energy buckets rather than book it at 0, because those buckets double as the Usage
+   tab's per-device membership list and a 0 there is a claim about the device. It reads
+   presence and nothing else — the per-capability age gate that used to sit beside it
+   is retired (Homey reports on change, so an old `lastUpdated` means "nothing has
+   happened")),
    `reportedStepId`/`reportedStepPowerW`/`reportedStepObservedAtMs` (now type-gated
    off the base onto `ReportedStepObservedFields`, narrowed via the presence-only
    `hasObservedReportedStep` — a non-stepped device never reports a step and a

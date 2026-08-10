@@ -622,29 +622,6 @@ What remains open is below.*
       with an unmetered water heater during planned hours. Source: 2026-08-02
       release review; re-confirmed against the collapse, 2026-08-08. [P3]
 
-- [ ] **Per-capability staleness drops a valid reading out of its own energy bucket.**
-      `buildFreshMeasuredDevicePowerWById` (`lib/power/sampleIngest.ts`) narrows
-      correctly via `hasObservedMeasuredPower` and then independently gates on
-      `measuredPowerObservedAtMs` age before including a device in the per-device
-      energy buckets. Homey reports capabilities ON CHANGE, so an old `lastUpdated`
-      means "nothing has happened", not "the reading was lost" — the longer a
-      reading is stable, the less PELS trusts it, which is backwards. Confirmed on
-      a real device (`homey:app:no.elko:smart_plus_thermostat`, "Termostat
-      vaskerom", dumped 2026-08-08T17:26Z): `measure_power: { value: 0,
-      lastUpdated: 2026-08-08T01:29:56Z }` — 16 hours earlier — with
-      `settings.load: 900` and a PELS snapshot of `measuredPowerKw: 0,
-      expectedPowerKw: 0.9, managed: true`. The thermostat simply has not turned on
-      since the weather warmed; `0 W` is exactly correct and has been continuously
-      true for 16 h, yet the age gate omits it from its own bucket for that whole
-      period, and keeps omitting it for as long as it stays legitimately unchanged.
-      Fix direction: retire per-capability staleness on the measured-power axis.
-      Freshness stays meaningful for whole-home power SAMPLES
-      (`POWER_SAMPLE_STALE_THRESHOLD_MS`) and for observation trust — those ask "is
-      the pipeline alive", a different question from "is this capability value
-      current". Do not conflate them. Persona: the owner reading the Usage tab's
-      per-device breakdown, whose steadiest devices are the ones most likely to
-      vanish from it. Source: device dump + design discussion, 2026-08-08. [P2]
-
 - [ ] **A device that vanishes mid-overshoot is attributed to background load.**
       `hasUndiffablePlausibleContributor` (`lib/plan/planBuilderOvershoot.ts`)
       iterates the CURRENT device map only, so a managed device present in the
@@ -1005,8 +982,11 @@ program) remain deferred.*
       `measuredPowerObservedAtMs` — the two travel together) + `MeasuredPowerObservedProbe` (optional
       owner-widening); `TransportDeviceSnapshot` now intersects all four observed probes. Power-measurement
       absence is the legitimate common case, so the guard draws the present/absent line and "present implies a
-      finite, non-negative kW" is the producer invariant (the write seams store only finite values); the
-      staleness-sensitive `sampleIngest` still checks `measuredPowerObservedAtMs` independently. Consumers
+      finite, non-negative kW" is the producer invariant (the write seams store only finite values).
+      `sampleIngest` used to check `measuredPowerObservedAtMs` independently; that per-capability age gate is
+      retired (it distrusted a legitimately-unchanging reading), and `sampleIngest` is now the ONLY consumer
+      outside the producer that reads the cluster at all — for PRESENCE, to keep an unmetered device out of
+      the per-device energy buckets rather than booking it at 0. Consumers
       migrated: objectives `resolveCredibleDevicePower`, `sampleIngest`, `executablePlanProjection`, the
       transport calibration-store seams, and the settings-UI device-list/view carriers; the rest read off
       local types (`PlanInputDevice`, etc.) that kept their own `measuredPowerKw?` and were unaffected — those

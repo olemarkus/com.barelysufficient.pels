@@ -129,7 +129,7 @@ const isResumingDevice = (device: PlanDeviceSnapshot): boolean => (
 // (verified across a 124-device fleet), so a still-running managed load keeps the
 // cascade open on its own reading rather than on a separate state check.
 const isPendingShedStillRunning = (device: PlanDeviceSnapshot): boolean => (
-  (device.measuredPowerKw ?? 0) > 0
+  (device.currentDrawKw ?? 0) > 0
 );
 const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean => (
   device.controllable !== false && (
@@ -140,12 +140,12 @@ const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean =>
 
 // A device that is breaching the cap with Power-limit control turned off: it
 // has control off (`controllable === false` → reason `capacityControlOff`) AND
-// is actually drawing power (`measuredPowerKw > 0`). The measured-draw gate
+// is actually drawing power (`currentDrawKw > 0`). The measured-draw gate
 // matters — a parked opt-out device sitting at 0 W is not the source of the
 // breach, so the "remaining draw is from it" copy must not fire on it.
 const isBreachingControlOffDevice = (device: PlanDeviceSnapshot): boolean => (
   device.reason?.code === PLAN_REASON_CODES.capacityControlOff
-  && (device.measuredPowerKw ?? 0) > 0
+  && (device.currentDrawKw ?? 0) > 0
 );
 
 // In simulation mode the planner outputs `plannedState === 'shed'` but never

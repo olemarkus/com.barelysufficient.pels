@@ -70,7 +70,7 @@ const applyProdHeldState = async (page: Page) => {
           shedAction: 'turn_off',
           currentTemperature: 20.3,
           currentTarget: 22,
-          measuredPowerKw: 0,
+          currentDrawKw: 0,
           expectedPowerKw: 1.14,
           reason: { code: 'daily_budget', shortfallKw: 0.9 },
         },

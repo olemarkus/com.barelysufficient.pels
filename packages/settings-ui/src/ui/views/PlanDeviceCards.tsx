@@ -415,8 +415,8 @@ const resolveReasonTextFactual = (dev: PlanDeviceSnapshot): string => {
 
 const isDrawing = (dev: PlanDeviceSnapshot): boolean => (
   dev.currentState === 'on'
-  && typeof dev.measuredPowerKw === 'number'
-  && dev.measuredPowerKw > 0.05
+  && typeof dev.currentDrawKw === 'number'
+  && dev.currentDrawKw > 0.05
 );
 
 const resolveExpectedKw = (dev: PlanDeviceSnapshot): number | null => {
@@ -463,8 +463,8 @@ const CooldownProgress = ({
 
 const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): boolean => (
   kind === 'held'
-  && typeof dev.measuredPowerKw === 'number'
-  && dev.measuredPowerKw > 0.05
+  && typeof dev.currentDrawKw === 'number'
+  && dev.currentDrawKw > 0.05
 );
 
 const resolveReportedLoadReason = (dev: PlanDeviceSnapshot, dryRun: boolean): string => {
@@ -476,10 +476,10 @@ const resolveReportedLoadReason = (dev: PlanDeviceSnapshot, dryRun: boolean): st
   // state — so no new plan-device field is needed. `dryRun` keeps the copy
   // hypothetical in simulation mode (PELS never actually switches it off).
   if ((dev.reason as { code?: string } | undefined)?.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
-    return resolveSurplusHoldReportedLoadText({ measuredPowerKw: dev.measuredPowerKw, dryRun });
+    return resolveSurplusHoldReportedLoadText({ currentDrawKw: dev.currentDrawKw, dryRun });
   }
   return resolveReportedLoadAfterPauseText({
-    measuredPowerKw: dev.measuredPowerKw,
+    currentDrawKw: dev.currentDrawKw,
     detail: readDeviceReasonDetail(dev.reason),
     dryRun,
   });
@@ -532,9 +532,9 @@ export const PlanGenericCard = ({
 
   let powerReadout: PowerReadout | null = null;
   if (reportedLoadConflict) {
-    powerReadout = { text: `Reported ${formatKw(displayDev.measuredPowerKw)} kW`, variant: 'reported' };
+    powerReadout = { text: `Reported ${formatKw(displayDev.currentDrawKw)} kW`, variant: 'reported' };
   } else if (isDrawing(displayDev)) {
-    powerReadout = { text: `${formatKw(displayDev.measuredPowerKw)} kW`, variant: 'live' };
+    powerReadout = { text: `${formatKw(displayDev.currentDrawKw)} kW`, variant: 'live' };
   } else {
     const expected = resolveExpectedKw(displayDev);
     if (expected !== null) powerReadout = { text: `≈ ${expected.toFixed(1)} kW when active`, variant: 'expected' };
@@ -682,7 +682,7 @@ export const PlanTemperatureCard = ({
           held card. */}
       <div class="plan-card__state-row">
         <span class="plan-card__state-label">{presentation.label}</span>
-        <span class="plan-card__state-power">{formatKw(displayDev.measuredPowerKw)} kW</span>
+        <span class="plan-card__state-power">{formatKw(displayDev.currentDrawKw)} kW</span>
       </div>
 
       {temperatureLine !== null && <p class="plan-card__temp-line">{temperatureLine}</p>}

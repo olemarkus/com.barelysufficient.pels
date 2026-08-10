@@ -59,21 +59,21 @@ const isMeasuredOnlyCard = (dev: PlanDeviceSnapshot): boolean => (
 // variant), plain live measured draw, `≈ … kW when active` for the expected
 // projection (generic cards only), nothing when no finite figure is known.
 const resolvePowerText = (dev: PlanDeviceSnapshot, intentHeld: boolean): string => {
-  const drawing = isFiniteKw(dev.measuredPowerKw) && dev.measuredPowerKw > 0.05;
+  const drawing = isFiniteKw(dev.currentDrawKw) && dev.currentDrawKw > 0.05;
   if (drawing) {
     // The `Reported` conflict qualifier is the GENERIC card's grammar;
     // temperature/stepped cards render plain measured kW even while held.
     const reportedConflict = intentHeld && !isMeasuredOnlyCard(dev);
     return reportedConflict
-      ? `Reported ${formatKw(dev.measuredPowerKw as number)}`
-      : formatKw(dev.measuredPowerKw as number);
+      ? `Reported ${formatKw(dev.currentDrawKw as number)}`
+      : formatKw(dev.currentDrawKw as number);
   }
   if (!isMeasuredOnlyCard(dev)) {
     for (const value of [dev.planningPowerKw, dev.expectedPowerKw]) {
       if (isFiniteKw(value) && value > 0.05) return `≈ ${value.toFixed(1)} kW when active`;
     }
   }
-  return isFiniteKw(dev.measuredPowerKw) ? formatKw(dev.measuredPowerKw) : '';
+  return isFiniteKw(dev.currentDrawKw) ? formatKw(dev.currentDrawKw) : '';
 };
 
 const getRow = (): {
