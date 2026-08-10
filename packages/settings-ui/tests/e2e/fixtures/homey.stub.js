@@ -543,6 +543,7 @@
     evChargingState: 'plugged_in_paused',
     measuredPowerKw: 0,
     expectedPowerKw: 7.2,
+    expectedPowerSource: 'load-setting',
     capabilities: ['evcharger_charging', 'evcharger_charging_state'],
   };
   // Only injected for specs that flip the charger managed (see
@@ -557,6 +558,7 @@
     priority: 6,
     controllable: true,
     expectedPowerKw: 7.2,
+    expectedPowerSource: 'load-setting',
     currentDrawKw: 0,
     reason: { code: 'capacity', shortfallKw: 5.8 },
     shedAction: 'turn_off',
@@ -575,6 +577,7 @@
         capabilities: ['onoff'],
         measuredPowerKw: 1.2,
         expectedPowerKw: 1.6,
+        expectedPowerSource: 'measured-peak',
         targets: [{ name: 'target_temperature', value: 22 }],
       },
       {
@@ -587,6 +590,7 @@
         capabilities: ['onoff'],
         measuredPowerKw: 0.4,
         expectedPowerKw: 0.6,
+        expectedPowerSource: 'homey-energy',
         targets: [{ name: 'target_temperature', value: 24 }],
       },
       {
@@ -597,6 +601,7 @@
         deviceClass: 'waterheater',
         measuredPowerKw: 2.1,
         expectedPowerKw: 2.0,
+        expectedPowerSource: 'load-setting',
       },
       {
         id: 'dev_poolpump',
@@ -613,6 +618,7 @@
         capabilities: ['onoff'],
         measuredPowerKw: 0,
         expectedPowerKw: 1.0,
+        expectedPowerSource: 'homey-energy',
       },
       {
         id: 'dev_bedroom',
@@ -624,6 +630,7 @@
         capabilities: ['onoff'],
         measuredPowerKw: 0,
         expectedPowerKw: 0.5,
+        expectedPowerSource: 'default',
         currentTemperature: 20.8,
         targets: [{ name: 'target_temperature', value: 16 }],
       },
@@ -637,6 +644,7 @@
         capabilities: ['onoff'],
         measuredPowerKw: 0,
         expectedPowerKw: 0.8,
+        expectedPowerSource: 'default',
         currentTemperature: 19.1,
         targets: [{ name: 'target_temperature', value: 20 }],
       },
@@ -653,6 +661,7 @@
         currentOn: true,
         measuredPowerKw: 1.38,
         expectedPowerKw: 1.38,
+        expectedPowerSource: 'load-setting',
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
         steppedLoadProfile: {
           model: 'stepped_load',
@@ -682,6 +691,7 @@
         plannedTarget: 65,
         measuredPowerKw: 0.0,
         expectedPowerKw: 0.0,
+        expectedPowerSource: 'default',
         capabilities: ['onoff'],
         steppedLoadProfile: {
           model: 'stepped_load',

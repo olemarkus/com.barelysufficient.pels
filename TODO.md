@@ -1829,6 +1829,26 @@ program) remain deferred.*
       lower a budget the home has been running past. Add the one-line caveat to the
       "Auto-applying the suggested budget" section. Source: 2026-08-02 release review, docs
       freshness pass. [P2]
+- [ ] **Widget doc screenshots are stale; the harness that refreshes them is never run.**
+      `docs/public/screenshots/widgets/*.png` were captured 2026-07-03 (two on 2026-06-01), but
+      `widgets/*/public/index.js` changed in 7abfcfaba (2026-08-05, which rewrote the held-card
+      copy), 42834e1bd (2026-08-07) and d0cab7bc3 (2026-08-09), so the held-back and smart-task
+      images show retired copy. `npm run docs:widget-screenshots`
+      (`scripts/build-doc-widget-screenshots.mjs`) regenerates all ten from the real built widget
+      and needs no Homey, but it is documented as "run locally (not in CI)" and nothing prompts it
+      — so widget copy changes ship without it. Re-run it, and give it the same
+      change-triggered prompt the settings-UI captures get. Source: 2026-08-10 docs/screenshot
+      freshness pass. [P2]
+- [ ] **Eleven device-detail captures are committed but referenced by no docs page.**
+      `docs/public/screenshots/device-detail/` holds fourteen images; only
+      `mw-thermostat-heatpump-full` (`docs/configuration.md`) and the two `solar-surplus-*`
+      (`docs/solar.md`) are used. `held-hero`, `diagnostics-open`, `setup-expanded`,
+      `thermostat-top`, `stepped-zaptec`, `shedding-with-temperature`, and the five remaining
+      `mw-*-full` variants are referenced only by the capture specs that produce them (plus one
+      citation in a `style.css:5418` comment), as is `docs/screenshots/deadline-plan/320.png`.
+      Either wire them into the pages they were shot for or stop capturing them — right now they
+      cost a refresh every time the device page moves and pay nothing back. Source: 2026-08-10
+      docs/screenshot freshness pass. [P2]
 - [ ] **The displayed restore shortfall omits live startup reservations.** When a
       higher-priority startup reservation (`headroomReserve`) is active, non-swap stepped
       rejections and binary batch continuations build their reason from the RAW headroom margin,
