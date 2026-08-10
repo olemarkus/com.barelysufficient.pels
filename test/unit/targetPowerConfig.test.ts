@@ -47,6 +47,19 @@ describe('normalizeTargetPowerSteppedLoadConfig', () => {
       .toBeUndefined();
   });
 
+  it('rejects an enabled range that yields no step ladder', () => {
+    // Accepting these is what let a device be classified as a stepped load with
+    // nowhere to stand: the config survived, the ladder resolved to nothing.
+    expect(normalizeTargetPowerSteppedLoadConfig({ enabled: true, max: 100, step: 500 }))
+      .toBeUndefined();
+    expect(normalizeTargetPowerSteppedLoadConfig({ max: 0, step: 500 }))
+      .toBeUndefined();
+    expect(normalizeTargetPowerSteppedLoadConfig({ max: 3680, step: 0 }))
+      .toBeUndefined();
+    expect(normalizeTargetPowerSteppedLoadConfig({ max: 100_000, step: 1 }))
+      .toBeUndefined();
+  });
+
   it('preserves disabled configs even without preset/max/step', () => {
     expect(normalizeTargetPowerSteppedLoadConfig({ enabled: false }))
       .toEqual({ enabled: false });
@@ -63,6 +76,7 @@ describe('normalizeDeviceTargetPowerConfigs', () => {
     expect(normalizeDeviceTargetPowerConfigs({
       good: { max: 3680, step: 460 },
       'min-raised': { min: 1380, max: 3680, step: 460 },
+      'no-ladder': { enabled: true, max: 100, step: 500 },
       empty: null,
     })).toEqual({
       good: { max: 3680, step: 460 },

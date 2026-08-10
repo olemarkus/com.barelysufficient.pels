@@ -1,9 +1,5 @@
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
-import type {
-  DeviceControlProfiles,
-  SteppedLoadProfile,
-} from '../../../../contracts/src/types.ts';
-import { normalizeDeviceControlProfiles } from '../../../../contracts/src/deviceControlProfiles.ts';
+import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailOverlay,
   deviceDetailTitle,
@@ -23,7 +19,6 @@ import {
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import {
-  applyLocalDeviceControlProfile,
   createDefaultSteppedLoadProfile,
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
@@ -31,7 +26,6 @@ import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
 import { state } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
-import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
 import {
   resetDeviceDetailDiagnosticsRequests,
   resetDeviceDetailDiagnosticsView,
@@ -83,7 +77,7 @@ import {
   loadTemperatureBoostSettings,
   renderTemperatureBoostSettings,
 } from './temperatureBoost.ts';
-import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
+import { persistDeviceControlProfile as persistDeviceControlProfileWrite } from './controlProfileWrite.ts';
 import {
   clearPendingNativeWiringEnable,
   initDeviceDetailNativeWiringHandler,
@@ -128,7 +122,6 @@ import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDe
 
 let currentDetailDeviceId: string | null = null;
 const pendingDeviceDetailOpen = createPendingDeviceDetailOpen();
-const runSerializedDeviceControlProfileWrite = createSerializedAsyncRunner();
 
 const getCurrentDetailDeviceId = () => currentDetailDeviceId;
 
@@ -270,53 +263,30 @@ const setDeviceDetailChargingCardState = (
   }
 };
 
-const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null): Promise<boolean> => (
-  runSerializedDeviceControlProfileWrite(async () => {
-    let didPersist = false;
-    await writeFreshSetting<DeviceControlProfiles>({
-      key: DEVICE_CONTROL_PROFILES,
-      context: 'device detail',
-      logMessage: 'Failed to save device control profile',
-      toastMessage: 'Failed to save device control profile.',
-      // Use the live in-memory profiles map as the snapshot fallback so
-      // that a transient null SDK read does not erase profiles for other
-      // devices. The first-write case is still safe: when no profiles
-      // exist locally either, the merged write is the user's new entry
-      // alone.
-      fallbackValue: state.deviceControlProfiles,
-      // Only normalize when the fresh SDK value is a real object.
-      // Anything else returns null so `writeFreshSetting` falls back to
-      // the snapshot instead of normalising garbage into `{}`.
-      readFresh: (value) => (
-        value && typeof value === 'object' && !Array.isArray(value)
-          ? normalizeDeviceControlProfiles(value)
-          : null
-      ),
-      mutate: (currentProfiles) => {
-        const nextProfiles = { ...currentProfiles };
-        if (profile) {
-          nextProfiles[deviceId] = profile;
-        } else {
-          delete nextProfiles[deviceId];
-        }
-        return nextProfiles;
-      },
-      commit: (nextProfiles) => {
-        state.deviceControlProfiles = nextProfiles;
-        applyLocalDeviceControlProfile(deviceId, profile);
-        refreshSharedDeviceViews();
-        notifyDevicesUpdated();
-        didPersist = true;
-      },
-      rollback: () => {
-        if (currentDetailDeviceId === deviceId) {
-          refreshOpenDeviceDetail();
-        }
-      },
-    });
-    return didPersist;
-  })
-);
+/**
+ * The single write boundary for `device_control_profiles`.
+ *
+ * Every caller passes a profile it believes is good — the editor's normalized
+ * draft, or the ladder generated when the owner switches to stepped control —
+ * so the guard here is about the class of bug rather than any caller in
+ * particular: nothing may persist a ladder with no step above 0 W, because
+ * PELS would then own a device it can pause and never resume. Refusing the
+ * write leaves the previous profile in place; the caller reports the failure.
+ */
+const persistDeviceControlProfile = (
+  deviceId: string,
+  profile: SteppedLoadProfile | null,
+): Promise<boolean> => persistDeviceControlProfileWrite({
+  deviceId,
+  profile,
+  onCommitted: () => {
+    refreshSharedDeviceViews();
+    notifyDevicesUpdated();
+  },
+  onRolledBack: (rolledBackDeviceId) => {
+    if (currentDetailDeviceId === rolledBackDeviceId) refreshOpenDeviceDetail();
+  },
+});
 
 const refreshOpenDeviceDetail = () => {
   if (!currentDetailDeviceId) return;

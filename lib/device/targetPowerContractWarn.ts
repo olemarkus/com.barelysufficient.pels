@@ -1,10 +1,8 @@
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { DeviceCapabilityMap } from './managerControl';
-import {
-  assessTargetPowerCapabilityOptions,
-  TARGET_POWER_CAPABILITY_ID,
-} from './nativeSteppedLoadWiring';
+import { TARGET_POWER_CAPABILITY_ID } from './nativeSteppedLoadWiring';
+import { assessTargetPowerLadderOptions } from '../../packages/shared-domain/src/targetPowerLadder';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('device/target-power-warn');
@@ -33,7 +31,7 @@ export function warnIfTargetPowerCapabilityViolatesContract(params: {
   if (!capabilities.includes(TARGET_POWER_CAPABILITY_ID)) return;
   const capability = capabilityObj[TARGET_POWER_CAPABILITY_ID];
   if (!capability || !isCapabilityPopulated(capability)) return;
-  const assessment = assessTargetPowerCapabilityOptions(capability);
+  const assessment = assessTargetPowerLadderOptions(capability);
   if (assessment.valid) return;
   const optionSnapshot = buildOptionSnapshot(capability);
   if (!shouldEmitContractWarning({

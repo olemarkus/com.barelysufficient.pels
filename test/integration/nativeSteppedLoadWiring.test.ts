@@ -6,7 +6,6 @@ import {
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
 } from '../../lib/device/deviceTransport';
 import {
-  assessTargetPowerCapabilityOptions,
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
@@ -1752,37 +1751,6 @@ describe('native stepped-load wiring', () => {
   });
 
   describe('target_power capability contract validation', () => {
-    it('accepts capability options whose range includes zero', () => {
-      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 3680, step: 460 }))
-        .toEqual({ valid: true });
-      expect(assessTargetPowerCapabilityOptions({ max: 3680, step: 460 }))
-        .toEqual({ valid: true });
-    });
-
-    it('rejects capability options that exclude zero by raising min', () => {
-      expect(assessTargetPowerCapabilityOptions({ min: 1380, max: 3680, step: 460 }))
-        .toEqual({ valid: false, issue: 'min_excludes_zero' });
-    });
-
-    it('rejects capability options missing max or step', () => {
-      expect(assessTargetPowerCapabilityOptions({ min: 0, step: 460 }))
-        .toEqual({ valid: false, issue: 'missing_max' });
-      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 3680 }))
-        .toEqual({ valid: false, issue: 'missing_step' });
-    });
-
-    it('rejects capability options with non-positive max or step', () => {
-      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 0, step: 460 }))
-        .toEqual({ valid: false, issue: 'negative_max' });
-      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 3680, step: 0 }))
-        .toEqual({ valid: false, issue: 'negative_step' });
-    });
-
-    it('rejects capability options that would generate too many steps', () => {
-      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 100_000, step: 1 }))
-        .toEqual({ valid: false, issue: 'too_many_generated_steps' });
-    });
-
     it('ignores configs whose min raises the range above zero', () => {
       const deviceManager = new DeviceTransport(
         mockHomeyInstance as unknown as Homey.App,

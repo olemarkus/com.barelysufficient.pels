@@ -41,6 +41,7 @@ For planner assumptions: use conservative still-on/still-high for shed decisions
 
 ### Hard invariants
 
+- **No stepped control without a usable ladder.** A profile counts as stepped only when it has a step above 0 W (`hasUsableSteppedLoadLadder`). An empty ladder and an off-only ladder are the same thing — control PELS could pause but never resume — and every producer of stepped identity refuses both: `resolveTargetPowerSteppedControl` returns the config and the ladder as one value or nothing at all, `resolveNativeSteppedLoadProfileSuggestion` and `resolveNativeSteppedLoadProfile` gate on the predicate, `normalizeSteppedLoadProfile` rejects the profile outright, and `asSteppedLoadProfile` (`setup/appDeviceControlHelpers.ts`) declines it at the decorator. Consumers therefore never have to ask a `stepped_load` device where its steps went. A device left with no lane and no binary/temperature axis drops out of the snapshot on the ordinary `resolveDeviceCapabilities` gate — the same immediate, grace-free exit a binary device takes when it loses `onoff`; grace windows are for network misses, not for a device that parsed out.
 - A local write (`setCapabilityValue`) is proof PELS requested a change — it is **not** proof the device converged.
 - Binary `onoff` confirmation is **not** full convergence. Power draw and final behavior may still lag.
 - A full snapshot refresh can be **older** than a recent realtime event or local write — never let it silently roll state backward.

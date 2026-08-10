@@ -391,14 +391,17 @@ export const initSteppedLoadDraftHandlers = (params: {
     const profile = collectSteppedLoadDraftFromDom();
     if (!profile) {
       throw new Error(
-        'Complete the stepped-load profile before saving. '
-        + 'Each step needs a unique id and valid planning power.',
+        'Complete the steps before saving. Each step needs its own name and a power in watts, '
+        + 'and at least one step must be above 0 W so the device can resume.',
       );
     }
 
     setSteppedLoadDraft(deviceId, profile);
     if (deviceDetailShedAction && deviceDetailShedAction.value === 'set_step') {
-      const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
+      // Re-affirms the stored selection against the profile just saved, and
+      // serializes this save behind any shed-behavior write still in flight.
+      // It no longer downgrades to `turn_off`: a profile that reaches here has
+      // at least one step above 0 W, so "set to step" always has a step.
       const nextBehaviors = await writeShedBehaviors({
         context: 'device detail',
         logMessage: 'Failed to save stepped-load profile',
@@ -410,7 +413,7 @@ export const initSteppedLoadDraftHandlers = (params: {
           }
           return {
             ...currentBehaviors,
-            [deviceId]: lowestActiveStepId ? { action: 'set_step' } : { action: 'turn_off' },
+            [deviceId]: { action: 'set_step' },
           };
         },
         commit: (nextBehaviors) => {

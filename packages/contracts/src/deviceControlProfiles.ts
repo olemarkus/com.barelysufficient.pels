@@ -45,11 +45,39 @@ export const getSteppedLoadOffStep = (profile: SteppedLoadProfile): SteppedLoadS
     ?? null
 );
 
+/**
+ * The off rule, in one place: a step is off when it draws nothing OR when it is
+ * named `off`, because the id is reserved and read as off on sight.
+ *
+ * `isSteppedLoadOffStep` and `hasUsableSteppedLoadLadder` are exact opposites
+ * over a single step and must stay that way. Spelling the rule twice let a row
+ * named `off` carrying positive power satisfy both at once: usable enough to
+ * admit the profile, off enough that restoring to it never resumes the device.
+ */
+const isOffStep = (step: SteppedLoadStep): boolean => step.planningPowerW <= 0 || step.id === 'off';
+
 export const isSteppedLoadOffStep = (profile: SteppedLoadProfile, stepId?: string | null): boolean => {
   const step = getSteppedLoadStep(profile, stepId);
   if (!step) return false;
-  return step.planningPowerW <= 0 || step.id === 'off';
+  return isOffStep(step);
 };
+
+/**
+ * Whether a ladder can actually run the device: at least one rung that is not
+ * an off step.
+ *
+ * A ladder of nothing, or of nothing but off steps, is not a weaker stepped
+ * profile — it is no stepped control at all. PELS could pause such a device but
+ * never resume it, and every consumer that asks the ladder where to put the
+ * device (`getSteppedLoadLowestActiveStep`, restore sizing, calibration) gets
+ * `null` back and has to invent an answer. So this is the admission test for
+ * calling anything a stepped load: the normalizer below rejects a profile that
+ * fails it, and the producers refuse to classify a device as stepped without
+ * it. Mirrored in `lib/utils/deviceControlProfiles.ts`.
+ */
+export const hasUsableSteppedLoadLadder = (
+  profile: Pick<SteppedLoadProfile, 'steps'> | null | undefined,
+): boolean => profile?.steps.some((step) => !isOffStep(step)) === true;
 
 export const resolveSteppedLoadPlanningPowerKw = (
   profile: SteppedLoadProfile,
@@ -124,7 +152,7 @@ export const normalizeSteppedLoadProfile = (
     })
     .filter((step): step is SteppedLoadStep => step !== null);
 
-  if (steps.length === 0) return null;
+  if (!hasUsableSteppedLoadLadder({ steps })) return null;
   const stepIds = new Set<string>();
   for (const step of steps) {
     if (stepIds.has(step.id)) return null;

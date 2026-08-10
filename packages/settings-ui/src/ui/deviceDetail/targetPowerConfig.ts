@@ -10,6 +10,11 @@ import {
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../contracts/src/settingsKeys.ts';
 import { createEvTargetPowerConfig } from '../../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
+  resolveTargetPowerLadderIssue,
+  TARGET_POWER_MAX_GENERATED_STEPS,
+  type TargetPowerLadderIssue,
+} from '../../../../shared-domain/src/targetPowerLadder.ts';
+import {
   deviceDetailTargetPowerClear,
   deviceDetailTargetPowerConfig,
   deviceDetailTargetPowerExcludeMax,
@@ -26,7 +31,6 @@ import { showToastError } from '../toast.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
 const runSerializedTargetPowerWrite = createSerializedAsyncRunner();
-const TARGET_POWER_MAX_GENERATED_STEPS = 128;
 
 export { createEvTargetPowerConfig };
 
@@ -34,19 +38,36 @@ export const createContinuousTargetPowerConfig = (
   device: SettingsUiDeviceDetailItem,
 ): TargetPowerSteppedLoadConfig => {
   const existing = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
-  if (existing && !existing.preset) return { ...existing, enabled: true };
+  // Carrying a previous range forward is a courtesy; carrying forward one that
+  // produces no steps would hand the runtime a config it has to throw away, so
+  // that case falls through to a freshly estimated range instead.
+  if (existing && !existing.preset && resolveTargetPowerLadderIssue(existing) === undefined) {
+    return { ...existing, enabled: true };
+  }
   // Seeds an editable draft, so one producer-resolved figure is enough — the
   // `?? measuredPowerKw ?? powerKw ?? 1.5` tail existed only because
   // `expectedPowerKw` used to be absent for a device nobody had described.
   const max = Math.max(1000, Math.round(device.expectedPowerKw * 1000));
-  const step = 100;
   return {
     enabled: true,
     min: 0,
     max,
-    step,
+    step: resolveSeedStepW(max),
   };
 };
+
+/**
+ * 100 W rungs, widened just enough to stay inside the shared step ceiling.
+ *
+ * A flat 100 W seed overflows on anything above ~12.8 kW — a three-phase
+ * charger seeded 220 rungs — and the screen would then hand the owner a draft
+ * its own Save rejects. Widening in 100 W multiples keeps the familiar
+ * granularity for ordinary loads and only coarsens where it has to.
+ */
+const resolveSeedStepW = (maxW: number): number => Math.max(
+  100,
+  Math.ceil(maxW / TARGET_POWER_MAX_GENERATED_STEPS / 100) * 100,
+);
 
 export const renderTargetPowerConfig = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailTargetPowerConfig) return;
@@ -146,25 +167,24 @@ function collectTargetPowerConfig(): TargetPowerSteppedLoadConfig {
   return config;
 }
 
+// Delegates to the shared assessment the runtime producer uses, so a range this
+// screen accepts is exactly a range PELS can build a ladder from. The messages
+// stay here because only this screen has a user to explain the rejection to.
+const TARGET_POWER_LADDER_ISSUE_MESSAGES: Record<TargetPowerLadderIssue, string> = {
+  missing_max: 'Max W and step W are required.',
+  missing_step: 'Max W and step W are required.',
+  negative_max: 'Max W and step W must be positive.',
+  negative_step: 'Max W and step W must be positive.',
+  min_excludes_zero: 'Min W must be 0 — use the excluded range to set the lowest power the device runs at.',
+  step_exceeds_range: 'This range produces no steps. Lower the step W or raise the max W.',
+  too_many_generated_steps:
+    `This range produces more than ${TARGET_POWER_MAX_GENERATED_STEPS} steps. Raise the step W.`,
+};
+
 function validateTargetPowerConfig(config: TargetPowerSteppedLoadConfig): void {
-  const max = config.max;
-  const step = config.step;
-  if (max === undefined || step === undefined) {
-    throw new Error('Max W and step W are required.');
-  }
-  if (max <= 0 || step <= 0) {
-    throw new Error('Max W and step W must be positive.');
-  }
-  const excludedMax = config.excludeMax && config.excludeMax > 0 ? config.excludeMax : undefined;
-  const configuredMin = config.min && config.min > 0 ? config.min : undefined;
-  const min = excludedMax ?? configuredMin ?? step;
-  if (min > max) {
-    throw new Error('Min W cannot be greater than max W.');
-  }
-  const stepCount = Math.floor((max - min) / step) + 1;
-  if (stepCount < 1 || stepCount > TARGET_POWER_MAX_GENERATED_STEPS) {
-    throw new Error(`Target power range must produce between 1 and ${TARGET_POWER_MAX_GENERATED_STEPS} steps.`);
-  }
+  const issue = resolveTargetPowerLadderIssue(config);
+  if (issue === undefined) return;
+  throw new Error(TARGET_POWER_LADDER_ISSUE_MESSAGES[issue]);
 }
 
 type ValueHost = HTMLElement & { value: string };

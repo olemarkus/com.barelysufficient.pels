@@ -822,9 +822,68 @@ describe('settings script', () => {
 
     expect(shedAction.value).toBe('set_step');
     // Simulate stale local state while the current panel still shows "set_step".
+    // Reading the stale copy instead of the live selection would skip the
+    // shed-behavior write entirely, which is what the assertions below catch.
     const { state } = await import('../src/ui/state.ts');
     state.shedBehaviors['dev-1'] = { action: 'turn_off' };
 
+    planningInputs[1].value = '1200';
+    planningInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    (document.querySelector('#device-detail-stepped-save') as HTMLButtonElement).click();
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      'overshoot_behaviors',
+      expect.anything(),
+      expect.any(Function),
+    );
+    expect(homey.__settingsStore.overshoot_behaviors).toEqual({
+      'dev-1': { action: 'set_step' },
+    });
+  });
+
+  it('refuses to save a stepped profile with no step the device can run at', async () => {
+    const homey = installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'eco', planningPowerW: 900 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step' },
+      },
+    });
+    await loadSettingsScript();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    vi.mocked(showToastError).mockClear();
+
+    (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    // Zero out every step above off. PELS could pause this device and never
+    // resume it, so the save is refused outright rather than downgraded.
+    const planningInputs = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
+    ) as HTMLInputElement[];
     planningInputs[1].value = '0';
     planningInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
     planningInputs[2].value = '0';
@@ -835,8 +894,20 @@ describe('settings script', () => {
     await flushPromises();
     await flushPromises();
 
+    expect(vi.mocked(showToastError)).toHaveBeenCalled();
+    // The stored profile and the shed behavior are both left exactly as they were.
+    expect(homey.__settingsStore.device_control_profiles).toEqual({
+      'dev-1': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'eco', planningPowerW: 900 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    });
     expect(homey.__settingsStore.overshoot_behaviors).toEqual({
-      'dev-1': { action: 'turn_off' },
+      'dev-1': { action: 'set_step' },
     });
   });
 

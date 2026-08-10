@@ -46,11 +46,29 @@ export const getSteppedLoadOffStep = (profile: SteppedLoadProfile): SteppedLoadS
     ?? null
 );
 
+/**
+ * The off rule, in one place: a step is off when it draws nothing OR when it is
+ * named `off`. `isSteppedLoadOffStep` and `hasUsableSteppedLoadLadder` are exact
+ * opposites over a single step — see the mirrored copy in
+ * `packages/contracts/src/deviceControlProfiles.ts` for why they must share it.
+ */
+const isOffStep = (step: SteppedLoadStep): boolean => step.planningPowerW <= 0 || step.id === 'off';
+
 export const isSteppedLoadOffStep = (profile: SteppedLoadProfile, stepId?: string): boolean => {
   const step = getSteppedLoadStep(profile, stepId);
   if (!step) return false;
-  return step.planningPowerW <= 0 || step.id === 'off';
+  return isOffStep(step);
 };
+
+/**
+ * Whether a ladder can actually run the device: at least one rung that is not
+ * an off step. The admission test for calling anything a stepped load — see the
+ * docblock on the mirrored copy in
+ * `packages/contracts/src/deviceControlProfiles.ts`.
+ */
+export const hasUsableSteppedLoadLadder = (
+  profile: Pick<SteppedLoadProfile, 'steps'> | null | undefined,
+): boolean => profile?.steps.some((step) => !isOffStep(step)) === true;
 
 /**
  * Step-axis "is this device parked at its off step?" — eligibility-free, kind-free.
@@ -160,7 +178,7 @@ export const normalizeSteppedLoadProfile = (
     })
     .filter((step): step is SteppedLoadStep => step !== null);
 
-  if (steps.length === 0) return null;
+  if (!hasUsableSteppedLoadLadder({ steps })) return null;
   const stepIds = new Set<string>();
   for (const step of steps) {
     if (stepIds.has(step.id)) return null;

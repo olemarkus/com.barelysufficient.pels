@@ -3,9 +3,20 @@ import type {
   TargetPowerSteppedLoadConfig,
   TargetPowerSteppedLoadPreset,
 } from '../../packages/contracts/src/types';
+import { assessTargetPowerLadderOptions } from '../../packages/shared-domain/src/targetPowerLadder';
 
 type UnknownRecord = Record<string, unknown>;
 
+/**
+ * The boundary that decides whether a persisted or device-supplied target-power
+ * config is stepped control at all.
+ *
+ * A config only survives here when it yields a usable ladder, so every consumer
+ * downstream may take "I have a config" to mean "I have a ladder". A range that
+ * cannot produce one — `{ max: 100, step: 500 }`, say — is dropped outright
+ * rather than kept as a config whose ladder resolves to nothing later; keeping
+ * it is what let a device be classified as stepped with nowhere to stand.
+ */
 export function normalizeTargetPowerSteppedLoadConfig(
   value: unknown,
 ): TargetPowerSteppedLoadConfig | undefined {
@@ -86,18 +97,17 @@ export function normalizeCompleteTargetPowerReachabilityByDevice(
 }
 
 function isAcceptableTargetPowerSteppedLoadConfig(config: TargetPowerSteppedLoadConfig): boolean {
+  // An explicit off is a record of the user's choice, not stepped control; it
+  // carries no range to validate and never reaches the ladder builder.
   if (config.enabled === false) return true;
+  // A preset owns its own rungs (`buildEvTargetPowerCandidateProfile`), which
+  // always include an amp step above zero, and falls back to the nominal 32 A
+  // ceiling when `max` is absent or junk.
   if (config.preset) return true;
-  return config.max !== undefined
-    && config.step !== undefined
-    && configRangeIncludesZero(config);
-}
-
-function configRangeIncludesZero(config: TargetPowerSteppedLoadConfig): boolean {
-  // Homey's target_power contract requires the range to include 0 (idle).
-  // Reject manual/synthetic configs that raise min above 0; minimum operating
-  // power should be modeled with excludeMin/excludeMax instead.
-  return config.min === undefined || config.min <= 0;
+  // Everything else is a range, and a range only counts when it yields a
+  // ladder. This is the same assessment the producer and the settings UI run,
+  // so the three cannot drift apart.
+  return assessTargetPowerLadderOptions(config).valid;
 }
 
 export function normalizeDeviceTargetPowerConfigs(
