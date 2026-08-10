@@ -526,6 +526,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     return this.flowBacked.setExpectedOverride(deviceId, kw);
   }
 
+  public reloadExpectedPowerOverrides = (): void => this.flowBacked.reloadExpectedPowerOverrides();
+
   public getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (
     readFlowReportedCapabilitiesForDevice(this.flowReportedCapabilities, deviceId)
   );

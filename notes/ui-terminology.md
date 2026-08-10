@@ -420,6 +420,37 @@ renders visible-but-disabled with a gate hint naming the real switch**
 sections are structurally absent. Never vanish a control the user could
 re-enable from this page.
 
+### Device-page "Power when running" — one line about the present source
+
+The device's Setup section carries **Power when running** (watts, `suffix-text="W"`)
+— the manual expected-power figure, the same record the **Set expected power for
+device** Flow card writes. The field is prefilled with the figure PELS is using
+RIGHT NOW, whichever rung of the expected-power ladder produced it
+(`lib/device/devicePowerEstimate.ts`), so typing over it is an edit of a visible
+number rather than a blind entry. Emptying it returns the device to automatic.
+Hidden for a stepped load, which is sized per configured step — the same refusal
+the runtime and the Flow card make.
+
+Under it sits **one sentence naming the source answering now** — never a history.
+No timestamps, no "changed from X to Y", no confidence wording: what makes the
+override decision informed is which source is answering, not how it got there.
+Source of truth: `expectedPowerSourceLine` in
+`packages/shared-domain/src/expectedPowerCopy.ts`.
+
+| `expectedPowerSource` | Sentence |
+|---|---|
+| `manual` | `This is your figure.` |
+| `load-setting` | `From this device's own settings in Homey.` |
+| `measured-peak` | `PELS measured this while the device was running.` |
+| `homey-energy` | `From Homey's energy information for this device.` |
+| `default` | `PELS has no reading for this device yet, so it is using a rough estimate. Enter the figure if you know it.` |
+
+The `default` row is the one that matters: it is the reported bug's signature (a
+device sized against a figure PELS invented) and must read as an invitation to
+correct it, not as a settled fact. Reading `expectedPowerSource` to say where the
+number came from is its one sanctioned use — no surface may branch on it to
+decide behaviour.
+
 ### "Held back" — the Held-back-devices widget
 
 The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining, with a per-device **Let it run now** action (a one-device rescue that lifts the budget for it and clears room from lower-priority load — never a hard-cap change). Every row reads `Held back · N min`, rolling over into hours past 60 minutes (`Held back · 2 h 15 min`). The former cause-specific `Waiting · N min` variant went with the `budget`/`capacity` bucket on 2026-08-04: the bucket was a snapshot of whichever constraint bound on the last tick, so a steady device flipped chip word — and rescue button — between cycles. (There is no "manual"/"external" cause either: a device PELS merely keeps below its target is not held back, so it never appears here.) The only row without a rescue button is one whose device already has its own smart task, which says so in a note. This is a deliberate, widget-scoped synonym of the overview **Limited** state word: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview state word) and **Held back** (the widget and device-detail diagnostics).

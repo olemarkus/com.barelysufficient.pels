@@ -13,6 +13,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
   DAILY_BUDGET_ENABLED,
@@ -103,6 +104,17 @@ export type SettingsHandlerDeps = {
    * whose device is no longer opted in. Returns the released device ids.
    */
   releaseDeOptedExternalOffHolds?: () => string[];
+  /**
+   * Adopt the persisted manual expected-power figures into the live map the
+   * runtime resolves against. The map is otherwise loaded only at boot, so a
+   * settings-UI write to `DEVICE_EXPECTED_POWER_OVERRIDES` needs this to take
+   * effect without a restart.
+   *
+   * REQUIRED, unlike the optional hooks above: absence is not a state a caller
+   * can be in — an unwired seam here means the write silently does nothing
+   * until the next restart, which is precisely the bug this closes.
+   */
+  reloadExpectedPowerOverrides: () => void;
   /**
    * Synchronously observe a source settings event before it enters the async
    * settings queue. This closes per-home authorization for the new generation.
@@ -396,6 +408,15 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // `externalOffHoldActive` is re-resolved from the cached snapshot by the
       // rebuild below.
       await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
+    },
+    [DEVICE_EXPECTED_POWER_OVERRIDES]: async () => {
+      // Reload FIRST: expected power is resolved during the device parse
+      // (`lib/device/devicePowerEstimate.ts`) from the in-memory override map,
+      // so a snapshot refreshed before the adoption would re-parse against the
+      // figure the owner just replaced.
+      deps.reloadExpectedPowerOverrides();
+      await refreshSnapshotWithLog(deps, 'expected_power_override_change');
+      await rebuildPlanFromSettings(deps, DEVICE_EXPECTED_POWER_OVERRIDES);
     },
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();

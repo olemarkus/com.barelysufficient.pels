@@ -67,6 +67,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
   return {
     homey,
     loadCapacitySettings: vi.fn(),
+    reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
     loadPowerTracker: vi.fn(),

@@ -455,6 +455,7 @@ describe('settings-change recompute triggers', () => {
     homey: mockHomeyInstance as unknown as SettingsHandlerDeps['homey'],
     recomputeHomeMembership: recompute,
     loadCapacitySettings: vi.fn(),
+    reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
     loadPowerTracker: vi.fn(),

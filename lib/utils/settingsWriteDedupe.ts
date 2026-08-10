@@ -20,6 +20,7 @@ import {
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
@@ -49,6 +50,10 @@ const DEDUPED_CAPACITY_KEYS = [
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   DEVICE_DRIVER_OVERRIDES,
+  // The Flow card and the settings-UI field write the same record, and the Flow
+  // card refreshes + replans on its own path. Deduping stops a re-persist of an
+  // unchanged record from costing a second snapshot re-parse.
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   BUDGET_EXEMPT_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,

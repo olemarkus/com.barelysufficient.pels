@@ -510,6 +510,7 @@ export function initSettingsHandlerForApp(
     ),
     reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
     releaseDeOptedExternalOffHolds: () => ctx.externalOffHold?.releaseDeOptedHolds() ?? [],
+    reloadExpectedPowerOverrides: () => ctx.reloadExpectedPowerOverrides(),
   });
   const onSettingsSet = async (key: string) => {
     await settingsHandler?.(key);

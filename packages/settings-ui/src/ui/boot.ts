@@ -85,6 +85,7 @@ import {
 import { initWeatherInsight } from './weatherInsight.ts';
 import {
   initDeviceDetailHandlers,
+  loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
   loadEvCarAssociations,
   loadShedBehaviors,
@@ -406,6 +407,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadShedBehaviors(),
     loadTemperatureBoostSettings(),
     loadEvBoostSettings(),
+    loadDeviceExpectedPowerOverrides(),
     loadEvCarAssociations(),
     loadDeferredObjectiveSettings(),
     loadStarvationRescuableDevices(),

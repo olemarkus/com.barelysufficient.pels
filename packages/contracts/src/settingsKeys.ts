@@ -37,6 +37,11 @@ export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
+// The owner's manual "Power when running" figures: `Record<deviceId, { kw, ts }>`
+// (absent entry = PELS resolves the figure itself). Mirror of
+// DEVICE_EXPECTED_POWER_OVERRIDES in lib/utils/settingsKeys.ts — keep both in
+// sync (the settings UI can't import lib).
+export const DEVICE_EXPECTED_POWER_OVERRIDES = 'device_expected_power_overrides';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
 // Per-device objective key prefix (`deferred_objective.<deviceId>`). Mirror of
 // `PER_DEVICE_OBJECTIVE_KEY_PREFIX` in lib/objectives/deferredObjectives/objectiveStore.ts —
