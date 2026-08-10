@@ -38,6 +38,11 @@ export type DeviceDiagnosticsPlanObservation = {
   // suppression. A device the USER turned off (PELS not shedding it) has
   // `plannedState !== 'shed'` and never sets this.
   pelsCommandsTurnOffShed: boolean;
+  // PELS is holding this device below its intended/mode target — a lowered
+  // commanded setpoint OR a turn_off shed while the room sits below target.
+  // Resolved ONCE in the producer (`lib/plan/planDiagnostics.ts`) so the
+  // starvation clock and the demand/censoring counters can never diverge.
+  pelsHoldsBelowTarget: boolean;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;

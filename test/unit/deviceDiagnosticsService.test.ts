@@ -66,6 +66,7 @@ const buildObservation = (
   commandedTargetC: 18,
   targetStepC: 0.5,
   pelsCommandsTurnOffShed: false,
+  pelsHoldsBelowTarget: true,
   suppressionState: 'counting',
   countingCause: 'capacity',
   pauseReason: null,
@@ -556,6 +557,7 @@ describe('DeviceDiagnosticsService', () => {
         suppressionState: 'none',
         commandedTargetC: 65,
         intendedNormalTargetC: 65,
+        pelsHoldsBelowTarget: false,
         appliedStateSummary: '65.0C',
       })],
     });
@@ -797,6 +799,8 @@ describe('DeviceDiagnosticsService', () => {
       commandedTargetC: 18,
       currentTemperatureC: 18.5,
       pelsCommandsTurnOffShed: true,
+      // Off but at/above target — the producer resolves no hold below target.
+      pelsHoldsBelowTarget: false,
       suppressionState: 'counting',
       countingCause: 'capacity',
       pauseReason: null,
@@ -834,6 +838,7 @@ describe('DeviceDiagnosticsService', () => {
       commandedTargetC: 18,
       currentTemperatureC: 16,
       pelsCommandsTurnOffShed: false,
+      pelsHoldsBelowTarget: false,
       suppressionState: 'none',
       countingCause: null,
       pauseReason: null,
@@ -986,6 +991,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (20 * 60 * 1000),
       observations: [buildObservation({
         commandedTargetC: 22,
+        pelsHoldsBelowTarget: false,
         suppressionState: 'none',
         countingCause: null,
         pauseReason: null,
@@ -995,6 +1001,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (29 * 60 * 1000),
       observations: [buildObservation({
         commandedTargetC: 22,
+        pelsHoldsBelowTarget: false,
         suppressionState: 'none',
         countingCause: null,
         pauseReason: null,
@@ -1004,6 +1011,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (31 * 60 * 1000),
       observations: [buildObservation({
         commandedTargetC: 22,
+        pelsHoldsBelowTarget: false,
         suppressionState: 'none',
         countingCause: null,
         pauseReason: null,
@@ -1113,6 +1121,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (30 * 60 * 1000),
       observations: [buildObservation({
         commandedTargetC: 22,
+        pelsHoldsBelowTarget: false,
         suppressionState: 'none',
         countingCause: null,
         pauseReason: null,
@@ -1122,6 +1131,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (40 * 60 * 1000),
       observations: [buildObservation({
         commandedTargetC: 22,
+        pelsHoldsBelowTarget: false,
         suppressionState: 'none',
         countingCause: null,
         pauseReason: null,

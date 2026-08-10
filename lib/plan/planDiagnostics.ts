@@ -139,6 +139,68 @@ const resolvePelsCommandsTurnOffShed = (
   && device.shedAction === 'turn_off'
 );
 
+// Half a target step, the epsilon both below-target checks use. It keeps float
+// quantization noise from reading an equal command as "below".
+const belowTargetEpsilonC = (targetStepC: number | null): number => (
+  isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25
+);
+
+// PELS is holding the device below its intended/mode target when the target it
+// is COMMANDING sits more than half a target step under the intended target.
+// A device PELS commands in full (commanded == intended) is never below.
+const pelsCommandsBelowTarget = (
+  intendedNormalTargetC: number | null,
+  commandedTargetC: number | null,
+  targetStepC: number | null,
+): boolean => {
+  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(commandedTargetC)) return false;
+  return commandedTargetC < intendedNormalTargetC - belowTargetEpsilonC(targetStepC);
+};
+
+// PELS is holding a turn_off-shed device below its intended target when it has
+// commanded the device OFF as a shed AND the device's temperature still sits
+// more than half a target step under the intended target. The turn_off shed
+// itself is PELS limiting the device (no setpoint is lowered, so
+// `pelsCommandsBelowTarget` cannot see it); the temperature comparison excludes
+// a device that is off because it has already reached / overshot its target
+// (genuinely satisfied, not starved). Only PELS-commanded turn_off sheds set
+// `pelsCommandsTurnOffShed` — a user-off device never qualifies.
+const pelsHoldsOffBelowTarget = (
+  pelsCommandsTurnOffShed: boolean,
+  intendedNormalTargetC: number | null,
+  currentTemperatureC: number | null,
+  targetStepC: number | null,
+): boolean => {
+  if (!pelsCommandsTurnOffShed) return false;
+  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(currentTemperatureC)) return false;
+  return currentTemperatureC < intendedNormalTargetC - belowTargetEpsilonC(targetStepC);
+};
+
+/**
+ * The one resolution of "PELS is holding this device below its intended target",
+ * resolved HERE in the producer and carried on the observation. Both consumers
+ * read the same boolean: the starvation episode engine (the "Held back" clock)
+ * and the demand/censoring counters that feed the daily-budget evidence. They
+ * disagreed for five days in production — the censoring side saw only a lowered
+ * setpoint, so a turn_off shed recorded nothing while the badge counted hours —
+ * which is exactly the divergence a single producer-side resolution forecloses.
+ */
+const resolvePelsHoldsBelowTarget = (params: {
+  intendedNormalTargetC: number | null;
+  commandedTargetC: number | null;
+  currentTemperatureC: number | null;
+  targetStepC: number | null;
+  pelsCommandsTurnOffShed: boolean;
+}): boolean => (
+  pelsCommandsBelowTarget(params.intendedNormalTargetC, params.commandedTargetC, params.targetStepC)
+  || pelsHoldsOffBelowTarget(
+    params.pelsCommandsTurnOffShed,
+    params.intendedNormalTargetC,
+    params.currentTemperatureC,
+    params.targetStepC,
+  )
+);
+
 const resolveTargetStepC = (
   inputDevice: PlanInputDevice | undefined,
   intendedNormalTargetC: number | null,
@@ -249,13 +311,21 @@ const buildAppliedStateSummary = (
   return currentTarget !== null ? `${currentTarget.toFixed(1)}C` : 'unknown';
 };
 
+// A device wants energy it is not getting. For a device with a resolvable target
+// that is EITHER a lowered setpoint (`targetDeficitActive`) OR a turn_off shed
+// while the room sits below target — the second disjunct is load-bearing: a
+// turn_off shed leaves the setpoint intact, so the setpoint comparison alone
+// reads a device PELS has switched off for hours as fully satisfied, and every
+// counter gated on `unmetDemand` records nothing. Devices with no resolvable
+// target keep the plain off-and-not-inactive test.
 const resolveUnmetDemand = (
   desiredTarget: number | null,
   includeDemandMetrics: boolean,
   targetDeficitActive: boolean,
+  pelsHoldsBelowTarget: boolean,
   device: DevicePlanDevice,
 ): boolean => {
-  if (desiredTarget !== null) return targetDeficitActive;
+  if (desiredTarget !== null) return targetDeficitActive || (includeDemandMetrics && pelsHoldsBelowTarget);
   return includeDemandMetrics && device.currentState === 'off' && device.plannedState !== 'inactive';
 };
 
@@ -319,7 +389,20 @@ const buildDiagnosticsObservation = (params: {
     && desiredTarget !== null
     && currentTarget !== null
     && desiredTarget - currentTarget >= TARGET_DEFICIT_EPSILON_C;
-  const unmetDemand = resolveUnmetDemand(desiredTarget, includeDemandMetrics, targetDeficitActive, device);
+  const pelsHoldsBelowTarget = resolvePelsHoldsBelowTarget({
+    intendedNormalTargetC,
+    commandedTargetC,
+    currentTemperatureC,
+    targetStepC,
+    pelsCommandsTurnOffShed,
+  });
+  const unmetDemand = resolveUnmetDemand(
+    desiredTarget,
+    includeDemandMetrics,
+    targetDeficitActive,
+    pelsHoldsBelowTarget,
+    device,
+  );
 
   return {
     deviceId: device.id,
@@ -342,6 +425,7 @@ const buildDiagnosticsObservation = (params: {
     commandedTargetC,
     targetStepC,
     pelsCommandsTurnOffShed,
+    pelsHoldsBelowTarget,
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,

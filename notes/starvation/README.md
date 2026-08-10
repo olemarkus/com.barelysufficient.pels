@@ -105,6 +105,20 @@ change to this lane that breaks one is a regression, not a tuning choice**:
    device blocked by capacity in one hour can still run in another if the DAY
    had more budget — so the filter under-counted real evidence, and on the home
    this was built from capacity was the binding source in 0–8% of rebuilds.
+
+   > **2026-08-11 — these counters were blind to turn_off sheds for a week in
+   > production.** Both totals are gated on `unmetDemand`, which for a device
+   > with a resolvable target was purely a SETPOINT comparison — and a `turn_off`
+   > shed leaves the setpoint at the mode target. When the production home's
+   > thermostats moved to turn-off shedding on 2026-08-03, every counter fell to
+   > ~36 s/day while devices sat off for hours, and this loop only ever decayed
+   > through it. `resolveUnmetDemand` now also consults the producer-resolved
+   > `pelsHoldsBelowTarget` (the same signal the starvation clock uses), so the
+   > counters record again. The 08-03 → 08-10 window cannot be backfilled. This
+   > evidence channel is being replaced outright by day-close episode outcomes
+   > ("was anything still denied when the day ended, provably by the budget") —
+   > see the follow-up PR stacked on this fix; these bounds will be rewritten
+   > there.
 4. **Bounded per day and in total.** ≤ 10 kWh added per day, ≤ 40 kWh
    accumulated, ≤ 50% of the day's prediction when applied, and the whole
    suggestion is still clamped by `capacityLimitKw × 24` and the [20, 360] setting
