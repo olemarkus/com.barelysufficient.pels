@@ -417,6 +417,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.reloadExpectedPowerOverrides();
       await refreshSnapshotWithLog(deps, 'expected_power_override_change');
       await rebuildPlanFromSettings(deps, DEVICE_EXPECTED_POWER_OVERRIDES);
+      // The override map is global and keyed on device, not on meter area, so a
+      // device assigned to a sub-home is replanned by that home's runtime and
+      // not by the rebuild above. Without this fan-out it would keep sizing
+      // against the figure the owner just replaced until the next restart.
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange?.();
     },
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();

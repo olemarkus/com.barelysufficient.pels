@@ -4,7 +4,7 @@ import type {
 } from '../../../../contracts/src/types.ts';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../../../contracts/src/settingsKeys.ts';
 import { expectedPowerSourceLine } from '../../../../shared-domain/src/expectedPowerCopy.ts';
-import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
+import { isSteppedLoadProfileActive } from '../deviceControlProfiles.ts';
 import { supportsPowerDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailExpectedPower,
@@ -34,11 +34,17 @@ const INVALID_EXPECTED_POWER_MESSAGE = 'Power when running must be a positive nu
  * is sized per configured step, so one whole-device figure has nothing to apply
  * to. Hidden rather than disabled — the step editor on the same page is where
  * that device's power is described, so there is no switch here to lift.
+ *
+ * The refusal turns on a profile that is ACTIVE, not on one that is merely
+ * suggested, so this asks the same question. A native device whose stepped
+ * activation is off — or whose owner switched the control model back to Default
+ * — is binary-controlled, the runtime WILL take its figure, and hiding the field
+ * would leave the owner nothing to correct the estimate with.
  */
 export const supportsExpectedPowerDevice = (
   device: SettingsUiDeviceDetailItem | null | undefined,
 ): boolean => (
-  supportsPowerDevice(device) && !hasSteppedLoadSupport(device as SettingsUiDeviceView | null)
+  supportsPowerDevice(device) && !isSteppedLoadProfileActive(device)
 );
 
 type ExpectedPowerFieldEntry =
@@ -87,14 +93,11 @@ export const renderExpectedPowerField = (device: SettingsUiDeviceView | null) =>
   // of the ladder wins, so the field shows what PELS is using right now — not
   // only the override. Typing over it is then an edit of a visible number.
   deviceDetailExpectedPower.value = String(Math.round(device.expectedPowerKw * 1000));
-  // `expectedPowerSource` is stamped by the same producer and is only ever
-  // absent because the contract still declares it optional. Nothing is invented
-  // for that case: the line is simply not rendered.
-  const sourceLine = device.expectedPowerSource === undefined
-    ? ''
-    : expectedPowerSourceLine(device.expectedPowerSource);
-  deviceDetailExpectedPowerSource.textContent = sourceLine;
-  deviceDetailExpectedPowerSource.hidden = sourceLine.length === 0;
+  // `expectedPowerSource` is stamped by the same producer and is REQUIRED on the
+  // contract, so there is no absent case to render around: every device has a
+  // rung, and the line always says which one is answering.
+  deviceDetailExpectedPowerSource.textContent = expectedPowerSourceLine(device.expectedPowerSource);
+  deviceDetailExpectedPowerSource.hidden = false;
 };
 
 type ExpectedPowerHandlerDeps = {

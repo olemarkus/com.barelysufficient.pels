@@ -63,9 +63,8 @@ export const isNativeSteppedLoadProfileActive = (device?: SettingsUiDeviceView |
   && device.suggestedSteppedLoadProfile?.model === 'stepped_load'
 );
 
-const hasSteppedLoadProfileState = (device: SettingsUiDeviceView): boolean => (
+const hasResolvedSteppedLoadProfile = (device: SettingsUiDeviceView): boolean => (
   device.steppedLoadProfile?.model === 'stepped_load'
-  || device.suggestedSteppedLoadProfile?.model === 'stepped_load'
   || getStoredDeviceControlProfile(device.id)?.model === 'stepped_load'
 );
 
@@ -75,13 +74,42 @@ const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean =>
     && (targetPowerConfig?.preset === 'ev_charger_1_phase' || targetPowerConfig?.preset === 'ev_charger_3_phase');
 };
 
-export const hasSteppedLoadSupport = (device?: SettingsUiDeviceView | null): boolean => {
+/**
+ * Is a stepped-load profile ACTUALLY governing this device right now?
+ *
+ * This is the UI's mirror of the runtime's own answer. `getSteppedLoadProfile`
+ * (`setup/appDeviceControlHelpers.ts`) resolves the effective profile, and
+ * `decorateTargetSnapshotList` runs that same resolution — target-power configs
+ * first, then `resolveEffectiveSteppedLoadProfile` — before publishing the
+ * snapshot this UI reads. So the decorated `steppedLoadProfile` IS the runtime's
+ * verdict, and the other rungs only cover an edit this page is holding that the
+ * runtime has not re-parsed yet: a locally saved control profile, a locally
+ * enabled EV target-power preset, an observed native activation.
+ *
+ * What is deliberately NOT a rung: a bare `suggestedSteppedLoadProfile`. The
+ * runtime honours a suggestion only once native activation is enabled or the
+ * control model has actually been switched to stepped
+ * (`resolveSuggestedSteppedLoadProfile` gates on `controlModel`), so a device
+ * merely carrying one is still binary-controlled.
+ */
+export const isSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null): boolean => {
   if (!device) return false;
   if (isNativeSteppedLoadProfileActive(device)) return true;
-  if (hasSteppedLoadProfileState(device)) return true;
-  if (hasEnabledEvTargetPowerPreset(device)) return true;
-  return false;
+  if (hasResolvedSteppedLoadProfile(device)) return true;
+  return hasEnabledEvTargetPowerPreset(device);
 };
+
+/**
+ * May this device be OFFERED stepped controls? Wider than the predicate above by
+ * exactly one rung — a native device carrying a suggested profile whose stepped
+ * activation is still off. That device gets the step editor (turning activation
+ * on is the point of the surface) while remaining binary-controlled everywhere
+ * else, so do not use this to decide what a binary device may configure.
+ */
+export const hasSteppedLoadSupport = (device?: SettingsUiDeviceView | null): boolean => (
+  isSteppedLoadProfileActive(device)
+  || device?.suggestedSteppedLoadProfile?.model === 'stepped_load'
+);
 
 export const getEffectiveControlModel = (device: SettingsUiDeviceView): DeviceControlModel => {
   if (isNativeSteppedLoadProfileActive(device)) return 'stepped_load';

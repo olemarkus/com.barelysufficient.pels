@@ -11,6 +11,7 @@ import {
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   DEVICE_COMMUNICATION_MODELS,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -150,6 +151,23 @@ describe('createSettingsHandler', () => {
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(
       `settings:${TEMPERATURE_CONTROL_DISABLED_DEVICES}`,
+    );
+    expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('fans an expected-power override out to sub-home plans, after re-reading it', async () => {
+    // The map is keyed on device, not on meter area, so a device living in an
+    // initialized sub-home is replanned only by that home's runtime.
+    const rebuildAllHomeRuntimePlansForDeviceControlChange = vi.fn();
+    const deps = buildDeps({ rebuildAllHomeRuntimePlansForDeviceControlChange });
+    const handler = createSettingsHandler(deps);
+
+    await handler(DEVICE_EXPECTED_POWER_OVERRIDES);
+
+    expect(deps.reloadExpectedPowerOverrides).toHaveBeenCalledTimes(1);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(
+      `settings:${DEVICE_EXPECTED_POWER_OVERRIDES}`,
     );
     expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
   });

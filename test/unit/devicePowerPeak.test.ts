@@ -153,9 +153,28 @@ describe('classifyLearnedPeaksSetting', () => {
     expect(classifyLearnedPeaksSetting({ raw: 'nonsense', ...absent })).toEqual({ state: 'unavailable' });
     expect(classifyLearnedPeaksSetting({ raw: [withinWindow], ...absent })).toEqual({ state: 'unavailable' });
   });
+
+  it('resolves a record stored with no entries at all, because that is a real clear', () => {
+    // `{}` is what reaches disk when the last peak is dropped. It has to stay
+    // observable, or a home in that state could never write back again.
+    expect(classifyLearnedPeaksSetting({ raw: {}, ...absent }))
+      .toEqual({ state: 'resolved', peaks: {} });
+  });
+
+  it('is unavailable for a record whose entries ALL fail validation', () => {
+    // Keys were stored and not one survived: that is a value PELS did not
+    // write, so it gets the same refusal as a string or an array — not the
+    // "resolved, nothing here" that would license overwriting it.
+    expect(classifyLearnedPeaksSetting({
+      raw: { a: 'nonsense', b: { kw: -1, observedAtMs: NOW } },
+      ...absent,
+    })).toEqual({ state: 'unavailable' });
+  });
 });
 
 describe('classifyExpectedPowerOverridesSetting', () => {
+  const absent = { keyPresent: false, keyListEmpty: false };
+
   it('separates a resolved-empty record from an unreadable key', () => {
     expect(classifyExpectedPowerOverridesSetting({
       raw: null,
@@ -166,6 +185,26 @@ describe('classifyExpectedPowerOverridesSetting', () => {
       raw: null,
       keyPresent: true,
       keyListEmpty: false,
+    })).toEqual({ state: 'unavailable' });
+  });
+
+  it('resolves a record stored with no entries at all, because that is a real clear', () => {
+    // The owner deleting their last manual figure persists exactly this.
+    expect(classifyExpectedPowerOverridesSetting({ raw: {}, ...absent }))
+      .toEqual({ state: 'resolved', overrides: {} });
+  });
+
+  it('resolves the survivors when only SOME entries fail, keeping rejection entry-wise', () => {
+    expect(classifyExpectedPowerOverridesSetting({
+      raw: { good: { kw: 2.4, ts: NOW }, bad: { kw: 'x', ts: NOW } },
+      ...absent,
+    })).toEqual({ state: 'resolved', overrides: { good: { kw: 2.4, ts: NOW } } });
+  });
+
+  it('is unavailable for a record whose entries ALL fail validation', () => {
+    expect(classifyExpectedPowerOverridesSetting({
+      raw: { a: { kw: 'x', ts: NOW }, b: 7 },
+      ...absent,
     })).toEqual({ state: 'unavailable' });
   });
 });
