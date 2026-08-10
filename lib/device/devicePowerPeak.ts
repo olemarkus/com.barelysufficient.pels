@@ -191,6 +191,9 @@ export type PersistedRecordReadEvidence = {
  * `{}`; on a cold boot the in-memory record is empty too, so the "empty parse
  * while non-empty state is held" guard could not fire, and the next write
  * replaced a perfectly good persisted record with nothing.
+ *
+ * The one empty parse that is NOT a real answer is a record that carried keys
+ * and lost every one to validation — see `isWhollyUnparsableRecord`.
  */
 export type LearnedPeaksRead =
   | { state: 'resolved'; peaks: LearnedPeaksByDeviceId }
@@ -212,11 +215,38 @@ const isConfirmedAbsence = (evidence: PersistedRecordReadEvidence): boolean => (
 
 const isAbsentRead = (raw: unknown): boolean => raw === undefined || raw === null;
 
+/**
+ * A record that carried entries and lost EVERY one of them to validation is
+ * corruption, not a clear.
+ *
+ * The parsers reject entry-wise on purpose, and that stays: while at least one
+ * entry survives, the rest are simply absent and their devices fall through the
+ * ladder. But a record whose keys ALL fail is the same case the branch below
+ * already refuses — a value under this key that PELS did not write. Parsing it
+ * down to `{}` and answering "resolved, nothing here" would license the very
+ * overwrite that refusal exists to prevent, and would do it while looking
+ * exactly like the one thing that must stay observable: `{}` really persisted,
+ * which is how the owner clearing their last manual figure reaches disk.
+ *
+ * So the zero-key record keeps its meaning and only the wholly-unreadable one
+ * changes: nothing is known about this key, so the caller may neither adopt it
+ * nor write over it.
+ */
+const isWhollyUnparsableRecord = (
+  raw: Record<string, unknown>,
+  parsed: Record<string, unknown>,
+): boolean => Object.keys(raw).length > 0 && Object.keys(parsed).length === 0;
+
 export const classifyLearnedPeaksSetting = (
   evidence: PersistedRecordReadEvidence,
 ): LearnedPeaksRead => {
   const record = asRecord(evidence.raw);
-  if (record) return { state: 'resolved', peaks: parseLearnedPeaks(record) };
+  if (record) {
+    const peaks = parseLearnedPeaks(record);
+    return isWhollyUnparsableRecord(record, peaks)
+      ? { state: 'unavailable' }
+      : { state: 'resolved', peaks };
+  }
   if (isAbsentRead(evidence.raw)) {
     return isConfirmedAbsence(evidence) ? { state: 'resolved', peaks: {} } : { state: 'unavailable' };
   }
@@ -229,7 +259,12 @@ export const classifyExpectedPowerOverridesSetting = (
   evidence: PersistedRecordReadEvidence,
 ): ExpectedPowerOverridesRead => {
   const record = asRecord(evidence.raw);
-  if (record) return { state: 'resolved', overrides: parseExpectedPowerOverrides(record) };
+  if (record) {
+    const overrides = parseExpectedPowerOverrides(record);
+    return isWhollyUnparsableRecord(record, overrides)
+      ? { state: 'unavailable' }
+      : { state: 'resolved', overrides };
+  }
   if (isAbsentRead(evidence.raw)) {
     return isConfirmedAbsence(evidence)
       ? { state: 'resolved', overrides: {} }

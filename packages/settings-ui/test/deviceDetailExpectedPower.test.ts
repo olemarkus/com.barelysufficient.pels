@@ -221,4 +221,36 @@ describe('device detail power when running', () => {
 
     expect(row().hidden).toBe(true);
   });
+
+  it('shows the field for a native candidate whose stepped activation is still off', async () => {
+    // A suggestion is not a control model. With activation off the device is
+    // binary-controlled, `setExpectedOverride` takes its figure, and hiding the
+    // field would strand the owner with no way to correct the estimate.
+    await openDetailFor(buildDevice({
+      controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
+      suggestedSteppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 2000 }],
+      },
+    }));
+
+    expect(row().hidden).toBe(false);
+  });
+
+  it('hides the field again once that native stepped activation is enabled', async () => {
+    await openDetailFor(buildDevice({
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationAvailable: true,
+        activationRequired: true,
+        activationEnabled: true,
+      },
+      suggestedSteppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 2000 }],
+      },
+    }));
+
+    expect(row().hidden).toBe(true);
+  });
 });
