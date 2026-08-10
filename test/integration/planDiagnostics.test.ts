@@ -20,6 +20,7 @@ import {
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
+import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
 
 const r = (reason: string) => fixtureDeviceReason(reason)!;
 
@@ -440,6 +441,68 @@ describe('plan diagnostics observations', () => {
       planDevice: { ...basePlanDevice, shedAction: 'set_temperature', plannedTarget: 16 },
       desiredForMode: { 'heater-1': 18 },
     }).pelsCommandsTurnOffShed).toBe(false);
+  });
+
+  // Regression: a turn_off shed leaves the setpoint at the mode target, so the
+  // setpoint-gap test reads a device PELS has switched off as fully satisfied
+  // and every counter gated on `unmetDemand` records nothing. In production that
+  // zeroed the daily-budget loop's evidence for five days while thermostats sat
+  // off for hours, and the loop decayed through a day that overshot by 2 kWh.
+  it('counts a turn_off shed below target as unmet demand and a hold below target', () => {
+    const inputDevice: PlanInputDevice = buildPlanInputDevice({
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      managed: true,
+      controllable: true,
+      available: true,
+      currentTemperature: 16,
+      targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
+    });
+    const offShed: DevicePlanDevice = buildPlanDevice({
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      // The setpoint never moved — that is the whole point.
+      currentTarget: 18,
+      plannedTarget: 18,
+      reason: r('shed due to capacity'),
+      controllable: true,
+      available: true,
+      currentTemperature: 16,
+      expectedPowerKw: 1.14,
+    });
+
+    expect(buildObservation({
+      inputDevice,
+      planDevice: offShed,
+      desiredForMode: { 'heater-1': 18 },
+    })).toMatchObject({
+      pelsHoldsBelowTarget: true,
+      unmetDemand: true,
+      // Still false: the SETPOINT gap really is zero. The producer-resolved
+      // hold signal is what carries the shed; `targetDeficitMs` keeps meaning
+      // what its name says.
+      targetDeficitActive: false,
+    });
+
+    // Off but already at/above target — genuinely satisfied, not held back.
+    expect(buildObservation({
+      inputDevice: { ...inputDevice, currentTemperature: 18.5 },
+      planDevice: { ...offShed, currentTemperature: 18.5 },
+      desiredForMode: { 'heater-1': 18 },
+    })).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
+
+    // The user turned it off — PELS is not withholding anything.
+    expect(buildObservation({
+      inputDevice,
+      planDevice: { ...offShed, plannedState: 'keep' },
+      desiredForMode: { 'heater-1': 18 },
+    })).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
   });
 
   it('uses the operating-mode target rather than price-optimization deltas for starvation baseline', () => {
@@ -1310,5 +1373,81 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
     expect(service.getUiPayload().diagnosticsByDeviceId['heater-1']?.starvation.isStarved).toBe(false);
     expect(service.getOverviewStarvation('heater-1')).toBeNull();
     service.destroy();
+  });
+});
+
+/**
+ * The producer and the persisted counters, joined.
+ *
+ * The five-day production blackout lived exactly in this seam: the observation
+ * builder said "no setpoint gap", the diagnostics service believed it, and every
+ * counter gated on `unmetDemand` read zero while devices sat off for hours.
+ * Asserting each half separately is what let that pass review, so this drives
+ * the REAL producer into the REAL service and reads the persisted day totals.
+ */
+describe('turn_off shed reaches the persisted demand counters', () => {
+  const TZ = 'Europe/Oslo';
+  const noonToday = (): number => (
+    getDateKeyStartMs(getDateKeyInTimeZone(new Date(), TZ), TZ) + (12 * 60 * 60 * 1000)
+  );
+
+  const createService = () => {
+    const store = new Map<string, unknown>();
+    const settings = { get: (key: string) => store.get(key), set: (key: string, value: unknown) => store.set(key, value) };
+    return new DeviceDiagnosticsService({
+      diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+      getTimeZone: () => TZ,
+      isDebugEnabled: () => false,
+      structuredLog: { info: () => {}, error: () => {} } as never,
+      debugStructured: () => {},
+    });
+  };
+
+  it('records blocked time for a device PELS switched off below its target', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 16,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'off',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        // The setpoint never moved — the shape the old evidence could not see.
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: r('shed due to daily budget'),
+        controllable: true,
+        available: true,
+        currentTemperature: 16,
+        expectedPowerKw: 1.14,
+      },
+      desiredForMode: { 'heater-1': 18 },
+      softLimitSource: 'daily',
+    });
+
+    const service = createService();
+    const start = noonToday();
+    // Every 5 min for an hour: wider spans than the 10-minute cap are skipped.
+    for (let minute = 0; minute <= 60; minute += 5) {
+      service.observePlanSample({ nowTs: start + (minute * 60 * 1000), observations: [observation] });
+    }
+
+    const totals = service.getDaySuppressionTotals(getDateKeyInTimeZone(new Date(start), TZ));
+    // The hour of off-shed lands on `blockedByHeadroomMs` — the counter that
+    // read exactly zero for this shape during the production blackout.
+    expect(totals?.blockedByHeadroomMs).toBe(60 * 60 * 1000);
+    // The setpoint-gap counter stays zero: the setpoint really never moved.
+    expect(totals?.targetDeficitMs ?? 0).toBe(0);
   });
 });

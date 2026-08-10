@@ -41,6 +41,17 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **Device-detail demand counters have an un-backfillable 2026-08-03 → 08-10 gap.**
+      `unmetDemandMs` / `blockedByHeadroomMs` / `blockedByCooldownBackoffMs` recorded ~36 s/day
+      for that week on production: `resolveUnmetDemand` only saw a setpoint gap, and the home's
+      thermostats had moved to `turn_off` shedding, which leaves the setpoint at the mode
+      target. Fixed forward (producer-resolved `pelsHoldsBelowTarget` now feeds `unmetDemand`);
+      the recorded week stays low and cannot be reconstructed. Device detail's blocked-by stats
+      and the weather advisor's suppression evidence both under-read that window — the weather
+      side's evidence model is being replaced by day-close episode outcomes in the stacked
+      follow-up PR, which also re-frames what the pinned-60.72 budget episode meant (the decay
+      was correct under the new model). No action beyond knowing the window is dark.
+
 - [ ] **A native `target_power` charger can no longer reach an off-ladder configured maximum.**
       `buildEvTargetPowerCandidateProfile` now stops at the highest real rung under `config.max`
       (PR #2027 — the cap is a ceiling, not a rung), so a 25 A cap tops out at `24a` and a

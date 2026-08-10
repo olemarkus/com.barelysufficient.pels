@@ -94,6 +94,9 @@ describe('smart-task sub-home gate (app lanes)', () => {
       commandedTargetC: 50,
       targetStepC: 0.5,
       pelsCommandsTurnOffShed: false,
+      // Commanded 50 against a 65 mode target — what the producer resolves for
+      // this shape.
+      pelsHoldsBelowTarget: true,
       suppressionState: 'counting',
       countingCause: 'daily_budget',
       pauseReason: null,

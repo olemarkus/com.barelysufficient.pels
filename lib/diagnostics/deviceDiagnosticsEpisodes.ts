@@ -23,40 +23,11 @@ export const createEmptyStarvationState = (): LiveStarvationState => ({
   starvationPauseReason: null,
 });
 
-// PELS is holding the device below its intended/mode target when the target it
-// is COMMANDING sits more than half a target step under the intended target. That
-// half-step epsilon keeps float quantization noise from reading equal commands as
-// "below". A device PELS commands in full (commanded == intended) is never below.
-const pelsCommandsBelowTarget = (
-  intendedNormalTargetC: number | null,
-  commandedTargetC: number | null,
-  targetStepC: number | null,
-): boolean => {
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(commandedTargetC)) return false;
-  const epsilon = isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25;
-  return commandedTargetC < intendedNormalTargetC - epsilon;
-};
-
-// PELS is holding a turn_off-shed device below its intended target when it has
-// commanded the device OFF as a shed AND the device's temperature still sits
-// more than half a target step under the intended target. The turn_off shed
-// itself is PELS limiting the device (no setpoint is lowered, so
-// `pelsCommandsBelowTarget` cannot see it); the temperature comparison excludes
-// a device that is off because it has already reached / overshot its target
-// (genuinely satisfied, not starved). Only PELS-commanded turn_off sheds set
-// `pelsCommandsTurnOffShed` — a user-off device never qualifies.
-const pelsHoldsOffBelowTarget = (
-  pelsCommandsTurnOffShed: boolean,
-  intendedNormalTargetC: number | null,
-  currentTemperatureC: number | null,
-  targetStepC: number | null,
-): boolean => {
-  if (!pelsCommandsTurnOffShed) return false;
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(currentTemperatureC)) return false;
-  const epsilon = isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25;
-  return currentTemperatureC < intendedNormalTargetC - epsilon;
-};
-
+// `pelsHoldsBelowTarget` is resolved in the PRODUCER (`lib/plan/planDiagnostics.ts`)
+// and carried on the observation, so this is a copy, not a second derivation. It
+// used to be computed here while the demand/censoring counters derived their own,
+// narrower notion of the same thing from a setpoint gap alone — the two disagreed
+// by hours a day on turn_off-shed devices.
 export const normalizeStarvationObservation = (
   observation: DeviceDiagnosticsPlanObservation,
 ): LiveStarvationObservation => ({
@@ -70,16 +41,7 @@ export const normalizeStarvationObservation = (
   suppressionState: observation.suppressionState,
   countingCause: observation.countingCause,
   pauseReason: observation.pauseReason,
-  pelsHoldsBelowTarget: pelsCommandsBelowTarget(
-    observation.intendedNormalTargetC,
-    observation.commandedTargetC,
-    observation.targetStepC,
-  ) || pelsHoldsOffBelowTarget(
-    observation.pelsCommandsTurnOffShed,
-    observation.intendedNormalTargetC,
-    observation.currentTemperatureC,
-    observation.targetStepC,
-  ),
+  pelsHoldsBelowTarget: observation.pelsHoldsBelowTarget,
 });
 
 const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
