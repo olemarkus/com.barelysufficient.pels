@@ -115,7 +115,7 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
-![PELS device detail page for a heat pump showing Temperature per mode, Price response, Power limiting, and the Setup toggles including Managed by PELS and Power-limit control](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
+![PELS device detail page for a heat pump showing the live status header, Temperature per mode, Price response, Solar surplus, Power limiting, and the Setup section with Managed by PELS, Power-limit control, Control model, and Power when running](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
 
 Notes:
 

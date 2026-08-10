@@ -278,7 +278,17 @@ const expandAllSections = async (page: Page) => {
   });
 };
 
-const fullPanelScreenshot = async (page: Page, name: string) => {
+/**
+ * `steppedLoad` devices size their power per configured step, so the Power when
+ * running field is not offered for them. Every other device must show it: a
+ * missing or hidden row there is the regression this assertion exists to catch,
+ * so it is stated per capture rather than inferred from the DOM.
+ */
+const fullPanelScreenshot = async (
+  page: Page,
+  name: string,
+  { steppedLoad = false }: { steppedLoad?: boolean } = {},
+) => {
   const panel = page.locator('#device-detail-panel');
   await panel.waitFor();
   // Late-settling content must land BEFORE the height measurement below, or
@@ -290,16 +300,36 @@ const fullPanelScreenshot = async (page: Page, name: string) => {
   // - the activity log and diagnostics sections fetch on open and append
   //   their cards asynchronously (the water-heater capture cut the 1/7/21
   //   diagnostics cards).
-  await page.waitForFunction(() => {
+  //
+  // Power when running is asserted rather than waited for: both halves render
+  // synchronously, so an empty one means the fixture is wrong, not early. The
+  // heat-pump capture shipped without the provenance sentence because the
+  // fixture omitted `expectedPowerSource` (REQUIRED on `DeviceDescriptor`, so
+  // `expectedPowerSourceLine` fell through its `never` guard to ''), which is
+  // a state production cannot emit. Failing the capture beats shipping a doc
+  // image that contradicts the prose it illustrates.
+  await page.waitForFunction((expectPowerField) => {
     const select = document.querySelector('#device-detail-control-model') as
       | { displayText?: string }
       | null;
     if (select && (select.displayText ?? '') === '') return false;
+    if (expectPowerField) {
+      const expectedPowerRow = document.querySelector('#device-detail-expected-power-row') as
+        | HTMLElement
+        | null;
+      if (!expectedPowerRow || expectedPowerRow.hidden) return false;
+      const field = document.querySelector('#device-detail-expected-power') as
+        | HTMLInputElement
+        | null;
+      if ((field?.value ?? '') === '') return false;
+      const source = document.querySelector('#device-detail-expected-power-source');
+      if ((source?.textContent ?? '') === '') return false;
+    }
     const logBody = document.querySelector('#device-detail-activity-log-body');
     if (logBody?.textContent?.includes('Loading activity')) return false;
     const diagnosticsStatus = document.querySelector('#device-detail-diagnostics-status');
     return !diagnosticsStatus?.textContent?.includes('Loading diagnostics');
-  });
+  }, !steppedLoad);
   const scrollHeight = await page.evaluate(() => {
     const el = document.querySelector<HTMLElement>('#device-detail-panel');
     if (!el) return 900;
@@ -336,13 +366,13 @@ test('on/off — water heater', async ({ page }) => {
 test('stepped — Zaptec EV charger', async ({ page }) => {
   await openDeviceDetail(page, 'dev_zaptec');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'mw-stepped-zaptec-full');
+  await fullPanelScreenshot(page, 'mw-stepped-zaptec-full', { steppedLoad: true });
 });
 
 test('stepped — Connected 300 water heater', async ({ page }) => {
   await openDeviceDetail(page, 'dev_connected300');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'mw-stepped-connected300-full');
+  await fullPanelScreenshot(page, 'mw-stepped-connected300-full', { steppedLoad: true });
 });
 
 test('held hero — power-limited, outside simulation', async ({ page }) => {
