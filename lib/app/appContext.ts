@@ -124,6 +124,14 @@ export type AppContext = {
   getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   areFlowBackedCardsAvailable: () => boolean;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
+  /**
+   * Adopt the persisted manual expected-power figures into the live map after a
+   * write to `DEVICE_EXPECTED_POWER_OVERRIDES` (the settings UI's "Power when
+   * running" field). The runtime resolves expected power from that map, which is
+   * otherwise loaded only at boot, so the settings handler must call this or a
+   * UI write would not take effect until the next restart.
+   */
+  reloadExpectedPowerOverrides: () => void;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
     dateKey: string;
     storedCount: number;

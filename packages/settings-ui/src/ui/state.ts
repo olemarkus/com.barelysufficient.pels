@@ -1,6 +1,7 @@
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
+  DeviceExpectedPowerOverrides,
   DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
@@ -80,6 +81,10 @@ export type UiState = {
   nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
+  // The owner's manual "Power when running" figures, as persisted (kW). Local
+  // snapshot only — the device's own `expectedPowerKw` is what the field shows;
+  // this is the merge base a write falls back to when the SDK read blips.
+  deviceExpectedPowerOverrides: DeviceExpectedPowerOverrides;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
@@ -163,6 +168,7 @@ export const state: UiState = {
   nativeWiringMap: {},
   deviceControlProfiles: {},
   deviceTargetPowerConfigs: {},
+  deviceExpectedPowerOverrides: {},
   modeAliases: {},
   shedBehaviors: {},
   temperatureBoostSettings: {},

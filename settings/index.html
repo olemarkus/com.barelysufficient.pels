@@ -1237,6 +1237,24 @@
                   </md-filled-select>
                   <small class="field__hint">How PELS controls this device.</small>
                 </div>
+
+                <!-- Hidden, never absent: the DOM handles are captured once at
+                     module load, so a device this does not apply to (a stepped
+                     load, or anything with no power reading) hides the row
+                     rather than leaving the field out of the document. -->
+                <div class="md-field-row" id="device-detail-expected-power-row" hidden>
+                  <md-filled-text-field
+                    id="device-detail-expected-power"
+                    label="Power when running"
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputmode="numeric"
+                    suffix-text="W"
+                  ></md-filled-text-field>
+                  <small class="field__hint">How much this device draws while it runs. PELS uses it to work out how much power to free up before resuming it. Leave empty to let PELS work it out.</small>
+                  <small class="field__hint" id="device-detail-expected-power-source"></small>
+                </div>
               </div>
             </div>
           </details>

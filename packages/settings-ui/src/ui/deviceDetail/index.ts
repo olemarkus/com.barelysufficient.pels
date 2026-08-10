@@ -72,6 +72,11 @@ import {
   loadEvBoostSettings,
   renderEvBoostSettings,
 } from './evBoost.ts';
+import {
+  initExpectedPowerHandlers,
+  loadDeviceExpectedPowerOverrides,
+  renderExpectedPowerField,
+} from './expectedPower.ts';
 import { loadEvCarAssociations, renderCarAssociation } from './carAssociation.ts';
 import {
   initTemperatureBoostHandlers,
@@ -333,6 +338,7 @@ const refreshOpenDeviceDetail = () => {
   });
   renderSteppedLoadDraft(device);
   renderTargetPowerConfig(device);
+  renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   renderCarAssociation(device);
@@ -377,6 +383,7 @@ export const openDeviceDetail = (deviceId: string) => {
   });
   renderSteppedLoadDraft(device);
   renderTargetPowerConfig(device);
+  renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   renderCarAssociation(device);
@@ -453,7 +460,13 @@ const initDeviceDetailControlModelHandler = () => {
   });
 };
 
-export { loadEvBoostSettings, loadEvCarAssociations, loadShedBehaviors, loadTemperatureBoostSettings };
+export {
+  loadDeviceExpectedPowerOverrides,
+  loadEvBoostSettings,
+  loadEvCarAssociations,
+  loadShedBehaviors,
+  loadTemperatureBoostSettings,
+};
 
 export const initDeviceDetailHandlers = () => {
   const overlayContext = {
@@ -522,6 +535,11 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
   });
   initEvBoostHandlers({
+    getCurrentDetailDeviceId,
+    getDeviceById,
+    refreshOpenDeviceDetail,
+  });
+  initExpectedPowerHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,
     refreshOpenDeviceDetail,

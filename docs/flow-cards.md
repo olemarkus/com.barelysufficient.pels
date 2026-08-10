@@ -81,7 +81,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
 | **Enable power-limit control for device** | Turns on power-limit control for one device. |
 | **Disable power-limit control for device** | Turns off power-limit control for one device. |
-| **Set expected power for device** | Manual override of a device's expected draw in watts. Outranks every other source, including a configured load and a higher measured reading. Fails only for a stepped-load device, which is sized per configured step. |
+| **Set expected power for device** | Sets a device's expected draw in watts — the same **Power when running** figure as the device's Setup section, for when you would rather set it from a Flow. Outranks every other source, including a configured load and a higher measured reading. Fails only for a stepped-load device, which is sized per configured step. |
 | **Set external prices (today)** | Stores today's hourly prices from a Flow tag payload. |
 | **Set external prices (tomorrow)** | Stores tomorrow's hourly prices from a Flow tag payload. |
 | **Report stepped load** as **step** | Reports the selected stepped-load level directly, usually after a vendor-specific action card. |

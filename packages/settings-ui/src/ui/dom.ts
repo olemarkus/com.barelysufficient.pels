@@ -180,6 +180,11 @@ export const deviceDetailSocValue = qs('#device-detail-soc-value');
 export const deviceDetailSocUpdated = qs('#device-detail-soc-updated');
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
 export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as MdFilledSelectElement;
+export const deviceDetailExpectedPowerRow = qs('#device-detail-expected-power-row');
+export const deviceDetailExpectedPower = document.querySelector(
+  '#device-detail-expected-power',
+) as MdFilledTextFieldElement;
+export const deviceDetailExpectedPowerSource = qs('#device-detail-expected-power-source');
 export const deviceDetailModesSection = qs('#device-detail-modes-section');
 export const deviceDetailModes = qs('#device-detail-modes');
 export const deviceDetailDeltaSection = qs('#device-detail-delta-section');

@@ -18,6 +18,7 @@ import {
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
@@ -54,7 +55,12 @@ import {
 import { reloadPriceConfigSettings } from './priceConfig.ts';
 import { refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
-import { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
+import {
+  loadDeviceExpectedPowerOverrides,
+  loadEvBoostSettings,
+  loadShedBehaviors,
+  loadTemperatureBoostSettings,
+} from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
@@ -119,6 +125,9 @@ const DEVICE_CONTROL_KEYS = new Set([
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
+  // A new manual "Power when running" changes the device's resolved
+  // `expectedPowerKw`, which the device page's field and the cards read.
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 ]);
@@ -384,6 +393,13 @@ export const createSettingsSetHandler = () => (key: string) => {
   }
   if (key === EV_BOOST_SETTINGS) {
     runLoggedTask(loadEvBoostSettings(), 'Failed to load EV boost settings', 'settings.set');
+  }
+  if (key === DEVICE_EXPECTED_POWER_OVERRIDES) {
+    runLoggedTask(
+      loadDeviceExpectedPowerOverrides(),
+      'Failed to load expected power overrides',
+      'settings.set',
+    );
   }
   if (key === DEVICE_CONTROL_PROFILES || key === DEVICE_TARGET_POWER_CONFIGS) {
     runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');

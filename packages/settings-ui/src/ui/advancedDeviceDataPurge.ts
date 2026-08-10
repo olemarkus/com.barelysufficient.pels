@@ -3,6 +3,7 @@ import { state } from './state.ts';
 import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
 import {
   DEVICE_CONTROL_PROFILES,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
   EV_CAR_ASSOCIATIONS,
@@ -66,6 +67,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.managedMap),
     ...Object.keys(state.deviceControlProfiles),
     ...Object.keys(state.deviceTargetPowerConfigs),
+    ...Object.keys(state.deviceExpectedPowerOverrides),
     ...Object.keys(state.shedBehaviors),
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
@@ -153,6 +155,7 @@ const buildPurgedState = (deviceIds: Set<string>) => ({
   managedMap: removeDeviceIdsFromRecord(state.managedMap, deviceIds),
   deviceControlProfiles: removeDeviceIdsFromRecord(state.deviceControlProfiles, deviceIds),
   deviceTargetPowerConfigs: removeDeviceIdsFromRecord(state.deviceTargetPowerConfigs, deviceIds),
+  deviceExpectedPowerOverrides: removeDeviceIdsFromRecord(state.deviceExpectedPowerOverrides, deviceIds),
   shedBehaviors: removeDeviceIdsFromRecord(state.shedBehaviors, deviceIds),
   temperatureBoostSettings: removeDeviceIdsFromRecord(state.temperatureBoostSettings, deviceIds),
   evBoostSettings: removeDeviceIdsFromRecord(state.evBoostSettings, deviceIds),
@@ -168,6 +171,7 @@ const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
   state.managedMap = next.managedMap;
   state.deviceControlProfiles = next.deviceControlProfiles;
   state.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
+  state.deviceExpectedPowerOverrides = next.deviceExpectedPowerOverrides;
   state.shedBehaviors = next.shedBehaviors;
   state.temperatureBoostSettings = next.temperatureBoostSettings;
   state.evBoostSettings = next.evBoostSettings;
@@ -235,6 +239,11 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
       key: DEVICE_TARGET_POWER_CONFIGS,
       fallback: state.deviceTargetPowerConfigs,
       apply: (value) => { state.deviceTargetPowerConfigs = readRecordSetting(value); },
+    },
+    {
+      key: DEVICE_EXPECTED_POWER_OVERRIDES,
+      fallback: state.deviceExpectedPowerOverrides,
+      apply: (value) => { state.deviceExpectedPowerOverrides = readRecordSetting(value); },
     },
     {
       key: OVERSHOOT_BEHAVIORS, fallback: state.shedBehaviors,
@@ -308,6 +317,7 @@ const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting('managed_devices', next.managedMap),
     setSetting(DEVICE_CONTROL_PROFILES, next.deviceControlProfiles),
     setSetting(DEVICE_TARGET_POWER_CONFIGS, next.deviceTargetPowerConfigs),
+    setSetting(DEVICE_EXPECTED_POWER_OVERRIDES, next.deviceExpectedPowerOverrides),
     setSetting(OVERSHOOT_BEHAVIORS, next.shedBehaviors),
     setSetting(TEMPERATURE_BOOST_SETTINGS, next.temperatureBoostSettings),
     setSetting(EV_BOOST_SETTINGS, next.evBoostSettings),

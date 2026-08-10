@@ -109,6 +109,24 @@ export type EvBoostConfig = {
 export type EvBoostSettings = Record<string, EvBoostConfig>;
 
 /**
+ * One device's manual "Power when running" figure — the top rung of the
+ * expected-power ladder (`lib/device/devicePowerEstimate.ts`).
+ *
+ * `kw`, while both writers take WATTS from the user (the `set_expected_power_usage`
+ * Flow card's `power_w` arg and the device page's field); the conversion belongs
+ * at each writer, so the persisted record stays in the runtime's own unit.
+ * `ts` is when it was set — stored for the record's own bookkeeping, never
+ * surfaced: the owner is told which source is answering NOW, not its history.
+ */
+export type ExpectedPowerOverride = {
+    kw: number;
+    ts: number;
+};
+
+/** Manual expected-power figures by device id, keyed as persisted. */
+export type DeviceExpectedPowerOverrides = Record<string, ExpectedPowerOverride>;
+
+/**
  * The cars a charger MAY associate, as ticked by the user on the charger's page.
  *
  * This is an eligibility set, not an association: it says which class `car`

@@ -3,6 +3,11 @@ import {
   createLearnedPowerPeakState,
   type LearnedPowerPeakState,
 } from './appInit/learnedPowerPeakState';
+import {
+  applyExpectedPowerOverrides,
+  EXPECTED_OVERRIDE_EQUALS_EPSILON_KW,
+  type ExpectedOverrideAuthority,
+} from './expectedPowerOverrideState';
 import type Homey from 'homey';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import {
@@ -33,7 +38,6 @@ import type {
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 
 const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
-const EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
 
 function resolveFlowBackedCapabilityReportOutcome(update: {
   stateChanged: boolean;
@@ -178,7 +182,14 @@ export class AppFlowBacked {
     // Never write over a record nobody has read. The boot read classifies an
     // unreadable key as `unavailable`, and writing the map we happen to hold
     // would erase every figure the owner typed on an earlier run.
-    if (this.expectedPowerOverridesUnread && !this.loadExpectedPowerOverrides()) {
+    if (this.expectedPowerOverridesUnread && !this.loadExpectedPowerOverrides({
+      // The figure being persisted is already in the map and is the newest
+      // instruction there is, so this late read may only fill in the devices it
+      // does not carry. Nothing to notify: `setExpectedOverride` syncs the
+      // headroom observation for the device it just changed.
+      authority: 'held',
+      onOverrideChanged: () => {},
+    })) {
       this.unpersistedExpectedOverrideDeviceIds.add(deviceId);
       return;
     }
@@ -196,37 +207,71 @@ export class AppFlowBacked {
   }
 
   /**
-   * Restore the owner's manual expected-power figures at boot, answering whether
-   * the read RESOLVED.
+   * Read the owner's manual expected-power figures out of settings and adopt
+   * them into the live map, answering whether the read RESOLVED.
    *
    * `unavailable` is an unreadable key, not an empty record, so the in-memory
    * map is left alone and the write path stays fenced until a read succeeds
    * (`feedback_homey_sdk_unreliable`, `notes/persisted-settings-state.md`). A
    * resolved-empty record is a real answer and adopts normally.
+   *
+   * The caller states the authority because the readers genuinely disagree about
+   * which side is newer — see {@link ExpectedOverrideAuthority}.
    */
-  private loadExpectedPowerOverrides(): boolean {
-    const read = this.deps.settingsRepository.loadExpectedPowerOverrides();
-    if (read.state === 'unavailable') return false;
-    const current = this.deps.getExpectedPowerKwOverrides();
-    // Held wins per device: this can run after the owner has already typed a
-    // figure this run (the retry inside `persistExpectedPowerOverrides`), and
-    // that figure is the newer instruction.
-    const adopted = { ...read.overrides, ...current };
-    for (const key of Object.keys(current)) delete current[key];
-    Object.assign(current, adopted);
-    this.expectedPowerOverridesUnread = false;
-    return true;
+  private loadExpectedPowerOverrides(params: {
+    authority: ExpectedOverrideAuthority;
+    onOverrideChanged: (deviceId: string, kw: number) => void;
+  }): boolean {
+    const resolved = applyExpectedPowerOverrides({
+      read: this.deps.settingsRepository.loadExpectedPowerOverrides(),
+      target: this.deps.getExpectedPowerKwOverrides(),
+      authority: params.authority,
+      onOverrideChanged: params.onOverrideChanged,
+    });
+    // Any read that resolved — a stored record or a confirmed-empty one — is
+    // proof the key is legible, which is all the write fence was waiting for.
+    if (resolved) this.expectedPowerOverridesUnread = false;
+    return resolved;
+  }
+
+  /**
+   * Adopt a persisted CHANGE to the manual figures into the running app — the
+   * settings-UI write path, dispatched by the settings handler for
+   * `DEVICE_EXPECTED_POWER_OVERRIDES`.
+   *
+   * The runtime resolves expected power from the in-memory map, not from the
+   * settings key (which is otherwise read only at boot), so without this an
+   * owner's new figure would sit in storage until the next restart. The record
+   * has the authority here: it is what the owner just wrote, down to the device
+   * they cleared out of it. The headroom sync is the same seam
+   * `setExpectedOverride` uses, so the settings-UI writer and the Flow writer
+   * leave the app in the same state.
+   */
+  reloadExpectedPowerOverrides(): void {
+    void this.loadExpectedPowerOverrides({
+      authority: 'persisted',
+      onOverrideChanged: (deviceId, kw) => this.deps.syncHeadroomUsageObservation({
+        deviceId,
+        usageObservation: { kw },
+      }),
+    });
   }
 
   /**
    * Restore every persisted record this helper owns: flow-reported capabilities,
    * the owner's manual expected-power figures, and the peaks PELS observed for
-   * itself. One entry point because they share the transient-miss rule below and
-   * are all restored in the same startup step.
+   * itself. One entry point because they are all restored in the same startup
+   * step, each keeping its own transient-miss rule.
    */
   loadPersistedState(): void {
     this.loadFlowReportedCapabilities();
-    void this.loadExpectedPowerOverrides();
+    void this.loadExpectedPowerOverrides({
+      authority: 'held',
+      onOverrideChanged: () => {
+        // Nothing to notify at boot: the plan engine does not exist yet, and the
+        // first plan build reads the restored map anyway.
+      },
+    });
     this.learnedPowerPeakState.load();
   }
 

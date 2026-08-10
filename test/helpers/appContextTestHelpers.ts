@@ -200,6 +200,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getCurrentHourPriceLevel: vi.fn(() => ({ cheap: false, expensive: false })),
     areFlowBackedCardsAvailable: vi.fn(() => false),
     setExpectedOverride: vi.fn(() => false),
+    reloadExpectedPowerOverrides: vi.fn(),
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),

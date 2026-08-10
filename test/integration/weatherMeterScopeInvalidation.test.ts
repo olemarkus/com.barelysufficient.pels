@@ -137,6 +137,7 @@ const buildHarness = (
   const deps: SettingsHandlerDeps = {
     homey: homeyCast as unknown as SettingsHandlerDeps['homey'],
     loadCapacitySettings: vi.fn(),
+    reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
     loadPowerTracker: vi.fn(),
