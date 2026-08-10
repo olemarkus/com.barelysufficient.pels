@@ -10,6 +10,7 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../../contracts/src/types.ts';
 import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../../../contracts/src/settingsKeys.ts';
+import { resolveTargetPowerLadderIssue } from '../../../shared-domain/src/targetPowerLadder.ts';
 import { getSetting } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
@@ -190,8 +191,11 @@ export const normalizeTargetPowerConfig = (value: unknown): TargetPowerSteppedLo
   };
   if (Object.keys(config).length === 0) return null;
   if (config.enabled === false) return config;
-  if (config.preset || (config.max !== undefined && config.step !== undefined)) return config;
-  return null;
+  // Mirrors `normalizeTargetPowerSteppedLoadConfig` in the runtime: a preset
+  // owns its own rungs, and any other range only counts when it yields a
+  // ladder. A config that survives here is one the runtime will also accept.
+  if (config.preset) return config;
+  return resolveTargetPowerLadderIssue(config) === undefined ? config : null;
 };
 
 function numberProp<T extends 'min' | 'max' | 'step' | 'excludeMin' | 'excludeMax'>(

@@ -30,7 +30,7 @@ import {
   resolveNativeSteppedLoadReportedStepId,
   resolveNativeSteppedLoadWriteCapabilities,
   resolveTargetPowerReportedStepId,
-  resolveTargetPowerSteppedLoadProfileFromConfig,
+  resolveTargetPowerSteppedControl,
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
 import {
@@ -299,13 +299,17 @@ function applySyntheticTargetPowerOverlay(params: {
     capabilityObj: params.capabilityObj,
   });
   const reportedStepPowerW = resolveReportedTargetPowerW(params.capabilityObj, observedTargetPower?.value);
-  const steppedLoadProfile = resolveTargetPowerSteppedLoadProfileFromConfig(config, reportedStepPowerW);
-  if (!steppedLoadProfile) {
+  // All-or-nothing: no ladder means no stepped control, so the synthetic
+  // `target_power` capability is not injected either and the device is left to
+  // whatever axis it exposes natively.
+  const steppedControl = resolveTargetPowerSteppedControl(config, reportedStepPowerW);
+  if (!steppedControl) {
     return {
       capabilities: params.capabilities,
       capabilityObj: params.capabilityObj,
     };
   }
+  const steppedLoadProfile = steppedControl.profile;
   const capabilityObj = buildSyntheticTargetPowerCapabilityMap({
     capabilityObj: params.capabilityObj,
     config,

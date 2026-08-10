@@ -221,4 +221,46 @@ describe('Device capability lifecycle across SDK pulls', () => {
     await pull(app);
     expect(findEntry(evId)).toBeUndefined();
   });
+
+  it('drops a step-only charger whose target-power range stops yielding a ladder', async () => {
+    const evId = 'charger-2';
+    mockHomeyInstance.settings.set('managed_devices', { [evId]: true });
+    mockHomeyInstance.settings.set('controllable_devices', { [evId]: true });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Pull 1 — a charger with no binary handle at all: its only control axis is
+    // the `target_power` ladder, which is what keeps it in the snapshot.
+    const buildCharger = (max: number, step: number): ApiDevice => ({
+      id: evId,
+      name: 'Step-only wallbox',
+      class: 'evcharger',
+      virtualClass: null,
+      capabilities: ['target_power', 'evcharger_charging_state', 'measure_power'],
+      capabilitiesObj: {
+        target_power: {
+          id: 'target_power', value: 3680, min: 0, max, step, setable: true,
+        } as ApiCapabilityObj[string],
+        evcharger_charging_state: { id: 'evcharger_charging_state', value: 'plugged_in_charging' },
+        measure_power: { id: 'measure_power', value: 3600 },
+      },
+      settings: {},
+    });
+
+    deviceList = { [evId]: buildCharger(7360, 460) };
+    await pull(app);
+    const stepped = findEntry(evId);
+    expect(stepped).toBeDefined();
+    expect(stepped?.steppedLoadProfile).toBeDefined();
+
+    // Pull 2 — the device now reports a range that produces no rung (a step
+    // wider than the whole range). There is no such thing as stepped control
+    // without a ladder, and this charger has no `onoff` and no
+    // `evcharger_charging` to fall back to, so it leaves the snapshot exactly
+    // as a binary device that loses `onoff` does.
+    deviceList = { [evId]: buildCharger(100, 500) };
+    await pull(app);
+    expect(findEntry(evId)).toBeUndefined();
+  });
 });

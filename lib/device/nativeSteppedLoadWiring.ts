@@ -13,9 +13,11 @@ import {
 } from './targetPowerReachability';
 import {
   getSteppedLoadStep,
+  hasUsableSteppedLoadLadder,
   isSteppedLoadOffStep,
   sortSteppedLoadSteps,
 } from '../utils/deviceControlProfiles';
+import { buildTargetPowerLadderSteps } from '../../packages/shared-domain/src/targetPowerLadder';
 import type { DeviceCapabilityMap } from './managerControl';
 
 export const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
@@ -30,7 +32,6 @@ type TargetPowerPreset = 'ev_charger_1_phase' | 'ev_charger_3_phase';
 
 const NATIVE_STEPPED_LOAD_CAPABILITY_SET = new Set<string>(NATIVE_STEPPED_LOAD_CAPABILITY_IDS);
 export const TARGET_POWER_CAPABILITY_ID = 'target_power';
-const TARGET_POWER_MAX_GENERATED_STEPS = 128;
 const TARGET_POWER_PRESET_SETTING_KEYS = [
   'pelsTargetPowerPreset',
   'pels_target_power_preset',
@@ -141,17 +142,49 @@ export function resolveNativeSteppedLoadProfileSuggestion(params: {
   if (params.capabilities.includes('max_power_2000') || params.capabilities.includes('max_power')) {
     return CONNECTED_200_STEPPED_LOAD_PROFILE;
   }
-  return resolveTargetPowerSteppedLoadProfileSuggestion(params);
+  return withUsableLadder(resolveTargetPowerSteppedLoadProfileSuggestion(params));
 }
 
-export function resolveTargetPowerSteppedLoadProfileFromConfig(
+/**
+ * Stepped control derived from a target-power config: the config and the ladder
+ * it drives, or nothing.
+ *
+ * The two travel together on purpose. This used to hand back an optional
+ * profile beside a config the caller had already accepted, so a range that
+ * produced no ladder still left the device wearing a target-power config —
+ * classified as a stepped load with nowhere to stand. There is no such state
+ * now: a device either has stepped control with rungs on it, or has no stepped
+ * control at all and falls through to whatever other axis it exposes (and, if
+ * it has none, out of the snapshot entirely — `resolveDeviceCapabilities`).
+ *
+ * `undefined` here means "not a stepped load", never "stepped, ladder pending".
+ */
+export type TargetPowerSteppedControl = {
+  config: TargetPowerSteppedLoadConfig;
+  profile: SteppedLoadProfile;
+};
+
+export function resolveTargetPowerSteppedControl(
   config: TargetPowerSteppedLoadConfig | undefined,
   observedPowerW?: number,
-): SteppedLoadProfile | undefined {
+): TargetPowerSteppedControl | undefined {
   if (!config || config.enabled === false) return undefined;
-  if (isEvTargetPowerConfig(config)) return resolveEvTargetPowerConfirmedProfile(config, observedPowerW);
-  return buildCapabilityTargetPowerSteppedLoadProfile(config);
+  const profile = isEvTargetPowerConfig(config)
+    ? resolveEvTargetPowerConfirmedProfile(config, observedPowerW)
+    : buildCapabilityTargetPowerSteppedLoadProfile(config);
+  // Belt-and-braces against the range validation in
+  // `normalizeTargetPowerSteppedLoadConfig`, which every config reaching here
+  // has already passed, and against an EV preset whose confirmed ceiling has
+  // collapsed below its lowest rung.
+  const usableProfile = withUsableLadder(profile);
+  return usableProfile ? { config, profile: usableProfile } : undefined;
 }
+
+const withUsableLadder = (
+  profile: SteppedLoadProfile | undefined,
+): SteppedLoadProfile | undefined => (
+  hasUsableSteppedLoadLadder(profile) ? profile : undefined
+);
 
 export function buildSyntheticTargetPowerCapabilityMap(params: {
   capabilityObj: DeviceCapabilityMap;
@@ -178,56 +211,6 @@ export function buildSyntheticTargetPowerCapabilityMap(params: {
       units: 'W',
     },
   };
-}
-
-export type TargetPowerCapabilityContractIssue =
-  | 'missing_max'
-  | 'missing_step'
-  | 'min_excludes_zero'
-  | 'negative_max'
-  | 'negative_step'
-  | 'step_exceeds_range'
-  | 'too_many_generated_steps';
-
-export type TargetPowerCapabilityAssessment =
-  | { valid: true }
-  | { valid: false; issue: TargetPowerCapabilityContractIssue };
-
-/**
- * Validates target_power capability options against the Homey contract.
- *
- * The contract requires that the range includes 0 (so the device can be set to
- * idle). The minimum operating power is modeled with excludeMin/excludeMax,
- * not by raising `min`. Any options with `min > 0` violate the contract and
- * must be ignored — the off step always maps to `target_power = 0`.
- */
-export function assessTargetPowerCapabilityOptions(
-  capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step' | 'excludeMax'> | undefined,
-): TargetPowerCapabilityAssessment {
-  const numericIssue = assessTargetPowerNumericFields(capability);
-  if (numericIssue) return { valid: false, issue: numericIssue };
-  const max = capability?.max as number;
-  const step = capability?.step as number;
-  const minW = resolveTargetPowerActiveMinW(capability, step);
-  if (minW > max) return { valid: false, issue: 'step_exceeds_range' };
-  const stepCount = Math.floor((max - minW) / step) + 1;
-  if (stepCount < 1) return { valid: false, issue: 'step_exceeds_range' };
-  if (stepCount > TARGET_POWER_MAX_GENERATED_STEPS) return { valid: false, issue: 'too_many_generated_steps' };
-  return { valid: true };
-}
-
-function assessTargetPowerNumericFields(
-  capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step'> | undefined,
-): TargetPowerCapabilityContractIssue | undefined {
-  const max = capability?.max;
-  const step = capability?.step;
-  if (typeof max !== 'number' || !Number.isFinite(max)) return 'missing_max';
-  if (typeof step !== 'number' || !Number.isFinite(step)) return 'missing_step';
-  if (max <= 0) return 'negative_max';
-  if (step <= 0) return 'negative_step';
-  const min = capability?.min;
-  if (typeof min === 'number' && Number.isFinite(min) && min > 0) return 'min_excludes_zero';
-  return undefined;
 }
 
 export function stripNativeSteppedLoadControlCapabilities(params: {
@@ -387,32 +370,8 @@ function resolveTargetPowerPreset(device: HomeyDeviceLike): TargetPowerPreset | 
 function buildCapabilityTargetPowerSteppedLoadProfile(
   capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step' | 'excludeMax'> | undefined,
 ): SteppedLoadProfile | undefined {
-  const assessment = assessTargetPowerCapabilityOptions(capability);
-  if (!assessment.valid) return undefined;
-  const maxW = capability?.max as number;
-  const stepW = capability?.step as number;
-  const minW = resolveTargetPowerActiveMinW(capability, stepW);
-
-  const steps: SteppedLoadStep[] = [{ id: 'off', planningPowerW: 0 }];
-  for (let value = minW; value <= maxW + Number.EPSILON; value += stepW) {
-    const roundedValue = Math.round(value);
-    steps.push({
-      id: `${roundedValue}w`,
-      planningPowerW: roundedValue,
-    });
-  }
-  return { model: 'stepped_load', steps };
-}
-
-function resolveTargetPowerActiveMinW(
-  capability: Pick<DeviceCapabilityMap[string], 'min' | 'excludeMax'> | undefined,
-  stepW: number,
-): number {
-  const excludeMax = finitePositiveNumber(capability?.excludeMax);
-  if (excludeMax) return excludeMax;
-  const min = finitePositiveNumber(capability?.min);
-  if (min) return min;
-  return stepW;
+  const steps = buildTargetPowerLadderSteps(capability);
+  return steps ? { model: 'stepped_load', steps } : undefined;
 }
 
 export function resolveTargetPowerReportedStepId(params: {
@@ -435,12 +394,6 @@ export function resolveTargetPowerReportedStepId(params: {
     }
   }
   return nearestStep?.id;
-}
-
-function finitePositiveNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : undefined;
 }
 
 function normalizeText(value: unknown): string {

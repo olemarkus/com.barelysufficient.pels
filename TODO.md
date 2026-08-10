@@ -59,6 +59,23 @@ patch releases, not release blockers; each item carries its own source/date.
       silently charging at 9.66 kW on an "11 kW" charger, with the max field hidden in the UI for
       EV presets, is invisible and unattributable. Raised by Codex on PR #2027. [P2]
 
+- [ ] **A device with junk `target_power` options still gets that capability stripped, though no
+      lane will drive it.** `isTargetPowerSteppedLoadCandidate` keys purely on "`target_power`
+      present and setable", so `stripNativeSteppedLoadControlCapabilities` removes it from the
+      public capability list even when the reported range yields no ladder and PELS has therefore
+      declined stepped control for the device entirely (the no-stepped-control-without-a-ladder
+      invariant, `lib/device/AGENTS.md`). Harmless today — nothing downstream reads `target_power`
+      off the public list, and the affected device keeps whatever binary/temperature axis it has —
+      but it is the one place left where the candidate predicate and the ladder disagree, and the
+      warning that fires alongside it (`target_power_contract_violation`) already tells the fuller
+      story. Fix is to fold the ladder assessment into the candidate predicate; the risk is that
+      the same predicate gates `resolveNativeSteppedLoadCommand` and
+      `resolveNativeSteppedLoadReportedStepId`, which run against the SYNTHETIC capability map,
+      so it needs a pass over those call sites rather than a one-line edit. Persona: owner of a
+      charger whose app publishes a malformed `target_power` range; hypothesis: the capability
+      vanishing from PELS's view of the device is confusing when PELS has visibly given up on
+      driving it by steps. Raised in self-review of the stepped-ladder invariant change. [P2]
+
 - [ ] **Solar-surplus reachability is derived from RESETTABLE accounting, so "Reset usage history"
       can drop a dump load's surplus posture.** `resolveSurplusPoolReachable`
       (`packages/shared-domain/src/solar/surplusPoolReachable.ts`) reads its export half from the

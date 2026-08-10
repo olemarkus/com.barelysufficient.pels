@@ -1,6 +1,7 @@
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
+  hasUsableSteppedLoadLadder,
   isSteppedLoadOffStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
@@ -118,10 +119,20 @@ export const buildControlModelMap = (
   return map;
 };
 
+/**
+ * A profile counts as stepped control only when it has a rung above zero.
+ *
+ * `model: 'stepped_load'` alone is not enough: an empty or off-only ladder used
+ * to pass here and pin `controlModel: 'stepped_load'` on the snapshot, after
+ * which every consumer asking the ladder where to put the device got nothing
+ * back. Refusing it lets `decorateSnapshotWithDeviceControl` fall through to
+ * `resolveDefaultControlModel`, and a device with no other control axis drops
+ * out of the snapshot upstream, exactly as one that loses `onoff` does.
+ */
 const asSteppedLoadProfile = (
   profile: SteppedLoadProfile | undefined,
 ): SteppedLoadProfile | null => (
-  profile?.model === 'stepped_load' ? profile : null
+  profile?.model === 'stepped_load' && hasUsableSteppedLoadLadder(profile) ? profile : null
 );
 
 const resolveSuggestedSteppedLoadProfile = (
@@ -154,9 +165,7 @@ export const resolveEffectiveSteppedLoadProfile = (params: {
   const { snapshot, profiles, deviceId } = params;
   const nativeProfile = snapshot ? resolveNativeSteppedLoadProfile(snapshot) : null;
   const storedProfile = asSteppedLoadProfile(profiles[deviceId]);
-  const snapshotProfile = snapshot?.steppedLoadProfile?.model === 'stepped_load'
-    ? snapshot.steppedLoadProfile
-    : null;
+  const snapshotProfile = asSteppedLoadProfile(snapshot?.steppedLoadProfile);
   if (nativeProfile) return nativeProfile;
   if (snapshot?.targetPowerConfig && snapshotProfile) return snapshotProfile;
   if (storedProfile) return storedProfile;

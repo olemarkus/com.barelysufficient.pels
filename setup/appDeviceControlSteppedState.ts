@@ -1,4 +1,8 @@
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../lib/utils/deviceControlProfiles';
+import {
+  getSteppedLoadStep,
+  hasUsableSteppedLoadLadder,
+  isSteppedLoadOffStep,
+} from '../lib/utils/deviceControlProfiles';
 import { serializeLegacyStepFieldsFromEvidence } from '../lib/plan/planSteppedLoadState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type {
@@ -31,8 +35,12 @@ type SteppedLoadStepFields = {
   restorePreparedStepId?: string;
 };
 
+// A native ladder still has to have a rung above zero to be stepped control at
+// all — see `asSteppedLoadProfile` in `appDeviceControlHelpers.ts`.
 export const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): SteppedLoadProfile | null => (
-  isNativeSteppedLoadControlEnabled(snapshot) && snapshot.suggestedSteppedLoadProfile?.model === 'stepped_load'
+  isNativeSteppedLoadControlEnabled(snapshot)
+    && snapshot.suggestedSteppedLoadProfile?.model === 'stepped_load'
+    && hasUsableSteppedLoadLadder(snapshot.suggestedSteppedLoadProfile)
     ? snapshot.suggestedSteppedLoadProfile
     : null
 );

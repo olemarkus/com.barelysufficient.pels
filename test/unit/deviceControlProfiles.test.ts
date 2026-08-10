@@ -135,6 +135,58 @@ describe('deviceControlProfiles', () => {
     });
   });
 
+  it('rejects a ladder with no step the device can run at', () => {
+    // No steps at all, and a ladder of nothing but off, are the same thing:
+    // stepped control PELS could pause but never resume. Neither is a weaker
+    // profile to be salvaged — both are refused, and the device falls back to
+    // its default control model.
+    expect(normalizeSteppedLoadProfile({ model: 'stepped_load', steps: [] })).toBeNull();
+    expect(normalizeSteppedLoadProfile({
+      model: 'stepped_load',
+      steps: [{ id: 'off', planningPowerW: 0 }],
+    })).toBeNull();
+    expect(normalizeSteppedLoadProfile({
+      model: 'stepped_load',
+      steps: [{ id: 'off', planningPowerW: 0 }, { id: 'idle', planningPowerW: 0 }],
+    })).toBeNull();
+  });
+
+  it('rejects a ladder whose only powered rung is named off', () => {
+    // `off` is a reserved id: `isSteppedLoadOffStep` reads it as off whatever
+    // its watts say. A ladder standing only on such a rung would be admitted as
+    // usable and then restored to a step the off-predicate calls off, so the
+    // device could never resume — the two must agree, and here they do.
+    const offNamedButPowered = {
+      model: 'stepped_load',
+      steps: [{ id: 'off', planningPowerW: 900 }],
+    };
+
+    expect(normalizeSteppedLoadProfile(offNamedButPowered)).toBeNull();
+    expect(isSteppedLoadOffStep(offNamedButPowered as SteppedLoadProfile, 'off')).toBe(true);
+    // A real rung alongside it is enough to make the profile usable again.
+    expect(normalizeSteppedLoadProfile({
+      model: 'stepped_load',
+      steps: [{ id: 'off', planningPowerW: 900 }, { id: 'low', planningPowerW: 600 }],
+    })).not.toBeNull();
+  });
+
+  it('drops only the unusable entries from a profile map, keeping the rest', () => {
+    expect(normalizeDeviceControlProfiles({
+      'dev-good': buildProfile(),
+      'dev-empty': { model: 'stepped_load', steps: [] },
+      'dev-off-only': { model: 'stepped_load', steps: [{ id: 'off', planningPowerW: 0 }] },
+    })).toEqual({
+      'dev-good': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    });
+  });
+
   it('normalizes device control profile maps and skips invalid entries', () => {
     const profiles = normalizeDeviceControlProfiles({
       'dev-1': buildProfile(),
