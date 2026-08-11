@@ -8,8 +8,12 @@ import {
   getDeviceOverviewExpectedPowerKw,
   getDeviceOverviewReportedStepId,
 } from '../../packages/shared-domain/src/deviceOverview';
-import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveHeldCardReasonLine } from '../../packages/shared-domain/src/planCardReasonLine';
+import {
+  formatDeviceReasonUserFacingForDevice,
+  isActionSpecificRestoreWaitReasonCode,
+  resolveHeldCardReasonLine,
+  resolveHeldCardReasonVerb,
+} from '../../packages/shared-domain/src/planCardReasonLine';
 import { resolveIntentStateKind, resolveRawPlanStateKind } from '../../packages/shared-domain/src/planCardGrammar';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type {
@@ -97,7 +101,7 @@ export function buildOverviewEventForDevice(
     currentState: device.currentState,
     plannedState: device.plannedState,
     reasonCode: device.reason.code,
-    reasonText: formatDeviceReasonUserFacing(device.reason),
+    reasonText: formatDeviceReasonUserFacingForDevice(device),
     // The line the CARD actually rendered. Since 2026-08-02 the card and this
     // helper deliberately differ — the card states what the device needs, the
     // helper keeps the fuller cause — so logging only `reasonText` would leave a
@@ -141,7 +145,11 @@ function resolveCardReasonTextForLog(device: DevicePlanDevice): string | null {
     reasonCode: device.reason.code,
     starved: false,
   });
-  return kind === 'held' ? resolveHeldCardReasonLine({ reason: device.reason }) : null;
+  if (kind !== 'held' && !isActionSpecificRestoreWaitReasonCode(device.reason.code)) return null;
+  return resolveHeldCardReasonLine({
+    reason: device.reason,
+    verb: resolveHeldCardReasonVerb(device),
+  });
 }
 
 /**

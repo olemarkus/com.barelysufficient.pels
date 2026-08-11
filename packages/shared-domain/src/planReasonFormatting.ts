@@ -481,7 +481,6 @@ function formatInsufficientHeadroomUserFacing(
 
 const TIMED_REASON_LABELS = {
   [PLAN_REASON_CODES.cooldownShedding]: 'Waiting after limiting a device',
-  [PLAN_REASON_CODES.cooldownRestore]: 'Waiting before resuming',
   [PLAN_REASON_CODES.meterSettling]: 'Waiting for power meter to stabilise',
   [PLAN_REASON_CODES.activationBackoff]: 'Delaying restart after recent failed attempt',
   [PLAN_REASON_CODES.restorePending]: 'Resume pending',
@@ -492,7 +491,7 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
     case PLAN_REASON_CODES.restoreThrottled:
       return 'Delaying restart to avoid rapid cycling';
     case PLAN_REASON_CODES.waitingForOtherDevices:
-      return 'Waiting for other devices to settle';
+      return 'Waiting to resume — other devices are ahead';
     case PLAN_REASON_CODES.externalOffHold:
       return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
     case PLAN_REASON_CODES.neutralStartupHold:
@@ -534,6 +533,9 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
 }
 
 function formatTimedReasonUserFacing(reason: TimedReason): string {
+  if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
+    return `Waiting to resume — ${formatRemainingSec(reason.remainingSec)}s`;
+  }
   return `${TIMED_REASON_LABELS[reason.code]} (${formatRemainingSec(reason.remainingSec)}s)`;
 }
 

@@ -20,13 +20,16 @@ import {
   resolveOffDeviceReason,
   type OffDeviceReasonTiming,
 } from './restore/devices';
-import { resolveRestoreDecision, type HoldDecision } from './planReasonsRestoreGating';
+import {
+  buildRestoreCooldownPreviewState,
+  resolveGlobalRestoreHold,
+  resolveRestoreDecision,
+  type HoldDecision,
+  type RestoreCooldownPreviewState,
+} from './planReasonsRestoreGating';
+import type { RestoreCooldownPreview } from './restore/types';
 
-type PendingRestoreDelay = {
-  remainingSec: number;
-  countdownStartedAtMs: number;
-  countdownTotalSec: number;
-};
+type PendingRestoreDelay = { remainingSec: number; countdownStartedAtMs: number; countdownTotalSec: number };
 
 // The terminal fallback of `getProducerShedReason`. It asserts a POWER-ceiling
 // hold on nothing stronger than "some hold applies", so it is the one shape the
@@ -153,6 +156,7 @@ export type ShedHoldParams = {
   headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall?: boolean;
   debugStructured?: StructuredDebugEmitter;
+  restoreCooldownPreview?: RestoreCooldownPreview | null;
   getShedBehavior: (deviceId: string) => {
     action: 'turn_off' | 'set_temperature' | 'set_step';
     temperature: number | null;
@@ -187,6 +191,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     guardInShortfall = false,
     debugStructured,
     getShedBehavior,
+    restoreCooldownPreview,
   } = params;
 
   // The shed-window facts, assembled once per cycle in the shape the shared
@@ -207,10 +212,15 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   let restoredOne = restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelay = getPendingRestoreDelay(planDevices, state, getShedBehavior);
+  const cooldownPreviewState = restoreCooldownPreview
+    ? buildRestoreCooldownPreviewState(restoreCooldownPreview)
+    : undefined;
 
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
-    const availableForDevice = ledger ? ledger.availableFor(dev) : headroom;
+    let availableForDevice = headroom;
+    if (cooldownPreviewState) availableForDevice = cooldownPreviewState.ledger.availableFor(dev);
+    else if (ledger) availableForDevice = ledger.availableFor(dev);
     const result = applyHoldToDevice({
       dev,
       behavior,
@@ -228,11 +238,12 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       headroomReserves,
       guardInShortfall,
       debugStructured,
+      cooldownPreviewState,
     });
     if (ledger) {
       ledger.commit(dev, availableForDevice - result.availableHeadroom);
       headroom = ledger.summaryAvailableKw();
-    } else {
+    } else if (!cooldownPreviewState) {
       headroom = result.availableHeadroom;
     }
     restoredOne = result.restoredOneThisCycle;
@@ -293,6 +304,7 @@ function resolveHoldDecision(params: {
   headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
+  cooldownPreviewState?: RestoreCooldownPreviewState;
 }): HoldDecision {
   const {
     dev,
@@ -309,8 +321,7 @@ function resolveHoldDecision(params: {
     restoreCooldownRemainingSec,
     pendingRestoreDelay,
     headroomReserves,
-    guardInShortfall,
-    debugStructured,
+    guardInShortfall, debugStructured, cooldownPreviewState,
   } = params;
 
   if (dev.controllable === false) {
@@ -333,7 +344,14 @@ function resolveHoldDecision(params: {
     guardInShortfall,
   });
 
-  if (!shouldAbortRestoreForShortfall && !shouldHold && wasShedLastPlan) {
+  const observedAtShedFloor = isObservedAtShedFloor(dev, behavior);
+  const globalRestoreHold = resolveGlobalRestoreHold(cooldownPreviewState, wasShedLastPlan, observedAtShedFloor);
+  if (globalRestoreHold) return globalRestoreHold;
+  const shouldResolveRestore = wasShedLastPlan && (
+    (!shouldAbortRestoreForShortfall && !shouldHold)
+    || (holdDuringRestoreCooldown && cooldownPreviewState !== undefined && observedAtShedFloor)
+  );
+  if (shouldResolveRestore) {
     // "Observed at the shed floor" means the DEVICE reports the floor target —
     // not the plan's own `plannedTarget`, which the hold writes back each
     // cycle. Until the floor is observed, a reserve block must keep asserting
@@ -350,9 +368,10 @@ function resolveHoldDecision(params: {
       restoreCooldownRemainingSec,
       pendingRestoreDelay,
       headroomReserves,
-      observedAtShedFloor: isObservedAtShedFloor(dev, behavior),
+      observedAtShedFloor,
       baseShedReason: getProducerShedReason({ dev, shedReasons }) ?? CAPACITY_FALLBACK_REASON,
       debugStructured,
+      cooldownPreview: cooldownPreviewState,
     });
   }
 
@@ -386,6 +405,7 @@ function resolvePostHoldRestoreDecision(params: {
   observedAtShedFloor?: boolean;
   baseShedReason?: PlanReasonDecision;
   debugStructured?: StructuredDebugEmitter;
+  cooldownPreview?: RestoreCooldownPreviewState;
 }): HoldDecision {
   const {
     dev,
@@ -400,6 +420,7 @@ function resolvePostHoldRestoreDecision(params: {
     observedAtShedFloor,
     baseShedReason,
     debugStructured,
+    cooldownPreview,
   } = params;
   if (pendingRestoreDelay !== null) {
     return {
@@ -426,6 +447,7 @@ function resolvePostHoldRestoreDecision(params: {
     observedAtShedFloor,
     baseShedReason,
     debugStructured,
+    cooldownPreview,
   });
 }
 
@@ -446,6 +468,7 @@ function applyHoldToDevice(params: {
   headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
+  cooldownPreviewState?: RestoreCooldownPreviewState;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -464,6 +487,7 @@ function applyHoldToDevice(params: {
     headroomReserves,
     guardInShortfall,
     debugStructured,
+    cooldownPreviewState,
   } = params;
 
   if (dev.plannedState === 'shed' && dev.reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
@@ -487,6 +511,7 @@ function applyHoldToDevice(params: {
     headroomReserves,
     guardInShortfall,
     debugStructured,
+    cooldownPreviewState,
   });
 
   if (decision.type === 'restore') {

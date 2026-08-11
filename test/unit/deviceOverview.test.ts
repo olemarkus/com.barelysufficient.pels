@@ -144,7 +144,7 @@ describe('device overview formatter', () => {
       powerMsg: 'on → off',
       stateMsg: 'Turned off',
       usageMsg: 'Measured: 0.00 kW',
-      statusMsg: 'Waiting before resuming (10s)',
+      statusMsg: 'Waiting to resume — 10s',
     });
   });
 
@@ -175,7 +175,7 @@ describe('device overview formatter', () => {
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: r('cooldown (restore, 10s remaining)'),
-    }).statusMsg).toBe('Waiting before resuming (10s)');
+    }).statusMsg).toBe('Waiting to resume — 10s');
   });
 
   it('formats stepped-load devices with desired step labels', () => {
@@ -223,8 +223,25 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Active (low → max)',
       usageMsg: 'Measured: 0.60 kW / Planned: 3.00 kW (reported: Low / target: Max)',
-      statusMsg: 'Waiting before resuming (10s)',
+      statusMsg: 'Waiting to increase — 10s',
     });
+  });
+
+  it('uses increase for a target-only stepped device at a non-off step', () => {
+    expect(formatDeviceOverview({
+      controlModel: 'stepped_load',
+      currentState: 'not_applicable',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      selectedStepId: 'medium',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
+      },
+      planningPowerKw: 2,
+      currentDrawKw: 0.6,
+      reason: { code: 'cooldown_restore', remainingSec: 10 },
+    }).statusMsg).toBe('Waiting to increase — 10s');
   });
 
   it('keeps off-like stepped restores in restoring state', () => {
@@ -276,7 +293,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'State unknown',
       usageMsg: 'Measured: 0.60 kW / Planned: 3.00 kW (reported: Low / target: Max)',
-      statusMsg: 'Waiting before resuming (10s)',
+      statusMsg: 'Waiting to resume — 10s',
     });
   });
 
@@ -298,7 +315,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Unavailable',
       usageMsg: 'Measured: 0.60 kW / Planned: 3.00 kW (reported: Low / target: Max)',
-      statusMsg: 'Waiting before resuming (10s)',
+      statusMsg: 'Waiting to increase — 10s',
     });
   });
 

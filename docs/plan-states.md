@@ -46,7 +46,8 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | **Waiting for available power** | Shown when a device has been waiting on power long enough to be flagged, with no number available. |
 | **Held 2 h — 0.8 kW more needed** | The same power fact as the first row, for a device PELS has been holding back long enough to flag. The elapsed time is why this card offers **Let it run now** and its neighbours do not. |
 | **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Hard cap breach imminent — manual action needed** trigger for alerts. |
-| **Waiting before resuming** | PELS is respecting a cooldown so devices do not rapidly cycle. |
+| **Waiting to resume — 50s** | This device is in the next direct resume cohort and is waiting for the cooldown. An active stepped device says **Waiting to increase — 50s**. |
+| **Waiting to resume — other devices are ahead** | The device could resume directly, but another device or binary batch is first. Active stepped devices say **Waiting to increase — other devices are ahead**. |
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
 | **Waiting for cheaper hours** | A smart task booked this load into cheaper hours. More power would not start it. |

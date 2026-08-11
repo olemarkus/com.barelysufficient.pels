@@ -4,6 +4,8 @@ import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   buildComparableDeviceReason,
   formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildReservedForStartReason,
@@ -27,6 +29,53 @@ import {
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { resolveCapacityRestoreBlockReason } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
+import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restore/headroomLedger';
+import type { RestoreCooldownPreview } from './restore/types';
+
+export type RestoreCooldownPreviewState = {
+  holdReason: DeviceReason;
+  selectedOne: boolean;
+  appliesToAllCandidates: boolean;
+  ledger: RestoreHeadroomLedger;
+};
+
+export const buildRestoreCooldownPreviewState = (
+  preview: RestoreCooldownPreview,
+): RestoreCooldownPreviewState => ({
+  holdReason: preview.holdReason,
+  selectedOne: preview.selectedOne,
+  appliesToAllCandidates: preview.appliesToAllCandidates,
+  ledger: buildRestoreHeadroomLedger({
+    capacityAvailableKw: preview.capacityAvailableKw,
+    budgetAvailableKw: preview.budgetAvailableKw,
+  }),
+});
+
+export function resolveGlobalRestoreHold(
+  preview: RestoreCooldownPreviewState | undefined,
+  wasShedLastPlan: boolean,
+  observedAtShedFloor: boolean,
+): HoldDecision | null {
+  if (!preview?.appliesToAllCandidates || !wasShedLastPlan || !observedAtShedFloor) return null;
+  return { type: 'hold', reason: { code: 'existing', reason: preview.holdReason } };
+}
+
+function resolveCooldownPreviewHold(params: {
+  dev: DevicePlanDevice;
+  restoreNeedKw: number;
+  preview: RestoreCooldownPreviewState;
+}): HoldDecision {
+  const { dev, restoreNeedKw, preview } = params;
+  const selected = !preview.selectedOne;
+  const reason = selected
+    ? preview.holdReason
+    : { code: PLAN_REASON_CODES.waitingForOtherDevices } as const;
+  if (selected) {
+    preview.ledger.commit(dev, restoreNeedKw);
+    preview.selectedOne = true;
+  }
+  return { type: 'hold', reason: { code: 'existing', reason } };
+}
 
 export type HoldDecision =
   | { type: 'skip' }
@@ -188,8 +237,7 @@ export function resolveRestoreGateHold(params: {
     state,
     restoredOneThisCycle,
     availableHeadroom,
-    restoreCooldownSeconds,
-    restoreCooldownRemainingSec,
+    restoreCooldownSeconds, restoreCooldownRemainingSec,
     phase,
     restoreDebugKey,
     restoreNeed,
@@ -264,6 +312,7 @@ export function resolveRestoreDecision(params: {
   observedAtShedFloor?: boolean;
   baseShedReason?: PlanReasonDecision;
   debugStructured?: StructuredDebugEmitter;
+  cooldownPreview?: RestoreCooldownPreviewState;
 }): HoldDecision {
   const {
     dev,
@@ -274,9 +323,8 @@ export function resolveRestoreDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     headroomReserves = [],
-    observedAtShedFloor,
-    baseShedReason,
-    debugStructured,
+    observedAtShedFloor, baseShedReason,
+    debugStructured, cooldownPreview,
   } = params;
 
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
@@ -289,7 +337,6 @@ export function resolveRestoreDecision(params: {
   const restoreNeed = getRestoreNeed(dev, state);
   // Admit against the power this device may actually claim: raw available power
   // minus any startup reservation held by a strictly higher-priority device that
-  // has not started yet — the same discrimination the binary/stepped lanes run
   // (`restore/gating.ts`). Without it, a setpoint raise was the one restore that
   // could take a reserved block: PELS itself giving the promised power away.
   const reserved = resolveReserveAdmission({
@@ -343,6 +390,9 @@ export function resolveRestoreDecision(params: {
     dev, state, availableHeadroom, phase, restoreDebugKey, restoreNeed, admission, debugStructured,
   });
   if (headroomHold) return headroomHold;
+  if (cooldownPreview) return resolveCooldownPreviewHold({
+    dev, restoreNeedKw: restoreNeed.needed, preview: cooldownPreview,
+  });
   const gateHold = resolveRestoreGateHold({
     dev,
     state,

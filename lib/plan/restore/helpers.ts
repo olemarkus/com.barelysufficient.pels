@@ -38,6 +38,8 @@ import {
   type SteppedSwapExecutor,
 } from './steppedRestoreAdmission';
 import type { HeadroomReserve } from '../admission';
+import type { RestoreAdmissionMode, RestoreDeviceTiming } from './types';
+import { preservePreviewAdmission } from './cooldownPreview';
 
 // Re-export the public restore-helper surface so existing importers
 // (lib/plan/restore/index.ts, lib/plan/swap/blocking.ts, tests) are unchanged
@@ -172,28 +174,17 @@ export function planRestoreForSteppedDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
-  timing: Pick<RestoreTiming,
-  | 'activeOvershoot'
-  | 'inCooldown'
-  | 'inRestoreCooldown'
-  | 'inStartupStabilization'
-  | 'measurementTs'
-  | 'nowTs'
-  | 'restoreCooldownSeconds'
-  | 'restoreCooldownMs'
-  | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'
-  | 'startupStabilizationRemainingSec'>;
+  timing: RestoreDeviceTiming;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   debugStructured?: StructuredDebugEmitter;
   swapExecutor?: SteppedSwapExecutor;
   headroomReserves?: readonly HeadroomReserve[];
+  admissionMode?: RestoreAdmissionMode;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const {
-    dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured, swapExecutor,
-    headroomReserves = [],
-  } = params;
+  const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle,
+    debugStructured, swapExecutor, headroomReserves = [],
+    admissionMode = { kind: 'apply' } } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
   if (keepInactiveSteppedDeviceInactive({
     dev,
@@ -226,6 +217,7 @@ export function planRestoreForSteppedDevice(params: {
     phase,
     requestedStepId: nextStep?.id ?? null,
     debugStructured,
+    admissionMode,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -279,7 +271,7 @@ export function planRestoreForSteppedDevice(params: {
   }
   delete state.steppedRestoreRejectedByDevice[dev.id];
 
-  return admitSteppedRestore({
+  const result = admitSteppedRestore({
     dev,
     deviceMap,
     state,
@@ -292,7 +284,10 @@ export function planRestoreForSteppedDevice(params: {
     restoreDebugKey,
     swapExecutor,
     headroomReserves,
+    restoredOneThisCycle,
+    admissionMode,
   });
+  return preservePreviewAdmission(result, admissionMode, restoredOneThisCycle);
 }
 
 function keepInactiveSteppedDeviceInactive(params: {

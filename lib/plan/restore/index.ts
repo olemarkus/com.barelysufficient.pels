@@ -21,6 +21,8 @@ import {
 } from './helpers';
 import {
   buildRestoreTiming,
+  resolveCapacityRestoreBlockReason,
+  resolveMeterSettlingCountdownTiming,
   resolveMeterSettlingRemainingSec,
   shouldPlanBudgetExemptRestores,
   shouldPlanRestores,
@@ -32,13 +34,19 @@ import { reserveHeadroomForPendingRestores } from './support';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildRestoreBatchState } from './batch';
 import { markOffDevicesMeterSettling, markRestoreCandidatesStayShedForShortfall } from './marking';
+import { buildMeterSettlingReason } from '../planReasonStrings';
+import { holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import {
   applyActiveSteppedRestoreCandidates,
   applyRestoreCandidates,
   buildSteppedSwapExecutor,
-  planSteppedRestoreThroughSourceHold,
 } from './candidateLoop';
-import type { RestoreBatchState, RestoreDeps, RestorePlanResult } from './types';
+import type {
+  RestoreBatchState,
+  RestoreCooldownPreview,
+  RestoreDeps,
+  RestorePlanResult,
+} from './types';
 
 export type { RestoreDeps, RestorePlanResult } from './types';
 
@@ -70,6 +78,7 @@ export function applyRestorePlan(params: {
   const restoredThisCycle = new Set<string>();
   const ledger = buildCycleHeadroomLedger({ context, planDevices, state, deps, guardInShortfall });
   let restoredOneThisCycle = false;
+  let restoreCooldownPreview: RestoreCooldownPreview | null = null;
   const batchState = buildRestoreBatchState({
     context,
     timing: effectiveTiming,
@@ -124,8 +133,8 @@ export function applyRestorePlan(params: {
       getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
   } else if (effectiveTiming.inRestoreCooldown) {
-    ({ restoredOneThisCycle } = applyRestorePlanInCooldown({
-      deviceMap, swapState, state, effectiveTiming, deps,
+    ({ restoredOneThisCycle, restoreCooldownPreview } = applyRestorePlanInCooldown({
+      deviceMap, swapState, state, context, effectiveTiming, deps,
       ledger, restoredOneThisCycle, restoredThisCycle, headroomReserves,
     }));
   }
@@ -137,6 +146,7 @@ export function applyRestorePlan(params: {
     availableHeadroom: ledger.summaryAvailableKw(),
     ...ledger.axes(),
     headroomReserves,
+    restoreCooldownPreview,
     restoredOneThisCycle,
     ...effectiveTiming,
   };
@@ -252,15 +262,17 @@ function applyRestorePlanInCooldown(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   swapState: SwapState;
   state: PlanEngineState;
+  context: PlanContext;
   effectiveTiming: RestoreTiming;
   deps: RestoreDeps;
   ledger: RestoreHeadroomLedger;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   headroomReserves: readonly HeadroomReserve[];
-}): { restoredOneThisCycle: boolean } {
-  const { deviceMap, swapState, state, effectiveTiming, deps, restoredThisCycle, ledger } = params;
-  let { restoredOneThisCycle } = params;
+}): { restoredOneThisCycle: boolean; restoreCooldownPreview: RestoreCooldownPreview | null } {
+  const {
+    deviceMap, swapState, state, context, effectiveTiming, deps, restoredThisCycle, ledger,
+  } = params;
   const steppedSwapExecutor = buildSteppedSwapExecutor({
     deviceMap,
     onDevices: getOnDevices(Array.from(deviceMap.values()), deps.getShedBehavior),
@@ -276,43 +288,86 @@ function applyRestorePlanInCooldown(params: {
   });
   if (meterSettlingRemainingSec !== null) {
     markOffDevicesMeterSettling({ deviceMap, timing: effectiveTiming, lastRestoreTs: state.lastRestoreMs });
-  } else {
-    markOffDevicesStayOff({
-      deviceMap,
-      timing: effectiveTiming,
-      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
-    });
+    const reason = buildMeterSettlingReason(
+      meterSettlingRemainingSec,
+      resolveMeterSettlingCountdownTiming({
+        timing: effectiveTiming,
+        lastRestoreTs: state.lastRestoreMs,
+      }),
+    );
+    const steppedCandidates = getSteppedRestoreCandidates(Array.from(deviceMap.values()))
+      .filter((dev) => isActiveSteppedRestoreCandidate(dev));
+    for (const dev of steppedCandidates) {
+      if (holdPendingSwapTargetUntilSourcesAreOff({ swapState, targetDevice: dev, deviceMap })) continue;
+      setDevice(deviceMap, dev.id, { reason });
+    }
+    return {
+      restoredOneThisCycle: params.restoredOneThisCycle,
+      restoreCooldownPreview: {
+        holdReason: reason,
+        selectedOne: false,
+        appliesToAllCandidates: true,
+        ...ledger.axes(),
+      },
+    };
   }
-  // Run stepped candidates through planRestoreForSteppedDevice even during global restore
-  // cooldown. Off stepped devices get the cooldown gate applied inside the function; active
-  // stepped devices bypass it (they were already drawing power before the last restore).
-  // In the meter-settling sub-path, off stepped devices are already marked above, so only
-  // active devices need processing.
-  //
-  // Funnel through planSteppedRestoreThroughSourceHold so the pending-swap source-off hold and
-  // stepped-swap executor context apply here exactly as they do on the normal restore path —
-  // an active stepped-swap target must not escalate while its swapped-out sources are still on.
-  const steppedCandidates = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
-  const eligibleStepped = meterSettlingRemainingSec !== null
-    ? steppedCandidates.filter((dev) => isActiveSteppedRestoreCandidate(dev))
-    : steppedCandidates;
-  for (const dev of eligibleStepped) {
-    const availableForCandidate = ledger.availableFor(dev);
-    const result = planSteppedRestoreThroughSourceHold({
-      dev,
-      deviceMap,
-      swapState,
-      state,
-      timing: effectiveTiming,
-      availableHeadroom: availableForCandidate,
-      restoredOneThisCycle,
-      debugStructured: deps.debugStructured,
-      steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-    });
-    ledger.commit(dev, availableForCandidate - result.availableHeadroom);
-    restoredOneThisCycle = result.restoredOneThisCycle;
+
+  const holdReason = resolveCapacityRestoreBlockReason({ timing: effectiveTiming });
+  if (holdReason === null) {
+    return {
+      restoredOneThisCycle: params.restoredOneThisCycle,
+      restoreCooldownPreview: null,
+    };
   }
-  return { restoredOneThisCycle };
+
+  // Preview the ordinary direct-admission path with the global cooldown lifted. The preview
+  // writes hold reasons, never restore intents or swaps. It uses a private ledger and batch
+  // state so the hypothetical cohort cannot consume power from later planning stages.
+  const previewTiming = { ...effectiveTiming, inRestoreCooldown: false as const };
+  const previewLedger = buildRestoreHeadroomLedger(ledger.axes());
+  const previewBatchState = buildRestoreBatchState({
+    context,
+    timing: previewTiming,
+    availableHeadroom: previewLedger.summaryAvailableKw(),
+  });
+  const admissionMode = { kind: 'cooldown_preview' as const, holdReason };
+  const snapshot = Array.from(deviceMap.values());
+  let previewAdmitted = false;
+  ({ restoredOneThisCycle: previewAdmitted } = applyRestoreCandidates({
+    restoreCandidates: getRestoreCandidates(snapshot),
+    deviceMap,
+    onDevices: getOnDevices(snapshot, deps.getShedBehavior),
+    swapState,
+    state,
+    timing: previewTiming,
+    ledger: previewLedger,
+    restoredThisCycle,
+    restoredOneThisCycle: previewAdmitted,
+    batchState: previewBatchState,
+    deps,
+    steppedSwapExecutor,
+    headroomReserves: params.headroomReserves,
+    admissionMode,
+  }));
+  ({ restoredOneThisCycle: previewAdmitted } = applyActiveSteppedRestoreCandidates({
+    deviceMap,
+    swapState,
+    state,
+    timing: previewTiming,
+    ledger: previewLedger,
+    restoredOneThisCycle: previewAdmitted,
+    debugStructured: deps.debugStructured,
+    steppedSwapExecutor,
+    headroomReserves: params.headroomReserves,
+    admissionMode,
+  }));
+  return {
+    restoredOneThisCycle: params.restoredOneThisCycle,
+    restoreCooldownPreview: {
+      holdReason,
+      selectedOne: previewAdmitted,
+      appliesToAllCandidates: false,
+      ...previewLedger.axes(),
+    },
+  };
 }

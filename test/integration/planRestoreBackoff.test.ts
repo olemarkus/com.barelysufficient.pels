@@ -18,6 +18,7 @@ import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
 import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { applyRestorePlan } from '../../lib/plan/restore';
+import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildSwapState, exportSwapState } from '../../lib/plan/swap';
 import { resolveMeterSettlingRemainingSec } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
@@ -1167,7 +1168,7 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toBe('cooldown (shedding, 55s remaining)');
   });
 
-  it('keeps off binary restore candidates shed during recent restore meter settling', () => {
+  it('holds off binary and active stepped candidates during global meter settling', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1209,7 +1210,7 @@ describe('restore cooldown backoff', () => {
 
     expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('meter settling (55s remaining)');
-    expect(reasonText(steppedDevice?.reason)).not.toBe('meter settling (55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
@@ -1283,6 +1284,96 @@ describe('restore cooldown backoff', () => {
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+  });
+
+  it('shows restore cooldown only on the next binary batch and queues eligible followers', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    const devices = ['first', 'second', 'third', 'fourth'].map((id, index) => buildPlanDevice({
+      id,
+      name: id,
+      priority: index + 1,
+      currentState: 'off',
+      measuredPowerKw: 0,
+      expectedPowerKw: 0.5,
+    }));
+
+    const result = applyRestorePlan({
+      planDevices: devices,
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    expect(result.planDevices.slice(0, 3).map((device) => device.reason.code))
+      .toEqual(Array.from({ length: 3 }, () => PLAN_REASON_CODES.cooldownRestore));
+    expect(result.planDevices[3]?.reason.code).toBe(PLAN_REASON_CODES.waitingForOtherDevices);
+    expect(result.restoredThisCycle).toEqual(new Set());
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('shows no restore cooldown when no direct candidate has enough available power', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [buildPlanDevice({
+        id: 'too-large',
+        name: 'Too large',
+        currentState: 'off',
+        measuredPowerKw: 0,
+        expectedPowerKw: 2,
+      })],
+      context: buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
+  });
+
+  it('shows the cooldown on the next directly eligible active stepped increase', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'on',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        currentDrawKw: 1.25,
+        planningPowerKw: 1.25,
+      })],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
+    expect(result.planDevices[0]?.desiredStepId).toBe('low');
   });
 
   it('active stepped device hits shed invariant when binary peers are held off in restore cooldown', () => {
@@ -1493,14 +1584,7 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.shedInvariant });
   });
 
-  it('admits a stepped-swap for an active boosted device during restore cooldown by shedding a lower-priority peer', () => {
-    // Behavioral consequence of threading the stepped-swap executor into the restore-cooldown
-    // path. For an ACTIVE stepped device applySteppedDeviceGates zeroes inRestoreCooldown, so it
-    // reaches admitSteppedRestore. Previously the cooldown branch passed no swapExecutor, so the
-    // `if (swapExecutor && canUseSwapForSteppedRestore(...))` guard was false and the device was
-    // rejected for insufficient headroom. With the executor now threaded, a boosted active device
-    // can fire a swap during cooldown — shedding a lower-priority on-peer — exactly as it does on
-    // the normal restore path. This makes cooldown consistent with the normal path.
+  it('does not present or initiate a swap-dependent stepped increase as next during restore cooldown', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1532,9 +1616,9 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      // Headroom too small to escalate low -> medium outright (needs ~0.95kW), forcing the swap
-      // branch. The fresh whole-home sample (measurementTs > lastRestoreMs) keeps us on the
-      // restore-cooldown path rather than meter settling, and lets the swap admit (not defer).
+      // Headroom is too small to escalate low -> medium outright (needs ~0.95kW). The cooldown
+      // preview considers direct admissions only: it must retain the power blocker and must not
+      // manufacture a swap merely to decide which card receives the timer.
       context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
@@ -1548,22 +1632,13 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
     const sourceDevice = result.planDevices.find((device) => device.id === 'lower-priority');
 
-    // The active boosted target acquired a pending swap (it would have been rejected for
-    // insufficient headroom without the executor on the cooldown path).
-    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.swapPending });
-    // The lower-priority peer is shed for the swap, and the swap link is recorded.
-    expect(sourceDevice?.plannedState).toBe('shed');
-    expect(sourceDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.swappedOut });
-    expect(result.stateUpdates.swapByDevice['lower-priority']?.swappedOutFor).toBe('dev-step');
-    // Swaps do not consume the per-cycle restore slot (mirrors the normal-path swap behavior).
+    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.insufficientHeadroom });
+    expect(sourceDevice?.plannedState).toBe('keep');
+    expect(result.stateUpdates.swapByDevice).toEqual({});
     expect(result.restoredOneThisCycle).toBe(false);
   });
 
-  it('defers a stepped-swap during meter settling for an active boosted device until a fresh sample arrives', () => {
-    // Same active-boosted-swap setup, but on the meter-settling sub-path (no whole-home sample
-    // past lastRestoreMs → measurementTs null). attemptSwapRestore must NOT fire the swap: no
-    // peer is shed and no swap link is recorded, so meter settling still gates swap admission
-    // even though the executor is now threaded into the cooldown branch.
+  it('does not increase an active boosted step while the whole-home meter is settling', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1595,7 +1670,9 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      // Enough power for a direct low -> medium increase. The stale whole-home
+      // sample must still prevent executable scale-up intent.
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1606,12 +1683,190 @@ describe('restore cooldown backoff', () => {
       },
     });
 
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
     const sourceDevice = result.planDevices.find((device) => device.id === 'lower-priority');
 
-    // No swap fired during meter settling: the lower-priority peer is not shed for the swap.
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason.code).toBe(PLAN_REASON_CODES.meterSettling);
     expect(sourceDevice?.reason).not.toMatchObject({ code: PLAN_REASON_CODES.swappedOut });
     expect(result.stateUpdates.swapByDevice['lower-priority']?.swappedOutFor).toBeUndefined();
     expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('continues cooldown cohort selection into set-temperature devices', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.lastPlannedShedIds = new Set(['first-temp', 'second-temp']);
+    const planDevices = ['first-temp', 'second-temp'].map((id, index) => buildPlanDevice({
+      id,
+      name: id,
+      priority: index + 1,
+      currentState: 'keep',
+      plannedState: 'shed',
+      currentTarget: 16,
+      plannedTarget: 16,
+      shedAction: 'set_temperature',
+      shedTemperature: 16,
+      expectedPowerKw: 0.5,
+      reason: { code: PLAN_REASON_CODES.capacity },
+    }));
+    const context = buildContext({ headroomRaw: 5, headroom: 5 });
+    const deps = {
+      powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      logDebug: vi.fn(),
+    };
+
+    const restore = applyRestorePlan({
+      planDevices,
+      context,
+      state,
+      sheddingActive: false,
+      deps,
+    });
+    const held = applyShedTemperatureHold({
+      planDevices: restore.planDevices,
+      state,
+      shedReasons: new Map(),
+      inShedWindow: restore.inShedWindow,
+      inCooldown: restore.inCooldown,
+      activeOvershoot: restore.activeOvershoot,
+      availableHeadroom: restore.availableHeadroom,
+      ledger: buildRestoreHeadroomLedger({
+        capacityAvailableKw: restore.capacityAvailableKw,
+        budgetAvailableKw: restore.budgetAvailableKw,
+      }),
+      headroomReserves: restore.headroomReserves,
+      restoredOneThisCycle: restore.restoredOneThisCycle,
+      restoredThisCycle: restore.restoredThisCycle,
+      shedCooldownRemainingSec: restore.shedCooldownRemainingSec,
+      holdDuringRestoreCooldown: restore.inRestoreCooldown,
+      restoreCooldownSeconds: restore.restoreCooldownSeconds,
+      restoreCooldownRemainingSec: restore.restoreCooldownRemainingSec,
+      inStartupStabilization: restore.inStartupStabilization,
+      restoreCooldownStartedAtMs: restore.restoreCooldownStartedAtMs,
+      restoreCooldownTotalSec: restore.restoreCooldownTotalSec,
+      restoreCooldownPreview: restore.restoreCooldownPreview,
+      getShedBehavior: deps.getShedBehavior,
+    });
+
+    expect(held.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
+    expect(held.planDevices[1]?.reason.code).toBe(PLAN_REASON_CODES.waitingForOtherDevices);
+    expect(held.restoredOneThisCycle).toBe(false);
+    expect(held.availableHeadroom).toBe(restore.availableHeadroom);
+  });
+
+  it('shows meter settling on both binary and set-temperature restore candidates', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.lastPlannedShedIds.add('temp');
+    const planDevices = [
+      buildPlanDevice({
+        id: 'binary', name: 'Heater', currentState: 'off', plannedState: 'keep', expectedPowerKw: 0.5,
+        reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      }),
+      buildPlanDevice({
+        id: 'temp', name: 'Thermostat', currentState: 'not_applicable', plannedState: 'shed',
+        currentTarget: 16, plannedTarget: 16, shedAction: 'set_temperature', shedTemperature: 16,
+        expectedPowerKw: 0.5, reason: { code: PLAN_REASON_CODES.capacity },
+      }),
+    ];
+    const getShedBehavior = (deviceId: string) => deviceId === 'temp'
+      ? { action: 'set_temperature' as const, temperature: 16, stepId: null }
+      : { action: 'turn_off' as const, temperature: null, stepId: null };
+    const restore = applyRestorePlan({
+      planDevices,
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: now - 10_000 } as PowerTrackerState,
+        getShedBehavior,
+        logDebug: vi.fn(),
+      },
+    });
+    const held = applyShedTemperatureHold({
+      planDevices: restore.planDevices,
+      state,
+      shedReasons: new Map(),
+      inShedWindow: restore.inShedWindow,
+      inCooldown: restore.inCooldown,
+      activeOvershoot: restore.activeOvershoot,
+      availableHeadroom: restore.availableHeadroom,
+      restoredOneThisCycle: restore.restoredOneThisCycle,
+      restoredThisCycle: restore.restoredThisCycle,
+      shedCooldownRemainingSec: restore.shedCooldownRemainingSec,
+      holdDuringRestoreCooldown: restore.inRestoreCooldown,
+      restoreCooldownSeconds: restore.restoreCooldownSeconds,
+      restoreCooldownRemainingSec: restore.restoreCooldownRemainingSec,
+      inStartupStabilization: restore.inStartupStabilization,
+      restoreCooldownStartedAtMs: restore.restoreCooldownStartedAtMs,
+      restoreCooldownTotalSec: restore.restoreCooldownTotalSec,
+      restoreCooldownPreview: restore.restoreCooldownPreview,
+      getShedBehavior,
+    });
+
+    expect(held.planDevices.map((device) => device.reason.code))
+      .toEqual([PLAN_REASON_CODES.meterSettling, PLAN_REASON_CODES.meterSettling]);
+    expect(held.restoredOneThisCycle).toBe(false);
+  });
+
+  it('shows no cooldown on a set-temperature device that cannot be admitted directly', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.lastPlannedShedIds.add('dev-temp');
+    const planDevices = [buildPlanDevice({
+      id: 'dev-temp',
+      name: 'Thermostat',
+      currentState: 'keep',
+      plannedState: 'shed',
+      currentTarget: 16,
+      plannedTarget: 16,
+      shedAction: 'set_temperature',
+      shedTemperature: 16,
+      expectedPowerKw: 2,
+      reason: { code: PLAN_REASON_CODES.capacity },
+    })];
+    const deps = {
+      powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      logDebug: vi.fn(),
+    };
+    const restore = applyRestorePlan({
+      planDevices,
+      context: buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+    const held = applyShedTemperatureHold({
+      planDevices: restore.planDevices,
+      state,
+      shedReasons: new Map(),
+      inShedWindow: restore.inShedWindow,
+      inCooldown: restore.inCooldown,
+      activeOvershoot: restore.activeOvershoot,
+      availableHeadroom: restore.availableHeadroom,
+      restoredOneThisCycle: restore.restoredOneThisCycle,
+      restoredThisCycle: restore.restoredThisCycle,
+      shedCooldownRemainingSec: restore.shedCooldownRemainingSec,
+      holdDuringRestoreCooldown: restore.inRestoreCooldown,
+      restoreCooldownSeconds: restore.restoreCooldownSeconds,
+      restoreCooldownRemainingSec: restore.restoreCooldownRemainingSec,
+      inStartupStabilization: restore.inStartupStabilization,
+      restoreCooldownStartedAtMs: restore.restoreCooldownStartedAtMs,
+      restoreCooldownTotalSec: restore.restoreCooldownTotalSec,
+      restoreCooldownPreview: restore.restoreCooldownPreview,
+      getShedBehavior: deps.getShedBehavior,
+    });
+
+    expect(held.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
   });
 
   it('keeps meter settling bounded to 60 seconds even when restore cooldown backs off longer', () => {

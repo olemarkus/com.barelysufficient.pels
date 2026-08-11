@@ -15,7 +15,12 @@ import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import { isOnLikeState } from './deviceStatePredicates';
 import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
-import { formatHourlyExhaustedLine, formatShortfallLine, resolveHeldCardReasonLine } from './planCardReasonLine';
+import {
+  formatHourlyExhaustedLine,
+  formatShortfallLine,
+  resolveHeldCardReasonLine,
+  resolveHeldCardReasonVerb,
+} from './planCardReasonLine';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 import {
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
@@ -111,6 +116,16 @@ const isSettlingReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.startupStabilization
 );
 
+const resolveSteppedWaitVerb = (
+  device: SteppedCardDevice,
+  profile: SteppedLoadProfile,
+) => resolveHeldCardReasonVerb({
+  controlModel: 'stepped_load',
+  currentState: device.currentState,
+  reportedStepId: resolveCurrentStepId(device) ?? undefined,
+  steppedLoadProfile: profile,
+});
+
 type SteppedDevice = SteppedCardDevice;
 
 const isAtTargetStep = (device: SteppedDevice): boolean => {
@@ -133,16 +148,12 @@ const isHeadroomCheckSettlingReason = (code: string): boolean => (
 
 const formatSec = (sec: number): string => `${Math.round(Math.max(0, sec))}s`;
 
-const resolveElapsedAgoText = (countdownStartedAtMs: number | undefined, nowMs: number): string => {
-  if (countdownStartedAtMs === undefined) return 'recently';
-  const elapsed = Math.round((nowMs - countdownStartedAtMs) / 1000);
-  return elapsed >= 0 ? `${elapsed}s ago` : 'recently';
-};
-
-const resolveSettlingStatusLine = (reason: DeviceReason, nowMs: number): string | null => {
+const resolveSettlingStatusLine = (
+  reason: DeviceReason,
+  verb: 'resume' | 'increase',
+): string | null => {
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
-    const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-    return `Resumed ${ago} — checking power reading`;
+    return `Waiting to ${verb} — ${formatSec(reason.remainingSec)}`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownShedding) {
     return `Limited — will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
@@ -224,7 +235,7 @@ const resolveOffStatusLine = (
 export const resolveSteppedStatusLine = (
   device: SteppedDevice,
   profile: SteppedLoadProfile,
-  nowMs: number,
+  _nowMs: number,
   dryRun = false,
 ): string | null => {
   // Active-movement states win first: a held-back device commanded back up
@@ -241,13 +252,20 @@ export const resolveSteppedStatusLine = (
   if (isSteppedTransit(device)) return resolveTransitStatusLine(device, profile);
   if (isSettlingReason(device.reason.code)) {
     const suppressed = isHeadroomCheckSettlingReason(device.reason.code) && isAtTargetStep(device);
-    if (!suppressed) return resolveSettlingStatusLine(device.reason, nowMs);
+    if (!suppressed) {
+      const verb = resolveSteppedWaitVerb(device, profile);
+      return resolveSettlingStatusLine(device.reason, verb);
+    }
   }
   // A RUNNING stepped device denied a step up never reaches `resolveOffStatusLine`
   // below, so this branch stays — but the sentence itself now comes from the
   // shared formatter, which the device-detail page and the logs also use.
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
     return formatDeviceReasonUserFacing(device.reason);
+  }
+  if (device.reason.code === PLAN_REASON_CODES.waitingForOtherDevices) {
+    const verb = resolveSteppedWaitVerb(device, profile);
+    return resolveHeldCardReasonLine({ reason: device.reason, verb });
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;

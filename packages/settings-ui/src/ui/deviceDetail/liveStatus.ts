@@ -21,7 +21,11 @@ import {
   resolveRawPlanStateKind,
   shouldDisplayExternalOffReason,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
-import { resolveHeldCardReasonLine } from '../../../../shared-domain/src/planCardReasonLine.ts';
+import {
+  isActionSpecificRestoreWaitReasonCode,
+  resolveHeldCardReasonLine,
+  resolveHeldCardReasonVerb,
+} from '../../../../shared-domain/src/planCardReasonLine.ts';
 import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import {
   resolveSteppedEvExceptionLabel,
@@ -199,9 +203,15 @@ const resolveHeroReasonText = (
   // factual while the hold still exists, and the "Reported N kW" qualifier
   // needs its explaining line. The mood transform keeps the sentence honest
   // ("Would be … (simulation)"); it is a no-op outside simulation.
-  if (intentHeld || dev.starvation?.isStarved === true) {
+  const actionWait = isActionSpecificRestoreWaitReasonCode(reasonCode)
+    && (kind === 'active' || kind === 'held' || kind === 'resuming');
+  if (intentHeld || actionWait || dev.starvation?.isStarved === true) {
     return toSimulationReasonLine(
-      resolveHeldCardReasonLine({ reason: dev.reason, starvation: dev.starvation }),
+      resolveHeldCardReasonLine({
+        reason: dev.reason,
+        starvation: dev.starvation,
+        verb: resolveHeldCardReasonVerb(dev),
+      }),
       state.dryRun,
     );
   }

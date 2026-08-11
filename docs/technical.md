@@ -114,8 +114,9 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 - After resuming a device, wait at least 60 seconds for power measurements to stabilize
 - If a resume is followed by overshoot or new limiting, this cooldown delays the next restart by increasing amounts up to 5 minutes
-- Only one device is resumed per planning cycle
-- Prevents multiple devices turning on simultaneously before measurements settle
+- Binary devices may resume in a bounded batch (up to three) when fresh measurements show ample available power; stepped increases remain one at a time
+- The next directly admissible device or binary batch waits out the cooldown; devices behind it remain queued
+- Prevents an unbounded set of devices turning on simultaneously before measurements settle
 
 ### Available-Power Flow Card Step-Down Cooldown (60 seconds)
 
@@ -204,7 +205,7 @@ For devices configured with the built-in **stepped load** control model, resume 
 Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation.
 
 PELS combines the estimate with measured power on every cycle, so the actual control loop is anchored in reality:
-- Resumes one device at a time so each restart is attributable
+- Resumes stepped loads one at a time; binary loads may use the bounded batch above when the available-power margin is large
 - Waits for the next measurement before considering another resume
 - Adds a hysteresis buffer so a restart never relies on a single estimate alone
 

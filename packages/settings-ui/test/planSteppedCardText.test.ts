@@ -244,7 +244,7 @@ describe('resolveSteppedStatusLine', () => {
   });
 
   describe('settling — cooldowns', () => {
-    it('returns elapsed text for cooldownRestore reason', () => {
+    it('returns an increase countdown for an active cooldownRestore candidate', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -255,7 +255,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Resumed 7s ago — checking power reading');
+      expect(result).toBe('Waiting to increase — 20s');
     });
 
     it('returns countdown for cooldownShedding reason', () => {
@@ -316,7 +316,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Limited — will try to resume in 22s if power is available');
     });
 
-    it('still returns the cooldown elapsed text for cooldownRestore even when reported step equals target step', () => {
+    it('still returns the increase countdown for cooldownRestore when reported step equals target step', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -327,7 +327,66 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Resumed 4s ago — checking power reading');
+      expect(result).toBe('Waiting to increase — 18s');
+    });
+
+    it('uses resume for an off cooldown candidate', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ reportedStepId: 'off', targetStepId: 'off' }),
+          reason: { code: 'cooldown_restore', remainingSec: 12 },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Waiting to resume — 12s');
+    });
+
+    it('explains that another candidate is ahead of an active step increase', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
+          reason: { code: 'waiting_for_other_devices' },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Waiting to increase — other devices are ahead');
+    });
+
+    it('uses resume when another candidate is ahead of an off stepped device', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ reportedStepId: 'off', targetStepId: 'off' }),
+          reason: { code: 'waiting_for_other_devices' },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Waiting to resume — other devices are ahead');
+    });
+
+    it('uses resume for a target-only stepped device on a zero-power named rung', () => {
+      const zeroNamedProfile = {
+        ...profile,
+        steps: [
+          { id: 'step_0', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1_000 },
+        ],
+      };
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'not_applicable',
+          steppedLoad: steppedLoad({ reportedStepId: 'step_0', targetStepId: 'step_0' }),
+          reason: { code: 'waiting_for_other_devices' },
+        },
+        zeroNamedProfile,
+        NOW_MS,
+      )).toBe('Waiting to resume — other devices are ahead');
     });
 
     it('returns "Briefly holding — Ns" for activationBackoff reason', () => {

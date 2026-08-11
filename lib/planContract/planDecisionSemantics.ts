@@ -33,6 +33,7 @@ export type PlanStarvationSuppressionSemantics =
 const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.meterSettling,
   PLAN_REASON_CODES.cooldownRestore,
+  PLAN_REASON_CODES.waitingForOtherDevices,
   // Same class: the planner declined to resume this cycle, it did not decide to switch anything
   // off. Listing it here is what makes "a startup reservation issues no writes" structurally true
   // rather than merely true-in-practice — without it the reject path's `plannedState: 'shed'`

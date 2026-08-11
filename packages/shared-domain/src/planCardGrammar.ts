@@ -98,7 +98,7 @@ export const isHoldReasonCode = (code: string | undefined): boolean => (
 );
 
 // Timed "coming back" reasons: the plan keeps the device but it is off while
-// a restore/settling countdown runs ("Waiting before resuming", "Queued to
+// a restore/settling countdown runs ("Waiting to resume — 50s", "Queued to
 // resume — 12s", "Waiting for power meter to stabilise"). An off+keep card
 // with one of these is not idle-by-choice — it reads `Resuming`.
 const RESUME_WAIT_REASON_CODES: ReadonlySet<string> = new Set([

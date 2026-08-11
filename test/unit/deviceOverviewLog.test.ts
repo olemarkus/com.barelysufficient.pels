@@ -142,6 +142,45 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   });
 
   it.each([
+    [
+      'cooldown',
+      { code: 'cooldown_restore' as const, remainingSec: 18 },
+      'Waiting to increase — 18s',
+    ],
+    [
+      'queue',
+      { code: 'waiting_for_other_devices' as const },
+      'Waiting to increase — other devices are ahead',
+    ],
+  ])('logs the action-specific line for an active stepped device in the %s', (_label, reason, copy) => {
+    const event = buildOverviewEventForDevice(steppedPlanDevice({
+      id: 'charger',
+      currentState: 'on',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      selectedStepId: 'medium',
+      reason,
+    }), overview);
+
+    expect(event['reasonText']).toBe(copy);
+    expect(event['cardReasonText']).toBe(copy);
+  });
+
+  it('logs increase for a target-only stepped device at a non-off step', () => {
+    const event = buildOverviewEventForDevice(steppedPlanDevice({
+      id: 'charger',
+      currentState: 'not_applicable',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      selectedStepId: 'medium',
+      reason: { code: 'waiting_for_other_devices' },
+    }), overview);
+
+    expect(event['reasonText']).toBe('Waiting to increase — other devices are ahead');
+    expect(event['cardReasonText']).toBe('Waiting to increase — other devices are ahead');
+  });
+
+  it.each([
     ['a running device', { plannedState: 'keep' as const, currentState: 'on' }],
     ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' }],
   ])('logs null for %s, which renders no reason line', (_label, state) => {
