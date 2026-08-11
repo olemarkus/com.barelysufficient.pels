@@ -4625,7 +4625,7 @@ var RECOVERY_SAFETY_TIMEOUT_MS = 24 * 60 * 60 * 1e3;
 var RECOVERY_NO_PROGRESS_MIN_DURATION_MS = 30 * 60 * 1e3;
 
 // packages/shared-domain/src/steppedLoadObservedState.ts
-var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
+var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile !== void 0;
 
 // lib/objectives/samples.ts
 var OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1e3;

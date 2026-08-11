@@ -1082,8 +1082,10 @@ program) remain deferred.*
       `x.controlCapabilityId && …` guard). The truthiness half is not decoration: review found two `lib/executor/shedReleaseActuation.ts`
       branches already written that way and invisible to the comparison-only rule, so shipping without it would
       have taught the next author the evasion instead of the predicate. It deliberately does NOT match the
-      producer-only `controlModel` setting, `??` defaulting reads, or `steppedLoadProfile` truthiness (mere
-      presence — a different question from `model === 'stepped_load'`). Like its siblings it stays a tripwire,
+      producer-only `controlModel` setting, `??` defaulting reads, or `steppedLoadProfile` truthiness. (At the
+      time that last exclusion was justified as "mere presence — a different question from
+      `model === 'stepped_load'`". It no longer is: the very next change made presence the whole definition.
+      See the follow-up below.) Like its siblings it stays a tripwire,
       not a sandbox: an intermediate variable, a destructure-then-compare, or `typeof` still evade it and remain
       review-caught. Type-level and structural only; the one behavioural-shaped edit is a test fixture that had been passing `{ model: 'stepped_load' }` where a real
       `SteppedLoadProfile` belonged, which the tightened `resolveSurplusOnlyPosture` param now rejects.
@@ -1108,6 +1110,16 @@ program) remain deferred.*
         (`withHeadroomCurrentOn`'s input carries `binaryControl`, the field the plan kinds deliberately exclude).
         They belong next to `toPlanDevice.ts` in `setup/`; the move is legal today, since `flowCards/` sits above
         `setup/` and `no-lib-to-setup` does not block that import.
+      - *The stepped axis has no truthiness rule, and now the reason is narrower.* `isSteppedLoadSnapshot`
+        became a plain presence check (2026-08-12, the `planningPowerKw` move): `SteppedLoadProfile['model']`
+        is a single literal, so on an already-typed value the comparison was a presence check wearing a
+        costume, and the only site where it does work is `normalizeSteppedLoadProfile` at the `unknown` parse
+        boundary, which keeps it. Consequence for the guard: a bare `steppedLoadProfile` presence read in a
+        consumer layer is now the discriminant re-spelled, not a different question — but it is also how an
+        ordinary optional-field null guard is spelled before a dereference (`stepIsAtOff` in
+        `lib/observer/observedState.ts` reads the profile, not the kind), and the rule cannot tell those
+        apart. Decide whether the observer site should ask the predicate and the guard should then cover the
+        axis, or whether presence-before-dereference stays legitimate and the exclusion is permanent.
       Remaining under this item:
       - **type discrimination (snapshot side): COMPLETE.** All observed clusters (EV / temperature / SoC /
         measured-power) AND the stepped clusters (descriptor `steppedLoadProfile`/`targetPowerConfig` off
@@ -1294,6 +1306,18 @@ program) remain deferred.*
       idle-tick re-serialize). Same bug class as the control-model divergence fixed in the
       required-fields change, in the same function — the fix is to give both carriers one overview
       shape rather than two nearly-identical ones.
+
+- [ ] **`planningPowerKw` is stepped-only in the planner but still flat on the wire.**
+      It now lives on `SteppedPlanInputKind` / `SteppedLoadKind`, so a non-stepped
+      `PlanInputDevice` / `DevicePlanDevice` cannot carry it — a read is a compile error, not a
+      silent `undefined`. The wire shapes still carry it flat: `DeviceOverviewSnapshot`,
+      `SettingsUiPlanDeviceSnapshot`, and the decorated device snapshot
+      (`packages/contracts/src/types.ts`).
+      The blocker is now GONE: retiring `controlModel` gave `DeviceOverviewSnapshot` a real
+      stepped cluster (`steppedLoad`, present iff stepped), which is exactly where this belongs —
+      `getDeviceOverviewExpectedPowerKw` can read it off there. Until it moves, `toPlanDevice` and
+      `decorateSnapshotWithDeviceControl` still spend a line each explicitly clearing it on the
+      snapshot carrier, which is the tell that it is on the wrong type.
 
 - [ ] **`isValidPlanDevice` vouches for more than it checks.**
       `setup/settingsUiAppRuntime.ts` narrows `unknown` to `SettingsUiPlanDevice` while inspecting

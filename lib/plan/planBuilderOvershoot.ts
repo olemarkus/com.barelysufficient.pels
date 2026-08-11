@@ -21,6 +21,7 @@ import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlanDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { buildPlanCapacityStateSummary } from './planLogging';
@@ -491,7 +492,7 @@ function trackPlanDeviceForOvershoot(
       : {}),
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
-    planningPowerKw: device.planningPowerKw,
+    ...(isSteppedLoadDevice(device) ? { planningPowerKw: device.planningPowerKw } : {}),
     binaryCommandPending: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
     pendingBinaryOnCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
     pendingBinaryOffCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === false,

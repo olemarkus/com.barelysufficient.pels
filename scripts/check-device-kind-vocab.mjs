@@ -107,9 +107,14 @@ function isNullishOperand(node) {
 // non-empty literals, so `!x.controlCapabilityId` and `x.controlCapabilityId ===
 // undefined` agree, and the first is exactly what a future author reaches for
 // when the comparison form fails the build. `steppedLoadProfile` is deliberately
-// NOT here — its truthiness is mere presence, a genuinely different question from
-// `model === 'stepped_load'`, and presence checks inside already-narrowed helpers
-// are legitimate.
+// NOT here, and since 2026-08-12 the reason is narrower than it used to be: the
+// stepped discriminant IS presence now (`isSteppedLoadSnapshot`), so a bare
+// presence read is no longer a "different question". It stays out because on the
+// stepped axis presence is also how an ordinary optional-field null guard is
+// spelled before a dereference — `stepIsAtOff` in `lib/observer/observedState.ts`
+// reads the profile, not the kind — and a rule that cannot tell those apart would
+// push authors into worse shapes rather than toward the predicate. Tracked as a
+// follow-up in TODO.md; review still catches the classification form.
 const TRUTHINESS_DISCRIMINANTS = new Map([
   ['controlCapabilityId', 'hasBinaryControlCapability (shared-domain) / isBinaryPlanDevice (lib/plan)'],
 ]);

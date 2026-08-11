@@ -58,6 +58,9 @@ type RestoreFixture = DevicePlanDevice & {
   // read it the same way `setup/appInit/residualKwForPlanDevice.ts` does
   // (guarded by `controlModel === 'stepped_load'`).
   steppedLoadProfile?: SteppedLoadProfile;
+  // Same treatment, same reason: `planningPowerKw` moved onto `SteppedLoadKind`
+  // beside the profile, so it is unreachable on the bare union.
+  planningPowerKw?: number;
 };
 
 // Wrap the shared output-device builder so a fixture can also carry the binary

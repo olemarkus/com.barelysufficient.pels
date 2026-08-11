@@ -92,13 +92,13 @@ export type SteppedLoadTransition = {
   transitionPhase: SteppedLoadTransitionPhase;
 };
 
-// Kind type-guard: "stepped load" is a yes/no capability = presence of a valid
+// Kind type-guard: "stepped load" is a yes/no capability = presence of a
 // `steppedLoadProfile`. After a positive branch the consumer reads
-// `steppedLoadProfile` as required (no `?.` / `!`). The predicate proves exactly
-// that narrowed shape, so the guard is sound. Dedicated overloads narrow the two
-// flat plan device types to their named `Stepped*` slices; the generic overload
-// preserves any other caller's variable type and intersects it with
-// `SteppedLoadKind`.
+// `steppedLoadProfile` and `planningPowerKw` as required (no `?.` / `!`). The
+// predicate proves exactly that narrowed shape, so the guard is sound. Dedicated
+// overloads narrow the two flat plan device types to their named `Stepped*`
+// slices; the generic overload preserves any other caller's variable type and
+// intersects it with `SteppedLoadKind`.
 //
 // The runtime predicate is delegated to the browser-safe `isSteppedLoadSnapshot`
 // so there is exactly one definition of "is this a stepped load" — this module
@@ -120,6 +120,11 @@ export function isSteppedLoadDevice(
   // `steppedLoadProfile` is only typed on the stepped variant of each device
   // union; widen to the probe shape to read it un-narrowed (the runtime field
   // is simply absent on the non-stepped variants, so the probe read is sound).
+  //
+  // What the shared predicate asks is PRESENCE, nothing more — this is a type
+  // guard, not a validator. Whether the ladder is USABLE stays the producer's
+  // question, already answered there; do not re-ask it here. The argument for
+  // that lives with the one definition, on `isSteppedLoadSnapshot`.
   return isSteppedLoadSnapshot(device as SteppedDiscriminantProbe);
 }
 

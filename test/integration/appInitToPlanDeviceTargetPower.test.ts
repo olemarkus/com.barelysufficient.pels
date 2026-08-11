@@ -49,4 +49,37 @@ describe('toPlanDevice target-power reachability boundary', () => {
     expect(whenDue.steppedLoadProfile?.steps.at(-1)?.id).toBe('28a');
     expect(whenDue.targetPowerConfig).toEqual(baseConfig);
   });
+
+  // `planningPowerKw` is REQUIRED on the stepped variant, so this boundary must
+  // not forward a non-finite value into `lib/plan` — `??` would, since it only
+  // gates on null/undefined. `planningPowerW` comes from persisted settings and
+  // the carried value from the decoration layer, so either can be junk, and a
+  // NaN kW poisons every sum it reaches (reserve, headroom, restore sizing)
+  // silently. Each rung is gated separately so junk falls THROUGH rather than
+  // dropping a device out of stepped control that a lower rung could price.
+  it('falls through a non-finite carried planning power to the ladder rung', () => {
+    const config = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
+    const device: DecoratedDeviceSnapshot = {
+      id: 'charger',
+      expectedPowerKw: 1,
+      expectedPowerSource: 'default',
+      name: 'Charger',
+      targets: [],
+      controlModel: 'stepped_load',
+      steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config),
+      targetPowerConfig: config,
+      binaryControl: { on: true },
+      // No `selectedStepId`, so the first rung finds nothing and the carried
+      // value is consulted next — as junk.
+      planningPowerKw: Number.NaN,
+    };
+    const ctx = createAppContextMock({ deviceTargetPowerConfigs: { charger: config } });
+
+    const planDevice = toPlanDevice(ctx, device);
+
+    expect(isSteppedLoadDevice(planDevice)).toBe(true);
+    if (!isSteppedLoadDevice(planDevice)) throw new Error('expected stepped plan device');
+    expect(Number.isFinite(planDevice.planningPowerKw)).toBe(true);
+    expect(planDevice.planningPowerKw).toBeGreaterThan(0);
+  });
 });

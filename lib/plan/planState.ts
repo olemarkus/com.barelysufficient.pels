@@ -87,7 +87,6 @@ export type OvershootTrackedPlanDevice = Pick<
   | 'currentState'
   | 'currentDrawKw'
   | 'expectedPowerKw'
-  | 'planningPowerKw'
   | 'binaryCommandPending'
   | 'stepCommandPending'
   | 'reason'
@@ -97,6 +96,11 @@ export type OvershootTrackedPlanDevice = Pick<
   // optional probe shape, sourced by the producer via `isBinaryPlanDevice`.
   & BinaryControlDiscriminantProbe
   & {
+    // Same reason as `binaryControl` above: `planningPowerKw` lives on the
+    // orthogonal `SteppedLoadKind`, so it can't be Pick'd off the base. Carried
+    // flat here as the optional it is on a stepped device, sourced by the
+    // producer via `isSteppedLoadDevice`.
+    planningPowerKw?: number;
     pendingBinaryOnCommand: boolean;
     pendingBinaryOffCommand: boolean;
     pendingTargetCommand: boolean;

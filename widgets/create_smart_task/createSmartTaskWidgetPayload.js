@@ -28,7 +28,7 @@ __export(createSmartTaskWidgetPayload_exports, {
 module.exports = __toCommonJS(createSmartTaskWidgetPayload_exports);
 
 // packages/shared-domain/src/steppedLoadObservedState.ts
-var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
+var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile !== void 0;
 
 // packages/shared-domain/src/objectiveWriteStrings.ts
 var SMART_TASK_SUB_HOME_UNAVAILABLE = "Smart tasks aren\u2019t available yet for devices on a separate meter.";
