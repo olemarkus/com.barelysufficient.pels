@@ -413,6 +413,23 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
   it('offers the rescue chip alongside that line', () => {
     expect(renderTemperatureCard(buildTemperatureDevice()).querySelector('button')).not.toBeNull();
   });
+
+  it('keeps a benign near-target idle classification out of the exception line', () => {
+    const card = renderTemperatureCard(buildTemperatureDevice({
+      plannedState: 'keep',
+      currentTemperature: 18,
+      currentTarget: 10,
+      plannedTarget: 10,
+      currentDrawKw: 0,
+      idleClassification: 'near_target_idle',
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      starvation: undefined,
+    }));
+
+    expect(card.querySelector('.plan-card__temp-line')?.textContent).toBe('18.0 °C · target 10 °C');
+    expect(card.querySelector('.plan-card__temp-reason')).toBeNull();
+    expect(card.textContent).not.toContain('Holding near setpoint');
+  });
 });
 
 describe('PlanSteppedCard status line states what the device needs', () => {

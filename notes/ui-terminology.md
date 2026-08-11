@@ -212,6 +212,12 @@ one of the shared state words; the older modality-specific bare `On`/`Off`
 output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.
 
+A benign `near_target_idle` classification is one of those quiet states. It
+stays available to diagnostics and smart-task completion, but adds no device-card
+reason line: the temperature fact already shows the measured value and target.
+In particular, do not revive `Holding near setpoint`; a device can legitimately
+be idle after overshooting far above a lowered target, where “near” is false.
+
 ### EV charger exception labels (stepped card reason slot)
 
 An EV charger's exceptional charging states render in the reason slot when no
