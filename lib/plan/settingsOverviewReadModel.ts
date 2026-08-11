@@ -1,7 +1,4 @@
 import {
-  getDeviceOverviewReportedStepId,
-} from '../../packages/shared-domain/src/deviceOverview';
-import {
   resolvePlanStateKind,
   resolvePlanStateTone,
 } from '../../packages/shared-domain/src/planStateLabels';
@@ -11,15 +8,13 @@ import type {
   SettingsUiPlanMetaSnapshot,
   SettingsUiPlanDeviceStarvation,
   SettingsUiPlanSnapshot,
-  SettingsUiPlanSteppedLoadState,
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
 import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { getSteppedLoadHighestStep, getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { isEvPlanDevice } from './planEvDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { isSteppedLoadDevice } from './planSteppedLoad';
+import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
@@ -39,15 +34,11 @@ export type SettingsOverviewReadModelDeps = {
   // gray-state UI label is a display concern, so the read model sources staleness
   // from the observer projection here, NOT off the plan device.
   getObservationStale?: (deviceId: string) => boolean;
-  // `controlModel` is a producer-only SETTING the planner no longer carries, but
-  // the settings-UI still needs it to pick the device card (stepped / temperature
-  // / generic). Stepped is the decorated truth (`isSteppedLoadDevice` on the plan
-  // device); the temperature-vs-binary split for non-stepped devices comes from
-  // the producer's `deviceType`, supplied here as a built-once map (sourced from
-  // the raw, undecorated snapshot so there is no re-decoration side effect). This
-  // is a UI display concern at the planner→UI seam, NOT a planning evaluation.
+  // Observational device kind, for the temperature card. Supplied as a
+  // built-once map sourced from the raw, undecorated snapshot so there is no
+  // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is
+  // the plan device's own ladder (`buildOverviewSteppedLoad`).
   getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
-  getControlModelById?: () => Map<string, 'stepped_load' | 'temperature_target' | 'binary_power'>;
   getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
 };
 
@@ -76,58 +67,6 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
   };
 }
 
-function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): string | null {
-  return device.targetStepId ?? device.desiredStepId ?? null;
-}
-
-function buildSteppedLoadReadState(
-  device: DevicePlan['devices'][number],
-  confirmedProfile?: SteppedLoadProfile,
-): SettingsUiPlanSteppedLoadState | undefined {
-  if (!isSteppedLoadDevice(device)) {
-    return undefined;
-  }
-  const profile = confirmedProfile ?? device.steppedLoadProfile;
-  const reportedStepId = getDeviceOverviewReportedStepId(device) ?? null;
-  const plannedTargetStepId = resolveOverviewTargetStepId(device);
-  const plannerOnlyTarget = confirmedProfile !== undefined
-    && plannedTargetStepId !== null
-    && getSteppedLoadStep(confirmedProfile, plannedTargetStepId) === null;
-  const targetStepId = plannerOnlyTarget
-    ? getSteppedLoadStep(profile, reportedStepId ?? undefined)?.id
-      ?? getSteppedLoadHighestStep(profile)?.id
-      ?? null
-    : plannedTargetStepId;
-  return {
-    profile,
-    reportedStepId,
-    targetStepId,
-    commandPending: !plannerOnlyTarget && (device.binaryCommandPending === true
-      || device.stepCommandPending === true
-      || device.pendingTargetCommand != null),
-  };
-}
-
-/**
- * Reproduce the decorated `controlModel` SETTING for the settings-UI card.
- * Stepped is the decorated truth (profile presence on the plan device); the
- * temperature-vs-binary split for non-stepped devices mirrors
- * `resolveDefaultControlModel` (the producer's `deviceType`). Faithful to the
- * prior snapshot value — including the `temperature_target` case a temperature
- * device with no `plannedTarget` (skip / abandon-grace) relies on to still
- * render as a temperature card. This is a UI display concern, not a planning
- * evaluation.
- */
-function resolveDisplayControlModel(
-  device: DevicePlan['devices'][number],
-  producerDeviceType?: 'temperature' | 'onoff',
-  producerControlModel?: 'stepped_load' | 'temperature_target' | 'binary_power',
-): 'stepped_load' | 'temperature_target' | 'binary_power' {
-  if (producerControlModel !== undefined) return producerControlModel;
-  if (isSteppedLoadDevice(device)) return 'stepped_load';
-  return producerDeviceType === 'temperature' ? 'temperature_target' : 'binary_power';
-}
-
 function resolveOverviewTemperatureState(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
@@ -152,7 +91,6 @@ export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps = {},
   producerDeviceType?: 'temperature' | 'onoff',
-  producerControlModel?: 'stepped_load' | 'temperature_target' | 'binary_power',
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
   // EV boost fields live on the orthogonal `EvKind` cluster (off the base);
@@ -161,13 +99,21 @@ export function buildSettingsOverviewDeviceReadModel(
   // owner), NOT the plan device — see `getObservedEvChargingState`.
   const ev = isEvPlanDevice(device) ? device : null;
   const temperature = resolveOverviewTemperatureState(device, deps);
+  // The stepped discriminant, from the device's own ladder. This site used to
+  // reconstruct a `controlModel` setting producer-map-first, which made its
+  // stepped rung unreachable — the map is built from the RAW snapshot and cannot
+  // see a STORED ladder, so a device the owner had configured as a stepped load
+  // was demoted to a generic card.
+  const steppedLoad = buildOverviewSteppedLoad(device, confirmedSteppedLoadProfile);
   // The shared-domain label resolvers below take a `DeviceOverviewSnapshot`, which
   // names the draw `currentDrawKw` — the same producer-resolved field the plan
-  // device carries — so the device passes through with only the temperature
-  // overlay applied.
+  // device carries — so the device passes through with only the control-model
+  // and temperature overlays applied.
   const overviewShape = {
     ...device,
     ...temperature,
+    steppedLoad,
+    deviceType: producerDeviceType,
   };
   return {
     id: device.id,
@@ -179,11 +125,7 @@ export function buildSettingsOverviewDeviceReadModel(
     available: device.available,
     currentState: device.currentState,
     plannedState: device.plannedState,
-    // `controlModel` is a producer-only setting no longer carried on the plan
-    // device; reproduce the decorated value for the UI card (see
-    // `resolveDisplayControlModel`).
     deviceType: producerDeviceType,
-    controlModel: resolveDisplayControlModel(device, producerDeviceType, producerControlModel),
     controlCapabilityId: device.controlCapabilityId,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
     carChargingState: deps.getAssociatedCarChargingState?.(device.id),
@@ -225,7 +167,7 @@ export function buildSettingsOverviewDeviceReadModel(
     stateTone: resolvePlanStateTone(overviewShape),
     reason: device.reason,
     starvation: deps.getOverviewStarvation?.(device.id) ?? undefined,
-    steppedLoad: buildSteppedLoadReadState(device, confirmedSteppedLoadProfile),
+    steppedLoad,
     idleClassification: deps.getIdleClassification?.(device.id),
   };
 }
@@ -237,8 +179,6 @@ export function buildSettingsOverviewReadModel(
   if (!plan) return null;
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).
   const deviceTypeById = deps.getDeviceTypeById?.() ?? new Map<string, 'temperature' | 'onoff'>();
-  const controlModelById = deps.getControlModelById?.()
-    ?? new Map<string, 'stepped_load' | 'temperature_target' | 'binary_power'>();
   const steppedLoadProfileById = deps.getSteppedLoadProfileById?.() ?? new Map<string, SteppedLoadProfile>();
   return {
     generatedAtMs: plan.generatedAtMs,
@@ -255,7 +195,6 @@ export function buildSettingsOverviewReadModel(
         device,
         deps,
         deviceTypeById.get(device.id),
-        controlModelById.get(device.id),
         steppedLoadProfileById.get(device.id),
       )),
   };

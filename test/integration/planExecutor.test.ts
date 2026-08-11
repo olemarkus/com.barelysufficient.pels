@@ -107,6 +107,7 @@ const buildPlan = (): DevicePlan => ({
       currentTarget: 21,
       plannedTarget: 21,
       controllable: true,
+      available: true,
       controlCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
     }),
@@ -130,6 +131,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       currentTarget,
       plannedTarget,
       controllable: true,
+      available: true,
       controlCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
     }),
@@ -1584,6 +1586,7 @@ describe('PlanExecutor stepped loads', () => {
       currentTarget: 68,
       plannedTarget: 68,
       controllable: true,
+      available: true,
       controlCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
       commandableNow: true,
@@ -3919,13 +3922,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
-      currentTarget: null, controllable: true, reason: CAPACITY_REASON,
+      currentTarget: null, controllable: true, available: true, reason: CAPACITY_REASON,
       controlCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
-      currentTarget: null, controllable: true, reason: KEEP_REASON, commandableNow: true,
+      currentTarget: null, controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
       controlCapabilityId: 'onoff' as const, currentOn: false,

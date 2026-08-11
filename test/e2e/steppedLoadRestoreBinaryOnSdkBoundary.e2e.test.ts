@@ -233,6 +233,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     plannedState: 'keep' as const,
     currentTarget: null,
     controllable: true,
+    available: true,
     steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
     controlCapabilityId: 'onoff' as const,
     // The device is already calibrated at step 'low'; the deferred objective

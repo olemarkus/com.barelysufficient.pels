@@ -53,8 +53,8 @@ const formatKw = (value: number): string => `${value.toFixed(1)} kW`;
 // projection for a non-drawing device. Mirror that split so this row never
 // disagrees with the card for the same plan snapshot.
 const isMeasuredOnlyCard = (dev: PlanDeviceSnapshot): boolean => (
-  dev.controlModel === 'stepped_load'
-  || dev.controlModel === 'temperature_target'
+  dev.steppedLoad !== undefined
+  || dev.deviceType === 'temperature'
   || typeof dev.plannedTarget === 'number'
 );
 
@@ -109,10 +109,10 @@ const getRow = (): {
 // use: temperature devices show measured/target, stepped devices (including EV
 // chargers, whose battery and charging state fold in) show the level fact.
 const resolveFactText = (dev: PlanDeviceSnapshot): string => {
-  if (dev.controlModel === 'temperature_target' || typeof dev.plannedTarget === 'number') {
+  if (dev.deviceType === 'temperature' || typeof dev.plannedTarget === 'number') {
     return resolveTemperatureLine(dev as Parameters<typeof resolveTemperatureLine>[0]) ?? '';
   }
-  if (dev.controlModel === 'stepped_load') {
+  if (dev.steppedLoad !== undefined) {
     const exception = resolveSteppedEvExceptionLabel(dev);
     const levelFact = resolveSteppedLevelFact(dev);
     return [exception, levelFact].filter((part): part is string => part !== null).join(' · ');

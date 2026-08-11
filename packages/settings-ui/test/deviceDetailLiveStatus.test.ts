@@ -32,7 +32,6 @@ const planWithReason = (reason: { code: 'cooldown_restore'; remainingSec: number
     devices: [{
       id: 'charger',
       name: 'Charger',
-      controlModel: 'stepped_load',
       currentState: 'on',
       plannedState: 'keep',
       currentDrawKw: 1.2,

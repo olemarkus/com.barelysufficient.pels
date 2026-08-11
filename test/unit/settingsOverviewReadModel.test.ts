@@ -136,7 +136,6 @@ describe('settingsOverviewReadModel', () => {
       device,
       {},
       undefined,
-      undefined,
       confirmedProfile,
     ).steppedLoad).toEqual(expect.objectContaining({
       profile: confirmedProfile,
@@ -210,23 +209,46 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge).toBeUndefined();
   });
 
-  it('reproduces the control-mode card from profile-presence + producer deviceType', () => {
-    // controlModel is a producer setting the planner no longer carries. The read
-    // model must still emit the faithful value so the settings-UI picks the right
-    // card — including a temperature device with NO plannedTarget (skip /
-    // abandon-grace), which previously relied on controlModel === 'temperature_target'.
+  it('emits the producer deviceType and the stepped cluster the card selects on', () => {
+    // The card used to be picked from a reconstructed `controlModel`. It is now
+    // picked from these two: `steppedLoad` presence for the stepped card, and
+    // `deviceType` for the temperature card — including a temperature device
+    // with NO `plannedTarget` (skip / abandon-grace), which is exactly the case
+    // `plannedTarget` alone cannot carry.
     const temp = buildPlanDevice({ id: 'temp-1' }); // non-stepped, no plannedTarget
-    expect(buildSettingsOverviewDeviceReadModel(temp, {}, 'temperature').controlModel)
-      .toBe('temperature_target');
+    const tempRead = buildSettingsOverviewDeviceReadModel(temp, {}, 'temperature');
+    expect(tempRead.deviceType).toBe('temperature');
+    expect(tempRead.steppedLoad).toBeUndefined();
 
     const binary = buildPlanDevice({ id: 'bin-1' });
-    expect(buildSettingsOverviewDeviceReadModel(binary, {}, 'onoff').controlModel).toBe('binary_power');
-    // Absent deviceType (not in the producer map) falls back to binary, matching resolveDefaultControlModel.
-    expect(buildSettingsOverviewDeviceReadModel(binary, {}).controlModel).toBe('binary_power');
+    const binaryRead = buildSettingsOverviewDeviceReadModel(binary, {}, 'onoff');
+    expect(binaryRead.deviceType).toBe('onoff');
+    expect(binaryRead.steppedLoad).toBeUndefined();
+    // No producer deviceType at all: still no stepped cluster, so the generic
+    // card. Absence is the marker for "neither stepped nor temperature".
+    expect(buildSettingsOverviewDeviceReadModel(binary, {}).steppedLoad).toBeUndefined();
 
-    const stepped = steppedPlanDevice({ id: 'step-1' });
     // Stepped wins regardless of producer deviceType (a stepped thermostat stays stepped).
-    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'temperature').controlModel).toBe('stepped_load');
+    const stepped = steppedPlanDevice({ id: 'step-1' });
+    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'temperature').steppedLoad).toBeDefined();
+  });
+
+  it('keeps a stored-profile stepped device stepped', () => {
+    // The read model used to reconstruct a `controlModel` setting and consult
+    // the producer map FIRST, which made its stepped rung unreachable: that map
+    // is built from the RAW snapshot, whose control model is only ever set for
+    // NATIVE stepped devices, so a device whose ladder comes from
+    // `deviceControlProfiles` arrived marked `binary_power` and was demoted.
+    //
+    // Not a label-only concern: `PlanOverview` picks the card COMPONENT off
+    // stepped-ness, and `formatDeviceOverview` uses it to choose the 'Planned'
+    // vs 'Expected' label, append the step text, and suppress `powerMsg`. The
+    // device rendered as a generic card while the overview log seam recorded the
+    // same device as stepped. The device's own ladder is now the discriminant,
+    // so there is no producer setting left to disagree with it.
+    const stepped = steppedPlanDevice({ id: 'stored-profile-step' });
+    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'onoff').steppedLoad).toBeDefined();
+    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'temperature').steppedLoad).toBeDefined();
   });
 
   it('threads the producer deviceType map through the top-level read model', () => {
@@ -235,7 +257,7 @@ describe('settingsOverviewReadModel', () => {
       { generatedAtMs: 0, meta: {}, devices: [temp] } as never,
       { getDeviceTypeById: () => new Map([['temp-2', 'temperature']]) },
     );
-    expect(readModel?.devices?.[0]?.controlModel).toBe('temperature_target');
+    expect(readModel?.devices?.[0]?.deviceType).toBe('temperature');
   });
 
   it('keeps observed temperature presentation when effective control is binary', () => {
@@ -249,14 +271,12 @@ describe('settingsOverviewReadModel', () => {
       { generatedAtMs: 0, meta: {}, devices: [device] } as never,
       {
         getDeviceTypeById: () => new Map([['externally-controlled-thermostat', 'temperature']]),
-        getControlModelById: () => new Map([['externally-controlled-thermostat', 'binary_power']]),
         getObservedTemperature: () => ({ currentTarget: 22, currentTemperature: 20.3 }),
       },
     );
 
     expect(readModel?.devices?.[0]).toMatchObject({
       deviceType: 'temperature',
-      controlModel: 'binary_power',
       currentTarget: 22,
       currentTemperature: 20.3,
       shedAction: 'turn_off',

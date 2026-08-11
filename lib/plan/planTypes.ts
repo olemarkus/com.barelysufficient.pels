@@ -474,7 +474,18 @@ type DevicePlanDeviceBase = {
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.
   reason: DeviceReason;
   zone?: string;
-  controllable?: boolean;
+  /**
+   * Producer-resolved: whether PELS manages this device this cycle. REQUIRED —
+   * `planDevices.ts` collapses the owner's optional setting with
+   * `dev.controllable !== false` and hands every plan device the boolean, and
+   * the deferred-objective rescue lane's override lands before that. Optional
+   * bought nothing here: absence never reached this type, and typing it as if
+   * it might left `undefined` meaning "managed" — a third state for a two-state
+   * fact. The many `!== false` reads on plan devices are now redundant rather
+   * than load-bearing; simplify them as they are touched (a `PlanInputDevice`
+   * read is NOT redundant — the collapse there is still real).
+   */
+  controllable: boolean;
   budgetExempt?: boolean;
   temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
@@ -516,7 +527,21 @@ type DevicePlanDeviceBase = {
   shedAction?: ShedAction;
   shedTemperature?: number | null;
   releaseShedStepId?: string | null;
-  available?: boolean;
+  /**
+   * Producer-resolved reachability. REQUIRED because the transport already
+   * answers it for every device — but note HOW: `managerHelpers.getIsAvailable`
+   * resolves a non-boolean read OPTIMISTICALLY to `true`. So this field means
+   * "not known to be unavailable", and every reader has always spelled that
+   * `!== false`. Requiring it changes no decision; it just stops a third state
+   * existing in the type for a two-state answer.
+   *
+   * That optimism is the capacity-UNSAFE direction (`planHeadroomDevice` zeroes
+   * headroom only on `available === false`, so an unreadable device stays
+   * sheddable and its expected relief may never materialize). Pre-existing, and
+   * not something requiring the field makes better or worse — but do not read
+   * this field as proof Homey said yes.
+   */
+  available: boolean;
   lastFreshDataMs?: number;
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;

@@ -8,6 +8,7 @@ import {
   getDeviceOverviewExpectedPowerKw,
   getDeviceOverviewReportedStepId,
 } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSteppedLoad } from '../../packages/shared-domain/src/deviceOverview';
 import {
   formatDeviceReasonUserFacingForDevice,
   isActionSpecificRestoreWaitReasonCode,
@@ -15,12 +16,10 @@ import {
   resolveHeldCardReasonVerb,
 } from '../../packages/shared-domain/src/planCardReasonLine';
 import { resolveIntentStateKind, resolveRawPlanStateKind } from '../../packages/shared-domain/src/planCardGrammar';
-import { isSteppedLoadDevice } from './planSteppedLoad';
 import type {
   SettingsUiDeviceLogEntry,
   SettingsUiDeviceLogPayload,
 } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceControlModel } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice } from './planTypes';
 
 // Per-device cap on retained transition entries. The recorder is purely
@@ -40,51 +39,36 @@ export const DEVICE_OVERVIEW_LOG_MAX_DEVICES = 64;
 
 export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
 
-function resolveOverviewTargetStepId(device: DevicePlanDevice): string | null {
+/**
+ * A plan device carrying the display fields the plan itself does not own:
+ * the resolved `controlModel` and the observer's `observationStale`. Built once
+ * per device by `planOverviewEmit.recordOverviewChange` and threaded through
+ * every helper here.
+ *
+ * These helpers used to take a bare `DevicePlanDevice`, so nothing stopped a
+ * caller handing them a device with no stepped cluster at all — which
+ * `formatDeviceOverview` and the signature builder read as "not stepped".
+ * Naming the shape makes that mistake visible at the call site.
+ */
+export type OverviewLogDevice = DevicePlanDevice & {
+  steppedLoad?: DeviceOverviewSteppedLoad;
+  observationStale?: boolean;
+};
+
+function resolveOverviewTargetStepId(device: OverviewLogDevice): string | null {
   return device.targetStepId ?? device.desiredStepId ?? null;
 }
 
 // The overview-transition signature: a change in this value is the boundary
 // that drives both the device-log capture and the structured overview debug
 // log, so the two surfaces report identical wording.
-export function buildOverviewSignatureForDevice(device: DevicePlanDevice): string {
+export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
   return buildDeviceOverviewTransitionSignature(device);
-}
-
-// Restore the device's control model onto the overview/log device so the
-// shared-domain helpers (which branch on `controlModel`) render and SIGN correctly.
-// The planner no longer carries `controlModel`, so without this a non-stepped
-// `temperature_target ↔ binary_power` flip collapses to `controlModel: null` on both
-// poles and the signature can't distinguish it (leaving an open overview card stale).
-// Precedence: the device's OWN stepped status (`isSteppedLoadDevice`, which reflects
-// the decorated plan device's effective profile — native OR stored) wins first; only
-// for non-stepped devices do we read the producer map for the three-way model. The map
-// is built from the RAW `getSnapshot()`, whose `controlModel` is stepped-only, so it
-// cannot be trusted to mark a stored-profile stepped device as stepped — hence the
-// stepped check must come first. When neither resolves a model, return the device
-// unchanged (the helpers treat a missing `controlModel` as non-stepped, signature
-// records `null`). The `controlModel:` key is a WRITE, not a read, so the control-model
-// containment guard (`check-control-model-vocab`) is satisfied — the planner still
-// never BRANCHES on a `.controlModel` read.
-export function resolveOverviewControlModel(
-  device: DevicePlanDevice,
-  controlModelById: Map<string, DeviceControlModel>,
-): DevicePlanDevice & { controlModel?: DeviceControlModel } {
-  // The decorated plan device's OWN stepped status wins first: a stored-profile
-  // stepped device (`steppedLoadProfile` from `deviceControlProfiles`, not the raw
-  // native snapshot) is stepped here but absent-stepped in the raw-derived map, so
-  // applying the map first would mis-sign it as `binary_power`/`temperature_target`.
-  if (isSteppedLoadDevice(device)) return { ...device, controlModel: 'stepped_load' as const };
-  // Non-stepped: the producer map supplies the three-way `temperature_target ↔
-  // binary_power` model the planner no longer carries.
-  const producerControlModel = controlModelById.get(device.id);
-  if (producerControlModel) return { ...device, controlModel: producerControlModel };
-  return device;
 }
 
 // The structured per-device debug event emitted on an overview change.
 export function buildOverviewEventForDevice(
-  device: DevicePlanDevice,
+  device: OverviewLogDevice,
   overview: ReturnType<typeof formatDeviceOverview>,
 ): Record<string, unknown> {
   return {
@@ -115,7 +99,7 @@ export function buildOverviewEventForDevice(
     // reason line.
     cardReasonText: resolveCardReasonTextForLog(device),
     currentDrawKw: device.currentDrawKw,
-    expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
+    expectedPowerKw: getDeviceOverviewExpectedPowerKw(device),
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
     targetStepId: resolveOverviewTargetStepId(device),
     desiredStepId: device.desiredStepId ?? null,
@@ -139,7 +123,7 @@ export function buildOverviewBatchEvent(
 // exist only there too. A device the planner left inactive but a hold reason is
 // keeping back counts as held, which is why this uses the INTENT kind rather
 // than the raw one.
-function resolveCardReasonTextForLog(device: DevicePlanDevice): string | null {
+function resolveCardReasonTextForLog(device: OverviewLogDevice): string | null {
   const kind = resolveIntentStateKind({
     kind: resolveRawPlanStateKind(device),
     reasonCode: device.reason.code,
@@ -160,7 +144,7 @@ function resolveCardReasonTextForLog(device: DevicePlanDevice): string | null {
  * (both consume `formatDeviceOverview`).
  */
 export function buildDeviceLogEntry(
-  device: DevicePlanDevice,
+  device: OverviewLogDevice,
   overview: ReturnType<typeof formatDeviceOverview>,
 ): SettingsUiDeviceLogEntry {
   // Explicit fields (no object spread) so the caller's per-device loop stays

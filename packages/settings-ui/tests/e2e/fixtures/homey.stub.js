@@ -209,7 +209,9 @@
           name: 'Living Room Heat Pump',
           currentState: 'on',
           plannedState: 'keep',
-          controlModel: 'temperature_target',
+          // The producer emits the observational kind; the temperature card keys on
+          // this, not on a resolved control model.
+          deviceType: 'temperature',
           deviceClass: 'thermostat',
           // `currentTarget` is the OBSERVED device target (the device fixture
           // reports 22); `plannedTarget` is planner-owned and follows the
@@ -224,6 +226,7 @@
           currentTemperature: 20.3,
           priority: 1,
           controllable: true,
+          available: true,
           expectedPowerKw: 1.6,
           currentDrawKw: 1.2,
           reason: { code: 'keep', detail: null },
@@ -232,11 +235,13 @@
         },
         {
           id: 'dev_waterheater',
+          // Required on the plan snapshot: a binary load the owner sheds by turning off.
           name: 'Water Heater',
           currentState: 'on',
           plannedState: 'shed',
           priority: 2,
           controllable: true,
+          available: true,
           expectedPowerKw: 2.0,
           currentDrawKw: 2.1,
           // Production capacity sheds carry the recomputed, swap-aware
@@ -248,6 +253,7 @@
         },
         {
           id: 'dev_poolpump',
+          // Required on the plan snapshot: a binary load the owner sheds by turning off.
           name: 'Pool Pump',
           // Surplus-held dump load ("Run on solar surplus" posture): baseline
           // off, waiting for export — the card reads "Waiting for solar surplus".
@@ -255,6 +261,7 @@
           plannedState: 'shed',
           priority: 2,
           controllable: true,
+          available: true,
           surplusOnly: true,
           expectedPowerKw: 1.0,
           currentDrawKw: 0,
@@ -266,7 +273,9 @@
           name: 'Bedroom Thermostat',
           currentState: 'on',
           plannedState: 'keep',
-          controlModel: 'temperature_target',
+          // The producer emits the observational kind; the temperature card keys on
+          // this, not on a resolved control model.
+          deviceType: 'temperature',
           deviceClass: 'thermostat',
           // Observed device target 16 (see target_devices_snapshot), planner
           // moving it to the Home mode's 20 — same split as dev_heatpump.
@@ -275,6 +284,7 @@
           currentTemperature: 22.8,
           priority: 3,
           controllable: true,
+          available: true,
           expectedPowerKw: 0.5,
           currentDrawKw: 0,
           reason: { code: 'keep', detail: null },
@@ -286,13 +296,16 @@
           name: 'Hallway Thermostat',
           currentState: 'off',
           plannedState: 'keep',
-          controlModel: 'temperature_target',
+          // The producer emits the observational kind; the temperature card keys on
+          // this, not on a resolved control model.
+          deviceType: 'temperature',
           deviceClass: 'thermostat',
           currentTarget: 20,
           plannedTarget: 20,
           currentTemperature: 19.1,
           priority: 3,
           controllable: true,
+          available: true,
           expectedPowerKw: 0.8,
           currentDrawKw: 0,
           reason: {
@@ -314,11 +327,11 @@
           name: 'Zaptec Go',
           currentState: 'not_applicable',
           plannedState: 'keep',
-          controlModel: 'stepped_load',
           controlCapabilityId: 'evcharger_charging',
           evChargingState: 'plugged_in_charging',
           priority: 4,
           controllable: true,
+          available: true,
           expectedPowerKw: 1.38,
           currentDrawKw: 1.38,
           planningPowerKw: 1.38,
@@ -361,9 +374,9 @@
           name: 'Connected 300',
           currentState: 'off',
           plannedState: 'keep',
-          controlModel: 'stepped_load',
           priority: 5,
           controllable: true,
+          available: true,
           expectedPowerKw: 0.0,
           currentDrawKw: 0.0,
           planningPowerKw: 0.0,
@@ -535,6 +548,10 @@
   const combinedPrices = buildSampleCombinedPrices();
   const evDeviceSnapshot = {
     id: 'dev_evcharger',
+    // Goes into `target_devices_snapshot` — the DEVICE list, not the plan. That
+    // shape still carries `controlModel` (it is the producer's own setting, read
+    // by `getEffectiveControlModel`); only the plan snapshot retired it.
+    controlModel: 'binary_power',
     name: 'Generic EV Charger',
     deviceClass: 'evcharger',
     deviceType: 'onoff',
@@ -552,11 +569,13 @@
   // capacity_priorities map actually assigns this device.
   const evPlanDevice = {
     id: 'dev_evcharger',
+    // Required on the plan snapshot: a binary load the owner sheds by turning off.
     name: 'Generic EV Charger',
     currentState: 'off',
     plannedState: 'shed',
     priority: 6,
     controllable: true,
+    available: true,
     expectedPowerKw: 7.2,
     expectedPowerSource: 'load-setting',
     currentDrawKw: 0,
@@ -1921,11 +1940,13 @@
     devices: [
       {
         id: 'dev_waterheater',
+        // Required on the plan snapshot: a binary load the owner sheds by turning off.
         name: 'Water Heater',
         currentState: 'on',
         plannedState: 'shed',
         priority: 2,
         controllable: true,
+        available: true,
         expectedPowerKw: 2.0,
         currentDrawKw: 2.1,
         reason: { code: 'capacity', detail: 'capacity shortfall' },
@@ -1933,11 +1954,13 @@
       },
       {
         id: 'dev_evcharger',
+        // Required on the plan snapshot: a binary load the owner sheds by turning off.
         name: 'Generic EV Charger',
         currentState: 'on',
         plannedState: 'shed',
         priority: 6,
         controllable: true,
+        available: true,
         expectedPowerKw: 7.2,
         currentDrawKw: 6.8,
         reason: { code: 'capacity', detail: 'capacity shortfall' },
@@ -1977,6 +2000,7 @@
         currentTemperature: 19 + (i % 5),
         priority: 1 + (i % 5),
         controllable: true,
+        available: true,
         expectedPowerKw: 0.4,
         currentDrawKw: i % 3 === 0 ? 0 : 0.32,
         reason: { code: 'keep', detail: null },
@@ -2037,11 +2061,13 @@
         devices: [
           {
             id: 'dev_budget_allowed_charger',
+            // Required on the plan snapshot: a binary load the owner sheds by turning off.
             name: 'Garage Charger',
             currentState: 'on',
             plannedState: 'keep',
             priority: 6,
             controllable: true,
+            available: true,
             budgetExempt: true,
             expectedPowerKw: 7,
             currentDrawKw: 7,
@@ -2050,11 +2076,13 @@
           },
           {
             id: 'dev_budget_limited_heater',
+            // Required on the plan snapshot: a binary load the owner sheds by turning off.
             name: 'Hallway Heater',
             currentState: 'on',
             plannedState: 'shed',
             priority: 2,
             controllable: true,
+            available: true,
             budgetExempt: false,
             expectedPowerKw: 0.5,
             currentDrawKw: 0.5,

@@ -3,9 +3,16 @@ import {
   resolvePlanStateTone,
 } from '../../packages/shared-domain/src/planStateLabels';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { steppedProfile } from '../utils/planTestUtils';
 
+// No `steppedLoad` cluster and no `deviceType`: the default device is the plain
+// binary one, and that absence is the whole marker.
 const baseDevice = {
   reason: fixtureDeviceReason('keep')!,
+  // The producer's own default rung (`DEFAULT_EXPECTED_POWER_KW`): its contract
+  // promises a finite POSITIVE figure for every device, so a fixture default of
+  // 0 would pin a value the producer never emits.
+  expectedPowerKw: 1,
   controllable: true,
   available: true,
   plannedState: 'keep',
@@ -46,6 +53,7 @@ describe('planStateLabels', () => {
   describe('satisfied target-only devices', () => {
     const targetOnly = {
       ...baseDevice,
+      deviceType: 'temperature' as const,
       currentState: 'not_applicable',
     };
 
@@ -152,15 +160,20 @@ describe('planStateLabels', () => {
     })).toBe('resuming');
     expect(resolvePlanStateKind({
       ...baseDevice,
-      controlModel: 'stepped_load',
+      steppedLoad: {
+        profile: steppedProfile,
+        reportedStepId: 'eco',
+        targetStepId: 'comfort',
+        commandPending: false,
+      },
       currentState: 'off',
       selectedStepId: 'eco',
       desiredStepId: 'comfort',
     })).toBe('resuming');
   });
 
-  it('detects stepped restore-pending from the step ids alone (plan devices carry no controlModel)', () => {
-    // Plan devices no longer carry `controlModel`; the distinct selected→desired
+  it('detects stepped restore-pending from the step ids alone (plan devices carry no stepped cluster)', () => {
+    // Plan devices carry no `steppedLoad` cluster; the distinct selected→desired
     // step pair only exists on a stepped device, so it must still read as resuming.
     expect(resolvePlanStateKind({
       ...baseDevice,

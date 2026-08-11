@@ -13,18 +13,16 @@ import {
   buildOverviewBatchEvent,
   buildOverviewEventForDevice,
   buildOverviewSignatureForDevice,
-  resolveOverviewControlModel,
   type DeviceOverviewLogRecorder,
 } from './deviceOverviewLog';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { DevicePlan } from './planTypes';
-import type { DeviceControlModel } from '../../packages/contracts/src/types';
+import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 
 export type OverviewEmitDeps = {
   isOverviewDebugEnabled?: () => boolean;
   overviewDebugStructured?: StructuredDebugEmitter;
   deviceOverviewLogRecorder?: DeviceOverviewLogRecorder;
-  getControlModelById?: () => Map<string, DeviceControlModel>;
   // Display-only staleness for the overview signature/log, sourced from the
   // observer (the plan device no longer carries `observationStale`). Mirrors the
   // live-card read model (`settingsOverviewReadModel`) so the device-log/activity
@@ -41,7 +39,6 @@ export type OverviewEmitDeps = {
 type OverviewPassContext = {
   recorder: DeviceOverviewLogRecorder | undefined;
   debugEnabled: boolean;
-  controlModelById: Map<string, DeviceControlModel>;
   getObservationStale: (deviceId: string) => boolean;
 };
 
@@ -59,7 +56,8 @@ function recordOverviewChange(
   // `resolveOverviewControlModel` for the full rationale. This is display, not
   // planning.
   const overviewDevice = {
-    ...resolveOverviewControlModel(device, pass.controlModelById),
+    ...device,
+    steppedLoad: buildOverviewSteppedLoad(device),
     // The draw needs no adapter: the display/log helpers read `currentDrawKw`,
     // the producer-resolved field the plan device already carries — one value,
     // two seams, no second answer anywhere in the planner.
@@ -94,6 +92,23 @@ function emitOverviewDebugBatch(
   }
 }
 
+// The two producer maps are captured ONCE per pass (not per device) so the
+// raw-snapshot scan stays O(n) and never re-enters the device manager per-device
+// inside the plan/apply cycle. Mirrors the read model's own capture in
+// `buildSettingsOverviewReadModel` — same two maps, so the two carriers of the
+// overview shape resolve `controlModel` from identical inputs.
+function buildOverviewPassContext(
+  deps: OverviewEmitDeps,
+  recorder: DeviceOverviewLogRecorder | undefined,
+  debugEnabled: boolean,
+): OverviewPassContext {
+  return {
+    recorder,
+    debugEnabled,
+    getObservationStale: deps.getObservationStale ?? ((): boolean => false),
+  };
+}
+
 // Returns true when at least one device's overview signature changed (and was
 // captured into the recorder / batched for debug), so the caller can refresh
 // the open settings-UI activity-log view.
@@ -110,13 +125,7 @@ export function emitDeviceOverviewTransitions(
   const recorder = deps.deviceOverviewLogRecorder;
   if (!debugEnabled && !recorder) return false;
 
-  // Build the producer control-model map ONCE per pass (not per device) so the
-  // raw-snapshot scan stays O(n) and never re-enters the device manager
-  // per-device inside the plan/apply cycle. Mirrors the read-model's
-  // `getDeviceTypeById` capture in `buildSettingsOverviewReadModel`.
-  const controlModelById = deps.getControlModelById?.() ?? new Map<string, DeviceControlModel>();
-  const getObservationStale = deps.getObservationStale ?? ((): boolean => false);
-  const pass: OverviewPassContext = { recorder, debugEnabled, controlModelById, getObservationStale };
+  const pass = buildOverviewPassContext(deps, recorder, debugEnabled);
 
   const nextDeviceIds = new Set<string>();
   const changedDevices: Record<string, unknown>[] = [];

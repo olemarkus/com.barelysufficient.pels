@@ -7,9 +7,51 @@ import {
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_STATE_CAPACITY_STATUS } from '../../packages/shared-domain/src/planStateLabels';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { steppedProfile } from '../utils/planTestUtils';
+import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
 const r = (reason: string): DeviceReason => fixtureDeviceReason(reason)!;
+
+// The producer resolves `expectedPowerKw`, `controllable` and `available` for
+// every device, so every fixture must carry them. Defaults here stand for "this
+// test does not care": a reachable, managed binary device that draws nothing
+// when running — a device with no `steppedLoad` cluster and no `deviceType` is
+// exactly that, so no marker field is needed. Tests about a temperature device
+// set `deviceType`, stepped ones build through `buildSteppedOverviewDevice`,
+// and anything asserting a usage line overrides `expectedPowerKw`.
+const buildOverviewDevice = (
+  overrides: Partial<DeviceOverviewSnapshot> & Pick<DeviceOverviewSnapshot, 'reason'>,
+): DeviceOverviewSnapshot => ({
+  controllable: true,
+  available: true,
+  currentDrawKw: 0,
+  // The producer's own default rung (`DEFAULT_EXPECTED_POWER_KW`): its contract
+  // promises a finite POSITIVE figure for every device, so a fixture default of
+  // 0 would pin a value the producer never emits.
+  expectedPowerKw: 1,
+  ...overrides,
+});
+
+// Stepped-ness is the PRESENCE of the `steppedLoad` cluster, so a stepped
+// fixture carries a real ladder (the shared `steppedProfile`) rather than a
+// marker string. Mirrors the producer, `buildOverviewSteppedLoad`: the cluster
+// repeats the step ids the formatter reads off the top level, so the fixture
+// stays one coherent snapshot rather than two disagreeing halves.
+const buildSteppedOverviewDevice = (
+  overrides: Partial<DeviceOverviewSnapshot> & Pick<DeviceOverviewSnapshot, 'reason'>,
+): DeviceOverviewSnapshot => {
+  const device = buildOverviewDevice(overrides);
+  return {
+    ...device,
+    steppedLoad: {
+      profile: steppedProfile,
+      reportedStepId: device.reportedStepId ?? null,
+      targetStepId: device.targetStepId ?? device.desiredStepId ?? null,
+      commandPending: device.binaryCommandPending === true,
+    },
+  };
+};
 
 describe('overview transition signature', () => {
   // Regression (PR #1955 review, Copilot + Codex): a satisfied target-only
@@ -18,7 +60,8 @@ describe('overview transition signature', () => {
   // device log records the transition (and only the transition — sub-epsilon
   // temperature wobble must not change the signature).
   it('changes when the satisfied-idle classification flips, not on sub-epsilon wobble', () => {
-    const base = {
+    const base = buildOverviewDevice({
+      deviceType: 'temperature',
       currentState: 'not_applicable',
       plannedState: 'keep',
       reason: r('keep'),
@@ -26,7 +69,7 @@ describe('overview transition signature', () => {
       available: true,
       currentDrawKw: 0,
       currentTarget: 16,
-    };
+    });
     const running = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 14 });
     const idle = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 20.8 });
     const idleWobble = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 20.9 });
@@ -37,13 +80,13 @@ describe('overview transition signature', () => {
 
 describe('device overview formatter', () => {
   it('formats active devices with measured and expected power', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       currentDrawKw: 0,
       expectedPowerKw: 3,
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'on',
       stateMsg: 'Active',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW',
@@ -55,49 +98,50 @@ describe('device overview formatter', () => {
   // satisfied target-only device is stamped `idle`, so an idle-toned chip
   // reading "Active (temperature-managed)" would contradict the card.
   it('formats a satisfied target-only keep device as Idle, unsatisfied as Active (temperature-managed)', () => {
-    const base = {
+    const base = buildOverviewDevice({
+      deviceType: 'temperature',
       currentState: 'not_applicable',
       plannedState: 'keep',
       reason: r('keep'),
       currentDrawKw: 0,
       expectedPowerKw: 1,
       currentTarget: 16,
-    };
+    });
     expect(formatDeviceOverview({ ...base, currentTemperature: 20.8 }).stateMsg).toBe('Idle');
     expect(formatDeviceOverview({ ...base, currentTemperature: 14.2 }).stateMsg)
       .toBe('Active (temperature-managed)');
   });
 
   it('formats inactive devices', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'off',
       plannedState: 'inactive',
       currentDrawKw: 0,
       reason: r('inactive (charger is unplugged)'),
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
-      usageMsg: 'Measured: 0.00 kW',
+      usageMsg: 'Measured: 0.00 kW / Expected: 1.00 kW',
       statusMsg: 'Off for now (charger is unplugged)',
     });
   });
 
   it('formats unplugged chargers without changing semantics', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'off',
       plannedState: 'inactive',
       currentDrawKw: 0,
       reason: r('inactive (charger is unplugged)'),
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
-      usageMsg: 'Measured: 0.00 kW',
+      usageMsg: 'Measured: 0.00 kW / Expected: 1.00 kW',
       statusMsg: 'Off for now (charger is unplugged)',
     });
   });
 
   it('adds EV battery SoC details to status text without changing control state', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       controlCapabilityId: 'evcharger_charging',
@@ -105,12 +149,12 @@ describe('device overview formatter', () => {
       stateOfCharge: { level: { kind: 'known', percent: 42 } },
       currentDrawKw: 0,
       reason: r('keep'),
-    }).statusMsg).toBe('EV battery: 42 %');
+    })).statusMsg).toBe('EV battery: 42 %');
 
     // Unplugged: the producer has no level, so the card shows no battery line at
     // all rather than a number carrying a qualifier ("42 %, stale") the reader
     // was invited to use anyway.
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'off',
       plannedState: 'inactive',
       controlCapabilityId: 'evcharger_charging',
@@ -118,69 +162,68 @@ describe('device overview formatter', () => {
       stateOfCharge: { level: { kind: 'unavailable', reasonCode: 'not_connected' } },
       currentDrawKw: 0,
       reason: r('inactive (charger is unplugged)'),
-    }).statusMsg).toBe('Off for now (charger is unplugged)');
+    })).statusMsg).toBe('Off for now (charger is unplugged)');
   });
 
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'off',
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: r('meter settling (10s remaining)'),
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'off',
       stateMsg: 'Resuming',
-      usageMsg: 'Measured: 0.00 kW',
+      usageMsg: 'Measured: 0.00 kW / Expected: 1.00 kW',
       statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
 
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'on',
       plannedState: 'shed',
       currentDrawKw: 0,
       reason: r('cooldown (restore, 10s remaining)'),
       shedAction: 'turn_off',
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'on → off',
       stateMsg: 'Turned off',
-      usageMsg: 'Measured: 0.00 kW',
+      usageMsg: 'Measured: 0.00 kW / Expected: 1.00 kW',
       statusMsg: 'Waiting to resume — 10s',
     });
   });
 
   it('formats shed devices blocked by meter settling as held off', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'off',
       plannedState: 'shed',
       currentDrawKw: 0,
       reason: r('meter settling (10s remaining)'),
       shedAction: 'turn_off',
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'off',
       stateMsg: 'Turned off',
-      usageMsg: 'Measured: 0.00 kW',
+      usageMsg: 'Measured: 0.00 kW / Expected: 1.00 kW',
       statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
   });
 
   it('keeps meter settling copy distinct from restore cooldown copy', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: r('meter settling (10s remaining)'),
-    }).statusMsg).toBe('Waiting for power meter to stabilise (10s)');
-    expect(formatDeviceOverview({
+    })).statusMsg).toBe('Waiting for power meter to stabilise (10s)');
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: r('cooldown (restore, 10s remaining)'),
-    }).statusMsg).toBe('Waiting to resume — 10s');
+    })).statusMsg).toBe('Waiting to resume — 10s');
   });
 
   it('formats stepped-load devices with desired step labels', () => {
-    expect(formatDeviceOverview({
-      controlModel: 'stepped_load',
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'set_step',
@@ -188,7 +231,7 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       currentDrawKw: 0,
       reason: r('shed due to capacity'),
-    })).toEqual({
+    }))).toEqual({
       powerMsg: null,
       stateMsg: 'Limited to Max',
       usageMsg: 'Measured: 0.00 kW / Planned: 3.00 kW (target: Max)',
@@ -197,8 +240,7 @@ describe('device overview formatter', () => {
   });
 
   it('formats reported stepped-load feedback as confirmed observed state', () => {
-    expect(formatDeviceOverview({
-      controlModel: 'stepped_load',
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
@@ -206,12 +248,11 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       currentDrawKw: 0,
       reason: r('keep'),
-    }).usageMsg).toBe('Measured: 0.00 kW / Planned: 3.00 kW (reported: Low / target: Max)');
+    })).usageMsg).toBe('Measured: 0.00 kW / Planned: 3.00 kW (reported: Low / target: Max)');
   });
 
   it('treats on-like stepped step changes as active mode transitions', () => {
-    expect(formatDeviceOverview({
-      controlModel: 'stepped_load',
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
@@ -219,7 +260,7 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       currentDrawKw: 0.6,
       reason: r('cooldown (restore, 10s remaining)'),
-    })).toEqual({
+    }))).toEqual({
       powerMsg: null,
       stateMsg: 'Active (low → max)',
       usageMsg: 'Measured: 0.60 kW / Planned: 3.00 kW (reported: Low / target: Max)',
@@ -228,25 +269,26 @@ describe('device overview formatter', () => {
   });
 
   it('uses increase for a target-only stepped device at a non-off step', () => {
-    expect(formatDeviceOverview({
-      controlModel: 'stepped_load',
+    const profile = {
+      model: 'stepped_load' as const,
+      steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
+    };
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'not_applicable',
       plannedState: 'keep',
       reportedStepId: 'low',
       selectedStepId: 'medium',
-      steppedLoadProfile: {
-        model: 'stepped_load',
-        steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
-      },
+      steppedLoadProfile: profile,
+      // Stepped-ness is the CLUSTER's presence now, not a `controlModel` marker.
+      steppedLoad: { profile, reportedStepId: 'low', targetStepId: null, commandPending: false },
       planningPowerKw: 2,
       currentDrawKw: 0.6,
       reason: { code: 'cooldown_restore', remainingSec: 10 },
-    }).statusMsg).toBe('Waiting to increase — 10s');
+    })).statusMsg).toBe('Waiting to increase — 10s');
   });
 
   it('keeps off-like stepped restores in restoring state', () => {
-    expect(formatDeviceOverview({
-      controlModel: 'stepped_load',
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'off',
@@ -255,12 +297,11 @@ describe('device overview formatter', () => {
       planningPowerKw: 1.25,
       currentDrawKw: 0,
       reason: r('restore off -> low (need 1.25kW)'),
-    }).stateMsg).toBe('Resuming');
+    })).stateMsg).toBe('Resuming');
   });
 
   it('keeps steady on-like stepped devices active without a transition arrow', () => {
-    expect(formatDeviceOverview({
-      controlModel: 'stepped_load',
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
@@ -268,7 +309,7 @@ describe('device overview formatter', () => {
       planningPowerKw: 1.25,
       currentDrawKw: 0.4,
       reason: r('keep'),
-    })).toEqual({
+    }))).toEqual({
       powerMsg: null,
       stateMsg: 'Active',
       usageMsg: 'Measured: 0.40 kW / Planned: 1.25 kW (reported: Low)',
@@ -277,8 +318,7 @@ describe('device overview formatter', () => {
   });
 
   it('does not treat disappeared stepped devices as active mode transitions', () => {
-    const device = {
-      controlModel: 'stepped_load' as const,
+    const device = buildSteppedOverviewDevice({
       currentState: 'disappeared',
       plannedState: 'keep',
       reportedStepId: 'low',
@@ -286,7 +326,7 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       currentDrawKw: 0.6,
       reason: r('cooldown (restore, 10s remaining)'),
-    };
+    });
 
     expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
     expect(formatDeviceOverview(device)).toEqual({
@@ -298,8 +338,7 @@ describe('device overview formatter', () => {
   });
 
   it('does not treat unavailable stepped devices as active mode transitions', () => {
-    const device = {
-      controlModel: 'stepped_load' as const,
+    const device = buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       available: false,
@@ -308,7 +347,7 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       currentDrawKw: 0.6,
       reason: r('cooldown (restore, 10s remaining)'),
-    };
+    });
 
     expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
     expect(formatDeviceOverview(device)).toEqual({
@@ -320,8 +359,7 @@ describe('device overview formatter', () => {
   });
 
   it('does not treat stale stepped devices as active mode transitions', () => {
-    expect(isDeviceOverviewSteppedModeTransition({
-      controlModel: 'stepped_load',
+    expect(isDeviceOverviewSteppedModeTransition(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       observationStale: true,
@@ -329,12 +367,11 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       currentDrawKw: 0,
       reason: r('keep'),
-    })).toBe(false);
+    }))).toBe(false);
   });
 
   it('surfaces the confirmed reported step in the usage line', () => {
-    const device = {
-      controlModel: 'stepped_load' as const,
+    const device = buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'max',
@@ -342,23 +379,27 @@ describe('device overview formatter', () => {
       planningPowerKw: 3,
       currentDrawKw: 0,
       reason: r('keep'),
-    };
+    });
 
     expect(getDeviceOverviewReportedStepId(device)).toBe('max');
     expect(formatDeviceOverview(device).usageMsg)
       .toBe('Measured: 0.00 kW / Planned: 3.00 kW (reported: Max)');
   });
 
+  // "Optional" here is now only the genuinely optional half of the shape. The
+  // usage line always carries both figures: `expectedPowerKw` is required and
+  // producer-resolved, so the measured-only branch of `formatUsageText` is
+  // unreachable for a device that came off a plan.
   it('handles missing optional values consistently', () => {
-    expect(formatDeviceOverview({
+    expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'unknown',
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
-    })).toEqual({
+    }))).toEqual({
       powerMsg: 'unknown',
       stateMsg: 'State unknown',
-      usageMsg: 'Measured: 0.00 kW',
+      usageMsg: 'Measured: 0.00 kW / Expected: 1.00 kW',
       statusMsg: '',
     });
   });
@@ -366,20 +407,20 @@ describe('device overview formatter', () => {
 
 describe('device overview transition signatures', () => {
   it('changes on usage-only changes', () => {
-    const base = {
+    const base = buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       currentDrawKw: 0,
       expectedPowerKw: 1,
-    };
-    const usageOnly = {
+    });
+    const usageOnly = buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       currentDrawKw: 0.25,
       expectedPowerKw: 1,
-    };
+    });
 
     expect(formatDeviceOverview(base).usageMsg).not.toBe(formatDeviceOverview(usageOnly).usageMsg);
     expect(buildDeviceOverviewTransitionSignature(base))
@@ -390,46 +431,46 @@ describe('device overview transition signatures', () => {
     // The "Raised to use your solar power" reason line is driven by surplusAbsorbActive, so a
     // flip must re-render the card even when nothing else (target, state, reason.code) moved —
     // otherwise the line goes stale until some unrelated plan change.
-    const withoutSurplus = {
+    const withoutSurplus = buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       currentDrawKw: 1,
       expectedPowerKw: 1,
       surplusAbsorbActive: false,
-    };
+    });
     const withSurplus = { ...withoutSurplus, surplusAbsorbActive: true };
     expect(buildDeviceOverviewTransitionSignature(withoutSurplus))
       .not.toBe(buildDeviceOverviewTransitionSignature(withSurplus));
   });
 
   it('ignores countdown-only cooldown and backoff changes', () => {
-    const restoreCooldown = {
+    const restoreCooldown = buildOverviewDevice({
       currentState: 'off',
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: r('meter settling (30s remaining)'),
-    };
-    const restoreCooldownTick = {
+    });
+    const restoreCooldownTick = buildOverviewDevice({
       currentState: 'off',
       plannedState: 'keep',
       currentDrawKw: 0,
       reason: r('meter settling (24s remaining)'),
-    };
-    const activationBackoff = {
+    });
+    const activationBackoff = buildOverviewDevice({
       currentState: 'off',
       plannedState: 'shed',
       currentDrawKw: 0,
       reason: r('activation backoff (1535s remaining)'),
       shedAction: 'turn_off' as const,
-    };
-    const activationBackoffTick = {
+    });
+    const activationBackoffTick = buildOverviewDevice({
       currentState: 'off',
       plannedState: 'shed',
       currentDrawKw: 0,
       reason: r('activation backoff (1503s remaining)'),
       shedAction: 'turn_off' as const,
-    };
+    });
 
     expect(buildDeviceOverviewTransitionSignature(restoreCooldown))
       .toBe(buildDeviceOverviewTransitionSignature(restoreCooldownTick));
@@ -438,40 +479,40 @@ describe('device overview transition signatures', () => {
   });
 
   it('ignores countdown-only legacy restore cooldown changes', () => {
-    const restoreCooldown = {
+    const restoreCooldown = buildOverviewDevice({
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
       currentDrawKw: 0,
       reason: r('cooldown (restore, 30s remaining)'),
-    };
-    const restoreCooldownTick = {
+    });
+    const restoreCooldownTick = buildOverviewDevice({
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
       currentDrawKw: 0,
       reason: r('cooldown (restore, 24s remaining)'),
-    };
+    });
 
     expect(buildDeviceOverviewTransitionSignature(restoreCooldown))
       .toBe(buildDeviceOverviewTransitionSignature(restoreCooldownTick));
   });
 
   it('ignores shortfall jitter in overview transition signatures', () => {
-    const base = {
+    const base = buildOverviewDevice({
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
       currentDrawKw: 0,
       reason: r('shortfall (need 1.21kW, headroom -1.23kW)'),
-    };
-    const jitterOnly = {
+    });
+    const jitterOnly = buildOverviewDevice({
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'turn_off' as const,
       currentDrawKw: 0,
       reason: r('shortfall (need 1.24kW, headroom -1.24kW)'),
-    };
+    });
 
     expect(buildDeviceOverviewTransitionSignature(base))
       .toBe(buildDeviceOverviewTransitionSignature(jitterOnly));
@@ -482,7 +523,7 @@ describe('device overview transition signatures', () => {
   // the gap moves with `softLimitKw − totalKw`, so including it would flip the
   // signature on most rebuilds and flood the device-log ring buffer.
   it('ignores shortfall jitter on capacity, budget, and swap carriers', () => {
-    const withGap = (reason: DeviceReason) => ({
+    const withGap = (reason: DeviceReason) => buildOverviewDevice({
       currentState: 'off',
       plannedState: 'shed' as const,
       shedAction: 'turn_off' as const,
@@ -507,64 +548,62 @@ describe('device overview transition signatures', () => {
   });
 
   it('changes when power, state, or status changes', () => {
-    const base = {
+    const base = buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       currentDrawKw: 0,
       expectedPowerKw: 1,
-    };
+    });
 
     expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
-      buildDeviceOverviewTransitionSignature({
+      buildDeviceOverviewTransitionSignature(buildOverviewDevice({
         currentState: 'off',
         plannedState: 'keep',
         reason: r('keep'),
         currentDrawKw: 0,
         expectedPowerKw: 1,
-      }),
+      })),
     );
     expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
-      buildDeviceOverviewTransitionSignature({
+      buildDeviceOverviewTransitionSignature(buildOverviewDevice({
         currentState: 'on',
         plannedState: 'shed',
         shedAction: 'turn_off' as const,
         reason: r('keep'),
         currentDrawKw: 0,
         expectedPowerKw: 1,
-      }),
+      })),
     );
     expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
-      buildDeviceOverviewTransitionSignature({
+      buildDeviceOverviewTransitionSignature(buildOverviewDevice({
         currentState: 'on',
         plannedState: 'keep',
         reason: r('restore throttled'),
         currentDrawKw: 0,
         expectedPowerKw: 1,
-      }),
+      })),
     );
   });
 
   it('changes when stepped observed-vs-target semantics change', () => {
-    const base = {
-      controlModel: 'stepped_load' as const,
+    const base = buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
       targetStepId: 'low',
       currentDrawKw: 0,
       reason: r('keep'),
-    };
+    });
 
-    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(buildDeviceOverviewTransitionSignature({
-        controlModel: 'stepped_load' as const,
+    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(buildDeviceOverviewTransitionSignature(buildSteppedOverviewDevice({
         currentState: 'on',
         plannedState: 'keep',
         reportedStepId: 'low',
         targetStepId: 'max',
         currentDrawKw: 0,
         reason: r('keep'),
-    }));
+    })));
   });
 
 });
