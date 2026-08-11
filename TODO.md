@@ -2146,7 +2146,7 @@ program) remain deferred.*
 
 - [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
       car unobserved rather than mis-observed, so they cap what the probe can measure without
-      corrupting anything. (a) *Initially-unavailable cars are never retained.* A class `car` device
+      corrupting anything. (a) *Cars initially missing a readable plug state are never retained.* A class `car` device
       whose `ev_charging_state` is absent/malformed on the first authoritative fetch is not tracked
       at all, so it gets no realtime subscription and no place in targeted reads, and
       `noteCapabilityUpdate` only accepts already-tracked cars — a later valid value cannot recover

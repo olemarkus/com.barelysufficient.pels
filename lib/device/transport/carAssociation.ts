@@ -56,9 +56,10 @@ export const resolveAssociatedCar = (
 };
 
 /**
- * Drops the charger's car-sourced level when its session ends. Unconditional on
- * eligibility: if a level got there via a car, the car leaving is what ends it,
- * whatever the user has ticked since.
+ * Drops the charger's car-sourced level when its association ends or is
+ * suspended. Unconditional on eligibility: if a level got there via a car, the
+ * association becoming unusable is what clears it, whatever the user has ticked
+ * since.
  */
 export const clearAssociatedCarStateOfCharge = (
   ctx: { latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot> },

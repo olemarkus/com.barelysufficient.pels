@@ -358,6 +358,27 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     await flushDetached();
     expect((await chargerFromUi()).associatedCar).toBeDefined();
 
+    // Homey retains cached capability values while a device is unavailable.
+    // PELS must stop serving those values immediately, then resume the same
+    // connected session once usable telemetry returns — no physical replug.
+    car.setAvailable(false);
+    await pumpMinutes(30);
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+    expect(socOf(getLatestTargetSnapshotForTests())).toBeUndefined();
+
+    car.setAvailable(true);
+    await car.setCapabilityValue('measure_battery', 41);
+    await pumpMinutes(30);
+    expect((await chargerFromUi()).associatedCar).toMatchObject({
+      carId: CAR_ID,
+      socPct: 41,
+    });
+    expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({
+      percent: 41,
+      source: 'car',
+      sourceDeviceId: CAR_ID,
+    });
+
     await car.setCapabilityValue('ev_charging_state', 'plugged_out');
     await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
     await charger.setCapabilityValue('evcharger_charging', false);

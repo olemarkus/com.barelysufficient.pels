@@ -115,6 +115,11 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
+When a selected car is unavailable in Homey, PELS temporarily removes its association and
+battery level because the retained car data cannot be trusted. The charger remains managed
+normally. If the car becomes available again while both it and the charger still report a
+connection, PELS resumes the association automatically; no physical replug is needed.
+
 ![PELS device detail page for a heat pump showing the live status header, Temperature per mode, Price response, Solar surplus, Power limiting, and the Setup section with Managed by PELS, Power-limit control, Control model, and Power when running](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
 
 Notes:

@@ -49,6 +49,16 @@ export type CarReading = {
     socAtMs: number;
 };
 
+/**
+ * A Homey car read is either usable capability evidence or an explicit device
+ * outage. The latter is not a plug observation: cached capability values remain
+ * present in Homey's payload while the integration is offline, but PELS cannot
+ * stand behind them until the device becomes available again.
+ */
+export type CarDeviceRead =
+    | { kind: 'unavailable'; deviceId: string; name: string }
+    | { kind: 'observed'; reading: CarReading };
+
 /** Identity gate: a usable id on a class `car` device, or nothing. */
 export const readCarIdentity = (device: HomeyDeviceLike): { deviceId: string; name: string } | null => {
     if (typeof device.class !== 'string' || device.class.trim().toLowerCase() !== 'car') return null;
@@ -82,18 +92,22 @@ const resolveObservedAtMs = (
     return parsed > arrivedAtMs + CAPABILITY_CLOCK_SKEW_MS ? arrivedAtMs : parsed;
 };
 
-export const readCarDevice = (device: HomeyDeviceLike, arrivedAtMs: number): CarReading | null => {
+export const readCarDevice = (device: HomeyDeviceLike, arrivedAtMs: number): CarDeviceRead | null => {
     const identity = readCarIdentity(device);
     if (!identity) return null;
+    if (device.available === false) return { kind: 'unavailable', ...identity };
     const stateCapability = device.capabilitiesObj?.ev_charging_state;
     const socCapability = device.capabilitiesObj?.measure_battery;
     const rawState = stateCapability?.value;
     return {
-        ...identity,
-        state: isEvChargingState(rawState) ? rawState : undefined,
-        stateAtMs: resolveObservedAtMs(stateCapability?.lastUpdated, arrivedAtMs),
-        socPct: normalizeStateOfChargePercent(socCapability?.value),
-        socAtMs: resolveObservedAtMs(socCapability?.lastUpdated, arrivedAtMs),
+        kind: 'observed',
+        reading: {
+            ...identity,
+            state: isEvChargingState(rawState) ? rawState : undefined,
+            stateAtMs: resolveObservedAtMs(stateCapability?.lastUpdated, arrivedAtMs),
+            socPct: normalizeStateOfChargePercent(socCapability?.value),
+            socAtMs: resolveObservedAtMs(socCapability?.lastUpdated, arrivedAtMs),
+        },
     };
 };
 
