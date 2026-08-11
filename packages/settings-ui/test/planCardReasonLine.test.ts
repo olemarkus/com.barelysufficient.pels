@@ -2,6 +2,7 @@ import {
   formatShortfallLine,
   isCeilingHoldReasonCode,
   resolveHeldCardReasonLine,
+  resolveHeldCardReasonVerb,
 } from '../../shared-domain/src/planCardReasonLine.ts';
 import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
 import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
@@ -21,6 +22,31 @@ const starvation = (
 });
 
 describe('resolveHeldCardReasonLine', () => {
+  it('treats a target-only stepped device at a non-off step as waiting to increase', () => {
+    expect(resolveHeldCardReasonVerb({
+      controlModel: 'stepped_load',
+      currentState: 'not_applicable',
+      reportedStepId: 'low',
+      selectedStepId: 'medium',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
+      },
+    })).toBe('increase');
+  });
+
+  it('treats a target-only stepped device on a zero-power named rung as waiting to resume', () => {
+    expect(resolveHeldCardReasonVerb({
+      controlModel: 'stepped_load',
+      currentState: 'not_applicable',
+      reportedStepId: 'step_0',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
+      },
+    })).toBe('resume');
+  });
+
   // The governing rule: the card says what THIS device needs; the hero says
   // what is limiting the house. A card that named the ceiling repeated one
   // house-level fact once per device and answered nobody's question.
@@ -212,7 +238,17 @@ describe('resolveHeldCardReasonLine', () => {
     it('keeps countdown copy rather than a number that would not start the device', () => {
       expect(resolveHeldCardReasonLine({
         reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 50 },
-      })).toBe('Waiting before resuming (50s)');
+      })).toBe('Waiting to resume — 50s');
+    });
+
+    it('uses action-specific queue copy', () => {
+      expect(resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.waitingForOtherDevices },
+      })).toBe('Waiting to resume — other devices are ahead');
+      expect(resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.waitingForOtherDevices },
+        verb: 'increase',
+      })).toBe('Waiting to increase — other devices are ahead');
     });
   });
 
@@ -272,7 +308,7 @@ describe('resolveHeldCardReasonLine', () => {
       expect(resolveHeldCardReasonLine({
         reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 50 },
         starvation: starvation(),
-      })).toBe('Waiting before resuming (50s)');
+      })).toBe('Waiting to resume — 50s');
     });
 
     // Same regression, other half: a hold power cannot lift keeps its own cause.

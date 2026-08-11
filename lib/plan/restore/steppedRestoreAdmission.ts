@@ -25,6 +25,8 @@ import {
   resolveRejectedSteppedSwapUpdate,
   setRestorePlanDevice,
 } from './planDeviceUpdates';
+import type { RestoreAdmissionMode } from './types';
+import { applySteppedCooldownPreviewAdmission } from './cooldownPreview';
 
 export type SteppedSwapExecutor = (params: {
   dev: DevicePlanDevice;
@@ -48,10 +50,12 @@ export function admitSteppedRestore(params: {
   restoreDebugKey: string;
   swapExecutor?: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
+  restoredOneThisCycle: boolean;
+  admissionMode: RestoreAdmissionMode;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
     deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor,
-    headroomReserves } = params;
+    headroomReserves, restoredOneThisCycle, admissionMode } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
   // See the binary twin in `gating.ts`: admit against the power this device may actually claim
@@ -74,7 +78,8 @@ export function admitSteppedRestore(params: {
       });
       return { availableHeadroom, restoredOneThisCycle: false };
     }
-    if (swapExecutor
+    if (admissionMode.kind === 'apply'
+        && swapExecutor
         && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
       // Hand the swap the RESERVED figure for the same reason as the binary twin in `gating.ts`:
       // it may only proceed by freeing enough to cover this step on top of a block already
@@ -105,6 +110,10 @@ export function admitSteppedRestore(params: {
       admission, availableHeadroom, needed, debugStructured, restoreDebugKey,
     });
   }
+  const previewResult = applySteppedCooldownPreviewAdmission({
+    admissionMode, dev, deviceMap, availableHeadroom, neededKw: needed, restoredOneThisCycle,
+  });
+  if (previewResult) return previewResult;
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
     expectedPowerKw: nextStep.planningPowerW / 1000,

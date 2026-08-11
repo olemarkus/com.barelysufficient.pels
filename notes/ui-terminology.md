@@ -253,9 +253,18 @@ shared by all three card variants):
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
 | Held because this hour's energy budget is spent | `Waiting to resume — this hour's budget is spent` (held back: `Held 2 h — this hour's budget is spent`) |
 | Held because power is reserved for a named device about to start | `Waiting so Water heater can start` (no elapsed-hold stem — it is a cause, not a need) |
+| Next direct resume held by the global resume cooldown | `Waiting to resume — 55s` (active stepped step-up: `Waiting to increase — 55s`) |
+| Directly eligible but behind the selected resume cohort | `Waiting to resume — other devices are ahead` (active stepped step-up: `Waiting to increase — other devices are ahead`) |
 | Held on power, no shortfall resolved (rare) | `Waiting to resume` |
 | Long held back, no shortfall | `Waiting for available power` |
 | Hold that is NOT about power | its own cause (below) |
+
+The global resume cooldown appears only on the direct candidate or binary batch
+that would be admitted if the timer expired now. Other directly eligible
+candidates use the queue line. A device that still needs more power, is blocked
+by stepped fairness, or would require a priority swap keeps that more specific
+cause; when there is no directly eligible next candidate, no card shows the
+global countdown.
 
 **Held-back cards state the elapsed hold, and still name no ceiling** (2026-08-04).
 Once a hold has run long enough to register as held back, the stem becomes
@@ -296,7 +305,8 @@ power would not start them and a kW figure would be a lie: `Waiting for cheaper
 hours` (smart task), `Waiting for solar surplus`, `Turned off elsewhere — turn
 it on to resume`, `Waiting so {device} can start` (startup reservation),
 `Holding at 6 A — cannot increase while 2 devices are limited` (stepped fairness),
-and the countdown lines (`Waiting before resuming (50s)`).
+and the countdown lines (`Waiting to resume — 50s`, or `Waiting to increase — 50s`
+for an active stepped device).
 
 `Waiting so {device} can start` reaches a card by TWO routes, and they render
 identically on purpose — one situation, one sentence

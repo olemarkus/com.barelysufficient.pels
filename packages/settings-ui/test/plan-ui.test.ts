@@ -1038,7 +1038,7 @@ describe('Redesign plan UI', () => {
       const timer = document.querySelector(
         '[data-device-id="dev-restore-cooldown"] .plan-state-chip__timer',
       ) as (HTMLElement & { value?: number }) | null;
-      expect(getReasonText('dev-restore-cooldown')).toBe('Waiting before resuming (1s)');
+      expect(getReasonText('dev-restore-cooldown')).toBe('Waiting to resume — 1s');
       // The restore countdown reads as `Resuming` (card grammar) — an
       // off+keep cooldown card must never regress to "Idle" beside a
       // waiting-to-resume reason.

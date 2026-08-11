@@ -127,6 +127,7 @@ const emptyRestoreResult: RestorePlanResult = {
   nowTs: FIXTURE_NOW_MS,
   restoreCooldownMs: 60 * 1000,
   lastRestoreCooldownBumpMs: null,
+  restoreCooldownPreview: null,
 };
 
 const defaultDeps: PlanDevicesDeps = {

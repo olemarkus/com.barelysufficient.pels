@@ -4,6 +4,8 @@ import type { DevicePlanDevice } from '../planTypes';
 import type { SwapStateSnapshot } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
+import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { RestoreTiming } from './timing';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -32,6 +34,31 @@ export type RestoreBatchState = {
 export type RestoreLoopState = {
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
+};
+
+export type RestoreAdmissionMode =
+  | { kind: 'apply' }
+  | { kind: 'cooldown_preview'; holdReason: DeviceReason };
+
+export type RestoreDeviceTiming = Pick<RestoreTiming,
+| 'activeOvershoot'
+| 'inCooldown'
+| 'inRestoreCooldown'
+| 'inStartupStabilization'
+| 'measurementTs'
+| 'nowTs'
+| 'restoreCooldownSeconds'
+| 'restoreCooldownMs'
+| 'shedCooldownRemainingSec'
+| 'restoreCooldownRemainingSec'
+| 'startupStabilizationRemainingSec'>;
+
+export type RestoreCooldownPreview = {
+  holdReason: DeviceReason;
+  selectedOne: boolean;
+  appliesToAllCandidates: boolean;
+  capacityAvailableKw: number;
+  budgetAvailableKw: number | null;
 };
 
 /**
@@ -65,6 +92,11 @@ export type RestorePlanResult = {
   // binary/stepped lanes honour — without this, the hold lane gave the promised
   // block away to any set_temperature restore.
   headroomReserves: readonly HeadroomReserve[];
+  // Hypothetical direct-admission state used only by the later set-temperature
+  // lane while a global restore cooldown is active. Its ledger is separate
+  // from the real cycle ledger, so selecting the next card never spends power
+  // or creates executable intent.
+  restoreCooldownPreview: RestoreCooldownPreview | null;
   restoredOneThisCycle: boolean;
   inCooldown: boolean;
   inRestoreCooldown: boolean;

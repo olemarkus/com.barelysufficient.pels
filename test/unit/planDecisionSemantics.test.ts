@@ -15,6 +15,7 @@ describe('plan decision semantics', () => {
   it('classifies restore hold reasons for projection materialization', () => {
     expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.meterSettling))).toBe(true);
     expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.cooldownRestore))).toBe(true);
+    expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.waitingForOtherDevices))).toBe(true);
     expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.cooldownShedding))).toBe(false);
     // Load-bearing: this membership is the ONLY thing making "a startup reservation issues no
     // writes" structurally true. The stand-down path stamps `plannedState: 'shed'` via the shared

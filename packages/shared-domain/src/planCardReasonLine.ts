@@ -8,6 +8,8 @@ import {
 } from './planStateLabels';
 import type { DeviceReason } from './planReasonSemanticsCore';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
+import type { SteppedLoadProfile } from '../../contracts/src/types';
+import { isOnLikeState } from './deviceStatePredicates';
 
 // The ONE reason line a held device card may show — shared by all three card
 // variants (temperature, stepped, generic), which until 2026-08-02 each
@@ -84,6 +86,14 @@ const readReasonCode = (reason: unknown): string | undefined => {
   return typeof code === 'string' && KNOWN_REASON_CODES.has(code) ? code : undefined;
 };
 
+const readRemainingSeconds = (reason: unknown): number | null => {
+  if (typeof reason !== 'object' || reason === null) return null;
+  const remainingSec = (reason as { remainingSec?: unknown }).remainingSec;
+  return typeof remainingSec === 'number' && Number.isFinite(remainingSec)
+    ? Math.round(Math.max(0, remainingSec))
+    : null;
+};
+
 // The display-only holder name a ceiling hold carries when admission declined
 // solely on a startup reservation (`ReserveHolder`, `planReasonSemanticsCore.ts`).
 // `undefined` means "no reservation is the blocker" and the ladder falls through
@@ -112,6 +122,61 @@ const readReserveHolderName = (reason: unknown): string | undefined => {
 // a step up, so "resume" would misdescribe it. Only the verb differs — the
 // number and the ladder are identical.
 export type HeldCardReasonVerb = 'resume' | 'increase';
+
+export const isActionSpecificRestoreWaitReasonCode = (code: string | undefined): boolean => (
+  code === PLAN_REASON_CODES.cooldownRestore
+  || code === PLAN_REASON_CODES.waitingForOtherDevices
+);
+
+// Kept local because shared-domain cannot take a runtime dependency on
+// contracts helpers (`no-runtime-value-deps-on-contracts`). This is the same
+// canonical rule as contracts/deviceControlProfiles: zero-power or reserved
+// `off` ID means the device is off.
+const isProfileOffStep = (profile: SteppedLoadProfile, stepId: string): boolean => {
+  const step = profile.steps.find((candidate) => candidate.id === stepId);
+  return step !== undefined && (step.planningPowerW <= 0 || step.id === 'off');
+};
+
+export const resolveHeldCardReasonVerb = (device: {
+  controlModel?: string;
+  currentState?: string;
+  reportedStepId?: string;
+  selectedStepId?: string;
+  steppedLoadProfile?: SteppedLoadProfile;
+  steppedLoad?: { profile?: SteppedLoadProfile; reportedStepId?: string | null };
+}): HeldCardReasonVerb => {
+  const stepped = device.controlModel === 'stepped_load'
+    || device.reportedStepId !== undefined
+    || device.selectedStepId !== undefined;
+  const activeStepId = device.reportedStepId
+    ?? device.steppedLoad?.reportedStepId
+    ?? device.selectedStepId;
+  const profile = device.steppedLoadProfile ?? device.steppedLoad?.profile;
+  const activeTargetOnlyStep = device.currentState === 'not_applicable'
+    && profile !== undefined
+    && typeof activeStepId === 'string'
+    && !isProfileOffStep(profile, activeStepId);
+  return stepped && (isOnLikeState(device.currentState) || activeTargetOnlyStep)
+    ? 'increase'
+    : 'resume';
+};
+
+export const formatDeviceReasonUserFacingForDevice = (device: {
+  reason: DeviceReason;
+  controlModel?: string;
+  currentState?: string;
+  reportedStepId?: string;
+  selectedStepId?: string;
+  steppedLoadProfile?: SteppedLoadProfile;
+  steppedLoad?: { profile?: SteppedLoadProfile; reportedStepId?: string | null };
+}): string => (
+  isActionSpecificRestoreWaitReasonCode(device.reason.code)
+    ? resolveHeldCardReasonLine({
+        reason: device.reason,
+        verb: resolveHeldCardReasonVerb(device),
+      })
+    : formatDeviceReasonUserFacing(device.reason)
+);
 
 // The need clause every ceiling-hold line ends in, held apart from the stem so
 // the starved form below can reuse it verbatim.
@@ -208,6 +273,16 @@ export const resolveHeldCardReasonLine = (params: {
     ?? PLAN_STATE_HELD_FALLBACK_STATUS;
 
   const code = readReasonCode(reason);
+
+  if (code === PLAN_REASON_CODES.cooldownRestore) {
+    const remainingSec = readRemainingSeconds(reason);
+    return remainingSec === null
+      ? `Waiting to ${verb}`
+      : `Waiting to ${verb} — ${remainingSec}s`;
+  }
+  if (code === PLAN_REASON_CODES.waitingForOtherDevices) {
+    return `Waiting to ${verb} — other devices are ahead`;
+  }
 
   // The one ceiling hold that must NOT show a kW: the hour's energy budget is
   // spent, and freeing power does not put kWh back into the hour, so the honest

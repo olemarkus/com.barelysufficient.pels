@@ -15,7 +15,6 @@ import {
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingCountdownTiming,
   resolveMeterSettlingRemainingSec,
-  type RestoreTiming,
 } from './timing';
 import {
   buildReservedForStartReason,
@@ -29,38 +28,32 @@ import { getRestoreNeed } from './support';
 import { buildMeterSettlingReason } from '../planReasonStrings';
 import { attemptSwapRestore } from './swap';
 import {
-  canAdmitWithinBatch,
   canAttemptBatchContinuation,
   recordBatchAdmission,
 } from './batch';
-import type { RestoreBatchState, RestoreDeps } from './types';
+import type {
+  RestoreAdmissionMode,
+  RestoreBatchState,
+  RestoreDeps,
+  RestoreDeviceTiming,
+} from './types';
+import {
+  applyBinaryCooldownPreviewAdmission,
+  shouldApplyInCycleRestoreGate,
+  shouldRejectBatchContinuation,
+} from './cooldownPreview';
 
 /* eslint-disable-next-line max-lines-per-function, max-statements --
 restore gating stays together to keep direct-vs-swap flow readable */
 export function planRestoreForDevice(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Pick<RestoreTiming,
-  | 'activeOvershoot'
-  | 'inCooldown'
-  | 'inRestoreCooldown'
-  | 'inStartupStabilization'
-  | 'measurementTs'
-  | 'nowTs'
-  | 'restoreCooldownSeconds'
-  | 'restoreCooldownMs'
-  | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'
-  | 'startupStabilizationRemainingSec'>;
+  dev: DevicePlanDevice; deviceMap: Map<string, DevicePlanDevice>;
+  onDevices: DevicePlanDevice[]; swapState: SwapState; state: PlanEngineState;
+  timing: RestoreDeviceTiming;
   availableHeadroom: number;
-  restoredThisCycle: Set<string>;
-  restoredOneThisCycle: boolean;
-  batchState: RestoreBatchState;
-  deps: RestoreDeps;
+  restoredThisCycle: Set<string>; restoredOneThisCycle: boolean;
+  batchState: RestoreBatchState; deps: RestoreDeps;
   headroomReserves: readonly HeadroomReserve[];
+  admissionMode?: RestoreAdmissionMode;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -75,6 +68,7 @@ export function planRestoreForDevice(params: {
     batchState,
     deps,
     headroomReserves,
+    admissionMode = { kind: 'apply' },
   } = params;
 
   const inactiveReason = getInactiveReason(dev);
@@ -90,7 +84,9 @@ export function planRestoreForDevice(params: {
   }
 
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
-  const shouldBlockForInCycleRestore = restoredOneThisCycle && !batchContinuation;
+  const shouldBlockForInCycleRestore = shouldApplyInCycleRestoreGate(
+    admissionMode, restoredOneThisCycle, batchContinuation,
+  );
   const gateReason = resolveCapacityRestoreBlockReason({
     timing,
     restoredOneThisCycle: shouldBlockForInCycleRestore,
@@ -164,7 +160,9 @@ export function planRestoreForDevice(params: {
   }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
-  if (batchContinuation && !canAdmitWithinBatch(batchState, restoreNeed.needed)) {
+  if (shouldRejectBatchContinuation(
+    admissionMode, batchContinuation, batchState, restoreNeed.needed,
+  )) {
     return rejectBinaryRestoreForMeterSettling({
       state,
       deviceMap,
@@ -189,6 +187,11 @@ export function planRestoreForDevice(params: {
   const { admission, effectiveHeadroomKw } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
   if (reserved.kind === 'admitted') {
+    const previewResult = applyBinaryCooldownPreviewAdmission({
+      admissionMode, dev, deviceMap, availableHeadroom, neededKw: restoreNeed.needed,
+      restoredOneThisCycle, batchContinuation, batchState,
+    });
+    if (previewResult) return previewResult;
     const penaltyFields = restoreNeed.penaltyLevel > 0
       ? { penaltyLevel: restoreNeed.penaltyLevel, penaltyExtraKw: restoreNeed.penaltyExtraKw }
       : {};
@@ -253,6 +256,7 @@ export function planRestoreForDevice(params: {
     batchContinuation,
     restoreDebugKey,
     deps,
+    allowSwap: admissionMode.kind === 'apply',
   });
 }
 
@@ -260,14 +264,10 @@ export function planRestoreForDevice(params: {
 // the supplied reason and emit the identical restore_rejected debug payload (event + signature),
 // differing only in which reason produced the block.
 function rejectBinaryRestore(params: {
-  state: PlanEngineState;
-  deviceMap: Map<string, DevicePlanDevice>;
-  dev: DevicePlanDevice;
+  state: PlanEngineState; deviceMap: Map<string, DevicePlanDevice>; dev: DevicePlanDevice;
   phase: ReturnType<typeof resolveRestoreDecisionPhase>;
   reason: DevicePlanDevice['reason'];
-  availableHeadroom: number;
-  restoreDebugKey: string;
-  restoredOneThisCycle: boolean;
+  availableHeadroom: number; restoreDebugKey: string; restoredOneThisCycle: boolean;
   debugStructured: RestoreDeps['debugStructured'];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
@@ -316,9 +316,7 @@ function rejectBinaryRestore(params: {
 }
 
 function rejectBinaryRestoreForMeterSettling(params: {
-  state: PlanEngineState;
-  deviceMap: Map<string, DevicePlanDevice>;
-  dev: DevicePlanDevice;
+  state: PlanEngineState; deviceMap: Map<string, DevicePlanDevice>; dev: DevicePlanDevice;
   phase: ReturnType<typeof resolveRestoreDecisionPhase>;
   timing: Parameters<typeof resolveMeterSettlingRemainingSec>[0]['timing'];
   lastRestoreTs?: number | null;
@@ -457,6 +455,7 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
   batchContinuation: boolean;
   restoreDebugKey: string;
   deps: RestoreDeps;
+  allowSwap: boolean;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     state,
@@ -476,8 +475,9 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
     batchContinuation,
     restoreDebugKey,
     deps,
+    allowSwap,
   } = params;
-  if (batchContinuation) {
+  if (batchContinuation || !allowSwap) {
     return rejectBinaryRestoreForInsufficientHeadroom({
       state,
       deviceMap,

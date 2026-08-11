@@ -17,7 +17,7 @@ import { resolveRestoreDecisionPhase, type HeadroomReserve } from '../admission'
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import { planRestoreForDevice } from './gating';
-import type { RestoreBatchState, RestoreDeps, RestoreLoopState } from './types';
+import type { RestoreAdmissionMode, RestoreBatchState, RestoreDeps, RestoreLoopState } from './types';
 
 export function applyRestoreCandidates(params: {
   restoreCandidates: RestoreCandidate[];
@@ -33,6 +33,7 @@ export function applyRestoreCandidates(params: {
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
+  admissionMode?: RestoreAdmissionMode;
 }): { restoredOneThisCycle: boolean } {
   let { restoredOneThisCycle } = params;
   for (const candidate of params.restoreCandidates) {
@@ -54,6 +55,7 @@ export function applyRestoreCandidates(params: {
       deps: params.deps,
       steppedSwapExecutor: params.steppedSwapExecutor,
       headroomReserves: params.headroomReserves,
+      admissionMode: params.admissionMode,
     });
     params.ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
     restoredOneThisCycle = result.restoredOneThisCycle;
@@ -77,6 +79,7 @@ export function planSteppedRestoreThroughSourceHold(params: {
   debugStructured: RestoreDeps['debugStructured'];
   steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
+  admissionMode?: RestoreAdmissionMode;
 }): RestoreLoopState {
   const { dev, deviceMap, swapState, availableHeadroom, restoredOneThisCycle } = params;
   if (holdPendingSwapTargetUntilSourcesAreOff({ swapState, targetDevice: dev, deviceMap })) {
@@ -92,6 +95,7 @@ export function planSteppedRestoreThroughSourceHold(params: {
     debugStructured: params.debugStructured,
     swapExecutor: params.steppedSwapExecutor,
     headroomReserves: params.headroomReserves,
+    admissionMode: params.admissionMode,
   });
 }
 
@@ -106,6 +110,7 @@ export function applyActiveSteppedRestoreCandidates(params: {
   steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
   candidateFilter?: (dev: DevicePlanDevice) => boolean;
+  admissionMode?: RestoreAdmissionMode;
 }): { restoredOneThisCycle: boolean } {
   let { restoredOneThisCycle } = params;
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
@@ -124,6 +129,7 @@ export function applyActiveSteppedRestoreCandidates(params: {
       debugStructured: params.debugStructured,
       steppedSwapExecutor: params.steppedSwapExecutor,
       headroomReserves: params.headroomReserves,
+      admissionMode: params.admissionMode,
     });
     params.ledger.commit(dev, availableForCandidate - result.availableHeadroom);
     restoredOneThisCycle = result.restoredOneThisCycle;
@@ -145,6 +151,7 @@ function applyRestoreCandidate(params: {
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
+  admissionMode?: RestoreAdmissionMode;
 }): RestoreLoopState {
   const dev = params.deviceMap.get(params.candidate.device.id);
   const currentState = {
@@ -171,6 +178,7 @@ function applyRestoreCandidate(params: {
       batchState: params.batchState,
       deps: params.deps,
       headroomReserves: params.headroomReserves,
+      admissionMode: params.admissionMode,
     });
   }
   if (params.candidate.kind === 'stepped' && isOffSteppedRestoreCandidate(dev)) {
@@ -185,6 +193,7 @@ function applyRestoreCandidate(params: {
       debugStructured: params.deps.debugStructured,
       steppedSwapExecutor: params.steppedSwapExecutor,
       headroomReserves: params.headroomReserves,
+      admissionMode: params.admissionMode,
     });
   }
   return currentState;

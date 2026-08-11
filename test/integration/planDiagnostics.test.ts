@@ -88,6 +88,7 @@ const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): Restore
   restoreCooldownMs: 60 * 1000,
   lastRestoreCooldownBumpMs: null,
   ...overrides,
+  restoreCooldownPreview: overrides.restoreCooldownPreview ?? null,
 });
 
 type InputDeviceFixture = Partial<PlanInputDevice>

@@ -138,6 +138,7 @@ export class PlanMaterializationStages {
         budgetAvailableKw: restoreResult.budgetAvailableKw,
       }),
       headroomReserves: restoreResult.headroomReserves,
+      restoreCooldownPreview: restoreResult.restoreCooldownPreview,
       planDevices,
       state: this.state,
       shedReasons: sheddingPlan.shedReasons,

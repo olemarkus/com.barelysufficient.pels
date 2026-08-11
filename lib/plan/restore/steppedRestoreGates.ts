@@ -19,6 +19,7 @@ import {
   buildOffSteppedRestoreShedUpdate,
   setRestorePlanDevice,
 } from './planDeviceUpdates';
+import type { RestoreAdmissionMode } from './types';
 
 export type SteppedDeviceGateTiming = Pick<RestoreTiming,
 | 'activeOvershoot'
@@ -49,6 +50,7 @@ export function applySteppedDeviceGates(params: {
   phase: 'startup' | 'runtime';
   requestedStepId: string | null;
   debugStructured?: StructuredDebugEmitter;
+  admissionMode: RestoreAdmissionMode;
 }): boolean {
   const {
     dev,
@@ -62,17 +64,23 @@ export function applySteppedDeviceGates(params: {
     phase,
     requestedStepId,
     debugStructured,
+    admissionMode,
   } = params;
   const lastRestoreTs = deviceIsActive
     ? (state.lastDeviceRestoreMs[dev.id] ?? null)
     : state.lastRestoreMs;
+  const gateRestoredOneThisCycle = admissionMode.kind === 'cooldown_preview'
+    ? false
+    : restoredOneThisCycle;
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-    timing, lastRestoreTs, restoredOneThisCycle,
+    timing, lastRestoreTs, restoredOneThisCycle: gateRestoredOneThisCycle,
   });
   if (meterSettlingRemainingSec !== null) {
     const reason = buildMeterSettlingReason(
       meterSettlingRemainingSec,
-      resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs, restoredOneThisCycle }),
+      resolveMeterSettlingCountdownTiming({
+        timing, lastRestoreTs, restoredOneThisCycle: gateRestoredOneThisCycle,
+      }),
     );
     setRestorePlanDevice(deviceMap, dev.id,
       deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
@@ -93,7 +101,10 @@ export function applySteppedDeviceGates(params: {
   const gateTiming = deviceIsActive
     ? { ...timing, inRestoreCooldown: false as const, inCooldown: false as const }
     : timing;
-  const gateReason = resolveCapacityRestoreBlockReason({ timing: gateTiming, restoredOneThisCycle });
+  const gateReason = resolveCapacityRestoreBlockReason({
+    timing: gateTiming,
+    restoredOneThisCycle: gateRestoredOneThisCycle,
+  });
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, deviceIsActive
       ? { reason: gateReason }

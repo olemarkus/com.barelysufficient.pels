@@ -2,10 +2,10 @@ import type {
   BinaryControlCapabilityId,
   DeviceStateOfChargeSnapshot,
   EvChargingState,
+  SteppedLoadProfile,
 } from '../../contracts/src/types.js';
 import {
   buildComparableDeviceReason,
-  formatDeviceReasonUserFacing,
   type DeviceReason,
 } from './planReasonSemantics';
 import {
@@ -16,6 +16,7 @@ import {
 } from './deviceStatePredicates';
 import { isSatisfiedTargetOnlyDevice, resolvePlanStateKind } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
+import { formatDeviceReasonUserFacingForDevice } from './planCardReasonLine';
 import {
   DEVICE_OVERVIEW_ACTIVE,
   DEVICE_OVERVIEW_ACTIVE_CHARGING,
@@ -86,6 +87,8 @@ export type DeviceOverviewSnapshot = {
   reportedStepId?: string;
   targetStepId?: string;
   selectedStepId?: string;
+  steppedLoadProfile?: SteppedLoadProfile;
+  steppedLoad?: { profile?: SteppedLoadProfile; reportedStepId?: string | null };
   desiredStepId?: string;
   binaryCommandPending?: boolean;
   observationStale?: boolean;
@@ -332,7 +335,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   }
 
   const statusMsg = appendOverviewStatus(
-    formatDeviceReasonUserFacing(device.reason),
+    formatDeviceReasonUserFacingForDevice(device),
     formatEvSocStatus(device.stateOfCharge),
   );
 

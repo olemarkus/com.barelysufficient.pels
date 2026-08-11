@@ -2125,7 +2125,7 @@ program) remain deferred.*
       *Hypothesis:* `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` inlines its own
       `STARVATION_REASON_LABELS` copy rather than importing the shared-domain vocabulary. Some
       entries are verbatim duplicates; others actively disagree for the same reason code —
-      `'Waiting before retrying'` vs shared-domain's `'Waiting before resuming'`,
+      `'Waiting before retrying'` vs shared-domain's `'Waiting to resume — Ns'`,
       `'Daily budget is limiting service'` vs `'Limited by today's daily budget'`,
       `'Waiting for higher-priority device'` vs `'Making room for higher-priority device'`.
       Three entries render the planner-jargon phrase "No active service block".
@@ -2657,7 +2657,7 @@ program) remain deferred.*
 - [ ] **Surface "your step flow is not answering" on the device detail.** *Persona:* flow-backed stepped-device
       owner (EV charger) whose `desired_stepped_load_changed` flow is missing, mistargeted, or not reporting back.
       *Hypothesis:* when a flow step command goes stale repeatedly (`stepCommandStatus:'stale'`,
-      `stepCommandRetryCount` climbing), the UI shows only generic "Waiting before resuming" cooldown copy —
+      `stepCommandRetryCount` climbing), the UI shows only generic "Waiting to increase — Ns" cooldown copy —
       the prod 2026-07-05 deadlock was only diagnosable from raw logs. A device-detail status row (and/or
       settings hub chip) like "Step command not confirmed — check the flow that reports the step back" after
       N consecutive stale commands names the real remedy.

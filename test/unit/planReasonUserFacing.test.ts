@@ -78,7 +78,7 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
     {
       label: 'cooldown restore maps to the waiting-to-resume label',
       reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
-      expected: 'Waiting before resuming (30s)',
+      expected: 'Waiting to resume — 30s',
     },
     {
       label: 'cooldown shedding maps to the waiting-after-limiting label',
@@ -218,9 +218,9 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Turning back on at Low',
     },
     {
-      label: 'waiting for other devices maps to the settle label',
+      label: 'waiting for other devices maps to the explicit queue label',
       reason: { code: PLAN_REASON_CODES.waitingForOtherDevices },
-      expected: 'Waiting for other devices to settle',
+      expected: 'Waiting to resume — other devices are ahead',
     },
     {
       label: 'neutral startup hold maps to the left-off label',
