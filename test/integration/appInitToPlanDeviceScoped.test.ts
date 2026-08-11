@@ -138,4 +138,35 @@ describe('toPlanDevice — R7b per-home options', () => {
       (ctx.planEngine as unknown as { getPendingBinaryCommandForDevice: Mock }).getPendingBinaryCommandForDevice,
     ).not.toHaveBeenCalled();
   });
+
+  it('strips raw observed evidence at runtime — the resolved answers are the only answers', () => {
+    // The plan contract omits these BY TYPE, but a `...device` spread carries
+    // them in memory where any structural consumer (or the test-only settle
+    // fallback) could read them as a second answer beside the resolved
+    // `currentOn`/`currentState`/`currentDrawKw`. Assert on key PRESENCE, not
+    // value: `expect(result.x).toBeUndefined()` cannot tell a stripped key from
+    // a carried `undefined`.
+    const ctx = buildSurplusCtx();
+    const snapshot = {
+      ...buildSurplusWillingSnapshot(),
+      binaryControl: { on: true },
+      binaryControlObservation: {
+        observedValue: true,
+        capabilityId: 'onoff',
+        observedAtMs: 1_000,
+        observedCapabilityIds: ['onoff'],
+      },
+      measuredPowerKw: 0.7,
+    } as unknown as TargetDeviceSnapshot & EvObservedProbe;
+
+    const result = toPlanDevice(ctx, snapshot);
+
+    expect('binaryControl' in result).toBe(false);
+    expect('binaryControlObservation' in result).toBe(false);
+    expect('measuredPowerKw' in result).toBe(false);
+    // The producer-resolved answers survive in their place.
+    expect('currentOn' in result && result.currentOn).toBe(true);
+    expect(result.currentState).toBe('on');
+    expect(result.currentDrawKw).toBe(0.7);
+  });
 });
