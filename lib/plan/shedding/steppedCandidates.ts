@@ -44,6 +44,7 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../../utils/deviceControlProfiles';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { buildTemperatureCandidate } from './candidateBuilders';
@@ -343,7 +344,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   } = params;
   if (
     shedAction !== 'turn_off'
-    || device.controlCapabilityId === undefined
+    || !isBinaryPlanDevice(device)
     || !device.selectedStepId
     || targetStep?.id !== device.selectedStepId
   ) {

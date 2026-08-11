@@ -1,3 +1,4 @@
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import {
@@ -171,7 +172,7 @@ export const applyDeferredBinaryCommand = async (
   // Requires a binary control handle (onoff or evcharger_charging). The actuation is
   // device-agnostic — the dispatched command's capability is derived from the device's
   // `controlCapabilityId`, never hardcoded — so this accepts any binary control.
-  if (!snapshot || snapshot.controlCapabilityId === undefined) return false;
+  if (!snapshot || !hasBinaryControlCapability(snapshot)) return false;
 
   if (intent.kind === 'binary_release') {
     // A released binary device is just onoff=false; release only one that is

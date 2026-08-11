@@ -5,6 +5,7 @@ import {
   getSteppedLoadLowestStep,
   getSteppedLoadOffStep,
 } from '../../utils/deviceControlProfiles';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 
 export function setRestorePlanDevice(
@@ -29,7 +30,7 @@ export function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial
     plannedState: 'shed',
     desiredStepId: offStepId,
     targetStepId: offStepId,
-    shedAction: dev.shedAction ?? (dev.controlCapabilityId === undefined ? 'set_step' : 'turn_off'),
+    shedAction: dev.shedAction ?? (isBinaryPlanDevice(dev) ? 'turn_off' : 'set_step'),
   };
 }
 

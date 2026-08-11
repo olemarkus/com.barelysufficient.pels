@@ -407,7 +407,8 @@ const resolveBatteryFact = (
  *
  * Every device reaching this helper has a binary capability (the exception label
  * returns early unless the control capability is `evcharger_charging`, and
- * `hasBinaryCapability` is that capability's presence), so the observer always
+ * `hasBinaryControlCapability` (`binaryControlKind.ts`) is that capability's
+ * presence), so the observer always
  * resolves a concrete `on`/`off` here, never `not_applicable`.
  *
  * PELS's own commanded step is deliberately NOT consulted. For a device with

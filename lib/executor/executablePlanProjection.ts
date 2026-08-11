@@ -32,6 +32,7 @@ import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
+import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 
 type PlanDevice = DevicePlan['devices'][number];
@@ -270,7 +271,7 @@ const buildObservedSteppedLoadState = (
 
 const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
   if (isSteppedLoadDevice(dev)) return null;
-  if (dev.controlCapabilityId === undefined) return null;
+  if (!isBinaryPlanDevice(dev)) return null;
   if (dev.controllable === false) {
     return dev.plannedState === 'keep'
       ? { kind: 'restore', deviceId: dev.id, name: dev.name, source: 'uncontrolled' }

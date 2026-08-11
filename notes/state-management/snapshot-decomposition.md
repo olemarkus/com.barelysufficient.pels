@@ -84,8 +84,9 @@ helpers. The observer was created but never handed the observation contract.
    `deviceClass`/`deviceType`/`zone`, `steppedLoadProfile`/`targetPowerConfig` (now
    type-gated OFF the base onto `SteppedLoadDescriptorFields`, narrowed via
    `isSteppedLoadSnapshot` — `steppedLoadProfile` IS the kind discriminant
-   (`model === 'stepped_load'`), the snapshot-shaped twin of `lib/plan`'s
-   `isSteppedLoadDevice`; `targetPowerConfig` rides the same cluster; owner seams and
+   (`model === 'stepped_load'`). It is the single runtime definition of that
+   discriminant: `lib/plan`'s `isSteppedLoadDevice` and the `withSteppedDiscriminant`
+   regrouper both delegate to it and own only the plan-layer narrowing; `targetPowerConfig` rides the same cluster; owner seams and
    the decorator carry them through the `SteppedLoadDescriptorProbe` widening;
    stepped-descriptor slice of the discriminated-types refactor),
    `suggestedSteppedLoadProfile` (STAYS on the base — a CONFIGURE hint for non-stepped

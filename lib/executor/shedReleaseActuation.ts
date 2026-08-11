@@ -1,3 +1,4 @@
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { ShedAction } from '../plan/planTypes';
 import type {
@@ -77,7 +78,7 @@ export const applyShedReleaseIntent = async (params: {
   if (
     behavior.action === 'set_step'
     && steppedLoadIntent
-    && !snapshot?.controlCapabilityId
+    && !hasBinaryControlCapability(snapshot)
   ) {
     const handled = await applyShedReleaseSteppedLoad({
       intent,
@@ -129,7 +130,7 @@ const applyShedReleaseBinaryOff = async (params: {
   // objectives — binary-controlled (ev_soc) objectives route through 'binary_release'. The
   // intent is authoritative (see the objectiveKind↔device invariant note in admission.ts);
   // a device with no binary handle is still rejected below.
-  if (!snapshot?.controlCapabilityId) {
+  if (!hasBinaryControlCapability(snapshot)) {
     // No binary handle, and the stepped re-projection above either didn't apply (turn_off
     // shedBehavior, or no steppedLoad intent available) or returned false. Stay silent on
     // turn_off (rare config); for set_step log a one-off so any remaining gap shows up in

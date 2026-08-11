@@ -3,9 +3,12 @@ import type { PlanInputDevice } from './planTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type {
   BinaryControlCapabilityId,
+  SteppedLoadProfile,
   TargetCapabilitySnapshot,
 } from '../../packages/contracts/src/types';
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import {
   clearSurplusEligibility,
@@ -87,7 +90,7 @@ export function resolveSurplusOnlyPosture(params: {
   controlCapabilityId: BinaryControlCapabilityId | undefined;
   deviceClass: string | undefined;
   targets: readonly TargetCapabilitySnapshot[] | undefined;
-  steppedLoadProfile: { model?: string } | undefined;
+  steppedLoadProfile: SteppedLoadProfile | undefined;
   // Producer-resolved: true only for a plain binary-power control device — i.e.
   // NOT an enabled continuous / target-power (EV-preset) config and NOT a
   // non-binary control model. Resolved at the producer so this planner helper
@@ -102,10 +105,10 @@ export function resolveSurplusOnlyPosture(params: {
 }): boolean {
   return params.surplusWilling === true
     && params.surplusPoolReachable
-    && params.controlCapabilityId !== undefined
+    && hasBinaryControlCapability(params)
     && params.controlCapabilityId !== 'evcharger_charging'
     && !isEvDevice({ deviceClass: params.deviceClass, controlCapabilityId: params.controlCapabilityId })
-    && params.steppedLoadProfile?.model !== 'stepped_load'
+    && !isSteppedLoadSnapshot(params)
     && params.plainBinaryControlModel
     && params.targets?.some((target) => target.id === 'target_temperature') !== true
     && params.controllable !== false

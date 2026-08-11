@@ -17,6 +17,7 @@ import type {
   SteppedLoadProfile,
   SteppedLoadStep,
 } from '../../packages/contracts/src/types';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type {
   DevicePlanDevice,
@@ -93,11 +94,16 @@ export type SteppedLoadTransition = {
 
 // Kind type-guard: "stepped load" is a yes/no capability = presence of a valid
 // `steppedLoadProfile`. After a positive branch the consumer reads
-// `steppedLoadProfile` as required (no `?.` / `!`). The predicate
-// (`steppedLoadProfile?.model === 'stepped_load'`) proves exactly that narrowed
-// shape, so the guard is sound. Dedicated overloads narrow the two flat plan
-// device types to their named `Stepped*` slices; the generic overload preserves
-// any other caller's variable type and intersects it with `SteppedLoadKind`.
+// `steppedLoadProfile` as required (no `?.` / `!`). The predicate proves exactly
+// that narrowed shape, so the guard is sound. Dedicated overloads narrow the two
+// flat plan device types to their named `Stepped*` slices; the generic overload
+// preserves any other caller's variable type and intersects it with
+// `SteppedLoadKind`.
+//
+// The runtime predicate is delegated to the browser-safe `isSteppedLoadSnapshot`
+// so there is exactly one definition of "is this a stepped load" — this module
+// owns only the plan-layer narrowing, the way `isTemperaturePlanDevice` and
+// `isEvPlanDevice` own theirs.
 export function isSteppedLoadDevice(device: DevicePlanDevice): device is SteppedPlanDevice;
 export function isSteppedLoadDevice(device: PlanInputDevice): device is SteppedPlanInputDevice;
 // Union overload for the dual-read fallback sites that hold a
@@ -113,8 +119,8 @@ export function isSteppedLoadDevice(
 ): boolean {
   // `steppedLoadProfile` is only typed on the stepped variant of each device
   // union; widen to the probe shape to read it un-narrowed (the runtime field
-  // is simply absent on the non-stepped variants, so `?.` is sound).
-  return (device as SteppedDiscriminantProbe).steppedLoadProfile?.model === 'stepped_load';
+  // is simply absent on the non-stepped variants, so the probe read is sound).
+  return isSteppedLoadSnapshot(device as SteppedDiscriminantProbe);
 }
 
 type ObservedOnOffDevice = {

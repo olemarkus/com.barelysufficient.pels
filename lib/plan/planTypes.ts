@@ -1,5 +1,7 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { EvChargingState } from '../../packages/contracts/src/types';
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import type {
   PlanInputDevice,
@@ -224,19 +226,21 @@ export type SteppedDiscriminantProbe = {
  *
  * Stripping is essential: an object spread can never *remove* a key, so a stale
  * `steppedLoadProfile` would otherwise survive onto a non-stepped result. The
- * runtime predicate matches `isSteppedLoadDevice` — the profile is honoured only
- * when its own `model === 'stepped_load'`; anything else resolves to the
- * non-stepped discriminant, which omits `steppedLoadProfile` entirely.
+ * runtime predicate is `isSteppedLoadSnapshot` — the same one `isSteppedLoadDevice`
+ * delegates to, so the regrouper and the guard cannot drift; anything it rejects
+ * resolves to the non-stepped discriminant, which omits `steppedLoadProfile`
+ * entirely.
  */
 export function withSteppedDiscriminant<TBase extends object>(
   loose: TBase & SteppedDiscriminantProbe,
 ):
   | (Omit<TBase, keyof SteppedDiscriminantProbe> & SteppedLoadKind)
   | (Omit<TBase, keyof SteppedDiscriminantProbe> & NonSteppedLoadKind) {
-  const { steppedLoadProfile, ...base } = loose;
-  if (steppedLoadProfile?.model === 'stepped_load') {
+  if (isSteppedLoadSnapshot(loose)) {
+    const { steppedLoadProfile, ...base } = loose;
     return { ...base, steppedLoadProfile };
   }
+  const { steppedLoadProfile: _stripped, ...base } = loose;
   return { ...base };
 }
 
@@ -382,7 +386,7 @@ export function withBinaryDiscriminant<TBase extends { controlCapabilityId?: Bin
   | (Omit<TBase, keyof BinaryControlDiscriminantProbe> & BinaryControlKind)
   | Omit<TBase, keyof BinaryControlDiscriminantProbe> {
   const { binaryControl, currentOn, ...base } = loose;
-  if (base.controlCapabilityId !== undefined) {
+  if (hasBinaryControlCapability(base)) {
     const stepped = base as { steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string };
     // The raw `binaryControl` is STRIPPED off the result (it stays
     // transport/observer-internal). It still feeds the on/off fold here when the

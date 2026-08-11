@@ -10,6 +10,7 @@ import {
   type CurrentStateInput,
 } from '../observer/observedState';
 import { isBinaryControlled, getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 
 export type PlannerCurrentStateSource = 'binary' | 'stepped' | 'target' | 'unknown';
 export type PlannerPendingInfluence = 'none' | 'present_but_not_applied';
@@ -31,12 +32,6 @@ export type { CurrentStateInput };
 type ResolveCurrentStateOptions = {
   pendingPresent?: boolean;
 };
-
-const isSteppedLoadObservation = (
-  device: Pick<CurrentStateInput, 'steppedLoadProfile'>,
-): boolean => (
-  device.steppedLoadProfile?.model === 'stepped_load'
-);
 
 function resolvePendingInfluence(
   options?: ResolveCurrentStateOptions,
@@ -99,7 +94,7 @@ export function resolveEffectiveCurrentState(
 ): ResolvedCurrentState {
   const currentState = resolveObservedCurrentStateValue(device);
   const pendingInfluence = resolvePendingInfluence(options);
-  const stepped = isSteppedLoadObservation(device);
+  const stepped = isSteppedLoadSnapshot(device);
 
   if (currentState === 'on' || currentState === 'off') {
     return buildBinaryResolvedCurrentState({ currentState, stepped, pendingInfluence });
