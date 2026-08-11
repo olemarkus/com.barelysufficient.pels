@@ -14,6 +14,7 @@ import {
 } from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
+import type { DeviceOverviewSteppedLoad } from '../../shared-domain/src/deviceOverview.ts';
 
 const NOW_MS = 1_000_000;
 
@@ -41,11 +42,26 @@ const baseDevice = {
   // `currentDrawKw` is required on `DeviceOverviewSnapshot` — the producer
   // resolves an unmetered device to 0, so there is no absent case to fixture.
   currentDrawKw: 0,
+  // The other producer-resolved required fields — the neutral values these tests
+  // do not turn on. Stepped-ness is not one of them: it is the presence of the
+  // `steppedLoad` cluster each fixture below supplies.
+  // The producer's own default rung (`DEFAULT_EXPECTED_POWER_KW`): its contract
+  // promises a finite POSITIVE figure for every device, so a fixture default of
+  // 0 would pin a value the producer never emits.
+  expectedPowerKw: 1,
+  controllable: true,
+  available: true,
 };
 
+// The stepped cluster — its presence is what makes a fixture stepped-controlled.
+// The ladder these helpers actually read is the `profile` ARGUMENT each takes
+// (one fixture device is deliberately measured against two ladders below), so the
+// cluster's own profile is the shared default and only overridden when a test
+// cares about it.
 const steppedLoad = (
-  overrides: Partial<{ reportedStepId: string | null; targetStepId: string | null; commandPending: boolean }> = {},
-) => ({
+  overrides: Partial<DeviceOverviewSteppedLoad> = {},
+): DeviceOverviewSteppedLoad => ({
+  profile,
   reportedStepId: null,
   targetStepId: null,
   commandPending: false,
@@ -873,7 +889,7 @@ describe('battery level on the EV charger fact line', () => {
   const evCard = (overrides: Record<string, unknown> = {}) => ({
     currentState: 'on',
     controlCapabilityId: 'evcharger_charging',
-    steppedLoad: { reportedStepId: '16a', targetStepId: '16a', commandPending: false },
+    steppedLoad: steppedLoad({ reportedStepId: '16a', targetStepId: '16a' }),
     ...overrides,
   });
 

@@ -268,6 +268,13 @@ DevicePlanDevice => {
     // `'default'` is what the producer emits for a device nothing is known
     // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
+    // Same treatment again, for the same reason: both are REQUIRED on the plan
+    // device because the producer resolves them for every device, and `?? true`
+    // reproduces the producer's own collapse (`dev.controllable !== false`,
+    // `dev.available !== false`) so a fixture that says nothing gets a managed,
+    // reachable device — while an explicit `false` still lands.
+    controllable: overrides.controllable ?? true,
+    available: overrides.available ?? true,
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),

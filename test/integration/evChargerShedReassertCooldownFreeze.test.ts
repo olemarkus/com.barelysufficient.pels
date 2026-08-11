@@ -166,6 +166,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     shedAction: 'turn_off' as const,
     currentTarget: null,
     controllable: true,
+    available: true,
     steppedLoadProfile: snapshot.steppedLoadProfile,
     controlCapabilityId: 'evcharger_charging' as const,
     selectedStepId: snapshot.reportedStepId ?? '15a',

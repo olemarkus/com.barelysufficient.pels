@@ -227,7 +227,11 @@ export function buildBasePlanDevice(params: {
     zone: dev.zone || 'Unknown',
     controllable,
     budgetExempt: dev.budgetExempt,
-    available: dev.available,
+    // The one place the input's optional reachability is collapsed. Absence is
+    // not a third state — the transport resolves an unreadable `available` to
+    // `true` before this — so the plan device carries the boolean and no reader
+    // downstream repeats the `!== false`.
+    available: dev.available !== false,
     ...buildBoostPlanDeviceFields({ dev, temperatureBoostActive, evBoostActive, surplusAbsorbActive }),
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,

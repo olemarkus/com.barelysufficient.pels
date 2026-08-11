@@ -16,6 +16,7 @@ describe('pels status limit reason', () => {
     currentTarget: 21,
     plannedTarget: 15,
     controllable: true,
+    available: true,
     shedAction: 'set_temperature',
     shedTemperature: 15,
   } as const;
@@ -131,6 +132,7 @@ describe('pels status limit reason', () => {
           plannedState: 'inactive' as const,
           currentTarget: null,
           controllable: true,
+          available: true,
           reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
         }),
       ],

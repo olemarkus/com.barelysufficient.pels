@@ -7,7 +7,6 @@ import type { buildPelsStatus } from './pelsStatus';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
 import type {
-  DeviceControlModel,
   EvChargingState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -93,16 +92,6 @@ export type PlanServiceDeps = {
   // (the planner no longer carries `controlModel`). Built once per serialize from
   // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.
   getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
-  // Producer `controlModel` map for the device-overview transition signature
-  // (the planner no longer carries `controlModel`). Built ONCE per
-  // `emitOverviewTransitions` pass from the raw, undecorated device snapshot
-  // (`deviceManager.getSnapshot()`) — NOT `latestTargetSnapshot` — so capturing
-  // it triggers no re-decoration and never re-enters the device manager
-  // per-device inside the plan/apply cycle. Restoring the real control model
-  // (not just the stepped value) lets the signature distinguish a non-stepped
-  // `temperature_target ↔ binary_power` flip; without it both collapse to
-  // `null` and a deviceType-only change leaves an open overview card stale.
-  getControlModelById?: () => Map<string, DeviceControlModel>;
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */
   getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
   getCapacityDryRun: () => boolean;

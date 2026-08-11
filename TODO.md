@@ -1180,6 +1180,64 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Extend the control-model vocab guard to `packages/shared-domain/**`.**
+      `controlModel` is gone from the overview wire — the stepped discriminant is now presence of
+      the `steppedLoad` cluster, and the temperature card keys on `deviceType`. But
+      `scripts/check-control-model-vocab.mjs` still scopes only `lib/plan/**` and
+      `lib/executor/**`, which is exactly how the field survived in shared-domain in the first
+      place: by geography, not by argument. Widen the guard so it cannot come back.
+
+- [ ] **`getEffectiveControlModel` is a third resolver of the retired enum.**
+      `packages/settings-ui/src/ui/deviceControlProfiles.ts` recomputes the three-way model in the
+      browser from five sources (native activation, the wire value, stored profile, stored
+      target-power config, temperature support). It drives the DEVICE page, where `controlModel` is
+      still a legitimate producer setting on the device snapshot — so this is not a leak, but it is
+      a second definition of "what kind of control is this" living next to the producer's own.
+      Worth settling once the device-page work next touches it.
+
+- [ ] **The overview shape has no temperature cluster.**
+      Stepped-ness is now a cluster (`steppedLoad`, present iff stepped); the temperature side
+      still leans on `deviceType === 'temperature' || typeof plannedTarget === 'number'`. That OR
+      is correct today — a temperature device with PELS target control disabled keeps
+      `deviceType: 'temperature'`, and one in skip / abandon-grace has no `plannedTarget`, so
+      neither arm alone suffices — but the honest shape is a `temperature?: { currentTarget,
+      plannedTarget, currentTemperature }` cluster mirroring `steppedLoad`. Do NOT collapse the OR
+      to `plannedTarget` alone in the meantime.
+
+- [ ] **Tighten `controllable` / `available` at the seam that actually makes the guarantee.**
+      Both are now required on `DevicePlanDevice` and `DeviceOverviewSnapshot`, but they stay
+      optional on `PlanInputDevice` (`packages/planner-types/src/planInputDevice.ts`) and on the
+      device snapshot contract (`packages/contracts/src/types.ts`) — even though the transport
+      already resolves an unreadable `available` to a `boolean` (`managerHelpers.getIsAvailable`,
+      `managerParsedAvailability.resolveAvailable`) and `planDevices.ts` resolves `controllable`.
+      So the collapse is applied a second time downstream of where it is guaranteed, at
+      `planDevicesBase` — the BUILD. Tighten those two contracts and that `!== false` becomes a
+      plain copy; the many `!== false` reads on plan devices can then be simplified too (a
+      `PlanInputDevice` read is a different question until this lands).
+      `planLiveStateMerge` is deliberately NOT such a site and must stay a `??`: it is a MERGE, so
+      an absent live value means "the live snapshot says nothing" and the answer is the one already
+      decided. Collapsing there turned `undefined` into `true` and made an explicitly-unavailable
+      device available (and an unmanaged one managed) on any cycle whose live snapshot omitted the
+      field — pinned by `planLiveStateMerge.test.ts`.
+
+- [ ] **The overview log seam and the settings read model still disagree about temperature.**
+      The read model overlays the OBSERVER's temperature onto the overview shape
+      (`resolveOverviewTemperatureState` → `deps.getObservedTemperature`); the log seam
+      (`planOverviewEmit`) does not, and uses the plan device's own `currentTarget` /
+      `currentTemperature`. `isSatisfiedTargetOnlyDevice` reads exactly those two fields and feeds
+      `stateKind`, which lands in both the transition signature and the device-log entry. So a
+      temperature device can be logged `active` while its card reads `idle` whenever the observer
+      is fresher than the plan device (a realtime event between build and serialize, or an
+      idle-tick re-serialize). Same bug class as the control-model divergence fixed in the
+      required-fields change, in the same function — the fix is to give both carriers one overview
+      shape rather than two nearly-identical ones.
+
+- [ ] **`isValidPlanDevice` vouches for more than it checks.**
+      `setup/settingsUiAppRuntime.ts` narrows `unknown` to `SettingsUiPlanDevice` while inspecting
+      only `id`, `name`, `reason` — it now asserts four more required fields it never looks at. The
+      source is in-process so there is no live risk; either widen the guard or say so in its
+      comment so the next reader does not trust it as a wire-boundary validator.
+
 - [ ] **The Zaptec native-wiring overlay activates per DEVICE, not per missing axis.**
       `applyNativeEvWiringOverlay` synthesizes only the axes a charger is missing, but the
       `controlAdapter.activationEnabled` flag it returns is all-or-nothing — and

@@ -42,10 +42,47 @@ import {
   deviceOverviewLimitedToStep,
 } from './deviceOverviewStrings';
 
+/**
+ * The stepped-control cluster, present IFF the device is stepped-controlled.
+ *
+ * This is the overview shape's stepped discriminant. It replaced a
+ * `controlModel: 'temperature_target' | 'binary_power' | 'stepped_load'`
+ * setting that every consumer here only ever asked one question of
+ * (`=== 'stepped_load'`), and that both carriers had to RECONSTRUCT because the
+ * planner does not carry it — with different ladders, which is how the same
+ * device came to render as a binary card on one surface and sign as stepped on
+ * the other.
+ *
+ * `scripts/check-control-model-vocab.mjs` already stated the rule for
+ * `lib/plan` and `lib/executor`: "stepped load" is a yes/no CAPABILITY =
+ * presence of a valid ladder; `controlModel` is a producer-only SETTING.
+ * `packages/shared-domain` kept the field by geography, not by argument.
+ */
+export type DeviceOverviewSteppedLoad = {
+  profile: SteppedLoadProfile;
+  reportedStepId: string | null;
+  targetStepId: string | null;
+  commandPending: boolean;
+};
+
 export type DeviceOverviewSnapshot = {
   currentState?: string;
   plannedState?: string;
-  controlModel?: 'temperature_target' | 'binary_power' | 'stepped_load';
+  /**
+   * Present iff this device is stepped-controlled — the discriminant, and the
+   * producer's own answer rather than a reconstruction. Absent means "no step
+   * ladder", which is the only thing the retired `controlModel` was ever asked
+   * here.
+   */
+  steppedLoad?: DeviceOverviewSteppedLoad;
+  /**
+   * Observational device kind, from the producer. Stays `temperature` when PELS
+   * target control is disabled and the device is effectively binary-commanded,
+   * which is exactly why the temperature card must key on THIS and not on a
+   * resolved control model: the owner should still see the temperature the
+   * device reports.
+   */
+  deviceType?: 'temperature' | 'onoff';
   controlCapabilityId?: BinaryControlCapabilityId;
   evChargingState?: EvChargingState;
   /**
@@ -64,11 +101,41 @@ export type DeviceOverviewSnapshot = {
    * "Idle".
    */
   currentDrawKw: number;
-  expectedPowerKw?: number;
+  /**
+   * Draw when running, REQUIRED — the producer's answer for every device, from
+   * a rung ladder that ends in a device-class default, so there is no device it
+   * has no figure for (`lib/device/devicePowerEstimate.ts`). Required on
+   * `PlanInputDevice` and `DevicePlanDevice` already; it was optional only here,
+   * on the seam furthest from the producer.
+   */
+  expectedPowerKw: number;
+  /**
+   * Live stepped-load planning power — the draw the currently selected step is
+   * expected to pull. Genuinely OPTIONAL, unlike its neighbour: it belongs to
+   * the stepped command axis, and the producers clear that whole cluster to
+   * `undefined` for any device that is not stepped
+   * (`setup/appInit/toPlanDevice.ts`, `setup/appDeviceControlHelpers.ts`).
+   * A binary or temperature device has no selected step, so there is no honest
+   * number to put here — `expectedPowerKw` is the answer for those.
+   */
   planningPowerKw?: number;
   reason: DeviceReason;
-  controllable?: boolean;
-  available?: boolean;
+  /**
+   * Producer-resolved: whether PELS manages this device. REQUIRED — the plan
+   * producer resolves the owner's setting to a boolean once (`planDevices.ts`,
+   * `dev.controllable !== false`) and every plan device carries the answer.
+   * Optional here meant three states on the wire for a two-state fact, and
+   * every consumer re-derived the same `!== false` collapse for itself.
+   */
+  controllable: boolean;
+  /**
+   * Producer-resolved reachability, REQUIRED for the same reason as
+   * `controllable`: absence is not a third state, and the collapse belongs at
+   * the producer rather than repeated at each reader. Read it as "not known to
+   * be unavailable" — the transport resolves an unreadable value optimistically
+   * to `true` (see the twin docblock on `DevicePlanDevice`).
+   */
+  available: boolean;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   shedTemperature?: number | null;
   currentTarget?: unknown;
@@ -88,7 +155,6 @@ export type DeviceOverviewSnapshot = {
   targetStepId?: string;
   selectedStepId?: string;
   steppedLoadProfile?: SteppedLoadProfile;
-  steppedLoad?: { profile?: SteppedLoadProfile; reportedStepId?: string | null };
   desiredStepId?: string;
   binaryCommandPending?: boolean;
   observationStale?: boolean;
@@ -108,14 +174,20 @@ export type DeviceOverviewStrings = {
   statusMsg: string;
 };
 
+// Presence, not a setting comparison. See `DeviceOverviewSteppedLoad`.
 const isSteppedLoadDevice = (device: DeviceOverviewSnapshot): boolean => (
-  device.controlModel === 'stepped_load'
+  device.steppedLoad !== undefined
 );
 const isEvChargerDevice = (device: DeviceOverviewSnapshot): boolean => (
   device.controlCapabilityId === 'evcharger_charging'
 );
 
-export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
+// Takes only the field it reads, so callers holding a plain plan device (which
+// carries no `controlModel`) need not manufacture a full overview shape just to
+// read a step id.
+export const getDeviceOverviewReportedStepId = (
+  device: Pick<DeviceOverviewSnapshot, 'reportedStepId'>,
+): string | undefined => (
   device.reportedStepId
 );
 
@@ -303,7 +375,10 @@ const formatUsageText = (params: {
   return DEVICE_OVERVIEW_UNKNOWN;
 };
 
-export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot): number | undefined => (
+// Always an answer: `planningPowerKw` is the live step's draw when there is a
+// step, and `expectedPowerKw` — required — is the fallback and the whole answer
+// for everything else.
+export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot): number => (
   isSteppedLoadDevice(device) ? (device.planningPowerKw ?? device.expectedPowerKw) : device.expectedPowerKw
 );
 
@@ -363,7 +438,10 @@ export const buildDeviceOverviewTransitionSignature = (
   JSON.stringify({
     currentState: normalizeDeviceState(device.currentState) || 'unknown',
     plannedState: device.plannedState ?? null,
-    controlModel: device.controlModel ?? null,
+    // The stepped discriminant, as a bit: the signature only ever needs to
+    // distinguish a stepped device from a non-stepped one, which is all the
+    // retired `controlModel` field told it.
+    steppedLoad: device.steppedLoad !== undefined,
     controllable: device.controllable === false,
     available: device.available === false,
     observationStale: device.observationStale === true,

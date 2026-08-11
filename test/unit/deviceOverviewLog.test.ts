@@ -3,11 +3,18 @@ import {
   DEVICE_OVERVIEW_LOG_MAX_DEVICES,
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
   buildOverviewEventForDevice,
-  resolveOverviewControlModel,
 } from '../../lib/plan/deviceOverviewLog';
+import { buildOverviewSteppedLoad } from '../../lib/plan/planOverviewSteppedState';
 import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceControlModel } from '../../packages/contracts/src/types';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+
+// The log seam takes an `OverviewLogDevice` — a plan device plus the display
+// fields the plan does not own. `planOverviewEmit` builds `steppedLoad` per
+// device before calling in; these tests are about the reason line, so a
+// non-stepped device (no cluster) stands in.
+const overviewLogDevice = (
+  overrides: Parameters<typeof buildPlanDevice>[0] = {},
+): ReturnType<typeof buildPlanDevice> => buildPlanDevice(overrides);
 
 const entry = (atMs: number, overrides: Partial<SettingsUiDeviceLogEntry> = {}): SettingsUiDeviceLogEntry => ({
   atMs,
@@ -84,29 +91,23 @@ describe('DeviceOverviewLogRecorder', () => {
   });
 });
 
-describe('resolveOverviewControlModel', () => {
-  it('keeps a stored-profile stepped device stepped even when the producer map says non-stepped', () => {
-    // Regression: the raw-snapshot-derived map only marks NATIVE stepped devices.
-    // A stored-profile stepped device is stepped on the decorated plan device but
-    // absent-stepped in the map — `isSteppedLoadDevice` must win, or it mis-signs as
-    // binary_power/temperature_target. (Under the old map-first order this returned
-    // 'binary_power'.)
-    const device = steppedPlanDevice({ id: 'heater' });
-    const map = new Map<string, DeviceControlModel>([['heater', 'binary_power']]);
-    expect(resolveOverviewControlModel(device, map).controlModel).toBe('stepped_load');
+describe('buildOverviewSteppedLoad', () => {
+  // The producer's own ladder is the discriminant, so a STORED-profile stepped
+  // device is stepped here without any producer setting to consult. That is the
+  // whole point of retiring `controlModel`: both carriers of the overview shape
+  // used to reconstruct it, and the read model's reconstruction consulted a
+  // raw-snapshot map that cannot see a stored ladder — so the same device came
+  // out stepped on the log seam and binary on the card.
+  it('marks a stored-profile stepped device as stepped', () => {
+    const steppedLoad = buildOverviewSteppedLoad(steppedPlanDevice({ id: 'heater' }));
+    expect(steppedLoad).toBeDefined();
+    expect(steppedLoad?.profile.model).toBe('stepped_load');
   });
 
-  it('uses the producer map for a non-stepped temperature ↔ binary flip', () => {
-    const device = buildPlanDevice({ id: 'thermo', deviceType: 'temperature' });
-    expect(resolveOverviewControlModel(device, new Map([['thermo', 'temperature_target']])).controlModel)
-      .toBe('temperature_target');
-    expect(resolveOverviewControlModel(device, new Map([['thermo', 'binary_power']])).controlModel)
-      .toBe('binary_power');
-  });
-
-  it('returns the device unchanged when it is neither stepped nor in the map', () => {
-    const device = buildPlanDevice({ id: 'x' });
-    expect(resolveOverviewControlModel(device, new Map()).controlModel).toBeUndefined();
+  it('leaves a non-stepped device with no cluster at all', () => {
+    expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'thermo', deviceType: 'temperature' })))
+      .toBeUndefined();
+    expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'x' }))).toBeUndefined();
   });
 });
 
@@ -121,7 +122,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   };
 
   it('logs the card line for a held device', () => {
-    const event = buildOverviewEventForDevice(buildPlanDevice({
+    const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
       reason: { code: 'daily_budget', shortfallKw: 0.9 },
     }), overview);
@@ -134,7 +135,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   // this also pins that the holder's NAME — not a changed code — is what carries
   // the line.
   it('logs the reservation holder for a reserve-blocked device', () => {
-    const event = buildOverviewEventForDevice(buildPlanDevice({
+    const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
       reason: { code: 'capacity', reserveHolderName: 'Water heater' },
     }), overview);
@@ -184,7 +185,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     ['a running device', { plannedState: 'keep' as const, currentState: 'on' }],
     ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' }],
   ])('logs null for %s, which renders no reason line', (_label, state) => {
-    const event = buildOverviewEventForDevice(buildPlanDevice({
+    const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', ...state, reason: { code: 'keep', detail: null },
     }), overview);
     expect(event['cardReasonText']).toBeNull();

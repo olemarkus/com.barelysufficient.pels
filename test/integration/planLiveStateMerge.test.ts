@@ -14,6 +14,42 @@ import {
 
 describe('planLiveStateMerge', () => {
   describe('buildLiveStatePlan', () => {
+    // A merge must not treat missing data as a reset. The producer resolves
+    // `available` / `controllable` to a boolean, so an absent value on the LIVE
+    // input means "the live snapshot says nothing about this" — not "true".
+    // Collapsing it here (`live.available !== false`) silently made an
+    // explicitly-unavailable device available, and an unmanaged device managed,
+    // on any cycle whose live snapshot omitted the field.
+    it('keeps a prior false availability when the live snapshot omits it', () => {
+      const plan = buildPlan([buildBinaryDevice({ available: false, controllable: false })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2',
+        name: 'Heater',
+        binaryControl: { on: true },
+        controlCapabilityId: 'onoff',
+        targets: [],
+      })];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0].available).toBe(false);
+      expect(result.devices[0].controllable).toBe(false);
+    });
+
+    it('takes an explicitly reported live availability over the prior value', () => {
+      const plan = buildPlan([buildBinaryDevice({ available: false })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2',
+        name: 'Heater',
+        binaryControl: { on: true },
+        controlCapabilityId: 'onoff',
+        targets: [],
+        available: true,
+      })];
+
+      expect(buildLiveStatePlan(plan, liveDevices).devices[0].available).toBe(true);
+    });
+
     it('merges live binary state into stepped device plan', () => {
       const plan = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({

@@ -38,6 +38,7 @@ const buildPlanDevice = (
   currentTarget,
   plannedTarget,
   controllable: true,
+  available: true,
   reason: fixtureDeviceReason('keep')!,
 }) as DevicePlan['devices'][number];
 

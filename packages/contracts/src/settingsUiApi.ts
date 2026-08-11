@@ -7,10 +7,13 @@ import type {
   DecoratedDeviceSnapshot,
   EvBoostConfig,
   SettingsUiLogEntry,
-  SteppedLoadProfile,
   TemperatureBoostConfig,
 } from './types.js';
-import type { DeviceOverviewSnapshot, DeviceOverviewStrings } from '../../shared-domain/src/deviceOverview.js';
+import type {
+  DeviceOverviewSnapshot,
+  DeviceOverviewSteppedLoad,
+  DeviceOverviewStrings,
+} from '../../shared-domain/src/deviceOverview.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
@@ -180,12 +183,12 @@ export type SettingsUiPlanDeviceStarvation = {
   accumulatedMs: number;
 };
 
-export type SettingsUiPlanSteppedLoadState = {
-  profile: SteppedLoadProfile;
-  reportedStepId: string | null;
-  targetStepId: string | null;
-  commandPending: boolean;
-};
+// The stepped cluster is declared in shared-domain, on `DeviceOverviewSnapshot`
+// itself, because it is that shape's stepped DISCRIMINANT (presence = stepped).
+// Aliased here so the settings-UI keeps its familiar name. It cannot be defined
+// in this file: `settingsUiApi` imports `DeviceOverviewSnapshot` from
+// shared-domain, so the dependency only runs one way.
+export type SettingsUiPlanSteppedLoadState = DeviceOverviewSteppedLoad;
 
 export type SettingsUiPlanMetaSnapshot = {
   [key: string]: unknown;
@@ -228,10 +231,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
   name: string;
   deviceClass?: string;
-  // Observational device kind. This remains `temperature` when PELS target
-  // control is disabled and the effective `controlModel` is `binary_power`, so
-  // the overview can keep showing the device's observed temperature and target.
-  deviceType?: 'temperature' | 'onoff';
   plannedTarget?: number;
   priority?: number;
   zone?: string;
@@ -248,7 +247,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   stateTone?: string;
   starvation?: SettingsUiPlanDeviceStarvation;
   pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
-  steppedLoad?: SettingsUiPlanSteppedLoadState;
   idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle';
 };
 
