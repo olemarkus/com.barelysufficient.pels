@@ -15,6 +15,7 @@ import type { EvChargingState, SteppedLoadProfile } from '../../packages/contrac
 import { isEvPlanDevice } from './planEvDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
@@ -134,7 +135,7 @@ export function buildSettingsOverviewDeviceReadModel(
     currentTemperature: temperature.currentTemperature,
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
-    planningPowerKw: device.planningPowerKw,
+    planningPowerKw: isSteppedLoadDevice(device) ? device.planningPowerKw : undefined,
     budgetExempt: device.budgetExempt,
     temperatureBoost: device.temperatureBoost,
     temperatureBoostActive: device.temperatureBoostActive,

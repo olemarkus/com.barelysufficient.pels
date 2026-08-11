@@ -1,4 +1,4 @@
-import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice, ShedAction, SteppedClusterFields } from './planTypes';
 import {
   withBinaryDiscriminant, withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
 } from './planTypes';
@@ -205,7 +205,7 @@ export function buildBasePlanDevice(params: {
     currentTemperature: resolveInputCurrentTemperature(dev),
     ...(resolvedPlannedTarget !== undefined ? { plannedTarget: resolvedPlannedTarget } : {}),
     communicationModel: dev.communicationModel,
-    steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
+    ...pickSteppedPlanFields(dev),
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,
     selectedStepId: dev.selectedStepId,
@@ -217,7 +217,6 @@ export function buildBasePlanDevice(params: {
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
     priority,
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
-    planningPowerKw: dev.planningPowerKw,
     expectedPowerSource: dev.expectedPowerSource,
     currentDrawKw: dev.currentDrawKw,
     controlCapabilityId: dev.controlCapabilityId,
@@ -241,6 +240,21 @@ export function buildBasePlanDevice(params: {
     releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
   }))));
+}
+
+// The stepped cluster, taken as a unit through the guard. Extracted rather than
+// tested inline per field: `steppedLoadProfile` and `planningPowerKw` both live
+// on `SteppedLoadKind`, so one narrowing answers both, and keeping the branch
+// out of `buildBasePlanDevice` keeps that function under the complexity ceiling.
+// `withSteppedDiscriminant` re-ties the cluster into one variant.
+function pickSteppedPlanFields(
+  dev: PlanInputDevice,
+): SteppedClusterFields {
+  if (!isSteppedLoadDevice(dev)) return {};
+  return {
+    steppedLoadProfile: dev.steppedLoadProfile,
+    planningPowerKw: dev.planningPowerKw,
+  };
 }
 
 function pickPropagatedPlanFields(

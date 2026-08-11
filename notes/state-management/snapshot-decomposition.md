@@ -83,8 +83,12 @@ helpers. The observer was created but never handed the observation contract.
    config + capabilities — `controlModel`, `controlCapabilityId`, `controlAdapter`,
    `deviceClass`/`deviceType`/`zone`, `steppedLoadProfile`/`targetPowerConfig` (now
    type-gated OFF the base onto `SteppedLoadDescriptorFields`, narrowed via
-   `isSteppedLoadSnapshot` — `steppedLoadProfile` IS the kind discriminant
-   (`model === 'stepped_load'`). It is the single runtime definition of that
+   `isSteppedLoadSnapshot` — `steppedLoadProfile` IS the kind discriminant, and its
+   PRESENCE is the whole test (`SteppedLoadProfile['model']` is the single literal
+   `'stepped_load'`, so on an already-typed value comparing it asserts nothing the
+   presence did not; the `unknown` parse boundary `normalizeSteppedLoadProfile` keeps
+   that comparison, and that is where a second profile model would be discriminated).
+   It is the single runtime definition of that
    discriminant: `lib/plan`'s `isSteppedLoadDevice` and the `withSteppedDiscriminant`
    regrouper both delegate to it and own only the plan-layer narrowing; `targetPowerConfig` rides the same cluster; owner seams and
    the decorator carry them through the `SteppedLoadDescriptorProbe` widening;

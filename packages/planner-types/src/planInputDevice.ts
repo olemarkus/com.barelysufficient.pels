@@ -40,6 +40,30 @@ import type {
  */
 type SteppedPlanInputKind = {
   steppedLoadProfile: SteppedLoadProfile;
+  /**
+   * The draw the currently selected step is expected to pull. Lives HERE, on
+   * the stepped variant, because it is a fact about a step ladder: a device
+   * with no ladder has no selected step, so there is no number to carry. As a
+   * base optional it was a field every binary and temperature device also
+   * "had", always `undefined` — and both producers spent a line explicitly
+   * clearing it (`toPlanDevice`, `appDeviceControlHelpers`) to keep it that way.
+   *
+   * REQUIRED on this variant, like `steppedLoadProfile` beside it, because the
+   * producer always has an answer for a device that reaches it. The chain:
+   * `asSteppedLoadProfile` admits a profile only if it has a rung above zero
+   * (`hasUsableSteppedLoadLadder`), so `getSteppedLoadLowestActiveStep` — the
+   * first step with `planningPowerW > 0` — is non-null by construction, so the
+   * planning fallback always resolves, so `resolveEffectiveStepId` never
+   * answers `'unknown'`, so `selectedStepId` is always a step OF that profile.
+   * `resolveSteppedLoadPlanningPowerKw` returns `undefined` only for a missing
+   * step id or one absent from the profile, and neither survives that chain.
+   *
+   * So an absent value here would mean a producer emitted a stepped device with
+   * an unusable ladder — a producer bug, to be fixed at the producer. Typing it
+   * optional would only invite every consumer to invent an answer for a state
+   * the producer refuses to create.
+   */
+  planningPowerKw: number;
 };
 
 // Omits `steppedLoadProfile` entirely (not `?: never`) so an un-narrowed read
@@ -240,7 +264,8 @@ export type PlanInputDeviceBase = {
    * planner, the objectives layer, and the settings UI then picked it up.
    */
   expectedPowerKw: number;
-  planningPowerKw?: number;
+  // `planningPowerKw` is NOT here: it is a stepped-ladder fact and lives on
+  // `SteppedPlanInputKind`, reached through `isSteppedLoadDevice`.
   /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
   expectedPowerSource: ExpectedPowerSource;
   /**

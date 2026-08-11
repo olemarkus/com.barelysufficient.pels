@@ -292,7 +292,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       currentState: d.currentState,
       currentTarget: isTemperaturePlanDevice(d) ? d.currentTarget : null,
       reason: buildComparableDeviceReason(d.reason),
-      planningPowerKw: d.planningPowerKw,
+      planningPowerKw: isSteppedLoadDevice(d) ? d.planningPowerKw : undefined,
       shedAction: d.shedAction,
       controllable: d.controllable,
       stepCommandPending: d.stepCommandPending ?? null,

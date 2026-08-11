@@ -1,4 +1,4 @@
-import type { DevicePlan, PlanInputDevice } from './planTypes';
+import type { DevicePlan, PlanInputDevice, SteppedClusterFields } from './planTypes';
 import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isEvPlanDevice } from './planEvDevice';
@@ -38,6 +38,28 @@ import {
  * freshly, so acting on it would re-assert a plan nobody re-decided. Whether
  * observed still disagrees with intent is `lib/executor/executorConvergence.ts`.
  */
+/**
+ * The stepped cluster for a merged device, taken from ONE source: the live
+ * device if it is stepped, else the prior plan device, else absent.
+ *
+ * The profile used to fall back live->prior while `planningPowerKw` was read off
+ * `live` independently, so a live device with no profile and a prior device with
+ * one produced a PRIOR profile paired with the LIVE power — two devices' answers
+ * inside one stepped state. Taking the pair together makes that unrepresentable.
+ */
+function resolveMergedSteppedCluster(
+  live: PlanInputDevice,
+  device: DevicePlan['devices'][number],
+): SteppedClusterFields {
+  if (isSteppedLoadDevice(live)) {
+    return { steppedLoadProfile: live.steppedLoadProfile, planningPowerKw: live.planningPowerKw };
+  }
+  if (isSteppedLoadDevice(device)) {
+    return { steppedLoadProfile: device.steppedLoadProfile, planningPowerKw: device.planningPowerKw };
+  }
+  return {};
+}
+
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   return {
@@ -52,8 +74,14 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // device's. The merged literal spreads `...device` (a union) wholesale, so
       // `withSteppedDiscriminant` re-ties the discriminant into one variant —
       // stripping any stale `steppedLoadProfile` the spread carried over.
-      const mergedProfile = (isSteppedLoadDevice(live) ? live.steppedLoadProfile : undefined)
-        ?? (isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined);
+      // The cluster travels from ONE source. Previously the profile fell back
+      // live->prior while `planningPowerKw` was read off `live` independently,
+      // so a live device with no profile and a prior device with one produced a
+      // prior profile paired with the live power — two devices' answers in one
+      // stepped state. Taking the pair together makes that unrepresentable
+      // (`SteppedClusterFields`).
+      const steppedCluster = resolveMergedSteppedCluster(live, device);
+      const mergedProfile = steppedCluster.steppedLoadProfile;
       const mergedCurrentState = resolveCurrentStateFromPlanInput(
         live,
         mergedProfile,
@@ -85,7 +113,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         evBoost: evDevice?.evBoost,
         evBoostActive: evDevice?.evBoostActive,
         stateOfCharge: evDevice?.stateOfCharge,
-        steppedLoadProfile: mergedProfile,
+        ...steppedCluster,
         currentState: mergedCurrentState,
         currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
         selectedStepId: liveStepState.selectedStepId,
@@ -101,7 +129,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         reportedStepId: liveStepState.reportedStepId,
         currentTemperature: liveTemperature?.currentTemperature,
         expectedPowerKw: live.expectedPowerKw,
-        planningPowerKw: live.planningPowerKw,
         expectedPowerSource: live.expectedPowerSource,
         currentDrawKw: live.currentDrawKw,
         controlCapabilityId: live.controlCapabilityId,

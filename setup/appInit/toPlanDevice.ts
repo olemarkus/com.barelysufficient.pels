@@ -10,6 +10,7 @@ import type {
   DeviceControlModel,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
+  SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
@@ -19,6 +20,11 @@ import {
   resolveHasRecentObservedDraw,
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
+import type { SteppedClusterFields } from '../../lib/plan/planTypes';
+import {
+  getSteppedLoadLowestActiveStep,
+  resolveSteppedLoadPlanningPowerKw,
+} from '../../lib/utils/deviceControlProfiles';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -210,6 +216,63 @@ function resolveSurplusPostureForDevice(params: {
  * vocabulary. Observation remains on the decorated snapshot served to the UI;
  * the plan sees only the commands PELS is currently allowed to issue.
  */
+/**
+ * The stepped cluster, built as a UNIT — this is the boundary where the optional
+ * originates, so it is the only place that can make `SteppedLoadKind`'s required
+ * `planningPowerKw` mean anything. The decoration carrier types the field as a
+ * plain optional; copying it straight through was how an absent value could
+ * reach a plan device that declares it required.
+ *
+ * The decorator resolved the number against the CONFIRMED profile, but the
+ * planner may run a different one (`resolveEvTargetPowerPlannerProfile`
+ * substitutes an EV target-power ladder), so recompute against the profile the
+ * planner will actually use and fall back to the carried value. Neither rung
+ * invents anything: both read `planningPowerW` off a step of the profile in hand.
+ *
+ * When neither resolves, the ladder yields no planning power at all — and the
+ * honest answer is that this device is not stepped-controllable, the same
+ * verdict `asSteppedLoadProfile` reaches upstream when it refuses a ladder with
+ * no rung above zero. Returning `{}` says that, instead of shipping a stepped
+ * device with a hole where its power should be.
+ */
+function resolveSteppedClusterFields(
+  plannerSteppedLoadProfile: SteppedLoadProfile | undefined,
+  device: { selectedStepId?: string; planningPowerKw?: number },
+): SteppedClusterFields {
+  if (!plannerSteppedLoadProfile) return {};
+  // Gated on FINITENESS, not merely on presence — this is the boundary into
+  // `lib/plan`, and `??` would forward a `NaN` as a resolved answer. Both
+  // sources can carry one: `planningPowerW` comes from persisted settings, and
+  // the carried value comes from the decoration layer. A non-finite kW that
+  // reaches the planner poisons every sum it lands in — reserve, headroom,
+  // restore sizing — silently rather than loudly.
+  //
+  // Each rung is gated separately, so a junk value FALLS THROUGH to the next
+  // rung instead of short-circuiting the chain. Checking only the final value
+  // would let a `NaN` first rung drop the device out of stepped control even
+  // when the ladder had a perfectly good answer one rung down.
+  const planningPowerKw = [
+    resolveSteppedLoadPlanningPowerKw(plannerSteppedLoadProfile, device.selectedStepId),
+    device.planningPowerKw,
+    // The rung the EV target-power cap needs: the planner ladder can be CAPPED
+    // below the device's selected step, so that step is simply not in the
+    // profile the planner will run and the first rung finds nothing. Price it at
+    // the ladder's own planning fallback — the same lowest-active step the
+    // decorator uses when there is no reported step. Still not an invention: it
+    // is a real rung of the profile in hand.
+    resolveSteppedLoadPlanningPowerKw(
+      plannerSteppedLoadProfile,
+      getSteppedLoadLowestActiveStep(plannerSteppedLoadProfile)?.id,
+    ),
+  ].find((kw): kw is number => typeof kw === 'number' && Number.isFinite(kw));
+  // Only reachable for a ladder no rung of which yields a finite planning power
+  // — which `asSteppedLoadProfile` already refuses upstream — so this says "not
+  // stepped-controllable", matching that refusal, rather than shipping a
+  // stepped device with a hole where its power should be.
+  if (planningPowerKw === undefined) return {};
+  return { steppedLoadProfile: plannerSteppedLoadProfile, planningPowerKw };
+}
+
 function projectEffectiveControlDevice(
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
 ): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe {
@@ -282,6 +345,7 @@ export function toPlanDevice(
       nowMs: ctx.getNow().getTime(),
     })
     : undefined;
+  const steppedCluster = resolveSteppedClusterFields(plannerSteppedLoadProfile, device);
   const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
   const hasRecentObservedDraw = resolveHasRecentObservedDraw(
@@ -365,7 +429,7 @@ export function toPlanDevice(
   } = device;
   return withSteppedDiscriminant({
     ...deviceFields,
-    steppedLoadProfile: plannerSteppedLoadProfile,
+    ...steppedCluster,
     targetPowerConfig: withoutTargetPowerReachability(device.targetPowerConfig),
     // The step-command/planning cluster used to ride in on the `...device`
     // spread when it lived on `TargetDeviceSnapshot`. It now originates on the
@@ -374,7 +438,6 @@ export function toPlanDevice(
     // independent of the carrier's shape. Values are byte-identical to the
     // pre-decomposition spread.
     selectedStepId: device.selectedStepId,
-    planningPowerKw: device.planningPowerKw,
     targetStepId: device.targetStepId,
     desiredStepId: device.desiredStepId,
     previousStepId: device.previousStepId,

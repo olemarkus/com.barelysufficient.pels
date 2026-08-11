@@ -68,9 +68,16 @@ export type ShedBehavior = {
  * out of scope for this slice.
  */
 export type SteppedLoadKind = {
-  // The stepped guard's predicate (`steppedLoadProfile?.model === 'stepped_load'`)
-  // proves the profile is present, so it is required on the narrowed shape.
+  // The stepped guard's predicate is profile PRESENCE (`isSteppedLoadSnapshot`),
+  // which proves the profile is there, so it is required on the narrowed shape.
   steppedLoadProfile: SteppedLoadProfile;
+  /**
+   * The draw the currently selected step is expected to pull — a fact about a
+   * step ladder, so it belongs on the variant that has one, and REQUIRED for
+   * the same reason `steppedLoadProfile` is. See the twin docblock on
+   * `SteppedPlanInputKind` for why the producer always has an answer.
+   */
+  planningPowerKw: number;
 };
 
 /**
@@ -214,7 +221,31 @@ export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
  */
 export type SteppedDiscriminantProbe = {
   steppedLoadProfile?: SteppedLoadProfile;
+  planningPowerKw?: number;
 };
+
+/**
+ * The stepped cluster as a UNIT: either both fields or neither. This is what
+ * makes `SteppedLoadKind.planningPowerKw` being required mean something.
+ *
+ * With the probe alone, a producer could hand `withSteppedDiscriminant` a bare
+ * `steppedLoadProfile` and no power, and it type-checked — the returned object
+ * satisfied the NON-stepped member of the result union, so nothing ever
+ * required the number. Verified by deleting the field from `toPlanDevice`: tsc
+ * stayed silent. That is precisely the "compiles clean, reads `undefined`"
+ * shape this whole change exists to remove.
+ *
+ * Producers build the pair through a conditional that returns this or `{}`, so
+ * supplying a profile without its planning power is a compile error at the
+ * producer, where the ladder invariant actually lives.
+ */
+export type SteppedClusterFields =
+  | SteppedLoadKind
+  // NOT `Record<never, never>`: `{}` accepts every object, so the union never
+  // discriminated and a half-cluster type-checked against it. Forbidding both
+  // fields on the empty member is what makes "profile without its power" a
+  // compile error at the producer.
+  | { steppedLoadProfile?: never; planningPowerKw?: never };
 
 /**
  * Rebuild a discriminated plan device from a loose bag whose `steppedLoadProfile`
@@ -228,19 +259,35 @@ export type SteppedDiscriminantProbe = {
  * `steppedLoadProfile` would otherwise survive onto a non-stepped result. The
  * runtime predicate is `isSteppedLoadSnapshot` — the same one `isSteppedLoadDevice`
  * delegates to, so the regrouper and the guard cannot drift; anything it rejects
- * resolves to the non-stepped discriminant, which omits `steppedLoadProfile`
- * entirely.
+ * resolves to the non-stepped discriminant, which omits the whole stepped cluster
+ * (`steppedLoadProfile` and its `planningPowerKw`) entirely.
  */
 export function withSteppedDiscriminant<TBase extends object>(
   loose: TBase & SteppedDiscriminantProbe,
 ):
   | (Omit<TBase, keyof SteppedDiscriminantProbe> & SteppedLoadKind)
   | (Omit<TBase, keyof SteppedDiscriminantProbe> & NonSteppedLoadKind) {
+  // The discriminant stays the shared profile-presence predicate ALONE. It is
+  // tempting to require the whole cluster here — but this helper cannot be the
+  // enforcement point, and trying makes it dangerous: its result type is a union
+  // whose non-stepped member accepts anything, so a half-cluster type-checks
+  // either way, and refusing one at runtime would silently un-step a device
+  // instead of failing loudly. Enforcement belongs at the producers, which build
+  // the pair through `SteppedClusterFields`.
   if (isSteppedLoadSnapshot(loose)) {
-    const { steppedLoadProfile, ...base } = loose;
-    return { ...base, steppedLoadProfile };
+    const { steppedLoadProfile, planningPowerKw, ...base } = loose;
+    // The one cast in this file, and it is the seam's honest shape: the probe
+    // types both fields as independent optionals, so nothing here PROVES they
+    // co-vary. Making the parameter a co-presence union does prove it, but the
+    // resulting errors at the four call sites are unreadable (`Omit` chains
+    // over intersections resolve to "two different types with this name exist"),
+    // which buys enforcement at the cost of anyone being able to act on it.
+    // Enforcement lives at the producers instead: each builds the pair as a
+    // `SteppedClusterFields` value, where supplying a profile without its
+    // planning power is a plain, local compile error.
+    return { ...base, steppedLoadProfile, planningPowerKw: planningPowerKw as number };
   }
-  const { steppedLoadProfile: _stripped, ...base } = loose;
+  const { steppedLoadProfile: _stripped, planningPowerKw: _strippedPlanningPower, ...base } = loose;
   return { ...base };
 }
 
@@ -470,7 +517,8 @@ type DevicePlanDeviceBase = {
   priority?: number;
   /** Draw when running, in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
   expectedPowerKw: number;
-  planningPowerKw?: number;
+  // `planningPowerKw` is NOT here: it is a stepped-ladder fact and lives on
+  // `SteppedLoadKind`, reached through `isSteppedLoadDevice`.
   /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
   expectedPowerSource: ExpectedPowerSource;
   /** Current draw in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
