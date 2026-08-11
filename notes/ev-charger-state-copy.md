@@ -80,8 +80,9 @@ the car declining, whoever set the command. What the association adds is not the
 claim but the two contradiction rows the charger alone can never produce.
 
 Every device this copy applies to has signal 2. The label is gated on
-`controlCapabilityId === 'evcharger_charging'`, and `hasBinaryCapability`
-(`lib/observer/observedState.ts`) is that capability's presence — so the
+`controlCapabilityId === 'evcharger_charging'`, and `hasBinaryControlCapability`
+(`packages/shared-domain/src/binaryControlKind.ts`, which
+`lib/observer/observedState.ts` asks) is that capability's presence — so the
 observer always resolves a concrete `on`/`off`, never `not_applicable`. There is
 no step-only-charger case needing a fallback.
 

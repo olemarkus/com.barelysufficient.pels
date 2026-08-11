@@ -157,7 +157,7 @@ export function getOnDevices(
       const behavior = getShedBehavior(device.id);
       if (isSteppedLoadDevice(device)) {
         return behavior.action === 'turn_off'
-          && device.controlCapabilityId !== undefined
+          && isBinaryPlanDevice(device)
           && canSwapOutDevice(device, behavior);
       }
       return canSwapOutDevice(device, behavior);

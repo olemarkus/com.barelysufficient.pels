@@ -1063,6 +1063,51 @@ program) remain deferred.*
       branches (`admission.ts`, `coldStartRelease.ts`) are objective-kind, not device-kind, and stay.
       `lib/objectives` is now in `check-device-kind-vocab.mjs`'s `consumerDirs`, so the guard enforces all
       three consumer layers.
+      **Modality-predicate containment landed (2026-08-11): one runtime definition per discriminant.**
+      The temperature and EV axes had already collapsed to a single shared-domain predicate each; the two
+      CONTROL-MODALITY axes had not, and had drifted the furthest precisely because their discriminants read
+      as ordinary field handling rather than as classification. `controlCapabilityId === undefined` was
+      re-spelled at nine `lib/plan`/`lib/executor` call sites plus a private `hasBinaryCapability` copy in
+      `lib/observer/observedState.ts`, while `steppedLoadProfile?.model === 'stepped_load'` had three more
+      copies (`observedState.ts`, `planCurrentState.ts`, and the `withSteppedDiscriminant` regrouper) sitting
+      beside a guard that 118 other sites already used. New browser-safe `hasBinaryControlCapability`
+      (`packages/shared-domain/src/binaryControlKind.ts`) is now the one binary definition —
+      `isBinaryPlanDevice` and `withBinaryDiscriminant` delegate to it, mirroring how
+      `isTemperaturePlanDevice`/`isEvPlanDevice` delegate — and `isSteppedLoadDevice` +
+      `withSteppedDiscriminant` now delegate to the existing `isSteppedLoadSnapshot`, so the plan layer owns
+      only narrowing. `check-device-kind-vocab.mjs` gained `lib/observer` and a third rule failing the build on
+      either discriminant re-inlined in the four consumer layers — as a comparison (`=== undefined`,
+      `=== 'stepped_load'`) or, for the binary axis, as a truthiness read (`!x.controlCapabilityId`,
+      `if (x.controlCapabilityId)`, `Boolean(...)`, and the control operand of a standalone
+      `x.controlCapabilityId && …` guard). The truthiness half is not decoration: review found two `lib/executor/shedReleaseActuation.ts`
+      branches already written that way and invisible to the comparison-only rule, so shipping without it would
+      have taught the next author the evasion instead of the predicate. It deliberately does NOT match the
+      producer-only `controlModel` setting, `??` defaulting reads, or `steppedLoadProfile` truthiness (mere
+      presence — a different question from `model === 'stepped_load'`). Like its siblings it stays a tripwire,
+      not a sandbox: an intermediate variable, a destructure-then-compare, or `typeof` still evade it and remain
+      review-caught. Type-level and structural only; the one behavioural-shaped edit is a test fixture that had been passing `{ model: 'stepped_load' }` where a real
+      `SteppedLoadProfile` belonged, which the tightened `resolveSurplusOnlyPosture` param now rejects.
+      Producers keep their literals by design: the vocabulary still lives in `lib/device/**` (transport) and
+      `setup/appInit/toPlanDevice.ts`.
+      Open follow-ups from the review of that change (P2, deferred):
+      - *Settings UI still inlines the binary discriminant.* `deviceDetail/solarSurplus.ts`,
+        `deviceDetail/respectExternalOff.ts` and `deviceDetail/temperatureControlDisabled.ts` each spell
+        `controlCapabilityId !== undefined` themselves. `hasBinaryControlCapability` is browser-safe precisely so
+        they need not, the way `isSteppedLoadSnapshot` already serves the UI. Migrating them is what earns the
+        shared-domain placement; until then the module's audience is narrower than its location suggests.
+      - *`toPlanDevice` is a projection, not a transport producer.* `setup/appInit/toPlanDevice.ts` keeps
+        `controlCapabilityId !== undefined` at the `currentOn` stamp and in `resolveExternalOffHoldActive`. The
+        `lib/device/**` sites are correctly exempt — the transport RESOLVES the capability, so there the field
+        test IS the definition — but `toPlanDevice` consumes a `DecoratedDeviceSnapshot` and projects it, and the
+        comment above the stamp already names the drift risk ("`isBinaryPlanDevice` re-asserts it as a required
+        `boolean`"). Two spellings of one invariant across a seam is the failure mode this change closed
+        elsewhere. Decide whether a projection counts as a producer, and say so in one place.
+      - *Producer-shaped functions stranded in `lib/plan`.* `withHeadroomCurrentOn` (`planHeadroomSupport.ts`,
+        its own comment: "the twin of `toPlanDevice`") and `resolveSurplusOnlyPosture` (`planSurplusAbsorb.ts`)
+        have no `lib/plan` callers at all — only `setup/**` and `flowCards/**`. Both take raw transport shapes
+        (`withHeadroomCurrentOn`'s input carries `binaryControl`, the field the plan kinds deliberately exclude).
+        They belong next to `toPlanDevice.ts` in `setup/`; the move is legal today, since `flowCards/` sits above
+        `setup/` and `no-lib-to-setup` does not block that import.
       Remaining under this item:
       - **type discrimination (snapshot side): COMPLETE.** All observed clusters (EV / temperature / SoC /
         measured-power) AND the stepped clusters (descriptor `steppedLoadProfile`/`targetPowerConfig` off

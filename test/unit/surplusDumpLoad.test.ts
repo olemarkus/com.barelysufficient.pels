@@ -28,7 +28,7 @@ import {
   formatDeviceReasonUserFacing,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
 
 const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 
@@ -58,7 +58,7 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
     ['no binary control capability', { controlCapabilityId: undefined }],
     ['EV charging capability', { controlCapabilityId: 'evcharger_charging' as const }],
     ['EV device class', { deviceClass: 'evcharger' }],
-    ['stepped-load profile', { steppedLoadProfile: { model: 'stepped_load' } }],
+    ['stepped-load profile', { steppedLoadProfile: steppedProfile }],
     ['temperature target', { targets: [{ id: 'target_temperature', value: 20, unit: 'C' }] }],
     // Continuous / target-power / non-binary control is pre-resolved at the
     // producer into `plainBinaryControlModel` (the raw targetPowerConfig /

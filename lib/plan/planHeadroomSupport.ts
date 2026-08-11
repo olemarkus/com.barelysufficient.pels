@@ -1,6 +1,7 @@
 import type { DeviceDiagnosticsTrackedTransitionReconciliation } from '../diagnostics/deviceDiagnosticsService';
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
 import type { HeadroomCardState, PlanEngineState } from './planState';
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { resolveCurrentOn } from '../observer/observedState';
 import { getCurrentDrawKw } from '../observer/observedPower';
@@ -34,7 +35,7 @@ export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(
   // so nothing below has to look at the raw reading.
   //
   const currentDrawKw = getCurrentDrawKw(device);
-  return device.controlCapabilityId !== undefined
+  return hasBinaryControlCapability(device)
     ? { ...device, currentDrawKw, currentOn: resolveCurrentOn(device) }
     : { ...device, currentDrawKw };
 }

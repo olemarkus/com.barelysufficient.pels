@@ -1,3 +1,4 @@
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import type { BinaryPlanInputKind, PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import type { DevicePlanDevice, BinaryControlKind } from './planTypes';
 
@@ -13,11 +14,16 @@ import type { DevicePlanDevice, BinaryControlKind } from './planTypes';
  * sound. Dedicated overloads narrow the output `DevicePlanDevice` and the input
  * `PlanInputDevice`; the generic overload preserves a structural caller's type.
  *
- * The runtime predicate is `controlCapabilityId !== undefined`: capability
- * presence is the source of truth for binary status. A device whose control
- * capability is absent THIS cycle (e.g. a transient capability drop) is NOT a
- * binary device this cycle — the guard returns false and the binary cluster is
- * unreachable. This pairs with `withBinaryDiscriminant` in `planTypes.ts`, which
+ * The runtime predicate is the browser-safe `hasBinaryControlCapability`
+ * boolean (`controlCapabilityId !== undefined`): capability presence is the
+ * source of truth for binary status. Delegating keeps exactly one definition of
+ * "is this a binary device", and shared-domain stays browser-safe (it never
+ * imports the plan device types — the narrowing overloads live here, in the plan
+ * layer), mirroring `isTemperaturePlanDevice`/`isEvPlanDevice`.
+ *
+ * A device whose control capability is absent THIS cycle (e.g. a transient
+ * capability drop) is NOT a binary device this cycle — the guard returns false
+ * and the binary cluster is unreachable. This pairs with `withBinaryDiscriminant` in `planTypes.ts`, which
  * omits the cluster on the same predicate, so the guard never asserts a field the
  * producer did not attach.
  */
@@ -27,5 +33,5 @@ export function isBinaryPlanDevice<T extends { controlCapabilityId?: string }>(
   device: T,
 ): device is T & (T extends PlanInputDevice ? BinaryPlanInputKind : BinaryControlKind);
 export function isBinaryPlanDevice(device: { controlCapabilityId?: string }): boolean {
-  return device.controlCapabilityId !== undefined;
+  return hasBinaryControlCapability(device);
 }

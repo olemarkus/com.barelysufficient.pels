@@ -407,7 +407,7 @@ function canFinishSteppedTurnOffWithBinary(params: {
   const { device, shedAction, targetStep } = params;
   if (
     shedAction !== 'turn_off'
-    || device.controlCapabilityId === undefined
+    || !isBinaryPlanDevice(device)
     || !device.selectedStepId
     || targetStep?.id !== device.selectedStepId
   ) {

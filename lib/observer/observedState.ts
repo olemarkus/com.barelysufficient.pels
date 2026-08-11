@@ -22,6 +22,8 @@
  * "step not known" case; a stale binary read resolves to its latched on/off.
  */
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type {
   BinaryControlCapabilityId,
   DeviceControlModel,
@@ -45,19 +47,6 @@ type StepCurrentStateInput = Pick<
   ObservedCurrentStateInput,
   'steppedLoadProfile' | 'selectedStepId' | 'controlCapabilityId'
 > & { binaryControl?: { on: boolean } };
-
-const hasBinaryCapability = (device: Pick<CurrentStateInput, 'controlCapabilityId'>): boolean => (
-  device.controlCapabilityId !== undefined
-);
-
-// "Stepped load" is a yes/no capability = presence of a valid
-// `steppedLoadProfile`; `controlModel` is a producer-only setting carried on the
-// snapshot and is no longer part of the discriminant.
-const hasSteppedCapability = (
-  device: Pick<CurrentStateInput, 'steppedLoadProfile'>,
-): boolean => (
-  device.steppedLoadProfile?.model === 'stepped_load'
-);
 
 function stepIsAtOff(
   device: Pick<CurrentStateInput, 'steppedLoadProfile' | 'selectedStepId'>,
@@ -92,7 +81,7 @@ export function resolveCurrentOn(
   device: Pick<ObservedCurrentStateInput, 'binaryControl' | 'steppedLoadProfile' | 'selectedStepId'>,
 ): boolean {
   const binaryOff = device.binaryControl?.on === false;
-  const steppedOff = hasSteppedCapability(device) && stepIsAtOff(device);
+  const steppedOff = isSteppedLoadSnapshot(device) && stepIsAtOff(device);
   return !(binaryOff || steppedOff);
 }
 
@@ -105,14 +94,14 @@ export function resolveCurrentOn(
 export function resolveObservedSteppedLoadCurrentState(
   device: StepCurrentStateInput,
 ): string {
-  const profile = hasSteppedCapability(device) ? device.steppedLoadProfile ?? null : null;
+  const profile = isSteppedLoadSnapshot(device) ? device.steppedLoadProfile : null;
   if (!profile) {
     return (device.binaryControl?.on ?? true) ? 'on' : 'off';
   }
   // Only short-circuit on binary off when the device actually has a binary
   // capability — a defaulted `currentOn: false` on a step-only device must not
   // mask the step state.
-  if (hasBinaryCapability(device) && device.binaryControl?.on === false) return 'off';
+  if (hasBinaryControlCapability(device) && device.binaryControl?.on === false) return 'off';
   if (!device.selectedStepId) return 'unknown';
   const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   if (!selectedStep) return 'unknown';
@@ -141,7 +130,7 @@ export function resolveObservedCurrentState(
   // binary read is still the latched bit: Homey reports capabilities on change).
   // The only 'unknown' here is the STRUCTURAL stepped "step not known" case below
   // (`resolveObservedSteppedLoadCurrentState` with no selectedStepId).
-  if (hasSteppedCapability(device) && device.steppedLoadProfile) {
+  if (isSteppedLoadSnapshot(device)) {
     const steppedState = resolveObservedSteppedLoadCurrentState({
       steppedLoadProfile: device.steppedLoadProfile,
       selectedStepId: device.selectedStepId,
@@ -150,7 +139,7 @@ export function resolveObservedCurrentState(
     });
     if (steppedState !== 'unknown') return steppedState;
   }
-  if (!hasBinaryCapability(device)) {
+  if (!hasBinaryControlCapability(device)) {
     return 'not_applicable';
   }
   return (device.binaryControl?.on ?? true) ? 'on' : 'off';
