@@ -47,10 +47,13 @@ patch releases, not release blockers; each item carries its own source/date.
       thermostats had moved to `turn_off` shedding, which leaves the setpoint at the mode
       target. Fixed forward (producer-resolved `pelsHoldsBelowTarget` now feeds `unmetDemand`);
       the recorded week stays low and cannot be reconstructed. Device detail's blocked-by stats
-      and the weather advisor's suppression evidence both under-read that window — the weather
-      side's evidence model is being replaced by day-close episode outcomes in the stacked
-      follow-up PR, which also re-frames what the pinned-60.72 budget episode meant (the decay
-      was correct under the new model). No action beyond knowing the window is dark.
+      under-read that window. The weather side has since moved to the day-close damage verdict
+      (`budgetDeniedKwh`), under which the blind week turned out mostly moot: nothing was
+      latched at any observed midnight, so the pressure term's decay through it — and the
+      budget falling from its pinned 60.72 back to the model's suggestion — is intended
+      behaviour. Watch the first week of `weather_day_rollup` lines after deploy for
+      `budgetDeniedKwh` (0 on served days; a real denial re-arms the loop and is visible
+      there). No other action; the window is dark.
 
 - [ ] **A native `target_power` charger can no longer reach an off-ladder configured maximum.**
       `buildEvTargetPowerCandidateProfile` now stops at the highest real rung under `config.max`

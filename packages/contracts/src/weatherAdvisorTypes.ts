@@ -42,7 +42,32 @@ export type WeatherDailyQuality = {
  * and suggestion resolve it to flat outputs.
  */
 export type WeatherDaySuppression = {
-  /** Σ ms managed temperature devices were held below their intended target. */
+  /**
+   * The day-close damage verdict: energy the daily budget was still DENYING
+   * managed devices when the local day ended — episodes latched across midnight
+   * with cause `daily_budget`, priced at each device's expected draw. A hold
+   * PELS admitted before the day ended contributes nothing (deferral is the
+   * feature working; only unserved denial is damage). Present, possibly 0, on
+   * every day whose midnight the diagnostics service witnessed; ABSENT means no
+   * witness (restart, sample gap, or a record predating this evidence) — only
+   * then do the legacy duration counters below decide suppression.
+   */
+  budgetDeniedKwh?: number;
+  /** Σ ms of the same denied-at-close holds. Diagnostic companion. */
+  budgetDeniedMs?: number;
+  /**
+   * A verdict-capable build rolled this day up WITHOUT a witnessed verdict
+   * (restart, sample gap, or boot catch-up across its midnight). Unprovable is
+   * not damage: this blocks the legacy hold-time fallback below, which counts
+   * served deferrals as evidence. Absent on records written by older builds —
+   * only those may fall back to the legacy counters.
+   */
+  budgetDeniedUnwitnessed?: true;
+  /**
+   * Σ ms managed temperature devices were held below their intended target.
+   * Legacy hold-time evidence: it counts a served deferral and an unserved
+   * denial identically, which is why `budgetDeniedKwh` replaced it as the gate.
+   */
   targetDeficitMs?: number;
   /** Σ ms a device could not run because capacity was saturated. */
   blockedByHeadroomMs?: number;

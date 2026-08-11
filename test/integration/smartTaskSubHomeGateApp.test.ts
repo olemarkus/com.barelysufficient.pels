@@ -97,6 +97,7 @@ describe('smart-task sub-home gate (app lanes)', () => {
       // Commanded 50 against a 65 mode target — what the producer resolves for
       // this shape.
       pelsHoldsBelowTarget: true,
+      expectedPowerKw: 2,
       suppressionState: 'counting',
       countingCause: 'daily_budget',
       pauseReason: null,

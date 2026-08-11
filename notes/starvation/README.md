@@ -97,38 +97,56 @@ change to this lane that breaks one is a regression, not a tuning choice**:
    floor or the cap set the number). `lib/weather/weatherAutoApply.ts`.
 2. **Opt-in gated.** Nothing is written unless the owner enabled
    `autoApplyDailyBudget`. With it off the loop is display-only.
-3. **Fed only by the day-level censoring totals** the diagnostics layer already
-   records (`targetDeficitMs` / `blockedByHeadroomMs`), at the same one-hour bar
-   the shipped raise-lean used. An earlier draft added a budget-attributed
-   counter so capacity-caused holds could be filtered out; it was dropped.
-   Instantaneous attribution is the wrong granularity for a daily decision — a
-   device blocked by capacity in one hour can still run in another if the DAY
-   had more budget — so the filter under-counted real evidence, and on the home
-   this was built from capacity was the binding source in 0–8% of rebuilds.
+3. **Fed by the day-close damage verdict.** The evidence is `budgetDeniedKwh`:
+   energy the daily budget was still DENYING latched episodes when the local day
+   ended, priced at each device's expected draw and joined from LIVE episode
+   state minutes after midnight (a latched episode cannot clear inside the
+   10-minute clear window, so the 00:05 pull is a reliable witness). The owner's
+   damage model, 2026-08-11: **deferral is the feature working; only unserved
+   denial is damage** — a device held at noon and admitted at one contributes
+   nothing, and a hold only counts when it is provably the budget's fault
+   (`starvationCause === 'daily_budget'`; `hourly_budget` is excluded because
+   raising the daily total cannot fix an hourly cap). Admission = served,
+   regardless of room temperature afterwards — the budget's job is to authorize
+   energy; thermal recovery lag is physics. Unprovable is not damage: a restart
+   or sample gap across midnight leaves the boundary unwitnessed and the day
+   carries NO verdict (falling back, for old records only, to the legacy
+   hold-time counters at their one-hour bar).
 
-   > **2026-08-11 — these counters were blind to turn_off sheds for a week in
-   > production.** Both totals are gated on `unmetDemand`, which for a device
-   > with a resolvable target was purely a SETPOINT comparison — and a `turn_off`
-   > shed leaves the setpoint at the mode target. When the production home's
-   > thermostats moved to turn-off shedding on 2026-08-03, every counter fell to
-   > ~36 s/day while devices sat off for hours, and this loop only ever decayed
-   > through it. `resolveUnmetDemand` now also consults the producer-resolved
-   > `pelsHoldsBelowTarget` (the same signal the starvation clock uses), so the
-   > counters record again. The 08-03 → 08-10 window cannot be backfilled. This
-   > evidence channel is being replaced outright by day-close episode outcomes
-   > ("was anything still denied when the day ended, provably by the budget") —
-   > see the follow-up PR stacked on this fix; these bounds will be rewritten
-   > there.
+   Day-close cause attribution does not conflict with the earlier
+   "no instantaneous attribution" ruling — that ruling said a device blocked by
+   capacity in one hour could still have run in another if the DAY had more
+   budget, which is exactly why the question is now asked once, of the whole
+   day, at its close. The closing cause is snapshotted at the boundary roll, not
+   read live at the pull — the budget resetting at midnight makes a
+   post-boundary cause flip the ordinary case. Days a verdict-capable build
+   rolls up without a witnessed close carry `budgetDeniedUnwitnessed`, which
+   blocks the legacy fallback: only genuinely pre-verdict records may use the
+   hold-time counters. In flow mode the witness follows the sample cadence.
+
+   > History: the previous evidence (`targetDeficitMs` / `blockedByHeadroomMs`
+   > hold-time at a one-hour bar) counted served deferrals and unserved denials
+   > identically, and was additionally blind to `turn_off` sheds for
+   > 2026-08-03 → 08-10 (the counters read ~36 s/day while devices sat off for
+   > hours; fixed by the producer-resolved `pelsHoldsBelowTarget`, see the
+   > un-blinding PR). Under the damage model that blind week turned out mostly
+   > moot: nothing was latched at any observed midnight, so the term's decay
+   > through it — including through 08-08's 2.1 kWh overshoot with every hold
+   > served — was the correct answer, and the budget falling back to the model's
+   > suggestion afterwards is intended behaviour, not a casualty.
+
 4. **Bounded per day and in total.** ≤ 10 kWh added per day, ≤ 40 kWh
    accumulated, ≤ 50% of the day's prediction when applied, and the whole
    suggestion is still clamped by `capacityLimitKw × 24` and the [20, 360] setting
    bounds. The hard cap always wins; it is physical and is never a remedy.
-5. **Leaky.** The *pressure term* decays 0.75/day on any day that did not
-   overshoot its budget, so it cannot ratchet — it must be able to discover that
-   the budget it pushed up is now more than the home needs. Note this bound
-   covers the integral term only: the raise-lean is a binary flag that stays on
-   while any day in the trailing 14 carried material budget suppression, so it
-   does not decay and must not be treated as if it did.
+5. **Leaky.** The *pressure term* decays 0.75/day on every UNDAMAGED day —
+   including a day that overshot its budget while denying nothing, because a
+   budget that hurt nobody needs no correction (the overshoot says the estimate
+   ran low, and tomorrow's estimate is the fit's job). It cannot ratchet — it
+   must be able to discover that the budget it pushed up is now more than the
+   home needs. Note this bound covers the integral term only: the raise-lean is
+   a binary flag that stays on while any day in the trailing 14 carried damage,
+   so it does not decay and must not be treated as if it did.
 6. **Once per day, idempotently.** `throughDateKey` makes repeat rollups and boot
    catch-ups no-ops; an unmeasurable day holds rather than growing or decaying.
 
@@ -138,7 +156,7 @@ The planner itself is still not a party to any of it: it reads
 The path:
 
 ```
-diagnostics day aggregates  (targetDeficitMs / blockedByHeadroomMs)
+live episode state at 00:05  (budgetDeniedKwh; legacy aggregates alongside)
   → DeviceDiagnosticsService.getDaySuppressionTotals
   → setup/appInit/createWeatherCollector.ts  getDaySuppression
   → WeatherDailyRecord.suppression            (lib/weather/weatherCollector.ts)
@@ -148,24 +166,23 @@ diagnostics day aggregates  (targetDeficitMs / blockedByHeadroomMs)
 
 Two consumers of the evidence:
 
-- **The raise-lean** (`suggestDailyBudget.ts`): recent suppression widens the
+- **The raise-lean** (`suggestDailyBudget.ts`): a recent damaged day widens the
   residual headroom q80→q90. It used to also require a forecast below the heating
   knee, which made the correction hostage to the weather rather than to the
   evidence. Measured on a real incident: the home starved for 3 days and 36
   episodes, and the budget only rose when the forecast happened to cross below
   the knee — +9 kWh in one step, after which starvation stopped.
 - **The budget-pressure loop** (`budgetPressure.ts`): a leaky integral term that
-  grows by the measured overshoot on days that were budget-suppressed *and* ran
-  past their budget, and leaks on every day that did not. It exists because the
+  grows on damaged days by the denied energy plus the measured overshoot, and
+  leaks on every day that did not end in denial. It exists because the
   raise-lean is a single fixed nudge and cannot track a mismatch bigger than
-  itself. The overshoot condition is the windup guard: short holds are routine,
-  so "a device was blocked for an hour" alone would ratchet the budget upward
-  forever.
+  itself. The denied energy carries the step on its own when the budget held the
+  home UNDER its number by denying a device — the day the old overshoot-only
+  step could never see, because the denial is precisely what prevented the
+  overshoot.
 
-Both consumers read the same evidence and the same one-hour bar, so they cannot
-disagree about whether a day was suppressed. Note what the evidence does NOT
-say: it records that PELS held devices below target, not which constraint caused
-it. That is deliberate — see bound 3.
+Both consumers read the same verdict (`dayWasBudgetDamaged`), so they cannot
+disagree about whether a day was damaged.
 
 There is no exception to that list. There used to be one: the smart-task
 `pause lower-priority devices` permission was implemented as a proactive shed lane

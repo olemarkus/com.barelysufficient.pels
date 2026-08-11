@@ -129,3 +129,62 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
     expect(budgets[budgets.length - 1]).toBeGreaterThanOrEqual(OBSERVED_DEMAND_KWH - 1);
   });
 });
+
+/**
+ * 2026-08-08 replayed under the day-close damage model, with the production
+ * numbers: the day overshot its 60.72 kWh budget by 2.11 kWh, but every hold was
+ * admitted before the day ended — nothing was latched at any observed midnight
+ * that week. Under the old hold-time model this day was a blindness casualty;
+ * under the damage model it is simply NOT a damage day, and the term's decay
+ * through it was the correct answer. The third case is the day the old
+ * overshoot-only step could never see: a budget that held the home under its
+ * number BY denying a device shows no overshoot at all, precisely because the
+ * denial worked.
+ */
+describe('2026-08-08 under the day-close damage model (real production numbers)', () => {
+  const CARRIED = { kwh: 3.1640625, throughDateKey: '2026-08-07' };
+  const augEighth = (suppression: WeatherDailyRecord['suppression']): WeatherDailyRecord => ({
+    dateKey: '2026-08-08',
+    tempMeanC: 12.749999999999998,
+    tempMinC: 11,
+    tempMaxC: 15,
+    tempSampleCount: 24,
+    kwhTotal: 62.83023596083332,
+    appliedBudgetKwh: 60.719406746659125,
+    quality: {
+      partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false,
+    },
+    suppression,
+  });
+
+  it('decays through the served-holds overshoot day — exactly what production did', () => {
+    // Watched to the close, nothing denied: the verdict is an explicit zero even
+    // though devices were held (and served) for hours during the day.
+    const folded = foldBudgetPressureDay(CARRIED, augEighth({
+      budgetDeniedKwh: 0,
+      budgetDeniedMs: 0,
+      blockedByHeadroomMs: 6 * 60 * 60 * 1000,
+    }));
+    // ×0.75 — the value production actually persisted the next morning.
+    expect(folded.kwh).toBeCloseTo(2.373046875, 9);
+  });
+
+  it('grows when the day instead ends with a device still denied', () => {
+    // Hypothetical: hovedbad still latched at midnight with 2 h of denied time
+    // at its 1.14 kW draw.
+    const folded = foldBudgetPressureDay(CARRIED, augEighth({
+      budgetDeniedKwh: 2.28,
+      budgetDeniedMs: 2 * 60 * 60 * 1000,
+    }));
+    // Denied energy plus the measured 2.11 kWh overshoot.
+    expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 2.28 + 2.1108292141741956, 9);
+  });
+
+  it('grows on a denial day the budget kept UNDER its number — invisible to the old step', () => {
+    const folded = foldBudgetPressureDay(CARRIED, {
+      ...augEighth({ budgetDeniedKwh: 3.42, budgetDeniedMs: 3 * 60 * 60 * 1000 }),
+      kwhTotal: 58,
+    });
+    expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 3.42, 9);
+  });
+});

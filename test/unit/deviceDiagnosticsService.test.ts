@@ -9,6 +9,7 @@ import {
   STALE_DEVICE_OBSERVATION_MS,
 } from '../../lib/observer/observationFreshness';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
+import { getDateKeyStartMs } from '../../lib/utils/dateUtils';
 
 type MockSettings = {
   get: Mock;
@@ -67,6 +68,7 @@ const buildObservation = (
   targetStepC: 0.5,
   pelsCommandsTurnOffShed: false,
   pelsHoldsBelowTarget: true,
+  expectedPowerKw: 1,
   suppressionState: 'counting',
   countingCause: 'capacity',
   pauseReason: null,
@@ -1560,7 +1562,13 @@ describe('DeviceDiagnosticsService.getDaySuppressionTotals', () => {
         },
       },
     });
-    expect(service.getDaySuppressionTotals(recentKey)).toEqual({ targetDeficitMs: 300, blockedByHeadroomMs: 30 });
+    // A verdict-capable build reading a day it did not witness marks it so the
+    // legacy fallback cannot claim damage from these hold-time counters.
+    expect(service.getDaySuppressionTotals(recentKey)).toEqual({
+      targetDeficitMs: 300,
+      blockedByHeadroomMs: 30,
+      budgetDeniedUnwitnessed: true,
+    });
     expect(service.getDaySuppressionTotals('1999-01-01')).toBeUndefined();
   });
 
@@ -1576,5 +1584,220 @@ describe('DeviceDiagnosticsService.getDaySuppressionTotals', () => {
       },
     });
     expect(service.getDaySuppressionTotals(recentKey)).toBeUndefined();
+  });
+});
+
+/**
+ * The day-close damage verdict the weather advisor reads: energy the daily
+ * budget was still denying a LATCHED episode when the local day ended, joined
+ * from live episode state at the just-after-midnight pull. Deferral is the
+ * feature working — a hold PELS admitted before midnight contributes nothing —
+ * and unprovable is not damage: no witness across the boundary, no verdict.
+ */
+describe('DeviceDiagnosticsService day-close budget denial', () => {
+  const TZ = 'Europe/Oslo';
+  const DAY_KEY = '2026-08-10';
+  const NEXT_DAY_KEY = '2026-08-11';
+  // Local midnight closing DAY_KEY.
+  const closeMs = () => getDateKeyStartMs(NEXT_DAY_KEY, TZ);
+
+  const MIN = 60 * 1000;
+  const heldByBudget = (overrides: Partial<DeviceDiagnosticsPlanObservation> = {}) => buildObservation({
+    countingCause: 'daily_budget',
+    pauseReason: null,
+    expectedPowerKw: 2,
+    ...overrides,
+  });
+  const served = () => buildObservation({
+    unmetDemand: false,
+    blockCause: 'not_blocked',
+    targetDeficitActive: false,
+    pelsHoldsBelowTarget: false,
+    expectedPowerKw: 2,
+    suppressionState: 'none',
+    countingCause: null,
+    pauseReason: null,
+  });
+
+  const sampleEvery5Min = (
+    service: DeviceDiagnosticsService,
+    fromTs: number,
+    toTs: number,
+    observation: DeviceDiagnosticsPlanObservation,
+  ) => {
+    for (let ts = fromTs; ts <= toTs; ts += 5 * MIN) {
+      service.observePlanSample({ nowTs: ts, observations: [observation] });
+    }
+  };
+
+  it('reports the energy still denied at day close for an episode latched across midnight', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    // Qualifying from 23:00 → latches 23:15 → latched-counting through 00:05.
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight + 5 * MIN, heldByBudget());
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    // Latch (23:15) to midnight: 45 min at 2 kW.
+    expect(totals?.budgetDeniedMs).toBe(45 * MIN);
+    expect(totals?.budgetDeniedKwh).toBeCloseTo(1.5, 6);
+  });
+
+  it('reports a REAL zero for a hold PELS admitted before the day ended — deferral is not damage', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    // Held 23:00 → latches 23:15; admitted at 23:30, clear window completes
+    // 23:40; quiet through 00:05.
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 30 * MIN, heldByBudget());
+    sampleEvery5Min(service, midnight - 25 * MIN, midnight + 5 * MIN, served());
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    expect(totals?.budgetDeniedKwh).toBe(0);
+    expect(totals?.budgetDeniedMs).toBe(0);
+  });
+
+  it('returns NO verdict when a sample gap spans the boundary — unprovable is not damage', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    // Latched by 23:15, last sample 23:50, next only at 00:15 (25 min gap).
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 10 * MIN, heldByBudget());
+    service.observePlanSample({ nowTs: midnight + 15 * MIN, observations: [heldByBudget()] });
+
+    vi.setSystemTime(midnight + 20 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    expect(totals).not.toHaveProperty('budgetDeniedKwh');
+  });
+
+  it('answers from the closed-day slot when no sample has arrived since midnight yet', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    // Latched 23:15, last sample 23:55 — the 00:05 pull is still within the
+    // continuity window of the boundary.
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 5 * MIN, heldByBudget());
+
+    vi.setSystemTime(midnight + 4 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    // Latch (23:15) to the last sample (23:55): 40 min at 2 kW.
+    expect(totals?.budgetDeniedMs).toBe(40 * MIN);
+    expect(totals?.budgetDeniedKwh).toBeCloseTo(2 * (40 / 60), 6);
+  });
+
+  it('excludes episodes the budget did not cause, while still reporting the watched zero', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight + 5 * MIN, heldByBudget({
+      countingCause: 'capacity',
+    }));
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    expect(totals?.budgetDeniedKwh).toBe(0);
+    expect(totals?.budgetDeniedMs).toBe(0);
+  });
+
+  it('answers only for the most recently closed day', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight + 5 * MIN, heldByBudget());
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    expect(service.getDaySuppressionTotals('2026-08-09')).toBeUndefined();
+  });
+
+  it('splits the denied accrual correctly across the 25-hour DST-end day', () => {
+    const { service } = createDeps();
+    // Europe/Oslo leaves DST on 2026-10-25; the local day is 25 hours long.
+    const dstMidnight = getDateKeyStartMs('2026-10-26', TZ);
+    sampleEvery5Min(service, dstMidnight - 60 * MIN, dstMidnight + 5 * MIN, heldByBudget());
+
+    vi.setSystemTime(dstMidnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals('2026-10-25');
+    expect(totals?.budgetDeniedMs).toBe(45 * MIN);
+  });
+});
+
+describe('DeviceDiagnosticsService day-close denial — boundary cause and witness marker', () => {
+  const TZ = 'Europe/Oslo';
+  const DAY_KEY = '2026-08-10';
+  const closeMs = () => getDateKeyStartMs('2026-08-11', TZ);
+  const MIN = 60 * 1000;
+  const withCause = (
+    countingCause: DeviceDiagnosticsPlanObservation['countingCause'],
+  ) => buildObservation({ countingCause, pauseReason: null, expectedPowerKw: 2 });
+  const sampleEvery5Min = (
+    service: DeviceDiagnosticsService,
+    fromTs: number,
+    toTs: number,
+    observation: DeviceDiagnosticsPlanObservation,
+  ) => {
+    for (let ts = fromTs; ts <= toTs; ts += 5 * MIN) {
+      service.observePlanSample({ nowTs: ts, observations: [observation] });
+    }
+  };
+
+  // The daily budget RESETS at midnight, so the binding cause flipping right
+  // after the boundary is the ordinary case, not a corner: the verdict must be
+  // judged by the cause in force AT the close, snapshotted at the roll.
+  it('keeps the verdict when the cause flips after midnight but before the pull', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 5 * MIN, withCause('daily_budget'));
+    // Fresh budget after midnight: still latched, now attributed to capacity.
+    sampleEvery5Min(service, midnight, midnight + 5 * MIN, withCause('capacity'));
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    // Latch (23:15) to midnight at 2 kW — the post-boundary flip changes nothing.
+    expect(totals?.budgetDeniedMs).toBe(45 * MIN);
+    expect(totals?.budgetDeniedKwh).toBeCloseTo(1.5, 6);
+  });
+
+  it('reports zero when the day CLOSED under capacity, despite earlier budget-denied time', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    // Budget-denied 23:15 → 23:30, then capacity carries the hold across the close.
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 30 * MIN, withCause('daily_budget'));
+    sampleEvery5Min(service, midnight - 25 * MIN, midnight + 5 * MIN, withCause('capacity'));
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    expect(totals?.budgetDeniedKwh).toBe(0);
+    expect(totals?.budgetDeniedMs).toBe(0);
+  });
+
+  // Deliberate semantic, per the stale-is-trusted model: a PAUSED episode is
+  // still latched and still unserved — pausing stops the clock, not the hold.
+  it('counts an episode that is paused-but-latched across the boundary', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 10 * MIN, withCause('daily_budget'));
+    // Owner-set avoid window pauses the episode across midnight; latch retained.
+    sampleEvery5Min(service, midnight - 5 * MIN, midnight + 5 * MIN, buildObservation({
+      expectedPowerKw: 2,
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'deferred_objective_avoid',
+    }));
+
+    vi.setSystemTime(midnight + 5 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    // Accrual ran while the budget observation covered the span (latch 23:15 →
+    // the first paused sample at 23:55); the hold itself never lifted.
+    expect(totals?.budgetDeniedMs).toBe(40 * MIN);
+    expect(totals?.budgetDeniedKwh).toBeCloseTo(2 * (40 / 60), 6);
+  });
+
+  it('marks an unwitnessed day instead of leaving it to the legacy fallback', () => {
+    const { service } = createDeps();
+    const midnight = closeMs();
+    // Legacy counters accrue during the day; then a 25-minute gap spans midnight.
+    sampleEvery5Min(service, midnight - 60 * MIN, midnight - 10 * MIN, withCause('daily_budget'));
+    service.observePlanSample({ nowTs: midnight + 15 * MIN, observations: [withCause('daily_budget')] });
+
+    vi.setSystemTime(midnight + 20 * MIN);
+    const totals = service.getDaySuppressionTotals(DAY_KEY);
+    expect(totals?.budgetDeniedUnwitnessed).toBe(true);
+    expect(totals).not.toHaveProperty('budgetDeniedKwh');
   });
 });

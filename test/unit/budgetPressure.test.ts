@@ -1,6 +1,6 @@
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
 import {
-  dayWasBudgetSuppressed,
+  dayWasBudgetDamaged,
   foldBudgetPressureDay,
   measuredBudgetOvershootKwh,
   resolveBudgetPressureKwh,
@@ -28,19 +28,53 @@ const pressureDay = (dateKey: string, kwhTotal: number, appliedBudgetKwh: number
   suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
 });
 
-describe('dayWasBudgetSuppressed', () => {
-  it('reads either censoring total the diagnostics layer already records', () => {
-    expect(dayWasBudgetSuppressed(day({ dateKey: 'd', suppression: { blockedByHeadroomMs: 6 * HOUR_MS } })))
-      .toBe(true);
-    expect(dayWasBudgetSuppressed(day({ dateKey: 'd', suppression: { targetDeficitMs: 6 * HOUR_MS } })))
-      .toBe(true);
-    expect(dayWasBudgetSuppressed(day({ dateKey: 'd' }))).toBe(false);
+describe('dayWasBudgetDamaged — day-close verdict', () => {
+  it('is damaged only when energy was still denied at day close', () => {
+    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { budgetDeniedKwh: 1.2 } }))).toBe(true);
+    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { budgetDeniedKwh: 0.001 } }))).toBe(true);
   });
 
-  it('pins the one-hour bar exactly — unchanged from the shipped raise-lean', () => {
-    // This change moves WHEN the correction may fire, not what counts as
-    // evidence. A drifting bar here would silently re-tune the shipped signal.
-    const at = (ms: number) => dayWasBudgetSuppressed(day({
+  // The whole point of recording an explicit zero: a day watched to its close
+  // that denied nothing is NOT the same as a day with no verdict, and must not
+  // fall through to counters that count served deferrals as evidence.
+  it('takes a recorded zero as authoritative, never falling back to the legacy counters', () => {
+    expect(dayWasBudgetDamaged(day({
+      dateKey: 'd',
+      suppression: { budgetDeniedKwh: 0, targetDeficitMs: 6 * HOUR_MS, blockedByHeadroomMs: 6 * HOUR_MS },
+    }))).toBe(false);
+  });
+
+  // Post-verdict builds mark unwitnessed days explicitly; the legacy counters
+  // count served deferrals, so they must never answer for a modern day whose
+  // close simply was not witnessed.
+  it('never lets an unwitnessed modern day fall back to the legacy counters', () => {
+    expect(dayWasBudgetDamaged(day({
+      dateKey: 'd',
+      suppression: { budgetDeniedUnwitnessed: true, targetDeficitMs: 6 * HOUR_MS, blockedByHeadroomMs: 6 * HOUR_MS },
+    }))).toBe(false);
+  });
+
+  it('ignores a junk verdict rather than treating it as evidence', () => {
+    expect(dayWasBudgetDamaged(day({
+      dateKey: 'd',
+      suppression: { budgetDeniedKwh: Number.NaN, targetDeficitMs: 6 * HOUR_MS },
+    }))).toBe(true);
+  });
+});
+
+describe('dayWasBudgetDamaged — legacy records (no verdict)', () => {
+  it('reads either censoring total the diagnostics layer already records', () => {
+    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { blockedByHeadroomMs: 6 * HOUR_MS } })))
+      .toBe(true);
+    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { targetDeficitMs: 6 * HOUR_MS } })))
+      .toBe(true);
+    expect(dayWasBudgetDamaged(day({ dateKey: 'd' }))).toBe(false);
+  });
+
+  it('pins the one-hour bar exactly for records that predate the verdict', () => {
+    // Old records keep the meaning they were written with. A drifting bar here
+    // would silently re-tune what those days already said.
+    const at = (ms: number) => dayWasBudgetDamaged(day({
       dateKey: 'd', suppression: { blockedByHeadroomMs: ms },
     }));
     expect(at(60 * 60 * 1000)).toBe(true);
@@ -192,3 +226,61 @@ describe('resolveBudgetPressureKwh', () => {
   });
 });
 
+
+describe('foldBudgetPressureDay — day-close verdict', () => {
+  /** A day that ended with energy still denied, and measurably over budget. */
+  const damagedDay = (dateKey: string, deniedKwh: number, kwhTotal: number, budget: number) => day({
+    dateKey,
+    kwhTotal,
+    appliedBudgetKwh: budget,
+    suppression: { budgetDeniedKwh: deniedKwh, budgetDeniedMs: 2 * HOUR_MS },
+  });
+
+  it('grows by denied energy plus the measured overshoot', () => {
+    const folded = foldBudgetPressureDay(undefined, damagedDay('2026-08-08', 3, 62.83, 60.72));
+    expect(folded.kwh).toBeCloseTo(3 + 2.11, 5);
+  });
+
+  it('grows by the denied energy alone on a day that never overshot — the day the old step could not see', () => {
+    // The budget held everything in check AND denied a device: no overshoot
+    // occurs precisely because the denial worked. The old overshoot-only step
+    // read this as "nothing to correct" forever.
+    const folded = foldBudgetPressureDay(undefined, damagedDay('2026-08-08', 4, 50, 60));
+    expect(folded.kwh).toBeCloseTo(4, 5);
+  });
+
+  it('grows by the denial even when the meter made the overshoot unmeasurable', () => {
+    // The denied side comes from diagnostics, not the meter — an unreliable
+    // power day still proved its denial.
+    const folded = foldBudgetPressureDay(undefined, day({
+      dateKey: '2026-08-08',
+      kwhTotal: 62,
+      appliedBudgetKwh: 60,
+      quality: {
+        partialTemp: false, missingKwh: false, unreliablePower: true, backfilled: false,
+      },
+      suppression: { budgetDeniedKwh: 2.5 },
+    }));
+    expect(folded.kwh).toBeCloseTo(2.5, 5);
+  });
+
+  it('DECAYS through an overshoot when nothing was denied at day close — served holds are not damage', () => {
+    // The model flip: every hold was admitted before the day ended, so the
+    // budget shaped the day and hurt nobody. The overshoot says the estimate ran
+    // low; correcting the estimate is the fit's job, not this term's. On the old
+    // code this day GREW the term.
+    const carried = { kwh: 8, throughDateKey: '2026-08-07' };
+    const folded = foldBudgetPressureDay(carried, day({
+      dateKey: '2026-08-08',
+      kwhTotal: 62.83,
+      appliedBudgetKwh: 60.72,
+      suppression: { budgetDeniedKwh: 0, blockedByHeadroomMs: 6 * HOUR_MS },
+    }));
+    expect(folded.kwh).toBeCloseTo(6, 5);
+  });
+
+  it('still caps a verdict-bearing day at the single-day step', () => {
+    const folded = foldBudgetPressureDay(undefined, damagedDay('2026-08-08', 30, 100, 60));
+    expect(folded.kwh).toBe(10);
+  });
+});
