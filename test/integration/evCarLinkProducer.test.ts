@@ -27,10 +27,12 @@ const carDevice = (params: {
   /** Capability `lastUpdated`, so a stale fetch can be modelled explicitly. */
   observedAtMs?: number;
   socObservedAtMs?: number;
+  available?: boolean;
 }): HomeyDeviceLike => ({
   id: params.id ?? 'car-1',
   name: params.name ?? 'Polestar',
   class: 'car',
+  ...(params.available === undefined ? {} : { available: params.available }),
   capabilities: ['ev_charging_state', 'measure_battery'],
   capabilitiesObj: {
     ...(params.state === undefined ? {} : {
@@ -831,6 +833,68 @@ describe('session lifecycle', () => {
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
   });
 
+  it('suspends an unavailable car and resumes the persisted session on recovery', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+    expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
+
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.ended).toEqual(['charger-1']);
+    expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
+
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56, available: true }), 210_000);
+
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({
+      carId: 'car-1', socPct: 56,
+    });
+    expect(h.of('ev_car_link_resumed')).toHaveLength(1);
+  });
+
+  it('clears a suspended session when the recovered car reports disconnected', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, available: true }), 210_000);
+
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
+  });
+
+  it('does not consume capability changes or self-stop evidence while unavailable', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+    h.setCharger({ measuredPowerW: 0 });
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+
+    const shadows = h.of('ev_car_link_soc_shadow').length;
+    h.cap('car-1', 'measure_battery', 80, 210_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 220_000);
+    h.tick(220_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
+
+    expect(h.of('ev_car_link_soc_shadow')).toHaveLength(shadows);
+    expect(h.of('ev_car_self_stopped')).toHaveLength(0);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+  });
+
+  it('does not resume across a charger disconnect observed while the car is unavailable', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_out', 210_000);
+    h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_in_charging', 220_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56, available: true }), 230_000);
+
+    expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.of('ev_car_link_resumed')).toHaveLength(0);
+  });
+
   it('ignores devices that are not cars', () => {
     const thermostat = {
       id: 'thermo', name: 'Stue', class: 'thermostat', capabilities: [], capabilitiesObj: {},
@@ -977,6 +1041,37 @@ describe('round-seven findings', () => {
     h.producer.observe([], { fullRefresh: false, nowMs: 4_000 });
     h.producer.observe([], { fullRefresh: false, nowMs: 5_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+  });
+
+  it('keeps an unavailable car in targeted refreshes until it recovers', () => {
+    h.producer.observe([
+      carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }),
+    ], { fullRefresh: true, nowMs: 0 });
+
+    expect(h.producer.isCarDevice('car-1')).toBe(true);
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+
+    h.producer.observe([
+      carDevice({ state: 'plugged_in_charging', socPct: 41, available: true }),
+    ], { fullRefresh: false, nowMs: 1_000 });
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+  });
+
+  it('drops an unavailable car after repeated targeted misses', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    h.producer.observe([
+      carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }),
+    ], { fullRefresh: false, nowMs: 200_000 });
+    expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
+
+    h.producer.observe([], { fullRefresh: false, nowMs: 201_000 });
+    h.producer.observe([], { fullRefresh: false, nowMs: 202_000 });
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+
+    h.producer.observe([], { fullRefresh: false, nowMs: 203_000 });
+    expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
+    expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
   });
 });
 

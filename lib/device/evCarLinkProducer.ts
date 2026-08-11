@@ -115,7 +115,7 @@ export type EvCarLinkProducerDeps = {
         socPct: number;
         socAtMs: number;
     }) => void;
-    /** A charger's session ended (unplug, car removed, car moved to another charger). */
+    /** A car association ended or was suspended, so its derived level must be cleared. */
     onAssociationEnded?: (chargerId: string) => void;
 };
 
@@ -123,6 +123,9 @@ export class EvCarLinkProducer {
     private carEdges: readonly EvLinkEdge[] = [];
     private chargerEdges: readonly EvLinkEdge[] = [];
     private readonly cars = new Map<string, CarObservation>();
+    /** Cars Homey still reports but explicitly marks unavailable. Kept only so
+     *  targeted refresh can discover recovery; never offered to correlation. */
+    private readonly unavailableCars = new Map<string, string>();
     private readonly lastChargerState = new Map<string, EvChargingState>();
     private readonly activeLinks = new Map<string, ActiveLink>();
     /**
@@ -178,7 +181,7 @@ export class EvCarLinkProducer {
 
     /** Whether `deviceId` is a currently-tracked car. */
     isCarDevice(deviceId: string): boolean {
-        return this.cars.has(deviceId);
+        return this.cars.has(deviceId) || this.unavailableCars.has(deviceId);
     }
 
     /** This charger's car for the CURRENT session; rules in `evCarLinkReadModel.ts`. */
@@ -193,7 +196,7 @@ export class EvCarLinkProducer {
      * would go unobserved for as long as that feed was down.
      */
     getObservedCarDeviceIds(): string[] {
-        return [...this.cars.keys()];
+        return [...this.cars.keys(), ...this.unavailableCars.keys()];
     }
 
     /**
@@ -212,7 +215,7 @@ export class EvCarLinkProducer {
      */
     noteDeviceUpdate(device: HomeyDeviceLike, nowMs: number): void {
         this.ingestCar(device, nowMs);
-        if (this.cars.size === 0) return;
+        if (this.cars.size === 0 && this.unavailableCars.size === 0) return;
         this.correlate(nowMs);
     }
 
@@ -223,7 +226,7 @@ export class EvCarLinkProducer {
      * gone. Advancing the clock is not that evidence.
      */
     tick(nowMs: number): void {
-        if (this.cars.size === 0) return;
+        if (this.cars.size === 0 && this.unavailableCars.size === 0) return;
         this.correlate(nowMs);
     }
 
@@ -243,7 +246,7 @@ export class EvCarLinkProducer {
             const next = applyCarCapability(previous, { capabilityId, value, atMs: nowMs });
             if (next) this.applyCarObservation(deviceId, previous, next, nowMs);
         }
-        if (this.cars.size === 0) return;
+        if (this.cars.size === 0 && this.unavailableCars.size === 0) return;
         this.correlate(nowMs);
     }
 
@@ -303,7 +306,7 @@ export class EvCarLinkProducer {
         // Collect first, then delete: mutating the map mid-iteration needs a
         // snapshot, and the house rule bans spread allocations inside loops.
         const removed: string[] = [];
-        for (const carId of this.cars.keys()) {
+        for (const carId of this.getObservedCarDeviceIds()) {
             if (seen.has(carId)) {
                 this.targetedMissesByCarId.delete(carId);
                 continue;
@@ -328,6 +331,7 @@ export class EvCarLinkProducer {
     /** Drop a car Homey no longer reports, plus anything keyed on it. */
     private forgetCar(carId: string): void {
         this.cars.delete(carId);
+        this.unavailableCars.delete(carId);
         this.targetedMissesByCarId.delete(carId);
         this.pendingSocShadows.delete(carId);
         this.carEdges = this.carEdges.filter((edge) => edge.deviceId !== carId);
@@ -338,24 +342,42 @@ export class EvCarLinkProducer {
      * End every session currently attributed to this car. Collect first, then
      * clear: `clearSession` mutates the map being iterated.
      */
-    private clearSessionsForCar(carId: string): void {
+    private clearSessionsForCar(carId: string, preservePersistedSession = false): void {
         const chargerIds: string[] = [];
         for (const [chargerId, link] of this.activeLinks) {
             if (link.carId === carId) chargerIds.push(chargerId);
         }
-        for (const chargerId of chargerIds) this.clearSession(chargerId);
+        // A suspended unavailable car has no active link, but its session is
+        // deliberately persisted for recovery. Actual device removal must clear
+        // that record too or a deleted car id survives in storage forever.
+        if (!preservePersistedSession) {
+            for (const [chargerId, session] of Object.entries(this.deps.getSnapshot().sessions ?? {})) {
+                if (session.carId === carId && !chargerIds.includes(chargerId)) chargerIds.push(chargerId);
+            }
+        }
+        for (const chargerId of chargerIds) this.clearSession(chargerId, preservePersistedSession);
     }
 
     /** Read a car device's official capabilities; returns whether it is a car at all. */
     private ingestCar(device: HomeyDeviceLike, nowMs: number): boolean {
-        const reading = readCarDevice(device, nowMs);
-        if (!reading) return false;
+        const result = readCarDevice(device, nowMs);
+        if (!result) return false;
+        if (result.kind === 'unavailable') {
+            this.unavailableCars.set(result.deviceId, result.name);
+            this.cars.delete(result.deviceId);
+            this.pendingSocShadows.delete(result.deviceId);
+            this.carEdges = this.carEdges.filter((edge) => edge.deviceId !== result.deviceId);
+            this.clearSessionsForCar(result.deviceId, true);
+            return true;
+        }
+        const { reading } = result;
         const { deviceId } = reading;
 
         const previous = this.cars.get(deviceId);
         const merged = mergeCarObservation(previous, reading);
         // No readable plug state ever: stay untracked rather than hold an unknown.
         if (!merged) return true;
+        this.unavailableCars.delete(deviceId);
         this.applyCarObservation(deviceId, previous, merged, nowMs);
         return true;
     }
@@ -374,6 +396,10 @@ export class EvCarLinkProducer {
     private correlate(nowMs: number): void {
         const chargers = this.deps.getChargers();
         this.ingestChargerEdges(chargers, nowMs);
+        // Keep observing charger disconnects while every car is unavailable so
+        // they can disprove a preserved session, but retain no correlation edge
+        // that could later be matched against data from after the outage.
+        if (this.cars.size === 0) { this.carEdges = []; this.chargerEdges = []; return; }
 
         // Hand the matcher EVERY retained charger edge: it needs the unsettled
         // ones to judge contention, and settles the decision itself.
@@ -767,10 +793,12 @@ export class EvCarLinkProducer {
     }
 
     /** Forget per-session state when the car unplugs; affinity votes survive. */
-    private clearSession(chargerId: string): void {
+    private clearSession(chargerId: string, preservePersistedSession = false): void {
         if (this.activeLinks.has(chargerId)) this.deps.onAssociationEnded?.(chargerId);
         this.activeLinks.delete(chargerId);
-        this.deps.setSnapshot(clearEvCarLinkSession({ snapshot: this.deps.getSnapshot(), chargerId }));
+        if (!preservePersistedSession) {
+            this.deps.setSnapshot(clearEvCarLinkSession({ snapshot: this.deps.getSnapshot(), chargerId }));
+        }
         this.resumedChargerIds.delete(chargerId);
         this.coldStartChargerIds.delete(chargerId);
         this.selfStop.forget(chargerId);
@@ -778,6 +806,6 @@ export class EvCarLinkProducer {
     }
 
     private carName(carId: string): string {
-        return this.cars.get(carId)?.name ?? carId;
+        return this.cars.get(carId)?.name ?? this.unavailableCars.get(carId) ?? carId;
     }
 }

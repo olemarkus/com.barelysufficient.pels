@@ -123,6 +123,13 @@ charger's `stateOfCharge`, carrying `source: 'car'` and the car's device id. Thr
 - **Unplug drops the level rather than ageing it out.** With no car there is no battery to
   report, and leaving the last percentage behind would show a departed car's charge as this
   charger's. Only a car-sourced reading is ever dropped; a charger's own is untouched.
+- **An unavailable car suspends the association.** Homey may retain cached plug and battery
+  capabilities while the car integration is offline, but PELS cannot stand behind that data.
+  Explicit `available: false` therefore removes the car from correlation, clears the live
+  association and car-sourced level, and ignores capability events until a usable device read
+  returns. It does **not** manufacture a physical unplug edge or erase the persisted session:
+  if both car and charger still report connected on recovery, the existing restart-resume rule
+  restores the association; an affirmatively disconnected recovery ends it.
 
 The value arrives on the realtime seam, at the point the probe already computed `wouldAdopt`,
 and is dispatched as a `measure_battery` observation so the existing EV-boost plan-rebuild gate
@@ -191,6 +198,9 @@ events and a corrupted vote (`lib/device/AGENTS.md`). Two rules follow:
   rather than nulled. The correlation domain takes only resolved values, so there is no
   "unknown" arm anywhere downstream to get wrong — and no fabricated `0 W`, which would read as
   idle and manufacture a self-stop.
+- An explicit device outage is stronger than cached capabilities: `available: false` is resolved
+  at the payload boundary to an unavailable-car result, and the cached plug state and battery
+  level do not enter the correlation domain.
 
 Where a device supplies no capability timestamp, arrival time stands in and cannot separate
 those cases. That is the honest limit of the data, not a guarantee.
