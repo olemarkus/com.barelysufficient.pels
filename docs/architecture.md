@@ -86,11 +86,22 @@ If any of these break, CI fails before tests run. Local check: `npm run arch:che
 
 If consolidating two helpers would require crossing a boundary (e.g. a runtime module reaching into the settings UI, or a domain module pulling something from `lib/app/`), **leave the duplication in place** and add a one-line comment explaining the constraint. The architecture cost of a back-door is higher than three lines of repeated arithmetic.
 
-## Resolution belongs in the producer
+## Clean and trusted interfaces between layers
 
-When data flows from a producing module to a consuming module (planner → UI, price source → planner), the producer flattens whatever it knows into a final value. Consumers must not branch on the source, evidence, or provenance of the value they received. This rule isn't checked by the cruiser, but it is the most common reason a feature ends up tangled across layers.
+Every layer boundary follows one rule with two faces:
 
-Concretely: the planner emits a single `safePaceKw`. It does not emit `safePaceFromHardCapKw` and `safePaceFromDailyBudgetKw` for the consumer to combine. If a consumer needs to explain *why* the value is what it is, the producer also emits a separate `reason` field.
+- **Clean** is the emitting side's obligation. Whoever hands a value across a boundary — an adapter resolving Homey SDK reads, the planner emitting a plan, the read model building a UI snapshot — resolves and validates it first. The interface says exactly what it means and nothing more: no raw `NaN` or malformed input flowing inward, no field declared optional that the emitter in fact always writes, no two spellings of absence for one quantity, no display payload riding on an actuation contract.
+- **Trusted** is the consuming side's obligation, and it is only possible because of the first: read the value directly. No re-validating what the type already guarantees, no re-deriving what the emitter already resolved, no branching on the source, evidence, or provenance of the value received.
+
+Trust is scoped to in-process handoffs of already-typed values. A boundary that crosses an untrusted transport — a network fetch, the Homey API bridge into the settings WebView, a persisted blob that may predate the current schema — is an external edge again: the receiving side's own adapter validates and discriminates the payload once (that is its clean-face duty toward its own consumers), and everything inward of that seam trusts. The settings UI does exactly this: it discriminates plan snapshots at its parse seam (`planSnapshotParse.ts`) and validates API envelopes at the fetch adapter, never inside the formatters.
+
+Concretely: the planner emits a single `safePaceKw`. It does not emit `safePaceFromHardCapKw` and `safePaceFromDailyBudgetKw` for the consumer to combine. If a consumer needs to explain *why* the value is what it is, the emitter also emits a separate `reason` field.
+
+The two faces enforce each other, which yields a diagnostic: a consumer that hedges — re-checks finiteness, sniffs for a key's presence, keeps a fallback derivation — is evidence of an unclean interface upstream. Fix the interface it stopped trusting, not the hedge.
+
+The rule applies at every seam, not just the SDK edge: observer → planner, planner → executor, planner → read model, read model → UI, and internal handoffs such as `PlanContext` → plan meta. It isn't checked by the cruiser, but breaking it is the most common reason a feature ends up tangled across layers.
+
+Existing comments cite the two faces under their former names, and both names refer to this section: "Validation belongs at the boundary" is the clean face at the external-input edge (root `AGENTS.md` keeps the operational checklist), and "Resolution belongs in the producer" — the resolution-in-producer rule — is the emitter-resolves-so-the-consumer-can-trust pairing.
 
 ## Peer DAG inside the domain layer
 
