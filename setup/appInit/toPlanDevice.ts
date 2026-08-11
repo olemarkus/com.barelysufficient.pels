@@ -351,6 +351,16 @@ export function toPlanDevice(
     // any structural consumer, which is exactly the second competing answer this
     // change exists to remove. `currentDrawKw` below is the only answer.
     measuredPowerKw: _measuredPowerKw,
+    // Same discipline, binary axis. `withBinaryDiscriminant` strips these when the
+    // plan OUTPUT is regrouped (`planDevicesBase`), but this producer attaches
+    // `currentOn` itself without routing through it, so the spread would carry the
+    // raw observed binary evidence onto every plan INPUT at runtime — making the
+    // contract's "binaryControl no longer rides on the plan kinds" true for tsc
+    // and false in memory. `currentState`/`currentOn` below are the only answers;
+    // the binary settle reads its evidence off the device snapshot
+    // (`getSettleDevices`), never off a plan device.
+    binaryControl: _binaryControl,
+    binaryControlObservation: _binaryControlObservation,
     ...deviceFields
   } = device;
   return withSteppedDiscriminant({
