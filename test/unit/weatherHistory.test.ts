@@ -126,6 +126,21 @@ describe('rollupDay', () => {
     });
   });
 
+  // Zero is dropped from the legacy duration counters but KEPT for the
+  // day-close verdict pair: presence means the day's midnight was witnessed, so
+  // an observed "nothing denied" cannot be mistaken for a day with no verdict
+  // (which falls back to the legacy counters).
+  it('keeps a zero day-close verdict while still dropping a zero legacy counter', () => {
+    const state = rollupDay(baseState(), {
+      dateKey: '2026-01-10',
+      dayLengthHours: 24,
+      kwhTotal: 42.5,
+      unreliablePower: false,
+      suppression: { budgetDeniedKwh: 0, budgetDeniedMs: 0, targetDeficitMs: 0 },
+    });
+    expect(state.records[0].suppression).toEqual({ budgetDeniedKwh: 0, budgetDeniedMs: 0 });
+  });
+
   it('omits an all-empty suppression object so absent stays "unknown"', () => {
     const state = rollupDay(baseState(), {
       dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false, suppression: {},

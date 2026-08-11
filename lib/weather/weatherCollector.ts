@@ -676,6 +676,9 @@ export class WeatherCollector {
       kwhTotal: record?.kwhTotal,
       quality: record?.quality,
       appliedBudgetKwh: record?.appliedBudgetKwh ?? null,
+      // The day-close damage verdict: null = no witness (restart/gap across
+      // midnight), 0 = watched to the close and nothing denied.
+      budgetDeniedKwh: record?.suppression?.budgetDeniedKwh ?? null,
       budgetPressureKwh: this.state.budgetPressure?.kwh ?? 0,
       recordCount: this.state.records.length,
     });

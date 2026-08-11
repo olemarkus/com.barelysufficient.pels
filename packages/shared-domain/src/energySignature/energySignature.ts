@@ -7,7 +7,7 @@ import type {
 // One predicate, one threshold, shared with the integral half of the same
 // correction: the raise-lean and the pressure loop must never disagree about
 // whether a day was held back by the daily budget.
-import { dayWasBudgetSuppressed } from './budgetPressure';
+import { dayWasBudgetDamaged } from './budgetPressure';
 
 /**
  * Robust "energy signature" fit: daily kWh against daily mean outdoor
@@ -60,7 +60,7 @@ type RobustLine = { slope: number; intercept: number; slopes: number[] };
  * exclude from the fit. v1 trusts ONLY the unambiguous signal: a deadline-bound
  * smart task that missed BECAUSE the daily budget ran out. Daily-budget
  * censoring is recorded too but only drives the suggestion's upward corrections
- * (`dayWasBudgetSuppressed`) — excluding those days from the fit is itself
+ * (`dayWasBudgetDamaged`) — excluding those days from the fit is itself
  * slope-flattening, and on real data it moves the suggestion the WRONG way,
  * because the days a home is held back on are its high-demand days.
  */
@@ -98,19 +98,24 @@ function selectFitRecords(records: WeatherDailyRecord[]): FitSelection {
 }
 
 /**
- * Recent days the DAILY BUDGET limited — the suggestion then leans up.
+ * Recent days the DAILY BUDGET damaged — the suggestion then leans up.
+ *
+ * Keyed on the day-close verdict (`dayWasBudgetDamaged`), not on hold time: a
+ * home whose budget merely shapes the day — holds at noon, serves by evening —
+ * produces no lean, because deferral is the feature working. Only a day that
+ * ended with a device still denied (or, for records predating the verdict, the
+ * legacy hold-time bar) arms it.
  *
  * Deliberately NOT gated on temperature. It used to require the day to be below
  * the heating knee, which made the whole correction dead above it: a home whose
- * budget was throttling it every afternoon in mild weather produced no lean at
- * all, precisely when the model's warm-regime base load is least trustworthy.
- * Being held back is evidence about demand whatever the outdoor temperature is.
+ * budget was hurting it in mild weather produced no lean at all, precisely when
+ * the model's warm-regime base load is least trustworthy.
  */
 function detectRecentSuppression(records: WeatherDailyRecord[]): boolean {
   return records
     .filter((record) => isUsableSignatureDay(record))
     .slice(-DRIFT_RECENT_DAYS)
-    .some(dayWasBudgetSuppressed);
+    .some(dayWasBudgetDamaged);
 }
 
 export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number): EnergySignatureFit | null {

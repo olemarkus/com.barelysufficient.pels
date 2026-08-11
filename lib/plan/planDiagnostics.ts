@@ -426,6 +426,7 @@ const buildDiagnosticsObservation = (params: {
     targetStepC,
     pelsCommandsTurnOffShed,
     pelsHoldsBelowTarget,
+    expectedPowerKw: device.expectedPowerKw,
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,

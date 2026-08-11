@@ -10,6 +10,7 @@ import type { DeviceDiagnosticsStarvationPauseReason } from '../../packages/cont
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { isFiniteNumber } from './deviceDiagnosticsNumbers';
+import { getDateKeyInTimeZone, getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../utils/dateUtils';
 
 const moduleLogger = getLogger('diagnostics/device');
 
@@ -21,6 +22,7 @@ export const createEmptyStarvationState = (): LiveStarvationState => ({
   starvedAccumulatedMs: 0,
   starvationCause: null,
   starvationPauseReason: null,
+  deniedBudgetDayMs: 0,
 });
 
 // `pelsHoldsBelowTarget` is resolved in the PRODUCER (`lib/plan/planDiagnostics.ts`)
@@ -101,6 +103,10 @@ const evaluateStarvationObservation = (
 
 type StarvationTrackerDeps = {
   getLiveDeviceState: (deviceId: string) => LiveDeviceDiagnostics;
+  // Local-day boundaries for the day-scoped denied accrual — the damage verdict
+  // is "still latched when the LOCAL day closed", so the roll must follow the
+  // home's timezone (and its 23/25-hour DST days), not UTC.
+  getTimeZone: () => string;
   structuredLog?: Pick<PinoLogger, 'info'>;
   emitDebug: StructuredDebugEmitter;
 };
@@ -140,7 +146,7 @@ export class StarvationTracker {
     this.pauseStarvation(deviceId, evaluation.pauseReason, startTs);
   }
 
-  handleGap(deviceId: string, nowTs: number): void {
+  handleGap(deviceId: string, nowTs: number, sinceTs?: number): void {
     const live = this.deps.getLiveDeviceState(deviceId);
     // In-place mutation: avoid allocating a fresh starvation object on every
     // observation cycle. The class instance is the only holder of this state
@@ -148,6 +154,21 @@ export class StarvationTracker {
     // halves the per-cycle allocation churn that was inflating heapTotal.
     live.starvation.pendingEntryStartedAt = undefined;
     live.starvation.clearQualifiedStartedAt = undefined;
+    // A gap spanning local midnight makes the state AT the boundary unknowable,
+    // and unprovable means not damage: wipe both denied slots rather than let
+    // the join claim a day close nobody witnessed. A same-day gap keeps them —
+    // time already accrued is proven held time; only the boundary needs a witness.
+    if (isFiniteNumber(sinceTs)) {
+      const timeZone = this.deps.getTimeZone();
+      if (getDateKeyInTimeZone(new Date(sinceTs), timeZone) !== getDateKeyInTimeZone(new Date(nowTs), timeZone)) {
+        live.starvation.deniedBudgetDayMs = 0;
+        live.starvation.deniedBudgetDayKey = getDateKeyInTimeZone(new Date(nowTs), timeZone);
+        live.starvation.deniedBudgetPrevDayMs = undefined;
+        live.starvation.deniedBudgetPrevDayKey = undefined;
+        live.starvation.deniedBudgetPrevDayClosedByBudget = undefined;
+        live.starvation.deniedBudgetDayCauseWasBudget = undefined;
+      }
+    }
     if (!live.starvation.isStarved) return;
     this.pauseStarvation(deviceId, 'sample_gap', nowTs);
   }
@@ -180,6 +201,56 @@ export class StarvationTracker {
 
   private resetStarvationState(deviceId: string): void {
     this.deps.getLiveDeviceState(deviceId).starvation = createEmptyStarvationState();
+  }
+
+  /**
+   * Advances the day-scoped denied accumulator over one LATCHED counting span.
+   * Called only with continuous spans (the service skips wider ones as gaps), so
+   * when a span crosses local midnight the roll it performs doubles as the
+   * witness that the boundary was actually observed. Every latched counting span
+   * walks the day bookkeeping; only spans whose cause is the daily budget add
+   * time — a capacity- or cooldown-caused stretch inside a budget episode rolls
+   * the day but accrues nothing, keeping the magnitude strictly the time the
+   * BUDGET held the device (span-level attribution, not episode-level).
+   */
+  private accrueDeniedBudgetSpan(
+    live: LiveDeviceDiagnostics,
+    cause: LiveStarvationObservation['countingCause'],
+    startTs: number,
+    endTs: number,
+  ): void {
+    if (endTs <= startTs) return;
+    const timeZone = this.deps.getTimeZone();
+    const state = live.starvation;
+    let cursorTs = startTs;
+    while (cursorTs < endTs) {
+      const dateKey = getDateKeyInTimeZone(new Date(cursorTs), timeZone);
+      if (state.deniedBudgetDayKey !== dateKey) {
+        // The current slot's day is over (or this is the first accrual of the
+        // episode). Roll it into the previous-day slot; the join reads that slot
+        // as "accrued up to a witnessed close of that day". The closing cause is
+        // the per-slice flag, NOT the live `starvationCause`: a zero-length span
+        // at the first post-midnight observation refreshes the live cause before
+        // this roll runs, and the budget's own midnight reset makes exactly that
+        // flip likely — reading it here would re-attribute the closing cause out
+        // from under the verdict.
+        state.deniedBudgetPrevDayMs = state.deniedBudgetDayKey === undefined ? undefined : state.deniedBudgetDayMs;
+        state.deniedBudgetPrevDayKey = state.deniedBudgetDayKey;
+        state.deniedBudgetPrevDayClosedByBudget = state.deniedBudgetDayKey === undefined
+          ? undefined
+          : state.deniedBudgetDayCauseWasBudget === true;
+        state.deniedBudgetDayKey = dateKey;
+        state.deniedBudgetDayMs = 0;
+        state.deniedBudgetDayCauseWasBudget = undefined;
+      }
+      const dayStartTs = getDateKeyStartMs(dateKey, timeZone);
+      const sliceEndTs = Math.min(endTs, getNextLocalDayStartUtcMs(dayStartTs, timeZone));
+      state.deniedBudgetDayCauseWasBudget = cause === 'daily_budget';
+      if (cause === 'daily_budget') {
+        state.deniedBudgetDayMs += sliceEndTs - cursorTs;
+      }
+      cursorTs = sliceEndTs;
+    }
   }
 
   private applyStarvationEntryProgress(
@@ -215,7 +286,11 @@ export class StarvationTracker {
       starvationLastResumedAt: entryAt,
       starvationCause: observation.countingCause,
       starvationPauseReason: null,
+      deniedBudgetDayMs: 0,
     };
+    // The denied clock mirrors the episode clock exactly: it starts at the latch
+    // (`entryAt`), never backdated into the 15-minute entry window.
+    this.accrueDeniedBudgetSpan(live, observation.countingCause, entryAt, endTs);
     (this.deps.structuredLog ?? moduleLogger).info({
       event: 'device_starvation_started',
       deviceId,
@@ -277,6 +352,7 @@ export class StarvationTracker {
       live.starvation.starvationLastResumedAt = startTs;
     }
     live.starvation.starvedAccumulatedMs += Math.max(0, endTs - startTs);
+    this.accrueDeniedBudgetSpan(live, observation.countingCause, startTs, endTs);
     // Accumulation runs only while `entryQualified` (a real counting hold), so the
     // cause stays the capacity/budget cause; it is never a pause reason.
     live.starvation.starvationCause = observation.countingCause;

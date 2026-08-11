@@ -3,12 +3,14 @@ import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/sr
 import type {
   DeviceDiagnosticsBackoffTransition,
   DeviceDiagnosticsControlEvent,
+  DeviceDiagnosticsDaySuppressionTotals,
   DeviceDiagnosticsPlanObservation,
   DeviceDiagnosticsRecorder,
   DeviceDiagnosticsServiceDeps,
   LiveDemandObservation,
   LiveDeviceDiagnostics,
 } from './deviceDiagnosticsServiceTypes';
+import { getDateKeyInTimeZone, getDateKeyStartMs } from '../utils/dateUtils';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { clampPenaltyLevel, isFiniteNumber } from './deviceDiagnosticsNumbers';
@@ -59,6 +61,13 @@ const UNKNOWN_DEVICE_NAME = 'unknown device';
 export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   private liveByDeviceId: Record<string, LiveDeviceDiagnostics> = {};
   private latestObservationBatchId = 0;
+  private lastBatchTs?: number;
+  // The most recent local dateKey whose CLOSE was witnessed by two observation
+  // batches within the sample-gap cap straddling its midnight. Only for such a
+  // day may the day-close damage join answer at all — a restart or a long gap
+  // across midnight leaves the boundary unwitnessed, and unprovable is not
+  // damage.
+  private witnessedClosedDayKey?: string;
   // Stable bound emitter so the demand-transition logging helpers receive a
   // single closure instead of allocating one per observation cycle.
   private readonly emit: StructuredDebugEmitter = (payload) => this.emitDebug(payload);
@@ -75,6 +84,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     });
     this.starvation = new StarvationTracker({
       getLiveDeviceState: (deviceId) => this.getLiveDeviceState(deviceId),
+      getTimeZone: deps.getTimeZone,
       structuredLog: deps.structuredLog,
       emitDebug: this.emit,
     });
@@ -95,10 +105,23 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.latestObservationBatchId += 1;
     const observationBatchId = this.latestObservationBatchId;
     this.persistence.ensureDayRollover(nowTs);
+    this.recordMidnightWitness(nowTs);
     for (const observation of params.observations) {
       this.observeDeviceSample(observation, nowTs, observationBatchId);
     }
     this.persistence.scheduleFlush(nowTs);
+  }
+
+  private recordMidnightWitness(nowTs: number): void {
+    const previousBatchTs = this.lastBatchTs;
+    this.lastBatchTs = nowTs;
+    if (previousBatchTs === undefined || nowTs <= previousBatchTs) return;
+    if (nowTs - previousBatchTs > DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS) return;
+    const timeZone = this.deps.getTimeZone();
+    const previousDayKey = getDateKeyInTimeZone(new Date(previousBatchTs), timeZone);
+    if (previousDayKey !== getDateKeyInTimeZone(new Date(nowTs), timeZone)) {
+      this.witnessedClosedDayKey = previousDayKey;
+    }
   }
 
   recordControlEvent(event: DeviceDiagnosticsControlEvent): void {
@@ -213,8 +236,100 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.persistence.scheduleFlush(transition.nowTs);
   }
 
-  getDaySuppressionTotals(dateKey: string): { targetDeficitMs: number; blockedByHeadroomMs: number } | undefined {
-    return this.persistence.getDaySuppressionTotals(dateKey);
+  getDaySuppressionTotals(dateKey: string): DeviceDiagnosticsDaySuppressionTotals | undefined {
+    const persisted = this.persistence.getDaySuppressionTotals(dateKey);
+    const denied = this.resolveDayCloseBudgetDenial(dateKey);
+    if (denied === undefined) {
+      // This build is verdict-capable, so a day it rolls up WITHOUT a verdict is
+      // unwitnessed (restart, gap, or catch-up), not legacy. Mark it so the
+      // consumer's legacy hold-time fallback — which counts served deferrals —
+      // cannot claim damage for it: unprovable is not damage. A day with no
+      // aggregates at all stays undefined; there is nothing to mis-read.
+      return persisted === undefined ? undefined : { ...persisted, budgetDeniedUnwitnessed: true };
+    }
+    return {
+      targetDeficitMs: persisted?.targetDeficitMs ?? 0,
+      blockedByHeadroomMs: persisted?.blockedByHeadroomMs ?? 0,
+      budgetDeniedKwh: denied.kwh,
+      budgetDeniedMs: denied.ms,
+    };
+  }
+
+  /**
+   * The day-close damage verdict: energy the daily budget was still denying when
+   * the local day ended. Joined from LIVE episode state — nothing is persisted —
+   * which works because the weather collector asks about the just-closed day
+   * minutes after midnight, and a latched episode cannot have cleared that fast
+   * (clearing needs 10 sustained minutes of full-target commanding).
+   *
+   * Answers only for the most recently closed day, and only when its midnight
+   * was witnessed by an unbroken observation stream; otherwise `undefined`, and
+   * the caller's record simply carries no verdict (boot catch-ups land here).
+   * Present-with-zero is a real measurement: the day was watched to its close
+   * and nothing was denied. An episode PELS admitted and left admitted has had
+   * its state reset and contributes nothing — deferral is the feature working.
+   *
+   * Timing bound: the 10-minute clear window is what makes the just-after-
+   * midnight pull reliable. A pull delayed well past that (a stalled timer)
+   * could observe an episode that was still denied at midnight but admitted and
+   * fully cleared since, and read a witnessed zero for a day that ended denied.
+   * Accepted: fixing it would mean persisting a midnight snapshot, the exact
+   * machinery this read-time design avoids, for a window that in practice is
+   * minutes wide once a day.
+   */
+  private resolveDayCloseBudgetDenial(dateKey: string): { kwh: number; ms: number } | undefined {
+    const nowMs = Date.now();
+    const timeZone = this.deps.getTimeZone();
+    const startOfTodayMs = getDateKeyStartMs(getDateKeyInTimeZone(new Date(nowMs), timeZone), timeZone);
+    if (dateKey !== getDateKeyInTimeZone(new Date(startOfTodayMs - 1), timeZone)) return undefined;
+    const witnessed = this.witnessedClosedDayKey === dateKey
+      || (this.lastBatchTs !== undefined
+        && getDateKeyInTimeZone(new Date(this.lastBatchTs), timeZone) === dateKey
+        && nowMs - this.lastBatchTs <= DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS);
+    if (!witnessed) return undefined;
+    let ms = 0;
+    let kwh = 0;
+    for (const live of Object.values(this.liveByDeviceId)) {
+      const state = live.starvation;
+      // Provably unserved: latched right now, and latched since before the
+      // boundary. Whether the BUDGET was the closing cause is judged per slot
+      // below — the live cause is mutable and the budget's own midnight reset
+      // makes a post-boundary re-attribution likely, so it must not be read
+      // here for a day that closed under a different cause.
+      if (!state.isStarved) continue;
+      if (!isFiniteNumber(state.starvationEpisodeStartedAt) || state.starvationEpisodeStartedAt >= startOfTodayMs) {
+        continue;
+      }
+      const deviceMs = this.readDeniedMsForClosedDay(live, dateKey, nowMs);
+      if (deviceMs <= 0) continue;
+      ms += deviceMs;
+      const powerKw = live.lastExpectedPowerKw;
+      kwh += (isFiniteNumber(powerKw) && powerKw > 0 ? powerKw : 0) * (deviceMs / 3_600_000);
+    }
+    return { ms, kwh };
+  }
+
+  /**
+   * The device's budget-denied accrual for `dateKey`, from whichever slot holds
+   * it — gated on the cause IN FORCE at that day's close, not the live cause.
+   */
+  private readDeniedMsForClosedDay(live: LiveDeviceDiagnostics, dateKey: string, nowMs: number): number {
+    const state = live.starvation;
+    if (state.deniedBudgetPrevDayKey === dateKey) {
+      // Rolled: the boundary-crossing span snapshotted the closing cause.
+      return state.deniedBudgetPrevDayClosedByBudget === true ? (state.deniedBudgetPrevDayMs ?? 0) : 0;
+    }
+    // Not yet rolled — no counting span since midnight, so the live cause is
+    // still the one carried across the boundary (only accumulation refreshes
+    // it). The current slot holds the closed day's total, provided this device
+    // itself stayed within the continuity window of the boundary.
+    if (state.deniedBudgetDayKey === dateKey
+      && state.starvationCause === 'daily_budget'
+      && isFiniteNumber(live.lastObservedTs)
+      && nowMs - live.lastObservedTs <= DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS) {
+      return state.deniedBudgetDayMs;
+    }
+    return 0;
   }
 
   getUiPayload(nowTs: number = Date.now()): SettingsUiDeviceDiagnosticsPayload {
@@ -271,7 +386,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           deviceName: live.name,
           gapMs,
         });
-        this.starvation.handleGap(observation.deviceId, nowTs);
+        this.starvation.handleGap(observation.deviceId, nowTs, live.lastObservedTs);
       } else {
         this.persistence.recordDemandSpan(observation.deviceId, live.lastObservedTs, nowTs, live.lastObservation);
         if (live.lastStarvationObservation) {
@@ -297,6 +412,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     );
     live.lastObservation = nextObservation;
     live.lastStarvationObservation = nextStarvationObservation;
+    live.lastExpectedPowerKw = observation.expectedPowerKw;
     live.lastObservedTs = nowTs;
   }
 

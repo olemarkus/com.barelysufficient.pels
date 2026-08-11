@@ -19,6 +19,8 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
  */
 
 export const isPositiveFinite = (value: unknown): value is number => isFiniteNumber(value) && value > 0;
+/** Admits an explicit 0 — for fields where presence itself carries meaning. */
+const isNonNegativeFinite = (value: unknown): value is number => isFiniteNumber(value) && value >= 0;
 
 /**
  * A stored fit predating the suppression fields must still satisfy the contract
@@ -134,25 +136,29 @@ export function normalizeMetForecast(raw: unknown): WeatherMetForecastCache | un
 }
 
 /**
- * Strips invalid AND zero sub-fields; returns undefined when nothing
- * trustworthy remains. Zero is dropped on purpose: a diagnostics aggregate
- * exists for any shed/activation, so a no-deficit day would otherwise persist
- * an all-zero object on essentially every record — bloat that also breaks the
- * "present = a real censoring signal" invariant the fit relies on.
+ * Strips invalid sub-fields; returns undefined when nothing trustworthy remains.
+ *
+ * The legacy duration counters drop ZERO as well as invalid: a diagnostics
+ * aggregate exists for any shed/activation, so a no-deficit day would otherwise
+ * persist an all-zero object on essentially every record.
+ *
+ * `budgetDeniedKwh`/`budgetDeniedMs` deliberately KEEP a zero: for the day-close
+ * damage verdict, presence means the day's midnight was witnessed — a real
+ * "watched to the close, nothing denied" — while absence routes
+ * `dayWasBudgetDamaged` to the legacy counters. Dropping the zero would erase
+ * that distinction on exactly the days it matters.
  */
 export function normalizeSuppression(raw: unknown): WeatherDaySuppression | undefined {
   if (!isUnknownRecord(raw)) return undefined;
-  const targetDeficitMs = isPositiveFinite(raw.targetDeficitMs) ? raw.targetDeficitMs : undefined;
-  const blockedByHeadroomMs = isPositiveFinite(raw.blockedByHeadroomMs) ? raw.blockedByHeadroomMs : undefined;
-  const deadlineMissedToBudget = raw.deadlineMissedToBudget === true ? true : undefined;
-  if (targetDeficitMs === undefined && blockedByHeadroomMs === undefined && deadlineMissedToBudget === undefined) {
-    return undefined;
-  }
-  return {
-    ...(targetDeficitMs !== undefined ? { targetDeficitMs } : {}),
-    ...(blockedByHeadroomMs !== undefined ? { blockedByHeadroomMs } : {}),
-    ...(deadlineMissedToBudget !== undefined ? { deadlineMissedToBudget } : {}),
+  const normalized: WeatherDaySuppression = {
+    ...(isNonNegativeFinite(raw.budgetDeniedKwh) ? { budgetDeniedKwh: raw.budgetDeniedKwh } : {}),
+    ...(isNonNegativeFinite(raw.budgetDeniedMs) ? { budgetDeniedMs: raw.budgetDeniedMs } : {}),
+    ...(raw.budgetDeniedUnwitnessed === true ? { budgetDeniedUnwitnessed: true } : {}),
+    ...(isPositiveFinite(raw.targetDeficitMs) ? { targetDeficitMs: raw.targetDeficitMs } : {}),
+    ...(isPositiveFinite(raw.blockedByHeadroomMs) ? { blockedByHeadroomMs: raw.blockedByHeadroomMs } : {}),
+    ...(raw.deadlineMissedToBudget === true ? { deadlineMissedToBudget: true } : {}),
   };
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 /**
