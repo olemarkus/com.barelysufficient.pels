@@ -275,9 +275,15 @@ export const BudgetExemptChip = ({
 };
 
 const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
+  // A benign thermostat hold is routine, not an exception worth repeating in
+  // the card's one reason slot. The temperature fact line already shows the
+  // measured value and target, and remains honest when the device overshoots
+  // far enough that "near setpoint" would be false. Keep the classification
+  // available to diagnostics and smart-task completion; only exceptional idle
+  // states need card copy.
+  if (dev.idleClassification === 'near_target_idle') return null;
   if (
-    dev.idleClassification !== 'near_target_idle'
-    && dev.idleClassification !== 'unresponsive'
+    dev.idleClassification !== 'unresponsive'
     && dev.idleClassification !== 'capped_idle'
   ) {
     return null;
@@ -634,7 +640,8 @@ export const PlanTemperatureCard = ({
   // One reason line per card: the plan reason wins; the idle-classification
   // status line ("Not drawing power (20.3 °C / 22 °C)") fills the slot only
   // when no plan reason renders. The chip duplicate is gone — the same copy
-  // never renders twice on one card.
+  // never renders twice on one card. Benign near-target holds stay quiet: the
+  // temperature fact line already carries the current/target pair.
   const idleCopy = resolveIdleCopy(displayDev);
   // The plan reason takes the simulation mood exactly as the generic and stepped
   // cards do (`resolveReasonText`, `PlanSteppedCard`); the temperature card used

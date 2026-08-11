@@ -15,7 +15,7 @@ a false-missed verdict — the planner itself doesn't read the classification.
 
 | State | Meaning | UI | Log event | Producer effect |
 |-------|---------|----|-----------|-----------------|
-| `near_target_idle` | Device has stopped drawing while close to its setpoint. Normal behaviour — the device's own controller (water-heater stratification, thermostat hysteresis) decided to hold. | Neutral status line on the temperature card (`Holding near setpoint (61.5° / 65°)`). No chip. | `device_near_target_idle_started` / `..._cleared` | Promotes deferred-objective run to `met` with `metReason: 'stalled'`. |
+| `near_target_idle` | Device has stopped drawing while close to or above its setpoint. Normal behaviour — the device's own controller (water-heater stratification, thermostat hysteresis) decided to hold. | Quiet on the temperature card: the existing temperature/target fact line is sufficient. No reason line or chip. | `device_near_target_idle_started` / `..._cleared` | Promotes deferred-objective run to `met` with `metReason: 'stalled'`. |
 | `unresponsive` | Device is below setpoint and drawing nothing for an extended period. Almost always the device's own controller pausing between cycles (anti-cycle / overshoot guard / a wide internal hysteresis band); only rarely an actual fault. Copy stays understated — no breaker/wiring assertion. | Mild warning chip (`Not drawing power`) plus a status line. | `device_unresponsive_started` / `..._cleared` | None — a device that isn't actually reaching its target shouldn't be silently called "succeeded". |
 | `capped_idle` | Device is well below the PELS-commanded target but its own internal setpoint cap has opened. Temperature parks at a stable plateau several degrees below target while power cycles around the device's own anti-cycle hysteresis (e.g. Connected 300 capped internally at ~60 °C with a 65 °C PELS target). | Neutral status line (`Device reached its own setpoint cap (58° / 65°)`). No chip — the device is doing the right thing against its own cap. | `device_capped_idle_started` / `..._cleared` | Promotes run to `met` with `metReason: 'stalled_device_capped'`. Postmortem variant `met-by-device-cap` names the device's own setpoint cap as recourse (deliberately not the PELS-canonical "hard cap" per `feedback_hard_cap_is_physical.md`). |
 
@@ -150,12 +150,12 @@ does).
   deps callback and writes the result onto `SettingsUiPlanDeviceSnapshot`.
 - `packages/contracts/src/settingsUiApi.ts` — adds
   `idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle'`.
-- `packages/shared-domain/src/idleClassificationCopy.ts` — the only source
-  of UI status-line strings and the matching `detail` text. Used by both
-  the temperature card and structured-log payloads so the two cannot drift.
+- `packages/shared-domain/src/idleClassificationCopy.ts` — the source of
+  exceptional UI status-line strings and matching diagnostic detail, plus the
+  diagnostic detail for the quiet `near_target_idle` state.
 - `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` — renders the
-  status line below the temperature card body and a `Not drawing power`
-  warning chip in the header.
+  exceptional status line below the temperature card body; benign
+  `near_target_idle` stays quiet.
 
 ### Short-deadline smart-task interaction
 
