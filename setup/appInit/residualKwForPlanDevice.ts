@@ -38,6 +38,7 @@ import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
 } from '../../lib/plan/planSteppedLoadState';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
 import type { ShedAction } from '../../lib/plan/planTypes';
 
@@ -77,9 +78,7 @@ function toRestoreSteppedLoad(
   device: DecoratedDeviceSnapshot,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwRestoreSteppedDevice | undefined {
-  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile) {
-    return undefined;
-  }
+  if (!isSteppedLoadSnapshot(device)) return undefined;
   // Mirrors `dev.currentState !== 'off'` in the legacy
   // `resolveSteppedRestorePower` chain. `currentState` is observer-resolved
   // (the concrete latched label — no staleness gate), so the wiring layer
@@ -116,9 +115,7 @@ function toResidualSteppedLoad(
   currentDrawKw: number,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwShedSteppedDevice | undefined {
-  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile) {
-    return undefined;
-  }
+  if (!isSteppedLoadSnapshot(device)) return undefined;
   const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
     fields: device,
     selectedStepFallbackIsPlanningAssumption: true,

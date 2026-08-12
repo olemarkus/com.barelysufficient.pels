@@ -7,7 +7,6 @@
  */
 import type {
   RestorePowerSource,
-  SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
@@ -33,7 +32,6 @@ export type ObservedPowerInput = {
    */
   expectedPowerKw: number;
   planningPowerKw?: number;
-  steppedLoadProfile?: SteppedLoadProfile;
 };
 
 /**
