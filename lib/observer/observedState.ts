@@ -26,7 +26,6 @@ import { hasBinaryControlCapability } from '../../packages/shared-domain/src/bin
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type {
   BinaryControlCapabilityId,
-  DeviceControlModel,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 
@@ -34,7 +33,9 @@ export type ObservedCurrentStateInput = {
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
   binaryControl?: { on: boolean };
   controlCapabilityId?: BinaryControlCapabilityId;
-  controlModel?: DeviceControlModel;
+  // No `controlModel`: every resolver below asks the stepped question
+  // structurally, through `isSteppedLoadSnapshot`. The producer-only setting was
+  // carried here unread.
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
 };

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
-  buildControlModelMap,
   createDeviceControlRuntimeState,
   decorateSnapshotWithDeviceControl,
   markSteppedLoadDesiredStepIssued,
@@ -165,7 +164,6 @@ describe('disabled temperature control', () => {
     expect(decorated.targets).toEqual(raw.targets);
     expect(decorated.controlModel).toBe('binary_power');
     expect(decorated.temperatureControlDisabled).toBe(true);
-    expect(buildControlModelMap([raw], () => true).get(raw.id)).toBe('binary_power');
     expect(runtimeState.steppedLoadDesiredByDeviceId.has(raw.id)).toBe(false);
     expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has(raw.id)).toBe(false);
     expect(runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(raw.id)).toBe(false);

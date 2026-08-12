@@ -6,7 +6,6 @@
  * carried the value.
  */
 import type {
-  DeviceControlModel,
   RestorePowerSource,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -34,7 +33,6 @@ export type ObservedPowerInput = {
    */
   expectedPowerKw: number;
   planningPowerKw?: number;
-  controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
 };
 

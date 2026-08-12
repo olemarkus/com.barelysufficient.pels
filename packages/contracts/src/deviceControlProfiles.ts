@@ -1,12 +1,9 @@
 import type {
   DeviceControlProfile,
   DeviceControlProfiles,
-  DeviceControlModel,
   SteppedLoadProfile,
   SteppedLoadStep,
 } from './types.js';
-
-export const DEFAULT_DEVICE_CONTROL_MODEL: DeviceControlModel = 'temperature_target';
 
 export const sortSteppedLoadSteps = (steps: SteppedLoadStep[]): SteppedLoadStep[] => (
   steps.slice().sort((a, b) => a.planningPowerW - b.planningPowerW || a.id.localeCompare(b.id))

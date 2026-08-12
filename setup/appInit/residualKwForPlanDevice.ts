@@ -87,7 +87,6 @@ function toRestoreSteppedLoad(
   const currentState = resolveObservedCurrentState({
     binaryControl: device.binaryControl,
     controlCapabilityId,
-    controlModel: device.controlModel,
     steppedLoadProfile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
   });
