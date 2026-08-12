@@ -18,10 +18,14 @@
 //
 // WHAT IS ALLOWED:
 //   - `lib/plan/**`: ZERO `.controlModel` property reads.
-//   - `lib/executor/**`: ZERO `.controlModel` property reads EXCEPT the single
-//     producer-setting read on the executor's snapshot input
-//     (`snapshot.controlModel` in `lib/executor/executablePlanProjection.ts`,
-//     where the value is typed `TargetDeviceSnapshot`, not a planner type).
+//   - `lib/executor/**`: ZERO `.controlModel` property reads.
+//
+//     Until 2026-08-12 exactly one was carved out here: the producer-setting read
+//     on the executor's snapshot input in `executablePlanProjection`. It now asks
+//     `isSteppedLoadSnapshot` instead — profile presence is the stepped
+//     discriminant, and the setting was a second spelling of it — so the carve-out
+//     is deleted rather than left dormant. Both layers are at zero; there is no
+//     allowlist to extend.
 //   - ZERO `targetPowerConfig` / `resolveTargetPowerWattsPerAmp` identifiers in
 //     either directory.
 //
@@ -42,15 +46,6 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const planDir = path.join(rootDir, 'lib/plan');
 const executorDir = path.join(rootDir, 'lib/executor');
 
-// The single sanctioned `.controlModel` read in the executor: the snapshot
-// (`TargetDeviceSnapshot`) producer-setting read in executablePlanProjection.
-// Allowlisted by exact file + accessed-object identifier so it stays robust
-// against line-number drift.
-const EXECUTOR_CONTROL_MODEL_ALLOW = {
-  file: 'lib/executor/executablePlanProjection.ts',
-  objectIdentifier: 'snapshot',
-};
-
 const FORBIDDEN_IDENTIFIERS = new Set(['targetPowerConfig', 'resolveTargetPowerWattsPerAmp']);
 
 async function collectTsFiles(dir) {
@@ -67,42 +62,32 @@ async function collectTsFiles(dir) {
   return files.flat();
 }
 
-function accessedObjectIdentifier(node) {
-  // For `foo.controlModel` returns 'foo'; for `a.b.controlModel` returns null
-  // (only a bare identifier object is allowlisted).
-  const expr = node.expression;
-  return ts.isIdentifier(expr) ? expr.text : null;
-}
 
-function collectOffenders(sourceFile, relPath, offenders, layer) {
+function collectOffenders(sourceFile, relPath, offenders) {
   const visit = (node) => {
     // `controlModel` reads via property access (`x.controlModel`), bracket access
     // (`x['controlModel']`), or destructuring (`const { controlModel } = x`) — so
     // the containment guard can't be bypassed by a non-dotted access form.
     let isControlModelRead = false;
-    let objectIdentifier;
     if (ts.isPropertyAccessExpression(node) && node.name.text === 'controlModel') {
       isControlModelRead = true;
-      objectIdentifier = accessedObjectIdentifier(node);
     } else if (
       ts.isElementAccessExpression(node)
       && ts.isStringLiteralLike(node.argumentExpression)
       && node.argumentExpression.text === 'controlModel'
     ) {
       isControlModelRead = true;
-      objectIdentifier = ts.isIdentifier(node.expression) ? node.expression.text : null;
     } else if (ts.isBindingElement(node)) {
       const bound = node.propertyName ?? node.name;
       if (ts.isIdentifier(bound) && bound.text === 'controlModel') isControlModelRead = true;
     }
     if (isControlModelRead) {
-      const allowed = layer === 'executor'
-        && relPath === EXECUTOR_CONTROL_MODEL_ALLOW.file
-        && objectIdentifier === EXECUTOR_CONTROL_MODEL_ALLOW.objectIdentifier;
-      if (!allowed) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-        offenders.push({ file: relPath, line: line + 1, value: 'controlModel read' });
-      }
+      // No exemptions. The executor's last sanctioned read — the snapshot
+      // producer-setting branch in `executablePlanProjection` — now asks
+      // `isSteppedLoadSnapshot` instead, so both layers are at zero and the
+      // allowlist that used to carve it out is gone rather than merely unused.
+      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+      offenders.push({ file: relPath, line: line + 1, value: 'controlModel read' });
     }
     // Forbidden identifiers (targetPowerConfig / resolveTargetPowerWattsPerAmp),
     // anywhere they are written as an identifier name (property reads, imports,
@@ -122,12 +107,12 @@ const [planFiles, executorFiles] = await Promise.all([
 ]);
 
 const offenders = [];
-for (const { files, layer } of [{ files: planFiles, layer: 'plan' }, { files: executorFiles, layer: 'executor' }]) {
-  for (const file of files) {
-    const source = await fs.readFile(file, 'utf8');
-    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-    collectOffenders(sourceFile, path.relative(rootDir, file), offenders, layer);
-  }
+// Both directories are scanned under one rule now — with the executor carve-out
+// gone there is no per-layer behaviour left to distinguish.
+for (const file of [...planFiles, ...executorFiles]) {
+  const source = await fs.readFile(file, 'utf8');
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  collectOffenders(sourceFile, path.relative(rootDir, file), offenders);
 }
 
 if (offenders.length > 0) {
@@ -136,9 +121,8 @@ if (offenders.length > 0) {
     + 'lib/plan/** and lib/executor/** must not branch on `controlModel` (use the\n'
     + '`isSteppedLoadDevice` profile-presence guard) and must not reference\n'
     + '`targetPowerConfig` / `resolveTargetPowerWattsPerAmp` (the EV preset is\n'
-    + 'pre-resolved to per-step `planningCurrentA` at the producer). The lone\n'
-    + 'allowed `.controlModel` read is the snapshot producer-setting read in\n'
-    + `${EXECUTOR_CONTROL_MODEL_ALLOW.file}.\n`
+    + 'pre-resolved to per-step `planningCurrentA` at the producer). There is no\n'
+    + 'allowed `.controlModel` read in either layer.\n'
     + 'Offending site(s):\n',
   );
   for (const { file, line, value } of offenders) {
