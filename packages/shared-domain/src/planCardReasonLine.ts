@@ -132,48 +132,63 @@ export const isActionSpecificRestoreWaitReasonCode = (code: string | undefined):
 // contracts helpers (`no-runtime-value-deps-on-contracts`). This is the same
 // canonical rule as contracts/deviceControlProfiles: zero-power or reserved
 // `off` ID means the device is off.
-const isProfileOffStep = (profile: SteppedLoadProfile, stepId: string): boolean => {
-  const step = profile.steps.find((candidate) => candidate.id === stepId);
-  return step !== undefined && (step.planningPowerW <= 0 || step.id === 'off');
+
+/**
+ * The step facts the held-card verb needs, resolved by the caller.
+ *
+ * `steppedLoadProfile` is the ladder or `null` — its PRESENCE is stepped-ness,
+ * the same discriminant `isSteppedLoadDevice` / `isSteppedLoadSnapshot` narrow
+ * on. There is deliberately no separate `stepped` flag: a flag is a second
+ * encoding of what the profile already says, and two encodings can disagree.
+ * The verb used to infer it from `controlModel === 'stepped_load'` — a
+ * producer-only setting two of its callers never carried — and to treat a step
+ * id with no ladder as stepped, which is incoherent: a device cannot be on a
+ * rung of a ladder it does not have.
+ */
+export type HeldCardStepView = {
+  steppedLoadProfile: SteppedLoadProfile | null;
 };
 
-export const resolveHeldCardReasonVerb = (device: {
-  controlModel?: string;
-  currentState?: string;
+/**
+ * Resolve the step view from a card carrier. Two shapes reach the cards and
+ * they keep the ladder in different places: a plan device carries
+ * `steppedLoadProfile` directly (on its stepped variant), while an
+ * overview-shaped snapshot carries it on `steppedLoad`, whose `profile` is
+ * required — so `steppedLoad` presence is ladder presence there.
+ *
+ * That two-carrier reconciliation used to live INSIDE the verb, which is why
+ * the verb needed a tag to tell it what it was looking at. It happens once
+ * here, and every caller hands the verb a single resolved ladder-or-null.
+ * Callers already holding a narrowed profile skip this and pass it directly.
+ */
+export const resolveHeldCardStepView = (device: {
   reportedStepId?: string;
   selectedStepId?: string;
   steppedLoadProfile?: SteppedLoadProfile;
-  steppedLoad?: { profile?: SteppedLoadProfile; reportedStepId?: string | null };
-}): HeldCardReasonVerb => {
-  const stepped = device.controlModel === 'stepped_load'
-    || device.reportedStepId !== undefined
-    || device.selectedStepId !== undefined;
-  const activeStepId = device.reportedStepId
-    ?? device.steppedLoad?.reportedStepId
-    ?? device.selectedStepId;
-  const profile = device.steppedLoadProfile ?? device.steppedLoad?.profile;
-  const activeTargetOnlyStep = device.currentState === 'not_applicable'
-    && profile !== undefined
-    && typeof activeStepId === 'string'
-    && !isProfileOffStep(profile, activeStepId);
-  return stepped && (isOnLikeState(device.currentState) || activeTargetOnlyStep)
+  steppedLoad?: { profile: SteppedLoadProfile; reportedStepId: string | null };
+}): HeldCardStepView => ({
+  steppedLoadProfile: device.steppedLoadProfile ?? device.steppedLoad?.profile ?? null,
+});
+
+export const resolveHeldCardReasonVerb = (device: HeldCardStepView & {
+  currentState?: string;
+}): HeldCardReasonVerb => (
+  device.steppedLoadProfile !== null && isOnLikeState(device.currentState)
     ? 'increase'
-    : 'resume';
-};
+    : 'resume'
+);
 
 export const formatDeviceReasonUserFacingForDevice = (device: {
   reason: DeviceReason;
-  controlModel?: string;
   currentState?: string;
   reportedStepId?: string;
   selectedStepId?: string;
-  steppedLoadProfile?: SteppedLoadProfile;
-  steppedLoad?: { profile?: SteppedLoadProfile; reportedStepId?: string | null };
+  steppedLoad?: { profile: SteppedLoadProfile; reportedStepId: string | null };
 }): string => (
   isActionSpecificRestoreWaitReasonCode(device.reason.code)
     ? resolveHeldCardReasonLine({
         reason: device.reason,
-        verb: resolveHeldCardReasonVerb(device),
+        verb: resolveHeldCardReasonVerb({ ...resolveHeldCardStepView(device), currentState: device.currentState }),
       })
     : formatDeviceReasonUserFacing(device.reason)
 );

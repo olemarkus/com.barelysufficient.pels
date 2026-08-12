@@ -268,23 +268,11 @@ describe('device overview formatter', () => {
     });
   });
 
-  it('uses increase for a target-only stepped device at a non-off step', () => {
-    const profile = {
-      steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
-    };
-    expect(formatDeviceOverview(buildOverviewDevice({
-      currentState: 'not_applicable',
-      plannedState: 'keep',
-      reportedStepId: 'low',
-      selectedStepId: 'medium',
-      steppedLoadProfile: profile,
-      // Stepped-ness is the CLUSTER's presence now, not a `controlModel` marker.
-      steppedLoad: { profile, reportedStepId: 'low', targetStepId: null, commandPending: false },
-      planningPowerKw: 2,
-      currentDrawKw: 0.6,
-      reason: { code: 'cooldown_restore', remainingSec: 10 },
-    })).statusMsg).toBe('Waiting to increase — 10s');
-  });
+  // The `not_applicable` + known-rung case that used to be asserted here is gone
+  // with the card branch it pinned. The producer cannot emit that combination:
+  // a stepped device with a known rung resolves to on/off, and only an unknown
+  // rung falls through to `not_applicable`. That contract is pinned directly in
+  // `test/unit/observedStateResolution.test.ts`.
 
   it('keeps off-like stepped restores in restoring state', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({

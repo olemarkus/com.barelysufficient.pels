@@ -120,10 +120,10 @@ const resolveSteppedWaitVerb = (
   device: SteppedCardDevice,
   profile: SteppedLoadProfile,
 ) => resolveHeldCardReasonVerb({
-  controlModel: 'stepped_load',
-  currentState: device.currentState,
-  reportedStepId: resolveCurrentStepId(device) ?? undefined,
+  // This path IS the stepped card and takes a required `profile`, so the ladder
+  // is in hand — nothing to infer.
   steppedLoadProfile: profile,
+  currentState: device.currentState,
 });
 
 type SteppedDevice = SteppedCardDevice;

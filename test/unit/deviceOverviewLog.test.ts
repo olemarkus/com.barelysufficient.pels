@@ -167,19 +167,11 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     expect(event['cardReasonText']).toBe(copy);
   });
 
-  it('logs increase for a target-only stepped device at a non-off step', () => {
-    const event = buildOverviewEventForDevice(steppedPlanDevice({
-      id: 'charger',
-      currentState: 'not_applicable',
-      plannedState: 'keep',
-      reportedStepId: 'low',
-      selectedStepId: 'medium',
-      reason: { code: 'waiting_for_other_devices' },
-    }), overview);
-
-    expect(event['reasonText']).toBe('Waiting to increase — other devices are ahead');
-    expect(event['cardReasonText']).toBe('Waiting to increase — other devices are ahead');
-  });
+  // The `not_applicable` + known-rung case that used to be asserted here is gone
+  // with the card branch it pinned. The producer cannot emit that combination:
+  // a stepped device with a known rung resolves to on/off, and only an unknown
+  // rung falls through to `not_applicable`. That contract is pinned directly in
+  // `test/unit/observedStateResolution.test.ts`.
 
   it.each([
     ['a running device', { plannedState: 'keep' as const, currentState: 'on' }],

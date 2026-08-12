@@ -25,6 +25,7 @@ import {
   isActionSpecificRestoreWaitReasonCode,
   resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb,
+  resolveHeldCardStepView,
 } from '../../../../shared-domain/src/planCardReasonLine.ts';
 import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import {
@@ -210,7 +211,13 @@ const resolveHeroReasonText = (
       resolveHeldCardReasonLine({
         reason: dev.reason,
         starvation: dev.starvation,
-        verb: resolveHeldCardReasonVerb(dev),
+        // `steppedLoad` presence is ladder presence (its `profile` is
+        // required) — the same test this module already uses for stepped-ness
+        // in `isMeasuredOnlyCard` and the power text.
+        verb: resolveHeldCardReasonVerb({
+          ...resolveHeldCardStepView(dev),
+          currentState: dev.currentState,
+        }),
       }),
       state.dryRun,
     );

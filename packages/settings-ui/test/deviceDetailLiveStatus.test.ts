@@ -70,9 +70,12 @@ describe('device-detail live status restore waits', () => {
   });
 
   it('shows an active stepped device queued behind another device', async () => {
+    // No `currentState: 'not_applicable'` override any more. It made the device
+    // stepped-with-a-known-rung AND not-applicable at once, which the producer
+    // cannot emit — a stepped device with a known rung resolves to on/off. The
+    // card branch that combination reached is gone; the contract is pinned in
+    // `test/unit/observedStateResolution.test.ts`.
     const payload = planWithReason({ code: 'waiting_for_other_devices' });
-    const device = payload.plan?.devices?.[0];
-    if (device) device.currentState = 'not_applicable';
     getApiReadModelMock.mockResolvedValue(payload);
 
     await renderDeviceDetailLiveStatus('charger');

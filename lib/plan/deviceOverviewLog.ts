@@ -14,6 +14,7 @@ import {
   isActionSpecificRestoreWaitReasonCode,
   resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb,
+  resolveHeldCardStepView,
 } from '../../packages/shared-domain/src/planCardReasonLine';
 import { resolveIntentStateKind, resolveRawPlanStateKind } from '../../packages/shared-domain/src/planCardGrammar';
 import type {
@@ -132,7 +133,12 @@ function resolveCardReasonTextForLog(device: OverviewLogDevice): string | null {
   if (kind !== 'held' && !isActionSpecificRestoreWaitReasonCode(device.reason.code)) return null;
   return resolveHeldCardReasonLine({
     reason: device.reason,
-    verb: resolveHeldCardReasonVerb(device),
+    // Resolved here, with the plan layer's own guard, instead of being
+    // re-derived inside the verb from a tag this carrier never had.
+    verb: resolveHeldCardReasonVerb({
+      ...resolveHeldCardStepView(device),
+      currentState: device.currentState,
+    }),
   });
 }
 
