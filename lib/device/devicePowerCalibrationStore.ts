@@ -28,6 +28,7 @@ import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
@@ -426,13 +427,14 @@ function isEligiblePowerCalibrationSnapshot(
   snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
 ): snapshot is TargetDeviceSnapshot & SteppedLoadDescriptorFields & {
-  controlModel: 'stepped_load';
   reportedStepId: string;
   measuredPowerKw: number;
   lastFreshDataMs: number;
 } {
-  if (snapshot.controlModel !== 'stepped_load') return false;
-  if (!snapshot.steppedLoadProfile || !Array.isArray(snapshot.steppedLoadProfile.steps)) return false;
+  // The profile's presence IS the stepped-load kind
+  // (`packages/shared-domain/src/steppedLoadObservedState.ts`), and the narrowed
+  // shape guarantees a `SteppedLoadProfile` — no second presence or shape check.
+  if (!isSteppedLoadSnapshot(snapshot)) return false;
   if (snapshot.steppedLoadProfile.steps.length === 0) return false;
   // Only sample when there is a *reported* step (real telemetry, not an
   // assumed-step fallback). The producer only sets `reportedStepId` from a
