@@ -73,6 +73,8 @@ export function shouldSkipBinaryControl(params: {
   name: string;
   snapshot?: BinaryControlDecisionSnapshot;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
+  preferProvidedSnapshot?: boolean;
+  forceAgainstReleasedOpposing?: boolean;
 }): boolean {
   const {
     controlPlan,
@@ -83,6 +85,8 @@ export function shouldSkipBinaryControl(params: {
     name,
     snapshot,
     pendingBinaryCommandStore,
+    preferProvidedSnapshot,
+    forceAgainstReleasedOpposing,
   } = params;
   if (!controlPlan) {
     const hasTargets = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
@@ -112,6 +116,8 @@ export function shouldSkipBinaryControl(params: {
   }
   if (shouldSkipAlreadyMatched({
     deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
+    preferProvidedSnapshot,
+    forceAgainstReleasedOpposing,
   })) {
     logger.debug({
       event: 'binary_command_skipped',
@@ -146,13 +152,24 @@ export function shouldSkipAlreadyMatched(params: {
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
+  preferProvidedSnapshot?: boolean;
+  forceAgainstReleasedOpposing?: boolean;
 }): boolean {
-  const { deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore } = params;
-  const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
+  const {
+    deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
+    preferProvidedSnapshot,
+    forceAgainstReleasedOpposing,
+  } = params;
+  const latestObservedSnapshot = preferProvidedSnapshot
+    ? snapshot
+    : deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
   // An opposite pending command must be superseded even when the current
   // observation already matches the new intent: the older command may still
   // materialize after this decision.
-  if (hasOppositePendingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
+  if (
+    forceAgainstReleasedOpposing === true
+    || hasOppositePendingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })
+  ) {
     return false;
   }
   if (!isBinaryControlled(latestObservedSnapshot)) return false;

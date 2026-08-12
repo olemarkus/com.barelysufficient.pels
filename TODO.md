@@ -1186,7 +1186,8 @@ program) remain deferred.*
         `currentOn` and strips the raw axis. `toPlanDevice` now also resolves `currentState` so the plan path and
         reconcile trust the producer instead of re-resolving from `binaryControl`; `observedPower`,
         `planExecutionDrift` (via `observedBinaryState`, which prefers `currentOn`), `planHeadroomDevice`, restore
-        accounting, and the deferred-objective terminal release all read `currentOn`. Reconcile recombines
+        accounting read `currentOn`; the former plan-side deferred-objective terminal release is retired,
+        and lifecycle fallback now reads observer truth in the executor. Reconcile recombines
         `currentOn` with the merged stepped profile (no raw axis). Transport/observer/shared-domain and the
         executable-from-snapshot projection keep `binaryControl` as the observed binary axis.
         **`observationStale` removal landed:** the field is OFF the plan kinds — the plan trusts
@@ -1610,6 +1611,13 @@ program) remain deferred.*
       plan→executor import with no `planEngine.ts` exception, while the `arch:grep` source AST guard
       rejects type-only and dynamic forms before compilation can erase them.
 
+- [x] **Wire smart-task lifecycle fallback through the executor-owned port.** Completed by #2084:
+      #2083 provides `LifecycleFallbackPort` and command claims that serialize its binary, target,
+      and stepped writes against ordinary execution; #2084 routes satisfied/deadline lifecycle
+      transitions through that port. Lifecycle waiters refresh observer truth and retry the
+      fallback immediately when an in-flight ordinary claim releases; abandonment invalidates that
+      authority rather than replaying either clock's stale command.
+
 - [ ] **Remove the remaining drift consultation from the planner facade.** DELETE it instead of
       routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
       let the executor no-op per device — it is already built for that (`handleTargetCommandPreflight`
@@ -1622,6 +1630,15 @@ program) remain deferred.*
       for a clean boundary and the measurement should come first.
       *Source: the drift/reconcile layering train (2026-08-06); noted while closing the three
       inversions behind `inc_26449fb9`.*
+
+- [ ] **Move target-command retry state out of the planner namespace.** The retry decision and
+      attempt bookkeeping are executor materialization concepts, but `targetExecutor.ts`,
+      `targetExecutorContext.ts`, and `lifecycleFallbackDispatcher.ts` still import their state and
+      helpers from `lib/plan/planTargetControl.ts` / `lib/plan/planState.ts`. Extract the flat
+      `PendingTargetCommandState` contract to a neutral lower-layer module and move send/retry/skip
+      plus attempt recording into `lib/executor/`; leave only plan decoration, pruning, and observed
+      synchronization in `planTargetControl.ts`. Do not solve this by adding a plan→executor edge or
+      by duplicating retry timing. *Source: pels-layering-guardian review of #2083. [P2]*
 
 - [ ] **`remainingActionableControlledLoadW` in the shortfall record disagrees with what shed
       selection can act on.** The capacity summary sources it from `residualKw.shed` (= current
@@ -3727,7 +3744,9 @@ live-walk screenshots.*
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
 relocate the lifecycle out of `lib/plan` into a clock-driven controller that
-mutates `PlanInputDevice`s and owns ending + terminal actuation; planner stays
+decorates `PlanInputDevice`s and emits lifecycle facts; setup authority-gates ending and
+disarm, while the executor owns fallback convergence, pending/retry, and actuation. The planner
+stays
 smart-task-agnostic. **Finish line REACHED (PR-D2): `no-plan-to-smarttasks` is now
 `error` and green — `lib/plan` (and the executor) import zero `lib/objectives`,
 value AND type (grep-verified).** See

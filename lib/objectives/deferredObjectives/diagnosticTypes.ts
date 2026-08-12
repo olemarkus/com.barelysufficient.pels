@@ -69,6 +69,8 @@ type BaseDeferredObjectiveDiagnostic = {
     | { kind: 'resolved'; status: DeferredObjectiveHorizonPlan['status'] }
     | { kind: 'unavailable'; reasonCode: DeferredObjectiveDiagnosticReasonCode };
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
+  /** Raw progress satisfaction before any stall-to-satisfied presentation overlay. */
+  actuationSatisfied: boolean;
   /**
    * "Leave off until turned on again" is live on this device.
    *

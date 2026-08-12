@@ -159,9 +159,9 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
   });
 
   // Emit-side contract (PR-C): the emitter is the clock-driven owner of the
-  // status-bus publish, the hours-remaining crossing, and the deadline-passed
-  // device disable. These drive the SDK boundary only via the real buses and
-  // the wired `onDeadlineReached` hook — no PELS internals are mocked.
+  // status-bus publish, the hours-remaining crossing, and terminal fallback /
+  // deadline ending. These drive the SDK boundary only via the real buses and
+  // the wired lifecycle hooks — no PELS internals are mocked.
 
   it('on a passed deadline, publishes the status transition AND fires the device disable', () => {
     const statusBus = createDeferredObjectiveStatusBus();
@@ -185,7 +185,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     // exact (deviceId, kind, deadlineAtMs, nowMs) the wiring needs to cap off
     // and disarm the task.
     expect(onDeadlineReached).toHaveBeenCalledTimes(1);
-    expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', 'ev_soc', NOW_MS - HOUR_MS, NOW_MS);
+    expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', NOW_MS - HOUR_MS, NOW_MS);
 
     // (a) status-transition publish from the implicit `none` baseline. The run
     // is below target with the deadline gone, so it publishes a missed
@@ -200,17 +200,36 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     });
   });
 
-  it('does not fire the device disable while the deadline is still in the future', () => {
+  it('fires deadline ending without a status bus', () => {
+    const onDeadlineReached = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS - HOUR_MS),
+      getDevices: () => [buildEvDevice()],
+      getPriceOptimizationEnabled: () => true,
+      getDeferredObjectiveStatusBus: () => undefined,
+      onDeadlineReached,
+    }));
+
+    emitter.tick(NOW_MS);
+
+    expect(onDeadlineReached).toHaveBeenCalledWith(
+      'ev-1', NOW_MS - HOUR_MS, NOW_MS,
+    );
+  });
+
+  it('does not fire terminal fallback while an unfinished deadline is still in the future', () => {
     const statusBus = createDeferredObjectiveStatusBus();
     const published: DeferredObjectiveStatusSnapshot[] = [];
     statusBus.onTransition((snapshot) => published.push(snapshot));
     const onDeadlineReached = vi.fn();
+    const onSatisfied = vi.fn();
 
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS + 3 * HOUR_MS),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
       getDeferredObjectiveStatusBus: () => statusBus,
+      onSatisfied,
       onDeadlineReached,
     }));
 
@@ -219,8 +238,65 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     // Deadline not yet reached: the disable hook must stay silent even though a
     // status transition still publishes.
     expect(onDeadlineReached).not.toHaveBeenCalled();
+    expect(onSatisfied).not.toHaveBeenCalled();
     expect(published).toHaveLength(1);
     expect(published[0].deadlineMissed).toBe(false);
+  });
+
+  it('releases fallback ownership when satisfaction ends or the task disappears', () => {
+    const onSatisfied = vi.fn();
+    const onFallbackInactive = vi.fn();
+    let devices: ObjectiveDeviceInput[] = [buildEvDevice({
+      stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: NOW_MS }),
+      evChargingState: 'plugged_in_charging',
+    })];
+    let settings = buildEvSettings(NOW_MS + 3 * HOUR_MS);
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => settings,
+      getDevices: () => devices,
+      getDeferredObjectiveStatusBus: () => undefined,
+      onSatisfied,
+      onFallbackInactive,
+    }));
+
+    emitter.tick(NOW_MS);
+    expect(onSatisfied).toHaveBeenCalledWith('ev-1');
+    expect(onFallbackInactive).not.toHaveBeenCalled();
+
+    devices = [buildEvDevice({
+      stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS + 30_000 }),
+    })];
+    emitter.tick(NOW_MS + 30_000);
+    expect(onFallbackInactive).toHaveBeenCalledWith('ev-1');
+
+    settings = { version: 1, objectivesByDeviceId: {} };
+    devices = [];
+    emitter.tick(NOW_MS + 60_000);
+    expect(onFallbackInactive).toHaveBeenCalledTimes(2);
+  });
+
+  it('fires satisfied fallback on every pre-deadline tick without firing deadline ending', () => {
+    const onSatisfied = vi.fn();
+    const onDeadlineReached = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS + 3 * HOUR_MS),
+      getDevices: () => [buildEvDevice({
+        stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: NOW_MS }),
+        evChargingState: 'plugged_in_charging',
+      })],
+      getPriceOptimizationEnabled: () => true,
+      getDeferredObjectiveStatusBus: () => undefined,
+      onSatisfied,
+      onDeadlineReached,
+    }));
+
+    emitter.tick(NOW_MS);
+    emitter.tick(NOW_MS + 30_000);
+
+    expect(onSatisfied).toHaveBeenCalledTimes(2);
+    expect(onSatisfied).toHaveBeenNthCalledWith(1, 'ev-1');
+    expect(onSatisfied).toHaveBeenNthCalledWith(2, 'ev-1');
+    expect(onDeadlineReached).not.toHaveBeenCalled();
   });
 
   it('publishes an hours-remaining crossing for a future deadline', () => {

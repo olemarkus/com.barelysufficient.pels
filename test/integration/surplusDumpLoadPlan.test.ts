@@ -32,6 +32,7 @@ import {
 } from '../../lib/executor/binaryExecutor';
 import { applyCapacityControlOffRestoreWithSnapshot } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { buildSwapCandidates } from '../../lib/plan/swap/candidates';
@@ -419,6 +420,8 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot) => {
     recordShedActuation: vi.fn(),
     recordReleaseShedActuation: vi.fn(),
     recordRestoreActuation: vi.fn(),
+    binaryCommandClaim: createBinaryCommandClaim(),
+    binaryCommandOwner: 'ordinary',
   };
   return { ctx, state, setCapabilityCalls };
 };

@@ -1,5 +1,8 @@
 import { projectObservedState } from '../../lib/device/observedStateProjection';
-import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  ProjectedObservedDeviceState,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 
 /**
  * Project a raw cached device snapshot to the observed-state seed values for the
@@ -25,7 +28,7 @@ import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/c
  */
 export function toObservedStateSeed(
   snapshot: TargetDeviceSnapshot[] | undefined,
-): ObservedDeviceState[] {
+): ProjectedObservedDeviceState[] {
   if (!snapshot || snapshot.length === 0) return [];
   return snapshot.map((device) => projectObservedState(device));
 }

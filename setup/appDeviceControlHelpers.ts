@@ -1,26 +1,21 @@
 import {
-  getSteppedLoadLowestActiveStep,
-  getSteppedLoadStep,
-  hasUsableSteppedLoadLadder,
-  isSteppedLoadOffStep,
-  normalizeDeviceControlProfiles,
-  resolveSteppedLoadPlanningPowerKw,
+  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
+  hasUsableSteppedLoadLadder, isSteppedLoadOffStep,
+  normalizeDeviceControlProfiles, resolveSteppedLoadPlanningPowerKw,
 } from '../lib/utils/deviceControlProfiles';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../lib/plan/planObservationPolicy';
 import type {
-  DecoratedDeviceSnapshot,
-  DeviceControlModel,
-  DeviceControlProfiles,
-  ReportedStepObservedProbe,
-  SteppedLoadDescriptorProbe,
-  SteppedLoadProfile,
-  TargetDeviceSnapshot,
-  TargetPowerReachabilityState,
+  DecoratedDeviceSnapshot, DeviceControlModel,
+  DeviceControlProfiles, ReportedStepObservedProbe,
+  SteppedLoadDescriptorProbe, SteppedLoadProfile,
+  TargetDeviceSnapshot, TargetPowerReachabilityState,
   TargetPowerSteppedLoadConfig,
 } from '../packages/contracts/src/types';
+import type { LifecycleFallbackDevice } from '../lib/executor/lifecycleFallbackDispatcher';
+import { projectLifecycleFallbackDevice } from './lifecycleFallbackDeviceProjection';
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
@@ -309,6 +304,14 @@ export class AppDeviceControlHelpers {
       config: this.deps.getTargetPowerConfig?.(deviceId),
       fallback: profile,
     });
+  }
+
+  getLifecycleFallbackDevice(deviceId: string): LifecycleFallbackDevice | undefined {
+    const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
+    if (!snapshot) return undefined;
+    const decorated = this.decorateTargetSnapshotList([snapshot])[0];
+    if (!decorated) return undefined;
+    return projectLifecycleFallbackDevice(decorated);
   }
 
   getSteppedLoadCommandSession(deviceId: string): {

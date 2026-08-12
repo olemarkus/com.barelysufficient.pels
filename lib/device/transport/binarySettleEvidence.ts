@@ -1,10 +1,7 @@
 /**
- * Binary-settle evidence bookkeeping for `DeviceTransport`, extracted as
- * homey-free free functions over a shared `TransportContext`. Governs the
- * planned/commanded/observed separation + source-trust ordering described in
- * `lib/device/AGENTS.md`: an older full fetch must never roll back a fresher
- * realtime or local-write observation. Functions mutate the SAME evidence map
- * and snapshot objects the leaf owns (passed by reference through the context).
+ * Homey-free binary-settle evidence bookkeeping over `TransportContext`.
+ * Per `lib/device/AGENTS.md`, older full reads cannot roll back fresher
+ * realtime/local-write evidence; mutations target the passed context/snapshot.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
@@ -12,11 +9,7 @@ import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../pa
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
-import {
-  resolveEvChargingStateBinaryEvidence,
-  resolveEvCurrentOn,
-  toCapabilityTimestampMs,
-} from '../managerControl';
+import { resolveEvChargingStateBinaryEvidence, resolveEvCurrentOn, toCapabilityTimestampMs } from '../managerControl';
 import { recordSnapshotCapabilityObservations } from './managerObservation';
 import type { ObservedDeviceStateEvent } from './managerRealtimeHandlers';
 import { getLogger } from '../../logging/logger';
@@ -24,7 +17,6 @@ import { cloneBinaryControlObservation, isRawBinarySettlementEvidenceAllowed } f
 import type { TransportContext } from './transportContext';
 
 const moduleLogger = getLogger('device/transport');
-
 type SettleCursor = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
 
 export function readCapabilityValue(device: HomeyDeviceLike, capabilityId: string | undefined): {
@@ -88,7 +80,6 @@ export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: strin
     if (snapshot) delete snapshot.binaryControlObservation;
     return removed;
 }
-
 export function clearBinarySettleEvidenceForInvalidControlPayload(ctx: TransportContext, params: {
     deviceId: string;
     deviceName?: string;
@@ -137,14 +128,16 @@ export function applyBinarySettleEvidenceToSnapshot(
     snapshot: TransportDeviceSnapshot,
     evidence: BinaryControlObservation,
 ): BinaryControlObservation {
-    const acceptedEvidence = upsertBinarySettleEvidence(ctx, snapshot.id, evidence);
     const mutableSnapshot = snapshot;
+    const acceptedEvidence = upsertBinarySettleEvidence(ctx, snapshot.id, evidence);
     if (acceptedEvidence.capabilityId === 'evcharger_charging') {
-        mutableSnapshot.evCharging = acceptedEvidence.observedValue;
+        const rawPermission = acceptedEvidence.observedCapabilityIds.includes('evcharger_charging');
+        if (rawPermission) mutableSnapshot.evCharging = acceptedEvidence.observedValue;
+        if (rawPermission) mutableSnapshot.evChargingObservedAtMs = acceptedEvidence.observedAtMs;
         mutableSnapshot.binaryControl = {
             on: resolveEvCurrentOn({
                 evChargingState: mutableSnapshot.evChargingState,
-                evchargerCharging: acceptedEvidence.observedValue,
+                evchargerCharging: mutableSnapshot.evCharging,
             }),
         };
     } else {
@@ -153,7 +146,6 @@ export function applyBinarySettleEvidenceToSnapshot(
     mutableSnapshot.binaryControlObservation = acceptedEvidence;
     return acceptedEvidence;
 }
-
 export function persistBinarySettleEvidenceToSnapshot(
     ctx: TransportContext,
     snapshot: TargetDeviceSnapshot,

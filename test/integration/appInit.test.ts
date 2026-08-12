@@ -26,6 +26,7 @@ vi.mock('../../lib/executor/planExecutor', () => ({
       capturedPlanExecutorDeps.current = deps;
     }
 
+    getLifecycleFallbackPort(): Record<string, never> { return {}; }
   },
 }));
 
@@ -454,6 +455,7 @@ describe('app init plan service wiring', () => {
       deviceId: 'dev',
       deviceName: 'Connected 300',
       objectiveId: 'dev:temperature',
+      actuationSatisfied: false,
       objectiveKind: 'temperature',
       enforcement: 'soft',
       trajectory: { kind: 'resolved', status: 'on_track' },
@@ -574,6 +576,7 @@ describe('app init plan service wiring', () => {
       deviceId: 'dev',
       deviceName: 'd',
       objectiveId: 'dev:temperature',
+      actuationSatisfied: false,
       objectiveKind: 'temperature',
       enforcement: 'soft',
       trajectory: { kind: 'resolved', status: 'on_track' },

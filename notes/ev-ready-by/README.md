@@ -91,16 +91,18 @@ end-to-end, including charger pause/resume actuation:
 - Temperature admission wired in `lib/objectives/deferredObjectives/admission.ts`, with intents
   attached in `lib/plan/planBuilderDecoration.ts`: cap-off devices made visible during planned
   hours, kept idle outside, setpoint lifted to deadline target.
-- EV admission and pause/resume actuation wired across admission, planner, and executor:
-  `admission.ts` emits `binary_restore`/`binary_release` intents per cycle;
+- EV admission and planned resume / idle-bucket pause actuation wired across admission, planner,
+  and executor: `admission.ts` emits `binary_restore`/`binary_release` intents per cycle;
   `lib/plan/planBuilder.ts` collects them via `attachDeferredReleaseIntents`;
-  `lib/executor/binaryExecutor.ts` (`applyDeferredBinaryCommand`) actuates pause when the charger
+  `lib/executor/binaryExecutor.ts` (`applyDeferredBinaryCommand`) actuates idle-bucket pause when the charger
   is drawing and resume for every state the plug-state does not block — `plugged_in` and
   `plugged_in_paused`; a charger already reporting `plugged_in_charging` is converged;
   `lib/executor/planExecutor.ts` runs stability checks
   (`hasStableBinaryReleaseActuation`). Integration tests under
   `test/integration/evDevices.integration.test.ts` cover the resume and pause transitions
-  (e.g. `deferredReleaseIntent: 'binary_restore'` for a paused plugged-in charger).
+  (e.g. `deferredReleaseIntent: 'binary_restore'` for a paused plugged-in charger). Satisfied and
+  deadline fallback is separate: the lifecycle clock calls app wiring, which gates scope/disarm and
+  delegates convergence to the lifecycle-fallback executor. It never emits a plan-path release intent.
 
 ### Plug-state is not a commandability oracle
 

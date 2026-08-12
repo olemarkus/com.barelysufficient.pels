@@ -3249,9 +3249,8 @@ describe('DeviceTransport', () => {
                 };
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expectedStateEvidence);
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
-                    // State-authoritative: paused state wins over the lingering
-                    // raw `evcharger_charging: true` boolean — currentOn is off,
-                    // matching the state-derived settle evidence (observedValue:false).
+                    // Activity remains off while the independent permission bit
+                    // stays armed; command equivalence consumes their OR.
                     binaryControl: { on: false },
                     evCharging: true,
                     evChargingState: 'plugged_in_paused',
@@ -3271,7 +3270,10 @@ describe('DeviceTransport', () => {
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expectedStateEvidence);
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                     binaryControl: { on: false },
-                    evCharging: false,
+                    evCharging: true,
+                    evChargingObservedAtMs: previousRawEvidence.observedAtMs,
+                    evChargingState: 'plugged_in_paused',
+                    evChargingStateObservedAtMs: expectedStateEvidence.observedAtMs,
                     binaryControlObservation: expectedStateEvidence,
                 }));
 

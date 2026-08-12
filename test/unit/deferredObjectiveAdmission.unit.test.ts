@@ -286,7 +286,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
-  it('emits a terminal binary_release when an EV objective is satisfied and the device is cap-off', () => {
+  it('leaves terminal EV fallback actuation to the lifecycle clock when the device is cap-off', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
@@ -297,7 +297,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, releaseIntent: 'binary_release' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('keeps inactive without a pause intent for a satisfied EV when the device is cap-on', () => {
@@ -314,7 +314,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
-  it('emits a one-shot shed_release for a satisfied non-EV objective on a cap-off device', () => {
+  it('leaves terminal non-EV fallback actuation to the lifecycle clock when the device is cap-off', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       objectiveKind: 'temperature',
@@ -325,11 +325,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('heater1')).toEqual({
-      kind: 'inactive',
-      budgetExempt: false,
-      releaseIntent: 'shed_release',
-    });
+    expect(decisions.get('heater1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('keeps inactive without a release intent for a satisfied non-EV objective on a cap-on device', () => {

@@ -295,7 +295,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -323,7 +323,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -355,7 +355,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'low', currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'low', reportedStepId: 'low', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -370,7 +370,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'mid' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'low', currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'low', reportedStepId: 'low', currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -393,13 +393,13 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
   });
 
-  it('skips stepped release when no observed step id is present (trusted-evidence gate)', async () => {
+  it('skips stepped release when selected state exists but no reported step id is present', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: undefined, currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'high', reportedStepId: undefined, currentDrawKw: 0 },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,
@@ -414,7 +414,12 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
-        steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile', currentDrawKw: 0 },
+        steppedLoad: {
+          on: true,
+          stepId: 'high',
+          reportedStepId: 'phantom-step-id-from-old-profile',
+          currentDrawKw: 0,
+        },
       }),
       snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       deps,

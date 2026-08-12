@@ -161,6 +161,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
   if (preservedBinaryControlObservation) {
     applyBinaryControlObservation({
       parsed,
+      previous,
       observation: preservedBinaryControlObservation,
     });
   }
@@ -281,13 +282,24 @@ function getPreservedBinaryControlObservation(
 
 function applyBinaryControlObservation(params: {
   parsed: TransportDeviceSnapshot;
+  previous: TransportDeviceSnapshot | null;
   observation: NonNullable<TransportDeviceSnapshot['binaryControlObservation']>;
 }): void {
-  const { parsed, observation } = params;
+  const { parsed, previous, observation } = params;
   if (observation.capabilityId === 'evcharger_charging') {
-    if (observation.observedCapabilityIds.includes('evcharger_charging')) {
+    const rawPermissionObserved = observation.observedCapabilityIds.includes('evcharger_charging');
+    if (rawPermissionObserved) {
       parsed.evCharging = observation.observedValue;
       parsed.evChargingObservedAtMs = observation.observedAtMs;
+    } else if (previous) {
+      if (parsed.evCharging === undefined) {
+        parsed.evCharging = previous.evCharging;
+        parsed.evChargingObservedAtMs = previous.evChargingObservedAtMs;
+      }
+      if (parsed.evChargingState === undefined) {
+        parsed.evChargingState = previous.evChargingState;
+        parsed.evChargingStateObservedAtMs = previous.evChargingStateObservedAtMs;
+      }
     }
     parsed.binaryControl = {
       on: resolveEvCurrentOn({

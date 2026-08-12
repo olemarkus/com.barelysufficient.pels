@@ -1,5 +1,6 @@
 import {
   createDeferredObjectiveStatusBus,
+  emitDeferredObjectiveLifecycleTransitions,
   emitDeferredObjectiveStatusTransitions,
 } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
@@ -13,6 +14,8 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   objectiveKind: 'temperature',
   enforcement: 'soft',
   reasonCode: overrides.reasonCode ?? 'objective_invalid_deadline',
+  actuationSatisfied: overrides.trajectory.kind === 'resolved'
+    && overrides.trajectory.status === 'satisfied',
   targetPercent: null,
   currentPercent: null,
   targetTemperatureC: 55,
@@ -40,6 +43,20 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   // temperature defaults above keep it a valid temperature diagnostic at runtime.
 } as DeferredObjectiveDiagnostic);
 
+const emitLifecycle = (params: {
+  diagnostics: DeferredObjectiveDiagnostic[];
+  nowMs: number;
+  onSatisfied?: (deviceId: string) => void;
+  onDeadlineReached?: (
+    deviceId: string,
+    deadlineAtMs: number,
+    nowMs: number,
+  ) => void;
+  onFallbackInactive?: (deviceId: string) => void;
+}): void => {
+  emitDeferredObjectiveLifecycleTransitions({ ...params, knownDeviceIds: new Set() });
+};
+
 describe('emitDeferredObjectiveStatusTransitions', () => {
   it('publishes only on status changes', () => {
     const bus = createDeferredObjectiveStatusBus();
@@ -56,26 +73,24 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     expect(transitions).toEqual(['on_track', 'at_risk']);
   });
 
-  it('fires onDeadlineReached (deviceId, objectiveKind, deadlineAtMs, nowMs) once the deadline has passed', () => {
+  it('fires onDeadlineReached (deviceId, deadlineAtMs, nowMs) once the deadline has passed', () => {
     // Regression: the clock-driven terminal disable. Before this, a cap-off
     // device on a missed deadline in power_source=flow mode was left running —
     // the auto-disable removed the diagnostic before the next sparse plan cycle
     // could emit the terminal shed_release. The lifecycle clock now drives the
     // ending (release + gated disarm); the app callback gets deadlineAtMs/nowMs
     // so it can grace-bound the disarm while the release settles.
-    const bus = createDeferredObjectiveStatusBus();
     const onDeadlineReached = vi.fn();
     const diag = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'at_risk' }, deadlineAtMs: 1_000 });
 
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlineReached });
+    emitLifecycle({ diagnostics: [diag], nowMs: 999, onDeadlineReached });
     expect(onDeadlineReached).not.toHaveBeenCalled();
 
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1_000, onDeadlineReached });
-    expect(onDeadlineReached).toHaveBeenCalledWith('heater-1', 'temperature', 1_000, 1_000);
+    emitLifecycle({ diagnostics: [diag], nowMs: 1_000, onDeadlineReached });
+    expect(onDeadlineReached).toHaveBeenCalledWith('heater-1', 1_000, 1_000);
   });
 
-  it('routes objectiveKind through to onDeadlineReached so EV tasks can pause the charger', () => {
-    const bus = createDeferredObjectiveStatusBus();
+  it('routes EV tasks through the same smart-task-neutral deadline hook', () => {
     const onDeadlineReached = vi.fn();
     const diag = baseDiagnostic({
       deviceId: 'ev-1',
@@ -84,8 +99,61 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
 
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 2_000, onDeadlineReached });
-    expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', 'ev_soc', 1_000, 2_000);
+    emitLifecycle({ diagnostics: [diag], nowMs: 2_000, onDeadlineReached });
+    expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', 1_000, 2_000);
+  });
+
+  it('fires onSatisfied on every satisfied pre-deadline tick without ending the task', () => {
+    const onSatisfied = vi.fn();
+    const onDeadlineReached = vi.fn();
+    const diag = baseDiagnostic({
+      deviceId: 'ev-1',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      objectiveKind: 'ev_soc',
+      deadlineAtMs: 1_000,
+    });
+
+    emitLifecycle({ diagnostics: [diag], nowMs: 100, onSatisfied, onDeadlineReached });
+    emitLifecycle({ diagnostics: [diag], nowMs: 200, onSatisfied, onDeadlineReached });
+
+    expect(onSatisfied).toHaveBeenCalledTimes(2);
+    expect(onSatisfied).toHaveBeenNthCalledWith(1, 'ev-1');
+    expect(onSatisfied).toHaveBeenNthCalledWith(2, 'ev-1');
+    expect(onDeadlineReached).not.toHaveBeenCalled();
+  });
+
+  it('switches a satisfied task from fallback retries to deadline ending at the deadline', () => {
+    const onSatisfied = vi.fn();
+    const onDeadlineReached = vi.fn();
+    const diag = baseDiagnostic({
+      deviceId: 'heater-1',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      deadlineAtMs: 1_000,
+    });
+
+    emitLifecycle({ diagnostics: [diag], nowMs: 999, onSatisfied, onDeadlineReached });
+    emitLifecycle({ diagnostics: [diag], nowMs: 1_000, onSatisfied, onDeadlineReached });
+
+    expect(onSatisfied).toHaveBeenCalledTimes(1);
+    expect(onDeadlineReached).toHaveBeenCalledWith('heater-1', 1_000, 1_000);
+  });
+
+  it('does not actuate a presentation-only stalled satisfaction before the deadline', () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const onSatisfied = vi.fn();
+    const diag = baseDiagnostic({
+      deviceId: 'heater-1',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      reasonCode: 'objective_stalled_near_target',
+      actuationSatisfied: false,
+      deadlineAtMs: 1_000,
+    });
+
+    emitLifecycle({ diagnostics: [diag], nowMs: 999, onSatisfied });
+    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999 });
+
+    expect(onSatisfied).not.toHaveBeenCalled();
+    expect(bus.getCurrent('heater-1')?.status).toBe('satisfied');
   });
 
   it('sets the sticky deadlineMissed flag once the deadline has passed without satisfaction', () => {
@@ -167,7 +235,6 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
   });
 
   it('invokes onDeadlineReached once the deadline has passed (any non-trivial status)', () => {
-    const bus = createDeferredObjectiveStatusBus();
     const reached: string[] = [];
     const onDeadlineReached = (deviceId: string) => { reached.push(deviceId); };
 
@@ -177,16 +244,12 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
     // Pre-deadline: no callback.
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlineReached,
-    });
+    emitLifecycle({ diagnostics: [diag], nowMs: 999, onDeadlineReached });
     expect(reached).toEqual([]);
     // Deadline reached: callback fires each post-deadline tick (the app callback
     // gates the actual disarm on the release settling), so we only assert here
     // that the first post-deadline tick triggers it.
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics: [diag], statusBus: bus, nowMs: 1_000, onDeadlineReached,
-    });
+    emitLifecycle({ diagnostics: [diag], nowMs: 1_000, onDeadlineReached });
     expect(reached[0]).toBe('heater-1');
   });
 
@@ -196,7 +259,6 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     // gating on deadlineJustPassed (which is false for satisfied) skipped the
     // ending hook; now it fires on any post-deadline diagnostic regardless of
     // status branch so the app callback disarms it.
-    const bus = createDeferredObjectiveStatusBus();
     const reached: string[] = [];
     const onDeadlineReached = (deviceId: string) => { reached.push(deviceId); };
 
@@ -205,13 +267,9 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'satisfied' },
       deadlineAtMs: 1_000,
     });
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics: [satisfied], statusBus: bus, nowMs: 999, onDeadlineReached,
-    });
+    emitLifecycle({ diagnostics: [satisfied], nowMs: 999, onDeadlineReached });
     expect(reached).toEqual([]);
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics: [satisfied], statusBus: bus, nowMs: 1_500, onDeadlineReached,
-    });
+    emitLifecycle({ diagnostics: [satisfied], nowMs: 1_500, onDeadlineReached });
     expect(reached).toEqual(['heater-1']);
   });
 

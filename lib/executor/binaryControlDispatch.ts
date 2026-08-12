@@ -90,10 +90,13 @@ export async function decideAndDispatchBinaryControl(params: {
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   lifecycleRelease?: boolean;
+  forceAgainstReleasedOpposing?: boolean;
+  isAuthorityCurrent?: () => boolean;
 }): Promise<BinaryControlOutcome> {
   const {
     transport, deviceId, name, desired, snapshot, logContext,
     restoreSource, reason, lifecycleRelease,
+    forceAgainstReleasedOpposing,
   } = params;
   const decision = decideBinaryControl({
     pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
@@ -106,9 +109,15 @@ export async function decideAndDispatchBinaryControl(params: {
     restoreSource,
     reason,
     lifecycleRelease,
+    forceAgainstReleasedOpposing,
   });
   if (!decision) return { applied: false };
-  const result = await dispatchBinaryControlDecision({ decision, transport, snapshot });
+  const result = await dispatchBinaryControlDecision({
+    decision,
+    transport,
+    snapshot,
+    isAuthorityCurrent: params.isAuthorityCurrent,
+  });
   if (!result.ok) return { applied: false };
   return { applied: true, flowBacked: decision.flowBackedControl };
 }
@@ -137,8 +146,11 @@ export async function dispatchBinaryControlDecision(params: {
   transport: BinaryControlTransport;
   /** Snapshot the decision was made against; used to size the per-device pending window. */
   snapshot?: BinaryControlDecisionSnapshot;
+  isAuthorityCurrent?: () => boolean;
 }): Promise<DispatchBinaryControlResult> {
-  const { decision, transport, snapshot } = params;
+  const {
+    decision, transport, snapshot, isAuthorityCurrent,
+  } = params;
   recordPendingForDispatch({ store: transport.pendingBinaryCommandStore, decision, snapshot });
   try {
     const requested = await dispatchBinaryCommand({
@@ -146,6 +158,10 @@ export async function dispatchBinaryControlDecision(params: {
       transport,
     });
     if (!requested) {
+      transport.pendingBinaryCommandStore.clear(decision.deviceId);
+      return { ok: false, reason: 'not_requested' };
+    }
+    if (isAuthorityCurrent?.() === false) {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }

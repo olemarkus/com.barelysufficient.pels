@@ -5,7 +5,9 @@ import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
-import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
+import {
+  ObservedDeviceStateProjection,
+} from './lib/observer/observedDeviceStateProjection';
 import type { PlanEngine } from './lib/plan/planEngine';
 import {
   createBinarySettleState,
@@ -20,7 +22,7 @@ import type { PowerCalibrationSnapshot } from './packages/contracts/src/powerCal
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
-  ObservedDeviceState,
+  ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
 } from './packages/contracts/src/types';
 import type { DeviceTargetPowerConfigsWithReachability } from './lib/device/targetPowerReachability';
@@ -576,7 +578,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     });
   }
 
-  public getObservedState(deviceId: string): ObservedDeviceState | undefined {
+  public getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
     return this.observedDeviceStateProjection.getObservedState(deviceId);
   }
 

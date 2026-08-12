@@ -18,23 +18,23 @@ nothing from the smart-task controller** — enforced by a dependency-cruiser ru
 (`no-plan-to-smarttasks`), now `error` and green. The 8 plan files that originally coupled in
 (`planBuilder`, `planEngine`, `admission/deferredObjective`, `admission/index`, `planDevices`,
 `planLogging`, `planReasons`, `planTypes`) were burned down to zero (value AND type edges,
-grep-verified); the executor is independently objectives-free.
+source-guard verified); the executor is independently objectives-free.
 
 The shape was a **dependency inversion**, now realized: the planner no longer *pulls* smart tasks
 in (it used to advance the lifecycle and apply objective settings in-loop). A **smart-task
-controller** *pushes* decorated `PlanInputDevice`s into a smart-task-agnostic planner, and owns
-lifecycle + ending + terminal actuation on its own clock.
+controller** *pushes* decorated `PlanInputDevice`s into a smart-task-agnostic planner and emits
+clock-owned lifecycle facts. Setup owns home-scope/write authority and deadline disarm; the executor
+owns fallback convergence, command claims, pending/retry, diagnostics, and actuation.
 
-**Enforcement caveat (standing — still true post-ship).** The dependency-cruiser config runs in
+**Source-edge enforcement.** The dependency-cruiser config runs in
 *post-compilation* mode (`tsPreCompilationDeps` unset), so `import type` edges are invisible to
-every rule. Both the `no-plan-to-smarttasks` rule *and* the `no-objectives-to-peer-except-power`
-gate see only **value** imports — a meter that can read zero while type-only plan↔controller
-coupling persists. The flip of `no-plan-to-smarttasks` to `error` was therefore gated on a manual
-**type-edge audit** (`grep -rn "from .*objectives" lib/plan/` → zero), NOT cruiser-green alone, and
-the same grep must guard any future `lib/plan` change near the seam. Flipping
+every rule. The source AST guard behind `npm run arch:grep` now rejects any planner import from
+`lib/objectives` or `lib/executor`, including type-only, re-export, `require`, and dynamic-import
+forms, before compilation can erase it. The `no-objectives-to-peer-except-power` cruiser rule still
+sees value edges only; do not treat that limitation as permission for an objectives type edge.
+Flipping
 `tsPreCompilationDeps: true` globally surfaces **~18 pre-existing repo-wide violations** (mostly
-`no-circular`), so it cannot just be turned on — durable hardening (burn those down + enable the
-flag, or a grep-based CI check) is tracked in `TODO.md`.
+`no-circular`), so it cannot just be turned on.
 
 ## Goal (two-fold, one decoupling)
 
@@ -42,11 +42,11 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
 
 1. **Off the planner's clock (input).** Lifecycle state is *clock-driven* (deadline,
    hours-remaining, progress vs time). The planner is *reactive* — driven by power samples and
-   device events. Today `buildDeferredObjectiveDiagnostics` / `emitDeferredObjectiveStatusTransitions`
-   run **inside** `planBuilder`, so lifecycle state only advances when a power event wakes the
-   planner. **Concrete bug:** in `power_source = flow` mode, plan cycles can be hours apart, so
-   deadline transitions / ended events / hours-remaining crossings **lag until the next power
-   event**. The lifecycle needs its own clock tick, owned by the controller.
+   device events. Before PR-C, `buildDeferredObjectiveDiagnostics` /
+   `emitDeferredObjectiveStatusTransitions` ran **inside** `planBuilder`, so lifecycle state advanced
+   only when a power event woke the planner. In `power_source = flow` mode, plan cycles could be
+   hours apart, so deadline transitions / ended events / hours-remaining crossings lagged until the
+   next power event. PR-C moved that lifecycle work to the controller's own clock tick.
 
    The controller's hand-off to the planner is **device-input mutation, not fact consumption.**
    The planner does *not* read smart-task status/diagnostics. The controller folds each task's
@@ -57,24 +57,29 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
    **relocated to the controller** and made the *sole* channel — with the in-loop lifecycle
    advancement/emission deleted from the planner.
 
-2. **Off the planner's path (output).** The terminal turn-off is currently smuggled out as a
+2. **Off the planner's path (output).** The former terminal turn-off was smuggled out as a
    per-cycle `shed_release` plan intent riding the capacity shed actuation path. The controller
-   **ends the task and actuates the terminal disable directly** (controller → transport), on its
-   own clock — never through the plan→executor capacity path.
+   now ends the task on its own clock and sends a narrow fallback request to the executor-owned
+   lifecycle port. The executor reads fresh observer truth plus the app-owned decorated command
+   projection, then converges through the shared actuator and pending/retry machinery. There is
+   no controller→transport write and no plan-carried terminal release.
 
 ## Vocabulary (load-bearing)
 
-- **Smart-task controller** = the stateful owner of a task's lifecycle: trigger-initiated (a Flow
-  trigger starts a task), clock-driven (advances state on time), responsible for **ending** the
-  task. Its outputs are (a) device-input mutations the planner consumes and (b) the terminal
-  disable actuation. Called a *controller*, not a *producer* — it owns and drives state, it does
-  not merely emit facts for the planner to read.
+- **Smart-task controller** = the stateful owner of task evaluation and lifecycle progression:
+  trigger-initiated (a Flow trigger starts a task), clock-driven (advances state on time), and the
+  producer of device decorations plus satisfied/deadline lifecycle facts. Called a *controller*,
+  not a *producer*, because it owns and drives task state; it does not own Homey writes.
+- **Lifecycle coordinator (setup)** = the authority boundary: resolves home scope, device
+  commandability, configured fallback, and deadline disarm, then calls the executor port.
+- **Lifecycle fallback executor** = the owner of convergence and every binary/target/step write,
+  sharing claims, pending/retry, diagnostics, and the actuator seam with ordinary execution.
 - **Shed** = a *capacity cause* ("over budget → reduce load"). Stays "shed" in the plan path;
   that path genuinely sheds.
 - **Disable / limit** = the *effect*: drive a device to its configured **fallback posture**
   (fully off = disable; stepped-down / lower setpoint = limit).
-- **Lifecycle-end** = a *different cause* invoking the **same** disable/limit effect (task done
-  → return device to fallback). It is **not** a shed.
+- **Lifecycle fallback** = a *different cause* invoking the **same** disable/limit effect (early
+  satisfaction or deadline ending returns the device to fallback). It is **not** a shed.
 - Today's `shedBehavior` / `OVERSHOOT_BEHAVIORS` config *is* the device's fallback posture.
   Renaming that config vocabulary touches settings keys + UI + logs — a **follow-up**, not in
   scope here.
@@ -84,8 +89,8 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
 1. **Smart-task controller** — the `lib/objectives/deferredObjectives/` subsystem (status
    `statusBus`/`statusTransitions`, lifecycle `activePlanRecorder`, `endedEventBus`, horizon
    `rescueReplan`/`policyHorizon`, the concurrent-eligible tracker), **relocated out of `lib/plan`**
-   (PR-B, into the objectives peer) and — still to come — advanced on its **own clock tick** wired
-   in `setup/`. It already has non-plan consumers
+   (PR-B, into the objectives peer) and advanced on its **own clock tick** wired in `setup/`.
+   It already has non-plan consumers
    (`flowCards/deadlineObjectiveCards.ts`, `smartTaskTokens.ts`, `smartTaskRescueCard.ts`,
    settings-UI history) — evidence it is not plan-internal. It reads device data through a narrow
    input contract (`ObjectiveDeviceInput`), not `PlanInputDevice`.
@@ -96,20 +101,22 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
    override set the input pipeline applies). This is the *only* channel into the planner. The
    planner imports nothing smart-task; it just plans on the inputs it is handed.
 
-3. **Clock-driven disable actuator** — on each lifecycle tick, for any task in a **terminal**
-   state on a **`controllable === false`** device still observed `on`, the controller drives it
-   to its configured fallback posture (**disable/limit**) via the **transport**. Self-healing
-   (per-tick re-check survives dropped writes / unknown-observation), idempotent (observed-on
-   gate), no flow-mode lag (clock-driven). Not a one-shot. This is today's release-actuation
-   logic, decoupled from the capacity path and re-homed onto the controller's clock.
+3. **Clock-driven fallback convergence** — on each lifecycle tick, setup authority-gates a
+   satisfied/deadline task on a **`controllable === false`** device, resolves the configured
+   binary/target/stepped fallback into a smart-task-neutral executable request, then sends that
+   request to the executor-owned lifecycle fallback port. The executor reuses its pending, retry,
+   diagnostics, and actuator paths. Self-healing
+   (per-tick re-check survives dropped writes / unknown observation), idempotent, and free of
+   flow-mode lag. Setup alone owns deadline disarm.
 
 **Power-driven planner (`lib/plan`)** — reactive, smart-task-agnostic. Operates only on the
 `PlanInputDevice`s it is handed; decides capacity **sheds**, which invoke the shared disable/limit
 effect via the executor. No objective lifecycle, no objective facts, no objective imports.
 
-**No second-writer contention:** the disable actuator only touches `controllable === false`
-devices — exactly the ones the planner has let go of (`shouldEmitTerminalRelease` already gates
-on this). The "caps-off-first, then disable" ordering is structural, not timing-dependent.
+**No second-writer contention:** lifecycle fallback only touches `controllable === false` devices —
+exactly the ones the planner has let go of. Terminal admission is plain `inactive` and emits no
+plan-path release intent. The "caps-off-first, then fallback" ordering is structural, not
+timing-dependent; shared executor claims serialize any ordinary write already in flight at the handoff.
 
 ## Capacity-marker fix (shipped — historical, was the independent first down-payment)
 
@@ -164,20 +171,13 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    audit confirmed zero `lib/plan` imports from the moved subsystem; `no-objectives-to-peer-except-power`
    stays green. `no-plan-to-smarttasks` `to` path updated to the new home. A later rename to
    `lib/smartTasks/` remains an option.
-4. **Lift the lifecycle EMISSION onto the clock (done — PR-C).** Shape chosen: *emission on
-   clock, decoration synchronous*. Only the non-planning emission — status transitions,
-   hours-remaining crossings, diagnostics, **plan-history** recording, and the deadline-passed
-   disable — moved onto a 30 s clock tick (`DeferredObjectiveLifecycleEmitter` +
-   `startDeferredObjectiveLifecycleClock`, wired via `BackgroundTasksController`). The
-   **active-plan COMMITMENT stays synchronous in `planBuilder`** (review catch): the planner
-   reads committed plans via `resolveCommittedHours` for its decoration, so promoting them is
-   decoration-relevant and must not lag a clock tick. The clock only *clears* an ended task's
-   plan (via `onDeadlinePassed → disable`), phase-separated from planBuilder's commit. The emitter
-   owns its own `PriorityAllocationTracker` + the watermark closure; it is the sole writer to
-   the plan-history recorder. Fixes the `power_source = flow` lag with no two-loop staleness — the
-   decoration (admission/overrides/active-plan commit) stays synchronous per plan cycle; the full
-   decoration relocation is PR-D (step 5). The planner still imports the subsystem for the
-   decoration eval, so `no-plan-to-smarttasks` still fires until step 5/6.
+4. **Lift the lifecycle EMISSION onto the clock (done — PR-C).** The historical PR-C shape was
+   *emission on clock, decoration synchronous*: status transitions, hours-remaining crossings,
+   diagnostics, **plan-history** recording, and deadline-passed disable moved onto the 30 s clock.
+   PR-C temporarily kept active-plan commitment in `planBuilder`; that choice was superseded by
+   the 2026-06-01 clock-owned write described below. Today the lifecycle emitter owns the scheduled
+   active-plan write and the planner only reads its settled record for decoration. This history is
+   retained to explain the migration, not as a current ownership rule.
 5. **Move the input-decoration appliers into the controller.** The controller emits decorated
    `PlanInputDevice`s; `planBuilder` stops calling the deferred appliers; delete
    `admission/deferredObjective.ts`. Kills the input-mutation half. Realized via a dedicated
@@ -195,8 +195,8 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    - **PR-D1b — dropped.** Hoisting `ExecutablePlan` was scoped on a wrong premise: `lib/objectives`
      references zero `Executable*` types, and `ExecutablePlan` is consumed only inside
      `lib/executor/`. Neither the controller's input decoration (D2) nor its ending/disable path
-     (the disable is a settings write; the physical release rides the `deferredReleaseIntent` field
-     already on `PlanInputDevice`) needs it. The handoff's closure claim was also wrong —
+     needs it: disable is a settings write, while physical fallback now enters the executor through
+     its narrow lifecycle port. The handoff's closure claim was also wrong —
      `SteppedStepActuationState` belongs to `ExecutableSteppedLoadDevice` (an executor reconciliation
      type that stays put), not to `ExecutablePlan`'s closure. So `ExecutablePlan` stays in
      `lib/executor`.
@@ -205,58 +205,66 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
      `PriorityAllocationTracker` and exposes `decorate({devices, dailyBudgetSnapshot, nowTs})
      → DeferredDecorationBundle` (bundle + `DeferredReleaseIntent` + the input type live in
      `@pels/planner-types`). The controller is constructed in the **app-wiring layer**
-     (`lib/app/appInit.ts`) and injected into the engine as the opaque `decorateDeferredObjectives`
-     function — so **both** `planBuilder` AND `planEngine` import zero `lib/objectives` (the engine
-     forwards the function; it never constructs the controller). `admission/deferredObjective.ts`
-     deleted; active-plan commitment stays synchronous (PR-C catch); the
+     (`setup/homeRuntime/homeScope.ts`) and injected into the builder as the opaque
+     `decorateDeferredObjectives` function — so **both** `planBuilder` AND `planEngine` import zero
+     `lib/objectives` (the engine contract never constructs the controller).
+     `admission/deferredObjective.ts` deleted; active-plan commitment is recorded by the lifecycle
+     clock and read synchronously by planning; the
      `evaluate_deferred_objectives_ms` / `plan_deferred_objective_observe_ms` perf split is
      preserved (the controller times its own eval). Behavior-neutral: full suite green (4009).
-6. **Clock-driven terminal device disable (PR-E — done, additive).** Goal 2's *output* side had a
+6. **Clock-driven terminal device disable (PR-E — done; terminal plan backstop now retired).**
+   Goal 2's *output* side had a
    real flow-mode bug: a disabled task yields no diagnostic (`diagnosticsBridge` →
    `if (!objective.enabled) return []`), and after PR-C the deadline auto-disable runs on the 30 s
    lifecycle clock while the terminal `shed_release` rode the *plan* cycle — so in
    `power_source = flow` mode (plan cycles hours apart) the clock disabled the task before the next
    plan cycle could emit the release, leaving a cap-off device on a **missed/unsatisfied** deadline
    running. PR-E fixes it on the lifecycle clock:
-   - A single app-wired `onDeadlineReached(deviceId, objectiveKind, deadlineAtMs, nowMs)` hook
-     (`statusTransitions` → `DeferredObjectiveLifecycleEmitter` →
-     `deferredObjectiveLifecycle.handleDeferredDeadlineReached`) fires at **deadline-passed,
-     regardless of status** — so missed/unsatisfied tasks are covered, not just `satisfied`.
-   - It returns the cap-off device to its configured fallback posture via a **thin, set-and-forget
-     device-layer primitive** (`lib/device/shedBehaviorActuation.applyShedBehavior`: one transport
-     write per `turn_off`/`set_temperature`/EV-pause, observed-state idempotency, no `ExecutablePlan`
-     types, no executor reconciliation). The executor is untouched.
-   - The **disarm is gated** (`planTerminalEnding`): disarm only once the device is observed in the
-     shed posture, or after a 5-min grace window — so the diagnostic survives and the release
-     re-fires across ticks (a transient `unknown` observation or a dropped write self-heals) instead
-     of being a single shot.
-   - **Additive, not a retirement.** The plan-path `deferredReleaseIntent` (`attachDeferredReleaseIntents`
-     + the executor release intent) **stays** as an idempotent backstop AND because the recurring
-     **idle-bucket holds still ride it** (Fork A keeps idle on the plan path — those need the shared
-     release-intent channel; only the *terminal* ending moved to the clock).
+   - Two app-wired lifecycle hooks own the complete terminal sequence. `onSatisfied` returns a
+     cap-off device to fallback promptly on every pre-deadline tick without disarming the task;
+     `onDeadlineReached(deviceId, deadlineAtMs, nowMs)` fires at **deadline-passed,
+     regardless of status** and owns gated disarm. Presentation-only stalled-to-satisfied status
+     promotion does not actuate: the producer stamps `actuationSatisfied` before applying that
+     display overlay, and lifecycle actuation consumes the typed raw fact.
+   - App wiring owns scope fencing, device lookup, commandability, gated disarm, and resolution of
+     the objective-specific fallback into a neutral executable request. `LifecycleFallbackDispatcher`
+     converges that request through the existing release contexts without knowing objective kinds.
+     Pending
+     windows, retry backoff, lifecycle diagnostics, and activation-attempt cleanup therefore stay
+     executor-owned and exposed directly to setup as a narrow lifecycle-fallback port; the
+     `PlanEngine` is not part of this smart-task path. Target retry state is a minimal
+     lifecycle-private store so a plan rebuild cannot prune it. Shared target and stepped claims
+     are synchronous and skip-only: a colliding command is never captured for later replay. While
+     lifecycle authority is active, ordinary execution stands down; abandon merely releases that
+     authority so a later plan build can decide afresh.
+   - Disarm happens only once the executor reports the fallback observed-settled, or after a 5-min
+     deadline grace window. Early satisfaction never disarms the task.
+   - The clock is now the **sole terminal trigger**. The duplicated terminal
+     `deferredReleaseIntent` backstop has been retired; recurring **idle-bucket holds still ride the
+     plan-path release-intent channel** until their separate clock-ownership follow-up lands.
 
-   **Follow-ups (not blocking):** (a) fully retiring the *terminal* release from
-   the plan path (so it isn't double-covered) is a later cleanup; (b) the same
+   **Follow-ups (not blocking):** the same
    "task disabled → device stranded" shape exists for a **user/Flow disable**
    mid-run, not just deadline-passed — out of PR-E scope. The former niche
    stepped-only `set_step` gap is closed: a no-binary-handle stepped device now
    gets a direct lifecycle-clock `set_step` shed command, and disarm waits for
    observed stepped posture (or the normal grace window).
 7. **Flip `no-plan-to-smarttasks` to `error` — DONE (PR-D2).** `lib/plan/**` imports zero
-   `lib/objectives` (value AND type, confirmed by `grep -rn "from .*objectives" lib/plan/` → none;
-   the rule is type-edge-blind so the grep audit, not cruiser-green alone, gated the flip). The
-   executor is independently objectives-free too. Planner and executor now know nothing about smart
-   tasks.
+   `lib/objectives` (value AND type; the manual grep gated the original flip, and the source AST
+   guard behind `npm run arch:grep` now enforces it continuously). The
+   executor is independently free of `lib/objectives` imports too. The executor does own the generic
+   lifecycle-fallback convergence port used by app wiring, but it does not import or evaluate smart-task
+   diagnostics, settings, or admission policy.
 
 ## Resolved questions / risks (how the ship answered them)
 
 1. **Two loops (clock + power) touching shared state** — RESOLVED: the decoration stays
    **synchronous** with the plan cycle. The controller's `decorate()` runs inline in
    `planBuilder.buildPlanSnapshotWithTimings` (PR-D2), so there is no half-decorated-input window;
-   only the lifecycle EMISSION + the terminal disable run on the separate 30 s clock (PR-C/PR-E).
+   only lifecycle emission and terminal fallback run on the separate 30 s clock (PR-C/PR-E/#2084).
    Active-plan commitment is the one decoration-relevant promotion kept synchronous (PR-C catch).
 2. **Clock tick mechanism** — RESOLVED: 30 s tick (`startDeferredObjectiveLifecycleClock`), deadlines
-   are absolute timestamps (DST-safe), and the terminal actuator self-heals per-tick (re-fires until
+   are absolute timestamps (DST-safe), and executor-owned convergence self-heals per tick (retries until
    the device confirms the shed posture or a 5-min grace; works in `flow` mode + across restart).
 3. **`controllable === false` gate** — RESOLVED: the terminal release only touches cap-off
    (`isCapacityControlEnabled === false`) devices; cap-on stays on the planner's lane. No

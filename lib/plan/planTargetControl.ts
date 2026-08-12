@@ -18,7 +18,7 @@ type PendingTargetDecision =
   | { type: 'skip'; pending: PendingTargetCommandState; remainingMs: number };
 
 export function getPendingTargetCommandDecision(params: {
-  state: PlanEngineState;
+  state: Pick<PlanEngineState, 'pendingTargetCommands'>;
   deviceId: string;
   capabilityId: string;
   desired: number;
@@ -40,7 +40,7 @@ export function getPendingTargetCommandDecision(params: {
 }
 
 export function recordPendingTargetCommandAttempt(params: {
-  state: PlanEngineState;
+  state: Pick<PlanEngineState, 'pendingTargetCommands'>;
   deviceId: string;
   capabilityId: string;
   desired: number;
@@ -80,7 +80,7 @@ export function recordPendingTargetCommandAttempt(params: {
 }
 
 export function recordFailedPendingTargetCommandAttempt(params: {
-  state: PlanEngineState;
+  state: Pick<PlanEngineState, 'pendingTargetCommands'>;
   deviceId: string;
   capabilityId: string;
   desired: number;

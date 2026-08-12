@@ -24,7 +24,7 @@ export const makeFlowBackedBinaryTrigger = (
 /**
  * Live point-of-use authorization fence for "Disable temperature control".
  * Binary capacity control remains available; every richer command is refused
- * before it reaches transport, including stale retries and terminal release.
+ * before it reaches transport, including stale retries and lifecycle fallback.
  */
 export const createTemperatureControlFencedActuator = (
   base: Actuator,
@@ -55,8 +55,8 @@ const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand):
 // flow-backed binary control trigger (Homey Flow card) for devices whose binary
 // capability is flow-backed. Transport stays the sole SDK owner; this wraps it as
 // the injected write surface behind the actuator seam. Reachable from app wiring
-// without the plan→executor actuation surface, so both the terminal-shed lifecycle
-// and the plan executor can route their writes through one actuator.
+// without a planner-owned write path, so both lifecycle fallback and ordinary
+// plan execution route their writes through one actuator.
 //
 // Returns null when the device manager is absent (startup / snapshot flicker) so
 // callers can guard before actuating.

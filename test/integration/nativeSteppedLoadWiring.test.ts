@@ -14,6 +14,7 @@ import { __resetNativeEvWiringLogStateForTests } from '../../lib/device/managerN
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import { setObservedNativeSteppedLoadStep } from '../../lib/device/managerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
+import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
 import { buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
@@ -880,6 +881,8 @@ describe('native stepped-load wiring', () => {
     const trigger = vi.fn(async () => undefined);
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
       state: {},
       debugStructured: vi.fn(),
       error: vi.fn(),
@@ -941,6 +944,8 @@ describe('native stepped-load wiring', () => {
       transport: 'native_capability' as const,
     }));
     const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
       state: { isExternalOffHeld: (deviceId: string) => deviceId === 'hoiax-1' },
       buildBinaryControlTransport: () => ({}),
       markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -989,6 +994,8 @@ describe('native stepped-load wiring', () => {
     });
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
       state: {},
       debugStructured: vi.fn(),
       error: vi.fn(),
@@ -1071,6 +1078,8 @@ describe('native stepped-load wiring', () => {
     });
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
       state: {},
       debugStructured: vi.fn(),
       error: vi.fn(),

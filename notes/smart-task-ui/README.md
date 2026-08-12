@@ -291,12 +291,11 @@ Immediate tasks also:
   invalidates session progress and requires a fresh sample after reconnect; it
   must not silently clear the task on one transient observation;
 - **stop the device on success before finalizing.** Reaching the target must
-  actuate, not merely record. Today's terminal release is gated on
-  `shouldEmitTerminalRelease` (`lib/objectives/deferredObjectives/admission.ts`),
-  which fires only for `controllable === false` devices — a cap-on charger stays
-  on the planner's normal managed lane and never sees a release intent, and
-  `handleDeferredDeadlineReached` disarms it without actuation. An 80 % task on a
-  power-limit-controlled charger would therefore keep charging past its target.
+  actuate, not merely record. The lifecycle-clock-triggered executor fallback is gated to
+  `controllable === false` devices; terminal admission emits no plan-path release
+  intent. A cap-on charger therefore stays on the planner's normal managed lane,
+  and `handleDeferredDeadlineReached` disarms it without actuation. An 80 % task
+  on a power-limit-controlled charger would therefore keep charging past its target.
   The immediate-success path must pause a binary charger and settle or retry
   that command before it removes the diagnostic and records `Succeeded`;
 - resolve conflicts with an existing task explicitly rather than silently

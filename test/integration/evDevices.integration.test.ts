@@ -441,10 +441,9 @@ describe('EV charger integration', { retry: 2 }, () => {
     }));
   });
 
-  // Note's "EV Semantics" §"Power-limit control off": meeting the deadline target removes the
-  // deferred-objective allowance and PELS should pause the charger. Without a terminal pause,
-  // a cap-off charger would keep running past the user's target.
-  it('emits a terminal binary_release when the EV reaches target with Power-limit control off', async () => {
+  // Meeting the target removes the deferred-objective allowance. The lifecycle clock owns the
+  // terminal pause; a power-driven rebuild must neither emit a second intent nor race that owner.
+  it('does not duplicate the lifecycle-clock terminal pause in the plan path', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
     // SoC already at 80, target 42 → diagnostic resolves to `satisfied` immediately.
@@ -460,19 +459,18 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'binary_release');
-    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
+    expectDeferredReleaseIntent(evPlan, undefined);
+    expect(charger.getCommandSequence()).toEqual([]);
 
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      binaryControl: { on: true },
+      evChargingState: 'plugged_in_charging',
     }));
   });
 
-  // Counter-case: same satisfied + already paused scenario must NOT re-issue the pause command.
-  // Once the charger is paused, the executor's pause intent is a no-op.
+  // Counter-case: an already-paused terminal device likewise produces no planner command.
   it('does not re-pause an already-paused charger that has reached target with Power-limit control off', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
@@ -485,14 +483,11 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
 
-    // Pause intent is plumbed so the executor can act on a future flip back to charging,
-    // but no new command should be issued while the charger is already paused.
     expect(charger.getCommandSequence()).toEqual([]);
   });
 
-  // Counter-case: Power-limit control ON + satisfied must NOT emit a deferred binary_release. Normal
-  // managed charging behavior takes over once admission drops out. The note's pause guarantee
-  // is specific to the cap-off path.
+  // Counter-case: Power-limit control ON + satisfied likewise emits no plan-path release intent.
+  // Normal managed charging behavior takes over once admission drops out.
   it('does not emit a deferred binary_release when satisfied while Power-limit control is on', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
