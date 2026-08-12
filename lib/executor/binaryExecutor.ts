@@ -1,5 +1,9 @@
 import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
-import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import {
+  isBinaryControlled,
+  isBinaryOnOrUnknown,
+  resolveBinaryCommandCurrentOn,
+} from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
@@ -116,6 +120,10 @@ export const applyBinarySheddingToDevice = async (
     // skipPrecheck / trackPendingShed default from this flag, so lifecycle callers pass
     // only `lifecycleRelease: true`. An explicit skipPrecheck / trackPendingShed still wins.
     lifecycleRelease?: boolean;
+    /** Trusted observer projection for lifecycle-owned dispatch. */
+    snapshotOverride?: ExecutorDeviceSnapshot;
+    /** Bypass observation idempotency after an accepted opposing claim releases. */
+    forceAgainstReleasedOpposing?: boolean;
   },
 ): Promise<boolean> => {
   const {
@@ -123,13 +131,15 @@ export const applyBinarySheddingToDevice = async (
     deviceName,
     reason,
     lifecycleRelease,
+    snapshotOverride,
+    forceAgainstReleasedOpposing,
   } = params;
   // A lifecycle disable is off the capacity path: skip the capacity precheck and don't
   // track it as a pending capacity shed, unless the caller explicitly overrides.
   const skipPrecheck = params.skipPrecheck ?? Boolean(lifecycleRelease);
   const trackPendingShed = params.trackPendingShed ?? !lifecycleRelease;
-  if (ctx.capacityDryRun) return false;
-  const snapshotState = ctx.observation.getSnapshotByDeviceId(deviceId);
+  if (ctx.capacityDryRun && !lifecycleRelease) return false;
+  const snapshotState = snapshotOverride ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   if (!skipPrecheck && shouldSkipShedding({
     state: ctx.state,
     deviceId,
@@ -145,6 +155,7 @@ export const applyBinarySheddingToDevice = async (
       reason,
       snapshot: snapshotState,
       lifecycleRelease,
+      forceAgainstReleasedOpposing,
     });
   }
   ctx.state.pendingSheds.add(deviceId);
@@ -155,6 +166,7 @@ export const applyBinarySheddingToDevice = async (
       reason,
       snapshot: snapshotState,
       lifecycleRelease,
+      forceAgainstReleasedOpposing,
     });
   } finally {
     ctx.state.pendingSheds.delete(deviceId);
@@ -165,10 +177,16 @@ export const applyDeferredBinaryCommand = async (
   ctx: PlanExecutorBinaryContext,
   intent: ExecutableReleaseIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
+  options: {
+    preferObservedSnapshot?: boolean;
+    forceAgainstReleasedOpposing?: boolean;
+  } = {},
 ): Promise<boolean> => {
   if (!intent) return false;
   if (intent.kind === 'shed_release') return false;
-  const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+  const snapshot = options.preferObservedSnapshot
+    ? observed?.snapshot
+    : ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   // Requires a binary control handle (onoff or evcharger_charging). The actuation is
   // device-agnostic — the dispatched command's capability is derived from the device's
   // `controlCapabilityId`, never hardcoded — so this accepts any binary control.
@@ -182,11 +200,13 @@ export const applyDeferredBinaryCommand = async (
     // default) bypasses the capacity precheck / pendingSheds path so it does not
     // stamp the cooldown markers. The binary-on check is the trusted-evidence
     // gate, mirroring applyShedReleaseBinaryOff's gate.
-    if (isBinaryObservedOff(snapshot)) return false;
+    if (isBinaryReleaseAlreadySettled(snapshot, options.forceAgainstReleasedOpposing)) return false;
     return applyBinarySheddingToDevice(ctx, {
       deviceId: intent.deviceId,
       deviceName: intent.name,
       lifecycleRelease: true,
+      snapshotOverride: snapshot,
+      forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing === true,
     });
   }
 
@@ -209,6 +229,13 @@ export const applyDeferredBinaryCommand = async (
     logContext: 'capacity',
   });
 };
+
+const isBinaryReleaseAlreadySettled = (
+  snapshot: ExecutorDeviceSnapshot,
+  forceAgainstReleasedOpposing: boolean | undefined,
+): boolean => forceAgainstReleasedOpposing !== true
+  && isBinaryControlled(snapshot)
+  && !resolveBinaryCommandCurrentOn(snapshot);
 
 const recordDirectBinaryShedActuation = (
   ctx: PlanExecutorBinaryContext,
@@ -245,6 +272,7 @@ const turnOffDevice = async (
     reason?: string;
     snapshot?: ExecutorDeviceSnapshot;
     lifecycleRelease?: boolean;
+    forceAgainstReleasedOpposing?: boolean;
   },
 ): Promise<boolean> => {
   const {
@@ -253,6 +281,7 @@ const turnOffDevice = async (
     reason,
     snapshot,
     lifecycleRelease,
+    forceAgainstReleasedOpposing,
   } = params;
   const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
@@ -288,6 +317,7 @@ const turnOffDevice = async (
       logContext: 'capacity',
       reason,
       lifecycleRelease,
+      forceAgainstReleasedOpposing,
     });
     if (!outcome.applied) return false;
     if (!outcome.flowBacked) {

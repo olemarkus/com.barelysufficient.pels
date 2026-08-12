@@ -725,6 +725,14 @@ export type ReportedStepObservedProbe = {
     reportedStepObservedAtMs?: number;
 };
 
+/** Observer-maintained value after transport has projected every observed cluster. */
+export type ProjectedObservedDeviceState = ObservedDeviceState
+    & EvObservedProbe
+    & TemperatureObservedProbe
+    & StateOfChargeObservedProbe
+    & MeasuredPowerObservedProbe
+    & ReportedStepObservedProbe;
+
 /**
  * Step-command / planning state the app-layer decorator
  * (`setup/appDeviceControlHelpers.decorateSnapshotWithDeviceControl`)

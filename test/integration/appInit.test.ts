@@ -26,6 +26,7 @@ vi.mock('../../lib/executor/planExecutor', () => ({
       capturedPlanExecutorDeps.current = deps;
     }
 
+    getLifecycleFallbackPort(): Record<string, never> { return {}; }
   },
 }));
 

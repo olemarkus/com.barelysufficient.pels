@@ -99,6 +99,7 @@ export type ExecuteSteppedLoadCommandParams = {
     recordPlanActuation?: boolean;
     preserveMaterializedConfirmation?: boolean;
     commandPurpose?: 'post_activation_step';
+    forceAgainstReleasedOpposing?: boolean;
   };
   desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
   transition: ExecutableSteppedLoadTransition | null;
@@ -262,6 +263,17 @@ export const executeSteppedLoadCommand = async (
   } = params;
   const planningPowerW = desiredStep.planningPowerW;
   const planningCurrentA = resolvePlanningCurrentA(desiredStep);
+  if (
+    ctx.steppedCommandOwner === 'ordinary'
+    && ctx.isLifecycleFallbackActive?.(action.id) === true
+  ) return false;
+  if (!ctx.steppedCommandClaim.acquire(
+    action.id,
+    ctx.steppedCommandOwner,
+    desiredStep.id,
+    ctx.onSteppedCommandClaimReleased,
+  )) return false;
+  let accepted = false;
   try {
     const result = await ctx.requestSteppedLoadStep({
       deviceId: action.id,
@@ -280,10 +292,12 @@ export const executeSteppedLoadCommand = async (
         fields: { desiredStepId: desiredStep.id },
       });
     }
-    return recordAcceptedSteppedLoadCommand(ctx, {
+    if (ctx.isSteppedCommandAuthorityCurrent?.() === false) return false;
+    accepted = recordAcceptedSteppedLoadCommand(ctx, {
       ...params,
       commandTransport: result.transport,
     });
+    return accepted;
   } catch (error) {
     logger.error({
       event: 'stepped_load_command_failed',
@@ -299,6 +313,13 @@ export const executeSteppedLoadCommand = async (
       err: error,
     });
     return false;
+  } finally {
+    ctx.steppedCommandClaim.release(
+      action.id,
+      ctx.steppedCommandOwner,
+      desiredStep.id,
+      accepted,
+    );
   }
 };
 

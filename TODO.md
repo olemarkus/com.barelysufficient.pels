@@ -1610,6 +1610,13 @@ program) remain deferred.*
       plan→executor import with no `planEngine.ts` exception, while the `arch:grep` source AST guard
       rejects type-only and dynamic forms before compilation can erase them.
 
+- [ ] **Wire smart-task lifecycle fallback through the executor-owned port.** #2083 provides
+      `LifecycleFallbackPort` and command claims that serialize its binary, target, and stepped
+      writes against ordinary execution. Lifecycle waiters re-project current observation and retry
+      the fallback immediately when an in-flight ordinary claim releases; abandonment invalidates
+      that authority rather than replaying either clock's stale command. The lifecycle clock does
+      not consume the port until the follow-up layer (#2084), so keep this item open until then.
+
 - [ ] **Remove the remaining drift consultation from the planner facade.** DELETE it instead of
       routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
       let the executor no-op per device — it is already built for that (`handleTargetCommandPreflight`
@@ -1622,6 +1629,15 @@ program) remain deferred.*
       for a clean boundary and the measurement should come first.
       *Source: the drift/reconcile layering train (2026-08-06); noted while closing the three
       inversions behind `inc_26449fb9`.*
+
+- [ ] **Move target-command retry state out of the planner namespace.** The retry decision and
+      attempt bookkeeping are executor materialization concepts, but `targetExecutor.ts`,
+      `targetExecutorContext.ts`, and `lifecycleFallbackDispatcher.ts` still import their state and
+      helpers from `lib/plan/planTargetControl.ts` / `lib/plan/planState.ts`. Extract the flat
+      `PendingTargetCommandState` contract to a neutral lower-layer module and move send/retry/skip
+      plus attempt recording into `lib/executor/`; leave only plan decoration, pruning, and observed
+      synchronization in `planTargetControl.ts`. Do not solve this by adding a plan→executor edge or
+      by duplicating retry timing. *Source: pels-layering-guardian review of #2083. [P2]*
 
 - [ ] **`remainingActionableControlledLoadW` in the shortfall record disagrees with what shed
       selection can act on.** The capacity summary sources it from `residualKw.shed` (= current

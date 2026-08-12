@@ -26,6 +26,11 @@ export type CreatePlanEngineOptions = {
   isActuationFenced?: (deviceId: string) => boolean;
 };
 
+export type PlanEngineCompositionResult = {
+  planEngine: PlanEngine;
+  lifecycleFallbackPort: NonNullable<AppContext['lifecycleFallback']>;
+};
+
 /**
  * Wrap an actuator so every `apply` no-ops (requested:false, `base` untouched)
  * while `isFenced()` is true. The single-method actuator seam makes this the
@@ -41,7 +46,7 @@ export const createFencedActuator = (
   ),
 });
 
-const composePlanEngine = (deps: PlanEngineWiring): PlanEngine => {
+const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult => {
   const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(
     state.pendingBinaryCommands,
@@ -94,22 +99,25 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngine => {
   };
   const builder = new PlanBuilder(builderDeps, state);
   const executor = new PlanExecutor(executorDeps, state);
-  return new ComposedPlanEngine({
-    state,
-    pendingBinaryCommandStore,
-    builder,
-    executor,
-    deviceDiagnostics: deps.deviceDiagnostics,
-    debugStructured: deps.debugStructured,
-    structuredLog: deps.structuredLog,
-  });
+  return {
+    planEngine: new ComposedPlanEngine({
+      state,
+      pendingBinaryCommandStore,
+      builder,
+      executor,
+      deviceDiagnostics: deps.deviceDiagnostics,
+      debugStructured: deps.debugStructured,
+      structuredLog: deps.structuredLog,
+    }),
+    lifecycleFallbackPort: executor.getLifecycleFallbackPort(),
+  };
 };
 
-export function createPlanEngine(
+export function createPlanEngineComposition(
   ctx: AppContext,
   scope: HomeScope,
   options?: CreatePlanEngineOptions,
-): PlanEngine {
+): PlanEngineCompositionResult {
   // Resolve the device manager first so its absence surfaces the canonical
   // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
   // null when the device manager is absent, so past this guard the actuator is
@@ -204,4 +212,13 @@ export function createPlanEngine(
     error: (...args: unknown[]) => ctx.error(...args),
   };
   return composePlanEngine(deps);
+}
+
+/** Sub-home composition does not own the main smart-task lifecycle clock. */
+export function createPlanEngine(
+  ctx: AppContext,
+  scope: HomeScope,
+  options?: CreatePlanEngineOptions,
+): PlanEngine {
+  return createPlanEngineComposition(ctx, scope, options).planEngine;
 }
