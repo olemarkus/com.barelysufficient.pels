@@ -42,6 +42,19 @@ var hasObservedTemperature = (snapshot) => (
 // packages/shared-domain/src/stateOfChargeObservedState.ts
 var hasObservedStateOfCharge = (snapshot) => snapshot.stateOfCharge != null;
 
+// packages/shared-domain/src/numberGuards.ts
+var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+
+// packages/shared-domain/src/energyQuantities.ts
+var asPositiveEnergy = (value) => isFiniteNumber(value) && value > 0 ? value : null;
+var asRemainingEnergyKWh = (value) => asPositiveEnergy(value);
+var asPlannedFloorEnergyKWh = (value) => asPositiveEnergy(value);
+var asDeliveredEnergyKWh = (value) => isFiniteNumber(value) && value >= 0 ? value : null;
+var resolveRemainingEnergyKWh = (revision) => {
+  if (revision === null || revision === void 0) return null;
+  return asRemainingEnergyKWh(revision.energyExpectedKWh ?? revision.energyNeededKWh);
+};
+
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
 var HOUR_MS = 60 * 60 * 1e3;
 var resolveRunBands = (hours, windowStartMs, windowEndMs) => {
@@ -961,112 +974,6 @@ var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
 var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
-// packages/shared-domain/src/deferredPlanHistoryAttribution.ts
-var DELIVERED_PLAN_FRACTION = 0.95;
-var NO_DELIVERY_KWH_FLOOR = 0.1;
-var NO_DELIVERY_PROGRESS_DEADBAND_C = 0.5;
-var NO_DELIVERY_PROGRESS_DEADBAND_PERCENT = 1;
-var sumPlannedKWh = (snapshot) => {
-  let total = 0;
-  for (const hour of snapshot.hours) {
-    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
-  }
-  return total;
-};
-var pickSnapshot = (entry) => entry.finalPlan ?? entry.originalPlan ?? null;
-var resolveProgressTowardTarget = (entry) => {
-  const start = entry.startProgressValue;
-  const final = entry.finalProgressValue;
-  if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
-  const deadband = entry.objectiveKind === "temperature" ? NO_DELIVERY_PROGRESS_DEADBAND_C : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
-  return { delta: final - start, deadband };
-};
-var resolveNoDelivery = (entry, deliveredKWh) => {
-  const progress = resolveProgressTowardTarget(entry);
-  if (progress === null) return false;
-  if (progress.delta >= progress.deadband) return false;
-  if (deliveredKWh === null) return true;
-  return deliveredKWh < NO_DELIVERY_KWH_FLOOR;
-};
-var resolveCause = (params) => {
-  const { outcome, snapshot, deliveredAtOrAbovePlan, noDelivery } = params;
-  if (outcome !== "missed") return null;
-  if (snapshot !== null && (snapshot.dailyBudgetExhaustedBucketCount ?? 0) > 0) {
-    return "budget_limited";
-  }
-  if (noDelivery) return "no_delivery";
-  if (snapshot === null) return "unknown";
-  if (deliveredAtOrAbovePlan === false) return "capacity_shortfall";
-  if (deliveredAtOrAbovePlan === true) return "energy_underestimate";
-  if (typeof snapshot.acceptedSamples === "number" && snapshot.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP) {
-    return "low_confidence";
-  }
-  return "unknown";
-};
-var resolveDeliveredKWh = (entry) => typeof entry.deliveredKWh === "number" && Number.isFinite(entry.deliveredKWh) ? entry.deliveredKWh : null;
-var normalizeEnergyExpectedKWh = (value) => {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
-  return value;
-};
-var pickResolvedMean = (snapshot, hint) => normalizeEnergyExpectedKWh(snapshot?.energyExpectedKWh) ?? normalizeEnergyExpectedKWh(hint);
-var resolveDeliveredAtOrAbovePlan = (deliveredKWh, plannedKWh, energyExpectedKWh) => {
-  const comparisonBasis = energyExpectedKWh ?? plannedKWh;
-  if (deliveredKWh === null || comparisonBasis === null || comparisonBasis <= 0) return null;
-  return deliveredKWh >= comparisonBasis * DELIVERED_PLAN_FRACTION;
-};
-var resolveDeferredPlanHistoryMissAttribution = (entry, energyExpectedKWh = null) => {
-  const snapshot = pickSnapshot(entry);
-  const plannedTotal = snapshot === null ? null : sumPlannedKWh(snapshot);
-  const plannedKWh = plannedTotal !== null && plannedTotal > 0 ? plannedTotal : null;
-  const deliveredKWh = resolveDeliveredKWh(entry);
-  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAbovePlan(
-    deliveredKWh,
-    plannedKWh,
-    pickResolvedMean(snapshot, energyExpectedKWh)
-  );
-  return {
-    cause: resolveCause({
-      outcome: entry.outcome,
-      snapshot,
-      deliveredAtOrAbovePlan,
-      noDelivery: resolveNoDelivery(entry, deliveredKWh)
-    }),
-    plannedKWh,
-    deliveredKWh,
-    planningSpeedKw: snapshot?.planningSpeedKw ?? null,
-    rateConfidence: snapshot?.rateConfidence ?? null,
-    acceptedSamples: snapshot?.acceptedSamples ?? null,
-    dailyBudgetExhaustedBucketCount: snapshot?.dailyBudgetExhaustedBucketCount ?? 0,
-    deliveredAtOrAbovePlan
-  };
-};
-var STILL_LEARNING_CAUSE = "Still learning this device's energy use.";
-var formatRefinedMissCause = (entry) => {
-  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
-  switch (attribution.cause) {
-    case "no_delivery":
-      return entry.objectiveKind === "temperature" ? "Delivered almost no heat before the deadline." : "Delivered almost no charge before the deadline.";
-    case "energy_underestimate":
-      return "Target needed more energy than estimated.";
-    case "low_confidence":
-      return STILL_LEARNING_CAUSE;
-    case "budget_limited":
-    case "capacity_shortfall":
-    case "unknown":
-    case null:
-      return null;
-    default: {
-      const exhaustive = attribution.cause;
-      void exhaustive;
-      return null;
-    }
-  }
-};
-
-// packages/shared-domain/src/deferredPlanHistoryReceiptStrings.ts
-var RECEIPT_NBSP = "\xA0";
-var RECEIPT_DURATION_ZERO = `0${RECEIPT_NBSP}min`;
-
 // packages/shared-domain/src/utils/dateUtils.ts
 var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
 function formatTimeInTimeZone(date, options, timeZone) {
@@ -1087,6 +994,128 @@ var pickLastPlan = (entry) => (
   // finalized before the planner replanned (no finalPlan recorded).
   entry.finalPlan ?? entry.originalPlan
 );
+
+// packages/shared-domain/src/deferredPlanHistoryAttribution.ts
+var DELIVERED_PLAN_FRACTION = 0.95;
+var NO_DELIVERY_KWH_FLOOR = 0.1;
+var NO_DELIVERY_PROGRESS_DEADBAND_C = 0.5;
+var NO_DELIVERY_PROGRESS_DEADBAND_PERCENT = 1;
+var pickFinalRevision = (entry) => entry.finalPlan ?? entry.originalPlan ?? null;
+var sumPlannedFloorKWh = (snapshot) => {
+  if (snapshot === null) return null;
+  let total = 0;
+  for (const hour of snapshot.hours) {
+    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
+  }
+  return asPlannedFloorEnergyKWh(total);
+};
+var resolveProgressTowardTarget = (entry) => {
+  const start = entry.startProgressValue;
+  const final = entry.finalProgressValue;
+  if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
+  const deadband = entry.objectiveKind === "temperature" ? NO_DELIVERY_PROGRESS_DEADBAND_C : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
+  return { delta: final - start, deadband };
+};
+var resolveNoDelivery = (entry, deliveredKWh) => {
+  const progress = resolveProgressTowardTarget(entry);
+  if (progress === null) return false;
+  if (progress.delta >= progress.deadband) return false;
+  if (deliveredKWh === null) return true;
+  return deliveredKWh < NO_DELIVERY_KWH_FLOOR;
+};
+var CAUSE_BY_FLOOR_SHORTFALL = {
+  budget: null,
+  time_capacity: "capacity_shortfall",
+  // NOT a capacity shortfall. `step_power` is the floor-step undercount —
+  // "climbing within budget fits" (`floorShortfallCause.ts`), and the module
+  // AGENTS.md is blunter still: "the climbed-band probe already proved the
+  // booked hours do the job once the executor climbs (the normal state of a
+  // stepped thermal task)". It is a statement that the task CAN finish, so
+  // reporting "Not enough power or time" from it would be backwards. With no
+  // delivery evidence there is nothing to attribute, and `unknown` is honest.
+  step_power: null,
+  // Also claimed earlier, and for the same reason as `budget`: `estimate` has
+  // to outrank the delivery split (it is the producer saying the gap was its
+  // own padding), so `resolveCause` returns on it before this table is ever
+  // consulted. Null here rather than a second copy of the mapping — one rule,
+  // one place, and the exhaustiveness guard still fires on a sixth cause.
+  estimate: null,
+  none: null
+};
+var causeFromFloorShortfall = (snapshot) => {
+  const cause = snapshot?.floorShortfallCause;
+  return cause === void 0 ? null : CAUSE_BY_FLOOR_SHORTFALL[cause] ?? null;
+};
+var isColdStartEstimate = (snapshot) => typeof snapshot?.acceptedSamples === "number" && snapshot.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP;
+var resolveCause = (params) => {
+  const { outcome, finalRevision, deliveredAtOrAbovePlan, noDelivery } = params;
+  if (outcome !== "missed") return null;
+  if (snapshotShowsBudgetExhausted(finalRevision)) return "budget_limited";
+  if (noDelivery) return "no_delivery";
+  if (finalRevision?.floorShortfallCause === "estimate") return "low_confidence";
+  if (deliveredAtOrAbovePlan === true) return "energy_underestimate";
+  if (deliveredAtOrAbovePlan === false) return "capacity_shortfall";
+  if (finalRevision === null) return "unknown";
+  const plannedCause = causeFromFloorShortfall(finalRevision);
+  if (plannedCause !== null) return plannedCause;
+  if (isColdStartEstimate(finalRevision)) return "low_confidence";
+  return "unknown";
+};
+var resolveDeliveredAtOrAboveCommitment = (deliveredKWh, committedKWh) => {
+  if (deliveredKWh === null || committedKWh === null) return null;
+  return deliveredKWh >= committedKWh * DELIVERED_PLAN_FRACTION;
+};
+var resolveDeferredPlanHistoryMissAttribution = (entry) => {
+  const finalRevision = pickFinalRevision(entry);
+  const plannedFloorKWh = sumPlannedFloorKWh(finalRevision);
+  const deliveredKWh = asDeliveredEnergyKWh(entry.deliveredKWh);
+  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAboveCommitment(
+    deliveredKWh,
+    asRemainingEnergyKWh(entry.initialEnergyExpectedKWh)
+  );
+  return {
+    cause: resolveCause({
+      outcome: entry.outcome,
+      finalRevision,
+      deliveredAtOrAbovePlan,
+      noDelivery: resolveNoDelivery(entry, deliveredKWh)
+    }),
+    plannedKWh: plannedFloorKWh,
+    deliveredKWh,
+    planningSpeedKw: finalRevision?.planningSpeedKw ?? null,
+    rateConfidence: finalRevision?.rateConfidence ?? null,
+    acceptedSamples: finalRevision?.acceptedSamples ?? null,
+    dailyBudgetExhaustedBucketCount: finalRevision?.dailyBudgetExhaustedBucketCount ?? 0,
+    deliveredAtOrAbovePlan
+  };
+};
+var STILL_LEARNING_CAUSE = "Still learning this device's energy use.";
+var formatRefinedMissCause = (entry) => {
+  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+  switch (attribution.cause) {
+    case "no_delivery":
+      return entry.objectiveKind === "temperature" ? "Delivered almost no heat before the deadline." : "Delivered almost no charge before the deadline.";
+    case "energy_underestimate":
+      return "Target needed more energy than estimated.";
+    case "capacity_shortfall":
+      return "Not enough power or time before the deadline.";
+    case "low_confidence":
+      return STILL_LEARNING_CAUSE;
+    case "budget_limited":
+    case "unknown":
+    case null:
+      return null;
+    default: {
+      const exhaustive = attribution.cause;
+      void exhaustive;
+      return null;
+    }
+  }
+};
+
+// packages/shared-domain/src/deferredPlanHistoryReceiptStrings.ts
+var RECEIPT_NBSP = "\xA0";
+var RECEIPT_DURATION_ZERO = `0${RECEIPT_NBSP}min`;
 
 // packages/shared-domain/src/deferredPlanHistoryHourlyStrip.ts
 var HOUR_MS3 = 60 * 60 * 1e3;
@@ -1189,7 +1218,7 @@ var STATUS_TONE = {
   on_track: "ok",
   satisfied: "ok"
 };
-var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var isFiniteNumber2 = (value) => typeof value === "number" && Number.isFinite(value);
 var toWidgetChart = (chart) => chart.mode === "trajectory" ? chart : null;
 var resolveCurrentValue = (device, kind) => {
   if (!device) return null;
@@ -1202,7 +1231,7 @@ var resolvePlannerEtaMs = (plan) => {
   const hours = plan.latest?.hours;
   if (!hours || hours.length === 0) return null;
   const last = hours[hours.length - 1];
-  return isFiniteNumber(last.startsAtMs) ? last.startsAtMs + 60 * 60 * 1e3 : null;
+  return isFiniteNumber2(last.startsAtMs) ? last.startsAtMs + 60 * 60 * 1e3 : null;
 };
 var formatLocalHHMMFallback = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 var formatLocalHHMM = (ms, timeZone) => {
@@ -1291,9 +1320,9 @@ var resolveSpeedPart = (revision) => {
   return `${(Math.round(speed * 10) / 10).toFixed(1)} kW`;
 };
 var resolveEnergyPart = (revision) => {
-  const expected = revision.energyExpectedKWh;
+  const expected = resolveRemainingEnergyKWh(revision);
   const needed = revision.energyNeededKWh;
-  if (isFiniteNumber(expected) && expected > 0 && needed > 0 && Math.abs(expected - needed) > 0.05) {
+  if (isFiniteNumber2(expected) && expected > 0 && needed > 0 && Math.abs(expected - needed) > 0.05) {
     const low = Math.round(Math.min(expected, needed) * 10) / 10;
     const high = Math.round(Math.max(expected, needed) * 10) / 10;
     return `\u2248${low.toFixed(1)}\u2013${high.toFixed(1)} kWh`;
@@ -1356,9 +1385,9 @@ var resolveRowCopy = (plan, statusId, firstPlannedTimeLabel) => {
 };
 var buildRow = (params) => {
   const { deviceId, plan, device, targetValue, statusId, finishMs, nowMs, timeZone } = params;
-  const finiteFinish = isFiniteNumber(finishMs) ? finishMs : null;
+  const finiteFinish = isFiniteNumber2(finishMs) ? finishMs : null;
   const firstHourMs = plan.latest?.hours[0]?.startsAtMs ?? null;
-  const firstPlannedTimeLabel = isFiniteNumber(firstHourMs) ? formatLocalHHMM(firstHourMs, timeZone) : null;
+  const firstPlannedTimeLabel = isFiniteNumber2(firstHourMs) ? formatLocalHHMM(firstHourMs, timeZone) : null;
   const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
   const currentValue = resolveCurrentValue(device, plan.objectiveKind);
   return {
@@ -1386,7 +1415,7 @@ var buildRow = (params) => {
 };
 var buildCandidate = (params) => {
   const { deviceId, plan, devicesById, nowMs, timeZone } = params;
-  if (!isFiniteNumber(plan.deadlineAtMs)) return null;
+  if (!isFiniteNumber2(plan.deadlineAtMs)) return null;
   const statusId = resolveStatusId(plan, nowMs);
   if (statusId === "satisfied") return null;
   const targetValue = plan.targetValue;
@@ -1407,7 +1436,7 @@ var buildCandidate = (params) => {
 var resolveEndedTarget = (entry) => (
   // Target is resolved to a single unit-agnostic value on the producer boundary;
   // `objectiveKind` only picks the display unit symbol downstream.
-  isFiniteNumber(entry.targetValue) ? entry.targetValue : null
+  isFiniteNumber2(entry.targetValue) ? entry.targetValue : null
 );
 var endedRunWasBudgetBound = (entry) => ((entry.finalPlan ?? entry.originalPlan)?.dailyBudgetExhaustedBucketCount ?? 0) > 0;
 var resolveEndedRecourse = (entry) => {
@@ -1442,7 +1471,7 @@ var buildEndedRows = (history, devicesById, nowMs, timeZone) => {
   const byDevice = history?.entriesByDeviceId;
   if (!byDevice) return [];
   const cutoffMs = nowMs - ENDED_WINDOW_MS;
-  const recent = Object.values(byDevice).flat().filter((entry) => isFiniteNumber(entry.finalizedAtMs) && entry.finalizedAtMs >= cutoffMs && entry.finalizedAtMs <= nowMs);
+  const recent = Object.values(byDevice).flat().filter((entry) => isFiniteNumber2(entry.finalizedAtMs) && entry.finalizedAtMs >= cutoffMs && entry.finalizedAtMs <= nowMs);
   return [...recent].sort((a, b) => b.finalizedAtMs - a.finalizedAtMs).map((entry) => buildEndedRow(entry, devicesById, nowMs, timeZone)).filter((row) => row !== null).slice(0, ENDED_ROW_CAP);
 };
 var buildSmartTasksWidgetPayload = (input) => {

@@ -617,6 +617,36 @@ Past tasks archive below has any finished runs. Headlines come from
 | First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty — the headline pairs with the `No smart tasks yet` body intro, which names both creation routes: the Flow-card actions and the separate "New smart task" widget. |
 | Between runs (history exists) | `No smart tasks scheduled` | No active cards but the archive has finished runs — the calmer present-tense headline; the body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to Past tasks. Never `first` / `yet` here — that framing would erase a returning user's history. |
 
+### Past-task "Why:" sentences
+
+A missed run's one-line explanation. Source of truth: `formatRefinedMissCause` in
+`packages/shared-domain/src/deferredPlanHistoryAttribution.ts` (the attributed
+causes), falling through to `formatPlanHistoryMissedReason` in
+`deferredPlanHistory.ts` for the residual branches. Rendered on the past-tasks
+list card, the history-detail hero, and the smart-tasks widget row, always
+prefixed `Why:`.
+
+| Cause | Sentence |
+|---|---|
+| `budget_limited` | `Daily budget filled before the deadline.` |
+| `no_delivery` (temperature) | `Delivered almost no heat before the deadline.` |
+| `no_delivery` (EV) | `Delivered almost no charge before the deadline.` |
+| `capacity_shortfall` | `Not enough power or time before the deadline.` |
+| `energy_underestimate` | `Target needed more energy than estimated.` |
+| `low_confidence` | `Still learning this device's energy use.` |
+
+Keep them fragment-shaped, blameless, and ≤ ~48 characters so they fit one row at
+320 px. None of them may name a remedy — the recourse button owns that — and per
+`feedback_hard_cap_is_physical` none may suggest raising the hard cap or the
+daily budget.
+
+`capacity_shortfall` names **power or time** deliberately: its producer cause
+`time_capacity` is defined as "physical/time even uncapped" and is fed by both
+`target_cannot_be_met` and `limited_by_higher_priority_task`, so a deadline that
+was simply too soon lands in the same bucket as a power-starved run and the
+persisted data cannot separate them. A power-only sentence would send an owner
+hunting for power they never needed.
+
 ### Past-task outcome chips
 
 The smart-task history surface (past-tasks archive, history-detail hero) uses a

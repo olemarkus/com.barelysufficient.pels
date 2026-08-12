@@ -26,17 +26,16 @@ import {
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import {
   appendRevisionLogIfNew,
-  attachEnergyExpectedKWh,
   captureRevisionSnapshot,
   drainProgressSamples,
   hasTrustworthyProgress,
   hourBucketMs,
   type HourProgressSnapshot,
-  pickEnergyExpectedKWhFromPlan,
   pickKwhPerUnit,
   recordProgressSample,
   seedProgressSamples,
 } from './planHistoryV4Helpers';
+import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import { randomUUID } from 'node:crypto';
 
 type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
@@ -165,20 +164,6 @@ export type InProgressRecord = Omit<
   // still be converted to delivered kWh after a mid-run restart even before a
   // fresh diagnostic re-resolves the factor.
   lastKWhPerUnit: number | null;
-  // Mean-based plan total (no variance buffer) from the most recent
-  // observed revision (`revision.energyExpectedKWh`). Cached on the record so
-  // miss attribution at finalize time can compare delivered energy against the
-  // mean rather than the buffered `plannedKWh` sum — a cold-start run with a
-  // wide `k·SE` buffer would otherwise be misclassified as `capacity_shortfall`
-  // when it delivered the mean estimate. `null` when no revision has been
-  // observed or when the revision didn't carry `energyExpectedKWh` (steady
-  // device — buffer equals mean, so the buffered comparison is already
-  // correct). Runtime-only as an in-flight tracking field — the same
-  // lossy-restart contract as `currentHourOpening` applies — but `finalizeRecord`
-  // promotes it to the persisted snapshot's `energyExpectedKWh` so the UI render
-  // path resolves the same `missCause` the runtime structured log emits (see
-  // `attachEnergyExpectedKWh`).
-  energyExpectedKWhAtFinalize: number | null;
 };
 
 
@@ -308,6 +293,16 @@ const pickRicherSnapshot = (
   return candidate.hours.length > current.hours.length ? candidate : current;
 };
 
+// One reading of "what does this run need?", shared by the initial seed and the
+// per-cycle backfill so the two cannot drift. Absence stays absent rather than
+// becoming a fabricated zero.
+const resolveCommitmentKWh = (
+  diag: DeferredObjectiveDiagnostic,
+): number | undefined => resolveRemainingEnergyKWh({
+  energyExpectedKWh: diag.energyExpectedKWh ?? undefined,
+  energyNeededKWh: diag.energyNeededKWh ?? 0,
+}) ?? undefined;
+
 export const startRecord = (
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
@@ -332,6 +327,12 @@ export const startRecord = (
     finalProgressC: captureProgressC(diag),
     finalProgressPercent: captureProgressPercent(diag),
     initialEnergyNeededKWh: diag.energyNeededKWh ?? 0,
+    // Seeded here when the producer can already state it; otherwise filled by
+    // `backfillCommitment` on the first cycle that can. Never read back off a
+    // revision snapshot — `originalPlan` is the richest schedule the planner
+    // ever achieved (freely replaced mid-run) and every revision's own figure
+    // is a shrinking remainder.
+    initialEnergyExpectedKWh: resolveCommitmentKWh(diag),
     metAtMs: currentlySatisfied ? nowMs : null,
     usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
@@ -358,7 +359,6 @@ export const startRecord = (
     // current reading when no anchor was persisted (cold start / legacy plan).
     currentHourOpening: restoreHourOpening(plan) ?? seedHourOpening(diag, nowMs),
     lastKWhPerUnit: pickKwhPerUnit(diag) ?? restoreKWhPerUnit(plan),
-    energyExpectedKWhAtFinalize: pickEnergyExpectedKWhFromPlan(plan),
   };
 };
 
@@ -427,16 +427,9 @@ const refreshPlanSnapshots = (
   // transient `plan` regression (planner cleared `latest` after a settings
   // glitch, mid-run pickup) does not reset the count we hand to history.
   const nextRevisionCount = Math.max(record.revisionCount, resolveRevisionCount(plan));
-  // Mean-based plan total cached on the record for miss attribution at
-  // finalize. Sticky across observations that drop the field (steady devices
-  // where the recorder omits `energyExpectedKWh` once it equals the buffered
-  // total) so a cold-start run that later steadies still attributes against
-  // the original cold-start mean.
-  const energyExpectedKWhAtFinalize
-    = pickEnergyExpectedKWhFromPlan(plan) ?? record.energyExpectedKWhAtFinalize;
   if (!finalRevision) {
     const { originalPlan, finalPlan, revisions } = record;
-    return { originalPlan, finalPlan, revisionCount: nextRevisionCount, revisions, energyExpectedKWhAtFinalize };
+    return { originalPlan, finalPlan, revisionCount: nextRevisionCount, revisions };
   }
   const finalSnapshot = captureRevisionSnapshot(finalRevision, plan);
   // `originalPlan` tracks the richest schedule the planner ever achieved for
@@ -465,7 +458,6 @@ const refreshPlanSnapshots = (
     finalPlan: finalSnapshot,
     revisionCount: nextRevisionCount,
     revisions,
-    energyExpectedKWhAtFinalize,
   };
 };
 
@@ -491,6 +483,45 @@ const backfillStartProgress = (
   startProgressC: record.startProgressC ?? captureTrustedProgressC(diag),
   startProgressPercent: record.startProgressPercent ?? captureTrustedProgressPercent(diag),
 });
+
+// The run's committed mean requirement, filled on the FIRST cycle the producer
+// can state it and frozen thereafter.
+//
+// Not captured only at `startRecord`, because the record is created on first
+// sight of a future deadline "regardless of status" — which routinely lands
+// inside the learning window, before any profile has resolved
+// (`objective_missing_capacity`, surfaced as "Learning energy use"). Asking once
+// at the start and never again would leave the commitment unset for a run that
+// resolved a requirement seconds later. A smart-task device must have measured
+// power to be valid, so it produces credible samples, learns a rate, and
+// resolves a requirement — the question is only when, not whether.
+//
+// `??` on the record, so the first answer wins: this is the energy the run set
+// out to need, not a later remainder.
+//
+// Gated on nothing having been delivered yet, and that gate is load-bearing.
+// `resolveCommitmentKWh` reads `remainingUnits` as of the cycle it is asked, so
+// once the device has already made progress the answer is a REMAINDER, not the
+// run's total requirement — while `deliveredKWh` keeps accumulating from the
+// run's start. Comparing the two would inflate the ratio and mislabel a run that
+// delivered less than it needed as `energy_underestimate`: precisely the
+// cumulative-vs-remainder confusion this whole change exists to remove, and the
+// backfill would have reintroduced it one layer down.
+//
+// So the commitment is only stated from a point where nothing has been
+// delivered. A run that was still learning when delivery began keeps no
+// commitment, the delivered-vs-committed comparison is declined, and the
+// attribution lands on `low_confidence` — "Still learning this device's energy
+// use." — which is the honest thing to say about a run whose requirement PELS
+// never got to measure from the start.
+const backfillCommitment = (
+  record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
+): Partial<Pick<InProgressRecord, 'initialEnergyExpectedKWh'>> => {
+  if (record.initialEnergyExpectedKWh !== undefined) return {};
+  if (record.hasDeliveryContribution) return {};
+  return { initialEnergyExpectedKWh: resolveCommitmentKWh(diag) };
+};
 
 
 // Both stall variants behave identically against re-open / drift checks —
@@ -544,6 +575,7 @@ export const mergeRecord = (
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
     ...backfillStartProgress(record, diag),
+    ...backfillCommitment(record, diag),
     finalProgressC: merged.finalProgressC,
     finalProgressPercent: merged.finalProgressPercent,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
@@ -699,6 +731,9 @@ export const finalizeRecord = (
     finalProgressC: record.finalProgressC,
     finalProgressPercent: record.finalProgressPercent,
     initialEnergyNeededKWh: record.initialEnergyNeededKWh,
+    ...(record.initialEnergyExpectedKWh !== undefined
+      ? { initialEnergyExpectedKWh: record.initialEnergyExpectedKWh }
+      : {}),
     outcome,
     metAtMs: record.metAtMs,
     // Only persist `metReason` on `met` outcomes. The contract forbids it on
@@ -709,8 +744,13 @@ export const finalizeRecord = (
     usedDeadlineReserve: record.usedDeadlineReserve,
     observedIntervals: record.observedIntervals.slice(),
     discoveredFrom: 'observation',
-    originalPlan: attachEnergyExpectedKWh(record.originalPlan, record.energyExpectedKWhAtFinalize),
-    finalPlan: attachEnergyExpectedKWh(record.finalPlan, record.energyExpectedKWhAtFinalize),
+    // Each snapshot already carries its OWN revision's `energyExpectedKWh`
+    // from `captureRevisionSnapshot`. Nothing is stamped on here: doing that
+    // put the finalize-moment figure on both snapshots, so the "original"
+    // requirement the attribution compares delivery against was really the
+    // energy still outstanding at the end.
+    originalPlan: record.originalPlan,
+    finalPlan: record.finalPlan,
     // Persist `revisionCount` only when the recorder actually observed at least
     // one revision. Zero means "never plannable" — the UI treats that the same
     // as a missing field (no "replanned" copy) so suppressing it keeps existing

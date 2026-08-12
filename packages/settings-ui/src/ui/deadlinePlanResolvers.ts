@@ -19,6 +19,7 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
+import { resolveRemainingEnergyKWh } from '../../../shared-domain/src/energyQuantities.ts';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
 import { isFiniteNumber } from './deadlinePlanData.ts';
 
@@ -170,10 +171,21 @@ export const resolveEnergyNeededKWh = (params: {
   // profile to render the timeline.
   const revisionEnergy = params.activePlan.latest?.energyNeededKWh;
   if (!isFiniteNumber(revisionEnergy) || revisionEnergy <= 0) return null;
-  const revisionExpected = params.activePlan.latest?.energyExpectedKWh;
-  const energyExpectedKWh = isFiniteNumber(revisionExpected) && revisionExpected > 0
-    ? revisionExpected
-    : revisionEnergy;
+  // Absence encodes equality with `energyNeededKWh` (steady device, cold-start,
+  // or a plan persisted before the variance buffer shipped). Routed through the
+  // one shared resolver so this rule has a single home — it was previously
+  // spelled out independently here, in the widget payload, and in the
+  // attribution producer, and the attribution copy got it wrong.
+  //
+  // A null answer means "no usable energy figure", which is the same verdict
+  // the `revisionEnergy` guard above returns for. Answering it the same way
+  // rather than substituting `revisionEnergy` keeps this a read of the
+  // resolver's result instead of a kept fallback derivation (root `AGENTS.md`).
+  const energyExpectedKWh = resolveRemainingEnergyKWh({
+    energyExpectedKWh: params.activePlan.latest?.energyExpectedKWh,
+    energyNeededKWh: revisionEnergy,
+  });
+  if (energyExpectedKWh === null) return null;
   // Producer-resolved per `feedback_layering_resolution_in_producer.md`: the
   // shared-domain helpers own the preference chain. The UI sees flat values
   // and never branches on provenance / source / kind.

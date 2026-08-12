@@ -338,12 +338,18 @@ export const resolveMissStreakBadges = (
  *  1. Daily budget exhausted on the last revision → "Daily budget filled before the
  *     deadline." (blameless; recourse copy lives on the recourse button per v2.7.3
  *     history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
- *  2. Final plan status `cannot_meet` → "Couldn't reserve enough cheap hours in time."
- *  3. Final plan status `at_risk`     → "Fell behind and didn't catch up in time."
- *  4. Discovered from backfill        → "PELS restarted mid-task; outcome estimated."
- *  5. Otherwise                       → "Didn't reach the target before the deadline."
+ *  2. `formatRefinedMissCause` — the attributed cause, when it resolves one.
+ *  3. Final plan status `cannot_meet` → "Couldn't reserve enough cheap hours in time."
+ *  4. Final plan status `at_risk`     → "Fell behind and didn't catch up in time."
+ *  5. Discovered from backfill        → "PELS restarted mid-task; outcome estimated."
+ *  6. Otherwise                       → "Didn't reach the target before the deadline."
  *
- * Sentences are kept tight (≤ ~45 chars) so the list-card reason line fits on one
+ * Branches 3-6 are RESIDUAL. Since the attribution learned to read the producer's
+ * `floorShortfallCause`, step 2 claims most missed runs — including nearly every
+ * `cannot_meet`, which is why the cheap-hours line is rarely reached now. Do not
+ * read its position here as "this is what a `cannot_meet` run says".
+ *
+ * Sentences are kept tight (≤ ~48 chars) so the list-card reason line fits on one
  * row at 320px; the consumer prefixes "Why:" to set it apart from the coverage line.
  *
  * Returns `null` only when the entry is not `outcome === 'missed'`; the missed-history page

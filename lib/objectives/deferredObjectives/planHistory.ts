@@ -351,7 +351,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
       const flushed = this.flushOpenHourAtFinalize(record);
-      this.pushEntry(finalizeRecord(flushed, nowMs, reason), flushed.energyExpectedKWhAtFinalize);
+      this.pushEntry(finalizeRecord(flushed, nowMs, reason));
       this.inProgress.delete(key);
     }
   }
@@ -375,10 +375,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (record.deviceId !== deviceId) continue;
       if (record.deadlineAtMs > nowMs) continue;
       const flushed = this.flushOpenHourAtFinalize(record);
-      this.pushEntry(
-        finalizeRecord(flushed, nowMs, 'deadline_passed'),
-        flushed.energyExpectedKWhAtFinalize,
-      );
+      this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'));
       this.inProgress.delete(key);
     }
   }
@@ -558,7 +555,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     for (const [key, record] of this.inProgress) {
       if (record.deadlineAtMs <= nowMs) {
         const flushed = this.flushOpenHourAtFinalize(record);
-        this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'), flushed.energyExpectedKWhAtFinalize);
+        this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'));
         this.inProgress.delete(key);
         continue;
       }
@@ -568,21 +565,17 @@ export class DeferredObjectivePlanHistoryRecorder {
       // recovers.
       if (nowMs - lastObservedAtMs(record) >= ABANDON_GRACE_MS) {
         const flushed = this.flushOpenHourAtFinalize(record);
-        this.pushEntry(finalizeRecord(flushed, nowMs, 'abandoned'), flushed.energyExpectedKWhAtFinalize);
+        this.pushEntry(finalizeRecord(flushed, nowMs, 'abandoned'));
         this.inProgress.delete(key);
       }
     }
   }
 
-  // `energyExpectedKWh` is the mean-based plan total threaded from the in-progress
-  // record at finalize. Optional: backfill entries (synthesized from settings
-  // without a live plan) and call sites without an in-progress record pass
-  // `null`; the attribution falls back to the buffered `plannedKWh` comparison.
-  private pushEntry(entry: DeferredObjectivePlanHistoryEntry, energyExpectedKWh: number | null = null): void {
+  private pushEntry(entry: DeferredObjectivePlanHistoryEntry): void {
     this.entries.push(entry);
     this.trimEntries();
     this.dirty = true;
-    this.emitFinalizedAttribution(entry, energyExpectedKWh);
+    this.emitFinalizedAttribution(entry);
     const endedEvent = buildEndedEventFromEntry(entry);
     if (endedEvent !== null) {
       this.deps.endedBus?.publish(endedEvent);
@@ -593,13 +586,12 @@ export class DeferredObjectivePlanHistoryRecorder {
   // are skipped: they carry no observed plan/delivery, so the attribution would
   // be `unknown` with null inputs — noise. Emitting on every outcome (not just
   // `missed`) is deliberate: the met/missed ratio against the same confidence /
-  // floor inputs is what quantifies the false-alarm rate. `energyExpectedKWh`
-  // is the mean-based plan total threaded from the live revision so cold-start
-  // buffer-inflated runs aren't mislabelled `capacity_shortfall`; see
-  // `InProgressRecord.energyExpectedKWhAtFinalize`.
-  private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry, energyExpectedKWh: number | null): void {
+  // floor inputs is what quantifies the false-alarm rate. The attribution reads
+  // only the persisted entry, so this log and the history-detail "Why" line
+  // resolve the same cause by construction.
+  private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry): void {
     if (entry.discoveredFrom !== 'observation') return;
-    const event = buildFinalizedAttributionEvent(entry, energyExpectedKWh);
+    const event = buildFinalizedAttributionEvent(entry);
     if (this.deps.debugStructured) {
       this.deps.debugStructured(event);
     } else {

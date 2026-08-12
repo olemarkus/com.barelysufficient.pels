@@ -278,6 +278,11 @@ const hasValidProgress = (v: Record<string, unknown>): boolean => (
     && isFiniteOrNull(v.finalProgressC)
     && isFiniteOrNull(v.finalProgressPercent)
     && isFiniteNumber(v.initialEnergyNeededKWh)
+    // Optional; when present it must be a finite positive number. Anything else
+    // means the persisted entry was tampered with, so drop it — same rule as
+    // the snapshot-level `energyExpectedKWh`.
+    && (v.initialEnergyExpectedKWh === undefined
+      || (isFiniteNumber(v.initialEnergyExpectedKWh) && v.initialEnergyExpectedKWh > 0))
 );
 
 const hasValidOutcome = (v: Record<string, unknown>): boolean => {

@@ -198,6 +198,11 @@ const buildLearnedResolution = (params: {
     currentValue,
     k,
   });
+  // `banded` is now null for exactly one reason — no usable `currentValue`, so
+  // there is no interval to integrate over. It used to ALSO be null whenever the
+  // profile had no bands, which made these `??`s look like a choice between two
+  // estimators; they were the same arithmetic, and `integrateBands` now computes
+  // the unbanded case itself through its uncovered-units tail.
   const energyExpectedKWh = banded?.energyExpectedKWh ?? remainingUnits * globalMean;
   const energyNeededKWh = banded?.energyPlannedKWh
     ?? remainingUnits * bufferedRate({ mean: globalMean, sigma: globalSigma, sampleCount: globalSampleCount, k });
@@ -286,6 +291,23 @@ const minConfidence = (values: ObjectiveProfileConfidence[]): ObjectiveProfileCo
   return lowest;
 };
 
+// Integrates the learned per-band rates across `[currentValue, currentValue +
+// remainingUnits]`, leaning on the global mean for any slice the bands can't
+// support — an underpopulated band, and any part of the interval outside the
+// observed range.
+//
+// There is deliberately NO empty-bands early return. With no bands the loop
+// covers nothing, `uncoveredUnits` becomes the whole interval, and the tail
+// below computes `remainingUnits × globalMean` — exactly what the caller's
+// former `?? remainingUnits * globalMean` fallback computed. Those were the same
+// arithmetic written twice, and having two spellings of one estimator is what
+// made it look as though there were a choice to make here.
+//
+// `currentValue` absence is still a null return: without it there is no
+// interval to integrate over, and fabricating one would put a plausible-looking
+// energy figure on untrustworthy progress. That guard is doing three jobs at
+// once (no band dimension for `generic_energy`, untrustworthy progress, missing
+// measurement) and wants splitting — see TODO.md.
 const integrateBands = (params: {
   bands: ObjectiveProfileBand[] | undefined;
   globalMean: number;
@@ -298,14 +320,13 @@ const integrateBands = (params: {
   const {
     bands, globalMean, globalSigma, globalSampleCount, remainingUnits, currentValue, k,
   } = params;
-  if (!bands || bands.length === 0) return null;
   if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return null;
   if (remainingUnits <= 0) return { energyExpectedKWh: 0, energyPlannedKWh: 0 };
   const targetValue = currentValue + remainingUnits;
   let expected = 0;
   let planned = 0;
   let coveredUnits = 0;
-  for (const band of bands) {
+  for (const band of bands ?? []) {
     const overlap = computeOverlap(band, currentValue, targetValue);
     if (overlap <= 0) continue;
     // An underpopulated band leans on the global mean *and* the global buffer

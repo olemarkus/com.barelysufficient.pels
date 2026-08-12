@@ -5343,6 +5343,13 @@ var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
 var ONE_HOUR_MS6 = 60 * ONE_MINUTE_MS;
 
+// packages/shared-domain/src/utils/dateUtils.ts
+var DAY_START_SEARCH_WINDOW_MS2 = 72 * 60 * 60 * 1e3;
+
+// packages/shared-domain/src/deferredPlanHistoryShared.ts
+var MINUTE_MS2 = 60 * 1e3;
+var HOUR_MS6 = 60 * MINUTE_MS2;
+
 // lib/objectives/deferredObjectives/planHistoryV4Helpers.ts
 var ONE_HOUR_MS7 = 60 * 60 * 1e3;
 var PROGRESS_SAMPLE_INTERVAL_MS = 15 * 60 * 1e3;
@@ -5516,8 +5523,8 @@ var state = {
 var MB = 1024 * 1024;
 
 // packages/shared-domain/src/smartTaskDeadlineFormat.ts
-var HOUR_MS6 = 60 * 60 * 1e3;
-var DAY_MS = 24 * HOUR_MS6;
+var HOUR_MS7 = 60 * 60 * 1e3;
+var DAY_MS = 24 * HOUR_MS7;
 var formatLocalHHMMFallback = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 var formatLocalHHMM = (ms, timeZone) => {
   const date = new Date(ms);
@@ -5578,7 +5585,7 @@ var formatSmartTaskDeadlineLong = (ms, nowMs, timeZone) => {
 };
 var hoursAreContiguous = (hours) => {
   for (let i = 1; i < hours.length; i += 1) {
-    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS6) return false;
+    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS7) return false;
   }
   return true;
 };
@@ -5590,7 +5597,7 @@ var formatScheduledHoursWindow = (scheduledHours, timeZone) => {
   if (hoursAreContiguous(scheduledHours)) {
     const first = formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
     const lastStart = scheduledHours[scheduledHours.length - 1].startsAtMs;
-    const end = formatLocalHHMM(lastStart + HOUR_MS6, timeZone);
+    const end = formatLocalHHMM(lastStart + HOUR_MS7, timeZone);
     return `${first}\u2013${end}`;
   }
   return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(", ");
@@ -5608,24 +5615,24 @@ var resolveSmartTaskDeviceKind = (device) => {
 var TEMPERATURE_FALLBACK_MIN = 5;
 var TEMPERATURE_FALLBACK_MAX = 95;
 var TEMPERATURE_FALLBACK_STEP = 0.5;
-var isFiniteNumber2 = (value) => typeof value === "number" && Number.isFinite(value);
+var isFiniteNumber3 = (value) => typeof value === "number" && Number.isFinite(value);
 var resolveSmartTaskGoalBounds = (device, kind) => {
   const unit = deadlineLabels(kind).targetUnit;
   if (kind === "ev_soc") {
     return { unit, min: 1, max: 100, step: 1 };
   }
   const target = device.targets?.[0];
-  const min = isFiniteNumber2(target?.min) ? target.min : TEMPERATURE_FALLBACK_MIN;
-  const max = isFiniteNumber2(target?.max) ? target.max : TEMPERATURE_FALLBACK_MAX;
-  const step = isFiniteNumber2(target?.step) && target.step > 0 ? target.step : TEMPERATURE_FALLBACK_STEP;
+  const min = isFiniteNumber3(target?.min) ? target.min : TEMPERATURE_FALLBACK_MIN;
+  const max = isFiniteNumber3(target?.max) ? target.max : TEMPERATURE_FALLBACK_MAX;
+  const step = isFiniteNumber3(target?.step) && target.step > 0 ? target.step : TEMPERATURE_FALLBACK_STEP;
   return { unit, min, max, step };
 };
 var resolveSmartTaskCurrentValue = (device, kind) => {
   if (kind === "temperature") {
-    return isFiniteNumber2(device.currentTemperature) ? device.currentTemperature : null;
+    return isFiniteNumber3(device.currentTemperature) ? device.currentTemperature : null;
   }
   const percent = device.stateOfCharge?.percent;
-  return isFiniteNumber2(percent) ? percent : null;
+  return isFiniteNumber3(percent) ? percent : null;
 };
 var DEFAULT_EV_TARGET_PERCENT = 80;
 var DEFAULT_TEMPERATURE_TARGET_C = 60;

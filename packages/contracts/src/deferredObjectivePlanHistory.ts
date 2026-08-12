@@ -104,20 +104,25 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   // plan never resolved a planning speed and on legacy entries. Added in
   // v2.7.4.
   planningSpeedKw?: number;
-  // Mean-based plan total (no variance buffer), pulled from the active plan's
-  // most recent revision at finalize time. Persisted so the UI render path can
-  // resolve the same `missCause` the runtime log emits — without this field the
-  // shared attribution helper would fall back to comparing delivered energy
-  // against the buffered `plannedKWh` sum (mean + k·SE) and mislabel a
-  // cold-start run as `capacity_shortfall` when delivery actually met the
-  // underlying mean. Optional — absent on entries persisted before this field
-  // shipped, on the backfill `discoveredFrom: 'backfill'` path (synthesized from
-  // settings without a live plan), and on observation-derived runs whose plan
-  // never resolved `energyExpectedKWh` (steady devices where the planner omits
-  // the field once it equals the buffered total). Consumers must treat absence
-  // as "fall back to the buffered comparison" — same behaviour as before this
-  // field shipped, so legacy entries render no-worse-than-before. Producer
-  // writes a finite positive number when present.
+  // Mean-based energy this revision still needed to reach target, captured from
+  // THIS revision by `captureRevisionSnapshot` alongside `energyNeededKWh`.
+  //
+  // NOT a plan total, despite what earlier comments here said. It is
+  // `kWhPerUnit.mean × remainingUnits` measured at the revision's moment, so it
+  // SHRINKS as a run delivers. Read it from the ORIGINAL revision when you want
+  // "what this run needed in total"; comparing a run's cumulative delivery
+  // against the FINAL revision's figure compares two different quantities, and
+  // doing exactly that is what once reported "Target needed more energy than
+  // estimated" for a nine-hour run that was capacity-bound throughout.
+  //
+  // Optional — absent on entries persisted before this field shipped and on the
+  // `discoveredFrom: 'backfill'` path (synthesized from settings without a live
+  // plan). Absence on a REVISION additionally encodes equality with
+  // `energyNeededKWh` (see the active-plan contract); read both through
+  // `resolveRemainingEnergyKWh` in `packages/shared-domain/src/energyQuantities.ts`,
+  // which is the only place that resolution lives. Producer writes a finite
+  // positive number when present — a satisfied objective omits the field rather
+  // than writing the zero that `hasValidMissAttributionFields` would reject.
   energyExpectedKWh?: number;
 };
 
@@ -219,6 +224,46 @@ export type DeferredObjectivePlanHistoryEntry = {
   finalProgressC: number | null;
   finalProgressPercent: number | null;
   initialEnergyNeededKWh: number;
+  // The run's committed MEAN energy requirement, captured once when the
+  // recorder first observed this run and never revised — the honest answer to
+  // "what did this run set out to need?".
+  //
+  // Exists because the revision snapshots cannot answer that. Their
+  // `energyExpectedKWh` is `mean × remainingUnits` measured at each revision's
+  // moment, so it shrinks as the run delivers; and `originalPlan` is not the
+  // original revision — the recorder defines it as the richest schedule the
+  // planner ever achieved and freely replaces it mid-run (`pickRicherSnapshot`),
+  // while a restart that loses the active plan reseeds `plan.original` from the
+  // current mid-run revision. Comparing a run's cumulative delivery against
+  // either is comparing two different quantities, which is what once reported
+  // "Target needed more energy than estimated" for a nine-hour run that was
+  // capacity-bound throughout.
+  //
+  // Filled on the FIRST cycle the producer can state it and frozen thereafter
+  // (`backfillCommitment`), not only when the record is created — the recorder
+  // starts a run on first sight of a future deadline "regardless of status",
+  // which routinely lands inside the learning window before any profile has
+  // resolved.
+  //
+  // Optional, and the reason is narrow enough to state exactly. A smart-task
+  // device must have measured power to be valid; that yields credible profile
+  // samples, which yield a learned rate, which yields a requirement. So a valid
+  // run does not lack a commitment — it only lacks one for as long as the
+  // profile is still learning. Absence therefore means one of exactly two
+  // things:
+  //
+  //   1. the entry predates this field (v4 shipped in v2.7.2; additive-optional
+  //      needs no bump because the normalizer filters rather than reconstructs,
+  //      so older clients round-trip it untouched), or
+  //   2. the run finalized without the profile EVER resolving — a deadline
+  //      shorter than the learning window, or the `discoveredFrom: 'backfill'`
+  //      path, which synthesizes an entry with no live diagnostic at all.
+  //
+  // Both are honestly "PELS never knew what this run needed", which is what the
+  // `low_confidence` attribution already says out loud ("Still learning this
+  // device's energy use."). Consumers decline the delivered-vs-committed
+  // comparison on absence — never substitute a different quantity for it.
+  initialEnergyExpectedKWh?: number;
   outcome: DeferredObjectivePlanOutcome;
   // When `outcome === 'met'` and absent, the run is interpreted as having
   // literally crossed the target (the existing semantics). `'stalled'` flags

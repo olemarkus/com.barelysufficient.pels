@@ -49,7 +49,14 @@ export const formatClockTime = (ms: number, timeZone: string): string | null => 
 // false negative here feeds a deliberately-withheld day into the model that
 // auto-applies daily budgets.
 export const snapshotShowsBudgetExhausted = (
-  snapshot: DeferredObjectivePlanHistoryRevisionSnapshot | null,
+  // Narrowed to the two fields actually read so callers holding a `Pick` of the
+  // snapshot (the attribution producer) can route through this resolver instead
+  // of hand-rolling one of the two signals — which is how the runtime log came
+  // to report a different cause than the UI line for a budget-bound miss.
+  snapshot: Pick<
+    DeferredObjectivePlanHistoryRevisionSnapshot,
+    'floorShortfallCause' | 'dailyBudgetExhaustedBucketCount'
+  > | null,
 ): boolean => {
   if (snapshot === null) return false;
   if (snapshot.floorShortfallCause === 'budget') return true;

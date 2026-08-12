@@ -3102,10 +3102,26 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           },
         },
       };
-      // Cycle 1: observe the plan so the recorder caches `energyExpectedKWh`
-      // onto the in-progress record and feeds an hourly delivery contribution.
+      // Cycle 1: observe so the recorder anchors the run's committed mean
+      // requirement and feeds an hourly delivery contribution.
+      //
+      // The energy figures live on the DIAGNOSTIC, not just the plan revision:
+      // `startRecord` captures `initialEnergyExpectedKWh` from the diagnostic
+      // once, and that anchored value — not any revision snapshot — is what the
+      // delivered-vs-committed comparison reads. A revision's own
+      // `energyExpectedKWh` is the energy still outstanding at that moment and
+      // shrinks as the run delivers, so it cannot serve as the commitment.
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, trajectory: { kind: 'resolved', status: 'cannot_meet' } })],
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 50,
+          // Buffered 5.0 (mean 3.0 + k·SE 2.0) — the wide-buffer cold-start
+          // shape this regression is about.
+          energyNeededKWh: 5.0,
+          energyExpectedKWh: 3.0,
+          trajectory: { kind: 'resolved', status: 'cannot_meet' },
+        })],
         0,
         plans,
       );
@@ -3121,9 +3137,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
-      // 1. Persisted snapshot carries the mean.
+      // 1. The entry carries the anchored commitment, and the snapshot still
+      //    carries its own revision's figure.
       const entry = saved()!.entries[0]!;
       expect(entry.outcome).toBe('missed');
+      expect(entry.initialEnergyExpectedKWh).toBeCloseTo(3.0);
       expect(entry.finalPlan?.energyExpectedKWh).toBeCloseTo(3.0);
 
       // 2. UI render path (reads the persisted entry only — no live hint).
@@ -3137,6 +3155,114 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         outcome: 'missed',
         missCause: 'energy_underestimate',
       });
+    });
+
+    it('fills the commitment on the first cycle that resolves it, not only at record start', () => {
+      // The record is created on first sight of a future deadline "regardless of
+      // status", which routinely lands inside the learning window — the profile
+      // has not resolved yet (`objective_missing_capacity`, shown as "Learning
+      // energy use"), so there is no requirement to state. Capturing only at
+      // `startRecord` would leave the commitment unset for a run that resolved
+      // one seconds later. A smart-task device must have measured power to be
+      // valid, so it learns a rate and resolves a requirement — the open
+      // question is when, not whether.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // Cycle 1: still learning — no energy figures on the diagnostic at all.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 50,
+          energyNeededKWh: null,
+          energyExpectedKWh: null,
+        })],
+        0,
+      );
+
+      // Cycle 2: the profile resolved. This is the run's committed requirement.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 50,
+          energyNeededKWh: 5.0,
+          energyExpectedKWh: 3.0,
+        })],
+        HOUR_MS,
+      );
+
+      // Cycle 3: the remainder has shrunk. The commitment must NOT follow it —
+      // first answer wins, or the basis becomes a moving target again.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 58,
+          energyNeededKWh: 1.4,
+          energyExpectedKWh: 1.1,
+        })],
+        2 * HOUR_MS,
+      );
+
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.initialEnergyExpectedKWh).toBeCloseTo(3.0);
+    });
+
+    it('records no commitment when the run was still learning as delivery began', () => {
+      // `resolveCommitmentKWh` reads `remainingUnits` as of the cycle it is
+      // asked, so once the device has already delivered, the answer is a
+      // REMAINDER — while `deliveredKWh` keeps accumulating from the run's
+      // start. Freezing that remainder as the commitment would inflate the
+      // delivered-vs-committed ratio and mislabel an under-delivering run as
+      // `energy_underestimate`: the exact cumulative-vs-remainder confusion this
+      // change removes, reintroduced one layer down. So the commitment is only
+      // stated from a point where nothing has been delivered.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // Cycle 1: still learning — no requirement to state.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 50,
+          energyNeededKWh: null,
+          energyExpectedKWh: null,
+        })],
+        0,
+      );
+      // Delivery lands BEFORE the profile resolves.
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev',
+        deadlineAtMs,
+        hourStartMs: 0,
+        deliveredKWh: 2.0,
+        priceValue: 1.0,
+        tone: 'normal',
+      });
+      // Cycle 2: the profile resolves, but its figure is now a remainder.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 56,
+          energyNeededKWh: 2.0,
+          energyExpectedKWh: 1.5,
+        })],
+        HOUR_MS,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.initialEnergyExpectedKWh).toBeUndefined();
     });
   });
 });
@@ -3198,5 +3324,6 @@ describe('appendRevisionLogIfNew (revisions[] cap)', () => {
     for (let i = 1; i < entries.length; i += 1) {
       expect(entries[i]!.atMs).toBeGreaterThan(entries[i - 1]!.atMs);
     }
+
   });
 });
