@@ -80,6 +80,7 @@ describe('Price level flow cards', () => {
       writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
       planEngine: {} as any,
       getPlanDevices: () => [],
+      getSettleDevices: () => [],
       getCapacityDryRun: () => true,
       getCurrentHourPriceLevel: () => ({ cheap: true, expensive: false }),
       getCombinedPrices: () => mockHomeyInstance.settings.get('combined_prices'),

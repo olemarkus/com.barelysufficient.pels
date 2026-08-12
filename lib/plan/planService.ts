@@ -147,11 +147,8 @@ export class PlanService {
     return this.deps.planEngine.buildDevicePlanSnapshot(devices);
   }
 
-  // Devices for the binary settle: the observer-internal `binaryControlObservation`
-  // evidence lives on the device snapshot, not the plan-facing `PlanInputDevice`, so the
-  // settle reads its own source. Falls back to `getPlanDevices` only for tests (see deps).
   private settleDevices(): PendingBinaryLiveDevice[] {
-    return (this.deps.getSettleDevices ?? this.deps.getPlanDevices)();
+    return this.deps.getSettleDevices();
   }
 
   /**
