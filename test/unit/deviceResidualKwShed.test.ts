@@ -19,7 +19,6 @@ import {
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const steppedProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },
@@ -31,7 +30,6 @@ const steppedProfile: SteppedLoadProfile = {
 // A profile without an explicit off step: shedding turn_off has to ride the
 // device's binary control (the "canFinishSteppedTurnOffWithBinary" branch).
 const stepOnlyProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'low', planningPowerW: 1250 },
     { id: 'medium', planningPowerW: 2000 },

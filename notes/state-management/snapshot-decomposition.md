@@ -84,10 +84,12 @@ helpers. The observer was created but never handed the observation contract.
    `deviceClass`/`deviceType`/`zone`, `steppedLoadProfile`/`targetPowerConfig` (now
    type-gated OFF the base onto `SteppedLoadDescriptorFields`, narrowed via
    `isSteppedLoadSnapshot` — `steppedLoadProfile` IS the kind discriminant, and its
-   PRESENCE is the whole test (`SteppedLoadProfile['model']` is the single literal
-   `'stepped_load'`, so on an already-typed value comparing it asserts nothing the
-   presence did not; the `unknown` parse boundary `normalizeSteppedLoadProfile` keeps
-   that comparison, and that is where a second profile model would be discriminated).
+   PRESENCE is the whole test. The profile carries no tag at all: `model:
+   'stepped_load'` was deleted 2026-08-12 because `DeviceControlProfile` is a union
+   of one, so the tag discriminated nothing and every comparison against it on an
+   already-typed value was a presence check in costume. The `unknown` parse boundary
+   `normalizeSteppedLoadProfile` decides stepped-ness from the ladder shape alone,
+   and that is where a second profile model would be discriminated.
    It is the single runtime definition of that
    discriminant: `lib/plan`'s `isSteppedLoadDevice` and the `withSteppedDiscriminant`
    regrouper both delegate to it and own only the plan-layer narrowing; `targetPowerConfig` rides the same cluster; owner seams and

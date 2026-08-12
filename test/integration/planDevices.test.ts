@@ -346,7 +346,6 @@ describe('buildInitialPlanDevices', () => {
       name: 'Water Heater',
       deviceType: 'temperature',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -392,7 +391,6 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -435,7 +433,6 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -481,7 +478,6 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -520,7 +516,6 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1172,7 +1167,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       selectedStepId: undefined,
       desiredStepId: undefined,
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'idle', planningPowerW: 0 },

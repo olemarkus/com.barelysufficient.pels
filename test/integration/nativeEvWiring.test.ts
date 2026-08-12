@@ -151,7 +151,6 @@ describe('native EV wiring shim', () => {
       controlModel: 'stepped_load',
       reportedStepId: '16a',
       steppedLoadProfile: expect.objectContaining({
-        model: 'stepped_load',
         steps: expect.arrayContaining([
           { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
           { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },

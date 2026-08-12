@@ -33,7 +33,6 @@ describe('isActivationObservationActiveNow', () => {
       currentDrawKw: 0,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1000 },

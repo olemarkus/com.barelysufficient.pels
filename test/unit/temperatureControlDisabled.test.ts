@@ -133,7 +133,6 @@ describe('disabled temperature control', () => {
   it('preserves observations while decorating the effective model as binary', () => {
     const raw = thermostat();
     const profile = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'high', planningPowerW: 2_000 },
@@ -202,7 +201,7 @@ describe('disabled temperature control', () => {
     await expect(actuator.apply({
       kind: 'step',
       deviceId: 'thermostat-1',
-      profile: { model: 'stepped_load', steps: [{ id: 'off', planningPowerW: 0 }] },
+      profile: { steps: [{ id: 'off', planningPowerW: 0 }] },
       desiredStepId: 'off',
       planningPowerW: 0,
       planningCurrentA: 0,

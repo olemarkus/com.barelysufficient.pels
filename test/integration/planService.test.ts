@@ -486,7 +486,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           // Stepped is the profile-presence capability (the planner no longer reads
           // controlModel); a real stepped device always carries the profile.
-          steppedLoadProfile: { model: 'stepped_load', steps: [{ id: 'max', planningPowerW: 3000 }] },
+          steppedLoadProfile: { steps: [{ id: 'max', planningPowerW: 3000 }] },
           currentState: 'on',
           plannedState: 'keep',
           currentDrawKw: 0,
@@ -2918,7 +2918,6 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'step_0', planningPowerW: 0 },
           { id: 'step_1', planningPowerW: 1_200 },

@@ -77,11 +77,7 @@ function toRestoreSteppedLoad(
   device: DecoratedDeviceSnapshot,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwRestoreSteppedDevice | undefined {
-  if (
-    device.controlModel !== 'stepped_load'
-    || !device.steppedLoadProfile
-    || device.steppedLoadProfile.model !== 'stepped_load'
-  ) {
+  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile) {
     return undefined;
   }
   // Mirrors `dev.currentState !== 'off'` in the legacy
@@ -121,8 +117,7 @@ function toResidualSteppedLoad(
   currentDrawKw: number,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwShedSteppedDevice | undefined {
-  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
-    || device.steppedLoadProfile.model !== 'stepped_load') {
+  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile) {
     return undefined;
   }
   const stepState = normalizeSteppedLoadStepStateFromLegacyFields({

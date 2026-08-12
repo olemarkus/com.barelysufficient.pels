@@ -75,7 +75,6 @@ const buildDevice = (
   evChargingState: 'plugged_in_paused',
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1000 },
@@ -99,7 +98,6 @@ const buildTemperatureDevice = (
   currentTemperature: 55,
   lastFreshDataMs: NOW_MS,
   steppedLoadProfile: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'heat', planningPowerW: 3000 },
@@ -856,7 +854,6 @@ describe('ConcurrentEligibleTaskTracker', () => {
     priority: 1,
     stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
     steppedLoadProfile: {
-      model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0, expectedPowerKw: 1 },
         { id: 'low', planningPowerW: 1000 },
@@ -2393,7 +2390,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       devices: [buildTemperatureDevice({
         currentTemperature: 20,
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'heat', planningPowerW: 2000 },
@@ -3453,7 +3449,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priority: 1,
       stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0, expectedPowerKw: 1 },
           { id: 'min', planningPowerW: 1000 },

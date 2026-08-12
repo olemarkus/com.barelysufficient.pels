@@ -142,7 +142,6 @@ export const buildEvTargetPowerCandidateProfile = (
   const phaseCount = resolvePhaseCount(config);
   const maxPowerW = resolveCandidateMaxPowerW(config);
   return {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
       ...EV_CHARGER_AMPS
@@ -212,7 +211,6 @@ export const resolveEvTargetPowerConfirmedProfile = (
   let steps = candidate.steps.filter((step) => step.planningPowerW <= confirmedMaxW);
   if (observed !== undefined) steps = appendExactStep(config, steps, observed);
   return {
-    model: 'stepped_load',
     steps: appendExactStep(config, steps, confirmedMaxW),
   };
 };

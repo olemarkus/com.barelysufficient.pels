@@ -331,7 +331,6 @@ describe('syncExternalOffHoldForDevice — releasing a hold', () => {
       evCharging: true,
       evChargingState: 'plugged_in_paused',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1_250 },

@@ -220,7 +220,6 @@ describe('plan logging helpers', () => {
           controllable: true,
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'Low', planningPowerW: 1250 },
@@ -269,7 +268,6 @@ describe('plan logging helpers', () => {
           budgetExempt: false,
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'Low', planningPowerW: 1250 },
               { id: 'Medium', planningPowerW: 1750 },

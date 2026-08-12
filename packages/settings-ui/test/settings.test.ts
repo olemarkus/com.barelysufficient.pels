@@ -526,7 +526,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -571,7 +570,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -618,7 +616,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -680,7 +677,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'eco', planningPowerW: 900 },
@@ -727,7 +723,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -768,7 +763,6 @@ describe('settings script', () => {
 
     expect(homey.__settingsStore.device_control_profiles).toEqual({
       'dev-1': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -797,7 +791,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'eco', planningPowerW: 900 },
@@ -859,7 +852,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'eco', planningPowerW: 900 },
@@ -898,7 +890,6 @@ describe('settings script', () => {
     // The stored profile and the shed behavior are both left exactly as they were.
     expect(homey.__settingsStore.device_control_profiles).toEqual({
       'dev-1': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'eco', planningPowerW: 900 },
@@ -933,7 +924,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-2': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'eco', planningPowerW: 900 },
@@ -1077,7 +1067,6 @@ describe('settings script', () => {
       ],
       device_control_profiles: {
         'dev-1': {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },

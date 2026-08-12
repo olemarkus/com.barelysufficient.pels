@@ -34,7 +34,6 @@ import {
 
 const steppedProfiles: DeviceControlProfiles = {
   'dev-1': {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1250 },
@@ -583,7 +582,6 @@ describe('appDeviceControlHelpers', () => {
 
     profiles = {
       'dev-1': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -726,7 +724,6 @@ describe('appDeviceControlHelpers', () => {
     });
     const changedProfiles: DeviceControlProfiles = {
       'dev-1': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'minimum', planningPowerW: 800 },
@@ -806,14 +803,12 @@ describe('appDeviceControlHelpers', () => {
 
   it('resolves effective stepped-load profiles with native, stored, snapshot, then suggested precedence', () => {
     const snapshotProfile: SteppedLoadProfile = {
-      model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'snapshot', planningPowerW: 1800 },
       ],
     };
     const suggestedProfile: SteppedLoadProfile = {
-      model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'suggested', planningPowerW: 2200 },
@@ -1039,7 +1034,6 @@ describe('appDeviceControlHelpers', () => {
   it('uses target-power snapshot profiles for reported step decoration even when a stored profile exists', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const snapshotProfile: SteppedLoadProfile = {
-      model: 'stepped_load',
       steps: [
         { id: '0w', planningPowerW: 0 },
         { id: '1500w', planningPowerW: 1500 },
@@ -1070,7 +1064,7 @@ describe('appDeviceControlHelpers', () => {
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const emptyProfiles = {
-      'dev-1': { model: 'stepped_load', steps: [] },
+      'dev-1': { steps: [] },
     } as unknown as DeviceControlProfiles;
 
     const decorated = decorateSnapshotWithDeviceControl({
@@ -1909,7 +1903,7 @@ describe('appDeviceControlHelpers', () => {
   it('normalizes stored stepped-load profile maps', () => {
     expect(normalizeStoredDeviceControlProfiles({
       'dev-1': steppedProfiles['dev-1'],
-      'dev-2': { model: 'stepped_load', steps: [{ id: '', planningPowerW: 0 }] },
+      'dev-2': { steps: [{ id: '', planningPowerW: 0 }] },
     })).toEqual({
       'dev-1': steppedProfiles['dev-1'],
     });

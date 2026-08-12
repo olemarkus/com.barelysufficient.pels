@@ -76,7 +76,6 @@ const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean })
   ...(opts.withSteps
     ? {
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: FLOOR_KW * 1000 },

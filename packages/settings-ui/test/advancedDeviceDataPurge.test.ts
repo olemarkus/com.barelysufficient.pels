@@ -13,7 +13,6 @@ import { createHomeyMock } from './helpers/homeyApiMock.ts';
 const DEVICE_ID = 'heater-1';
 const KEEP_ID = 'heater-2';
 const CONTROL_PROFILE = {
-  model: 'stepped_load' as const,
   steps: [{ id: 'off', planningPowerW: 0 }],
 };
 

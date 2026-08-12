@@ -102,7 +102,6 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
   currentTemperature: tempC,
   lastFreshDataMs: nowMs,
   steppedLoadProfile: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: FLOOR_KW * 1000 },

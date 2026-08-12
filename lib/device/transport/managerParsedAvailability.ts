@@ -11,7 +11,7 @@ export function resolveAvailable(
     if (
         controlCapabilityId !== undefined
         && !hasTrustedControlState
-        && steppedLoadProfile?.model !== 'stepped_load'
+        && steppedLoadProfile === undefined
     ) return false;
     return getIsAvailable(device);
 }

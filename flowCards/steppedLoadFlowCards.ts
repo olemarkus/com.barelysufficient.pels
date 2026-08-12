@@ -246,7 +246,7 @@ async function getSteppedLoadDeviceOptions(
   const snapshot = await deps.getSnapshot();
   return buildDeviceAutocompleteOptions(
     snapshot.filter((device) => (
-      device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
+      device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device)
     )),
     query,
   );

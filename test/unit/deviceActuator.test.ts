@@ -62,7 +62,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     const transport = buildTransport({ requestSteppedLoadStep });
     const actuator = createDeviceActuator(transport);
     const outcome = await actuator.apply({
-      kind: 'step', deviceId: 's1', profile: { model: 'stepped_load', steps: [{ id: 'low', planningPowerW: 1000 }] },
+      kind: 'step', deviceId: 's1', profile: { steps: [{ id: 'low', planningPowerW: 1000 }] },
       desiredStepId: 'low', planningPowerW: 1000, planningCurrentA: 0 });
     expect(requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 's1', desiredStepId: 'low' }));
     expect(outcome).toEqual({ requested: true, steppedResult: { requested: true, transport: 'native_capability' } });
@@ -71,7 +71,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
   it('reports requested:false for a step command when the transport has no stepped-load surface', async () => {
     const actuator = createDeviceActuator(buildTransport());
     const outcome = await actuator.apply({
-      kind: 'step', deviceId: 's1', profile: { model: 'stepped_load', steps: [{ id: 'low', planningPowerW: 1000 }] },
+      kind: 'step', deviceId: 's1', profile: { steps: [{ id: 'low', planningPowerW: 1000 }] },
       desiredStepId: 'low', planningPowerW: 1000, planningCurrentA: 0,
     });
     expect(outcome).toEqual({ requested: false });

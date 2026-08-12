@@ -152,7 +152,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       currentTemperature: 48,
       targets: [{ id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 }],
       controlModel: 'stepped_load',
-      steppedLoadProfile: { model: 'stepped_load' } as SteppedLoadProfile,
+      steppedLoadProfile: {} as SteppedLoadProfile,
       ...overrides,
     });
     const firstDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean => {

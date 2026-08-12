@@ -128,7 +128,6 @@ export const withMaterializedEvPlugState = <T extends { deviceClass?: string; co
 };
 
 export const steppedProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

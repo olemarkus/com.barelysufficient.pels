@@ -5,7 +5,6 @@ import type { ExecutableSteppedLoadDevice } from '../../lib/executor/executableP
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const PROFILE: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

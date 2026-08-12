@@ -478,7 +478,7 @@ export function resolveCandidateCapabilities(params: {
     });
     return null;
   }
-  if (deviceClassKey === 'evcharger' && steppedLoadProfile?.model === 'stepped_load') {
+  if (deviceClassKey === 'evcharger' && steppedLoadProfile !== undefined) {
     return {
       targetCaps: [],
       hasPower: hasAnyPowerCapability(capabilities),

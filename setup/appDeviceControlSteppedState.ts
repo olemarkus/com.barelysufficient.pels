@@ -39,7 +39,7 @@ type SteppedLoadStepFields = {
 // all — see `asSteppedLoadProfile` in `appDeviceControlHelpers.ts`.
 export const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): SteppedLoadProfile | null => (
   isNativeSteppedLoadControlEnabled(snapshot)
-    && snapshot.suggestedSteppedLoadProfile?.model === 'stepped_load'
+    && snapshot.suggestedSteppedLoadProfile !== undefined
     && hasUsableSteppedLoadLadder(snapshot.suggestedSteppedLoadProfile)
     ? snapshot.suggestedSteppedLoadProfile
     : null

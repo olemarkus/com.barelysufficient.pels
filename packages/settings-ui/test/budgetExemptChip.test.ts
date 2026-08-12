@@ -434,7 +434,6 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
 
 describe('PlanSteppedCard status line states what the device needs', () => {
   const steppedProfile = (): SteppedLoadProfile => ({
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: '1', planningPowerW: 2000 },

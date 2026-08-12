@@ -174,7 +174,6 @@ describe('Expected power flow card', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [steppedDevice, plainDevice]) });
     mockHomeyInstance.settings.set('device_control_profiles', {
       'dev-step': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'max', planningPowerW: 3000 },

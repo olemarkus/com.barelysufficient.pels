@@ -6,7 +6,6 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 // The production profile from incident `inc_26449fb9` (Høiax "Connected 300").
 const waterHeaterProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

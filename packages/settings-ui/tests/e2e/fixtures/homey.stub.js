@@ -350,7 +350,6 @@
           // overflow + ampere-label regressions show up on.
           steppedLoad: {
             profile: {
-              model: 'stepped_load',
               steps: [
                 { id: '6a', planningPowerW: 1380 },
                 { id: '8a', planningPowerW: 1840 },
@@ -401,7 +400,6 @@
           shedAction: 'set_step',
           steppedLoad: {
             profile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'low', planningPowerW: 750 },
                 { id: 'medium', planningPowerW: 1500 },
@@ -683,7 +681,6 @@
         expectedPowerSource: 'load-setting',
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: '6a', planningPowerW: 1380 },
@@ -713,7 +710,6 @@
         expectedPowerSource: 'default',
         capabilities: ['onoff'],
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'low', planningPowerW: 750 },
             { id: 'medium', planningPowerW: 1500 },
@@ -852,7 +848,16 @@
     nettleie_orgnr: '',
     nettleie_tariffgruppe: 'Husholdning',
 
-    // Device control profiles (stepped load)
+    // Device control profiles (stepped load).
+    //
+    // These entries deliberately KEEP the retired `model: 'stepped_load'` tag:
+    // this is a PERSISTED-SETTING fixture, and a real install upgraded from an
+    // older build still has the tag in its stored map. Keeping it here exercises
+    // the legacy-compatibility arm of `normalizeSteppedLoadProfile`, which accepts
+    // an absent or `'stepped_load'` tag and strips it. Do NOT copy the tag onto
+    // runtime snapshot fixtures — `SteppedLoadProfile` has no such field, and a
+    // snapshot carrying it would let UI code read `profile.model` in E2E while
+    // failing against real payloads.
     device_control_profiles: {
       dev_zaptec: {
         model: 'stepped_load',

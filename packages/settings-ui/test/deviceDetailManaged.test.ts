@@ -867,7 +867,6 @@ describe('device detail managed state saves', () => {
       settings: {
         device_control_profiles: {
           'hoiax-1': {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'eco', planningPowerW: 900 },
@@ -890,7 +889,6 @@ describe('device detail managed state saves', () => {
         activationEnabled: true,
       },
       suggestedSteppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1286,7 +1284,6 @@ describe('device detail managed state saves', () => {
     state.latestDevices = [buildDevice('tank-1', 'Water tank', {
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1368,7 +1365,6 @@ describe('device detail managed state saves', () => {
       capabilities: ['onoff'],
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1438,7 +1434,6 @@ describe('device detail managed state saves', () => {
       evChargingState: 'plugged_in_charging',
       stateOfCharge: stateOfChargeFixture({ percent: 32 }),
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1607,7 +1602,6 @@ describe('device detail managed state saves', () => {
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
       suggestedSteppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: '6a', planningPowerW: 1380 },
@@ -1809,7 +1803,6 @@ describe('device detail managed state saves', () => {
     state.latestDevices = [buildDevice('tank-1', 'Water tank', {
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1887,7 +1880,6 @@ describe('device detail managed state saves', () => {
         unavailable: 'not_reported',
       }),
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -1983,7 +1975,6 @@ describe('device detail managed state saves', () => {
       ...(evChargingState ? { evChargingState } : {}),
       stateOfCharge: stateOfChargeFixture({ percent: 32 }),
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },

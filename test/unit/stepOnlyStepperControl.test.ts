@@ -21,7 +21,6 @@ import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 // every step-only fix routes through resolve it from the step, not the (absent)
 // binary truth.
 const profile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

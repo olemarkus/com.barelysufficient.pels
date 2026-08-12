@@ -12,7 +12,7 @@ export function isValidSteppedLoadFeedbackProfile(
   profile: SteppedLoadProfile | null,
   stepId: string,
 ): profile is SteppedLoadProfile {
-  return profile?.model === 'stepped_load' && getSteppedLoadStep(profile, stepId) !== undefined;
+  return profile !== null && getSteppedLoadStep(profile, stepId) !== undefined;
 }
 
 export function resolvePreviousDesiredStepId(

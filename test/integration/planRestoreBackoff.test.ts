@@ -3812,7 +3812,6 @@ describe('stepped-load shed invariant', () => {
     // The restore step is then 'medium' (lowest non-zero), so off→medium is allowed.
     // This verifies the invariant cap works at the correct profile boundary.
     const profileNoLow = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'medium', planningPowerW: 2000 },

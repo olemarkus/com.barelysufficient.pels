@@ -214,7 +214,6 @@ describe('device detail power when running', () => {
     await openDetailFor(buildDevice({
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [{ id: 'step_1', planningPowerW: 1000 }],
       },
     }));
@@ -229,7 +228,6 @@ describe('device detail power when running', () => {
     await openDetailFor(buildDevice({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
       suggestedSteppedLoadProfile: {
-        model: 'stepped_load',
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 2000 }],
       },
     }));
@@ -246,7 +244,6 @@ describe('device detail power when running', () => {
         activationEnabled: true,
       },
       suggestedSteppedLoadProfile: {
-        model: 'stepped_load',
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 2000 }],
       },
     }));

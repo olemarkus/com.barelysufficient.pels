@@ -37,6 +37,7 @@ import {
   isEvSessionInactive,
 } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 // Commandability resolution lives in shared-domain so the executor can import it
 // without crossing the no-executor-to-device-internals boundary. Re-exported
 // here for the planner/producer call sites that already import from this module.
@@ -94,7 +95,7 @@ export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFla
 // so the planner's profile-only stepped check and this one cannot drift.
 const hasSteppedLoadProfile = (
   device: { steppedLoadProfile?: SteppedLoadProfile },
-): boolean => device.steppedLoadProfile?.model === 'stepped_load';
+): boolean => isSteppedLoadSnapshot(device);
 
 /**
  * A device's measured progress value against its boost floor, both in the
@@ -396,7 +397,7 @@ const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
 
 const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | null => {
   const profile = input.steppedLoadProfile;
-  if (!profile || profile.model !== 'stepped_load') return null;
+  if (!profile) return null;
   // Release cascade: honour the configured `shedBehavior.stepId` first, then fall back to
   // the lowest-active step, then the off-step. Mirrors what `shedReleaseActuation.ts` used
   // to resolve at apply time. Cap-driven sheds do not read this; they pick lowest-active

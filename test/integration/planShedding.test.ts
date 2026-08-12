@@ -555,7 +555,6 @@ describe('buildSheddingPlan', () => {
             name: 'Connected 300',
             controlModel: 'stepped_load',
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'low', planningPowerW: 1250 },
@@ -610,7 +609,6 @@ describe('buildSheddingPlan', () => {
         deviceType: 'temperature',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -681,7 +679,6 @@ describe('buildSheddingPlan', () => {
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'max', planningPowerW: 2000 },
@@ -762,7 +759,6 @@ describe('buildSheddingPlan', () => {
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'max', planningPowerW: 2000 },
@@ -831,7 +827,6 @@ describe('buildSheddingPlan', () => {
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'max', planningPowerW: 2000 },
@@ -883,7 +878,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -949,7 +943,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1018,7 +1011,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1085,7 +1077,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1151,7 +1142,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1221,7 +1211,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1290,7 +1279,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1360,7 +1348,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1430,7 +1417,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1498,7 +1484,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1567,7 +1552,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1625,7 +1609,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'low', planningPowerW: 1250 },
             { id: 'medium', planningPowerW: 1750 },
@@ -1685,7 +1668,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1758,7 +1740,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1832,7 +1813,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1906,7 +1886,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -1978,7 +1957,6 @@ describe('buildSheddingPlan', () => {
         name: 'Heater at max',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -2049,7 +2027,6 @@ describe('buildSheddingPlan', () => {
         name: 'Heater at low',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -2066,7 +2043,6 @@ describe('buildSheddingPlan', () => {
         name: 'Heater at max',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 500 },
@@ -2193,7 +2169,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'low', planningPowerW: 1250 },
             { id: 'medium', planningPowerW: 1750 },
@@ -2535,7 +2510,6 @@ describe('buildSheddingPlan', () => {
             desiredStepId: 'low',
             currentDrawKw: 0.4,
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'low', planningPowerW: 400 },
@@ -2802,7 +2776,6 @@ describe('buildSheddingPlan', () => {
         name: 'Connected 300',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -2866,7 +2839,6 @@ describe('buildSheddingPlan', () => {
         name: 'Stepped at off',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -2926,7 +2898,6 @@ describe('buildSheddingPlan', () => {
         name: 'Stepped zero',
         controlModel: 'stepped_load',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1000 },
@@ -3058,7 +3029,6 @@ describe('buildSheddingPlan', () => {
 
   it('steps down both stepped devices before shedding a binary device across multiple cycles', async () => {
     const steppedProfileA = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'low', planningPowerW: 1000 },
@@ -3066,7 +3036,6 @@ describe('buildSheddingPlan', () => {
       ],
     };
     const steppedProfileB = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'low', planningPowerW: 500 },
@@ -3718,7 +3687,6 @@ describe('buildSheddingPlan', () => {
               max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
             },
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'low', planningPowerW: 1250 },
@@ -3780,7 +3748,6 @@ describe('buildSheddingPlan', () => {
             desiredStepId: 'max',
             currentDrawKw: 1.193,
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'low', planningPowerW: 1250 },
@@ -3850,7 +3817,6 @@ describe('buildSheddingPlan', () => {
               max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
             },
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'low', planningPowerW: 1250 },
@@ -3984,7 +3950,6 @@ describe('buildSheddingPlan', () => {
             name: 'Stepped',
             controlModel: 'stepped_load',
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'low', planningPowerW: 1000 },
@@ -4053,7 +4018,6 @@ describe('buildSheddingPlan', () => {
             name: 'Stepped zero',
             controlModel: 'stepped_load',
             steppedLoadProfile: {
-              model: 'stepped_load',
               steps: [
                 { id: 'off', planningPowerW: 0 },
                 { id: 'idle', planningPowerW: 0 },

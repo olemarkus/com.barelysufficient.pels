@@ -77,7 +77,6 @@ describe('plan restore device helpers', () => {
         priority: 1,
         currentState: 'off',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -91,7 +90,6 @@ describe('plan restore device helpers', () => {
         priority: 8,
         currentState: 'on',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -122,7 +120,6 @@ describe('plan restore device helpers', () => {
         priority: 3,
         currentState: 'on',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -136,7 +133,6 @@ describe('plan restore device helpers', () => {
         priority: 4,
         currentState: 'on',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -150,7 +146,6 @@ describe('plan restore device helpers', () => {
         priority: 2,
         currentState: 'off',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -164,7 +159,6 @@ describe('plan restore device helpers', () => {
         priority: 5,
         currentState: 'off',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -178,7 +172,6 @@ describe('plan restore device helpers', () => {
         priority: 3,
         currentState: 'on',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -193,7 +186,6 @@ describe('plan restore device helpers', () => {
         currentState: 'on',
         controlCapabilityId: undefined,
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -229,7 +221,6 @@ describe('plan restore device helpers', () => {
     // below-highest step ⇒ step up; highest step ⇒ nothing to restore. Without this
     // the device is capped via `set_step` and never stepped back up.
     const steppedProfile = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'low', planningPowerW: 1250 },
@@ -368,7 +359,6 @@ describe('plan restore device helpers', () => {
       plannedState: 'inactive',
       evChargingState: 'plugged_out',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: '6a', planningPowerW: 4140 },

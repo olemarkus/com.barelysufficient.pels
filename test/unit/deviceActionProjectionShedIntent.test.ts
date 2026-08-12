@@ -15,7 +15,6 @@ const target = (
 });
 
 const steppedProfile = {
-  model: 'stepped_load' as const,
   steps: [
     { id: 'off', planningPowerW: 0, restoreFromOff: false },
     { id: 'low', planningPowerW: 800, restoreFromOff: true },
@@ -121,13 +120,19 @@ describe('resolveShedIntent', () => {
     })).toEqual({ kind: 'turn_off' });
   });
 
-  it('returns turn_off when controlModel is stepped but steppedLoadProfile.model mismatches', () => {
+  // This used to assert that a profile tagged with the wrong `model` fell back to
+  // turn_off. That mistag is now rejected upstream, at the `unknown` parse
+  // boundary (`normalizeSteppedLoadProfile`), so it cannot reach this seam at all
+  // — and the tag itself is gone from `SteppedLoadProfile`. Note this does NOT
+  // mean every degenerate profile is gone: `steps: []` is still representable, and
+  // `resolveSetStepTargetStepId` handles it deliberately by answering `null`.
+  // What the replacement covers is the reachable case this seam still decides:
+  // absence. A device with no profile is not a stepped load, whatever else is set.
+  it('returns turn_off for a device with no profile and no binary capability', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: false,
       controlCapabilityId: undefined,
-      // @ts-expect-error - exercising the runtime guard for a malformed profile
-      steppedLoadProfile: { model: 'not_stepped_load', steps: [] },
     })).toEqual({ kind: 'turn_off' });
   });
 

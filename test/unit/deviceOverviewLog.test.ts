@@ -101,7 +101,7 @@ describe('buildOverviewSteppedLoad', () => {
   it('marks a stored-profile stepped device as stepped', () => {
     const steppedLoad = buildOverviewSteppedLoad(steppedPlanDevice({ id: 'heater' }));
     expect(steppedLoad).toBeDefined();
-    expect(steppedLoad?.profile.model).toBe('stepped_load');
+    expect(steppedLoad?.profile.steps.length).toBeGreaterThan(0);
   });
 
   it('leaves a non-stepped device with no cluster at all', () => {

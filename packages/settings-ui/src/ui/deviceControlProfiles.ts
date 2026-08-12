@@ -33,7 +33,7 @@ const resolveEstimatedMaxPlanningPowerW = (
 };
 
 export const createDefaultSteppedLoadProfile = (device: SettingsUiDeviceView): SteppedLoadProfile => {
-  if (device.suggestedSteppedLoadProfile?.model === 'stepped_load') {
+  if (device.suggestedSteppedLoadProfile) {
     return device.suggestedSteppedLoadProfile;
   }
 
@@ -49,10 +49,7 @@ export const createDefaultSteppedLoadProfile = (device: SettingsUiDeviceView): S
       { id: 'off', planningPowerW: 0 },
       { id: 'max', planningPowerW: maxPlanningPowerW },
     ];
-  return {
-    model: 'stepped_load',
-    steps,
-  };
+  return { steps };
 };
 
 export const getStoredDeviceControlProfile = (deviceId: string) => state.deviceControlProfiles[deviceId] ?? null;
@@ -61,12 +58,12 @@ export const getStoredTargetPowerConfig = (deviceId: string) => state.deviceTarg
 export const isNativeSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationEnabled === true
-  && device.suggestedSteppedLoadProfile?.model === 'stepped_load'
+  && device.suggestedSteppedLoadProfile !== undefined
 );
 
 const hasResolvedSteppedLoadProfile = (device: SettingsUiDeviceView): boolean => (
-  device.steppedLoadProfile?.model === 'stepped_load'
-  || getStoredDeviceControlProfile(device.id)?.model === 'stepped_load'
+  device.steppedLoadProfile !== undefined
+  || getStoredDeviceControlProfile(device.id) !== null
 );
 
 const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean => {
@@ -109,14 +106,14 @@ export const isSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null)
  */
 export const hasSteppedLoadSupport = (device?: SettingsUiDeviceView | null): boolean => (
   isSteppedLoadProfileActive(device)
-  || device?.suggestedSteppedLoadProfile?.model === 'stepped_load'
+  || device?.suggestedSteppedLoadProfile !== undefined
 );
 
 export const getEffectiveControlModel = (device: SettingsUiDeviceView): DeviceControlModel => {
   if (isNativeSteppedLoadProfileActive(device)) return 'stepped_load';
   if (device.controlModel) return device.controlModel;
   const storedProfile = getStoredDeviceControlProfile(device.id);
-  if (storedProfile?.model === 'stepped_load') return 'stepped_load';
+  if (storedProfile) return 'stepped_load';
   const storedTargetPowerConfig = getStoredTargetPowerConfig(device.id);
   if (storedTargetPowerConfig && storedTargetPowerConfig.enabled !== false) return 'stepped_load';
   return supportsTemperatureDevice(device) ? 'temperature_target' : 'binary_power';

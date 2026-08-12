@@ -29,7 +29,6 @@ describe('resolveHeldCardReasonLine', () => {
       reportedStepId: 'low',
       selectedStepId: 'medium',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
       },
     })).toBe('increase');
@@ -41,7 +40,6 @@ describe('resolveHeldCardReasonLine', () => {
       currentState: 'not_applicable',
       reportedStepId: 'step_0',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
       },
     })).toBe('resume');

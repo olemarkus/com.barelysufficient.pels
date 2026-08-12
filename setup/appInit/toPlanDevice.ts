@@ -4,6 +4,7 @@ import { resolveCanSetControl } from '../../lib/device/deviceActionProjection';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveEvStartProbePosture } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
 import type {
   DecoratedDeviceSnapshot,
@@ -338,7 +339,7 @@ export function toPlanDevice(
   // (overview gray-state, idle classifier, diagnostics) is sourced from the
   // observer projection at its own wiring seams (`getObservationStale`).
   const device = projectEffectiveControlDevice(rawDevice);
-  const plannerSteppedLoadProfile = device.steppedLoadProfile?.model === 'stepped_load'
+  const plannerSteppedLoadProfile = isSteppedLoadSnapshot(device)
     ? resolveEvTargetPowerPlannerProfile({
       config: ctx.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig,
       confirmedProfile: device.steppedLoadProfile,

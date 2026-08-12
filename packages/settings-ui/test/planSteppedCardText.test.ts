@@ -19,7 +19,6 @@ import type { DeviceOverviewSteppedLoad } from '../../shared-domain/src/deviceOv
 const NOW_MS = 1_000_000;
 
 const profile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'low', planningPowerW: 1250 },
     { id: 'medium', planningPowerW: 1750 },
@@ -28,7 +27,6 @@ const profile: SteppedLoadProfile = {
 };
 
 const profileWithOff: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

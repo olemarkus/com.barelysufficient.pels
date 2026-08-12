@@ -245,7 +245,6 @@ describe('P1 bug proofs', () => {
         currentState: 'unknown',
         plannedState: 'keep',
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },

@@ -270,7 +270,6 @@ describe('device overview formatter', () => {
 
   it('uses increase for a target-only stepped device at a non-off step', () => {
     const profile = {
-      model: 'stepped_load' as const,
       steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
     };
     expect(formatDeviceOverview(buildOverviewDevice({
