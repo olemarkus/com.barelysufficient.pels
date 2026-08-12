@@ -91,14 +91,19 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // This is the condition that protection was always FOR. It used to be reached
   // by accident, via "no usable power figure" — a proxy that stopped working the
   // moment `expectedPowerKw` became a guaranteed positive number, because every
-  // device could then produce a rung. Keyed on the real fact instead: the profile
-  // is the live ladder and `controlModel` is the configured intent, and profile
-  // presence implies `controlModel === 'stepped_load'` but not the converse, so
-  // their disagreement IS the gap. Prod 2026-08-01: a stepped water heater lost
-  // its profile across a restart and its committed task degraded to `unknown` for
-  // 9.5 h; regression-guarded at the SDK boundary by
+  // device could then produce a rung. Then it was inferred here, from a
+  // `controlModel` tag that survived the cluster rebuild. It is now the producer's
+  // answer, read flat: `toPlanDevice` is where the configured intent and the
+  // ladder the planner will run are both visible, and this layer trusts it rather
+  // than reconstructing it (resolution-in-producer). Prod 2026-08-01: a stepped
+  // water heater lost its profile across a restart and its committed task degraded
+  // to `unknown` for 9.5 h; regression-guarded at the SDK boundary by
   // `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
-  if (device.controlModel === 'stepped_load') return [];
+  //
+  // MOVES WITH `resolvePlanningSpeedKw` in `planningSpeed.ts` — the two are
+  // mirrors, and a divergence means the diagnostic and the hero copy disagree
+  // about the same device in the same cycle.
+  if (device.steppedLadderMissing === true) return [];
   if (isEvDevice(device)) {
     return withResolvedAdmission([buildSyntheticChargeStep(device, device.expectedPowerKw)]);
   }

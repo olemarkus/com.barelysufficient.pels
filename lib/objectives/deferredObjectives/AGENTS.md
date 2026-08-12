@@ -37,6 +37,17 @@ Three things that look like regressions and are not:
 Design of record: `notes/deferred-load-objectives/README.md` § "An unbooked hour is not a
 stand-down"; proof: `test/integration/smartTaskUnclaimedHourLifecycle.test.ts`.
 
+## The step-ladder gap is the producer's answer, and its two readers are mirrors
+
+"Configured as a stepped load, but no live ladder this cycle" is resolved at `toPlanDevice` and
+arrives here as the flat `steppedLadderMissing` bit. Do **not** re-derive it from `controlModel`,
+profile presence, or a missing power figure — this layer cannot see both halves of the question, and
+each of those proxies has already failed once in production. `resolveObjectiveSteps` (→
+`liveStepsUnavailable` → frozen serve) and `resolvePlanningSpeedKw` (hero copy) are the only two
+readers, and they **move together**; changing one alone makes the diagnostic and the hero disagree
+about the same device in the same cycle. Background: `notes/deferred-load-objectives/execution-adaptation.md`
+§ "Live step-ladder gap — the frozen read also bridges missing steps".
+
 ## E2E must drive the real stack from the Homey SDK boundary
 
 When testing or reproducing deferred-objective behaviour across cycles, simulate **only** the Homey

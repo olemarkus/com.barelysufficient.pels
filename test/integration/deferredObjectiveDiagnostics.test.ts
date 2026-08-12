@@ -3227,9 +3227,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('reports the step-ladder gap for a stepped-configured device with no live profile', () => {
-    // Keyed on the ladder's absence, not on the power figure. The power figure
-    // was only ever a proxy for it, and it stopped working as one the moment
-    // `expectedPowerKw` became a guaranteed positive number.
+    // Keyed on the producer's resolved gap bit, not on the power figure and not
+    // on the `controlModel` tag. The power figure was only ever a proxy and it
+    // stopped working as one the moment `expectedPowerKw` became a guaranteed
+    // positive number; the tag was a producer-side fact this layer reconstructed.
+    // `controlModel` is deliberately ABSENT from this fixture so the case fails if
+    // the consumer ever goes back to inferring the gap from it.
     const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3240,10 +3243,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
-      controlModel: 'stepped_load' as const,
+      steppedLadderMissing: true as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
-      // No `steppedLoadProfile`: configured stepped, but the ladder is missing.
+      // No `steppedLoadProfile`: configured stepped, but the ladder is missing —
+      // which is what the producer stamped `steppedLadderMissing` for.
     })) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({

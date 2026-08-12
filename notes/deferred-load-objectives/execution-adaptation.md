@@ -388,6 +388,23 @@ short-circuited to `unknown (objective_missing_charge_rate)` for 9.5 h — strip
 exemption/boost/floor every cycle (the hero's safe pace collapsed 2.2 → 1.3 kW) while the committed
 plan sat untouched in persisted settings. The learned rate never degraded; only the ladder did.
 
+**How the gap is detected.** It is resolved once at the producer
+(`setup/appInit/toPlanDevice.ts` → `resolveSteppedLadderMissing`) and carried inward as a flat
+`steppedLadderMissing` bit on the plan / objective device input. The producer is the only place that
+sees both halves of the question — the configured control model, and the ladder the planner will
+actually run — because `withSteppedDiscriminant` strips the whole stepped cluster from a non-stepped
+result, so downstream "no profile" alone cannot say whether a ladder was *expected*. Two consumers
+read the bit, `resolveObjectiveSteps` (→ `liveStepsUnavailable`) and `resolvePlanningSpeedKw` (the
+hero's planning-speed copy). **They are mirrors and must move together**: a divergence means the
+diagnostic and the hero disagree about the same device in the same cycle.
+
+Coverage is deliberately split across two tiers, because the 2026-08-01 failure was in the *join*,
+not in either half: `test/integration/appInitToPlanDeviceSteppedLadderGap.test.ts` pins the
+producer's rule in isolation, and the SDK-boundary e2e drives a restart-shaped device READING
+through the real `toPlanDevice` so the bit is **derived**, never hand-stamped. Do not "simplify" the
+e2e by asserting `steppedLadderMissing` on a fabricated plan device — that supplies the derivation's
+conclusion instead of its inputs, and the test would then keep passing through a producer regression.
+
 The rule (same as the missing-price-horizon case): **re-plan only when due AND possible; a committed
 task is never dropped to `unknown` for want of a live input the commitment already embodies.** With
 steps missing and a commitment available, `buildDiagnosticWithPolicyHorizon` serves the frozen

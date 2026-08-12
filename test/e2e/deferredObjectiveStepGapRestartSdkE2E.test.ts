@@ -10,6 +10,26 @@
 // store (whose payload survives the restart) — and drive the REAL bridge +
 // recorder + admission. No PELS internals are mocked.
 //
+// The restart shape is therefore expressed as a transport-shaped DEVICE READING
+// (`DecoratedDeviceSnapshot`: configured `controlModel: 'stepped_load'`, no live
+// `steppedLoadProfile`) and converted by the REAL producer, `toPlanDevice`. The
+// gap bit the smart-task stack keys on (`steppedLadderMissing`) is DERIVED by
+// that producer here, never hand-stamped: hand-stamping it would supply the
+// derivation's conclusion instead of its inputs, and the test would keep passing
+// even if the producer stopped materialising the bit — which is exactly the
+// producer↔consumer JOIN that broke in production on 2026-08-01.
+//
+// Coverage split: `test/integration/appInitToPlanDeviceSteppedLadderGap.test.ts`
+// pins the producer's rule in isolation AND joins its output straight into both
+// consumers (fast, and it names the producer when it fails). THIS tier drives the
+// join across the full restart — commit, restart, frozen serve, settle, rollover
+// — which is the only place the 9.5 h behaviour itself is observable.
+//
+// `createAppContextMock` supplies only the settings-derived wiring `toPlanDevice`
+// reads (capacity-control flag, shed behaviour, boost configs) — the outer
+// boundary, not a PELS decision internal. Nothing between the device reading and
+// the diagnostic is stubbed.
+//
 // Expected behaviour under test: a committed task is served its frozen committed
 // plan through a live step-ladder gap (protections hold, `expectedStepId`
 // degrades to null, the cycle is marked `liveStepsUnavailable`), while a task
@@ -29,7 +49,10 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { toPlanDevice } from '../../setup/appInit';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { DecoratedDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;
@@ -57,18 +80,33 @@ const todayPriceFor = (h: number): number => {
 const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 
-// The step ladder is a live transport input (flow-registered overlay). Pre-restart
-// the device carries it; post-restart it is gone and no calibrated/measured power
-// stands in — exactly the prod shape that makes `resolveObjectiveSteps` return [].
-const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
+// The DEVICE READING, transport-shaped — the outer boundary this harness is
+// allowed to simulate. The step ladder is a live transport input (flow-registered
+// overlay): pre-restart the device carries it; post-restart it is gone and no
+// calibrated/measured power stands in. `controlModel: 'stepped_load'` is the
+// configured intent, which lives in settings and therefore DOES survive the
+// restart — that surviving-intent-without-a-ladder pair is the prod shape.
+//
+// Note what is NOT here: `steppedLadderMissing`. The reading supplies only the
+// gap's inputs; the producer below derives the conclusion.
+//
+// Widened with `TemperatureObservedProbe` rather than reading `currentTemperature`
+// off the base: the field lives on `TemperatureObservedFields`, narrowed through
+// `hasObservedTemperature`, and producer-side surfaces that physically carry it
+// before consumers narrow take the probe intersection — which is exactly what a
+// transport-shaped reading feeding `toPlanDevice` is.
+const buildDeviceReading = (
+  tempC: number,
+  nowMs: number,
+  opts: { withSteps: boolean },
+): DecoratedDeviceSnapshot & TemperatureObservedProbe => ({
   id: DEVICE_ID,
-  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
-  commandableNow: true,
+  expectedPowerKw: 1,
+  expectedPowerSource: 'default',
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
-  controlCapabilityId: 'onoff' as const,
+  controlCapabilityId: 'onoff',
   binaryControl: { on: false },
-  controllable: false, // cap-off: the deferred objective is the only reason PELS drives it
   deviceType: 'temperature',
   controlModel: 'stepped_load',
   currentTemperature: tempC,
@@ -84,7 +122,20 @@ const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean })
       },
     }
     : {}),
-}) as PlanInputDevice;
+});
+
+// Run the reading through the REAL producer, so every producer-resolved field the
+// smart-task stack reads — `steppedLadderMissing`, `commandableNow`,
+// `currentDrawKw`, `currentState`/`currentOn`, the stepped cluster — is derived
+// by the code that derives it in production rather than asserted by the fixture.
+// A producer that stopped stamping the gap bit breaks THIS test, which is the
+// point of it. `controllable: false` (cap-off — the deferred objective is the
+// only reason PELS drives this device) comes from the mock's default
+// `isCapacityControlEnabled`.
+const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => toPlanDevice(
+  createAppContextMock({ getNow: () => new Date(nowMs) }),
+  buildDeviceReading(tempC, nowMs, opts),
+);
 
 // The learned kWh/°C rate is present and confident throughout — in prod it never
 // degraded; only the step ladder did.
@@ -209,6 +260,9 @@ const commitPlanAndPersist = (): DeferredObjectiveActivePlansV1 => {
     save: (payload) => { persisted = payload; return true; },
   });
   const device = buildDevice(START_C, START_MS, { withSteps: true });
+  // Negative control on the join: with the ladder present the producer derives NO
+  // gap, so the commitment below is built from real steps.
+  expect(device.steppedLadderMissing).toBeUndefined();
   const diag = buildDiagnostic(START_MS, device, recorder.getActivePlansSnapshot());
   expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
   recorder.observe(diag ? [diag] : [], START_MS);
@@ -230,6 +284,10 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
 
   it('serves the frozen committed plan through the gap — protections hold', () => {
     const device = buildDevice(START_C, RESTART_MS, { withSteps: false });
+    // THE JOIN, asserted where it broke: the producer DERIVED the gap from the
+    // restart-shaped reading (configured stepped, ladder gone). Everything below
+    // rides on this bit reaching the smart-task stack.
+    expect(device.steppedLadderMissing).toBe(true);
     const diag = buildDiagnostic(RESTART_MS, device, restartedRecorder().getActivePlansSnapshot());
 
     expect(diag).toBeDefined();
