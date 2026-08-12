@@ -290,7 +290,7 @@ export const reportSteppedLoadActualStep = (params: {
     planningPowerW,
   } = params;
   const profile = profiles[deviceId];
-  if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
+  if (!profile || !getSteppedLoadStep(profile, stepId)) {
     return 'invalid';
   }
 

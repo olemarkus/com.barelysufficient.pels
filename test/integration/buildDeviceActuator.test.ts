@@ -5,7 +5,6 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const profile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1000 },

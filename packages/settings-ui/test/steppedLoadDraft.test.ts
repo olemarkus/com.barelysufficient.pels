@@ -32,7 +32,7 @@ const buildSteppedDevice = (
   // `controlModel: 'stepped_load'` makes getEffectiveControlModel resolve to
   // stepped_load without needing state.deviceControlProfiles wired up.
   controlModel: 'stepped_load',
-  steppedLoadProfile: { model: 'stepped_load', steps },
+  steppedLoadProfile: { steps },
 });
 
 const readDraftSteps = (): Array<{ id: string; planningPowerW: number }> => {

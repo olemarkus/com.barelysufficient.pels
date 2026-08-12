@@ -15,15 +15,19 @@ import type {
  * `SteppedLoadProfile` (never `undefined`), so consumers read it (and the
  * optional `targetPowerConfig`) without re-handling the absent case.
  *
- * The presence IS the kind, and the predicate says only that. `SteppedLoadProfile`
- * has one `model`, the single literal `'stepped_load'`, so on an already-typed
- * value comparing it asserts nothing the presence of the field did not already
- * say — a presence check wearing a costume. The place that comparison does real
- * work is `normalizeSteppedLoadProfile` (`packages/contracts/src/deviceControlProfiles.ts`),
- * which takes `value: unknown` at the parse boundary; that is where a future
- * second profile model would be discriminated, and the storage slot is already
- * single-typed anyway (`DeviceControlProfile` IS `SteppedLoadProfile`, and
- * `DeviceControlProfiles` is a per-device record of those).
+ * The presence IS the kind, and the predicate says only that — there is nothing
+ * else it COULD say. `SteppedLoadProfile` carries no tag at all: it used to hold
+ * `model: 'stepped_load'`, but `DeviceControlProfile` is a union of one, so that
+ * field discriminated nothing and was deleted (2026-08-12). Having a profile is
+ * being a stepped load, by construction.
+ *
+ * A future second profile model is discriminated at
+ * `normalizeSteppedLoadProfile` (`packages/contracts/src/deviceControlProfiles.ts`),
+ * which takes `value: unknown` at the parse boundary — that is the only place the
+ * question is genuinely open. The storage slot is single-typed either way
+ * (`DeviceControlProfile` IS `SteppedLoadProfile`, and `DeviceControlProfiles` is
+ * a per-device record of those), so downstream of that boundary the location
+ * already says what the value is.
  *
  * This is a type guard, not a validator. Whether the ladder is USABLE is the
  * producer's question and is already answered there — `asSteppedLoadProfile`

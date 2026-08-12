@@ -16,7 +16,6 @@ const UNUSABLE_STEPPED_CONFIG_MARKER = 'boot_migrations_v2_unusable_stepped_conf
 // on a fresh install, whether or not it had anything to change.
 const BOOT_MIGRATION_COUNT = 2;
 const USABLE_PROFILE = {
-  model: 'stepped_load',
   steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 1200 }],
 };
 const LEGACY_MULTI_HOME_ENABLED = 'multi_home_enabled';
@@ -154,8 +153,8 @@ describe('runBootMigrations', () => {
       [ORPHAN_EV_SUPPORT_KEY]: true,
       [DEVICE_CONTROL_PROFILES]: {
         keep: USABLE_PROFILE,
-        'drop-empty': { model: 'stepped_load', steps: [] },
-        'drop-off-only': { model: 'stepped_load', steps: [{ id: 'off', planningPowerW: 0 }] },
+        'drop-empty': { steps: [] },
+        'drop-off-only': { steps: [{ id: 'off', planningPowerW: 0 }] },
       },
       [DEVICE_TARGET_POWER_CONFIGS]: {
         keep: { enabled: true, max: 3680, step: 460 },
@@ -180,6 +179,39 @@ describe('runBootMigrations', () => {
     }))).toEqual([
       { kind: 'control_profile', droppedDeviceIds: ['drop-empty', 'drop-off-only'] },
       { kind: 'target_power_config', droppedDeviceIds: ['drop-no-ladder'] },
+    ]);
+  });
+
+  // The repair rewrites the WHOLE normalized map whenever it drops anything, so
+  // it is the path that would launder a foreign-tagged entry: parse it, strip the
+  // tag it disagreed with, and write it back looking exactly like one PELS wrote.
+  // The `unknown` boundary refuses it instead, so the repair drops it alongside
+  // the unusable entries. A legacy `stepped_load` tag survives, minus the tag.
+  it('drops a foreign-tagged profile and strips the legacy tag on rewrite', () => {
+    const legacyTagged = { model: 'stepped_load', ...USABLE_PROFILE };
+    const env = createHomey({
+      [DEVICE_CONTROL_PROFILES]: {
+        keep: USABLE_PROFILE,
+        'keep-legacy-tagged': legacyTagged,
+        // An external writer (Homey's app-setting endpoint) could PUT this: a
+        // perfectly good ladder announcing it is not a stepped load.
+        'drop-foreign-tagged': { model: 'binary_power', ...USABLE_PROFILE },
+        'drop-empty': { steps: [] },
+      },
+    });
+
+    runBootMigrations({ homey: env.homey });
+
+    expect(env.store.get(DEVICE_CONTROL_PROFILES)).toEqual({
+      keep: USABLE_PROFILE,
+      'keep-legacy-tagged': USABLE_PROFILE,
+    });
+    expect(env.store.get(DEVICE_CONTROL_PROFILES)).not.toHaveProperty('drop-foreign-tagged');
+    expect(capture.findEvents('unusable_stepped_configuration_repaired').map((event) => ({
+      kind: event.kind,
+      droppedDeviceIds: event.droppedDeviceIds,
+    }))).toEqual([
+      { kind: 'control_profile', droppedDeviceIds: ['drop-foreign-tagged', 'drop-empty'] },
     ]);
   });
 
@@ -215,7 +247,7 @@ describe('runBootMigrations', () => {
     // Next boot, the read succeeds and the repair lands.
     env.store.set(DEVICE_CONTROL_PROFILES, {
       keep: USABLE_PROFILE,
-      'drop-me': { model: 'stepped_load', steps: [] },
+      'drop-me': { steps: [] },
     });
 
     runBootMigrations({ homey: env.homey });
@@ -247,7 +279,7 @@ describe('runBootMigrations', () => {
     // This runs inside a startup step that rethrows, so an escaping write error
     // would take the whole app down rather than skip a cleanup.
     const env = createHomey({
-      [DEVICE_CONTROL_PROFILES]: { 'drop-me': { model: 'stepped_load', steps: [] } },
+      [DEVICE_CONTROL_PROFILES]: { 'drop-me': { steps: [] } },
     });
     const originalSet = env.homey.settings.set.bind(env.homey.settings);
     env.homey.settings.set = ((key: string, value: unknown) => {
@@ -272,7 +304,7 @@ describe('runBootMigrations', () => {
 
   it('does not re-repair a profile the user re-saved after the one-time fix', () => {
     const env = createHomey({
-      [DEVICE_CONTROL_PROFILES]: { 'drop-me': { model: 'stepped_load', steps: [] } },
+      [DEVICE_CONTROL_PROFILES]: { 'drop-me': { steps: [] } },
     });
 
     runBootMigrations({ homey: env.homey });
@@ -280,7 +312,7 @@ describe('runBootMigrations', () => {
 
     // The save paths reject an unusable profile now, so a later one can only
     // come from outside PELS. The marker means the repair does not run again.
-    env.store.set(DEVICE_CONTROL_PROFILES, { 'drop-me': { model: 'stepped_load', steps: [] } });
+    env.store.set(DEVICE_CONTROL_PROFILES, { 'drop-me': { steps: [] } });
     env.setCalls.length = 0;
 
     runBootMigrations({ homey: env.homey });

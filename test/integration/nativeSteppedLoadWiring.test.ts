@@ -48,7 +48,6 @@ import {
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
 const steppedProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },
@@ -221,7 +220,6 @@ describe('native stepped-load wiring', () => {
     })).toEqual({ capabilityId: 'onoff', value: false });
     expect(resolveNativeSteppedLoadCommand({
       profile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'max', planningPowerW: 3000 },
@@ -241,7 +239,6 @@ describe('native stepped-load wiring', () => {
       capabilities: device.capabilities ?? [],
       capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
-      model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: '1380w', planningPowerW: 1380 },
@@ -264,7 +261,6 @@ describe('native stepped-load wiring', () => {
       capabilities: device.capabilities ?? [],
       capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
-      model: 'stepped_load',
       steps: expect.arrayContaining([
         { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
         { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
@@ -284,7 +280,6 @@ describe('native stepped-load wiring', () => {
       capabilities: device.capabilities ?? [],
       capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
-      model: 'stepped_load',
       steps: expect.arrayContaining([
         { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
         { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
@@ -320,7 +315,6 @@ describe('native stepped-load wiring', () => {
 
   it('maps target_power observations and commands through the stepped-load profile', () => {
     const profile: SteppedLoadProfile = {
-      model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: '6a', planningPowerW: 1380 },
@@ -421,10 +415,8 @@ describe('native stepped-load wiring', () => {
       controlModel: 'stepped_load',
       reportedStepId: '1380w',
       suggestedSteppedLoadProfile: expect.objectContaining({
-        model: 'stepped_load',
       }),
       steppedLoadProfile: expect.objectContaining({
-        model: 'stepped_load',
       }),
     }));
     expect(parsed.capabilities).not.toContain('target_power');
@@ -464,7 +456,6 @@ describe('native stepped-load wiring', () => {
       reportedStepId: '6a',
       reportedStepPowerW: 4140,
       steppedLoadProfile: expect.objectContaining({
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
           { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
@@ -552,7 +543,6 @@ describe('native stepped-load wiring', () => {
       controlModel: 'stepped_load',
       targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
       steppedLoadProfile: expect.objectContaining({
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
           { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
@@ -606,7 +596,6 @@ describe('native stepped-load wiring', () => {
         excludeMax: 1380,
       },
       steppedLoadProfile: expect.objectContaining({
-        model: 'stepped_load',
       }),
     }));
   });
@@ -633,7 +622,6 @@ describe('native stepped-load wiring', () => {
         owner: deviceManager,
         deviceId: 'target-power-1',
         profile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: '8a', planningPowerW: 1840 },
@@ -846,7 +834,6 @@ describe('native stepped-load wiring', () => {
 
   it('uses device-supported native steps instead of configured profile steps', () => {
     const configuredProfile: SteppedLoadProfile = {
-      model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'eco', planningPowerW: 900 },
@@ -1023,7 +1010,6 @@ describe('native stepped-load wiring', () => {
       currentTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: '6a', planningPowerW: 1380 },
@@ -1106,7 +1092,6 @@ describe('native stepped-load wiring', () => {
       currentTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         // EV preset profiles now carry the producer-resolved per-step
         // installation current; the executor reads `planningCurrentA` off the
         // step (6a @ 3-phase = 4140 / (230*3) = 6 A).
@@ -1358,7 +1343,6 @@ describe('native stepped-load wiring', () => {
       binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: '6a', planningPowerW: 1380 },
@@ -1370,7 +1354,6 @@ describe('native stepped-load wiring', () => {
     await expect(deviceManager.requestSteppedLoadStep({
       deviceId: 'flow-step-1',
       profile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: '6a', planningPowerW: 1380 },

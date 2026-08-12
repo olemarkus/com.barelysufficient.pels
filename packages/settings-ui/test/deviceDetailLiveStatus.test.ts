@@ -39,7 +39,6 @@ const planWithReason = (reason: { code: 'cooldown_restore'; remainingSec: number
       selectedStepId: 'medium',
       steppedLoad: {
         profile: {
-          model: 'stepped_load',
           steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
         },
         reportedStepId: 'low',

@@ -30,7 +30,7 @@ describe('homeyApiMock', () => {
 
   it('builds bootstrap settings from the production key list', async () => {
     const deviceControlProfiles = {
-      'device-1': { model: 'stepped_load', steps: [] },
+      'device-1': { steps: [] },
     };
     const homey = createHomeyMock({
       settings: {

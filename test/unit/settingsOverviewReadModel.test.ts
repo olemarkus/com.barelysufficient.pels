@@ -128,7 +128,6 @@ describe('settingsOverviewReadModel', () => {
     expect(isSteppedLoadDevice(device)).toBe(true);
     if (!isSteppedLoadDevice(device)) throw new Error('expected stepped test device');
     const confirmedProfile = {
-      model: 'stepped_load' as const,
       steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max'),
     };
 

@@ -15,7 +15,6 @@ import type { FlowCard } from '../../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
 
 const steppedProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },
@@ -353,7 +352,6 @@ describe('registerFlowCards', () => {
           suggestedSteppedLoadProfile: undefined,
           targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: '6a', planningPowerW: 4140 },
@@ -389,7 +387,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'max', planningPowerW: 3000 },
@@ -436,7 +433,6 @@ describe('registerFlowCards', () => {
           controlModel: 'stepped_load',
           desiredStepId: 'max',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1250 },
@@ -476,7 +472,6 @@ describe('registerFlowCards', () => {
           controlModel: 'stepped_load',
           desiredStepId: 'max',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'near-max', planningPowerW: 2950 },
@@ -511,7 +506,6 @@ describe('registerFlowCards', () => {
           desiredStepId: 'max',
           stepCommandPending: true,
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1250 },
@@ -544,7 +538,6 @@ describe('registerFlowCards', () => {
           controlModel: 'stepped_load',
           desiredStepId: 'max',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'max', planningPowerW: 3000 },
@@ -772,7 +765,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'max', planningPowerW: 3000 },
@@ -817,7 +809,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'max', planningPowerW: 3000 },
@@ -907,7 +898,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'max', planningPowerW: 3000 },
@@ -1015,7 +1005,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1750 },
@@ -1062,7 +1051,6 @@ describe('registerFlowCards', () => {
           controlModel: 'stepped_load',
           targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: '6a', planningPowerW: 4140 },
@@ -1101,7 +1089,6 @@ describe('registerFlowCards', () => {
           controlModel: 'stepped_load',
           targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: '10a', planningPowerW: 2300 },
@@ -1134,7 +1121,6 @@ describe('registerFlowCards', () => {
             max: 7360,
           },
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: '24a', planningPowerW: 5520 },
@@ -1163,7 +1149,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1750 },
@@ -1199,7 +1184,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1250 },
@@ -1239,7 +1223,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1750 },
@@ -1283,7 +1266,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'low', planningPowerW: 1250 },
               { id: 'max', planningPowerW: 3000 },
@@ -1323,7 +1305,6 @@ describe('registerFlowCards', () => {
           name: 'Tank',
           controlModel: 'stepped_load',
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 1250 },

@@ -93,7 +93,6 @@ const createDeferred = () => {
 
 const buildSteppedLoadProfiles = (deviceId: string) => ({
   [deviceId]: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1250 },

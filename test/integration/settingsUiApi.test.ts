@@ -70,7 +70,6 @@ describe('settingsUiApi', () => {
         evChargingState: 'plugged_in_charging',
         stateOfCharge: stateOfChargeFixture({ percent: 80 }),
         steppedLoadProfile: {
-          model: 'stepped_load',
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 4140 },
@@ -407,7 +406,6 @@ describe('settingsUiApi', () => {
           evChargingState: 'plugged_in_charging',
           stateOfCharge: stateOfChargeFixture({ percent: 80 }),
           steppedLoadProfile: {
-            model: 'stepped_load',
             steps: [
               { id: 'off', planningPowerW: 0 },
               { id: 'low', planningPowerW: 4140 },

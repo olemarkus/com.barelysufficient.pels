@@ -139,7 +139,6 @@ const buildDevice = (params: {
   controlModel: 'stepped_load',
   controlCapabilityId: 'onoff',
   steppedLoadProfile: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1500 },

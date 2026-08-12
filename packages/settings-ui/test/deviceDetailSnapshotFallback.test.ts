@@ -362,7 +362,6 @@ describe('device detail snapshot-fallback wiring (defense-in-depth)', () => {
       evChargingState: 'plugged_in_charging',
       stateOfCharge: stateOfChargeFixture({ percent: 32 }),
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
@@ -426,7 +425,6 @@ describe('device detail snapshot-fallback wiring (defense-in-depth)', () => {
     state.latestDevices = [buildDevice('tank-1', {
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },

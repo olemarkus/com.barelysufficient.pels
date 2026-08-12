@@ -55,7 +55,6 @@ const buildEvDevice = (
   evChargingState: 'plugged_in_paused',
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1000 },
@@ -82,7 +81,6 @@ const buildTemperatureDevice = (
   currentTemperature: 55,
   lastFreshDataMs: NOW_MS,
   steppedLoadProfile: {
-    model: 'stepped_load' as const,
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'heat', planningPowerW: 3000 },

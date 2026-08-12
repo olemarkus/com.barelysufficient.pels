@@ -42,7 +42,6 @@ const STEP_DEVICE_ID = 'dev_priority_tank';
 const LOWER_PRIORITY_ID = 'dev_lower_priority';
 
 const STEP_PROFILE = {
-  model: 'stepped_load' as const,
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1500 },

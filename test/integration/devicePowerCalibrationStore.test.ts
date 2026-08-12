@@ -20,7 +20,6 @@ import { captureLogger } from '../utils/loggerCapture';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../../lib/utils/settingsKeys';
 
 const CONNECTED_300_PROFILE: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

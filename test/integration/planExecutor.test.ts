@@ -485,7 +485,7 @@ describe('PlanExecutor restore logging', () => {
           currentTarget: null,
           controllable: true,
           reason: KEEP_REASON,
-          steppedLoadProfile: { model: 'stepped_load' } as never,
+          steppedLoadProfile: {} as never,
         }),
         pd({
           id: 'dev-1',
@@ -1549,7 +1549,6 @@ describe('PlanExecutor pending target commands', () => {
 
 describe('PlanExecutor stepped loads', () => {
   const steppedProfile = {
-    model: 'stepped_load' as const,
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1250 },
@@ -1856,7 +1855,6 @@ describe('PlanExecutor stepped loads', () => {
     // re-deriving it from the target-power preset config.
     await expect(executor.applyPlanActions(steppedPlan({
       steppedLoadProfile: {
-        model: 'stepped_load' as const,
         steps: [
           { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
           { id: 'low', planningPowerW: 1250, planningCurrentA: 1250 / 230 },
@@ -3169,7 +3167,6 @@ describe('PlanExecutor stepped loads', () => {
 
 describe('PlanExecutor stepped load reconciliation loop', () => {
   const steppedProfile = {
-    model: 'stepped_load' as const,
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1250 },
@@ -3903,7 +3900,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('normalizes stale desired steps to the same lowest restore step while devices remain shed', async () => {
     // Custom profile with off/low/medium/max so we can test desiredStepId transitions
     const multiStepProfile = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'low', planningPowerW: 1250 },

@@ -86,7 +86,6 @@ describe('resolveDeviceDetailKind', () => {
     });
     state.deviceControlProfiles = {
       [device.id]: {
-        model: 'stepped_load',
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 2000 }],
       },
     };
@@ -100,7 +99,6 @@ describe('resolveDeviceDetailKind', () => {
     const device = buildDevice({ deviceClass: 'heater', deviceType: 'onoff' });
     state.deviceControlProfiles = {
       [device.id]: {
-        model: 'stepped_load',
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 3000 }],
       },
     };

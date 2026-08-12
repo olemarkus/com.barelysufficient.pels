@@ -59,7 +59,6 @@ export const inputDevice = (
 };
 
 export const steppedProfile = {
-  model: 'stepped_load' as const,
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },

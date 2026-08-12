@@ -199,7 +199,7 @@ describe('createSettingsHandler', () => {
     await expect(actuator.apply({
       kind: 'step',
       deviceId: 'thermostat',
-      profile: { model: 'stepped_load', steps: [{ id: 'off', planningPowerW: 0 }] },
+      profile: { steps: [{ id: 'off', planningPowerW: 0 }] },
       desiredStepId: 'off',
       planningPowerW: 0,
       planningCurrentA: 0,

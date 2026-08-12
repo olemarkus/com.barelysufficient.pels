@@ -92,7 +92,7 @@ const waterHeater = {
   reason: insufficientHeadroom,
   starvation: budgetStarvation,
   steppedLoad: {
-    profile: { model: 'stepped_load', steps: [ { id: 'off', planningPowerW: 0 }, { id: '1', planningPowerW: 2000 } ] },
+    profile: { steps: [ { id: 'off', planningPowerW: 0 }, { id: '1', planningPowerW: 2000 } ] },
     reportedStepId: 'off',
     targetStepId: '1',
     commandPending: false,

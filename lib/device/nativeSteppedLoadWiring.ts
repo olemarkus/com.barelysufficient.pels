@@ -59,7 +59,6 @@ const NATIVE_WRITE_VALUE_BY_RANK = {
 } as const;
 
 export const CONNECTED_300_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },
@@ -69,7 +68,6 @@ export const CONNECTED_300_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
 };
 
 export const CONNECTED_200_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 700 },
@@ -371,7 +369,7 @@ function buildCapabilityTargetPowerSteppedLoadProfile(
   capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step' | 'excludeMax'> | undefined,
 ): SteppedLoadProfile | undefined {
   const steps = buildTargetPowerLadderSteps(capability);
-  return steps ? { model: 'stepped_load', steps } : undefined;
+  return steps ? { steps } : undefined;
 }
 
 export function resolveTargetPowerReportedStepId(params: {

@@ -67,7 +67,6 @@ const DEVICE_NAME = 'Elbillader';
 
 // The prod 1-phase target-power step ladder (230 V × amps), lowest step 6 A.
 const EV_PROFILE: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: '6a', planningPowerW: 1380 },

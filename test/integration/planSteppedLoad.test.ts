@@ -270,7 +270,6 @@ describe('planSteppedLoad', () => {
     })?.id).toBe('off');
 
     const noOffProfile = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'low', planningPowerW: 1000 },
         { id: 'max', planningPowerW: 2000 },
@@ -351,7 +350,6 @@ describe('planSteppedLoad', () => {
     })).toBeNull();
 
     const zeroOnlyProfile = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'idle', planningPowerW: 0 },

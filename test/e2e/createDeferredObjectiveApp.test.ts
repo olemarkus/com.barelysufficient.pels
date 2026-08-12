@@ -161,7 +161,6 @@ describe('createDeferredObjective (app)', () => {
       priority,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 2000 }],
       },
     } as unknown as TargetDeviceSnapshot);

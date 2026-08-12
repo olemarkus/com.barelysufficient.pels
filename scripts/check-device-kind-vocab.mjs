@@ -9,12 +9,20 @@
 //
 // It enforces TWO related containments. Rules 1-2 keep device KIND out of these
 // layers entirely. Rule 3 is narrower and its opposite in spirit: control
-// MODALITY (binary / stepped) is exactly what these layers may branch on, but
-// only through the ONE predicate that defines it — never by re-inlining the
-// discriminant field test. The binary axis is why the rule exists: because
-// `controlCapabilityId === undefined` reads as ordinary absence-handling rather
-// than as classification, it drifted into nine call sites while the stepped axis
-// beside it was migrating through `isSteppedLoadDevice` at 118 of them.
+// MODALITY is exactly what these layers may branch on, but only through the ONE
+// predicate that defines it — never by re-inlining the discriminant field test.
+// The BINARY axis is the whole of rule 3 now: because `controlCapabilityId ===
+// undefined` reads as ordinary absence-handling rather than as classification, it
+// drifted into nine call sites.
+//
+// The stepped axis used to be policed here too, as `model === 'stepped_load'`.
+// That field is gone: `DeviceControlProfile` is a union of one, so the tag
+// discriminated nothing and every comparison against it was a presence check in
+// costume. The stepped discriminant is now the PRESENCE of `steppedLoadProfile`,
+// which no tripwire can usefully police — `isSteppedLoadSnapshot` is itself a
+// presence test, so an inlined copy is not a second spelling of a classification,
+// it is the classification. The vacuous comparison is unrepresentable instead of
+// detected, which is the stronger guarantee.
 //
 // WHY THIS EXISTS: these layers must branch on CONTROL MODALITY
 // (binary / target / stepped) and producer-resolved bits — never on device KIND.
@@ -78,19 +86,13 @@ const FORBIDDEN_DEVICE_CLASSES = new Set([
 const KIND_DISCRIMINANT_PROPS = new Set(['deviceType', 'deviceClass']);
 
 // Rule 3: control-MODALITY discriminants. Each is a real field test these layers
-// must not spell out, paired with the predicate that owns it. `model` is matched
-// as an exact property name, so the producer-only `controlModel` setting (a
-// different question — not the stepped discriminant) does not trip this.
+// must not spell out, paired with the predicate that owns it. The stepped entry
+// (`model === 'stepped_load'`) was removed with the field itself — see the header.
 const MODALITY_DISCRIMINANTS = [
   {
     prop: 'controlCapabilityId',
     literal: undefined, // compared against `undefined`/`null`, not a string
     predicate: 'hasBinaryControlCapability (shared-domain) / isBinaryPlanDevice (lib/plan)',
-  },
-  {
-    prop: 'model',
-    literal: 'stepped_load',
-    predicate: 'isSteppedLoadSnapshot (shared-domain) / isSteppedLoadDevice (lib/plan)',
   },
 ];
 
@@ -108,13 +110,18 @@ function isNullishOperand(node) {
 // undefined` agree, and the first is exactly what a future author reaches for
 // when the comparison form fails the build. `steppedLoadProfile` is deliberately
 // NOT here, and since 2026-08-12 the reason is narrower than it used to be: the
-// stepped discriminant IS presence now (`isSteppedLoadSnapshot`), so a bare
-// presence read is no longer a "different question". It stays out because on the
-// stepped axis presence is also how an ordinary optional-field null guard is
-// spelled before a dereference — `stepIsAtOff` in `lib/observer/observedState.ts`
-// reads the profile, not the kind — and a rule that cannot tell those apart would
-// push authors into worse shapes rather than toward the predicate. Tracked as a
+// stepped discriminant IS presence (`isSteppedLoadSnapshot`), so a bare presence
+// read is no longer a "different question". It stays out because on the stepped
+// axis presence is also how an ordinary optional-field null guard is spelled
+// before a dereference — `stepIsAtOff` in `lib/observer/observedState.ts` reads
+// the profile, not the kind — and a rule that cannot tell those apart would push
+// authors into worse shapes rather than toward the predicate. Tracked as a
 // follow-up in TODO.md; review still catches the classification form.
+//
+// Note this is now the ONLY stepped rule that could exist. `model` was deleted
+// with the field (see the header), so the comparison form is unrepresentable
+// rather than merely forbidden — there is no `=== 'stepped_load'` left for a
+// tripwire to catch on this axis.
 const TRUTHINESS_DISCRIMINANTS = new Map([
   ['controlCapabilityId', 'hasBinaryControlCapability (shared-domain) / isBinaryPlanDevice (lib/plan)'],
 ]);
@@ -320,8 +327,8 @@ for (const file of files) {
 if (modalityOffenders.length > 0) {
   process.stderr.write(
     'Control-modality predicate containment violation (check-device-kind-vocab):\n'
-    + 'The binary and stepped discriminants have exactly one runtime definition each,\n'
-    + 'in packages/shared-domain/**. Consumer layers ask through the predicate; they do\n'
+    + 'The binary discriminant has exactly one runtime definition, in\n'
+    + 'packages/shared-domain/**. Consumer layers ask through the predicate; they do\n'
     + 'not re-spell the field test, because a second spelling can drift from the first\n'
     + 'and reads as absence-handling rather than as classification. Rewriting the site\n'
     + 'into a spelling this tripwire does not match is not the fix.\n'
@@ -353,5 +360,5 @@ if (offenders.length > 0 || modalityOffenders.length > 0) {
 
 process.stdout.write(
   'device-kind:vocab OK — no deviceClass/deviceType kind branches and no inlined '
-  + `binary/stepped discriminants in plan/observer/objectives/executor (${files.length} files scanned)\n`,
+  + `binary discriminants in plan/observer/objectives/executor (${files.length} files scanned)\n`,
 );

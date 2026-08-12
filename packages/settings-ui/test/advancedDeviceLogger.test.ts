@@ -241,14 +241,12 @@ describe('advanced device cleanup', () => {
     state.managedMap = { 'dev-1': true, 'dev-2': true };
     state.deviceControlProfiles = {
       'dev-1': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },
         ],
       },
       'dev-2': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'max', planningPowerW: 3000 },
@@ -289,7 +287,6 @@ describe('advanced device cleanup', () => {
     expect(homey.setSetting).toHaveBeenCalledWith('managed_devices', { 'dev-2': true });
     expect(homey.setSetting).toHaveBeenCalledWith('device_control_profiles', {
       'dev-2': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'max', planningPowerW: 3000 },
@@ -349,7 +346,6 @@ describe('advanced device cleanup', () => {
     expect(homey.setSetting).toHaveBeenCalledWith('managed_devices', { 'dev-1': true });
     expect(homey.setSetting).toHaveBeenCalledWith('device_control_profiles', {
       'dev-1': {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1250 },

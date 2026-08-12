@@ -52,8 +52,22 @@ export type SteppedLoadStep = {
   planningCurrentA?: number;
 };
 
+/**
+ * A stepped-load control ladder.
+ *
+ * Deliberately carries NO `model` tag. `DeviceControlProfile` is a union of one,
+ * so a `model: 'stepped_load'` field would be a discriminator that discriminates
+ * nothing: on an already-typed value every `profile.model === 'stepped_load'`
+ * comparison was a presence check in costume. Presence of the profile itself
+ * (`steppedLoadProfile`, or a `DeviceControlProfiles` entry) IS the stepped
+ * discriminant, by construction.
+ *
+ * A future SECOND profile type reintroduces a discriminator at the `unknown`
+ * parse boundary (`normalizeSteppedLoadProfile` in
+ * `packages/contracts/src/deviceControlProfiles.ts` and its runtime mirror in
+ * `lib/utils/deviceControlProfiles.ts`) — never downstream on typed values.
+ */
 export type SteppedLoadProfile = {
-  model: 'stepped_load';
   steps: SteppedLoadStep[];
   tankVolumeL?: number;
   minComfortTempC?: number;
@@ -302,8 +316,8 @@ export type DeviceDescriptor = {
     // `isSteppedLoadSnapshot` guard
     // (`packages/shared-domain/src/steppedLoadObservedState.ts`), so an un-narrowed
     // `snapshot.steppedLoadProfile` read on a base-typed value is a hard compile
-    // error (TS2339). `steppedLoadProfile` IS the kind discriminant (its presence —
-    // `model` is always `'stepped_load'` — means the device is a stepped load); the
+    // error (TS2339). `steppedLoadProfile` IS the kind discriminant — its presence
+    // means the device is a stepped load; the profile carries no tag of its own. The
     // guard mirrors the plan layer's `isSteppedLoadDevice`. Owner seams and
     // producer-fed structural funnels widen with `SteppedLoadDescriptorProbe`
     // instead. `suggestedSteppedLoadProfile` STAYS on the base: it is a
@@ -649,9 +663,9 @@ export type MeasuredPowerObservedProbe = {
  * Stepped-load descriptor cluster (stepped slice of the discriminated-types
  * refactor — the snapshot-level twin of the plan layer's `SteppedLoadKind`).
  *
- * `steppedLoadProfile` is THE kind discriminant: a `SteppedLoadProfile` always has
- * `model: 'stepped_load'`, so its presence on a snapshot means the device is a
- * stepped load. It is OMITTED from `DeviceDescriptor`, so an un-narrowed
+ * `steppedLoadProfile` is THE kind discriminant: `SteppedLoadProfile` carries no
+ * tag of its own (see its docblock), so its presence on a snapshot is what means
+ * the device is a stepped load. It is OMITTED from `DeviceDescriptor`, so an un-narrowed
  * `snapshot.steppedLoadProfile` read is a hard compile error (TS2339); consumers
  * pass through `isSteppedLoadSnapshot`
  * (`packages/shared-domain/src/steppedLoadObservedState.ts`) — the snapshot-shaped

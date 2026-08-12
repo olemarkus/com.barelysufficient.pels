@@ -1033,9 +1033,10 @@ program) remain deferred.*
       base `DeviceDescriptor` and `reportedStepId` is OFF the base `ObservedDeviceState` — the FINAL slice of
       this P1.** An un-narrowed `snapshot.steppedLoadProfile`/`targetPowerConfig`/`reportedStepId` read is now a
       hard TS2339. Two new browser-safe guards in `packages/shared-domain/src/steppedLoadObservedState.ts`:
-      `isSteppedLoadSnapshot` (narrows `SteppedLoadDescriptorFields`; checks `steppedLoadProfile?.model ===
-      'stepped_load'` — the snapshot-shaped twin of `lib/plan`'s `isSteppedLoadDevice`, so `steppedLoadProfile`
-      IS the kind discriminant) and the presence-only `hasObservedReportedStep` (narrows
+      `isSteppedLoadSnapshot` (narrows `SteppedLoadDescriptorFields` — the snapshot-shaped twin of
+      `lib/plan`'s `isSteppedLoadDevice`, so `steppedLoadProfile` IS the kind discriminant; it checked
+      `steppedLoadProfile?.model === 'stepped_load'` at the time, and is a plain presence check since
+      2026-08-12, when the `model` field was deleted) and the presence-only `hasObservedReportedStep` (narrows
       `ReportedStepObservedFields`). New contracts types: `SteppedLoadDescriptorFields` (required
       `steppedLoadProfile` + optional `targetPowerConfig`, which rides the cluster) + `SteppedLoadDescriptorProbe`
       (optional owner-widening), and `ReportedStepObservedFields`/`ReportedStepObservedProbe`. `TransportDeviceSnapshot`
@@ -1077,7 +1078,9 @@ program) remain deferred.*
       `withSteppedDiscriminant` now delegate to the existing `isSteppedLoadSnapshot`, so the plan layer owns
       only narrowing. `check-device-kind-vocab.mjs` gained `lib/observer` and a third rule failing the build on
       either discriminant re-inlined in the four consumer layers — as a comparison (`=== undefined`,
-      `=== 'stepped_load'`) or, for the binary axis, as a truthiness read (`!x.controlCapabilityId`,
+      `=== 'stepped_load'`; the stepped half of this rule was retired on 2026-08-12 with the field it
+      policed, so rule 3 is the binary axis only now) or, for the binary axis, as a truthiness read
+      (`!x.controlCapabilityId`,
       `if (x.controlCapabilityId)`, `Boolean(...)`, and the control operand of a standalone
       `x.controlCapabilityId && …` guard). The truthiness half is not decoration: review found two `lib/executor/shedReleaseActuation.ts`
       branches already written that way and invisible to the comparison-only rule, so shipping without it would
@@ -1091,7 +1094,34 @@ program) remain deferred.*
       `SteppedLoadProfile` belonged, which the tightened `resolveSurplusOnlyPosture` param now rejects.
       Producers keep their literals by design: the vocabulary still lives in `lib/device/**` (transport) and
       `setup/appInit/toPlanDevice.ts`.
-      Open follow-ups from the review of that change (P2, deferred):
+      **Stepped half of rule 3 retired (2026-08-12): the field it policed is gone.** `SteppedLoadProfile.model`
+      was deleted outright. `DeviceControlProfile = SteppedLoadProfile` is a union of ONE, so `model:
+      'stepped_load'` was a discriminator that discriminated nothing: on an already-typed value every
+      `profile.model === 'stepped_load'` comparison was a presence check in costume, and 25 of them were
+      spelled across `lib/**`, `setup/**`, `flowCards/**` and `packages/**` (plus 4 more in tests). Deleting the field makes the
+      vacuous comparison UNREPRESENTABLE, which is strictly stronger than detecting it — so the `model` entry
+      left `MODALITY_DISCRIMINANTS` in `check-device-kind-vocab.mjs` and rule 3 is now the binary axis only.
+      The stepped discriminant is the PRESENCE of `steppedLoadProfile`, by construction; `isSteppedLoadSnapshot`
+      and `isSteppedLoadDevice` are presence-only. The one place the tag ever did work — the `unknown` parse
+      boundary in `normalizeSteppedLoadProfile` (contracts + its `lib/utils` mirror) — decides stepped-ness from
+      the ladder shape, keeping only a NEGATIVE check on the tag (see the boundary note below). A future SECOND
+      profile type reads its discriminator THERE, at the `unknown` boundary, never downstream. Persisted-schema
+      note: old records carrying `model: 'stepped_load'` parse unchanged and are rewritten without the tag;
+      newly written ones omit it, so a downgrade to a build that still gated on the tag would reject profiles
+      saved after this change. One deliberate BEHAVIOUR change at the boundary, found in review: dropping the tag check made
+      `{ model: <foreign>, steps: <valid ladder> }` parse as a stepped profile, and that blob is reachable —
+      Homey's app-setting endpoint lets an external writer PUT a JSON-encoded `device_control_profiles` map,
+      the repair pass would rewrite it WITHOUT its tag, and `resolveEffectiveSteppedLoadProfile` would then
+      drive stepped commands from a value that announced it was not a stepped load. Both normalizers therefore
+      accept an absent tag and the legacy `'stepped_load'`, and REJECT a present foreign value. Versus the
+      first cut of this change that is a NARROWING; versus the pre-PR behaviour it accepts the untagged blob
+      PELS now writes while still refusing a foreign tag exactly as before. `model` stays off `SteppedLoadProfile`
+      and out of every trusted consumer; the asymmetry is the boundary doctrine (the function takes
+      `value: unknown`, so it may inspect a property the TYPE does not have). Otherwise type-level and
+      fixture-level only — 29 comparison sites and 245 `model: 'stepped_load'` literals removed (13 runtime,
+      228 TS fixtures, 4 in the Playwright JS stub; the stub's `device_control_profiles` entries KEEP the tag
+      on purpose, labelled as legacy persisted data), no other intended reachable behaviour change.
+      Open follow-ups from the review of the modality-containment change (P2, deferred):
       - *Settings UI still inlines the binary discriminant.* `deviceDetail/solarSurplus.ts`,
         `deviceDetail/respectExternalOff.ts` and `deviceDetail/temperatureControlDisabled.ts` each spell
         `controlCapabilityId !== undefined` themselves. `hasBinaryControlCapability` is browser-safe precisely so
@@ -1110,16 +1140,19 @@ program) remain deferred.*
         (`withHeadroomCurrentOn`'s input carries `binaryControl`, the field the plan kinds deliberately exclude).
         They belong next to `toPlanDevice.ts` in `setup/`; the move is legal today, since `flowCards/` sits above
         `setup/` and `no-lib-to-setup` does not block that import.
-      - *The stepped axis has no truthiness rule, and now the reason is narrower.* `isSteppedLoadSnapshot`
-        became a plain presence check (2026-08-12, the `planningPowerKw` move): `SteppedLoadProfile['model']`
-        is a single literal, so on an already-typed value the comparison was a presence check wearing a
-        costume, and the only site where it does work is `normalizeSteppedLoadProfile` at the `unknown` parse
-        boundary, which keeps it. Consequence for the guard: a bare `steppedLoadProfile` presence read in a
-        consumer layer is now the discriminant re-spelled, not a different question — but it is also how an
-        ordinary optional-field null guard is spelled before a dereference (`stepIsAtOff` in
-        `lib/observer/observedState.ts` reads the profile, not the kind), and the rule cannot tell those
-        apart. Decide whether the observer site should ask the predicate and the guard should then cover the
-        axis, or whether presence-before-dereference stays legitimate and the exclusion is permanent.
+      - *The stepped axis has no truthiness rule, and it is the only stepped rule that could exist.*
+        `isSteppedLoadSnapshot` became a plain presence check (2026-08-12, the `planningPowerKw` move), and
+        the `model` field it used to compare was deleted outright later the same day — `DeviceControlProfile`
+        is a union of one, so the tag discriminated nothing, and `normalizeSteppedLoadProfile` now decides
+        stepped-ness at the `unknown` parse boundary from the ladder shape alone. So there is no
+        `=== 'stepped_load'` left anywhere for a comparison rule to catch: the comparison form is
+        unrepresentable, not merely forbidden, and the stepped entry is gone from `MODALITY_DISCRIMINANTS`.
+        What remains open is only the truthiness form. A bare `steppedLoadProfile` presence read in a consumer
+        layer IS the discriminant re-spelled — but it is also how an ordinary optional-field null guard is
+        spelled before a dereference (`stepIsAtOff` in `lib/observer/observedState.ts` reads the profile, not
+        the kind), and the rule cannot tell those apart. Decide whether the observer site should ask the
+        predicate and the guard should then cover the axis, or whether presence-before-dereference stays
+        legitimate and the exclusion is permanent.
       Remaining under this item:
       - **type discrimination (snapshot side): COMPLETE.** All observed clusters (EV / temperature / SoC /
         measured-power) AND the stepped clusters (descriptor `steppedLoadProfile`/`targetPowerConfig` off

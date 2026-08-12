@@ -130,12 +130,52 @@ export const getSteppedLoadNextHigherStep = (params: {
   return null;
 };
 
+/**
+ * THE parse boundary for a persisted/untrusted stepped profile: `unknown` in, a
+ * typed `SteppedLoadProfile` or `null` out.
+ *
+ * "Is this blob a stepped profile?" is answered by `steps` — a valid array of
+ * valid rungs with a usable ladder — plus one negative check on a field the TYPE
+ * does not have.
+ *
+ * `SteppedLoadProfile` carries no `model` tag: `DeviceControlProfile` is a union
+ * of one, so a tag would discriminate nothing, and every comparison against it on
+ * an already-typed value was a presence check in costume. But THIS function takes
+ * `value: unknown`, and a boundary owes its callers a COMPLETE classification of
+ * what is actually there — including a tag that contradicts the slot it was
+ * written into. So the asymmetry is deliberate:
+ *
+ * - `model` absent        → accepted (what PELS writes now)
+ * - `model: 'stepped_load'` → accepted (what PELS wrote before the tag was deleted,
+ *                             so old records parse identically to new ones)
+ * - `model: <anything else>` → REJECTED, even with a perfectly good ladder
+ *
+ * The third case is not hypothetical. Homey's app-setting endpoint lets an
+ * external writer PUT a JSON-encoded `device_control_profiles` map (see
+ * `parseSettingRecord` in `setup/steppedProfileRepair.ts`), and a foreign-tagged
+ * entry that parsed here would be rewritten WITHOUT its tag by the repair pass,
+ * pass the boot guard, and then be selected as a device's effective stepped
+ * profile by `resolveEffectiveSteppedLoadProfile` — i.e. a blob that announced it
+ * was not a stepped load would end up issuing stepped commands. Refusing it costs
+ * one comparison and keeps every downstream consumer tag-free.
+ *
+ * If a SECOND profile type is ever added, its discriminator is read HERE, at this
+ * `unknown` boundary, where the question is genuinely open — never downstream on
+ * values this function has already typed. See the docblock on
+ * `SteppedLoadProfile` in `./types.js`. Mirrored in
+ * `lib/utils/deviceControlProfiles.ts`.
+ */
 export const normalizeSteppedLoadProfile = (
   value: unknown,
 ): SteppedLoadProfile | null => {
   if (!value || typeof value !== 'object') return null;
-  const profile = value as Partial<SteppedLoadProfile>;
-  if (profile.model !== 'stepped_load' || !Array.isArray(profile.steps)) return null;
+  // `model` is deliberately NOT on `SteppedLoadProfile` — see the docblock. The
+  // cast widens to read it anyway, which is exactly what a boundary taking
+  // `unknown` is for: absent or the legacy `'stepped_load'` passes, a foreign tag
+  // is refused rather than silently laundered into a trusted stepped profile.
+  const profile = value as Partial<SteppedLoadProfile> & { model?: unknown };
+  if (profile.model !== undefined && profile.model !== 'stepped_load') return null;
+  if (!Array.isArray(profile.steps)) return null;
 
   const steps: SteppedLoadStep[] = profile.steps
     .map((step): SteppedLoadStep | null => {
@@ -160,7 +200,6 @@ export const normalizeSteppedLoadProfile = (
   }
 
   return {
-    model: 'stepped_load',
     steps: sortSteppedLoadSteps(steps),
     ...(typeof profile.tankVolumeL === 'number' && Number.isFinite(profile.tankVolumeL)
       ? { tankVolumeL: profile.tankVolumeL }

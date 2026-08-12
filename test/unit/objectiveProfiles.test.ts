@@ -203,7 +203,6 @@ describe('objective profiles', () => {
 
   it('uses reported stepped-load planning power as lower-confidence energy evidence', () => {
     const steppedProfile = {
-      model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'low', planningPowerW: 1000 },

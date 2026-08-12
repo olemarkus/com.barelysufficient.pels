@@ -27,7 +27,6 @@ import { resolveResidualKwRestore } from '../../lib/device/deviceResidualKw';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const steppedProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },
@@ -37,7 +36,6 @@ const steppedProfile: SteppedLoadProfile = {
 };
 
 const allZeroProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'standby', planningPowerW: 0 },

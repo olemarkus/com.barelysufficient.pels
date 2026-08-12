@@ -86,7 +86,6 @@ const buildRestoreFixture = (
 // (`getRestoreDrawKw`). Used by edge case (a) to pin parity through that
 // fall-through.
 const zeroPowerSteppedProfile: SteppedLoadProfile = {
-  model: 'stepped_load',
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 0 },
@@ -99,8 +98,7 @@ function withProducerResolvedRestore(dev: RestoreFixture): RestoreFixture {
   // wiring layer is what the real runtime uses; this test recomputes it from
   // the plan-device snapshot directly so we can compare legacy vs producer
   // path on the same fixture.
-  const isStepped = dev.controlModel === 'stepped_load'
-    && dev.steppedLoadProfile?.model === 'stepped_load';
+  const isStepped = dev.controlModel === 'stepped_load' && dev.steppedLoadProfile !== undefined;
   const restore = resolveResidualKwRestore({
     steppedLoad: isStepped && dev.steppedLoadProfile
       ? {

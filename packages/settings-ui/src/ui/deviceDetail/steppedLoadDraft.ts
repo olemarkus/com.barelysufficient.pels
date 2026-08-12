@@ -112,7 +112,6 @@ const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
   });
 
   return normalizeSteppedLoadProfile({
-    model: 'stepped_load',
     steps,
   }) ?? null;
 };
@@ -208,8 +207,8 @@ const buildSteppedLoadStepRow = (params: {
 
 export const resolveSavedSteppedLoadProfile = (device: SettingsUiDeviceDetailItem): SteppedLoadProfile | null => {
   const stored = getStoredDeviceControlProfile(device.id);
-  if (stored?.model === 'stepped_load') return stored;
-  return device.steppedLoadProfile?.model === 'stepped_load' ? device.steppedLoadProfile : null;
+  if (stored) return stored;
+  return device.steppedLoadProfile ?? null;
 };
 
 export const updateSetStepOptionLabel = (

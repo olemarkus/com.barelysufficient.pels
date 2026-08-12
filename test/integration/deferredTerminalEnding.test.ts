@@ -25,7 +25,6 @@ const setTemp: ShedActuationCommand = { kind: 'set_temperature', targetValue: 5 
 const setStep: ShedActuationCommand = {
   kind: 'set_step',
   profile: {
-    model: 'stepped_load',
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'low', planningPowerW: 1000 },

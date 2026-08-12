@@ -185,7 +185,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
     } = params;
     if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
     const profile = snapshot.suggestedSteppedLoadProfile;
-    if (profile?.model !== 'stepped_load') return false;
+    if (!profile) return false;
 
     const updateKind = resolveNativeSteppedCapabilityUpdateKind({
         capabilityId,
@@ -273,7 +273,7 @@ export function handleTargetPowerSourceCapabilityUpdate(ctx: TransportContext, p
     const phaseCount = resolveTargetPowerPresetPhaseCount(snapshot.targetPowerConfig?.preset);
     if (!phaseCount || typeof value !== 'number' || !Number.isFinite(value)) return false;
     const profile = snapshot.suggestedSteppedLoadProfile ?? snapshot.steppedLoadProfile;
-    if (profile?.model !== 'stepped_load') return false;
+    if (!profile) return false;
     const targetPowerW = Math.round(value * 230 * phaseCount);
     const nextReportedStepId = resolveTargetPowerReportedStepId({
         profile,

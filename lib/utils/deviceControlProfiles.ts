@@ -156,12 +156,32 @@ export const getSteppedLoadNextLowerStep = (params: {
   return null;
 };
 
+/**
+ * THE parse boundary for a persisted/untrusted stepped profile — mirrored from
+ * `packages/contracts/src/deviceControlProfiles.ts`; read that docblock for the
+ * full reasoning.
+ *
+ * Short version: `steps` is the test, plus one negative check on a field the TYPE
+ * does not have. `SteppedLoadProfile` carries no `model` tag, but this function
+ * takes `unknown` and owes a complete classification of what is actually there:
+ * an absent tag and a legacy `'stepped_load'` are both accepted (so old records
+ * parse identically to new ones), while a PRESENT FOREIGN value is rejected even
+ * with a good ladder — an external writer can PUT into this setting, and a
+ * foreign-tagged entry that parsed here would lose its tag to the repair rewrite
+ * and go on to drive stepped commands. A future SECOND profile type reads its
+ * discriminator HERE, at the `unknown` boundary, not downstream.
+ */
 export const normalizeSteppedLoadProfile = (
   value: unknown,
 ): SteppedLoadProfile | null => {
   if (!value || typeof value !== 'object') return null;
-  const profile = value as Partial<SteppedLoadProfile>;
-  if (profile.model !== 'stepped_load' || !Array.isArray(profile.steps)) return null;
+  // `model` is deliberately NOT on `SteppedLoadProfile` — see the docblock. The
+  // cast widens to read it anyway, which is exactly what a boundary taking
+  // `unknown` is for: absent or the legacy `'stepped_load'` passes, a foreign tag
+  // is refused rather than silently laundered into a trusted stepped profile.
+  const profile = value as Partial<SteppedLoadProfile> & { model?: unknown };
+  if (profile.model !== undefined && profile.model !== 'stepped_load') return null;
+  if (!Array.isArray(profile.steps)) return null;
 
   const steps: SteppedLoadStep[] = profile.steps
     .map((step): SteppedLoadStep | null => {
@@ -186,7 +206,6 @@ export const normalizeSteppedLoadProfile = (
   }
 
   return {
-    model: 'stepped_load',
     steps: sortSteppedLoadSteps(steps),
     ...(typeof profile.tankVolumeL === 'number' && Number.isFinite(profile.tankVolumeL)
       ? { tankVolumeL: profile.tankVolumeL }

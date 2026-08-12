@@ -663,7 +663,6 @@ describe('deadline plan page payload', () => {
       // Stepped profile; the lowest non-zero step is 1.5 kW. resolveUsefulPowerKw
       // (used elsewhere) would return the highest step — we deliberately want the lowest.
       steppedLoadProfile: {
-        model: 'stepped_load',
         steps: [
           { id: 'off', planningPowerW: 0 },
           { id: 'low', planningPowerW: 1500 },
