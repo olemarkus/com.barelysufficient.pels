@@ -91,11 +91,12 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
     // and the bucket allocator agree on the value.
     return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', planning));
   }
-  // Same step-ladder gap `resolveObjectiveSteps` answers `[]` for: a stepped
-  // device with no live profile has no speed to report, and reporting one here
-  // while the planner serves a frozen plan is exactly the producer/consumer
-  // disagreement the comment below warns about.
-  if (device.controlModel === 'stepped_load') return null;
+  // Same producer-resolved step-ladder gap `resolveObjectiveSteps` answers `[]`
+  // for: a stepped device with no live ladder has no speed to report, and
+  // reporting one here while the planner serves a frozen plan is exactly the
+  // producer/consumer disagreement the comment below warns about. Read flat off
+  // the producer, never re-derived — MOVES WITH the mirror in `objectiveSteps.ts`.
+  if (device.steppedLadderMissing === true) return null;
   if (isEvDevice(device)) {
     return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', device.expectedPowerKw));
   }

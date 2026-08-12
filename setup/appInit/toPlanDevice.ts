@@ -274,6 +274,36 @@ function resolveSteppedClusterFields(
   return { steppedLoadProfile: plannerSteppedLoadProfile, planningPowerKw };
 }
 
+/**
+ * The STEP-LADDER GAP: the device is configured as a stepped load, but no live
+ * ladder resolved this cycle, so the plan device will carry neither
+ * `steppedLoadProfile` nor `planningPowerKw`.
+ *
+ * Resolved here because this is the only place both halves of it are visible at
+ * once: the configured intent (`controlModel`) and the ladder the planner will
+ * actually run (`steppedCluster`). Downstream the two cannot be compared —
+ * `withSteppedDiscriminant` strips the whole stepped cluster from a non-stepped
+ * result, so "no profile" alone cannot say whether a ladder was EXPECTED. The
+ * smart-task stack needs exactly that distinction: a stepped device without its
+ * ladder has no rate to plan against and must be served its frozen committed
+ * plan, while a device that was never stepped may have a rate synthesised for it.
+ *
+ * Both ways the cluster comes up empty are the same gap and answer alike: no live
+ * profile reached the snapshot (a restart before the Flow re-fires, a transient
+ * SDK read), or the ladder in hand priced no rung.
+ *
+ * Reads the EFFECTIVE device: a temperature-disabled device has already been
+ * re-projected to `binary_power`, so it is honestly not in a gap — it is not
+ * stepped at all this cycle.
+ */
+function resolveSteppedLadderMissing(
+  device: { controlModel?: DeviceControlModel },
+  steppedCluster: SteppedClusterFields,
+): boolean {
+  return device.controlModel === 'stepped_load'
+    && steppedCluster.steppedLoadProfile === undefined;
+}
+
 function projectEffectiveControlDevice(
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
 ): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe {
@@ -347,6 +377,8 @@ export function toPlanDevice(
     })
     : undefined;
   const steppedCluster = resolveSteppedClusterFields(plannerSteppedLoadProfile, device);
+  // The step-ladder gap — see `resolveSteppedLadderMissing`.
+  const steppedLadderMissing = resolveSteppedLadderMissing(device, steppedCluster);
   const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
   const hasRecentObservedDraw = resolveHasRecentObservedDraw(
@@ -465,6 +497,9 @@ export function toPlanDevice(
     controllable,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
     ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
+    // Flat producer-resolved step-ladder gap — see `steppedLadderMissing` above.
+    // Stamped only when true, so the absent case has one spelling.
+    ...(steppedLadderMissing ? { steppedLadderMissing: true as const } : {}),
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: resolveEffectiveTemperatureBoost(ctx, device),
     evBoost: ctx.getEvBoostConfig?.(device.id),

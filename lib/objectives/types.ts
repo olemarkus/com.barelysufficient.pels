@@ -65,11 +65,22 @@ export type ObjectiveDeviceInput = {
   externalOffHoldActive?: true;
   /**
    * The CONFIGURED control model, structurally assignable from `PlanInputDevice`.
-   * Read only to detect a stepped device whose live `steppedLoadProfile` is
-   * missing this cycle — profile presence implies `'stepped_load'` but not the
-   * converse, so their disagreement is the step-ladder gap.
+   * NOTHING in this module reads it: the step-ladder gap it used to be inferred
+   * from is now resolved by the producer and carried as `steppedLadderMissing`
+   * below. Declared only while `PlanInputDevice` still carries the field, and
+   * retired with it.
    */
   controlModel?: DeviceControlModel;
+  /**
+   * Producer-resolved step-ladder gap, structurally assignable from
+   * `PlanInputDevice`: `true` when the device is configured as a stepped load but
+   * no live ladder resolved this cycle. The smart-task stack must tell that apart
+   * from "never stepped" — a stepped device without its ladder has no rate to
+   * plan against, so `resolveObjectiveSteps` answers "no steps" and
+   * `resolvePlanningSpeedKw` answers "no speed", and a COMMITTED task is served
+   * its frozen plan instead of collapsing to `unknown`.
+   */
+  steppedLadderMissing?: true;
   /**
    * Producer-resolved draw when running, structurally assignable from
    * `PlanInputDevice`. Required, like it is there: `estimatePower` ends its

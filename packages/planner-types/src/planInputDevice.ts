@@ -182,6 +182,29 @@ export type PlanInputDeviceBase = {
   // boost resolvers (which receive the whole plan-input device) can read it; the
   // planner itself must not branch on it.
   controlModel?: DeviceControlModel;
+  /**
+   * Producer-resolved STEP-LADDER GAP: `true` when the device is configured as a
+   * stepped load but no live ladder resolved this cycle, so the plan device
+   * carries neither `steppedLoadProfile` nor `planningPowerKw`.
+   *
+   * The ladder is a LIVE transport input — a flow-registered stepped profile does
+   * not survive an app restart until the Flow re-fires, and SDK reads fail
+   * transiently — so its absence is a real, recurring runtime state, distinct
+   * from "this device was never stepped". Consumers that must tell the two apart
+   * (the smart-task stack: `resolveObjectiveSteps` / `resolvePlanningSpeedKw`)
+   * read this flat bit.
+   *
+   * Resolved once at `toPlanDevice`, which is the only place both halves of the
+   * question are visible: the configured intent and the ladder the planner will
+   * actually run. A consumer cannot reconstruct it — `withSteppedDiscriminant`
+   * strips the whole stepped cluster, so downstream "no profile" alone cannot say
+   * whether a ladder was expected (resolution-in-producer, `docs/architecture.md`
+   * § "Clean and trusted interfaces between layers").
+   *
+   * Absent (never `false`) when there is no gap, matching `surplusOnly` /
+   * `externalOffHoldActive`.
+   */
+  steppedLadderMissing?: true;
   priority?: number;
   /**
    * Producer-resolved bit: true when the device is commandable in this cycle,
