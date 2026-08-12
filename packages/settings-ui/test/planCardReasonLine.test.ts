@@ -22,26 +22,40 @@ const starvation = (
 });
 
 describe('resolveHeldCardReasonLine', () => {
-  it('treats a target-only stepped device at a non-off step as waiting to increase', () => {
+  // The `currentState: 'not_applicable'` cases that used to live here are gone
+  // with the branch they pinned. That branch fired only for a stepped device
+  // whose rung was known while its label said "not applicable" — a combination
+  // the producer cannot emit: `selectedStepId` IS the effective step
+  // (`reportedStepId` ?? planning fallback), so it is absent only when the
+  // effective step is unknown, and the label falls through to `not_applicable`
+  // only in that same case. Known rung and `not_applicable` are contradictory,
+  // so the branch was unreachable rather than merely unused.
+
+  // The ladder IS stepped-ness. These pin the shape that replaced a
+  // `controlModel === 'stepped_load'` read: no separate flag can disagree with
+  // the profile, because there is no separate flag.
+  it('is stepped on ladder presence alone, with no step id', () => {
     expect(resolveHeldCardReasonVerb({
-      controlModel: 'stepped_load',
-      currentState: 'not_applicable',
-      reportedStepId: 'low',
-      selectedStepId: 'medium',
-      steppedLoadProfile: {
-        steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
-      },
+      steppedLoadProfile: { steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] },
+      currentState: 'on',
     })).toBe('increase');
   });
 
-  it('treats a target-only stepped device on a zero-power named rung as waiting to resume', () => {
+  it('is not stepped without a ladder', () => {
     expect(resolveHeldCardReasonVerb({
-      controlModel: 'stepped_load',
-      currentState: 'not_applicable',
-      reportedStepId: 'step_0',
-      steppedLoadProfile: {
-        steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
-      },
+      steppedLoadProfile: null,
+      currentState: 'on',
+    })).toBe('resume');
+  });
+
+  // Deliberate behaviour change, not an oversight. The old predicate counted a
+  // bare step id as proof of step control, so a device with no ladder but a
+  // leftover id was told to "increase" — onto a rung of a ladder it does not
+  // have. It resumes now.
+  it('is not stepped without a ladder, whatever else the carrier holds', () => {
+    expect(resolveHeldCardReasonVerb({
+      steppedLoadProfile: null,
+      currentState: 'on',
     })).toBe('resume');
   });
 
