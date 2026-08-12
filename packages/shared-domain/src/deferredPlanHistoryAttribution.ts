@@ -19,37 +19,63 @@
 // backs both surfaces so the logged cause and the user-visible line never
 // disagree.
 
+import type { DeferredObjectiveActivePlanFloorShortfallCause } from '../../contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP } from './deadlineLabels';
+import { snapshotShowsBudgetExhausted } from './deferredPlanHistoryShared';
+import {
+  asDeliveredEnergyKWh,
+  asPlannedFloorEnergyKWh,
+  asRemainingEnergyKWh,
+  type DeliveredEnergyKWh,
+  type PlannedFloorEnergyKWh,
+  type RemainingEnergyKWh,
+} from './energyQuantities';
 
 // Why a `missed` run missed, in the order we check (most concrete cause wins):
-//   - `budget_limited`     — the daily budget cap collapsed one or more planned
-//                            hours; the device was held back on purpose.
+//   - `budget_limited`     — the soft daily budget bound the planner's floor;
+//                            the device was held back on purpose.
 //   - `no_delivery`        — the device delivered essentially no useful energy
 //                            and made no progress toward target; the most
 //                            concrete, device-actionable miss.
-//   - `capacity_shortfall` — confident plan, but the executor couldn't deliver
-//                            even the planned floor; a genuine capacity miss.
-//   - `energy_underestimate` — the executor delivered at/above the planned
-//                            floor energy yet still missed: capacity was there,
-//                            but the target needed more energy than estimated.
-//   - `low_confidence`     — delivery couldn't be measured AND the learned rate
-//                            was still genuinely cold-start (few accepted
-//                            samples), so the verdict rested on an unproven
-//                            estimate. Gated on sample count, NOT the confidence
-//                            band: the band-aware confidence "sits at low
-//                            effectively forever" on thermal devices, so gating
-//                            on it would make every thermal miss read "still
-//                            learning" and mask the real cause.
+//   - `capacity_shortfall` — there was not enough deliverable power or time,
+//                            either because the producer said so at plan time
+//                            (`floorShortfallCause`) or because a plan that
+//                            looked feasible under-delivered against its own
+//                            committed requirement.
+//   - `energy_underestimate` — the plan looked feasible AND the executor
+//                            delivered what the run set out to need, yet the
+//                            target still wasn't reached: the kWh-per-unit rate
+//                            was too low.
+//   - `low_confidence`     — the verdict rested on an unproven estimate: either
+//                            the producer attributed the floor shortfall to its
+//                            own variance padding (`estimate`), or delivery
+//                            couldn't be measured and the rate was still
+//                            genuinely cold-start (few accepted samples). Gated
+//                            on sample count, NOT the confidence band: the
+//                            band-aware confidence "sits at low effectively
+//                            forever" on thermal devices, so gating on it would
+//                            make every thermal miss read "still learning" and
+//                            mask the real cause.
 //   - `unknown`            — not enough recorded data to attribute honestly.
 //
-// The delivery split (`no_delivery` / `capacity_shortfall` /
-// `energy_underestimate`) is checked ahead of `low_confidence` so a clear
-// delivery story always wins; `low_confidence` is the honest fallback only when
-// delivery wasn't measurable.
+// THE PRODUCER'S VERDICT WINS. `floorShortfallCause` is resolved once, at plan
+// time, through a single shared table (`floorShortfallCause.ts`) and persisted
+// on the revision. This module reads it rather than re-deriving a cause from
+// arithmetic — per `feedback_layering_resolution_in_producer`. The
+// delivered-vs-committed comparison is consulted ONLY where the producer
+// recorded no shortfall (`none` / absent), because that is the one case its
+// verdict doesn't cover: the plan said it would make it, and it didn't.
+//
+// The comparison basis is the ORIGINAL revision's mean requirement, never the
+// final revision's. `energyExpectedKWh` is `mean × remainingUnits` — it shrinks
+// as a run delivers, so comparing a run's cumulative delivery against a late
+// revision's figure compares two different quantities. Doing exactly that is
+// what made a nine-hour capacity-bound EV run report "Target needed more energy
+// than estimated"; see `resolveDeliveredAtOrAboveCommitment`.
 export type DeferredPlanHistoryMissCause =
   | 'budget_limited'
   | 'no_delivery'
@@ -58,10 +84,10 @@ export type DeferredPlanHistoryMissCause =
   | 'capacity_shortfall'
   | 'unknown';
 
-// Fraction of the planned floor energy the executor must have delivered for a
-// miss to read as an energy-needed underestimate rather than a capacity
-// shortfall. 0.95 tolerates rounding and the last partial hour without letting
-// a clear under-delivery masquerade as "power was available".
+// Fraction of the run's committed energy requirement the executor must have
+// delivered for a miss to read as an energy-needed underestimate rather than a
+// capacity shortfall. 0.95 tolerates rounding and the last partial hour without
+// letting a clear under-delivery masquerade as "power was available".
 const DELIVERED_PLAN_FRACTION = 0.95;
 
 // Below this delivered energy a run counts as having delivered essentially
@@ -81,21 +107,50 @@ type AttributionSnapshot = Pick<
   DeferredObjectivePlanHistoryRevisionSnapshot,
   'hours' | 'planStatus' | 'rateConfidence' | 'acceptedSamples'
   | 'planningSpeedKw' | 'dailyBudgetExhaustedBucketCount' | 'energyExpectedKWh'
+  | 'floorShortfallCause' | 'energyNeededKWh'
 >;
 
-const sumPlannedKWh = (snapshot: AttributionSnapshot): number => {
+/**
+ * The planner's last word: `planStatus`, `floorShortfallCause` and the rate
+ * provenance. Falls back to the original snapshot when the run finalized before
+ * any replan — the same field read from the latest revision that exists, not a
+ * different quantity.
+ *
+ * Note what this is NOT used for: the commitment the delivered-vs-committed
+ * comparison needs. No revision snapshot can supply that. Each one's
+ * `energyExpectedKWh` is a shrinking remainder, and `originalPlan` is not the
+ * original revision — the recorder defines it as the richest schedule the
+ * planner ever achieved and replaces it mid-run (`pickRicherSnapshot`), while a
+ * restart that loses the active plan reseeds `plan.original` from the current
+ * mid-run revision. The commitment is therefore anchored once by the producer,
+ * on the entry itself, as `initialEnergyExpectedKWh`.
+ */
+const pickFinalRevision = (
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
+): AttributionSnapshot | null => entry.finalPlan ?? entry.originalPlan ?? null;
+
+const sumPlannedFloorKWh = (
+  snapshot: AttributionSnapshot | null,
+): PlannedFloorEnergyKWh | null => {
+  if (snapshot === null) return null;
   let total = 0;
   for (const hour of snapshot.hours) {
     if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
   }
-  return total;
+  return asPlannedFloorEnergyKWh(total);
 };
 
 // Resolved attribution for a finalized run. `cause` is null on outcomes other
-// than `missed` (a met / abandoned / replaced / unknown run has nothing to
-// attribute) and on missed runs we still couldn't classify. The remaining
-// fields are the raw inputs the classification rested on, surfaced so the
-// runtime structured log can correlate causes across runs without re-deriving.
+// than `missed` — a met / abandoned / replaced run has nothing to attribute. An
+// unclassifiable miss is `'unknown'`, an in-band member, never null.
+//
+// The remaining fields are the raw inputs the classification rested on,
+// surfaced so the runtime structured log can correlate causes across runs
+// without re-deriving. They stay nullable ON THE PAYLOAD because "not recorded"
+// is a real thing for a persisted history entry — but nothing downstream of the
+// resolution reads them nullable: the decision path works on the branded,
+// non-nullable values resolved once at the top of
+// `resolveDeferredPlanHistoryMissAttribution`.
 export type DeferredPlanHistoryMissAttribution = {
   cause: DeferredPlanHistoryMissCause | null;
   plannedKWh: number | null;
@@ -104,24 +159,23 @@ export type DeferredPlanHistoryMissAttribution = {
   rateConfidence: 'low' | 'medium' | 'high' | null;
   acceptedSamples: number | null;
   dailyBudgetExhaustedBucketCount: number;
-  // True when the executor delivered at/above the planned floor energy. Null
-  // when delivery or the planned total wasn't recorded. Drives the
-  // energy-underestimate vs capacity-shortfall split.
+  // True when the executor delivered at/above what the ORIGINAL revision said
+  // this run needed. Null when delivery or that commitment wasn't recorded.
+  // Consulted only when the producer recorded no floor shortfall — see
+  // `resolveCause`. Reported unconditionally because it is useful telemetry
+  // even where it did not select the cause.
   deliveredAtOrAbovePlan: boolean | null;
 };
 
 // Entry fields the attribution reads. The progress fields + `objectiveKind`
 // back the directional `no_delivery` check; the rest back the delivery split and
-// snapshot lookup. All present on the resolved consumer view of an entry.
+// revision lookup. All present on the resolved consumer view of an entry.
 type AttributionEntry = Pick<
   ResolvedDeferredObjectivePlanHistoryEntry,
   'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
   | 'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
+  | 'initialEnergyExpectedKWh'
 >;
-
-const pickSnapshot = (
-  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
-): AttributionSnapshot | null => entry.finalPlan ?? entry.originalPlan ?? null;
 
 // Signed progress toward target (`final − start`) plus the per-kind deadband, or
 // null when the relevant progress samples weren't recorded. Deadlines are
@@ -154,7 +208,7 @@ const resolveNoDelivery = (
     AttributionEntry,
     'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
   >,
-  deliveredKWh: number | null,
+  deliveredKWh: DeliveredEnergyKWh | null,
 ): boolean => {
   const progress = resolveProgressTowardTarget(entry);
   if (progress === null) return false;
@@ -163,134 +217,192 @@ const resolveNoDelivery = (
   return deliveredKWh < NO_DELIVERY_KWH_FLOOR;
 };
 
+// Maps the producer's plan-time verdict onto a miss cause. `budget` is handled
+// ahead of this by `snapshotShowsBudgetExhausted` (which also honours the
+// retired count), and `none` returns null so the caller falls through to the
+// delivered-vs-committed split.
+//
+// `estimate` resolves to `low_confidence`, NOT `energy_underestimate`. The two
+// point in opposite directions: `floorShortfallCause.ts` defines `estimate` as
+// "the mean rate would fit and only the `k·SE` padding causes the gap" — the
+// planner was conservative — whereas `energy_underestimate` claims the target
+// needed MORE energy than estimated. Reading the former as the latter would tell
+// an owner their estimate was too low when the record says it was too cautious.
+// Keyed by the contract union so adding a cause fails to COMPILE here rather
+// than silently falling through to the delivery split — the same guard
+// `planHistorySettings.FLOOR_SHORTFALL_CAUSES` uses for the same union.
+// `budget` is `null` because `snapshotShowsBudgetExhausted` claims it earlier
+// (it also honours the retired count); `none` is `null` because "no shortfall"
+// is not a cause.
+const CAUSE_BY_FLOOR_SHORTFALL: Record<
+  DeferredObjectiveActivePlanFloorShortfallCause,
+  DeferredPlanHistoryMissCause | null
+> = {
+  budget: null,
+  time_capacity: 'capacity_shortfall',
+  // NOT a capacity shortfall. `step_power` is the floor-step undercount —
+  // "climbing within budget fits" (`floorShortfallCause.ts`), and the module
+  // AGENTS.md is blunter still: "the climbed-band probe already proved the
+  // booked hours do the job once the executor climbs (the normal state of a
+  // stepped thermal task)". It is a statement that the task CAN finish, so
+  // reporting "Not enough power or time" from it would be backwards. With no
+  // delivery evidence there is nothing to attribute, and `unknown` is honest.
+  step_power: null,
+  // Also claimed earlier, and for the same reason as `budget`: `estimate` has
+  // to outrank the delivery split (it is the producer saying the gap was its
+  // own padding), so `resolveCause` returns on it before this table is ever
+  // consulted. Null here rather than a second copy of the mapping — one rule,
+  // one place, and the exhaustiveness guard still fires on a sixth cause.
+  estimate: null,
+  none: null,
+};
+
+const causeFromFloorShortfall = (
+  snapshot: AttributionSnapshot | null,
+): DeferredPlanHistoryMissCause | null => {
+  const cause = snapshot?.floorShortfallCause;
+  return cause === undefined ? null : CAUSE_BY_FLOOR_SHORTFALL[cause] ?? null;
+};
+
+// True when the learned rate was still genuinely cold-start.
+// `typeof === 'number'` (not `!== undefined`): a persisted/legacy entry can
+// carry `acceptedSamples: null`, and `null < 4` coerces to true — which would
+// misclassify as `low_confidence` instead of the honest `unknown` fallback.
+const isColdStartEstimate = (snapshot: AttributionSnapshot | null): boolean => (
+  typeof snapshot?.acceptedSamples === 'number'
+  && snapshot.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP
+);
+
+/**
+ * Cause priority. Two different kinds of evidence decide here, and which one
+ * leads depends on the question:
+ *
+ * The producer's `floorShortfallCause` is authoritative for the questions it
+ * actually answers — `budget` (the soft daily budget bound the floor) and
+ * `estimate` (the gap was the producer's own `k·SE` padding). Those are read,
+ * never re-derived.
+ *
+ * It is NOT authoritative for power-versus-estimate, and that is the subtle
+ * part. `target_cannot_be_met` maps to `time_capacity`, and a run that missed
+ * because its learned rate was too LOW ends up there too: as the requirement is
+ * recomputed upward mid-run, the planner eventually reports it cannot meet the
+ * target. Letting `time_capacity` win outright would tell an owner "not enough
+ * power" whenever the real fault was the estimate — the mirror image of the bug
+ * this module was rewritten to fix, and it would make `energy_underestimate`
+ * nearly unreachable.
+ *
+ * What does separate them is the delivery evidence: a run that delivered what
+ * it set out to need and still missed had its requirement underestimated; one
+ * that did not deliver it was short on power or time. So the
+ * delivered-vs-committed split leads, and `floorShortfallCause` covers the case
+ * where delivery could not be measured.
+ */
 const resolveCause = (params: {
   outcome: ResolvedDeferredObjectivePlanHistoryEntry['outcome'];
-  snapshot: AttributionSnapshot | null;
+  finalRevision: AttributionSnapshot | null;
   deliveredAtOrAbovePlan: boolean | null;
   noDelivery: boolean;
 }): DeferredPlanHistoryMissCause | null => {
-  const { outcome, snapshot, deliveredAtOrAbovePlan, noDelivery } = params;
+  const { outcome, finalRevision, deliveredAtOrAbovePlan, noDelivery } = params;
   if (outcome !== 'missed') return null;
-  // Budget exhaustion is a deliberate hold-back, so it outranks everything —
-  // including a `no_delivery` that the hold-back itself produced.
-  if (snapshot !== null && (snapshot.dailyBudgetExhaustedBucketCount ?? 0) > 0) {
-    return 'budget_limited';
-  }
-  // The delivery story (entry-level, works even without a snapshot) wins over the
-  // shaky-estimate fallback below: a clear "did almost nothing" / "did some but
-  // short" / "delivered the plan yet short" is more honest than "still learning".
+  // Budget is a deliberate hold-back, so it outranks everything — including a
+  // `no_delivery` the hold-back itself produced. Routed through the shared
+  // resolver, which honours BOTH the live `floorShortfallCause === 'budget'`
+  // and the retired count. Hand-rolling only the retired half here is what let
+  // the runtime log report a different cause than the UI line for a modern
+  // budget-bound miss.
+  if (snapshotShowsBudgetExhausted(finalRevision)) return 'budget_limited';
+  // The delivery story is entry-level and works without any revision, so it
+  // stays ahead of everything that needs one.
   if (noDelivery) return 'no_delivery';
-  if (snapshot === null) return 'unknown';
-  if (deliveredAtOrAbovePlan === false) return 'capacity_shortfall';
+  // The producer attributed the shortfall to its own variance padding. That is
+  // a statement about the estimate's confidence, and no delivery figure
+  // second-guesses it.
+  if (finalRevision?.floorShortfallCause === 'estimate') return 'low_confidence';
+  // The discriminator: did the run deliver what it committed to?
   if (deliveredAtOrAbovePlan === true) return 'energy_underestimate';
-  // Delivery wasn't measurable. Only then fall back to "still learning", and
-  // only on a genuine cold start (few accepted samples) — NOT the confidence
-  // band, which sits at low effectively forever on thermal devices.
-  // `typeof === 'number'` (not `!== undefined`): a persisted/legacy entry can
-  // carry `acceptedSamples: null`, and `null < 4` coerces to true — which would
-  // misclassify as `low_confidence` instead of the honest `unknown` fallback.
-  if (
-    typeof snapshot.acceptedSamples === 'number'
-    && snapshot.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP
-  ) {
-    return 'low_confidence';
-  }
+  if (deliveredAtOrAbovePlan === false) return 'capacity_shortfall';
+  // Delivery or the commitment wasn't recorded, so fall back to the producer's
+  // plan-time verdict for the runs it covers.
+  if (finalRevision === null) return 'unknown';
+  const plannedCause = causeFromFloorShortfall(finalRevision);
+  if (plannedCause !== null) return plannedCause;
+  // Nothing recorded either way. Only now fall back to "still learning", and
+  // only on a genuine cold start — NOT the confidence band, which sits at low
+  // effectively forever on thermal devices.
+  if (isColdStartEstimate(finalRevision)) return 'low_confidence';
   return 'unknown';
 };
 
-const resolveDeliveredKWh = (
-  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'deliveredKWh'>,
-): number | null => (
-  typeof entry.deliveredKWh === 'number' && Number.isFinite(entry.deliveredKWh)
-    ? entry.deliveredKWh
-    : null
-);
-
-// Narrows an optional `energyExpectedKWh` hint to a positive finite number
-// (the only shape the comparison can act on); other shapes collapse to null
-// so the comparison falls back to the buffered `plannedKWh` sum. Accepts
-// `undefined` from the optional snapshot field as well as `null` from legacy
-// call sites that explicitly pass "no hint".
-const normalizeEnergyExpectedKWh = (value: number | null | undefined): number | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
-  return value;
-};
-
-// Snapshot wins over the optional argument — once the producer has persisted
-// the mean onto the snapshot, that's the authoritative value for both runtime
-// and UI render paths. The hint argument remains useful for call sites that
-// resolve the attribution from the in-flight runtime value before the snapshot
-// has been assembled (e.g. tests, callers that bypass `pushEntry`).
-const pickResolvedMean = (
-  snapshot: AttributionSnapshot | null,
-  hint: number | null,
-): number | null => (
-  normalizeEnergyExpectedKWh(snapshot?.energyExpectedKWh)
-  ?? normalizeEnergyExpectedKWh(hint)
-);
-
-const resolveDeliveredAtOrAbovePlan = (
-  deliveredKWh: number | null,
-  plannedKWh: number | null,
-  // Mean-based attribution avoids labelling a cold-start buffer-inflated run as
-  // `capacity_shortfall` when delivered energy actually met the underlying mean
-  // estimate. When the caller doesn't have the mean (legacy UI render of a
-  // historical entry), fall back to the buffered `plannedKWh` — same behaviour
-  // as before this fix.
-  energyExpectedKWh: number | null,
+/**
+ * Did the executor deliver what this run set out to need?
+ *
+ * The basis is `entry.initialEnergyExpectedKWh` — the run's committed mean
+ * requirement, anchored once by the producer at `startRecord` and never
+ * revised. Mean-based (not the buffered `plannedKWh` sum) so a cold-start run
+ * whose buffer was inflated by a wide `k·SE` band isn't called a capacity
+ * shortfall when delivery actually met the underlying estimate.
+ *
+ * Every revision-derived alternative is a moving target: each snapshot's
+ * `energyExpectedKWh` is the energy still OUTSTANDING at that revision, which
+ * shrinks as the run delivers, and `originalPlan` is whichever snapshot had the
+ * most hours rather than the first. Comparing cumulative delivery against
+ * either is comparing two different quantities, and the error is systematic
+ * rather than occasional — the harder a device fights a real capacity limit,
+ * the smaller the remainder and the more likely the comparison is to report an
+ * estimation error instead.
+ *
+ * Null when either side wasn't recorded, and the caller then declines the
+ * comparison rather than substituting another quantity.
+ */
+const resolveDeliveredAtOrAboveCommitment = (
+  deliveredKWh: DeliveredEnergyKWh | null,
+  committedKWh: RemainingEnergyKWh | null,
 ): boolean | null => {
-  const comparisonBasis = energyExpectedKWh ?? plannedKWh;
-  if (deliveredKWh === null || comparisonBasis === null || comparisonBasis <= 0) return null;
-  return deliveredKWh >= comparisonBasis * DELIVERED_PLAN_FRACTION;
+  if (deliveredKWh === null || committedKWh === null) return null;
+  return deliveredKWh >= committedKWh * DELIVERED_PLAN_FRACTION;
 };
 
 /**
  * Resolves the miss attribution for a finalized history entry. Pure and
- * browser-safe: reads the persisted entry (including the snapshot's persisted
- * `energyExpectedKWh` when present) plus an optional mean-energy hint the
- * runtime emitter threads from the live revision at finalize time. Returns a
- * fully-populated structure on every call (fields null when their input wasn't
- * recorded) so the runtime structured log can forward it verbatim and the UI
- * helper can read `cause` without re-deriving.
+ * browser-safe: reads only the persisted entry, so the runtime structured log
+ * and the UI render path resolve the same `missCause` by construction rather
+ * than by both being handed the same value.
  *
- * `energyExpectedKWh` (the second argument) is the mean-based plan total
- * (no variance buffer), threaded from the live
- * `DeferredObjectiveActivePlanRevisionV1.energyExpectedKWh` at finalization.
- * The snapshot's persisted `energyExpectedKWh` (written by the recorder during
- * the same finalize pass) is the source of truth at read time so both runtime
- * and UI now resolve identical `missCause` values; the hint is retained for
- * call sites that have the live value but haven't yet flowed through
- * persistence. When neither is present (legacy entries written before this
- * field shipped, backfill entries) the comparison falls back to the buffered
- * `plannedKWh` sum — same behaviour as before the fix, so UI-side attribution
- * of historical entries is no-worse-than-before.
+ * There is deliberately no live-value parameter. The recorder used to thread
+ * one from the in-flight revision at finalize time, while the same finalize
+ * pass wrote that identical number onto the snapshot — so the two could never
+ * disagree, and the argument was a sequencing artifact from when the log was
+ * emitted before persistence.
+ *
+ * Returns a fully-populated structure on every call (payload fields null when
+ * their input wasn't recorded) so the structured log can forward it verbatim.
  */
 export const resolveDeferredPlanHistoryMissAttribution = (
   entry: AttributionEntry,
-  energyExpectedKWh: number | null = null,
 ): DeferredPlanHistoryMissAttribution => {
-  const snapshot = pickSnapshot(entry);
-  const plannedTotal = snapshot === null ? null : sumPlannedKWh(snapshot);
-  const plannedKWh = plannedTotal !== null && plannedTotal > 0 ? plannedTotal : null;
-  const deliveredKWh = resolveDeliveredKWh(entry);
-  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAbovePlan(
+  const finalRevision = pickFinalRevision(entry);
+  // Reported telemetry, not a decision input: the buffered hours sum as the
+  // planner last had it.
+  const plannedFloorKWh = sumPlannedFloorKWh(finalRevision);
+  const deliveredKWh = asDeliveredEnergyKWh(entry.deliveredKWh);
+  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAboveCommitment(
     deliveredKWh,
-    plannedKWh,
-    pickResolvedMean(snapshot, energyExpectedKWh),
+    asRemainingEnergyKWh(entry.initialEnergyExpectedKWh),
   );
   return {
     cause: resolveCause({
       outcome: entry.outcome,
-      snapshot,
+      finalRevision,
       deliveredAtOrAbovePlan,
       noDelivery: resolveNoDelivery(entry, deliveredKWh),
     }),
-    plannedKWh,
+    plannedKWh: plannedFloorKWh,
     deliveredKWh,
-    planningSpeedKw: snapshot?.planningSpeedKw ?? null,
-    rateConfidence: snapshot?.rateConfidence ?? null,
-    acceptedSamples: snapshot?.acceptedSamples ?? null,
-    dailyBudgetExhaustedBucketCount: snapshot?.dailyBudgetExhaustedBucketCount ?? 0,
+    planningSpeedKw: finalRevision?.planningSpeedKw ?? null,
+    rateConfidence: finalRevision?.rateConfidence ?? null,
+    acceptedSamples: finalRevision?.acceptedSamples ?? null,
+    dailyBudgetExhaustedBucketCount: finalRevision?.dailyBudgetExhaustedBucketCount ?? 0,
     deliveredAtOrAbovePlan,
   };
 };
@@ -304,18 +416,30 @@ export const resolveDeferredPlanHistoryMissAttribution = (
 const STILL_LEARNING_CAUSE = "Still learning this device's energy use.";
 
 /**
- * Composes the "Why" sentence for the miss causes that only the plan-time
- * provenance + recorded delivery (Session A) can distinguish: a device that
- * delivered almost nothing, a run that delivered the planned power yet still
- * came up short, and a genuine cold-start estimate. Returns `null` for every
- * other cause (`budget_limited`, `capacity_shortfall`, `unknown`) and for
- * non-missed outcomes.
+ * Composes the "Why" sentence for the miss causes the plan-time provenance +
+ * recorded delivery can distinguish: a device that delivered almost nothing, a
+ * run that delivered what it committed to yet still came up short, a genuine
+ * cold-start estimate, and a run there simply wasn't enough power or time for.
+ * Returns `null` for `budget_limited` (whose copy the caller owns and checks
+ * first), for `unknown`, and for non-missed outcomes.
  *
- * Deliberately narrow: the shipped budget-exhaustion and `cannot_meet` "Why"
- * copy stays owned by `formatPlanHistoryMissedReason`'s `planStatus` branches
- * so this change doesn't reword strings the UI already ships. The caller
- * inserts this refinement ahead of those branches. Tone matches the surrounding
- * blameless receipt copy.
+ * `capacity_shortfall` gained a sentence here because without one it fell
+ * through to the caller's `planStatus` branches — most visibly the `cannot_meet`
+ * line, "Couldn't reserve enough cheap hours in time.", which blames the price
+ * curve for a run that was capacity- or budget-paced and reads as nonsense on a
+ * flat-price night.
+ *
+ * It names power AND time deliberately. `floorShortfallCause` collapses two
+ * reason codes into `time_capacity` (`target_cannot_be_met`,
+ * `limited_by_higher_priority_task`), and that cause is defined as
+ * "physical/time even uncapped" — so a deadline that was simply too soon for the
+ * device's rate lands here alongside a genuinely power-starved run. The
+ * persisted data cannot tell those apart, so a power-only sentence would send an
+ * owner hunting for power they never needed. Per `feedback_hard_cap_is_physical`
+ * it states what happened and suggests no remedy; the recourse button owns that.
+ *
+ * Tone matches the surrounding blameless receipt copy; kept tight so it fits the
+ * one-line list-card reason slot at 320px (the consumer prefixes "Why:").
  */
 export const formatRefinedMissCause = (entry: AttributionEntry): string | null => {
   const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
@@ -326,10 +450,11 @@ export const formatRefinedMissCause = (entry: AttributionEntry): string | null =
         : 'Delivered almost no charge before the deadline.';
     case 'energy_underestimate':
       return 'Target needed more energy than estimated.';
+    case 'capacity_shortfall':
+      return 'Not enough power or time before the deadline.';
     case 'low_confidence':
       return STILL_LEARNING_CAUSE;
     case 'budget_limited':
-    case 'capacity_shortfall':
     case 'unknown':
     case null:
       return null;

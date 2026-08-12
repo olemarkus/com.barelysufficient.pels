@@ -28,16 +28,39 @@ Plan-time provenance is already captured on the live active plan
 through:
 
 - **Contract** — `DeferredObjectivePlanHistoryRevisionSnapshot` gains optional
-  `rateConfidence`, `acceptedSamples`, `planningSpeedKw` (v2.7.4; no schema
-  bump — v4 unreleased). Validated in `planHistorySettings.ts`.
+  `rateConfidence`, `acceptedSamples`, `planningSpeedKw` (v2.7.4). No schema
+  bump: v4 **is** released (shipped v2.7.2), and the sanctioned change for a
+  released schema is an additive *optional* field — the normalizer filters
+  rather than reconstructs, so an older client preserves unknown fields on a
+  load→save round-trip. (This line previously read "v4 unreleased", which was
+  already wrong when written.) Validated in `planHistorySettings.ts`.
 - **Capture** — `captureRevisionSnapshot` (`planHistoryV4Helpers.ts`) pulls them
   from the active plan.
 - **Producer** — `packages/shared-domain/src/deferredPlanHistoryAttribution.ts`
-  classifies a missed run into one cause (checked in order):
-  `budget_limited` → `low_confidence` → `energy_underestimate` →
-  `capacity_shortfall` → `unknown`. `energy_underestimate` vs
-  `capacity_shortfall` is the delivered-vs-planned-floor split
-  (`DELIVERED_PLAN_FRACTION = 0.95`).
+  classifies a missed run into one cause. **The producer's own verdict wins**:
+  the classifier reads the persisted `floorShortfallCause` — resolved once at
+  plan time through `floorShortfallCause.ts` — rather than re-deriving a cause
+  from arithmetic. Order: `budget_limited` (via `snapshotShowsBudgetExhausted`,
+  which honours both the live cause and the retired count) → `no_delivery` →
+  `floorShortfallCause` routing (`time_capacity`/`step_power` →
+  `capacity_shortfall`, `estimate` → `low_confidence`) → the
+  delivered-vs-committed split → `low_confidence` on a cold start → `unknown`.
+
+  Note `estimate` maps to `low_confidence`, **not** `energy_underestimate`: it
+  means the mean rate would have fit and only the `k·SE` padding caused the gap
+  — the planner was conservative, the opposite of "the target needed more
+  energy than estimated".
+
+  The delivered-vs-committed split (`DELIVERED_PLAN_FRACTION = 0.95`) is
+  consulted ONLY where the producer recorded no shortfall, because that is the
+  one case its verdict does not cover: the plan said it would make it and it
+  didn't. Its basis is the **original** revision's mean requirement. Using the
+  final revision's — which is the energy still OUTSTANDING, and shrinks as a run
+  delivers — made the split run backwards: the harder a device fought a real
+  capacity limit, the smaller the final remainder and the more likely the
+  comparison was to report an estimation error. That shipped, and produced a
+  wrong "Target needed more energy than estimated." on a nine-hour EV run that
+  was daily-budget-paced throughout (2026-08-11).
 - **Telemetry** — the recorder emits one `deferred_objective_history_finalized`
   structured-debug event per observation entry (gated on the
   `deferred_objectives` topic), carrying the cause + raw inputs. Emitted on
@@ -45,11 +68,16 @@ through:
   false-alarm rate. This is the queryable signal Sessions B and C validate
   against.
 - **UI** — the existing single "Why" line (`formatPlanHistoryMissedReason`) is
-  *enriched*, not duplicated: a low-confidence `cannot_meet` now reads "PELS was
-  still learning this device's energy use (N readings) when it planned this
-  run." and a delivered-but-short run reads "Power was available, but the target
-  needed more energy than estimated." Shipped budget / cannot_meet copy is
-  unchanged; the refinement is inserted ahead of those branches.
+  *enriched*, not duplicated: a cold-start run reads "Still learning this
+  device's energy use.", a delivered-but-short run reads "Target needed more
+  energy than estimated.", and a capacity-bound run reads "Not enough available
+  power before the deadline." The refinement is inserted ahead of the shipped
+  `planStatus` branches; budget copy is checked first and stays unchanged.
+
+  `capacity_shortfall` gained a sentence because without one it fell through to
+  the `cannot_meet` line, "Couldn't reserve enough cheap hours in time." — which
+  blames the price curve for a run that was capacity- or budget-paced, and reads
+  as nonsense on a flat-price night.
 
 ## Deliberately out of scope
 

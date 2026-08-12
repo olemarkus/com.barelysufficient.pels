@@ -82,6 +82,7 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     // The device made real progress (default 50 -> 60), so no_delivery is out.
     const entry = buildEntry({
       deliveredKWh: 25,
+      initialEnergyExpectedKWh: 20,
       finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1090 }),
     });
     expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('energy_underestimate');
@@ -184,9 +185,14 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('unknown');
   });
 
-  it('classifies energy_underestimate when delivery met/exceeded the planned floor', () => {
+  it('classifies energy_underestimate when delivery met what the run committed to', () => {
+    // The commitment is anchored on the ENTRY, captured once at startRecord.
+    // No revision snapshot can supply it: each one's `energyExpectedKWh` is the
+    // energy still outstanding at that moment, and `originalPlan` is whichever
+    // snapshot had the most hours rather than the first.
     const entry = buildEntry({
       deliveredKWh: 21,
+      initialEnergyExpectedKWh: 20,
       finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
     });
     const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
@@ -194,9 +200,10 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     expect(attribution.deliveredAtOrAbovePlan).toBe(true);
   });
 
-  it('classifies capacity_shortfall when delivery fell short of the planned floor', () => {
+  it('classifies capacity_shortfall when delivery fell short of the commitment', () => {
     const entry = buildEntry({
       deliveredKWh: 12,
+      initialEnergyExpectedKWh: 20,
       finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
     });
     const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
@@ -234,11 +241,62 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     });
   });
 
-  it('prefers finalPlan over originalPlan for the attribution snapshot', () => {
+  it('reads provenance from the final revision and the commitment from the entry', () => {
+    // Two different sources for two different questions. Provenance
+    // (confidence / samples) is the planner's last word; the commitment is the
+    // producer-anchored figure on the entry.
     const entry = buildEntry({
       deliveredKWh: 21,
+      initialEnergyExpectedKWh: 20,
       originalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 2 }),
       finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
+    });
+    const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+    expect(attribution.cause).toBe('energy_underestimate');
+    expect(attribution.rateConfidence).toBe('high');
+    expect(attribution.acceptedSamples).toBe(12);
+  });
+
+  it('never uses a revision snapshot as the commitment basis', () => {
+    // Regression for the production miss this whole change exists for
+    // (2026-08-11). A run that fought a capacity limit all night delivers a lot
+    // in absolute terms while the final revision's `energyExpectedKWh` — the
+    // energy STILL outstanding — has shrunk to about the same figure, so
+    // comparing the two reported an estimation error. Against the anchored
+    // commitment the same delivery is plainly short. Both snapshots here carry
+    // remainders; only the entry carries the commitment.
+    const entry = buildEntry({
+      deliveredKWh: 11.84,
+      initialEnergyExpectedKWh: 21.69,
+      originalPlan: buildSnapshot({ energyNeededKWh: 24.14, energyExpectedKWh: 21.69 }),
+      finalPlan: buildSnapshot({
+        energyNeededKWh: 12.31,
+        energyExpectedKWh: 11.23,
+        floorShortfallCause: 'time_capacity',
+        rateConfidence: 'low',
+        acceptedSamples: 87,
+      }),
+    });
+    const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+    expect(attribution.deliveredAtOrAbovePlan).toBe(false);
+    expect(attribution.cause).toBe('capacity_shortfall');
+  });
+
+  it('does not let time_capacity overrule a run that delivered its commitment', () => {
+    // `target_cannot_be_met` maps to `time_capacity`, and a run whose learned
+    // rate was too LOW ends up there too — the requirement is recomputed upward
+    // mid-run until the planner reports it cannot meet the target. If the
+    // producer's verdict won outright here, an estimate problem would read
+    // "not enough power", and `energy_underestimate` would be near-unreachable.
+    // The delivery evidence is what separates the two.
+    const entry = buildEntry({
+      deliveredKWh: 21,
+      initialEnergyExpectedKWh: 20,
+      finalPlan: buildSnapshot({
+        floorShortfallCause: 'time_capacity',
+        rateConfidence: 'high',
+        acceptedSamples: 12,
+      }),
     });
     expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('energy_underestimate');
   });
@@ -251,11 +309,9 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     // delivered energy met the underlying mean estimate. The snapshot uses
     // `rateConfidence: 'high'` so the low-confidence branch can't hide the
     // bug; the only thing inflating `plannedKWh` is the variance buffer.
-    // Verifies both halves of the fix —
-    // (a) without the mean argument the classifier still reads
-    // `capacity_shortfall` (legacy behaviour, no UI regression), and
-    // (b) threading `energyExpectedKWh` from the live revision flips the
-    // attribution to `energy_underestimate` because the mean was met.
+    // The comparison is against the revision's MEAN requirement
+    // (`energyExpectedKWh`), never the buffered `plannedKWh` sum, so delivering
+    // the mean reads as an energy underestimate rather than a capacity miss.
     const snapshot = buildSnapshot({
       // Buffered plan total = 5.0 kWh across two hours (mean 3.0 + k·SE 2.0).
       hours: [
@@ -263,37 +319,89 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
         { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 2.5 },
       ],
       energyNeededKWh: 5.0,
+      energyExpectedKWh: 3.0,
       rateConfidence: 'high',
       acceptedSamples: 12,
     });
-    const entry = buildEntry({ deliveredKWh: 3.2, finalPlan: snapshot });
+    const entry = buildEntry({
+      deliveredKWh: 3.2,
+      initialEnergyExpectedKWh: 3.0,
+      originalPlan: snapshot,
+      finalPlan: snapshot,
+    });
 
-    // (a) Legacy behaviour: buffered comparison flags capacity shortfall.
-    const buffered = resolveDeferredPlanHistoryMissAttribution(entry);
-    expect(buffered.cause).toBe('capacity_shortfall');
-    expect(buffered.deliveredAtOrAbovePlan).toBe(false);
-
-    // (b) Mean-aware comparison: delivered 3.2 ≥ mean 3.0 × 0.95.
-    const meanAware = resolveDeferredPlanHistoryMissAttribution(entry, 3.0);
-    expect(meanAware.cause).toBe('energy_underestimate');
-    expect(meanAware.deliveredAtOrAbovePlan).toBe(true);
-    // The reported `plannedKWh` still surfaces the buffered total — the fix
-    // only shifts the comparison basis, not the raw input passthrough.
-    expect(meanAware.plannedKWh).toBeCloseTo(5.0);
+    // Delivered 3.2 >= mean 3.0 x 0.95.
+    const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+    expect(attribution.cause).toBe('energy_underestimate');
+    expect(attribution.deliveredAtOrAbovePlan).toBe(true);
+    // The reported `plannedKWh` still surfaces the buffered total — only the
+    // comparison basis is mean-based, not the raw input passthrough.
+    expect(attribution.plannedKWh).toBeCloseTo(5.0);
   });
 
-  it('falls back to the buffered comparison when energyExpectedKWh is zero or invalid', () => {
-    // Defensive: a non-positive / NaN / undefined mean must not silently
-    // disable the floor comparison. The classifier should reuse the buffered
-    // `plannedKWh` instead — matching the legacy code path so UI renders of
-    // historical entries (which always pass null) stay deterministic.
+  it('declines the comparison when no commitment was recorded', () => {
+    // Legacy and backfill entries carry no `initialEnergyExpectedKWh`. The
+    // comparison is skipped rather than falling back to some other quantity —
+    // substituting the summed `plannedKWh` for the commitment is precisely what
+    // this change removes. The producer's plan-time verdict covers the run
+    // instead.
     const entry = buildEntry({
-      deliveredKWh: 12,
-      finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
+      deliveredKWh: 19.5,
+      finalPlan: buildSnapshot({
+        floorShortfallCause: 'time_capacity',
+        rateConfidence: 'high',
+        acceptedSamples: 12,
+      }),
     });
-    expect(resolveDeferredPlanHistoryMissAttribution(entry, 0).cause).toBe('capacity_shortfall');
-    expect(resolveDeferredPlanHistoryMissAttribution(entry, Number.NaN).cause).toBe('capacity_shortfall');
-    expect(resolveDeferredPlanHistoryMissAttribution(entry, null).cause).toBe('capacity_shortfall');
+    const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+    expect(attribution.deliveredAtOrAbovePlan).toBeNull();
+    expect(attribution.cause).toBe('capacity_shortfall');
+  });
+
+  it('routes the producer-resolved floor shortfall cause when delivery is unmeasurable', () => {
+    // With no recorded delivery there is no discriminator, so the producer's
+    // plan-time verdict decides.
+    const commitment = { deliveredKWh: undefined };
+    const timeCapacity = buildEntry({
+      ...commitment,
+      finalPlan: buildSnapshot({ floorShortfallCause: 'time_capacity' }),
+    });
+    const stepPower = buildEntry({
+      ...commitment,
+      finalPlan: buildSnapshot({ floorShortfallCause: 'step_power' }),
+    });
+    // `estimate` means the producer was CONSERVATIVE — the mean rate would have
+    // fit and only the `k·SE` padding caused the gap. That is the opposite of
+    // "the target needed more energy than estimated", so it must not read as
+    // `energy_underestimate`.
+    // `estimate` outranks the delivery split entirely: it is the producer
+    // saying the gap was its own variance padding, and no delivery figure
+    // second-guesses that.
+    const estimate = buildEntry({
+      deliveredKWh: 21,
+      initialEnergyExpectedKWh: 20,
+      finalPlan: buildSnapshot({ floorShortfallCause: 'estimate' }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(timeCapacity).cause).toBe('capacity_shortfall');
+    expect(resolveDeferredPlanHistoryMissAttribution(estimate).cause).toBe('low_confidence');
+    // `step_power` is NOT a capacity shortfall: it is the floor-step undercount,
+    // and "climbing within budget fits" — a statement that the task CAN finish
+    // once the executor raises the step. Reporting "Not enough power or time"
+    // from it would be backwards, so with no delivery evidence it stays unknown.
+    expect(resolveDeferredPlanHistoryMissAttribution(stepPower).cause).toBe('unknown');
+  });
+
+  it('classifies budget_limited from the live floorShortfallCause, not just the retired count', () => {
+    // The retired `dailyBudgetExhaustedBucketCount` is absent on every modern
+    // entry, so hand-rolling only that half meant the structured log reported a
+    // different cause than the UI line — which routes through
+    // `snapshotShowsBudgetExhausted` and got `budget_limited` right.
+    const entry = buildEntry({
+      deliveredKWh: 21,
+      initialEnergyExpectedKWh: 20,
+      finalPlan: buildSnapshot({ floorShortfallCause: 'budget' }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('budget_limited');
   });
 });
 
@@ -340,6 +448,7 @@ describe('formatRefinedMissCause', () => {
   it('explains an energy underestimate when power was available', () => {
     const entry = buildEntry({
       deliveredKWh: 21,
+      initialEnergyExpectedKWh: 20,
       finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
@@ -347,16 +456,34 @@ describe('formatRefinedMissCause', () => {
     );
   });
 
+  it('explains a capacity shortfall instead of blaming the price curve', () => {
+    // Without a sentence of its own this fell through to the caller's
+    // `cannot_meet` line, "Couldn't reserve enough cheap hours in time." — which
+    // is nonsense on a flat-price night, and the night this change came from was
+    // flat. States what happened; per `feedback_hard_cap_is_physical` it does
+    // not suggest raising the cap.
+    const entry = buildEntry({
+      deliveredKWh: 12,
+      initialEnergyExpectedKWh: 20,
+      finalPlan: buildSnapshot({ floorShortfallCause: 'time_capacity' }),
+    });
+    expect(formatRefinedMissCause(entry)).toBe(
+      'Not enough power or time before the deadline.',
+    );
+  });
+
   it('returns null for causes the shipped planStatus copy already handles', () => {
+    // `budget_limited` copy is owned by `formatPlanHistoryMissedReason`, which
+    // checks it first; `unknown` has nothing honest to add.
     const budgetEntry = buildEntry({
       finalPlan: buildSnapshot({ dailyBudgetExhaustedBucketCount: 2 }),
     });
-    const capacityEntry = buildEntry({
-      deliveredKWh: 12,
+    const unknownEntry = buildEntry({
+      deliveredKWh: undefined,
       finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
     });
     expect(formatRefinedMissCause(budgetEntry)).toBeNull();
-    expect(formatRefinedMissCause(capacityEntry)).toBeNull();
+    expect(formatRefinedMissCause(unknownEntry)).toBeNull();
   });
 
   it('never emits a multi-digit reading count, even on a well-sampled low band', () => {

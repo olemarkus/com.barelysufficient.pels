@@ -466,10 +466,14 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
     );
   });
 
-  it('names an energy underestimate when delivery met the planned floor but missed', () => {
+  it('names an energy underestimate when delivery met the commitment but missed', () => {
     const entry = buildEntry({
       outcome: 'missed',
-      deliveredKWh: 2.5, // ≥ planned 2.0 → power was available.
+      deliveredKWh: 2.5, // ≥ the 2.0 commitment → power was available.
+      // The commitment is anchored on the entry, captured once at startRecord;
+      // the revisions supply provenance only.
+      initialEnergyExpectedKWh: 2,
+      originalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
       finalPlan: buildSnapshot({
         planStatus: 'cannot_meet',
         rateConfidence: 'high',
@@ -478,6 +482,24 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
     });
     expect(formatPlanHistoryMissedReason(entry)).toBe(
       'Target needed more energy than estimated.',
+    );
+  });
+
+  it('names a capacity shortfall rather than the cheap-hours line', () => {
+    // The `cannot_meet` fallback blames the price curve. When the producer
+    // recorded `time_capacity` there is a truthful sentence to show instead.
+    const entry = buildEntry({
+      outcome: 'missed',
+      deliveredKWh: 0.9,
+      initialEnergyExpectedKWh: 2,
+      originalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        floorShortfallCause: 'time_capacity',
+      }),
+    });
+    expect(formatPlanHistoryMissedReason(entry)).toBe(
+      'Not enough power or time before the deadline.',
     );
   });
 

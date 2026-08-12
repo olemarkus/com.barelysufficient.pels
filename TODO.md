@@ -37,6 +37,17 @@ tracked as P1/P2/P3 follow-up below.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] **The plan-history recorder has no abandon-grace or plausibility gate.**
+      `DeferredObjectivePlanHistoryRecorder`'s constructor (`planHistory.ts`) takes whatever
+      `deps.load()` returns. A transient corrupt/empty SDK read normalizes to an empty envelope,
+      the recorder starts from `[]`, and the first `flushIfDirty()` persists that over the real
+      history. The root `AGENTS.md` requires an abandon-grace window for exactly this
+      ("Transient external failures get an abandon-grace window, never a destructive reset of
+      persisted state"), and `feedback_homey_sdk_unreliable` says Homey SDK reads do fail
+      transiently. `devicePowerCalibrationStore.ts` has the protection; this does not.
+      `notes/persisted-settings-state.md` predicted it: "The deferred-objective recorders almost
+      certainly have the same bugs in some form." Found 2026-08-12. [P1]
+
 *v2.9.0 closeout and v2.8.x release-review follow-ups. These are safe for
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
@@ -1269,6 +1280,29 @@ program) remain deferred.*
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **Split the three meanings collapsed into `progressCurrentValue`'s `undefined`.**
+      `lib/objectives/deferredObjectives/diagnosticFields.ts` returns `number | undefined`, and
+      the `undefined` means three different things: `generic_energy` has no band dimension (a
+      structural fact — degrading to the global mean is correct), progress is untrustworthy
+      (`progress.reasonCode` set: stale sensor, missing device), and the measurement is simply
+      absent. `integrateBands` treats all three alike, so cases 2 and 3 currently produce a
+      plausible-looking `remainingUnits × globalMean` energy figure derived from progress the
+      producer already declared untrustworthy. Return a discriminated result and let only the
+      first case degrade; the other two belong in the existing all-null "unavailable" arm of
+      `DeferredObjectiveEnergyResolution`. Deliberately NOT done alongside the miss-attribution
+      fix: it changes planner behaviour (objectives that get an estimate today would report
+      `objective_missing_capacity`), so it wants its own PR and its own SDK-boundary e2e.
+      Split out 2026-08-12. [P2]
+
+- [ ] **`initialEnergyNeededKWh` fabricates `0` when the diagnostic carries no energy.**
+      `startRecord` (`planHistoryInProgressState.ts`) writes `diag.energyNeededKWh ?? 0` into a
+      field the v4 contract declares REQUIRED, so absence becomes the assertion "this run needed
+      0 kWh at start" — the fabricated-zero `lib/AGENTS.md` forbids. Cannot be fixed in place:
+      making it optional is a shape change to a released schema, which the repo has no precedent
+      or policy for. Needs either a schema-version plan or a producer-side guarantee that the
+      field is always resolvable. Found while removing the neighbouring energy fallbacks,
+      2026-08-12. [P2]
 
 - [ ] **Extend the control-model vocab guard to `packages/shared-domain/**`.**
       `controlModel` is gone from the overview wire — the stepped discriminant is now presence of

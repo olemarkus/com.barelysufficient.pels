@@ -15,6 +15,7 @@ import type {
 } from '../../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../../packages/shared-domain/src/temperatureObservedState';
 import { hasObservedStateOfCharge } from '../../../packages/shared-domain/src/stateOfChargeObservedState';
+import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
 import {
   formatPlanHistoryMissedReason,
@@ -234,7 +235,12 @@ const resolveSpeedPart = (revision: DeferredObjectiveActivePlanRevisionV1): stri
 };
 
 const resolveEnergyPart = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
-  const expected = revision.energyExpectedKWh;
+  // Routed through the shared resolver rather than re-spelling the
+  // absence-encodes-equality rule a third time. When the revision omits
+  // `energyExpectedKWh` this answers `needed`, the range collapses, and the
+  // single-figure branch below renders — same output as before, one less copy
+  // of the rule.
+  const expected = resolveRemainingEnergyKWh(revision);
   const needed = revision.energyNeededKWh;
   if (isFiniteNumber(expected) && expected > 0 && needed > 0 && Math.abs(expected - needed) > 0.05) {
     const low = Math.round(Math.min(expected, needed) * 10) / 10;

@@ -188,11 +188,20 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // (e.g. `cannot_meet` against a sub-second remaining bucket) and without
   // depending on a learned `kwhPerUnit` profile.
   energyNeededKWh: number;
-  // Mean-based estimate (no variance buffer). Paired with the buffered
-  // `energyNeededKWh` so the UI can render an `expected…planned` range. Written
-  // only when it differs from `energyNeededKWh`; absent means no buffer to show
-  // (cold-start, bootstrap, steady device) and the UI treats it as equal to
-  // `energyNeededKWh`. Optional for backward compatibility.
+  // Mean-based estimate (no variance buffer) of the energy STILL needed at this
+  // revision's moment — `kWhPerUnit.mean × remainingUnits`, so it shrinks across
+  // a run's revisions. Paired with the buffered `energyNeededKWh` so the UI can
+  // render an `expected…planned` range. Written only when it differs from
+  // `energyNeededKWh`; absent means no buffer to show (cold-start, bootstrap,
+  // steady device) and is EQUAL to `energyNeededKWh` — a lossless byte-stability
+  // omission, and the ordinary shape rather than a legacy one. Resolve it
+  // through `resolveRemainingEnergyKWh`
+  // (`packages/shared-domain/src/energyQuantities.ts`), never by substituting a
+  // different quantity. One display formatter still spells the rule inline —
+  // `formatEnergyEstimateKWh` in `packages/shared-domain/src/deadlineLabels.ts`,
+  // which takes pre-resolved numbers rather than a revision; route it through
+  // the resolver if its signature ever changes. Optional for backward
+  // compatibility.
   energyExpectedKWh?: number;
   // Planner status. UI surfaces a "Can't fully meet" chip when this is
   // `cannot_meet` or `at_risk`.
