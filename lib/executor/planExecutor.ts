@@ -48,8 +48,7 @@ import {
 } from './planExecutorDispatch';
 import { ShortfallExecutor, type ShortfallExecutorDeps } from './shortfallExecutor';
 
-export type { PlanActuationResult } from './planExecutorDispatch';
-import type { PlanActuationResult } from './planExecutorDispatch';
+import type { PlanActuationResult } from '../planContract/planActuationResult';
 
 export type PlanExecutorDeps = ShortfallExecutorDeps & {
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;

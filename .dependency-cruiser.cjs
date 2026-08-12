@@ -345,15 +345,12 @@ module.exports = {
         + 'is the executor\'s charter (lib/AGENTS.md § Layer boundaries), and a planner that consults '
         + 'a drift predicate is one step from re-asserting a stale plan instead of re-deciding — the '
         + 'shape that caused the 2026-08-05 hard-cap breach (inc_26449fb9). Replaces the former '
-        + 'todo-tighten-plan-executor-boundary warning, whose stated goal this is. Allowed exception: '
-        + 'planEngine.ts is the composition root that constructs PlanExecutor, so it legitimately '
-        + 'imports the class and its types — and it is the single seam through which the rest of '
-        + 'lib/plan asks the executor anything (hasPendingTargetCommands, hasSettledActuation, …). '
-        + 'HONESTY CAVEAT: tsPreCompilationDeps is unset, so this catches only VALUE imports. One '
-        + 'type-only edge survives it: planService.ts importing PlanActuationResult. Moving that '
-        + 'type to lib/planContract/ would close the caveat entirely.',
+        + 'todo-tighten-plan-executor-boundary warning, whose stated goal this is. Setup composes '
+        + 'planner and executor; lib/plan consumes only neutral contracts from lib/planContract. '
+        + 'The source AST guard behind npm run arch:grep also catches type-only and dynamic imports '
+        + 'before compilation erases them.',
       severity: 'error',
-      from: { path: '^lib/plan/', pathNot: '^lib/plan/planEngine\\.ts$' },
+      from: { path: '^lib/plan/' },
       to: { path: '^lib/executor/' },
     },
     {

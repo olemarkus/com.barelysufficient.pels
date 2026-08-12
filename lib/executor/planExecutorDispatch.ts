@@ -53,20 +53,9 @@ import {
 } from './executableTargetProjection';
 import { isSteppedLoadRestoreFromOff } from './planExecutorPredicates';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
+import type { PlanActuationResult } from '../planContract/planActuationResult';
 
 const logger = getLogger('executor/plan');
-
-export type PlanActuationResult = {
-  deviceWriteCount: number;
-  commandRequestCount: number;
-  /**
-   * Ids of the devices this actuation actually touched (a write or a command
-   * request). The counts alone are a plan-wide fact; consumers that act per
-   * device need to know WHICH — the realtime circuit breaker charges a strike
-   * against a device only when that device was the one written.
-   */
-  writtenDeviceIds: string[];
-};
 
 type PlanActionHandleResult = {
   handled: boolean;

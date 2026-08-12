@@ -1,16 +1,15 @@
-// AST guard for the lib/plan -> lib/objectives type-edge boundary.
+// AST guard for lib/plan source-level layer boundaries.
 //
 // WHY THIS EXISTS: .dependency-cruiser.cjs runs post-compilation
 // (tsPreCompilationDeps is unset), so `import type` edges are erased by tsc
-// before the cruiser ever sees the graph. The `no-plan-to-smarttasks` rule
-// therefore only catches VALUE imports; a future
-//   import type { X } from '../objectives/...'
-// inside lib/plan/** would compile and pass `arch:check` silently.
+// before the cruiser ever sees the graph. The `no-plan-to-smarttasks` and
+// `no-plan-to-executor` rules therefore only catch VALUE imports; a future
+// type-only edge from lib/plan/** would compile and pass `arch:check` silently.
 //
 // This guard promotes the previously-manual audit (documented in
 // .dependency-cruiser.cjs next to `no-plan-to-smarttasks`) into an enforced
-// check: it asserts ZERO import edges from lib/plan/** to any objectives
-// module, covering value AND type imports in every specifier shape.
+// check: it asserts ZERO import edges from lib/plan/** to objectives OR
+// executor modules, covering value AND type imports in every specifier shape.
 // Flipping tsPreCompilationDeps to true was deliberately rejected (it surfaces
 // ~18 pre-existing type-only no-circular violations and doubles the cruised
 // graph) — see TODO.md.
@@ -21,11 +20,13 @@
 //   - import ... from '...'            (ImportDeclaration)
 //   - export ... from '...'            (ExportDeclaration with moduleSpecifier)
 //   - import X = require('...')         (ImportEqualsDeclaration)
-//   - import('...') / require('...')    (CallExpression; string OR template literal)
+//   - import('...') / require('...')    (CallExpression; static string/template only)
 //   - type X = import('...').Foo        (ImportTypeNode; type-position import)
-// Template literals with substitutions (`import(\`../objectives/${x}\`)`) are
-// matched on their STATIC quasi text, which still carries the detectable prefix.
-// A specifier is an offender when its text contains "objectives".
+// Computed dynamic import()/require() arguments are rejected outright: a source
+// guard cannot prove which layer a runtime expression will address.
+// A static repository specifier is resolved lexically from its importer and is
+// an offender only when that target lives under either forbidden peer. Bare
+// package specifiers are outside this repository boundary and remain allowed.
 //
 // This guard runs in `ci:checks` (the pre-push hook and the CI checks job),
 // NOT the pre-commit hook (which only runs lint-staged +
@@ -40,33 +41,37 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const planDir = path.join(rootDir, 'lib', 'plan');
+const planDir = process.argv[2] === undefined
+  ? path.join(rootDir, 'lib', 'plan')
+  : path.resolve(process.argv[2]);
 
-function isObjectivesSpecifier(text) {
-  return text.includes('objectives');
+const forbiddenPeerDirs = ['objectives', 'executor']
+  .map((peer) => path.join(rootDir, 'lib', peer));
+
+function isWithin(directory, candidate) {
+  const relative = path.relative(directory, candidate);
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
-// Extract the literal/template specifier text from a node, or null if it isn't
-// a static string we can inspect. For template literals with substitutions
-// (`import(\`../objectives/${x}\`)`), the substituted values are unknowable at
-// parse time, so we concatenate only the STATIC quasi text (head + each span's
-// literal). That preserves the detectable static prefix (e.g. `../objectives/`)
-// while dropping the variable holes.
+function isForbiddenPeerSpecifier(importerPath, text) {
+  const isRelative = text === '.' || text === '..' || text.startsWith('./') || text.startsWith('../');
+  if (!isRelative && !path.isAbsolute(text)) return false;
+  const resolvedTarget = path.resolve(path.dirname(importerPath), text);
+  return forbiddenPeerDirs.some((directory) => isWithin(directory, resolvedTarget));
+}
+
+// Extract a fully static specifier, or null when runtime evaluation is needed.
 function specifierText(node) {
   if (node === undefined) return null;
   if (ts.isStringLiteralLike(node)) return node.text;
   // No-substitution template literal: `import(\`...\`)`
   if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  // Template literal WITH substitutions: `import(\`../objectives/${x}\`)`
-  if (ts.isTemplateExpression(node)) {
-    return node.head.text + node.templateSpans.map((span) => span.literal.text).join('');
-  }
   return null;
 }
 
-function collectOffenders(sourceFile, relPath, offenders) {
+function collectOffenders(sourceFile, importerPath, relPath, offenders) {
   const record = (node, text) => {
-    if (text !== null && isObjectivesSpecifier(text)) {
+    if (text !== null && isForbiddenPeerSpecifier(importerPath, text)) {
       const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       offenders.push({ file: relPath, line: line + 1, specifier: text });
     }
@@ -103,9 +108,20 @@ function collectOffenders(sourceFile, relPath, offenders) {
     if (ts.isCallExpression(node)) {
       const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
       const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require';
-      if ((isDynamicImport || isRequire) && node.arguments.length > 0) {
+      if (isDynamicImport || isRequire) {
         const arg = node.arguments[0];
-        record(arg, specifierText(arg));
+        const text = specifierText(arg);
+        if (text === null) {
+          const locationNode = arg ?? node;
+          const { line } = sourceFile.getLineAndCharacterOfPosition(locationNode.getStart(sourceFile));
+          offenders.push({
+            file: relPath,
+            line: line + 1,
+            specifier: `<non-static ${isDynamicImport ? 'import()' : 'require()'}>`,
+          });
+        } else {
+          record(arg, text);
+        }
       }
     }
 
@@ -133,13 +149,13 @@ const offenders = [];
 for (const file of files) {
   const source = await fs.readFile(file, 'utf8');
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-  collectOffenders(sourceFile, path.relative(rootDir, file), offenders);
+  collectOffenders(sourceFile, file, path.relative(rootDir, file), offenders);
 }
 
 if (offenders.length > 0) {
   process.stderr.write(
-    'Architecture boundary violation (no-plan-to-smarttasks, type-edge guard):\n'
-    + 'lib/plan/** must not import the objectives subsystem — value OR type imports.\n'
+    'Architecture boundary violation (planner peer source guard):\n'
+    + 'lib/plan/** must not import objectives or executor modules — value OR type imports.\n'
     + 'dependency-cruiser runs post-compilation and cannot see `import type` edges,\n'
     + 'so this AST guard enforces the boundary. Offending import(s):\n',
   );
@@ -149,4 +165,6 @@ if (offenders.length > 0) {
   process.exit(1);
 }
 
-process.stdout.write(`arch:grep OK — no lib/plan -> objectives import edges (${files.length} files scanned)\n`);
+process.stdout.write(
+  `arch:grep OK — no lib/plan -> objectives/executor import edges (${files.length} files scanned)\n`,
+);

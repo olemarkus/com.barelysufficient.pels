@@ -70,7 +70,7 @@ import type {
   HeadroomForDeviceDecision,
   HeadroomUsageObservation,
 } from './planHeadroomDevice';
-import type { PlanActuationResult } from '../executor/planExecutor';
+import type { PlanActuationResult } from '../planContract/planActuationResult';
 import { PlanChangeTracker } from './planChangeTracker';
 import { emitDeviceOverviewTransitions } from './planOverviewEmit';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';

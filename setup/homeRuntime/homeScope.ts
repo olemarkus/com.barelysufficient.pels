@@ -29,7 +29,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { buildPelsStatus } from '../../lib/plan/pelsStatus';
-import type { PlanEngineDeps } from '../../lib/plan/planEngine';
+import type { PlanEngineWiring } from '../appInit/planEngineWiring';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
@@ -101,14 +101,14 @@ export type HomeScope = {
   // reads (byte-identical); sub-home scopes bind neutral constants for the
   // PRICE/BUDGET members — but NOT for the two mode members below.
   /** Per-device price-opt config; feeds the surplus allocator + temperature surplus-absorb. Sub-homes bind `{}`. */
-  getPriceOptimizationSettings: PlanEngineDeps['getPriceOptimizationSettings'];
+  getPriceOptimizationSettings: PlanEngineWiring['getPriceOptimizationSettings'];
   /** Test/diagnostic soft-limit override; consulted un-gated in the builder. Sub-homes bind `null`. */
   getDynamicSoftLimitOverride: () => number | null;
   /**
    * Active operating mode driving `mode_device_targets`. EVERY home binds the
    * live read — do NOT neutralize this for a sub-home (see below).
    */
-  getOperatingMode: PlanEngineDeps['getOperatingMode'];
+  getOperatingMode: PlanEngineWiring['getOperatingMode'];
   /**
    * Mode→device desired-target map. EVERY home binds the live read, because the
    * mode target is the **restore anchor**, not a price/budget policy input.
@@ -120,13 +120,13 @@ export type HomeScope = {
    * gated independently by `getPriceOptimizationSettings` (both require a
    * per-device config entry), so binding these live does not widen policy.
    */
-  getModeDeviceTargets: PlanEngineDeps['getModeDeviceTargets'];
+  getModeDeviceTargets: PlanEngineWiring['getModeDeviceTargets'];
   /**
    * Device priority under THIS home's active mode. Priorities are ranked per
    * mode. Main binds the historical app resolver; a meter-area bundle binds
    * the priority map in its coherent catalog snapshot.
    */
-  getPriorityForDevice: PlanEngineDeps['getPriorityForDevice'];
+  getPriorityForDevice: PlanEngineWiring['getPriorityForDevice'];
   /**
    * Does this home hold a mode-target RAISE while its own power reading is
    * unknown? A raise ADDS load and is issued as an ordinary `target_update`, so
@@ -164,14 +164,14 @@ export type HomeScope = {
    * own `buildIdentityDecorationBundle` fallback) — how sub-home bundles stay
    * smart-task-free without the engine branching on which home it serves.
    */
-  decorateDeferredObjectives?: PlanEngineDeps['decorateDeferredObjectives'];
+  decorateDeferredObjectives?: PlanEngineWiring['decorateDeferredObjectives'];
   /**
    * Post-actuation live-plan-state sync, targeting THIS home's plan service
    * (main: the app's inline-sync delegator; sub-home bundles: a late-bound
    * closure over the bundle's own service — syncing main's would touch the
    * wrong plan). Optional like the engine dep it feeds.
    */
-  syncLivePlanStateAfterTargetActuation?: PlanEngineDeps['syncLivePlanStateAfterTargetActuation'];
+  syncLivePlanStateAfterTargetActuation?: PlanEngineWiring['syncLivePlanStateAfterTargetActuation'];
 };
 
 /**
