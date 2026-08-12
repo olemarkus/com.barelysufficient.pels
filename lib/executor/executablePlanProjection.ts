@@ -1,4 +1,5 @@
 import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
   formatDeviceReason,
   PLAN_REASON_CODES,
@@ -260,7 +261,7 @@ const buildObservedSteppedLoadState = (
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
     & ReportedStepObservedProbe & { currentOn?: boolean; currentDrawKw: number },
 ): ExecutableObservedSteppedLoadState | null => {
-  if (snapshot.controlModel !== 'stepped_load') return null;
+  if (!isSteppedLoadSnapshot(snapshot)) return null;
   return {
     on: typeof snapshot.currentOn === 'boolean' ? snapshot.currentOn : isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
