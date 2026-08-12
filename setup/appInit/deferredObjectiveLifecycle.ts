@@ -3,39 +3,15 @@ import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
-  hasMainHomeSmartTaskAuthority,
   isSmartTaskDeviceInMainHome,
   resolveSmartTaskHomeScope,
 } from './smartTaskHomeScope';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
-import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
-import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
   DeferredObjectiveLifecycleEmitter,
 } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
 import {
   createTrustedDeferredObjectiveSettingsReader,
 } from '../../lib/objectives/deferredObjectives';
-import {
-  applyShedBehavior,
-  type ShedActuationCommand,
-  type ShedActuationObservedState,
-} from '../../lib/actuator/terminalShedActuation';
-import { getLogger } from '../../lib/logging/logger';
-import {
-  getPrimaryTargetCapability,
-  normalizeTargetCapabilityValue,
-} from '../../lib/utils/targetCapabilities';
-import {
-  getSteppedLoadLowestActiveStep,
-  getSteppedLoadOffStep,
-  getSteppedLoadStep,
-} from '../../lib/utils/deviceControlProfiles';
-import type { Actuator } from '../../lib/actuator/deviceActuator';
-import { buildDeviceActuator } from './buildDeviceActuator';
-import { createFencedActuator } from './createPlanEngine';
-import { requirePlanEngine } from './contextGuards';
 import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
@@ -44,107 +20,8 @@ import {
   WATERMARK_IDLE_REFRESH_MS,
   writeWatermark,
 } from './deferredRecorders';
-
-const terminalReleaseLogger = getLogger('app/deferred-terminal-release');
-
-// Resolve the device's configured fallback posture into a flat shed command.
-// EV tasks pause the charger; everything else uses the device's `getShedBehavior`
-// (set_temperature → shed setpoint; turn_off / set_step → binary off via the
-// device's control capability, or a stepped command when no binary handle exists).
-// `flowBackedCapabilityIds` (from the snapshot) marks a binary capability that
-// must be driven via its Homey Flow trigger rather than a direct capability write.
-export const resolveTerminalShedCommand = (
-  device: PlanInputDevice,
-  objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
-  behavior: {
-    action: 'turn_off' | 'set_temperature' | 'set_step';
-    temperature: number | null;
-    stepId?: string | null;
-  },
-  flowBackedCapabilityIds: readonly string[],
-): ShedActuationCommand => {
-  if (objectiveKind === 'ev_soc') {
-    return {
-      kind: 'binary_off',
-      capabilityId: 'evcharger_charging',
-      flowBacked: flowBackedCapabilityIds.includes('evcharger_charging'),
-    };
-  }
-  // Only emit a `set_temperature` command when the device actually HAS a primary
-  // target capability to write to — keyed on the capability's PRESENCE, not its
-  // current value. A present capability whose value is transiently unreadable is
-  // the self-healing case we must preserve: the actuation
-  // (`terminalShedActuation.ts`) no-ops while `observed.targetValue` is non-numeric
-  // and the disarm grace keeps the task enabled, so the setpoint is applied as soon
-  // as a trusted observation arrives. Falling through to a binary handle (or `skip`)
-  // there would drop the diagnostic before the value returns and the configured
-  // setpoint shed would never run.
-  //
-  // The genuine failure this guards against is a MISSING capability: when the
-  // behavior says `set_temperature` but the device has NO primary target (stale
-  // persisted behavior, or the thermostat/target capability dropped out of the
-  // snapshot entirely), the command target would be a real number while the
-  // observed value stayed `null` FOREVER — the actuation would no-op every tick,
-  // `isInShedPosture` (`null === number`) would never settle, and the task would
-  // re-actuate a no-op until the disarm grace elapsed, disarming with the device
-  // STILL RUNNING. In that case fall through to the binary-off fallback below,
-  // which can still shed the load via the device's binary handle.
-  const primaryTarget = getPrimaryTargetCapability(device.targets);
-  if (behavior.action === 'set_temperature' && behavior.temperature !== null && primaryTarget !== null) {
-    // Normalize the shed setpoint to the target capability's min/max/step the SAME
-    // way the transport write does, so the observed (post-write, device-normalized)
-    // value matches the command target and `isInShedPosture` actually settles —
-    // otherwise an out-of-range legacy setpoint would re-issue every tick until grace.
-    return {
-      kind: 'set_temperature',
-      targetValue: normalizeTargetCapabilityValue({ target: primaryTarget, value: behavior.temperature }),
-    };
-  }
-  const capabilityId = device.controlCapabilityId;
-  if (capabilityId) {
-    return { kind: 'binary_off', capabilityId, flowBacked: flowBackedCapabilityIds.includes(capabilityId) };
-  }
-  const stepped = resolveTerminalSteppedShedCommand(device, behavior);
-  if (stepped) return stepped;
-  return { kind: 'skip', reasonCode: 'no_binary_handle_for_terminal_release' };
-};
-
-const resolveTerminalSteppedShedCommand = (
-  device: PlanInputDevice,
-  behavior: { stepId?: string | null },
-): ShedActuationCommand | null => {
-  const profile = isSteppedLoadDevice(device) ? device.steppedLoadProfile : null;
-  if (!profile) return null;
-  const preferred = behavior.stepId ? getSteppedLoadStep(profile, behavior.stepId) : null;
-  const target = preferred ?? getSteppedLoadLowestActiveStep(profile) ?? getSteppedLoadOffStep(profile);
-  if (!target) return null;
-  return {
-    kind: 'set_step',
-    profile,
-    targetStepId: target.id,
-    planningCurrentA: resolvePlanningCurrentA(device, target.planningPowerW),
-    previousStepId: resolveTrustedStepId(device) ?? device.selectedStepId ?? device.previousStepId,
-    stepCommandPending: device.stepCommandPending,
-    nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
-  };
-};
-
-const resolvePlanningCurrentA = (device: PlanInputDevice, planningPowerW: number): number => {
-  if (device.targetPowerConfig?.enabled === false) return 0;
-  if (device.targetPowerConfig?.preset === 'ev_charger_1_phase') return planningPowerW / 230;
-  if (device.targetPowerConfig?.preset === 'ev_charger_3_phase') return planningPowerW / (230 * 3);
-  return 0;
-};
-
-// The terminal-shed primitive routes its writes through the shared device
-// actuator (`buildDeviceActuator`), same as the plan executor. Kept as a named
-// re-export so the lifecycle + its tests have a single import site.
-export const buildShedActuator = (ctx: AppContext): Actuator | null => {
-  const base = buildDeviceActuator(ctx);
-  return base === null
-    ? null
-    : createFencedActuator(base, (deviceId) => !hasMainHomeSmartTaskAuthority(ctx, deviceId));
-};
+import { resolveLifecycleFallbackRequest } from '../lifecycleFallbackRequest';
+import { projectLifecycleFallbackCommandState } from '../lifecycleFallbackDeviceProjection';
 
 // Disarm grace: keep re-attempting the terminal release for this long after the
 // deadline (the diagnostic survives because the task stays enabled) before giving
@@ -153,124 +30,8 @@ export const buildShedActuator = (ctx: AppContext): Actuator | null => {
 // lifecycle cadence — generous against slow snapshot refresh, bounded against drift.
 const TERMINAL_RELEASE_DISARM_GRACE_MS = 5 * 60 * 1000;
 
-type TerminalBinaryOffProvenance = {
-  settle: (requested: boolean) => void;
-  clear: () => void;
-};
-
-const beginTerminalBinaryOffProvenance = (
-  ctx: AppContext,
-  deviceId: string,
-  command: ShedActuationCommand,
-): TerminalBinaryOffProvenance | null => {
-  if (command.kind !== 'binary_off') return null;
-  const store = requirePlanEngine(ctx).pendingBinaryCommandStore;
-  const issuedAtMs = Date.now();
-  const pendingCommand = {
-    capabilityId: command.capabilityId,
-    desired: false,
-    startedMs: issuedAtMs,
-    logContext: 'capacity_control_off',
-    lifecycleRelease: true,
-  } as const;
-  store.record(deviceId, pendingCommand);
-  const clearIfCurrent = (): void => {
-    if (store.peek(deviceId) === pendingCommand) store.clear(deviceId);
-  };
-  return {
-    settle: (requested) => {
-      if (!requested) clearIfCurrent();
-    },
-    clear: clearIfCurrent,
-  };
-};
-
-// Binary on/off for the terminal release, read directly from the
-// producer-resolved `currentOn` bit for EVERY device kind, EV chargers included.
-// `currentOn` IS the trusted binary read: the producer latches prior trusted
-// evidence on a missing/transient control read, and when it can only synthesize an
-// untrusted value it surfaces that as `available === false`
-// (`managerParsedAvailability.resolveAvailable`) — a commandability fact handled
-// at the actuation decision in `handleDeferredDeadlineReached`, NOT a state-read
-// concern. So this is a 2-state read with no observation-trust / staleness gate:
-// re-deriving trust here would reinvent the `binaryControlObservation` coupling
-// the producer already owns. (`currentOn === true` for EV iff `plugged_in_charging`,
-// per `resolveEvCurrentOn` — a paused charger is off.)
-const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' => (
-  // Non-binary (no control capability this cycle) reads as "on" — it may always
-  // draw — matching the prior `binaryControl?.on ?? true`. Only a confirmed
-  // binary-off device resolves to "off".
-  isBinaryPlanDevice(device) && !device.currentOn ? 'off' : 'on'
-);
-
-export const readTerminalObserved = (
-  device: PlanInputDevice,
-): ShedActuationObservedState => {
-  // Resolved uniformly for every device kind (EV included). An EV charger has no
-  // primary target capability and no stepped-load profile, so `targetValue` and
-  // `stepId` resolve to `null`/`undefined` exactly as the old `ev_soc` branch
-  // hardcoded — only its binary on/off mattered, and that now comes from the
-  // same `binaryControl.on`-backed gate as binary/setpoint devices. The objective
-  // kind is no longer consulted here; the EV-specific shed COMMAND (binary-off via
-  // `evcharger_charging`) still keys on it in `resolveTerminalShedCommand`.
-  //
-  // Bind the observed setpoint read to the SAME target cap `resolveTerminalShedCommand`
-  // resolves and `applyDeviceTargets` writes, so the idempotency check can't desync
-  // from the write. A missing primary target yields `null` here, which is exactly why
-  // the command resolver refuses to emit a `set_temperature` command without one.
-  const primaryTarget = getPrimaryTargetCapability(device.targets);
-  return {
-    binaryState: resolveTerminalBinaryState(device),
-    targetValue: typeof primaryTarget?.value === 'number' ? primaryTarget.value : null,
-    stepId: resolveTrustedStepId(device),
-  };
-};
-
-// Only the reported step is trusted telemetry; the producer populates
-// `reportedStepId` exclusively from native/flow reports, so it is exactly the
-// previous `actualStepSource === 'reported'` step.
-const resolveTrustedStepId = (device: PlanInputDevice): string | undefined => (
-  device.reportedStepId
-);
-
-const isAtOrBelowStep = (
-  command: Extract<ShedActuationCommand, { kind: 'set_step' }>,
-  stepId: string,
-): boolean => {
-  const target = getSteppedLoadStep(command.profile, command.targetStepId);
-  const observed = getSteppedLoadStep(command.profile, stepId);
-  if (!target || !observed) return false;
-  return observed.planningPowerW <= target.planningPowerW;
-};
-
-// True when the device is already in the command's shed posture (off, or at the
-// shed setpoint) — i.e. nothing left to actuate, safe to disarm.
-const isInShedPosture = (command: ShedActuationCommand, observed: ShedActuationObservedState): boolean => {
-  if (command.kind === 'binary_off') return observed.binaryState === 'off';
-  if (command.kind === 'set_temperature') return observed.targetValue === command.targetValue;
-  if (command.kind === 'set_step') return observed.stepId ? isAtOrBelowStep(command, observed.stepId) : false;
-  return true; // skip: nothing to actuate
-};
-
 /**
- * The gated-ending decision (the P1 fix made pure + testable). Disarm the task
- * only once the release is SETTLED (device already in the shed posture, or the
- * command is a skip) OR the grace window has elapsed; otherwise actuate and keep
- * the task enabled so the diagnostic survives and the release re-fires next tick.
- * This is what prevents the release being a single shot that a transient
- * `unknown` observation or a dropped write could miss.
- */
-export const planTerminalEnding = (
-  command: ShedActuationCommand,
-  observed: ShedActuationObservedState,
-  graceElapsed: boolean,
-): { actuate: boolean; disarm: boolean } => {
-  if (isInShedPosture(command, observed)) return { actuate: false, disarm: true };
-  return { actuate: true, disarm: graceElapsed };
-};
-
-/**
- * The home-scope gate for a deadline tick, pure like `planTerminalEnding` above.
+ * The home-scope gate for a deadline tick.
  * Durable scope exclusions (a device relocated to a separate-meter sub-home, or
  * one newly selected as an active meter source) have no terminal command:
  * `disarm` immediately, so a stale task cannot retry forever against a device
@@ -292,86 +53,113 @@ const planScopeGateAction = (
   return 'proceed';
 };
 
+type TerminalFallbackTiming =
+  | { kind: 'satisfied' }
+  | { kind: 'deadline_reached'; deadlineAtMs: number; nowMs: number };
+
+const resolveTerminalFallbackEnding = (
+  ctx: AppContext,
+  deviceId: string,
+  timing: TerminalFallbackTiming,
+): { graceElapsed: boolean; disarm: () => void } => {
+  if (timing.kind === 'satisfied') {
+    return { graceElapsed: false, disarm: (): void => undefined };
+  }
+  return {
+    graceElapsed: timing.nowMs - timing.deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS,
+    disarm: () => disableDeferredObjectiveInSettings(ctx, deviceId),
+  };
+};
+
+const abandonLifecycleFallback = (ctx: AppContext, deviceId: string): void => {
+  ctx.lifecycleFallback?.abandon(deviceId);
+};
+
+const convergeLifecycleFallback = (
+  ctx: AppContext,
+  deviceId: string,
+): 'settled' | 'pending' | 'unavailable' | 'unsupported' => {
+  const commandState = projectLifecycleFallbackCommandState({
+    device: ctx.deviceControlHelpers.getLifecycleFallbackDevice(deviceId),
+    observedState: ctx.getObservedState(deviceId),
+  });
+  if (commandState.state === 'unavailable') return 'unavailable';
+  const lifecycleFallback = ctx.lifecycleFallback;
+  if (!lifecycleFallback) throw new Error('Lifecycle fallback must be initialized before deferred objectives.');
+  const request = resolveLifecycleFallbackRequest({
+    device: commandState.device,
+    observedState: commandState.observedState,
+    configuredFallback: ctx.getShedBehavior(deviceId),
+  });
+  if (!request) return 'unsupported';
+  return lifecycleFallback.converge(request).settled ? 'settled' : 'pending';
+};
+
+const handleDeferredTerminalFallback = (
+  ctx: AppContext,
+  deviceId: string,
+  timing: TerminalFallbackTiming,
+): void => {
+  const { graceElapsed, disarm } = resolveTerminalFallbackEnding(ctx, deviceId, timing);
+  const scopeGate = planScopeGateAction(resolveSmartTaskHomeScope(ctx, deviceId), graceElapsed);
+  if (scopeGate === 'disarm') {
+    abandonLifecycleFallback(ctx, deviceId);
+    disarm();
+    return;
+  }
+  if (scopeGate === 'retry') {
+    abandonLifecycleFallback(ctx, deviceId);
+    return;
+  }
+  // Cap-on → the planner owns the device on its normal lane. Only the deadline
+  // ends the task; early satisfaction must never disable it.
+  if (ctx.isCapacityControlEnabled(deviceId)) {
+    abandonLifecycleFallback(ctx, deviceId);
+    disarm();
+    return;
+  }
+  // Missing and explicitly unavailable observer projections both retry until
+  // deadline grace. The app-owned producer resolves that classification before
+  // a neutral request crosses into the executor.
+  const outcome = convergeLifecycleFallback(ctx, deviceId);
+  if (outcome === 'unavailable') {
+    abandonLifecycleFallback(ctx, deviceId);
+    if (graceElapsed) disarm();
+    return;
+  }
+  if (outcome === 'unsupported') {
+    abandonLifecycleFallback(ctx, deviceId);
+    disarm();
+    return;
+  }
+  if (outcome === 'settled' && timing.kind === 'satisfied') return;
+  if (outcome === 'settled' || graceElapsed) {
+    abandonLifecycleFallback(ctx, deviceId);
+    disarm();
+  }
+};
+
+// Satisfaction can happen well before the deadline. Return a cap-off device to
+// its configured fallback posture on every lifecycle tick until observation
+// settles, but keep the task enabled so the deadline remains its sole ending.
+export const handleDeferredSatisfied = (
+  ctx: AppContext,
+  deviceId: string,
+): void => handleDeferredTerminalFallback(ctx, deviceId, { kind: 'satisfied' });
+
 // Clock-driven END of a task: return the cap-off device it was driving to its
-// configured fallback posture directly via the transport, AND disarm the task —
-// but disarm only once the release is SETTLED (device observed in the shed
-// posture) or the grace window has elapsed. Keeping the task enabled while the
-// release is still pending means this diagnostic survives the next tick and the
-// release re-fires, so a transient `unknown` observation (e.g. right after a
-// Homey restart) or a single dropped write self-heals instead of leaving the
-// device running. Only cap-off (`isCapacityControlEnabled === false`) devices are
-// actuated — the planner owns cap-on devices on its normal lane.
+// configured fallback posture through the executor-owned actuator lane, AND disarm the task —
+// but disarm only once the release is settled or the grace window has elapsed.
 export const handleDeferredDeadlineReached = (
   ctx: AppContext,
   deviceId: string,
-  objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
   deadlineAtMs: number,
   nowMs: number,
-): void => {
-  const disarm = () => disableDeferredObjectiveInSettings(ctx, deviceId);
-  const graceElapsed = nowMs - deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS;
-  const scopeGate = planScopeGateAction(resolveSmartTaskHomeScope(ctx, deviceId), graceElapsed);
-  if (scopeGate === 'disarm') { disarm(); return; }
-  if (scopeGate === 'retry') return;
-  // Cap-on → the planner owns the device on its normal lane; just disarm (no
-  // terminal release, no actuation needed, device presence irrelevant).
-  if (ctx.isCapacityControlEnabled(deviceId)) { disarm(); return; }
-  const actuator = buildShedActuator(ctx);
-  const device = ctx.planService?.getPlanDevices().find((candidate) => candidate.id === deviceId);
-  if (!actuator || !device) {
-    // Cap-off device temporarily absent (startup / snapshot flicker) — the
-    // settings-derived diagnostic still fires, but we can't actuate yet.
-    // DON'T disarm immediately, or we'd remove the diagnostic before the device
-    // reappears and leave it running. Keep the task enabled and re-check next
-    // tick; give up (disarm) only after grace. Same self-healing discipline as
-    // the unavailable-device gate below.
-    if (graceElapsed) disarm();
-    return;
-  }
-  // Commandability gate: `available === false` means the device cannot be driven
-  // this tick (offline, or the producer could only synthesize an untrusted
-  // control read — `managerParsedAvailability.resolveAvailable`). We can neither
-  // actuate nor trust that an apparent-off is settled, so keep the task enabled
-  // and retry — same self-healing discipline as the absent-device case above —
-  // disarming only after grace. This replaces the old observation-trust
-  // `'unknown'` state read: commandability lives here, not in the binary read.
-  if (device.available === false) {
-    if (graceElapsed) disarm();
-    return;
-  }
-  const snapshot = ctx.latestTargetSnapshot.find((candidate) => candidate.id === deviceId);
-  const flowBackedCapabilityIds = snapshot?.flowBackedCapabilityIds ?? [];
-  const command = resolveTerminalShedCommand(
-    device,
-    objectiveKind,
-    ctx.getShedBehavior(deviceId),
-    flowBackedCapabilityIds,
-  );
-  const observed = readTerminalObserved(device);
-  const { actuate, disarm: shouldDisarm } = planTerminalEnding(command, observed, graceElapsed);
-  if (actuate) {
-    const binaryProvenance = beginTerminalBinaryOffProvenance(ctx, deviceId, command);
-    // Issue the shed command (a no-op inside applyShedBehavior when there is no
-    // trusted observation). Fire-and-forget: the tick is synchronous and must not
-    // block on a transport write; a dropped write self-heals on the next tick
-    // (the task stays enabled until settled or grace).
-    void applyShedBehavior({
-      deviceId,
-      name: device.name,
-      command,
-      observed,
-      actuator,
-      markSteppedLoadDesiredStepIssued: (markParams) =>
-        ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(markParams),
-    })
-      .then((requested) => binaryProvenance?.settle(requested))
-      .catch((error: unknown) => {
-        binaryProvenance?.clear();
-        terminalReleaseLogger.warn({ event: 'terminal_release_failed', deviceId, error: String(error) });
-      });
-  }
-  if (shouldDisarm) disarm();
-};
+): void => handleDeferredTerminalFallback(ctx, deviceId, {
+  kind: 'deadline_reached',
+  deadlineAtMs,
+  nowMs,
+});
 
 /**
  * Constructs the clock-driven smart-task lifecycle emitter. This is the home
@@ -390,7 +178,7 @@ export const handleDeferredDeadlineReached = (
  * `resolveCommittedHours`; reads are free every power cycle, so the writes ride
  * this clock — the recorder gates replan revisions to once per hour at `:58`
  * (a first revision is immediate). The clock also CLEARS an ended task's plan via
- * `onDeadlinePassed → disableDeferredObjectiveInSettings`. Do not reintroduce a
+ * `onDeadlineReached → disableDeferredObjectiveInSettings`. Do not reintroduce a
  * second active-plan WRITER on the decoration side. Lifecycle and decoration
  * intentionally keep separate `PriorityAllocationTracker` caches because each
  * evaluator owns its own SDK-snapshot grace state.
@@ -435,8 +223,12 @@ export function createDeferredObjectiveLifecycleEmitter(
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
     getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
-    onDeadlineReached: (deviceId, objectiveKind, deadlineAtMs, nowMs) => (
-      handleDeferredDeadlineReached(ctx, deviceId, objectiveKind, deadlineAtMs, nowMs)
+    onSatisfied: (deviceId) => (
+      handleDeferredSatisfied(ctx, deviceId)
+    ),
+    onFallbackInactive: (deviceId) => abandonLifecycleFallback(ctx, deviceId),
+    onDeadlineReached: (deviceId, deadlineAtMs, nowMs) => (
+      handleDeferredDeadlineReached(ctx, deviceId, deadlineAtMs, nowMs)
     ),
     observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans, getStallClassification) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);

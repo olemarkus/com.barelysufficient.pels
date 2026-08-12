@@ -3899,6 +3899,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_near_target');
+    expect(diagnostic?.actuationSatisfied).toBe(false);
     // The raw trajectory verdict stays on the horizonPlan so the postmortem
     // recorder and the structured horizon log keep the honest reading.
     expect(diagnostic?.horizonPlan?.status).toBe('on_track');
@@ -3914,6 +3915,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_device_capped');
+    expect(diagnostic?.actuationSatisfied).toBe(false);
     expect(diagnostic?.horizonPlan?.status).toBe('at_risk');
   });
 

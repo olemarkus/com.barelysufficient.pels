@@ -9,7 +9,10 @@ import {
   emitDeferredObjectiveDiagnostics,
   type DeferredObjectiveDiagnostic,
 } from './diagnosticsBridge';
-import { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
+import {
+  emitDeferredObjectiveLifecycleTransitions,
+  emitDeferredObjectiveStatusTransitions,
+} from './statusTransitions';
 import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
@@ -60,10 +63,18 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
   getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
   /**
+   * Fired on every pre-deadline tick whose task is satisfied. App wiring returns
+   * cap-off devices to their fallback posture but deliberately keeps the task
+   * enabled; deadline ending remains the responsibility of `onDeadlineReached`.
+   */
+  onSatisfied?: (deviceId: string) => void;
+  /** Releases executor-owned fallback suppression when this task no longer owns it. */
+  onFallbackInactive?: (deviceId: string) => void;
+  /**
    * Fired once a task's deadline has passed. App-wired (the emitter cannot import
    * `lib/device`/`lib/executor`), it owns BOTH ends of "ending" a task: it returns
    * the cap-off device the task was driving to its configured fallback posture
-   * directly via the transport (closing the `power_source = flow` gap where the
+   * through the executor-owned fallback port (closing the `power_source = flow` gap where the
    * next plan cycle — which used to emit the terminal `shed_release` — can be
    * hours away), AND it disarms the task. The disarm is gated on the release being
    * settled (device observed in the shed posture) or a grace window, so the
@@ -72,7 +83,6 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
    */
   onDeadlineReached?: (
     deviceId: string,
-    objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
     deadlineAtMs: number,
     nowMs: number,
   ) => void;
@@ -108,6 +118,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
 
 export class DeferredObjectiveLifecycleEmitter {
   private readonly priorityAllocationTracker = new PriorityAllocationTracker();
+  private lifecycleDeviceIds: ReadonlySet<string> = new Set();
 
   constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {}
 
@@ -163,20 +174,21 @@ export class DeferredObjectiveLifecycleEmitter {
     // See notes/state-management/deferred-objective-lifecycle-carveout.md.
     this.deps.observeDeferredObjectiveActivePlans?.(diagnostics, nowMs);
 
-    // Emission to the UI / Flow buses + deadline-passed disable.
+    // Emission to the UI / Flow buses + clock-owned terminal fallback/ending.
     const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();
     if (debugStructured) {
       emitDeferredObjectiveDiagnostics({ diagnostics, debugStructured });
     }
+    this.lifecycleDeviceIds = emitDeferredObjectiveLifecycleTransitions({
+      diagnostics,
+      knownDeviceIds: this.lifecycleDeviceIds,
+      nowMs,
+      onSatisfied: this.deps.onSatisfied,
+      onDeadlineReached: this.deps.onDeadlineReached,
+      onFallbackInactive: this.deps.onFallbackInactive,
+    });
     const statusBus = this.deps.getDeferredObjectiveStatusBus?.();
-    if (statusBus) {
-      emitDeferredObjectiveStatusTransitions({
-        diagnostics,
-        statusBus,
-        nowMs,
-        onDeadlineReached: this.deps.onDeadlineReached,
-      });
-    }
+    if (statusBus) emitDeferredObjectiveStatusTransitions({ diagnostics, statusBus, nowMs });
     const hoursRemainingBus = this.deps.getDeferredObjectiveHoursRemainingBus?.();
     const hoursRemainingTracker = this.deps.getDeferredObjectiveHoursRemainingTracker?.();
     if (hoursRemainingBus && hoursRemainingTracker) {

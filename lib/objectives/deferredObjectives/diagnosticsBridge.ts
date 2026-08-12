@@ -420,7 +420,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   const priceHorizon = buildPriceHorizon(nowMs, objective.deadlineAtMs);
   const progress = resolveObjectiveProgress({ objective, device, nowMs });
   if (!progress.reasonCode && progress.remainingUnits <= 0) {
-    return buildDiagnosticWithPolicyHorizon({
+    return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon({
       nowMs,
       deviceId,
       objective,
@@ -436,7 +436,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
       activePlans,
       hardCapKw: params.hardCapKw,
       higherPriorityReservations: params.higherPriorityReservations,
-    });
+    }));
   }
 
   // Per-cycle (mid-hour) frozen read: between hour settles the committed set,
@@ -481,7 +481,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   }
   const policyHorizon = rawPolicyHorizon.reasonCode === null ? rawPolicyHorizon : EMPTY_POLICY_HORIZON;
 
-  return buildDiagnosticWithPolicyHorizon({
+  return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon({
     nowMs,
     deviceId,
     objective,
@@ -505,8 +505,15 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     // replan-due cycle — the replan is deferred, not the commitment dropped. Null
     // exactly when there is no commitment to serve.
     frozenFallback,
-  });
+  }));
 };
+
+const withRawActuationSatisfaction = (
+  diagnostic: DeferredObjectiveDiagnostic,
+): DeferredObjectiveDiagnostic => ({
+  ...diagnostic,
+  actuationSatisfied: resolvedTrajectoryStatus(diagnostic) === 'satisfied',
+});
 
 // Which frozen read (if any) this cycle serves. Normal path: the caller's replan
 // decision (`frozenRead`). Step-gap degradation: a committed task whose live step

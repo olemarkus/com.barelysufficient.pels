@@ -2,11 +2,10 @@ import type { DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes.
 import type { PlanInputDevice } from './planInputDevice.js';
 
 /**
- * One-shot release intent emitted when a cap-off device's smart task leaves a
- * plannable status (or the device is in an idle bucket). Binary-controlled
- * devices map to `binary_restore` / `binary_release` (the dedicated binary
- * executor path); everything else maps to `shed_release`, which fires the
- * device's configured shedBehavior once.
+ * Per-cycle plan intent for a planned binary restore or an idle-bucket release.
+ * Binary-controlled devices map to `binary_restore` / `binary_release` (the
+ * dedicated binary executor path); everything else maps to `shed_release`.
+ * Terminal fallback is lifecycle-clock-owned and never enters this contract.
  *
  * Defined here (planner I/O package) so both the producing smart-task controller
  * (`lib/objectives`) and the consuming planner (`lib/plan`) agree on the type
@@ -43,8 +42,8 @@ export type DeferredDecorationInput = {
  *   price-deferral releases (a booked `avoid` current hour whose residual the
  *   producer proved fits cheaper later hours). The planner renders the "Waiting
  *   for cheaper hours" reason instead of a capacity/daily-budget fallback.
- * - `deferredReleaseIntentByDeviceId`: terminal/idle release intents for the
- *   executor.
+ * - `deferredReleaseIntentByDeviceId`: planned restores and idle-bucket release
+ *   intents for the executor; terminal fallback stays off the plan path.
  * - `admittedDeviceIds`: flat set of devices whose deferred objective is
  *   currently governing them (a `planned` or `idle` admission decision this
  *   cycle — not `inactive`). The planner's surplus dump-load hold excludes

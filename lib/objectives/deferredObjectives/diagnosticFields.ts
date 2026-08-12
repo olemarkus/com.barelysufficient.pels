@@ -132,6 +132,7 @@ export const buildDiagnosticBase = (params: {
     ...(params.objective.rescue ? { rescue: params.objective.rescue } : {}),
     trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
     reasonCode: 'objective_progress_stale',
+    actuationSatisfied: false,
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     currentPercent: params.currentPercent,
     // Unit-agnostic pair. Seeded for the ev_soc shape here; the temperature

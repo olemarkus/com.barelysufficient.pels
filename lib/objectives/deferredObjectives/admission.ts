@@ -6,7 +6,7 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 export type { DeferredReleaseIntent };
 
 export type DeferredAdmissionDecision =
-  | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' }
+  | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: never }
   | {
       kind: 'planned';
       budgetExempt: boolean;
@@ -39,22 +39,6 @@ const PLANNABLE_STATUSES = new Set<ReturnType<typeof resolvedTrajectoryStatus>>(
   'cannot_meet',
 ]);
 
-// Once a deferred objective transitions to a terminal status for a cap-off device, PELS must
-// release the device because the objective was the only reason PELS was driving it. Objectives
-// that control their device via a binary signal (EV SoC today) map to 'binary_release' (the
-// dedicated binary path); every other device kind maps to 'shed_release', which fires the
-// device's configured shedBehavior (turn_off / set_temperature / set_step) exactly once. The
-// executor's idempotency guards prevent re-actuation on the per-cycle re-emission so the intent
-// is safe to broadcast every cycle while the terminal status holds. Cap-on devices stay on the
-// planner's normal managed lane and never see a release intent.
-const shouldEmitTerminalRelease = (
-  diagnostic: DeferredObjectiveDiagnostic,
-  device: PlanInputDevice | undefined,
-): boolean => (
-  resolvedTrajectoryStatus(diagnostic) === 'satisfied'
-  && device?.controllable === false
-);
-
 // Release routing is keyed on the device's CONTROL MODALITY, not the objective
 // kind — a smart task is device-agnostic (the only EV-specific thing, the SoC
 // unit, lives in the objective's progress/target math, never here). A
@@ -64,12 +48,6 @@ const shouldEmitTerminalRelease = (
 // Mirrors the "branch on control modality, not device kind" rule used elsewhere.
 const usesBinaryReleaseControl = (device: PlanInputDevice | undefined): boolean => (
   device?.controlModel === 'binary_power'
-);
-
-const resolveReleaseIntentForCapOff = (
-  device: PlanInputDevice | undefined,
-): 'binary_release' | 'shed_release' => (
-  usesBinaryReleaseControl(device) ? 'binary_release' : 'shed_release'
 );
 
 const resolveDecision = (
@@ -91,9 +69,10 @@ const resolveDecision = (
   // here we only surface the granted intent for planned hours.
   const reservesStartupPower = diagnostic.pauseLowerPriorityApplied === true && plannable;
   if (!plannable) {
-    if (!shouldEmitTerminalRelease(diagnostic, device)) return { kind: 'inactive', budgetExempt: false };
-    const releaseIntent = resolveReleaseIntentForCapOff(device);
-    return { kind: 'inactive', budgetExempt: false, releaseIntent };
+    // Terminal fallback actuation belongs exclusively to the lifecycle clock. In particular,
+    // `handleDeferredSatisfied` retries cap-off devices until their fallback posture is observed;
+    // the power-driven plan must not duplicate it.
+    return { kind: 'inactive', budgetExempt: false };
   }
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };

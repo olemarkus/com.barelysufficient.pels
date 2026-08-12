@@ -12,7 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockSettings } from '../mocks/homey';
 import { updateSettingsUiSmartTask } from '../../setup/settingsUiSmartTaskApi';
-import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
+import {
+  handleDeferredDeadlineReached,
+  handleDeferredSatisfied,
+} from '../../setup/appInit/deferredObjectiveLifecycle';
 import {
   buildStarvedRescueDevices,
   hasMainHomeSmartTaskAuthority,
@@ -52,10 +55,7 @@ import {
   withTemperatureDiscriminant,
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
-import {
-  createPendingBinaryCommandStore,
-  syncPendingBinaryCommands,
-} from '../../lib/observer/pendingBinaryCommands';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -481,6 +481,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     homeIdForDevice: string,
     initiallyFenced = false,
     meterDeviceIds = new Set<string>(),
+    capacityControlEnabled = false,
   ) => {
     const settingsStore = new Map<string, unknown>([
       ['deferred_objective.d1', {
@@ -497,6 +498,9 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     const pendingBinaryCommandStore = createPendingBinaryCommandStore({});
     let fenced = initiallyFenced;
     let deviceOn = true;
+    let lifecycleOwnsTarget = true;
+    const convergeLifecycleFallback = vi.fn(() => ({ settled: !deviceOn }));
+    const abandonLifecycleFallback = vi.fn(() => { lifecycleOwnsTarget = false; });
     const homey = {
       settings: {
         get: vi.fn((key: string) => settingsStore.get(key)),
@@ -509,7 +513,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     } as unknown as AppContext['homey'];
     const ctx = createAppContextMock({
       homey,
-      isCapacityControlEnabled: () => false, // cap-off → terminal release lane
+      isCapacityControlEnabled: () => capacityControlEnabled,
       homeMembership: {
         getHomeIdForDevice: () => homeIdForDevice,
         isOwnershipReady: () => true,
@@ -521,9 +525,27 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         }),
       } as unknown as AppContext['homeMembership'],
       deviceManager: { setCapability, applyDeviceTargets } as unknown as AppContext['deviceManager'],
-      planEngine: {
-        pendingBinaryCommandStore,
-      } as unknown as AppContext['planEngine'],
+      planEngine: { pendingBinaryCommandStore } as unknown as AppContext['planEngine'],
+      lifecycleFallback: { converge: convergeLifecycleFallback, abandon: abandonLifecycleFallback },
+      deviceControlHelpers: {
+        getLifecycleFallbackDevice: () => ({
+          id: 'd1',
+          name: 'Cabin heater',
+          binaryAxis: {
+            state: 'writable',
+            descriptor: { controlCapabilityId: 'onoff' },
+          },
+          targetAxis: { state: 'unavailable' },
+          stepAxis: { state: 'unavailable' },
+        }),
+      } as unknown as AppContext['deviceControlHelpers'],
+      getObservedState: () => ({
+        id: 'd1',
+        name: 'Cabin heater',
+        available: true,
+        binaryControl: { on: deviceOn },
+        targets: [],
+      }),
       // Present, available, ON binary device — the exact fixture that WOULD
       // actuate a binary-off terminal release without the sub-home gate (the
       // control test below proves it).
@@ -553,13 +575,16 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       setCapability,
       applyDeviceTargets,
       pendingBinaryCommandStore,
+      convergeLifecycleFallback,
+      abandonLifecycleFallback,
       setFenced: (next: boolean) => { fenced = next; },
       setDeviceOn: (next: boolean) => { deviceOn = next; },
+      ordinarySameTargetCanDispatch: () => !lifecycleOwnsTarget,
     };
   };
 
-  // The terminal release is fire-and-forget (`void applyShedBehavior`), so
-  // actuation assertions flush the microtask queue first.
+  // Lifecycle fallback dispatch is fire-and-forget, so actuation assertions
+  // flush the microtask queue first.
   const settleActuation = async (): Promise<void> => {
     await Promise.resolve();
     await Promise.resolve();
@@ -567,92 +592,68 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     await Promise.resolve();
   };
 
-  const confirmTerminalOff = (
-    store: ReturnType<typeof buildLifecycleCtx>['pendingBinaryCommandStore'],
-  ): void => {
-    const pending = store.peek('d1');
-    if (!pending) throw new Error('terminal OFF is not pending');
-    syncPendingBinaryCommands({
-      store,
-      liveDevices: [{
-        id: 'd1',
-        name: 'Cabin heater',
-        binaryControlObservation: {
-          capabilityId: 'onoff',
-          observedValue: false,
-          observedAtMs: pending.startedMs + 1,
-          observedCapabilityIds: ['onoff'],
-        },
-      }],
-      source: 'snapshot_refresh',
-    });
-  };
-
   it('control: a main-home device DOES receive the terminal release command', async () => {
     const h = buildLifecycleCtx('main');
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
-    expect(h.pendingBinaryCommandStore.peek('d1')).toEqual(expect.objectContaining({
-      capabilityId: 'onoff',
-      desired: false,
-      lifecycleRelease: true,
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
+    expect(h.convergeLifecycleFallback).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'binary_off',
+      observed: expect.objectContaining({ id: 'd1' }),
     }));
-    await settleActuation();
-    expect(h.setCapability).toHaveBeenCalled();
-    expect(h.setCapability.mock.calls[0].slice(0, 3)).toEqual(['d1', 'onoff', false]);
-    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(false);
-    confirmTerminalOff(h.pendingBinaryCommandStore);
-    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(true);
   });
 
-  it('keeps terminal OFF pending until telemetry confirms it', async () => {
-    const h = buildLifecycleCtx('main');
-    let resolveWrite!: () => void;
-    h.setCapability.mockImplementation(() => new Promise<void>((resolve) => {
-      resolveWrite = resolve;
-    }));
+  it('abandons lifecycle ownership when capacity control becomes authoritative', () => {
+    const h = buildLifecycleCtx('main', false, new Set(), true);
 
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    handleDeferredSatisfied(h.ctx, 'd1');
 
-    expect(h.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('d1', 'onoff')).toBe(true);
-    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(false);
-
-    resolveWrite();
-    await settleActuation();
-
-    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(false);
-    confirmTerminalOff(h.pendingBinaryCommandStore);
-    expect(h.pendingBinaryCommandStore.hasRecentConfirmedOff('d1', 'onoff')).toBe(true);
+    expect(h.convergeLifecycleFallback).not.toHaveBeenCalled();
+    expect(h.abandonLifecycleFallback).toHaveBeenCalledWith('d1');
   });
 
-  it('does not let an older failed attempt clear newer terminal OFF attribution', async () => {
+  it('disarms immediately when the fallback is nonretryable or already settled', () => {
     const h = buildLifecycleCtx('main');
-    const attempts: {
-      resolve: () => void;
-      reject: (error: Error) => void;
-    }[] = [];
-    h.setCapability.mockImplementation(() => new Promise<void>((resolve, reject) => {
-      attempts.push({ resolve, reject });
-    }));
+    h.setDeviceOn(false);
 
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
-    const firstPending = h.pendingBinaryCommandStore.peek('d1');
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 90_000);
-    const secondPending = h.pendingBinaryCommandStore.peek('d1');
-    expect(secondPending).not.toBe(firstPending);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
 
-    attempts[0].reject(new Error('first attempt failed late'));
+    expect(h.convergeLifecycleFallback).toHaveReturnedWith({ settled: true });
+    expect(h.abandonLifecycleFallback).toHaveBeenCalledWith('d1');
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
+
+  it('pauses a satisfied cap-off device before its deadline without disarming the task', async () => {
+    const h = buildLifecycleCtx('main');
+
+    handleDeferredSatisfied(h.ctx, 'd1');
     await settleActuation();
 
-    expect(h.pendingBinaryCommandStore.peek('d1')).toBe(secondPending);
-    expect(h.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('d1', 'onoff')).toBe(true);
+    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(1);
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(h.forgetDevice).not.toHaveBeenCalled();
+  });
 
-    attempts[1].resolve();
+  it('retries an unsettled satisfied fallback and becomes idempotent once observation settles', async () => {
+    const h = buildLifecycleCtx('main');
+
+    handleDeferredSatisfied(h.ctx, 'd1');
     await settleActuation();
+    handleDeferredSatisfied(h.ctx, 'd1');
+    await settleActuation();
+    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(2);
+
+    h.setDeviceOn(false);
+    handleDeferredSatisfied(h.ctx, 'd1');
+    await settleActuation();
+
+    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(3);
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(h.forgetDevice).not.toHaveBeenCalled();
   });
 
   it('a sub-home device gets NO device command and the task ends via the immediate disarm', async () => {
     const h = buildLifecycleCtx('h_cabin');
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
     await settleActuation();
     // No wrong-meter actuation of any kind.
     expect(h.setCapability).not.toHaveBeenCalled();
@@ -665,7 +666,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
   it('a configured meter gets no terminal command and its stale task disarms immediately', async () => {
     const h = buildLifecycleCtx('main', false, new Set(['d1']));
 
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
     await settleActuation();
 
     expect(h.setCapability).not.toHaveBeenCalled();
@@ -677,7 +678,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
   it('a configured meter still disarms without a command during a Main collision fence', async () => {
     const h = buildLifecycleCtx('main', true, new Set(['d1']));
 
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
     await settleActuation();
 
     expect(h.setCapability).not.toHaveBeenCalled();
@@ -689,7 +690,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
   it('retains a Main task without writes during a transient fence and retries after recovery', async () => {
     const h = buildLifecycleCtx('main', true);
 
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
     await settleActuation();
     expect(h.setCapability).not.toHaveBeenCalled();
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
@@ -703,12 +704,11 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     handleDeferredDeadlineReached(
       h.ctx,
       'd1',
-      'temperature',
       DEADLINE,
       DEADLINE + 2 * 60_000,
     );
     await settleActuation();
-    expect(h.setCapability).toHaveBeenCalled();
+    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(1);
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
     expect(h.forgetDevice).not.toHaveBeenCalled();
 
@@ -718,7 +718,6 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     handleDeferredDeadlineReached(
       h.ctx,
       'd1',
-      'temperature',
       DEADLINE,
       DEADLINE + 2.5 * 60_000,
     );
@@ -731,7 +730,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     const h = buildLifecycleCtx('main', true);
 
     // Inside the 5 min grace the fence is assumed transient: keep the task.
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
     await settleActuation();
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
     expect(h.forgetDevice).not.toHaveBeenCalled();
@@ -742,12 +741,23 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     // its deadline forever, never filing the run — unlike every sibling arm,
     // which gives up after the same grace. No actuation either way: the fence
     // exists precisely because a Main write cannot be trusted.
-    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 6 * 60_000);
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 6 * 60_000);
     await settleActuation();
     expect(h.setCapability).not.toHaveBeenCalled();
     expect(h.applyDeviceTargets).not.toHaveBeenCalled();
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
     expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
+
+  it('deadline grace disarm abandons lifecycle ownership before ordinary same-target control resumes', () => {
+    const h = buildLifecycleCtx('main');
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 6 * 60_000);
+
+    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(1);
+    expect(h.abandonLifecycleFallback).toHaveBeenCalledWith('d1');
+    expect(h.ordinarySameTargetCanDispatch()).toBe(true);
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
   });
 });
 
