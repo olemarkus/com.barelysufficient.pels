@@ -1,13 +1,20 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { isExternalOffHeldForDevice } from './toPlanDevice';
-import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
+import type { PlanEngine } from '../../lib/plan/planEngine';
+import { PlanBuilder, type PlanBuilderDeps } from '../../lib/plan/planBuilder';
+import { PlanExecutor } from '../../lib/executor/planExecutor';
+import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { HomeScope } from '../homeRuntime/homeScope';
+import type { PlanEngineWiring } from './planEngineWiring';
+import { ComposedPlanEngine } from './composedPlanEngine';
 
 export type CreatePlanEngineOptions = {
   /**
@@ -34,7 +41,75 @@ export const createFencedActuator = (
   ),
 });
 
-export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: CreatePlanEngineOptions) {
+const composePlanEngine = (deps: PlanEngineWiring): PlanEngine => {
+  const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld);
+  const pendingBinaryCommandStore = createPendingBinaryCommandStore(
+    state.pendingBinaryCommands,
+    deps.binaryCommandLifecycle,
+  );
+  const builderDeps: PlanBuilderDeps = {
+    setCapacityInShortfall: deps.setCapacityInShortfall,
+    getCapacityGuard: deps.getCapacityGuard,
+    getCapacitySettings: deps.getCapacitySettings,
+    getOperatingMode: deps.getOperatingMode,
+    getModeDeviceTargets: deps.getModeDeviceTargets,
+    getPriceOptimizationEnabled: deps.getPriceOptimizationEnabled,
+    getPriceOptimizationSettings: deps.getPriceOptimizationSettings,
+    getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
+    getInferredSurplusKw: deps.getInferredSurplusKw,
+    getPowerTracker: deps.getPowerTracker,
+    getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
+    getObservationStale: deps.getObservationStale,
+    getPriorityForDevice: deps.getPriorityForDevice,
+    getShedBehavior: deps.getShedBehavior,
+    getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
+    holdsModeTargetRaisesWhilePowerUnknown: deps.holdsModeTargetRaisesWhilePowerUnknown,
+    deviceDiagnostics: deps.deviceDiagnostics,
+    structuredLog: deps.structuredLog,
+    debugStructured: deps.debugStructured,
+    decorateDeferredObjectives: deps.decorateDeferredObjectives,
+    pendingBinaryCommandStore,
+    log: deps.log,
+    logDebug: deps.logDebug,
+  };
+  const executorDeps: PlanExecutorDeps = {
+    getHomeDisplayName: deps.getHomeDisplayName,
+    homeId: deps.homeId,
+    setCapacityInShortfall: deps.setCapacityInShortfall,
+    persistLastControlledMs: deps.persistLastControlledMs,
+    deviceManager: deps.deviceManager,
+    getObservedState: deps.getObservedState,
+    actuator: deps.actuator,
+    getCapacityGuard: deps.getCapacityGuard,
+    getCapacitySettings: deps.getCapacitySettings,
+    getCapacityDryRun: deps.getCapacityDryRun,
+    getOperatingMode: deps.getOperatingMode,
+    getShedBehavior: deps.getShedBehavior,
+    markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
+    getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
+    logTargetRetryComparison: deps.logTargetRetryComparison,
+    syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
+    deviceDiagnostics: deps.deviceDiagnostics,
+    pendingBinaryCommandStore,
+  };
+  const builder = new PlanBuilder(builderDeps, state);
+  const executor = new PlanExecutor(executorDeps, state);
+  return new ComposedPlanEngine({
+    state,
+    pendingBinaryCommandStore,
+    builder,
+    executor,
+    deviceDiagnostics: deps.deviceDiagnostics,
+    debugStructured: deps.debugStructured,
+    structuredLog: deps.structuredLog,
+  });
+};
+
+export function createPlanEngine(
+  ctx: AppContext,
+  scope: HomeScope,
+  options?: CreatePlanEngineOptions,
+): PlanEngine {
   // Resolve the device manager first so its absence surfaces the canonical
   // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
   // null when the device manager is absent, so past this guard the actuator is
@@ -57,7 +132,7 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
       || options?.isActuationFenced?.(deviceId) === true;
   });
 
-  return new PlanEngineClass({
+  const deps: PlanEngineWiring = {
     getHomeDisplayName: scope.getHomeDisplayName,
     // The id is already a plain scope field (a home id cannot change without a
     // new scope), so log correlation needs no extra getter.
@@ -127,5 +202,6 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
-  });
+  };
+  return composePlanEngine(deps);
 }

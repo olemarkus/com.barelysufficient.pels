@@ -7,7 +7,7 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 ## Map
 
 - `planService.ts` — rebuild orchestration: triggers, signatures/dedupe, status + overview logging.
-- `planEngine.ts` — per-cycle engine state (pending commands, headroom, overshoot tracking); hands off to the builder and executor.
+- `planEngine.ts` — narrow planner-facing behavior contract implemented by the setup-owned composition facade.
 - `planBuilder.ts` — pure-ish plan assembly: context → shedding → restore → materialization.
 - `admission/` — per-device admission gates (activation backoff, reserve, shedding guard).
 - `shedding/` — the only place that *selects* devices to shed. **Has its own AGENTS.md — read it first.**
@@ -20,9 +20,10 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 - **No `lib/device` imports** except the producer seams `deviceObservation.ts`,
   `deviceActionProjection.ts`, `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
   the producer projection; the planner consumes flat `PlanInputDevice` fields, never source/evidence.
-- **Smart-task-agnostic**: never import anything from `lib/objectives/**` — `npm run arch:grep`
-  fails on ANY `lib/plan` → objectives edge, value or type (`no-plan-to-smarttasks` additionally
-  covers `deferredObjectives/` in dep-cruiser). Deferred decoration arrives only through the
+- **Smart-task-agnostic**: never import anything from `lib/objectives/**` — the source AST guard
+  behind `npm run arch:grep` fails on ANY `lib/plan` → objectives edge, including type and dynamic
+  forms (`no-plan-to-smarttasks` additionally covers `deferredObjectives/` in dep-cruiser).
+  Deferred decoration arrives only through the
   injected `decorateDeferredObjectives` seam as a flat `DeferredDecorationBundle`.
 - **Decorations may only move numbers, never select devices** (convention — dep-cruiser cannot see
   this, since the seam passes flat bits rather than imports). A decoration flag may **subtract from
@@ -49,15 +50,12 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   redesign it, not permission to write the clause. See
   `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
-- **The planner does not JUDGE drift; it does still ask one question about it.** Whether observed
-  disagrees with intent is computed in `lib/executor/executorConvergence.ts` (whole-plan) and
-  `lib/executor/planExecutionDrift.ts` (per device), and
-  `no-plan-to-executor` keeps that import out of every `lib/plan` module except `planEngine.ts` —
-  the composition root, and the single seam through which the rest of the planner asks the executor
-  anything.
+- **The planner does not import the executor.** Setup composes planner and executor behind the
+  `PlanEngine` behavior contract, while shared result shapes live in `lib/planContract/`.
+  `no-plan-to-executor` enforces value edges for every `lib/plan` module; the same source AST guard
+  behind `npm run arch:grep` also rejects type-only and dynamic executor imports.
 
-  Be precise about what that buys, because the honest version is weaker than "the planner knows
-  nothing about drift": `planServiceRebuild.maybeApplyPlanChanges` still READS a drift verdict
+  Be precise about what that buys: `planServiceRebuild.maybeApplyPlanChanges` still READS a drift verdict
   (through `planEngine.hasExecutionWorkOutstanding`) to decide whether a rebuild that changed no
   decisions should actuate anyway. That is a cost optimization, not a decision — the plan it would
   apply is the one just built from these very observations — but it is a drift question on the

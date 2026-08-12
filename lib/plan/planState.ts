@@ -383,8 +383,9 @@ export class PlanEngineState {
     lastEmitEvent?: 'missing_mode_target' | 'missing_mode_target_and_current_target';
   }> = {};
 
-  constructor(nowTs = Date.now()) {
+  constructor(nowTs = Date.now(), isExternalOffHeld?: (deviceId: string) => boolean) {
     this.appStartedAtMs = nowTs;
+    this.isExternalOffHeld = isExternalOffHeld;
   }
 
   /**
@@ -480,6 +481,9 @@ export class PlanEngineState {
   }
 }
 
-export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
-  return new PlanEngineState(nowTs);
+export function createPlanEngineState(
+  nowTs = Date.now(),
+  isExternalOffHeld?: (deviceId: string) => boolean,
+): PlanEngineState {
+  return new PlanEngineState(nowTs, isExternalOffHeld);
 }

@@ -1602,20 +1602,16 @@ program) remain deferred.*
       the other is not. Pre-existing, but the floor added by the layering train makes the asymmetry
       newly visible. *Source: pels-layering-guardian on the same train.*
 
-- [ ] **`PlanEngine` is the composition root for the layer below it — the planner constructs its
-      own executor and actuator.** `lib/plan/planEngine.ts` does `new PlanExecutor(...)` and holds
-      the injected `Actuator`, so `lib/plan → lib/executor` is a structural value edge that the
-      `no-plan-to-executor` rule has to except (`pathNot: planEngine.ts`). That exception is the
-      last hole in the boundary: every other planner module now reaches the executor only through
-      this class, and the drift/convergence predicates live on the far side of it.
-      Inverting it means the wiring layer constructing the executor and handing the planner a
-      narrow port, which touches `setup/appInit/createPlanEngine.ts` and every engine-facade method
-      that currently forwards (`applyPlanActions`, `handleShortfall`, `hasSettledActuation`,
-      `hasExecutionWorkOutstanding`, …). Worth doing, not urgent: the boundary is enforced
-      everywhere else, and the excepted edge is one file that a reviewer can see.
+- [x] **Move `PlanEngine` composition out of the planner.** Completed by #2082: setup constructs
+      `PlanBuilder` and `PlanExecutor` over one shared state and exposes the narrow `PlanEngine`
+      behavior. `lib/plan/planEngine.ts` is now a
+      type-only consumer contract; it cannot construct or subclass the concrete setup facade.
+      `PlanActuationResult` lives in `lib/planContract/`, so the cruiser rejects every compiled
+      plan→executor import with no `planEngine.ts` exception, while the `arch:grep` source AST guard
+      rejects type-only and dynamic forms before compilation can erase them.
 
-      A cheaper first step that removes most of the residue: DELETE the drift consultation from the
-      planner instead of routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
+- [ ] **Remove the remaining drift consultation from the planner facade.** DELETE it instead of
+      routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
       let the executor no-op per device — it is already built for that (`handleTargetCommandPreflight`
       skips on an equal observed value, and this train made retry suppression and cooldown stamping
       unconditional). That collapses the gate in `maybeApplyPlanChanges` to a dry-run check, drops

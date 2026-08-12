@@ -1,23 +1,31 @@
 const {
-  capturedPlanEngineDeps,
+  capturedPlanBuilderDeps,
+  capturedPlanExecutorDeps,
   capturedEmitterDeps,
   capturedPriceCoordinatorDeps,
   capturedFlowCardDeps,
 } = vi.hoisted(() => ({
-  capturedPlanEngineDeps: { current: null as null | Record<string, unknown> },
+  capturedPlanBuilderDeps: { current: null as null | Record<string, unknown> },
+  capturedPlanExecutorDeps: { current: null as null | Record<string, unknown> },
   capturedEmitterDeps: { current: null as null | Record<string, unknown> },
   capturedPriceCoordinatorDeps: { current: null as null | Record<string, unknown> },
   capturedFlowCardDeps: { current: null as null | Record<string, unknown> },
 }));
 
-vi.mock('../../lib/plan/planEngine', () => ({
-  PlanEngine: class MockPlanEngine {
-    deps: Record<string, unknown>;
-
+vi.mock('../../lib/plan/planBuilder', () => ({
+  PlanBuilder: class MockPlanBuilder {
     constructor(deps: Record<string, unknown>) {
-      this.deps = deps;
-      capturedPlanEngineDeps.current = deps;
+      capturedPlanBuilderDeps.current = deps;
     }
+  },
+}));
+
+vi.mock('../../lib/executor/planExecutor', () => ({
+  PlanExecutor: class MockPlanExecutor {
+    constructor(deps: Record<string, unknown>) {
+      capturedPlanExecutorDeps.current = deps;
+    }
+
   },
 }));
 
@@ -88,7 +96,6 @@ describe('app init plan service wiring', () => {
 
   it('routes plan engine debug logging through the fixed plan topic', () => {
     const logDebug = vi.fn();
-    capturedPlanEngineDeps.current = null;
     const engineCtx = createAppContextMock({
       deviceManager: {} as AppContext['deviceManager'],
       logDebug,
@@ -96,7 +103,7 @@ describe('app init plan service wiring', () => {
     const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
 
     expect(engine).toBeDefined();
-    (capturedPlanEngineDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
+    (capturedPlanBuilderDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
 
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
   });
@@ -108,7 +115,6 @@ describe('app init plan service wiring', () => {
       state: 'resolved' as const,
       deviceIds: new Set<string>(),
     };
-    capturedPlanEngineDeps.current = null;
     const engineCtx = createAppContextMock({
       deviceManager: {
         setCapability,
@@ -121,7 +127,7 @@ describe('app init plan service wiring', () => {
     });
     createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
     const actuator = (
-      capturedPlanEngineDeps.current as unknown as { actuator: Actuator }
+      capturedPlanExecutorDeps.current as unknown as { actuator: Actuator }
     ).actuator;
     const command = {
       kind: 'target' as const,
