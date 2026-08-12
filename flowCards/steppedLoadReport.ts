@@ -38,7 +38,7 @@ export async function resolveSteppedLoadStepIdFromPowerInput(params: {
       'Power must be provided as a number or text like "1750 W" or "6 A".',
     );
   }
-  const steps = device?.steppedLoadProfile?.steps ?? [];
+  const steps = device.steppedLoadProfile.steps;
   const resolvedStep = resolveSteppedLoadStepFromPower(steps, powerW)
     ?? resolveEvTargetPowerExactStep(device.targetPowerConfig, powerW)
     ?? null;
@@ -210,19 +210,19 @@ export function createSteppedLoadReportError(code: SteppedLoadReportErrorCode, m
 async function getSteppedLoadDeviceSnapshot(
   deps: FlowCardDeps,
   deviceId: string,
-): Promise<TargetDeviceSnapshot & { controlModel: 'stepped_load' } & SteppedLoadDescriptorFields> {
+): Promise<TargetDeviceSnapshot & SteppedLoadDescriptorFields> {
   const snapshot = await deps.getSnapshot();
   const device = snapshot.find((entry) => entry.id === deviceId);
   if (!device) {
     throw createSteppedLoadReportError('device_not_found', `Device '${deviceId}' was not found in the snapshot.`);
   }
-  if (device.controlModel !== 'stepped_load' || !isSteppedLoadSnapshot(device)) {
+  if (!isSteppedLoadSnapshot(device)) {
     throw createSteppedLoadReportError(
       'not_stepped_load',
       `Device '${device.name.trim()}' is not configured as a stepped load.`,
     );
   }
-  return device as TargetDeviceSnapshot & { controlModel: 'stepped_load' } & SteppedLoadDescriptorFields;
+  return device;
 }
 
 export function emitSteppedLoadReportReceivedLog(params: {

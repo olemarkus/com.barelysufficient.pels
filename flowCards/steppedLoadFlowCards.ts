@@ -99,7 +99,7 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       const deviceId = readFlowDeviceArg(args);
       if (!deviceId) return [];
       const snapshot = await deps.getSnapshot();
-      const device = snapshot.find((entry) => entry.id === deviceId && entry.controlModel === 'stepped_load');
+      const device = snapshot.find((entry) => entry.id === deviceId);
       const steps = device && isSteppedLoadSnapshot(device) ? device.steppedLoadProfile.steps : [];
       const q = (query || '').toLowerCase();
       return steps
@@ -245,9 +245,7 @@ async function getSteppedLoadDeviceOptions(
 ): Promise<Array<{ id: string; name: string }>> {
   const snapshot = await deps.getSnapshot();
   return buildDeviceAutocompleteOptions(
-    snapshot.filter((device) => (
-      device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device)
-    )),
+    snapshot.filter((device) => isSteppedLoadSnapshot(device)),
     query,
   );
 }

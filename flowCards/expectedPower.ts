@@ -1,10 +1,18 @@
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { SteppedLoadDescriptorProbe, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
+import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
 type DeviceRef = RawFlowDeviceArg;
+
+/**
+ * The snapshot this card reads is the decorated carrier, whose stepped
+ * descriptor is optional — widened with the probe so `isSteppedLoadSnapshot`
+ * can narrow it. The base snapshot type omits `steppedLoadProfile` outright.
+ */
+type ExpectedPowerDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
 
 type ActionCardHomey = Pick<FlowHomeyLike, 'flow'> & {
   flow: { getActionCard: (id: string) => FlowCard };
@@ -35,12 +43,12 @@ function parseExpectedPowerW(payload: { power_w?: number } | null): number {
  * the owner most likely to need it: someone whose declared load is wrong.
  */
 async function assertOverrideSupported(
-  deps: { getSnapshot: () => Promise<TargetDeviceSnapshot[]> },
+  deps: { getSnapshot: () => Promise<ExpectedPowerDeviceSnapshot[]> },
   deviceId: string,
 ): Promise<void> {
   const snapshot = await deps.getSnapshot();
   const device = snapshot.find((entry) => entry.id === deviceId);
-  if (device?.controlModel === 'stepped_load') {
+  if (device && isSteppedLoadSnapshot(device)) {
     throw new Error(
       'Stepped load devices use configured planning power per step; '
       + 'expected power override is not supported.',
@@ -56,7 +64,7 @@ function resolveDeviceName(snapshot: TargetDeviceSnapshot[], deviceId: string): 
 export function registerExpectedPowerCard(
   homey: ActionCardHomey,
   deps: {
-    getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
+    getSnapshot: () => Promise<ExpectedPowerDeviceSnapshot[]>;
     setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
     rebuildPlan: () => void;
@@ -101,7 +109,7 @@ export function registerExpectedPowerCard(
       // point rather than a conflict.
       snapshot.filter(
         (d) => !isObserveOnlyRoleClassKey(d.deviceClass)
-          && d.controlModel !== 'stepped_load',
+          && !isSteppedLoadSnapshot(d),
       ),
       query,
     );
