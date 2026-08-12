@@ -21,7 +21,10 @@ export type {
 } from './hoursRemainingBus';
 export { createDeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 export type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
-export { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
+export {
+  emitDeferredObjectiveLifecycleTransitions,
+  emitDeferredObjectiveStatusTransitions,
+} from './statusTransitions';
 export type {
   DeferredObjectiveStatusBus,
 } from './statusBus';

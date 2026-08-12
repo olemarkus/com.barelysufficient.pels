@@ -4,10 +4,10 @@ This note defines the intended model for deadline-aware loads. It is design guid
 future implementation work. The soft temperature slice is current shipped behavior: PELS can plan
 deadline hours, make cap-off temperature devices visible during planned hours, keep them idle
 outside planned hours, and raise the planned setpoint to the deadline target while still respecting
-normal budget, capacity, priority, cooldown, and admission gates. EV pause/resume admission and
-actuation are also shipped (`admission.ts` emits `binary_restore`/`binary_release` intents;
-`lib/executor/binaryExecutor.ts` applies them) — see `notes/ev-ready-by/README.md` for the user-
-facing slice. Multi-objective contention is shipped: objectives are allocated in device-priority
+normal budget, capacity, priority, cooldown, and admission gates. EV planned resume and idle-bucket
+pause are also shipped (`admission.ts` emits their plan intents); satisfied/deadline fallback is
+requested by the lifecycle clock and converged in `lib/executor/lifecycleFallbackDispatcher.ts` — see
+`notes/ev-ready-by/README.md` for the user-facing slice. Multi-objective contention is shipped: objectives are allocated in device-priority
 order, and each lower task receives only the physical power and useful-energy capacity left by the
 tasks ahead of it. Richer step escalation remains future work in this note. Energy-based milestones and the
 remaining horizon-planning detail are tracked in
@@ -83,9 +83,10 @@ Storage rules:
   Public status-change Flow cards are revision-backed and have no separate trigger cache.
 - `deadlineAtMs` is an absolute UTC timestamp. Flow cards take a `HH:mm` local-time argument and
   resolve it to the next future local moment **once at write time**; the persisted value never
-  rolls forward on its own. When the deadline passes, the runtime auto-disables the entry
-  (`enabled: false`) via the `deadlineJustPassed` hook in `statusTransitions.ts` so the same
-  deadline never replans for the next day. Users re-arm by firing the flow card again.
+  rolls forward on its own. When the lifecycle emitter observes the deadline transition, setup's
+  `handleDeferredDeadlineReached` converges the configured fallback and then auto-disables the
+  entry (`enabled: false`), so the same deadline never replans for the next day. Users re-arm by
+  firing the flow card again.
 - Deadlines are soft-only. The Settings UI must not expose a `'hard'` enforcement mode.
 - `enforcement` is persisted on EV entries (`'soft' | 'hard'`), but no flow card sets `'hard'` (the
   EV card hardcodes `'soft'`) and there is no deadline-first admission mode — so deadlines are
@@ -117,8 +118,9 @@ the next cycle returns to normal deadline tracking.
 ## Soft Temperature Runtime Semantics
 
 The first temperature UI stores the objective and lets horizon planning calculate planned hours.
-Runtime actuation for the cap-off case is now wired in `lib/plan/admission/deferredObjective.ts`
-and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings`:
+Runtime admission for the cap-off case is produced by
+`lib/objectives/deferredObjectives/admission.ts` and applied at the planner boundary; terminal
+fallback actuation stays on the independent lifecycle clock:
 
 - The horizon planner computes the planned hours per cycle.
 - For each enabled objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
@@ -143,7 +145,7 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
   once the diagnostic transitions to `satisfied`/`cannot_meet`, the override drops out and the
   setpoint reverts to the regular mode target. The override applies regardless of the
   capacity-based control toggle (cap-on and cap-off devices both pick it up).
-  Implementation: `buildDeferredTargetOverrides` in `lib/plan/admission/deferredObjective.ts`
+  Implementation: `buildDeferredTargetOverrides` in `lib/objectives/deferredObjectives/admission.ts`
   derives the per-cycle map from `deferredEvaluations`; `resolvePlannedTarget` in
   `lib/plan/planDevices.ts` consumes it after applying the price-opt delta and before the
   capability clip. Capacity-based shedding (`set_temperature` shed action) still wins because
@@ -260,7 +262,11 @@ the committed hours filled to the stacked ceiling cannot absorb the demand (e.g.
 draw drops the tank ~38 °C and the remaining horizon at the floor step cannot cover the new
 kWh requirement). Filling the uncommitted current hour keeps the device on instead of
 stranding it at 0 kWh once a task outlives its committed window; a *committed* current hour
-is left to phase-1 (its settled budget is the contract for the hour).
+is left to phase-1 (its settled budget is the contract for the hour). For a cap-off device,
+the lifecycle fallback takes precedence over that commitment while the task is satisfied and
+after its deadline: the lifecycle clock converges the configured fallback independently of the
+power-driven plan. Pre-deadline satisfaction does not end the task; if fresh progress later falls
+below target, lifecycle authority is abandoned and planning can consume the commitment again.
 
 ### An unbooked hour is not a stand-down
 
@@ -414,8 +420,8 @@ as an in-page route off `index.html`.):
 - Flow card writes route through `applyDeferredObjectiveChange`
   (`lib/objectives/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
   finalizes the prior in-progress run immediately rather than waiting for the abandon-grace
-  window. The runtime auto-disable path (`statusTransitions.deadlineJustPassed`) stays on
-  the `deadline_passed` classification — only user-initiated changes whose prior deadline is
+  window. The lifecycle deadline transition routed through `handleDeferredDeadlineReached` stays
+  on the `deadline_passed` classification — only user-initiated changes whose prior deadline is
   still in the future produce `replaced` or the prompt `abandoned`. When the prior
   deadline has already elapsed at the moment of the user change, `applyDeferredObjectiveChange`
   calls `planHistoryRecorder.finalizeElapsedDeadline` instead, which pushes a
@@ -741,10 +747,12 @@ depends on the per-device Power-limit control setting:
   work. If the deadline objective was the reason PELS allowed charging, meeting the target removes
   that allowance and PELS should pause charging. It should not restart charging unless a new or
   changed deadline target, boost, or manual/user action asks for it. Implementation:
-  `applyDeferredObjectiveAdmission` (`lib/plan/admission/deferredObjective.ts`) emits a terminal
-  `binary_release` for `satisfied + ev_soc + controllable=false`. The `planExecutor` cap-off branch
-  routes that intent through `applyDeferredBinaryCommand`; the executor short-circuits when the
-  charger is already paused, so per-cycle re-emission is idempotent.
+  the lifecycle emitter reports pre-deadline satisfaction to
+  `handleDeferredSatisfied` (`setup/appInit/deferredObjectiveLifecycle.ts`). Setup gates authority
+  and disarm, resolves a neutral executable fallback, then the executor dispatcher pauses the
+  charger and retries after the pending window until Homey observation confirms fallback. Shared
+  command collisions are skipped, never replayed from a captured plan; a later plan or lifecycle
+  tick must decide again from fresh observation.
 
 ## Energy Calculation
 
@@ -1226,8 +1234,8 @@ cover their cases (or because the slice they belong to is deferred):
 write-time `deadlineAtMs` resolution, price-feature-gated soft-temperature admission/target
 overrides, the horizon scheduler (budget-friendly buckets with deadline margin), stepped
 `expectedStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
-`satisfied`→pause on cap-off via `applyDeferredBinaryCommand`), deadline auto-disable on pass
-(`statusTransitions.ts`), and the Smart-tasks + per-device plan/history UI with public flow-card
+`satisfied`→pause on cap-off via the lifecycle clock), deadline auto-disable on pass
+(`statusTransitions.ts` + `handleDeferredDeadlineReached`), and the Smart-tasks + per-device plan/history UI with public flow-card
 creation/clearing. The freshness doctrine — credit aged-out temperature (thermostats fall silent at
 setpoint) but require strictly-fresh EV SoC — lives in `lib/observer/observationFreshness.ts` and
 `lib/objectives/deferredObjectives/diagnosticProgress.ts`.

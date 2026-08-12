@@ -47,7 +47,7 @@ would rot. The honest mapping:
 
 | Conceptual box | Physical home | Caveat |
 |---|---|---|
-| transport | `lib/device/**` (esp. `lib/device/transport/`) | `lib/device/` is **not** purely the SDK seam — it also carries the producer seams (`deviceActionProjection`, `deviceResidualKw`), per-device runtime (`managerRuntime`), and today the `shedBehaviorActuation` write leak. |
+| transport | `lib/device/**` (esp. `lib/device/transport/`) | `lib/device/` is **not** purely the SDK seam — it also carries the producer seams (`deviceActionProjection`, `deviceResidualKw`) and per-device runtime (`managerRuntime`). The former `shedBehaviorActuation` write leak is gone. |
 | observer | `lib/observer/**` | Clean. Owns the home-power read scalar (PR2a). The snapshot store stays on transport (PR2b, deferred by decision). |
 | plan | `lib/plan/**` | Clean core, but its **inputs** are separate peers: `power`, `price`, `dailyBudget`, `objectives` feed plan but aren't loop stages — they sit *beside* it as producers (`executor > plan > {power, dailyBudget, price, objectives, observer}`). |
 | executor | `lib/executor/**` | Clean. Loses its write half to the actuator. |
@@ -59,10 +59,11 @@ Dirs that don't belong to any loop stage:
   It's upstream measurement feeding observer/plan/device; the loop diagram's
   "reads" arrow elides it.
 - **`lib/objectives/`** — smart tasks / deferred objectives. A plan-input peer
-  that *also* triggers writes via the lifecycle (the
-  `deferredObjectiveLifecycle` leak), so it straddles plan-input **and**
-  actuation-trigger. After this train it triggers writes through the actuator
-  (injected by wiring), not by hand-assembling a transport adapter.
+  whose clock emits lifecycle facts into setup. A satisfied/deadline fallback is
+  now projected by setup into a producer-resolved request and handed to the
+  executor-owned `LifecycleFallbackPort`; the executor converges it through the
+  ordinary binary/target/stepped lanes and their injected actuator. Objectives
+  therefore owns no actuation path, and setup owns only projection + wiring.
 - **`lib/planContract/`, `lib/flowApi/`, `lib/diagnostics/`, `lib/logging/`,
   `lib/utils/`** — cross-cutting / infra, orthogonal to the loop.
 - **`lib/app/`** — sunsetting wiring; holds `appSnapshotHelpers`
@@ -234,16 +235,18 @@ Keeping these explicit prevents the seam from accreting policy:
 
 ---
 
-## Two write leaks this seam closes
+## Two write leaks this seam closed
 
-These are writes issued from the wrong layer today; the actuator absorbs both:
+Both former wrong-layer write paths are now gone:
 
-1. `lib/device/shedBehaviorActuation.ts:203` — the **device layer** issuing a
-   binary off via `transport.setCapability`. Mechanism-with-policy in the SDK
-   leaf. Moves to the actuator.
-2. `setup/appInit/deferredObjectiveLifecycle.ts:139` — **wiring** hand-assembling
-   its own `ShedActuationTransport` from `deviceManager`. Replaced by depending
-   on the actuator.
+1. ~~`lib/device/shedBehaviorActuation.ts` issuing a binary off directly through
+   transport.~~ **Deleted.** Its replacement converges through the executor and
+   injected actuator.
+2. ~~`setup/appInit/deferredObjectiveLifecycle.ts` hand-assembling its own
+   `ShedActuationTransport` from `deviceManager`.~~ **Deleted.** Setup now projects
+   the lifecycle fact into a neutral executable request and calls the
+   executor-owned `LifecycleFallbackPort`; only the normal executor lanes reach
+   the injected actuator.
 
 ---
 
@@ -322,26 +325,23 @@ intent union + injected transport surface), so it became the natural seed.
   `deviceActuator.ts` (`createDeviceActuator` → `Actuator.apply`, mapping
   intent → transport method, routing binary on the producer-resolved `flowBacked`
   flag).
-- Relocated the terminal-shed actuator `lib/device/shedBehaviorActuation.ts` →
-  `lib/actuator/terminalShedActuation.ts`, refactored to issue writes through
-  `actuator.apply()` instead of poking transport. **Kills the device-layer write
-  leak.**
-- Wiring: `buildShedActuationTransport` → `buildShedActuator` constructs the
-  injected transport + the actuator; `deferredObjectiveLifecycle` consumes the
-  actuator and passes the step-bookkeeping callback separately. **Kills the
-  hand-built-transport leak.**
+- The former terminal-shed leaf was first relocated behind `actuator.apply()`;
+  it was later retired when lifecycle fallback adopted the executor's shared
+  binary/target/stepped convergence paths.
+- Current wiring registers the executor-owned narrow lifecycle-fallback port in
+  app context; `deferredObjectiveLifecycle` owns authority gates, device-specific
+  request resolution, and disarm. The executor consumes only a neutral executable fallback.
 - Cruiser: `no-actuator-to-peer` + `lib/actuator/` added to
   `no-domain-to-app-layer`.
-- Tests: `deviceActuator.test.ts` (intent→method mapping incl. EV `control`
-  discriminant, flow-vs-native, step passthrough) + relocated
-  `terminalShedActuation.test.ts` + reworked `deferredTerminalEnding.test.ts`.
+- Tests: `deviceActuator.test.ts` covers intent→method mapping; lifecycle fallback
+  retry and Homey-boundary behavior live in the executor integration and SDK E2E lanes.
 
 **PR 1b — migrate the executor dispatch subsystem onto the actuator.** *Shipped.*
 Split into sub-PRs so each is independently shippable and behavior-preserving:
 
 - **PR1b-1 — stepped.** *Shipped (#1485).* Inject the shared `Actuator` into the
-  plan engine + executor (via wiring's `buildDeviceActuator`, lifted out of the
-  terminal-shed `buildShedActuator` so both paths share one builder) and route the
+  plan engine + executor (via wiring's `buildDeviceActuator`, lifted from the
+  former terminal-only builder so both paths share one builder) and route the
   executor's stepped binding (`planExecutor` `requestSteppedLoadStep`) through
   `actuator.apply({ kind: 'step', ... })`. `steppedLoadExecutor.ts` is unchanged —
   only the binding routes through the actuator; behavior is identical.
