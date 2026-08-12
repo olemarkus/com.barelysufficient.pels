@@ -1,7 +1,6 @@
 import {
   AppDeviceControlHelpers,
   STEPPED_LOAD_COMMAND_STALE_MS,
-  buildControlModelMap,
   createDeviceControlRuntimeState,
   decorateSnapshotWithDeviceControl,
   markSteppedLoadDesiredStepIssued,
@@ -783,22 +782,6 @@ describe('appDeviceControlHelpers', () => {
     expect(resolveDefaultControlModel(baseSnapshot({ controlModel: 'stepped_load' }))).toBe('stepped_load');
     expect(resolveDefaultControlModel(baseSnapshot({ deviceType: 'temperature', controlModel: undefined }))).toBe('temperature_target');
     expect(resolveDefaultControlModel(baseSnapshot({ deviceType: 'onoff', controlModel: undefined }))).toBe('binary_power');
-  });
-
-  it('builds a control-model map that DERIVES non-stepped models (raw controlModel is stepped-only)', () => {
-    // Regression: the raw snapshot's `controlModel` is only `'stepped_load' | undefined`,
-    // so the overview-signature map must derive temperature_target/binary_power from
-    // `deviceType` (via resolveDefaultControlModel) — a bare `device.controlModel` read
-    // leaves non-stepped devices out of the map and a temperature↔onoff flip never
-    // reaches the signature.
-    const map = buildControlModelMap([
-      baseSnapshot({ id: 'temp', deviceType: 'temperature', controlModel: undefined }),
-      baseSnapshot({ id: 'binary', deviceType: 'onoff', controlModel: undefined }),
-      baseSnapshot({ id: 'stepped', controlModel: 'stepped_load' }),
-    ]);
-    expect(map.get('temp')).toBe('temperature_target');
-    expect(map.get('binary')).toBe('binary_power');
-    expect(map.get('stepped')).toBe('stepped_load');
   });
 
   it('resolves effective stepped-load profiles with native, stored, snapshot, then suggested precedence', () => {

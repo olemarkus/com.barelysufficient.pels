@@ -17,7 +17,6 @@
  */
 import type {
   BinaryControlCapabilityId,
-  DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   EvObservedProbe,
@@ -61,7 +60,6 @@ export type BinaryControlPlan = {
 };
 
 type SteppedLoadIdentity = {
-  controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
 };
 
@@ -87,12 +85,12 @@ export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFla
 };
 
 // "Stepped load" is a yes/no capability = presence of a valid
-// `steppedLoadProfile`; `controlModel` is a producer-only setting and not part
-// of the discriminant (the producer sets the two atomically, so profile
-// presence already implies `controlModel === 'stepped_load'`). Shared by the
-// boost resolvers and the shed-intent resolver below — and matching every other
-// site (`planSteppedLoad`, `planCurrentState`, `planTypes`, `observedState`) —
-// so the planner's profile-only stepped check and this one cannot drift.
+// `steppedLoadProfile`. `controlModel` is a producer-only SETTING and never rode
+// on this seam's discriminant, so the field is gone from `SteppedLoadIdentity`
+// entirely rather than sitting there unread. Shared by the boost resolvers and
+// the shed-intent resolver below — and matching every other site
+// (`planSteppedLoad`, `planCurrentState`, `planTypes`, `observedState`) — so the
+// planner's profile-only stepped check and this one cannot drift.
 const hasSteppedLoadProfile = (
   device: { steppedLoadProfile?: SteppedLoadProfile },
 ): boolean => isSteppedLoadSnapshot(device);

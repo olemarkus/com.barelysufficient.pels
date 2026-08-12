@@ -69,7 +69,6 @@ describe('planCurrentState', () => {
   it('uses stepped observed state as the canonical source for stepped devices', () => {
     expect(resolveObservedCurrentState({
       binaryControl: { on: true },
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       controlCapabilityId: 'onoff',
@@ -77,7 +76,6 @@ describe('planCurrentState', () => {
 
     expect(resolveEffectiveCurrentState({
       currentState: 'on',
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
     })).toEqual({
@@ -90,7 +88,6 @@ describe('planCurrentState', () => {
 
     expect(resolveObservedCurrentState({
       binaryControl: { on: true },
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'off',
       controlCapabilityId: 'onoff',
@@ -98,7 +95,6 @@ describe('planCurrentState', () => {
 
     expect(resolveEffectiveCurrentState({
       currentState: 'off',
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'off',
     })).toEqual({
