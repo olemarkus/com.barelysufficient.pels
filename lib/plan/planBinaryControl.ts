@@ -41,11 +41,13 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   lifecycleRelease?: boolean;
+  forceAgainstReleasedOpposing?: boolean;
 }): BinaryControlDecision | null {
   const {
     pendingBinaryCommandStore, deviceObservation,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     lifecycleRelease,
+    forceAgainstReleasedOpposing,
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (shouldSkipBinaryControl({
@@ -57,6 +59,8 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     name,
     snapshot,
     pendingBinaryCommandStore,
+    preferProvidedSnapshot: lifecycleRelease === true,
+    forceAgainstReleasedOpposing,
   })) {
     return null;
   }

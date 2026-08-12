@@ -184,8 +184,9 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
-  // opaque `decorateDeferredObjectives` closure below, keeping the planner — and
-  // the executor downstream — entirely smart-task-agnostic. Constructed here
+  // opaque `decorateDeferredObjectives` closure below, keeping the planner's
+  // input path free of smart-task imports. Lifecycle fallback reaches the
+  // executor through a separate setup-wired port. Constructed here
   // (the scope build site) so a sub-home scope can omit it wholesale; every
   // controller dep is a lazy getter, so building it before the price/plan
   // services exist is safe.

@@ -21,7 +21,7 @@ export {
 export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';
-export { createPlanEngine } from './appInit/createPlanEngine';
+export { createPlanEngine, createPlanEngineComposition } from './appInit/createPlanEngine';
 export { createPlanService } from './appInit/createPlanService';
 export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/priceServices';
 export { registerAppFlowCards } from './appInit/registerAppFlowCards';

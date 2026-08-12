@@ -5,7 +5,7 @@ import {
 } from '../../packages/shared-domain/src/binaryControlState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { logSteppedLoadRestoreBinaryUndriven } from './steppedLoadRestoreDiagnostics';
-import { decideAndDispatchBinaryControl } from './binaryControlDispatch';
+import { runBinaryControl } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
@@ -79,6 +79,11 @@ const suppressRecentSteppedBinaryRestore = (
   return true;
 };
 
+const shouldForceSteppedLoadCommand = (options: {
+  force?: boolean;
+  forceAgainstReleasedOpposing?: boolean;
+}): boolean => options.force === true || options.forceAgainstReleasedOpposing === true;
+
 export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
@@ -86,6 +91,7 @@ export const applySteppedLoadCommand = async (
   options: {
     recordPlanActuation?: boolean;
     force?: boolean;
+    forceAgainstReleasedOpposing?: boolean;
     preserveMaterializedConfirmation?: boolean;
     commandPurpose?: 'post_activation_step';
   } = {},
@@ -104,10 +110,11 @@ export const applySteppedLoadCommand = async (
   }
   const commandStepId = action.desired.stepId;
   const currentOn = resolveCurrentOn(action, snapshot);
+  const forceCommand = shouldForceSteppedLoadCommand(options);
   const initializesUnknownStep = action.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
   if (currentOn === false && action.desired.on === false) return false;
   if (!commandStepId) return false;
-  if (options.force !== true && isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
+  if (!forceCommand && isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
   const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, commandStepId);
   if (!desiredStep) {
     return logSteppedLoadCommandSkip(ctx, {
@@ -119,7 +126,7 @@ export const applySteppedLoadCommand = async (
     });
   }
   if (
-    options.force !== true
+    !forceCommand
     && maybeLogSteppedLoadCommandPendingSkip(ctx, action, commandStepId)
   ) return false;
   return executeSteppedLoadCommand(ctx, {
@@ -269,8 +276,8 @@ export const applySteppedLoadShedOff = async (
     transport.observation.getSnapshotByDeviceId(action.id) ?? snapshot,
   );
   try {
-    const outcome = await decideAndDispatchBinaryControl({
-      transport,
+    const outcome = await runBinaryControl({
+      ctx,
       deviceId: action.id,
       name,
       desired: false,

@@ -7,8 +7,7 @@ import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
 } from '../plan/planExecutorSupport';
-import { decideAndDispatchBinaryControl } from './binaryControlDispatch';
-import { skipRestoreForExternalOffHold } from './binaryControlShared';
+import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
@@ -140,14 +139,9 @@ export const maybeSkipSteppedLoadRestoreBinary = (
   return null;
 };
 
-// Dispatch the restore binary-on. With a trusted observation we go through the
-// normal decide-and-dispatch path. When the observation is unknown the device's
-// `currentOn` is the producer's optimistic default, which would make
-// `decideBinaryControl`'s already-matched gate (it reads `currentOn === desired`)
-// suppress the command forever. We must not change that plan-layer gate, so for
-// the unknown case we build the decision here and dispatch it directly — keeping
-// decide's legitimate guards (control-plan presence, `canSet`, and the
-// pending-command dampener) and dropping only the optimistic already-matched skip.
+// Dispatch the restore binary-on through the same claimed binary seam as every
+// other executor path. The snapshot is the producer-resolved command input; the
+// shared seam owns pending suppression, cross-clock authority, and transport.
 const dispatchSteppedLoadRestoreBinaryCommand = async (
   ctx: PlanExecutorSteppedContext,
   params: {
@@ -162,8 +156,8 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
   // binary ON outside `applyBinaryRestoreWithSnapshot` — so it needs the same
   // carve-out, for the same stale-plan window.
   if (skipRestoreForExternalOffHold(ctx, action.id, name)) return false;
-  const outcome = await decideAndDispatchBinaryControl({
-    transport: ctx.buildBinaryControlTransport(),
+  const outcome = await runBinaryControl({
+    ctx,
     deviceId: action.id,
     name,
     desired: true,

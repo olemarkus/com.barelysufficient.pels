@@ -1,4 +1,8 @@
-import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import {
+  isBinaryControlled,
+  isBinaryOnOrUnknown,
+  resolveBinaryCommandCurrentOn,
+} from '../../packages/shared-domain/src/binaryControlState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
   formatDeviceReason,
@@ -233,9 +237,12 @@ export const resolveObservedBinaryStateFromSnapshot = (
   // Prefer the producer-resolved `currentOn` — the drift path feeds a live plan
   // device that carries it (not the raw `binaryControl`); the raw-snapshot executor
   // path has no `currentOn`, so it falls back to the observed binary axis.
-  snapshot: Pick<ObservedDeviceState, 'binaryControl'> & { currentOn?: boolean },
+  snapshot: Pick<ObservedDeviceState, 'binaryControl' | 'evCharging'> & { currentOn?: boolean },
 ): 'on' | 'off' => {
   if (typeof snapshot.currentOn === 'boolean') return snapshot.currentOn ? 'on' : 'off';
+  if (isBinaryControlled(snapshot)) {
+    return resolveBinaryCommandCurrentOn(snapshot) ? 'on' : 'off';
+  }
   return isBinaryOnOrUnknown(snapshot) ? 'on' : 'off';
 };
 

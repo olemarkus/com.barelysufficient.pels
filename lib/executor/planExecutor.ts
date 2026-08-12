@@ -47,6 +47,14 @@ import {
   type PlanExecutorCore,
 } from './planExecutorDispatch';
 import { ShortfallExecutor, type ShortfallExecutorDeps } from './shortfallExecutor';
+import {
+  LifecycleFallbackDispatcher,
+  type LifecycleFallbackPort,
+} from './lifecycleFallbackDispatcher';
+import { createTargetCommandClaim } from './targetCommandClaim';
+import { createSteppedCommandClaim } from './steppedCommandClaim';
+import { createBinaryCommandClaim } from './binaryCommandClaim';
+import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
 
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 
@@ -153,6 +161,10 @@ export class PlanExecutor {
   private targetExecutorContext?: PlanExecutorTargetContext;
   private steppedExecutorContext?: PlanExecutorSteppedContext;
   private binaryExecutorContext?: PlanExecutorBinaryContext;
+  private lifecycleFallbackDispatcher?: LifecycleFallbackDispatcher;
+  private readonly targetCommandClaim = createTargetCommandClaim();
+  private readonly steppedCommandClaim = createSteppedCommandClaim();
+  private readonly binaryCommandClaim = createBinaryCommandClaim();
 
   private get deviceManager(): PlanExecutorDeviceTransport {
     return this.deps.deviceManager;
@@ -308,6 +320,14 @@ export class PlanExecutor {
       this.targetExecutorContext = {
         state: this.state,
         getObservedState: this.deps.getObservedState,
+        getLifecycleOwnedPendingTargetCommand: (deviceId) => (
+          this.lifecycleFallbackDispatcher?.getOwnedTargetPending(deviceId)
+        ),
+        isLifecycleFallbackActive: (deviceId) => (
+          this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
+        ),
+        targetCommandClaim: this.targetCommandClaim,
+        targetCommandOwner: 'ordinary',
         actuator: this.deps.actuator,
         operatingMode: this.operatingMode,
         syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
@@ -331,6 +351,13 @@ export class PlanExecutor {
     if (!this.steppedExecutorContext) {
       this.steppedExecutorContext = {
         state: this.state,
+        steppedCommandClaim: this.steppedCommandClaim,
+        steppedCommandOwner: 'ordinary',
+        binaryCommandClaim: this.binaryCommandClaim,
+        binaryCommandOwner: 'ordinary',
+        isLifecycleFallbackActive: (deviceId) => (
+          this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
+        ),
         observation: this.deviceManager,
         buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
         markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
@@ -362,6 +389,11 @@ export class PlanExecutor {
         recordReleaseShedActuation: this.recordReleaseShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         deviceDiagnostics: this.deps.deviceDiagnostics,
+        binaryCommandClaim: this.binaryCommandClaim,
+        binaryCommandOwner: 'ordinary',
+        isLifecycleFallbackActive: (deviceId) => (
+          this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
+        ),
       };
     }
 
@@ -393,6 +425,29 @@ export class PlanExecutor {
     }
     this.dispatchCore.state = this.state;
     return this.dispatchCore;
+  }
+
+  public getLifecycleFallbackPort(): LifecycleFallbackPort {
+    if (!this.lifecycleFallbackDispatcher) {
+      this.lifecycleFallbackDispatcher = new LifecycleFallbackDispatcher({
+        buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
+        buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
+        buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
+        recordReleaseShedActuation: this.recordReleaseShedActuation,
+        targetCommandClaim: this.targetCommandClaim,
+        capacityDryRun: () => this.capacityDryRun,
+        refreshObserved: (deviceId) => {
+          const snapshot = this.deviceManager.getSnapshotByDeviceId(deviceId);
+          if (!snapshot) return undefined;
+          const observedState = this.deps.getObservedState(deviceId);
+          return buildExecutableObservedDeviceStateFromSnapshot({
+            ...snapshot,
+            ...(observedState ? { ...observedState } : {}),
+          });
+        },
+      });
+    }
+    return this.lifecycleFallbackDispatcher;
   }
 
   public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {

@@ -26,7 +26,7 @@ import {
   createDeferredObjectivePlanHistoryRecorder,
   createDailyBudgetService,
   createDeviceDiagnosticsService,
-  createPlanEngine,
+  createPlanEngineComposition,
   createPlanService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
@@ -375,7 +375,7 @@ export class AppServiceWiring {
     if (!ctx.deferredObjectiveActivePlanRecorder) {
       ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);
     }
-    const planEngine = createPlanEngine(ctx, this.mainHomeScope, {
+    const { planEngine, lifecycleFallbackPort } = createPlanEngineComposition(ctx, this.mainHomeScope, {
       // Active sub-home zone membership is provisional until the first real
       // zone tree commits. Main's plan may still contain those fallback-Main
       // devices, so close the final write seam until ownership is trustworthy.
@@ -384,6 +384,7 @@ export class AppServiceWiring {
         || ctx.homeMembership?.isMainHomeActuationFenced() === true,
     });
     ctx.planEngine = planEngine;
+    ctx.lifecycleFallback = lifecycleFallbackPort;
     this.hydratePlanEngineControlState();
     planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
     // Create the warmup gate before `initPlanService` reads it via `ctx`.

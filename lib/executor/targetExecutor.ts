@@ -85,9 +85,10 @@ export const applyShedTemperaturePlan = async (
 export const applyTargetUpdate = async (
   ctx: PlanExecutorTargetContext,
   action: ExecutableTargetUpdate | null,
+  options: { forceAgainstReleasedOpposing?: boolean } = {},
 ): Promise<boolean> => {
   if (!action) return false;
-  return applyTargetUpdatePlan(ctx, action);
+  return applyTargetUpdatePlan(ctx, action, options);
 };
 
 export const trySetShedTemperature = async (
@@ -152,6 +153,7 @@ export const dispatchTargetCommand = async (
     desired: number;
     observedValue?: unknown;
     skipContext: 'plan' | 'shedding' | 'overshoot';
+    forceAgainstReleasedOpposing?: boolean;
   },
 ): Promise<TargetCommandDispatchResult> => {
   const {
@@ -161,6 +163,7 @@ export const dispatchTargetCommand = async (
     desired: rawDesired,
     observedValue,
     skipContext,
+    forceAgainstReleasedOpposing,
   } = params;
   const target = ctx.getObservedState(deviceId)?.targets?.find((entry) => entry.id === targetCap);
   const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
@@ -172,23 +175,49 @@ export const dispatchTargetCommand = async (
     desired,
     latestObservedValue,
     skipContext,
+    forceAgainstReleasedOpposing,
   });
   if (preflightResult.type === 'skip') return preflightResult.result;
-  return executeTargetCommandDispatch(ctx, {
+  if (ctx.targetCommandOwner === 'ordinary' && ctx.isLifecycleFallbackActive?.(deviceId) === true) {
+    return { applied: false, reason: 'skipped' };
+  }
+  if (!ctx.targetCommandClaim.acquire(
     deviceId,
-    name,
     targetCap,
+    ctx.targetCommandOwner,
     desired,
-    observedValue,
-    skipContext,
-    latestObservedValue,
-    decisionType: preflightResult.decisionType,
-  });
+    ctx.onTargetCommandClaimReleased,
+  )) {
+    return { applied: false, reason: 'skipped' };
+  }
+  let result: TargetCommandDispatchResult = { applied: false, reason: 'failed' };
+  try {
+    result = await executeTargetCommandDispatch(ctx, {
+      deviceId,
+      name,
+      targetCap,
+      desired,
+      observedValue,
+      skipContext,
+      latestObservedValue,
+      decisionType: preflightResult.decisionType,
+    });
+    return result;
+  } finally {
+    ctx.targetCommandClaim.release(
+      deviceId,
+      targetCap,
+      ctx.targetCommandOwner,
+      desired,
+      result.applied,
+    );
+  }
 };
 
 const applyTargetUpdatePlan = async (
   ctx: PlanExecutorTargetContext,
   action: ExecutableTargetUpdate,
+  options: { forceAgainstReleasedOpposing?: boolean },
 ): Promise<boolean> => {
   try {
     const result = await dispatchTargetCommand(ctx, {
@@ -198,6 +227,7 @@ const applyTargetUpdatePlan = async (
       desired: action.desired,
       observedValue: action.observedValue,
       skipContext: 'plan',
+      forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
     });
     if (!result.applied) return false;
     logger.info({
@@ -240,6 +270,7 @@ const handleTargetCommandPreflight = (
     desired: number;
     latestObservedValue: unknown;
     skipContext: 'plan' | 'shedding' | 'overshoot';
+    forceAgainstReleasedOpposing?: boolean;
   },
 ): { type: 'skip'; result: TargetCommandDispatchResult } | { type: 'proceed'; decisionType: 'send' | 'retry' } => {
   const {
@@ -249,8 +280,9 @@ const handleTargetCommandPreflight = (
     desired,
     latestObservedValue,
     skipContext,
+    forceAgainstReleasedOpposing,
   } = params;
-  if (Object.is(latestObservedValue, desired)) {
+  if (forceAgainstReleasedOpposing !== true && Object.is(latestObservedValue, desired)) {
     logger.debug({
       event: 'target_command_skipped',
       reasonCode: 'already_matched',
@@ -264,6 +296,23 @@ const handleTargetCommandPreflight = (
     logger.debug({
       event: 'executor_target_log_debug',
       msg: `Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`,
+    });
+    return { type: 'skip', result: { applied: false, reason: 'skipped' } };
+  }
+  const lifecycleOwnedPending = ctx.getLifecycleOwnedPendingTargetCommand?.(deviceId);
+  if (
+    lifecycleOwnedPending?.capabilityId === targetCap
+    && lifecycleOwnedPending.desired === desired
+  ) {
+    logger.debug({
+      event: 'target_command_skipped',
+      reasonCode: 'lifecycle_owned',
+      deviceId,
+      deviceName: name,
+      capabilityId: targetCap,
+      desired,
+      retryCount: lifecycleOwnedPending.retryCount,
+      skipContext,
     });
     return { type: 'skip', result: { applied: false, reason: 'skipped' } };
   }
@@ -342,6 +391,9 @@ const executeTargetCommandDispatch = async (
       value: desired,
     });
     if (!outcome.requested) return { applied: false, reason: 'not_requested' };
+    if (ctx.isTargetCommandAuthorityCurrent?.() === false) {
+      return { applied: false, reason: 'skipped' };
+    }
   } catch (error) {
     const failedPending = recordFailedPendingTargetCommandAttempt({
       state: ctx.state,

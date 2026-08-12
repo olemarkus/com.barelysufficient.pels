@@ -9,6 +9,7 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ExecutableReleaseIntent } from '../../lib/executor/executablePlan';
+import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 
 // Direct (non-flow-backed) marker-routing for the binary lifecycle-disable path.
 // The flow-backed half is covered by a real-recorder assertion in planExecutor.test.ts
@@ -53,6 +54,8 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
     recordShedActuation,
     recordReleaseShedActuation,
     recordRestoreActuation: () => {},
+    binaryCommandClaim: createBinaryCommandClaim(),
+    binaryCommandOwner: 'ordinary',
   };
   return { ctx, state, recordShedActuation, recordReleaseShedActuation, setCapabilityCalls };
 };
@@ -117,5 +120,25 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.state.lastInstabilityMs).toBeNull();
     expect(h.state.lastDeviceShedMs['ev-1']).toBeUndefined();
+  });
+
+  it('lifecycle release bypasses capacity dry-run while an ordinary capacity shed still honors it', async () => {
+    const lifecycle = buildCtx(onoffSnapshot);
+    lifecycle.ctx.capacityDryRun = true;
+    expect(await applyBinarySheddingToDevice(lifecycle.ctx, {
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      lifecycleRelease: true,
+    })).toBe(true);
+    expect(lifecycle.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: false }]);
+
+    const ordinary = buildCtx(onoffSnapshot);
+    ordinary.ctx.capacityDryRun = true;
+    expect(await applyBinarySheddingToDevice(ordinary.ctx, {
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      skipPrecheck: true,
+    })).toBe(false);
+    expect(ordinary.setCapabilityCalls).toEqual([]);
   });
 });

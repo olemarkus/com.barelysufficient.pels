@@ -1,5 +1,5 @@
 /**
- * Integration test for the smart-task lifecycle-end release path for non-EV
+ * Integration test for the smart-task idle-bucket release executor path for non-EV
  * devices. Mirrors the EaseeMockCharger pattern in `test/integration/evDevices.integration.test.ts`
  * for two non-EV shapes:
  *   1. Binary heater (`controlCapabilityId: 'onoff'`, shedBehavior `turn_off`).
@@ -7,30 +7,28 @@
  *      `set_temperature`).
  *
  * The flow we pin:
- *   - First plan cycle in the satisfied state → `applyShedReleaseIntent` fires
+ *   - First plan cycle in a released bucket → `applyShedReleaseIntent` fires
  *     the configured shedBehavior exactly once (binary turn-off for the heater;
  *     target write at shed-temperature for the thermostat).
  *   - The mock device's observed state updates to reflect the new posture.
- *   - Second plan cycle in the satisfied state → executor does NOT re-fire
+ *   - Second plan cycle in the released bucket → executor does NOT re-fire
  *     (binary path: `snapshot.binaryControl?.on === false` short-circuits;
  *     temperature path: `observed.target.observedValue === shedTemperature`
  *     short-circuits).
  *
- * Approach: the full deferred-objective wiring in `createApp` requires a real
- * temperature/heater diagnostic to reach `satisfied`. Rather than re-wire the
- * planner against a stale temperature/measure-power input, we drive the
+ * Approach: rather than re-wire a complete deferred-objective allocation around
+ * this executor-focused assertion, we drive the
  * release dispatch directly through `applyShedReleaseIntent`, using the real
  * `applyBinarySheddingToDevice` / `applyTargetUpdate` executors (no mocks for
  * the dispatch itself). The intent shape is exactly what the planner emits in
- * the cap-off-satisfied case (see `lib/plan/admission/deferredObjective.ts`'s
- * `shouldEmitTerminalRelease` branch), so the executor's view of the world is
- * production-faithful. Closes TODO §"Integration test: thermostat + binary
- * device lifecycle-end release."
+ * the cap-off idle-bucket case, so the executor's view of the world is
+ * production-faithful.
  */
 import { applyShedReleaseIntent } from '../../lib/executor/shedReleaseActuation';
 import { applyBinarySheddingToDevice, type PlanExecutorBinaryContext } from '../../lib/executor/binaryExecutor';
 import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecutor';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
@@ -44,6 +42,7 @@ import type {
 } from '../../lib/executor/executablePlan';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ShedAction } from '../../lib/plan/planTypes';
+import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
 
 // ---------------------------------------------------------------------------
 // Minimal mock device scaffolding (~80 LOC). The EaseeMockCharger pattern is
@@ -167,10 +166,14 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     recordShedActuation: () => {},
     recordReleaseShedActuation: () => {},
     recordRestoreActuation: () => {},
+    binaryCommandClaim: createBinaryCommandClaim(),
+    binaryCommandOwner: 'ordinary',
   };
 
   const targetCtx: PlanExecutorTargetContext = {
     state,
+    targetCommandClaim: createTargetCommandClaim(),
+    targetCommandOwner: 'ordinary',
     getObservedState: (id) => snapshots.get(id),
     // The capability-addressed setpoint write routes through the actuator over
     // the same `setCapability`, so `setCapabilityCalls` still observes it.
@@ -223,10 +226,14 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     recordShedActuation: () => {},
     recordReleaseShedActuation: () => {},
     recordRestoreActuation: () => {},
+    binaryCommandClaim: createBinaryCommandClaim(),
+    binaryCommandOwner: 'ordinary',
   };
 
   const targetCtx: PlanExecutorTargetContext = {
     state,
+    targetCommandClaim: createTargetCommandClaim(),
+    targetCommandOwner: 'ordinary',
     getObservedState: (id) => snapshots.get(id),
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     operatingMode: 'Home',
@@ -287,12 +294,12 @@ const buildDeps = (params: {
   recordReleaseShedActuation: () => {},
 });
 
-describe('lifecycle-end release for non-EV devices — integration', () => {
-  it('binary heater: fires the configured turn-off once on the satisfied transition, then is idempotent on re-emission', async () => {
+describe('idle-bucket release for non-EV devices — integration', () => {
+  it('binary heater: fires the configured turn-off once, then is idempotent on re-emission', async () => {
       const heater = buildBinaryHeaterSnapshot();
       const harness = buildHarness([heater]);
 
-      // First cycle: satisfied transition → shed_release intent → binary turn-off.
+      // First released-bucket cycle: shed_release intent → binary turn-off.
       const intent = buildIntent(heater.id, heater.name);
       const observed = buildObserved(heater.id, heater.name, heater);
       const deps = buildDeps({
@@ -317,8 +324,8 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
         value: false,
       });
 
-      // Second cycle: planner re-emits the intent (the design is per-cycle
-      // re-emission while the terminal status holds). The observation now
+      // Second cycle: planner re-emits the intent while the bucket remains released. The
+      // observation now
       // reflects the off device — the dispatch path's `snapshot.currentOn ===
       // false` short-circuit must skip the write.
       const refreshedSnapshot = harness.observation.getSnapshotByDeviceId(heater.id)!;

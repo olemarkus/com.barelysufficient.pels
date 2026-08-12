@@ -9,6 +9,8 @@ import type { PlanEngineState } from '../plan/planState';
 import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
 import { getLogger } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { BinaryCommandClaim, BinaryCommandClaimState } from './binaryCommandClaim';
+import type { TargetCommandOwner } from './targetCommandClaim';
 
 const sharedLogger = getLogger('executor/binary');
 
@@ -25,7 +27,21 @@ export type PlanExecutorBinaryContext = {
   recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  binaryCommandClaim: BinaryCommandClaim;
+  binaryCommandOwner: TargetCommandOwner;
+  isLifecycleFallbackActive?: (deviceId: string) => boolean;
+  /** Prevents late actuator completion from installing pending state after authority ended. */
+  isBinaryCommandAuthorityCurrent?: () => boolean;
+  /** Lifecycle-only retry scheduled when an already-running ordinary write releases its claim. */
+  onBinaryCommandClaimReleased?: (released: BinaryCommandClaimState) => void;
 };
+
+export type BinaryCommandDispatchContext = Pick<
+PlanExecutorBinaryContext,
+'buildBinaryControlTransport' | 'binaryCommandClaim' | 'binaryCommandOwner'
+| 'isLifecycleFallbackActive' | 'isBinaryCommandAuthorityCurrent'
+| 'onBinaryCommandClaimReleased'
+>;
 
 /**
  * "Run on solar surplus" restore carve-out (PR-7), the SINGLE home for the
@@ -89,7 +105,7 @@ export const skipRestoreForExternalOffHold = (
 };
 
 export const runBinaryControl = async (params: {
-  ctx: PlanExecutorBinaryContext;
+  ctx: BinaryCommandDispatchContext;
   deviceId: string;
   name: string;
   desired: boolean;
@@ -98,20 +114,41 @@ export const runBinaryControl = async (params: {
   restoreSource?: 'shed_state' | 'current_plan';
   reason?: string;
   lifecycleRelease?: boolean;
+  forceAgainstReleasedOpposing?: boolean;
 }): Promise<BinaryControlOutcome> => {
   const {
     ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     lifecycleRelease,
+    forceAgainstReleasedOpposing,
   } = params;
-  return decideAndDispatchBinaryControl({
-    transport: ctx.buildBinaryControlTransport(),
+  if (ctx.binaryCommandOwner === 'ordinary' && ctx.isLifecycleFallbackActive?.(deviceId) === true) {
+    return { applied: false };
+  }
+  if (!ctx.binaryCommandClaim.acquire(
     deviceId,
-    name,
+    ctx.binaryCommandOwner,
     desired,
-    snapshot,
-    logContext,
-    restoreSource,
-    reason,
-    lifecycleRelease,
-  });
+    ctx.onBinaryCommandClaimReleased,
+  )) {
+    return { applied: false };
+  }
+  let outcome: BinaryControlOutcome = { applied: false };
+  try {
+    outcome = await decideAndDispatchBinaryControl({
+      transport: ctx.buildBinaryControlTransport(),
+      deviceId,
+      name,
+      desired,
+      snapshot,
+      logContext,
+      restoreSource,
+      reason,
+      lifecycleRelease,
+      forceAgainstReleasedOpposing,
+      isAuthorityCurrent: ctx.isBinaryCommandAuthorityCurrent,
+    });
+    return outcome;
+  } finally {
+    ctx.binaryCommandClaim.release(deviceId, ctx.binaryCommandOwner, desired, outcome.applied);
+  }
 };

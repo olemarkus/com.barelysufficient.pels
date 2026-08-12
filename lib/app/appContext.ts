@@ -22,6 +22,7 @@ import type { ExternalOffHoldPolicy } from '../observer/externalOffHold';
 import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
+import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
@@ -36,7 +37,7 @@ import type {
   EvBoostConfig,
   EvBoostSettings,
   EvCarAssociations,
-  ObservedDeviceState,
+  ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
@@ -159,7 +160,7 @@ export type AppContext = {
   // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
   // first observation lands OR the boot/hot-plug seed fills it (see
   // `seedObservedStateFromSnapshot`).
-  getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
+  getObservedState: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   // Boot/hot-plug seed: fill the observed-state projection's EMPTY slots from the
   // RAW cached device snapshot so a reader (the settings-UI EV chip,
   // `toPlanDevice` freshness) sees the device's real state for cycle 1, before
@@ -299,6 +300,7 @@ export type AppContext = {
   // so tests building a bare context are unaffected.
   homeRuntimeRead?: HomeRuntimeReadPort;
   planEngine?: PlanEngine;
+  lifecycleFallback?: LifecycleFallbackPort;
   // "Leave off until turned on again": the opt-in config plus the per-device
   // hold state recording that a device was turned off outside PELS, independent
   // of the current plan. ASSIGNED by `AppServiceWiring.initDeviceManager`

@@ -2,7 +2,7 @@ import type {
   EvChargingState,
   EvObservedProbe,
   ObservedDeviceState,
-  StateOfChargeObservedProbe,
+  ProjectedObservedDeviceState,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
@@ -47,7 +47,7 @@ export function readObservedTemperatureState(
 }
 
 type ProjectionEntry = {
-    value: ObservedDeviceState;
+    value: ProjectedObservedDeviceState;
     seq?: number;
     observedAtMs?: number;
 };
@@ -63,7 +63,7 @@ type ProjectionEntry = {
  * aliases no producer state) and closes the last by-reference mutation vector —
  * e.g. `getObservedState(id).binaryControl.on = false`. Idempotent and cheap.
  */
-function freezeObserved(value: ObservedDeviceState & StateOfChargeObservedProbe): ObservedDeviceState {
+function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedDeviceState {
     for (const target of value.targets) Object.freeze(target);
     Object.freeze(value.targets);
     if (value.binaryControl) Object.freeze(value.binaryControl);
@@ -134,11 +134,11 @@ export class ObservedDeviceStateProjection {
      * none has been recorded. The value is frozen (see {@link apply}) so a
      * consumer cannot mutate the projection's stored state by reference.
      */
-    getObservedState(deviceId: string): ObservedDeviceState | undefined {
+    getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
         return this.byId.get(deviceId)?.value;
     }
 
-    getAllObservedStates(): ObservedDeviceState[] {
+    getAllObservedStates(): ProjectedObservedDeviceState[] {
         return Array.from(this.byId.values(), (entry) => entry.value);
     }
 
@@ -165,7 +165,7 @@ export class ObservedDeviceStateProjection {
      *   (the next `applyRefresh` overwrites present devices and deletes absent
      *   ones as usual).
      */
-    seedMissing(states: readonly ObservedDeviceState[]): void {
+    seedMissing(states: readonly ProjectedObservedDeviceState[]): void {
         for (const state of states) {
             if (this.byId.has(state.id)) continue;
             // No seq/observedAtMs: a later real observation always wins (see the
@@ -187,7 +187,11 @@ export class ObservedDeviceStateProjection {
      * corrupt the projection as long as seqs are present — which they always are
      * on the production push path.
      */
-    private apply(value: ObservedDeviceState, seq: number | undefined, observedAtMs: number | undefined): void {
+    private apply(
+        value: ProjectedObservedDeviceState,
+        seq: number | undefined,
+        observedAtMs: number | undefined,
+    ): void {
         const prev = this.byId.get(value.id);
         if (prev && this.shouldDrop(prev, seq, observedAtMs)) return;
         this.byId.set(value.id, { value: freezeObserved(value), seq, observedAtMs });
