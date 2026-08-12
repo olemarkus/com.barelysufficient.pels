@@ -41,7 +41,6 @@ export type IdleClassifierDeviceInput = {
   id: string;
   name: string;
   currentState: string;
-  binaryControl?: { on: boolean };
   observationStale?: boolean;
   /**
    * Producer-resolved current draw. REQUIRED — this input is built from plan

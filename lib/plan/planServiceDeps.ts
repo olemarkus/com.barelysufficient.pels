@@ -56,13 +56,11 @@ export type PlanServiceDeps = {
   writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
-  // Binary-settle evidence (`binaryControlObservation`) is observer-internal and NOT
-  // exposed on `PlanInputDevice`; the settle reads it off the device snapshot directly.
-  // PRODUCTION MUST PROVIDE THIS (the raw device snapshot) — when omitted it falls back
-  // to `getPlanDevices`, which carries no `binaryControlObservation`, so the settle would
-  // never confirm. The fallback exists only so tests that don't exercise the settle can
-  // omit it.
-  getSettleDevices?: () => PendingBinaryLiveDevice[];
+  // Devices for the binary settle. Binary-settle evidence
+  // (`binaryControlObservation`) is observer-internal and lives only on the
+  // device snapshot, so this is the raw snapshot list — never plan devices,
+  // which carry no evidence by type or (since the runtime strip) in memory.
+  getSettleDevices: () => PendingBinaryLiveDevice[];
   // EV charging state for the settings-UI read model, sourced from the observer
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.

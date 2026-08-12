@@ -1270,24 +1270,6 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
-- [ ] **Retire the `getSettleDevices ?? getPlanDevices` settle fallback.**
-      The runtime strip of `binaryControlObservation` from the plan input (branch
-      `refactor/strip-binary-evidence-plan-input`) made the fallback at
-      `lib/plan/planService.ts` (`settleDevices()`) provably useless: a plan device now carries
-      no settle evidence in memory, not just by type, so the fallback branch can only ever
-      produce "never confirms". Make the dep required (or default to `() => []`) and fix the
-      tests that omit it; the three comments explaining the exception
-      (`planServiceDeps.ts` settle docblock, `planService.settleDevices`,
-      `toPlanDevice` strip comment) then collapse into one true sentence. Raised by
-      pels-layering-guardian on the strip PR, 2026-08-11. [P2]
-
-- [ ] **Drop the dead `binaryControl?` field from `IdleClassifierDeviceInput`.**
-      `lib/observer/idleClassifier.ts` declares `binaryControl?: { on: boolean }` on its input
-      type, but the classifier never reads it and no caller populates it (`toDetectorInput`
-      derives `observedOn` from `currentState`). A declared-but-unread raw-evidence field on a
-      consumer input type invites exactly the consumer-side read the observer→plan seam
-      forbids. Raised by pels-layering-guardian, 2026-08-11. [P2]
-
 - [ ] **Extend the control-model vocab guard to `packages/shared-domain/**`.**
       `controlModel` is gone from the overview wire — the stepped discriminant is now presence of
       the `steppedLoad` cluster, and the temperature card keys on `deviceType`. But
