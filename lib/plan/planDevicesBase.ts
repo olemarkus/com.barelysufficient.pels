@@ -88,7 +88,7 @@ function resolveInputCurrentTemperature(dev: PlanInputDevice): number | undefine
 }
 
 // Source the binary on/off truth only when the input device is binary this cycle;
-// `withBinaryDiscriminant` re-derives presence from `controlCapabilityId`. The
+// `withBinaryDiscriminant` re-derives presence from `binaryCapabilityId`. The
 // producer-resolved `currentOn` is forwarded from the input device unchanged — it
 // is resolved once at `toPlanDevice`, not recomputed.
 function resolveInputBinaryControlField(
@@ -109,8 +109,18 @@ function resolveInputBinaryControlField(
  */
 function producerResolvedDecisionFields(dev: PlanInputDevice): {
   commandableNow: boolean;
+  commandabilityReason?: PlanInputDevice['commandabilityReason'];
+  objectiveKind?: PlanInputDevice['objectiveKind'];
+  objectiveSessionInactive?: boolean;
 } {
-  return { commandableNow: dev.commandableNow };
+  return {
+    commandableNow: dev.commandableNow,
+    ...(dev.commandabilityReason ? { commandabilityReason: dev.commandabilityReason } : {}),
+    ...(dev.objectiveKind ? { objectiveKind: dev.objectiveKind } : {}),
+    ...(dev.objectiveSessionInactive !== undefined
+      ? { objectiveSessionInactive: dev.objectiveSessionInactive }
+      : {}),
+  };
 }
 
 export function buildBasePlanDevice(params: {
@@ -190,7 +200,7 @@ export function buildBasePlanDevice(params: {
   // The stepped, EV, temperature, and binary discriminants are set explicitly in
   // the loose literal, then re-tied: `withEvDiscriminant`/`withTemperatureDiscriminant`/
   // `withBinaryDiscriminant` regroup their orthogonal clusters (binary keyed on
-  // `controlCapabilityId` presence) and `withSteppedDiscriminant` lands the result
+  // `binaryCapabilityId` presence) and `withSteppedDiscriminant` lands the result
   // in one stepped union member. The temperature sensor reading is sourced from the
   // input device through the temperature narrowing (the base omits `currentTemperature`).
   return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant(withBinaryDiscriminant({
@@ -219,7 +229,6 @@ export function buildBasePlanDevice(params: {
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     expectedPowerSource: dev.expectedPowerSource,
     currentDrawKw: dev.currentDrawKw,
-    controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
     ...producerResolvedDecisionFields(dev),
     reason: baseReason,
@@ -298,7 +307,7 @@ function resolveShedAction(params: {
   const intent = resolveShedIntent({
     shedBehavior,
     controllable,
-    controlCapabilityId: dev.controlCapabilityId,
+    hasBinaryControl: isBinaryPlanDevice(dev),
     steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     primaryTarget: getPrimaryTargetCapability(dev.targets),
   });

@@ -1,9 +1,9 @@
 import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import {
   getCanSetControl,
-  resolveEvChargingStateBinaryEvidence,
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
 } from '../managerControl';
@@ -15,13 +15,13 @@ export function resolveParsedControlState(params: {
   deviceId: string;
   deviceName: string | null;
   deviceLabel: string;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-  controlWriteCapabilityId?: string;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
+  binaryWriteCapabilityId?: string;
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
   evChargingState: EvChargingState | undefined;
   // Only a membership test happens below, so the narrow `FlowReportedCapabilityId[]`
-  // is unnecessary here — accept any capability-id list. Lets `controlCapabilityId`
+  // is unnecessary here — accept any capability-id list. Lets `binaryCapabilityId`
   // (an open `BinaryControlCapabilityId`) be tested without a type assertion.
   flowBackedCapabilityIds: readonly string[];
   currentOn?: boolean;
@@ -34,8 +34,8 @@ export function resolveParsedControlState(params: {
     deviceId,
     deviceName,
     deviceLabel,
-    controlCapabilityId,
-    controlWriteCapabilityId,
+    binaryCapabilityId,
+    binaryWriteCapabilityId,
     capabilityObj,
     evCharging,
     evChargingState,
@@ -48,22 +48,22 @@ export function resolveParsedControlState(params: {
       deviceId,
       deviceName,
       deviceLabel,
-      controlCapabilityId,
+      binaryCapabilityId,
       capabilityObj,
       evCharging,
       evChargingState,
       currentOn,
     }),
-    canSetControl: controlCapabilityId
-      && flowBackedCapabilityIds.includes(controlCapabilityId)
+    canSetControl: binaryCapabilityId
+      && flowBackedCapabilityIds.includes(binaryCapabilityId)
       ? true
-      : getCanSetControl(controlCapabilityId, controlWriteCapabilityId, capabilityObj),
+      : getCanSetControl(binaryCapabilityId, binaryWriteCapabilityId, capabilityObj),
   };
 }
 
 export function resolveLastFreshDataMs(params: {
   capabilityObj: DeviceCapabilityMap;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
   includeEvChargingState?: boolean;
   targetCaps: readonly string[];
   observedCapabilityAtMs?: number;
@@ -71,7 +71,7 @@ export function resolveLastFreshDataMs(params: {
 }): number | undefined {
   const {
     capabilityObj,
-    controlCapabilityId,
+    binaryCapabilityId,
     includeEvChargingState = true,
     targetCaps,
     observedCapabilityAtMs,
@@ -79,7 +79,7 @@ export function resolveLastFreshDataMs(params: {
   } = params;
   return Math.max(
     getTrackedCapabilityLastUpdatedMs(capabilityObj, [
-      ...(controlCapabilityId ? [controlCapabilityId] : []),
+      ...(binaryCapabilityId ? [binaryCapabilityId] : []),
       ...targetCaps,
       'measure_temperature',
       ...(includeEvChargingState ? ['evcharger_charging_state'] : []),
@@ -91,22 +91,22 @@ export function resolveLastFreshDataMs(params: {
 
 export function resolveBinaryControlObservation(params: {
   capabilityObj: DeviceCapabilityMap;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-  controlObservationCapabilityId?: string;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
+  binaryObservationCapabilityId?: string;
 }): TargetDeviceSnapshot['binaryControlObservation'] {
   const {
     capabilityObj,
-    controlCapabilityId,
-    controlObservationCapabilityId,
+    binaryCapabilityId,
+    binaryObservationCapabilityId,
   } = params;
-  if (!controlCapabilityId) return undefined;
-  if (controlCapabilityId === 'evcharger_charging') {
+  if (!binaryCapabilityId) return undefined;
+  if (binaryCapabilityId === 'evcharger_charging') {
     return resolveEvBinaryControlObservation({
       capabilityObj,
-      controlObservationCapabilityId,
+      binaryObservationCapabilityId,
     });
   }
-  const sourceCapabilityId = controlObservationCapabilityId ?? controlCapabilityId;
+  const sourceCapabilityId = binaryObservationCapabilityId ?? binaryCapabilityId;
   const sourceCapability = capabilityObj[sourceCapabilityId];
   const observedAtMs = toCapabilityTimestampMs(sourceCapability?.lastUpdated);
   if (observedAtMs === undefined) return undefined;
@@ -114,7 +114,7 @@ export function resolveBinaryControlObservation(params: {
   if (typeof observedValue !== 'boolean') return undefined;
   return {
     valid: true,
-    capabilityId: controlCapabilityId,
+    capabilityId: binaryCapabilityId,
     observedValue,
     observedCapabilityIds: [sourceCapabilityId],
     observedAtMs,
@@ -124,26 +124,10 @@ export function resolveBinaryControlObservation(params: {
 
 function resolveEvBinaryControlObservation(params: {
   capabilityObj: DeviceCapabilityMap;
-  controlObservationCapabilityId?: string;
+  binaryObservationCapabilityId?: string;
 }): TargetDeviceSnapshot['binaryControlObservation'] {
-  const { capabilityObj, controlObservationCapabilityId } = params;
-  const rawStateValue = capabilityObj.evcharger_charging_state?.value;
-  if (rawStateValue !== undefined) {
-    const observedValue = resolveEvChargingStateBinaryEvidence(rawStateValue);
-    if (observedValue === undefined) return undefined;
-    const observedAtMs = toCapabilityTimestampMs(capabilityObj.evcharger_charging_state?.lastUpdated);
-    if (observedAtMs === undefined) return undefined;
-    return {
-      valid: true,
-      capabilityId: 'evcharger_charging',
-      observedValue,
-      observedCapabilityIds: ['evcharger_charging_state'],
-      observedAtMs,
-      source: 'snapshot_refresh',
-    };
-  }
-
-  const sourceCapabilityId = controlObservationCapabilityId ?? 'evcharger_charging';
+  const { capabilityObj, binaryObservationCapabilityId } = params;
+  const sourceCapabilityId = binaryObservationCapabilityId ?? 'evcharger_charging';
   const sourceCapability = capabilityObj[sourceCapabilityId];
   const observedAtMs = toCapabilityTimestampMs(sourceCapability?.lastUpdated);
   if (observedAtMs === undefined) return undefined;
@@ -164,7 +148,7 @@ function resolveSnapshotCurrentOn(params: {
   deviceId: string;
   deviceName: string | null;
   deviceLabel: string;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
   evChargingState: EvChargingState | undefined;
@@ -175,13 +159,13 @@ function resolveSnapshotCurrentOn(params: {
     deviceId,
     deviceName,
     deviceLabel,
-    controlCapabilityId,
+    binaryCapabilityId,
     capabilityObj,
     evCharging,
     evChargingState,
     currentOn,
   } = params;
-  if (controlCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value !== 'boolean') {
+  if (binaryCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value !== 'boolean') {
     (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'device_snapshot_control_state_fallback',
       reasonCode: 'missing_boolean_onoff',
@@ -190,13 +174,13 @@ function resolveSnapshotCurrentOn(params: {
       deviceName,
       deviceLabel,
       capabilityId: 'onoff',
-      controlCapabilityId,
+      binaryCapabilityId,
       rawValue: capabilityObj.onoff?.value ?? null,
       rawValueType: typeof capabilityObj.onoff?.value,
       fallbackCurrentOn: currentOn,
     });
   } else if (
-    controlCapabilityId === 'evcharger_charging'
+    binaryCapabilityId === 'evcharger_charging'
     && evCharging === undefined
     && evChargingState === undefined
   ) {
@@ -208,7 +192,7 @@ function resolveSnapshotCurrentOn(params: {
       deviceName,
       deviceLabel,
       capabilityId: 'evcharger_charging',
-      controlCapabilityId,
+      binaryCapabilityId,
       rawValue: null,
       rawValueType: 'undefined',
       fallbackCurrentOn: currentOn,

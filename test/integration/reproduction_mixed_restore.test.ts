@@ -3,16 +3,14 @@ import { getLatestPlanSnapshotForTests, mockHomeyInstance, setMockDrivers, MockD
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
-// Mock Date.now to control time
-const originalDateNow = Date.now;
 let currentTime = 1000000000000;
 
 beforeAll(() => {
-    global.Date.now = vi.fn(() => currentTime);
+    vi.useFakeTimers({ toFake: ['Date'] });
 });
 
 afterAll(() => {
-    global.Date.now = originalDateNow;
+    vi.useRealTimers();
 });
 
 describe('Mixed Type Restoration Throttling', () => {
@@ -20,6 +18,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
     beforeEach(async () => {
         currentTime = 1000000000000;
+        vi.setSystemTime(currentTime);
         vi.clearAllMocks();
         mockHomeyInstance.settings.clear();
         mockHomeyInstance.settings.set('operating_mode', 'Home');
@@ -112,6 +111,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // Advance time past Shed Cooldown (60s)
         currentTime += 61000;
+        vi.setSystemTime(currentTime);
 
         // 2. Headroom returns - enough for BOTH
         (app as any).computeDynamicSoftLimit = () => 10.0;
@@ -148,6 +148,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // 3. Immediate next cycle (within 30s)
         // Should NOT restore the other one due to Cooldown
         currentTime += 5000; // +5s
+        vi.setSystemTime(currentTime);
         await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
@@ -181,6 +182,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // 4. After Cooldown (60s)
         currentTime += 35000; // +35s (Total 40s from first restore)
+        vi.setSystemTime(currentTime);
         await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
@@ -198,6 +200,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // 5. After restore cooldown window
         currentTime += 90000; // +90s (Total 130s from first restore)
+        vi.setSystemTime(currentTime);
         await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 

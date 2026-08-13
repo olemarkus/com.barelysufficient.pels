@@ -1,5 +1,4 @@
 import type Homey from 'homey';
-import type { BinarySettleState } from '../lib/observer/binarySettle';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
@@ -83,7 +82,6 @@ export type AppServiceWiringDeps = {
   getPlanService: () => PlanService;
   getStablePowerSampleRevision: StableSampleRevisionReader;
   getPowerCalibrationStore: () => PowerCalibrationStore;
-  getObserverBinarySettleState: () => BinarySettleState;
   getObservedStateEmitter: () => ObservedStateEmitter;
   getObservedHomePower: () => ObservedHomePower;
   getObservedDeviceStateProjection: () => ObservedDeviceStateProjection;

@@ -29,7 +29,7 @@ const buildSurplusWillingSnapshot = (): TargetDeviceSnapshot & EvObservedProbe =
   name: 'Dump load',
   targets: [],
   deviceClass: 'socket',
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
 }) as unknown as TargetDeviceSnapshot & EvObservedProbe;
 
@@ -70,7 +70,7 @@ describe('toPlanDevice — R7b per-home options', () => {
     const result = toPlanDevice(ctx, temperatureOnly);
 
     expect(result.targets).toEqual([]);
-    expect(result.controlCapabilityId).toBeUndefined();
+    expect('binaryCapabilityId' in result).toBe(false);
     expect(result.canSetControlResolved).toBe(false);
     expect('currentOn' in result).toBe(false);
   });

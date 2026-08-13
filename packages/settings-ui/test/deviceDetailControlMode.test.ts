@@ -116,7 +116,7 @@ describe('device detail control mode options', () => {
         activationRequired: true,
         activationEnabled: true,
       },
-      controlWriteCapabilityId: 'charging_button',
+      deviceRole: 'ev_charger',
     });
 
     expect(optionValues(getDeviceDetailControlModeOptions(device))).toEqual([

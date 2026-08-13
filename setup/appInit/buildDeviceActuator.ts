@@ -30,6 +30,7 @@ export const createTemperatureControlFencedActuator = (
   base: Actuator,
   shouldFence: (command: DeviceCommand) => boolean,
 ): Actuator => ({
+  resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
     command.kind !== 'binary' && shouldFence(command)
       ? Promise.resolve({ requested: false })
@@ -46,8 +47,7 @@ const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand):
   return ctx.temperatureControlPolicyState === 'unavailable'
     && command.kind === 'target'
     && (
-      command.targetKind === 'temperature'
-      || command.capabilityId?.startsWith('target_temperature') === true
+      command.target === 'temperature'
     );
 };
 
@@ -63,16 +63,15 @@ const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand):
 export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
   const transport = ctx.deviceManager;
   if (!transport) return null;
-  // Bind so the optional stepped wrapper keeps its DeviceTransport receiver, then
-  // spread the bound fn straight onto the surface (no Parameters<...> wrapper needed).
-  const requestSteppedLoadStep = transport.requestSteppedLoadStep?.bind(transport);
   const actuatorTransport: ActuatorTransport = {
-    setCapability: (deviceId, capabilityId, value) => transport.setCapability(deviceId, capabilityId, value),
-    applyDeviceTargets: (targets, contextInfo) => transport.applyDeviceTargets(targets, contextInfo),
-    // `=== undefined` (not truthiness): the type says it's always defined, but tests pass a
-    // partial deviceManager without it, so the runtime guard is real.
-    ...(requestSteppedLoadStep === undefined ? {} : { requestSteppedLoadStep }),
-    triggerFlowBackedBinaryControl: makeFlowBackedBinaryTrigger(ctx.homey.flow),
+    requestBinaryControl: (deviceId, desired) => transport.requestBinaryControl(
+      deviceId,
+      desired,
+      makeFlowBackedBinaryTrigger(ctx.homey.flow),
+    ),
+    requestTemperatureTarget: (deviceId, desired) => transport.requestTemperatureTarget(deviceId, desired),
+    resolveTemperatureTarget: (deviceId, desired) => transport.resolveTemperatureTarget(deviceId, desired),
+    requestSteppedLoadStep: transport.requestSteppedLoadStep.bind(transport),
   };
   return createTemperatureControlFencedActuator(
     createDeviceActuator(actuatorTransport),

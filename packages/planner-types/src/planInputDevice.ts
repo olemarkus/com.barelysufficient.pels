@@ -1,10 +1,8 @@
 import type {
-  BinaryControlCapabilityId,
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
-  EvChargingState,
   ExpectedPowerSource,
   RestorePowerSource,
   SteppedLoadCommandStatus,
@@ -89,21 +87,6 @@ type NonSteppedPlanInputKind = Record<never, never>;
  * `evChargingState` is not carried at all — the observer owns it
  * (`ObservedDeviceState`).
  */
-export type EvPlanInputKind = {
-  /**
-   * The observed plug-state, REQUIRED on the narrowed shape for the same reason
-   * `BinaryPlanInputKind.currentOn` is: the parse boundary guarantees it. Every EV
-   * charger exposes `evcharger_charging_state` (the amp/step axis — `target_power`,
-   * stepped-load — is a different axis, not a substitute), and one that cannot
-   * report a member of the Homey enum for it is dropped rather than managed.
-   * Answer every plug-state question from this value through the shared
-   * classifiers in `packages/shared-domain/src/evPlugState.ts`.
-   */
-  evChargingState: EvChargingState;
-  evBoost?: EvBoostConfig;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
-};
-
 /**
  * Temperature field cluster for the plan-input contract (temperature-variant
  * slice). Temperature is ORTHOGONAL to the stepped axis (an air-treatment unit
@@ -132,8 +115,8 @@ export type TemperaturePlanInputKind = {
  * is. `currentOn` is OMITTED from `PlanInputDeviceBase`, so an un-narrowed
  * `device.currentOn` read is a hard compile error; it is REQUIRED on the
  * narrowed shape (a binary device's on-state is always resolved to a concrete
- * boolean). The guard's runtime discriminant is `controlCapabilityId
- * !== undefined` — capability presence is the source of truth for binary status.
+ * boolean). The guard's runtime discriminant is producer-resolved
+ * `currentOn !== undefined`; capability routing stays outside the planner.
  */
 export type BinaryPlanInputKind = {
   // The single public on/off truth for a binary device: a strict boolean the
@@ -173,7 +156,6 @@ export type PlanInputDeviceBase = {
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
-  controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   // Producer-only control-model setting (`temperature_target` / `binary_power` /
@@ -215,6 +197,15 @@ export type PlanInputDeviceBase = {
    * never be mistaken for a decision.
    */
   commandableNow: boolean;
+  /** Producer-resolved reason for a false commandableNow decision. */
+  commandabilityReason?: 'charger_unplugged' | 'charger_discharging' | 'device_unavailable'
+    | 'binary_command_retry';
+  /** Producer-resolved objective family; never inferred from transport IDs downstream. */
+  objectiveKind?: 'ev_soc' | 'temperature';
+  /** Observer-resolved EV session fact used by the objective layer. */
+  objectiveSessionInactive?: boolean;
+  evBoost?: EvBoostConfig;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
   /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
@@ -263,11 +254,11 @@ export type PlanInputDeviceBase = {
   // The binary on/off truth (`currentOn`) is split off onto the orthogonal
   // `BinaryPlanInputKind` cluster; reach it through the `isBinaryPlanDevice` guard
   // (`lib/plan/planBinaryDevice.ts`), present IFF the device has binary control
-  // (`controlCapabilityId` set) this cycle. The raw observed `binaryControl` is no
+  // (the observer resolved `currentOn`) this cycle. Raw observed `binaryControl` is no
   // longer carried — it stays transport/observer-internal. `currentState` (the
   // four-valued reason/UI label) is producer-resolved at `toPlanDevice`.
   currentState?: string;
-  // EV fields (`evChargingState`, `evBoost`, `stateOfCharge`) are split off onto
+  // EV fields (`evBoost`, `stateOfCharge`) are split off onto
   // the orthogonal `EvPlanInputKind` cluster; reach them through the
   // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
   /**

@@ -51,7 +51,7 @@ const buildEvDevice = (
   targets: [],
   binaryControl: { on: false },
   deviceClass: 'evcharger',
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {
@@ -66,7 +66,7 @@ const buildEvDevice = (
 
 const buildTemperatureDevice = (
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
-// This fixture carries `binaryControl` WITHOUT a `controlCapabilityId`, so it must
+// This fixture carries `binaryControl` WITHOUT a `binaryCapabilityId`, so it must
 // NOT route through `withBinaryDiscriminant` (whose runtime stripping drops
 // `binaryControl` when the capability id is absent). Keep the additive
 // `withTemperatureDiscriminant` regrouper and cast at the fixture boundary so the

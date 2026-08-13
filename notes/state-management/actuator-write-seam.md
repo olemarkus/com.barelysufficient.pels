@@ -31,7 +31,7 @@ box the original split did not name — the actuator.
 | **transport** (`lib/device/**`) | The only module that talks to the Homey SDK, in **both** directions. Produces normalized snapshots (read) and executes capability/channel writes (write). Resolves native-vs-flow internally because it owns the snapshot + SDK knowledge. | Homey capabilities, channels, flow cards |
 | **observer** (`lib/observer/**`) | Consolidated state: snapshot store, freshness/staleness, alive/idle, settle resolution, and pure plan-blind interpretation. The single place anyone asks "what is true right now?" | `fresh / stale / unknown`, observed draw, observed on/off |
 | **plan** (`lib/plan/**`) | Decides desired state ("what should run") and owns **cooldown admission** (shed/restore windows). | planned state, headroom, cooldowns |
-| **actuator** (`lib/actuator/**`, new) | The single write seam. Translates a uniform, SDK-blind `DeviceCommand` into transport's write methods, and is the **only** module allowed to call them. Owns the intent→channel mapping (incl. flow-vs-native). | `{ binary / step / target }` control intents |
+| **actuator** (`lib/actuator/**`, new) | The single semantic write seam and the only runtime module allowed to request transport writes. It forwards SDK-blind commands; transport privately maps them onto native capabilities or Flow cards. | `{ binary / step / target }` control intents |
 
 The executor (`lib/executor/**`) keeps its existing mandate — *issue / retry /
 wait / skip + drift* — but on the write side it now hands a `DeviceCommand` to
@@ -123,14 +123,13 @@ the cycle merely passes through it twice.
 ```
 
 - **Full cycle** (something should change): all boxes.
-- **Reconcile / drift** (close a gap): the inner loop
-  `transport → observer → executor → actuator → transport`. The executor acts
-  on the **committed plan** (with its cooldown gates) — it does not re-derive
-  desired state, but it also cannot outrun plan's shed/restore cooldowns.
+- **Observation / drift** (new control input): telemetry flows
+  `transport → observer → planner`; the planner decides again, then executor and
+  actuator converge onto that new plan. There is no apply-without-decide loop.
 - **Settlement** is the dashed feedback, **not** a pipeline stage and **not**
-  the actuator's job: transport *opens* a settle window at write time
-  (`binarySettleOps.start` inside `setCapability`), observer *resolves* it from
-  the next observations and emits `plan_reconcile` on drift.
+  the actuator's job: executor records the semantic pending command when the
+  transport request is accepted, observer confirms it from subsequent normalized
+  telemetry, and changed observations trigger an ordinary plan rebuild.
 
 ---
 
@@ -139,23 +138,21 @@ the cycle merely passes through it twice.
 The actuator and transport differ in **altitude**, and that difference is the
 actuator's entire reason to exist (otherwise it is a pass-through).
 
-### Transport write input — mechanism, Homey-shaped
+### Transport write input — semantic request, privately bound
 
-Names capabilities, channels, flow cards. Today, four concrete methods on
-`DeviceTransport`:
+The actuator calls three semantic methods on `DeviceTransport`:
 
 ```
-setCapability(deviceId, capabilityId, value)                       // deviceTransport.ts:1890
-requestSteppedLoadStep({ deviceId, profile, desiredStepId,         // deviceTransport.ts:1980
-                         planningPowerW, planningCurrentA, … })     //   (routes native↔flow internally)
-applyDeviceTargets(targets)                                        // deviceTransport.ts:2066
-triggerFlowBackedBinaryControl(deviceId, capabilityId, value)
+requestBinaryControl(deviceId, desired)
+requestTemperatureTarget(deviceId, desired)
+requestSteppedLoadStep({ deviceId, profile, desiredStepId,
+                         planningPowerW, planningCurrentA, … })
 ```
 
-Vocabulary: *"poke this Homey channel with this payload."* Transport keeps the
-native-vs-flow routing for stepped loads because that choice is
-snapshot-dependent SDK knowledge it already owns
-(`isNativeSteppedLoadControlEnabled`).
+Transport resolves raw capability IDs and native-vs-Flow routing from its private
+snapshot binding. Binary requests report whether telemetry confirmation must
+precede actuation accounting; temperature requests return the normalized value
+actually sent so pending confirmation cannot wait for an unattainable raw value.
 
 ### Actuator write input — control intent, SDK-blind
 
@@ -163,23 +160,16 @@ A single uniform `DeviceCommand` the executor decides, naming a *control
 outcome* — never a flow card or synthetic channel:
 
 ```ts
-// As shipped in lib/actuator/deviceCommand.ts. `flowBacked` is producer-resolved
-// (see below); the actuator only routes on it. The executor's setpoint path (PR 1b)
-// will likely add a capability-addressed `target` variant alongside the
-// applyDeviceTargets-backed one here.
 type DeviceCommand =
-  | { kind: 'binary'; deviceId: string; control: 'onoff' | 'evcharger_charging'; desired: boolean; flowBacked: boolean }
-  | { kind: 'target'; deviceId: string; value: number; contextInfo?: string }
+  | { kind: 'binary'; deviceId: string; desired: boolean }
+  | { kind: 'target'; deviceId: string; target: 'temperature'; value: number; contextInfo?: string }
   | { kind: 'step';   deviceId: string; profile: SteppedLoadProfile; desiredStepId: string;
       planningPowerW: number; planningCurrentA: number; previousStepId?: string };
 ```
 
-The actuator is the **only** translator from this intent vocabulary down to the
-four transport methods, and the **only** importer of the transport write
-interface. It also absorbs the one decision that currently leaks upward — the
-flow-vs-native binary choice at `binaryControlDispatch.ts:159`
-(`isFlowBackedBinaryControl(snapshot, capabilityId)`) — so the executor stops
-branching on channel.
+The actuator is the single write seam. It forwards channel-blind intent to
+transport; transport performs the SDK translation. Executor consumes only the
+semantic outcome (`requested`, normalized target, and actuation-accounting timing).
 
 ### The boundary test
 
@@ -188,8 +178,7 @@ branching on channel.
 - Field names a **control outcome** (on/off / step / setpoint) for a device →
   **actuator** input.
 
-`control: 'evcharger_charging'` passes the test: it names *which binary to
-drive*, not an SDK channel, so it belongs on actuator input.
+No raw capability identifier passes this boundary.
 
 ---
 
@@ -389,8 +378,7 @@ risk profiles.
   or exposes `getHomePowerW()`; it is removed from the `DeviceObservation`
   interface too.
 - `updateHomePowerFromReport` pushes the resolved scalar to the observer via a
-  new `setHomePowerW(w)` method on the `observedStateDispatcher` callback bag —
-  the same injection pattern as the event dispatcher and `pendingPredicate`;
+  new `setHomePowerW(w)` method on the `observedStateDispatcher` callback bag;
   transport still does not statically import observer.
 - Re-pointed the sole external reader, `lib/app/appSnapshotHelpers.ts`
   (`recordImplicitHomeyEnergySample`), to a `getHomePowerW` dep wired in `app.ts`
@@ -424,12 +412,8 @@ risk profiles.
 
 ---
 
-## Open questions
+## Settled decisions
 
-- **Pending-record home (PR 3):** keep at dispatch, or move into the actuator?
-  Leaning keep-at-dispatch unless a second caller needs it, to avoid the
-  actuator growing bookkeeping.
-- **`applyDeviceTargets` vs per-capability `target`:** confirm whether the
-  `target` command kind should fan to `applyDeviceTargets` (batch) or
-  `setCapability` (single). Today both paths exist; the actuator should pick one
-  per call site without changing observed behavior.
+- Pending intent stays at executor dispatch; observer confirms it from telemetry.
+- Primary temperature commands use the transport-resolved single target binding.
+- Accepted asynchronous Flow dispatch defers cooldown/state accounting until confirmation.

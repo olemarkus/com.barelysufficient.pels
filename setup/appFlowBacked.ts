@@ -376,7 +376,7 @@ export class AppFlowBacked {
     // nothing reads.
     if (device && hasObservedStateOfCharge(device) && device.stateOfCharge.source === 'car') return false;
     if (!this.deps.hasEnabledEvBoostForSnapshot(device)) return false;
-    if (!device?.flowBackedCapabilityIds?.includes(EV_SOC_CAPABILITY_ID)) return false;
+    if (this.deps.getDeviceManager()?.isFlowBackedCapability?.(deviceId, EV_SOC_CAPABILITY_ID) !== true) return false;
     if (update.valueChanged) return true;
     if (!update.freshnessAdvanced) return false;
     return this.canEvSocFreshnessBecomeFreshForBoost(device, update.entry.reportedAt);
@@ -408,7 +408,7 @@ export class AppFlowBacked {
       return;
     }
     if (params.capabilityId === EV_SOC_CAPABILITY_ID) {
-      if (!device.flowBackedCapabilityIds?.includes(params.capabilityId)) return;
+      if (this.deps.getDeviceManager()?.isFlowBackedCapability(params.deviceId, params.capabilityId) !== true) return;
       // A car-sourced level is NOT the flow card's to keep alive. This helper
       // spreads the previous reading forward, so without this guard a flow card
       // that keeps firing would re-stamp the CAR's percentage as this charger's

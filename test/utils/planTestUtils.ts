@@ -13,7 +13,6 @@ import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observe
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 
 /**
@@ -58,16 +57,18 @@ export const resolveFixtureCurrentState = (device: {
   currentState?: string;
   currentOn?: boolean;
   binaryControl?: { on: boolean };
-  controlCapabilityId?: string;
+  binaryControllable?: boolean;
+  binaryCapabilityId?: string;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
 }): string => {
   if (typeof device.currentState === 'string') return device.currentState;
   const binaryControl = device.binaryControl
-    ?? (device.controlCapabilityId !== undefined ? { on: resolveFixtureCurrentOn(device) } : undefined);
+    ?? (device.binaryControllable === true || device.binaryCapabilityId !== undefined || device.currentOn !== undefined
+      ? { on: resolveFixtureCurrentOn(device) }
+      : undefined);
   return resolveObservedCurrentState({
     binaryControl,
-    controlCapabilityId: device.controlCapabilityId as BinaryControlCapabilityId | undefined,
     steppedLoadProfile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
   });
@@ -117,14 +118,40 @@ const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'on
  * `undefined` as "not commandable", the exact absence-as-answer bug the field's
  * requiredness exists to prevent.
  */
-export const withMaterializedEvPlugState = <T extends { deviceClass?: string; controlCapabilityId?: string }>(
+export const withMaterializedEvPlugState = <T extends {
+  deviceClass?: string; deviceRole?: 'ev_charger'; binaryCapabilityId?: string;
+}>(
   overrides: T & { evChargingState?: string },
-): T & { commandableNow: boolean } => {
+): T & {
+  commandableNow: boolean;
+  objectiveKind?: 'ev_soc';
+  objectiveSessionInactive?: boolean;
+  commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
+} => {
+  const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
   const dev = {
     ...overrides,
     evChargingState: overrides.evChargingState as EvChargingState | undefined,
   };
-  return { ...overrides, commandableNow: resolveCommandableNow(dev) } as T & { commandableNow: boolean };
+  const isEv = overrides.deviceClass === 'evcharger'
+    || overrides.deviceRole === 'ev_charger'
+    || overrides.binaryCapabilityId === 'evcharger_charging';
+  let commandabilityReason: 'charger_unplugged' | 'charger_discharging' | undefined;
+  if (overrides.evChargingState === 'plugged_out') {
+    commandabilityReason = 'charger_unplugged';
+  } else if (overrides.evChargingState === 'plugged_in_discharging') {
+    commandabilityReason = 'charger_discharging';
+  }
+  return {
+    ...overrides,
+    commandableNow: explicitCommandableNow ?? resolveCommandableNow(dev),
+    ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
+    ...(isEv ? {
+      objectiveSessionInactive: overrides.evChargingState === 'plugged_out'
+        || overrides.evChargingState === 'plugged_in_discharging',
+    } : {}),
+    ...(commandabilityReason ? { commandabilityReason } : {}),
+  };
 };
 
 export const steppedProfile: SteppedLoadProfile = {
@@ -177,7 +204,7 @@ const evidenceFreeEstimateByCapability = new Map<string, number>();
  * A device with no `settings` and no `energyObj` lands on the ladder's last rung
  * by construction: `getLoadSettingWatts` and `getHomeyEnergyEstimateWatts` both
  * return `null`, and the override/peak stores are empty. Memoised per
- * `controlCapabilityId`, so the producer is asked twice per process rather than
+ * semantic device role, so the producer is asked twice per process rather than
  * once per fixture.
  *
  * A spec whose SUBJECT is the expected power should pass `expectedPowerKw`
@@ -185,17 +212,22 @@ const evidenceFreeEstimateByCapability = new Map<string, number>();
  */
 export const fixtureExpectedPowerKw = (o: {
   expectedPowerKw?: number;
-  controlCapabilityId?: BinaryControlCapabilityId;
+  deviceClass?: string;
+  deviceRole?: 'ev_charger';
+  binaryCapabilityId?: string;
 }): number => {
   if (typeof o.expectedPowerKw === 'number') return o.expectedPowerKw;
-  const key = o.controlCapabilityId ?? '';
+  const isEv = o.deviceClass === 'evcharger'
+    || o.deviceRole === 'ev_charger'
+    || o.binaryCapabilityId === 'evcharger_charging';
+  const key = isEv ? 'ev_charger' : 'generic';
   const memoised = evidenceFreeEstimateByCapability.get(key);
   if (memoised !== undefined) return memoised;
   const resolved = estimatePower({
     device: { id: 'fixture', name: 'fixture' } as HomeyDeviceLike,
     deviceId: 'fixture',
     deviceLabel: 'fixture',
-    controlCapabilityId: o.controlCapabilityId,
+    binaryCapabilityId: isEv ? 'evcharger_charging' : undefined,
     now: 0,
     state: {
       expectedPowerKwOverrides: {},
@@ -220,6 +252,9 @@ export const buildPlanDevice = (
     deviceType?: 'temperature' | 'onoff';
     currentOn?: boolean;
     binaryControl?: { on: boolean };
+    binaryControllable?: boolean;
+    binaryCapabilityId?: string;
+    deviceRole?: 'ev_charger';
     // Lives on the orthogonal `EvKind` cluster, same as the two above; the plan
     // device receives it through the snapshot spread in `toPlanDevice`.
     stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -230,21 +265,28 @@ export const buildPlanDevice = (
 DevicePlanDevice => {
   const {
     reason, currentTarget, currentTemperature,
+    binaryControllable: _binaryControllable,
+    binaryCapabilityId: _binaryCapabilityId,
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
   } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
-    controlCapabilityId?: BinaryControlCapabilityId;
+    binaryControllable?: boolean;
+    binaryCapabilityId?: string;
     steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
   };
+  const binaryExplicitlyDisabled = o.binaryControllable === false
+    || (Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
+      && o.binaryCapabilityId === undefined
+      && o.binaryControl === undefined
+      && o.currentOn === undefined);
   const currentOn = resolveFixtureCurrentOn(o);
   return {
     id: 'dev',
     name: 'Device',
     // Producer-resolved label (an explicit override in `...rest` still wins below).
-    currentState: resolveFixtureCurrentState({ ...o, controlCapabilityId: o.controlCapabilityId ?? 'onoff' }),
+    currentState: resolveFixtureCurrentState({ ...o, binaryControllable: !binaryExplicitlyDisabled }),
     plannedState: 'keep',
-    controlCapabilityId: 'onoff',
     reason: fixtureDeviceReason('keep')!,
     ...withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
@@ -253,7 +295,7 @@ DevicePlanDevice => {
     }),
     // Spread (not a direct property) so the `as DevicePlanDevice` cast accepts it:
     // `currentOn` lives on the orthogonal `BinaryControlKind`, reached via the guard.
-    ...({ currentOn }),
+    ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
@@ -290,39 +332,49 @@ export const buildPlanInputDevice = (
     deviceType?: 'temperature' | 'onoff';
     currentOn?: boolean;
     binaryControl?: { on: boolean };
+    binaryControllable?: boolean;
+    binaryCapabilityId?: string;
+    deviceRole?: 'ev_charger';
     /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
     measuredPowerKw?: number;
   } = {},
 ): PlanInputDevice => {
   const {
     currentTarget: _currentTarget, currentTemperature,
+    binaryControllable: _binaryControllable,
+    binaryCapabilityId: _binaryCapabilityId,
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
   } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
-    controlCapabilityId?: BinaryControlCapabilityId;
+    binaryControllable?: boolean;
+    binaryCapabilityId?: string;
     steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
   };
+  const binaryExplicitlyDisabled = o.binaryControllable === false
+    || (Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
+      && o.binaryCapabilityId === undefined
+      && o.binaryControl === undefined
+      && o.currentOn === undefined);
   const currentOn = resolveFixtureCurrentOn({ ...o, binaryControl: o.binaryControl ?? { on: true } });
   // Producer-resolved label (an explicit override in `...rest` still wins below).
   const currentState = resolveFixtureCurrentState({
     ...o,
     binaryControl: o.binaryControl ?? { on: true },
-    controlCapabilityId: o.controlCapabilityId ?? 'onoff',
+    binaryControllable: !binaryExplicitlyDisabled,
   });
   return withBinaryDiscriminant({
     id: 'dev',
     name: 'Device',
     targets: [],
-    binaryControl: { on: true },
+    ...(!binaryExplicitlyDisabled ? { binaryControl: o.binaryControl ?? { on: true } } : {}),
     controllable: true,
-    controlCapabilityId: 'onoff',
     currentState,
     ...withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     }),
-    currentOn,
+    ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
@@ -341,7 +393,7 @@ export const buildPlanInputDevice = (
 
 export const steppedPlanDevice = (
   overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe
-    & { binaryControl?: { on: boolean }; currentOn?: boolean } = {},
+    & { binaryControl?: { on: boolean }; currentOn?: boolean; binaryCapabilityId?: string } = {},
 ): DevicePlanDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
@@ -360,7 +412,12 @@ export const steppedPlanDevice = (
 
 export const steppedInputDevice = (
   overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe
-    & { evChargingState?: string; binaryControl?: { on: boolean }; currentOn?: boolean } = {},
+    & {
+      evChargingState?: string;
+      binaryControl?: { on: boolean };
+      currentOn?: boolean;
+      binaryCapabilityId?: string;
+    } = {},
 ): PlanInputDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
@@ -372,7 +429,7 @@ export const steppedInputDevice = (
     steppedLoadProfile: profile,
     selectedStepId,
     planningPowerKw: defaultPlanningKw,
-    controlCapabilityId: 'onoff',
+    binaryControllable: true,
     targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
     ...overrides,
   });

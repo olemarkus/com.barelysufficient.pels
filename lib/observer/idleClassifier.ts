@@ -23,7 +23,7 @@ import {
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
-import type { BinaryControlCapabilityId, PlannedDeviceState } from '../../packages/contracts/src/types';
+import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
 
 /**
@@ -55,7 +55,6 @@ export type IdleClassifierDeviceInput = {
   currentTemperature?: number;
   currentTarget: number | null;
   plannedState: PlannedDeviceState;
-  controlCapabilityId?: BinaryControlCapabilityId;
 };
 
 export type IdleClassifier = {
@@ -85,7 +84,6 @@ const toDetectorInput = (
   observationStale: device.observationStale,
   pelsCommandedShed: device.plannedState === 'shed',
   hasTemperatureSetpoint: isFiniteNumber(device.currentTarget),
-  isEvCharger: device.controlCapabilityId === 'evcharger_charging',
 });
 
 type ReportableClassification = Exclude<IdleClassification, 'active'>;

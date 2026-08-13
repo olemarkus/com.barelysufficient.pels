@@ -10,7 +10,6 @@ import {
   getSteppedLoadOffStep,
   getSteppedLoadStep,
 } from '../lib/utils/deviceControlProfiles';
-import { normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
 
 type ConfiguredFallback = {
   action: 'turn_off' | 'set_temperature' | 'set_step';
@@ -29,15 +28,11 @@ export const resolveLifecycleFallbackRequest = (params: {
   } = params;
   const behavior = resolveBehavior(device, configuredFallback);
   if (!behavior) return null;
-  const binaryDescriptor = device.binaryAxis.state === 'writable'
-    ? device.binaryAxis.descriptor
-    : {};
   const steppedDescriptor = device.stepAxis.state === 'writable'
-    ? { controlModel: 'stepped_load' as const, steppedLoadProfile: device.stepAxis.profile }
+    ? { steppedLoadProfile: device.stepAxis.profile }
     : {};
   const observed = buildExecutableObservedDeviceState({
     ...device,
-    ...binaryDescriptor,
     ...steppedDescriptor,
     ...observedState,
     selectedStepId: observedState.reportedStepId,
@@ -65,13 +60,7 @@ const resolveBehavior = (
     && configured.action === 'set_temperature'
     && configured.temperature !== null
   ) {
-    return {
-      ...configured,
-      temperature: normalizeTargetCapabilityValue({
-        target: device.targetAxis.descriptor,
-        value: configured.temperature,
-      }),
-    };
+    return configured;
   }
   if (device.binaryAxis.state === 'writable') {
     return { action: 'turn_off', temperature: null, stepId: null };

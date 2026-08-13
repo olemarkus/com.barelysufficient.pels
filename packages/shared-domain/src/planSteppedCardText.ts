@@ -355,7 +355,7 @@ export const resolveSteppedLevelFact = (device: {
   currentState?: string;
   steppedLoad?: SteppedLoadCardState;
   evChargingState?: EvChargingState;
-  controlCapabilityId?: string;
+  deviceRole?: 'ev_charger';
   stateOfCharge?: { level: DeviceStateOfChargeSnapshot['level'] };
 }): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
@@ -363,7 +363,7 @@ export const resolveSteppedLevelFact = (device: {
   if (!stepId) return 'Level unknown';
   if (isOffLikeId(stepId)) return null;
   const levelText = `level ${formatStepDisplayLabel(stepId)}`;
-  const isEvCharger = device.controlCapabilityId === 'evcharger_charging';
+  const isEvCharger = device.deviceRole === 'ev_charger';
   const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;
   const isRoutineEvCharge = isEvCharger
     && (device.evChargingState ?? '').trim().toLowerCase() === EV_ROUTINE_STATE;
@@ -437,9 +437,9 @@ export const resolveSteppedEvExceptionLabel = (device: {
   evChargingState?: EvChargingState;
   /** The associated car's own plug state; absent when no car is associated. */
   carChargingState?: EvChargingState;
-  controlCapabilityId?: string;
+  deviceRole?: 'ev_charger';
 }): string | null => {
-  if (device.controlCapabilityId !== 'evcharger_charging') return null;
+  if (device.deviceRole !== 'ev_charger') return null;
   const state = (device.evChargingState ?? '').trim().toLowerCase();
   if (state === EV_ROUTINE_STATE) return null;
   const commandedOn = isChargerCommandedOn(device.currentState);

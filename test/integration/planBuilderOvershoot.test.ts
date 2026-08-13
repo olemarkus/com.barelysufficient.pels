@@ -18,7 +18,7 @@ const buildDevice = (
     targets: [],
     binaryControl: { on: true },
     controllable: true,
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     ...overrides,
   };
   return withBinaryDiscriminant({

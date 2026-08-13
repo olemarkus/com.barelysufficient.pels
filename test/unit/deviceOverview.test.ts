@@ -144,7 +144,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in_charging',
       stateOfCharge: { level: { kind: 'known', percent: 42 } },
       currentDrawKw: 0,
@@ -157,7 +157,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(buildOverviewDevice({
       currentState: 'off',
       plannedState: 'inactive',
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_out',
       stateOfCharge: { level: { kind: 'unavailable', reasonCode: 'not_connected' } },
       currentDrawKw: 0,

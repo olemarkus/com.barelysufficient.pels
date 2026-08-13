@@ -80,7 +80,7 @@ helpers. The observer was created but never handed the observation contract.
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth
    plan/executor decide on.
 2. **`DeviceDescriptor` → a descriptor read (NOT observer)** (static-ish): identity +
-   config + capabilities — `controlModel`, `controlCapabilityId`, `controlAdapter`,
+   config + capabilities — `controlModel`, semantic binary-control availability, `controlAdapter`,
    `deviceClass`/`deviceType`/`zone`, `steppedLoadProfile`/`targetPowerConfig` (now
    type-gated OFF the base onto `SteppedLoadDescriptorFields`, narrowed via
    `isSteppedLoadSnapshot` — `steppedLoadProfile` IS the kind discriminant, and its
@@ -160,8 +160,8 @@ This does **not** contradict the real-evidence-only paragraph above: a flow `rep
 card IS a real report, and the thing that paragraph protects against is a *planning-assumed* step
 satisfying the gate. The two also cannot collide, because they apply to disjoint device sets — the
 suppression only ever fired for a device whose `binaryControl.on === false`, and `binaryControl` exists
-iff `controlCapabilityId` is defined (`resolveBinaryControl`, `managerParsedControlState.ts`), while the
-stepped shed-release dispatch runs only when `!snapshot.controlCapabilityId` (`shedReleaseActuation.ts`).
+iff the observer resolved a binary control axis, while stepped shed-release dispatch runs only for a
+device without that semantic binary axis (`shedReleaseActuation.ts`).
 Pinned by `test/integration/shedReleaseActuation.test.ts` ("never dispatches a stepped release for a
 binary-capable device observed off at a non-off step"). **If that routing condition ever changes, the
 admission needs its own "does PELS want this device on?" gate before the shed-release dispatch.**

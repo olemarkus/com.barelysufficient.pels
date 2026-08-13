@@ -48,16 +48,9 @@ export type PlanEngine = {
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;
   hasPendingBinaryCommands: () => boolean;
-  getPendingBinaryCommandForDevice: (
-    deviceId: string,
-    communicationModel?: 'local' | 'cloud',
-  ) => { desired: boolean } | null;
-  hasPendingBinaryCommandForCapability: (deviceId: string, capabilityId: string) => boolean;
-  clearRecentBinaryOffCommandForCapability: (
-    deviceId: string,
-    capabilityId: string,
-    observedOnAtMs?: number,
-  ) => void;
+  getPendingBinaryCommandForDevice: (deviceId: string) => { desired: boolean } | null;
+  hasAttributablePendingBinaryCommand: (deviceId: string) => boolean;
+  clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;

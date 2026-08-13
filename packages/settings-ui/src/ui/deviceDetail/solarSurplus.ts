@@ -192,7 +192,7 @@ const isDumpLoadDeviceShape = (
   // device, not a solar dump load: the opt-in only authorizes capacity on/off.
   if (supportsTemperatureDevice(device)) return false;
   // Binary modality mirrors the runtime discriminant: capability presence.
-  if (device.controlCapabilityId === undefined) return false;
+  if (device.binaryControllable !== true) return false;
   if (isEvDevice(device)) return false;
   // Stepped / continuous / EV-preset control modes are stepped-load territory —
   // the dump-load posture is for plain on/off loads only.

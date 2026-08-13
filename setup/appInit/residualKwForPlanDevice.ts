@@ -19,7 +19,6 @@
  * dep-cruiser rule).
  */
 import type {
-  BinaryControlCapabilityId,
   DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
   RestorePowerSource,
@@ -50,10 +49,10 @@ export type ResidualKwForPlanDeviceShedBehavior = {
 
 export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
-  controlCapabilityId?: BinaryControlCapabilityId;
+  hasBinaryControl: boolean;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
-  const { device, controlCapabilityId, shedBehavior } = params;
+  const { device, hasBinaryControl, shedBehavior } = params;
   // The same producer answer `toPlanDevice` stamps as `currentDrawKw`: the
   // meter's reading, with no on/off or configured-demand ladder behind it.
   const currentDrawKw = getCurrentDrawKw(device);
@@ -61,12 +60,12 @@ export function buildResidualKwForPlanDevice(params: {
     device: {
       currentDrawKw,
       temperatureTarget: toResidualTemperatureTarget(device),
-      steppedLoad: toResidualSteppedLoad(device, currentDrawKw, controlCapabilityId),
+      steppedLoad: toResidualSteppedLoad(device, currentDrawKw, hasBinaryControl),
     },
     shedBehavior: toResidualShedBehavior(shedBehavior),
   });
   const restore = resolveResidualKwRestore({
-    steppedLoad: toRestoreSteppedLoad(device, controlCapabilityId),
+    steppedLoad: toRestoreSteppedLoad(device),
     // The snapshot's own resolved draw is the `measured` candidate in the
     // restore ladder; the raw field never travels past this seam.
     restoreFallback: getHighestKnownPowerKw({ ...device, currentDrawKw }),
@@ -76,7 +75,6 @@ export function buildResidualKwForPlanDevice(params: {
 
 function toRestoreSteppedLoad(
   device: DecoratedDeviceSnapshot,
-  controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwRestoreSteppedDevice | undefined {
   if (!isSteppedLoadSnapshot(device)) return undefined;
   // Mirrors `dev.currentState !== 'off'` in the legacy
@@ -85,7 +83,6 @@ function toRestoreSteppedLoad(
   // computes the same projection here and funnels the resolved boolean.
   const currentState = resolveObservedCurrentState({
     binaryControl: device.binaryControl,
-    controlCapabilityId,
     steppedLoadProfile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
   });
@@ -113,7 +110,7 @@ function toResidualShedBehavior(
 function toResidualSteppedLoad(
   device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
   currentDrawKw: number,
-  controlCapabilityId: BinaryControlCapabilityId | undefined,
+  hasBinaryControl: boolean,
 ): ResidualKwShedSteppedDevice | undefined {
   if (!isSteppedLoadSnapshot(device)) return undefined;
   const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
@@ -126,7 +123,7 @@ function toResidualSteppedLoad(
     selectedStepId: device.selectedStepId,
     hasKnownEffectiveStep,
     currentDrawKw,
-    controlCapabilityId,
+    hasBinaryControl,
   };
 }
 

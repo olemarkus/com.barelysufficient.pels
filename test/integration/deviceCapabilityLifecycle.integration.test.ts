@@ -24,7 +24,7 @@ type ApiDevice = {
 type SnapshotEntry = {
   id: string;
   deviceType?: string;
-  controlCapabilityId?: string;
+  binaryCapabilityId?: string;
   powerCapable?: boolean;
   binaryControl?: { on: boolean };
   steppedLoadProfile?: unknown;
@@ -112,7 +112,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     const managed = findEntry(DEVICE_ID);
     expect(managed).toBeDefined();
     expect(managed?.deviceType).toBe('onoff');
-    expect(managed?.controlCapabilityId).toBe('onoff');
+    expect(managed?.binaryCapabilityId).toBe('onoff');
     expect(managed?.powerCapable).toBe(true);
     expect(managed?.binaryControl?.on).toBe(true);
 
@@ -167,7 +167,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     const entry = findEntry(DEVICE_ID);
     expect(entry).toBeDefined();
     expect(entry?.deviceType).toBe('onoff');
-    expect(entry?.controlCapabilityId).toBe('onoff');
+    expect(entry?.binaryCapabilityId).toBe('onoff');
     expect(entry?.steppedLoadProfile).toBeUndefined();
   });
 
@@ -199,7 +199,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     await pull(app);
     const charger = findEntry(evId);
     expect(charger).toBeDefined();
-    expect(charger?.controlCapabilityId).toBe('evcharger_charging');
+    expect(charger?.binaryCapabilityId).toBe('evcharger_charging');
 
     // Pull 2 — loses `evcharger_charging_state`. An EV charger requires BOTH EV
     // capabilities; without one it is no longer a recognised charger and drops out

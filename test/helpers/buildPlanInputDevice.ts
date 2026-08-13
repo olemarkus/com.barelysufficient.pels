@@ -29,13 +29,14 @@ export function buildPlanInputDevice(
     /** Legacy fixture alias for `currentDrawKw`; the raw field is gone from the contract. */
     measuredPowerKw?: number;
     binaryControl?: { on: boolean };
+    currentOn?: boolean;
   },
 ): PlanInputDevice {
   // The `binaryControl` default is preserved verbatim, so this is the canonical
   // fixture-constructor boundary (NOT a per-test smuggle): the cast keeps the
   // exact runtime shape callers rely on rather than routing through
   // `withBinaryDiscriminant`, whose runtime stripping (binaryControl omitted
-  // without `controlCapabilityId`) would change every consumer's fixture.
+  // without `binaryCapabilityId`) would change every consumer's fixture.
   const { commandableNow, measuredPowerKw, currentDrawKw, ...rest } = overrides;
   return {
     name: overrides.id,

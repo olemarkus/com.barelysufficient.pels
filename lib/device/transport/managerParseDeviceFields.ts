@@ -74,7 +74,7 @@ type DeviceCapabilityProfile = {
 };
 
 type DeviceControlBundle = {
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     evCharging: TargetDeviceSnapshot['evCharging'];
     evChargingState: EvChargingState | undefined;
     binaryControl: TargetDeviceSnapshot['binaryControl'];
@@ -120,7 +120,7 @@ function resolveDeviceControlBundle(params: {
     deps: DeviceTransportParseDeps;
     overlay: DeviceCapabilityProfile['overlay'];
     capsStatus: DeviceCapabilityProfile['capsStatus'];
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     powerEstimate: ReturnType<typeof estimatePower>;
     measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
     previousSnapshot?: TransportDeviceSnapshot;
@@ -128,7 +128,7 @@ function resolveDeviceControlBundle(params: {
     managedDecision: ManagedFilterDecision;
 }): DeviceControlBundle | null {
     const {
-        identity, deps, overlay, capsStatus, controlCapabilityId, powerEstimate, measuredPower,
+        identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate, measuredPower,
         previousSnapshot, purpose, managedDecision,
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
@@ -152,8 +152,8 @@ function resolveDeviceControlBundle(params: {
         debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
         deviceClassKey,
-        controlCapabilityId,
-        controlWriteCapabilityId: overlay.controlWriteCapabilityId,
+        binaryCapabilityId,
+        binaryWriteCapabilityId: overlay.binaryWriteCapabilityId,
         capabilityObj: overlay.capabilityObj,
         evCharging,
         evChargingState,
@@ -167,7 +167,7 @@ function resolveDeviceControlBundle(params: {
         return null;
     }
     const available = resolveAvail(
-        controlCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
+        binaryCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
     );
     const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
@@ -180,13 +180,13 @@ function resolveDeviceControlBundle(params: {
         return null;
     }
     const lastFreshDataMs = resolveParsedLastFreshDataMs({
-        capabilityObj: overlay.capabilityObj, controlCapabilityId, observedCurrentOn, evChargingState,
+        capabilityObj: overlay.capabilityObj, binaryCapabilityId, observedCurrentOn, evChargingState,
         targetCaps: capsStatus.targetCaps,
         reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
         measuredPowerObservedAtMs: measuredPower.observedAtMs,
     });
     return {
-        controlCapabilityId, evCharging, evChargingState, binaryControl, canSetControl,
+        binaryCapabilityId, evCharging, evChargingState, binaryControl, canSetControl,
         available, powerCapable, lastFreshDataMs,
     };
 }
@@ -213,7 +213,7 @@ export function assembleDeviceSnapshot(params: {
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
     // a second call could not disagree — but one call is one fewer thing to keep
     // in step.
-    const controlCapabilityId = getControlCapabilityId({
+    const binaryCapabilityId = getControlCapabilityId({
         deviceClassKey,
         capabilities: overlay.capabilities,
     });
@@ -221,7 +221,7 @@ export function assembleDeviceSnapshot(params: {
         device: effectiveDevice,
         deviceId,
         deviceLabel,
-        controlCapabilityId,
+        binaryCapabilityId,
         capabilities: overlay.capabilities,
         capabilityObj: overlay.capabilityObj,
         livePowerWByDeviceId,
@@ -236,7 +236,7 @@ export function assembleDeviceSnapshot(params: {
         debugStructured,
     });
     const control = resolveDeviceControlBundle({
-        identity, deps, overlay, capsStatus, controlCapabilityId, powerEstimate, measuredPower,
+        identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate, measuredPower,
         previousSnapshot, purpose, managedDecision,
     });
     if (!control) return null;
@@ -247,7 +247,7 @@ export function assembleDeviceSnapshot(params: {
         providers,
         targets,
         targetCaps,
-        controlCapabilityId: control.controlCapabilityId,
+        binaryCapabilityId: control.binaryCapabilityId,
         powerEstimate,
         measuredPowerKw: measuredPower.measuredPowerKw,
         powerCapable: control.powerCapable,
@@ -272,8 +272,8 @@ export function assembleDeviceSnapshot(params: {
         capabilities: overlay.capabilities,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
         controlAdapter: overlay.controlAdapter,
-        controlWriteCapabilityId: overlay.controlWriteCapabilityId,
-        controlObservationCapabilityId: overlay.controlObservationCapabilityId,
+        binaryWriteCapabilityId: overlay.binaryWriteCapabilityId,
+        binaryObservationCapabilityId: overlay.binaryObservationCapabilityId,
         controlModel: overlay.controlModel,
         steppedLoadProfile: overlay.steppedLoadProfile,
         nativeWriteCapabilities: overlay.nativeWriteCapabilities,
@@ -281,8 +281,8 @@ export function assembleDeviceSnapshot(params: {
         canSetControl: control.canSetControl,
         binaryControlObservation: resolveBinaryControlObservation({
             capabilityObj: overlay.capabilityObj,
-            controlCapabilityId: control.controlCapabilityId,
-            controlObservationCapabilityId: overlay.controlObservationCapabilityId,
+            binaryCapabilityId: control.binaryCapabilityId,
+            binaryObservationCapabilityId: overlay.binaryObservationCapabilityId,
         }),
         available: control.available,
         reportedStepId: overlay.reportedStepId, reportedStepPowerW: overlay.reportedStepPowerW,
@@ -296,7 +296,7 @@ export function assembleDeviceSnapshot(params: {
 
 function resolveParsedLastFreshDataMs(params: {
     capabilityObj: DeviceCapabilityMap;
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     observedCurrentOn?: boolean;
     evChargingState: EvChargingState | undefined;
     targetCaps: readonly string[];
@@ -304,12 +304,12 @@ function resolveParsedLastFreshDataMs(params: {
     measuredPowerObservedAtMs?: number;
 }): number | undefined {
     const {
-        capabilityObj, controlCapabilityId, observedCurrentOn, evChargingState,
+        capabilityObj, binaryCapabilityId, observedCurrentOn, evChargingState,
         targetCaps, reportedStepObservedAtMs, measuredPowerObservedAtMs,
     } = params;
     return resolveLastFreshDataMs({
         capabilityObj,
-        controlCapabilityId: observedCurrentOn !== undefined ? controlCapabilityId : undefined,
+        binaryCapabilityId: observedCurrentOn !== undefined ? binaryCapabilityId : undefined,
         includeEvChargingState: evChargingState === undefined
             || resolveEvChargingStateBinaryEvidence(evChargingState) !== undefined,
         targetCaps,
@@ -349,7 +349,7 @@ function buildParsedDeviceSnapshot(params: {
     providers: DeviceTransportParseProviders;
     targets: TargetDeviceSnapshot['targets'];
     targetCaps: readonly string[];
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     powerEstimate: ReturnType<typeof estimatePower>;
     powerCapable: boolean;
     binaryControl: TargetDeviceSnapshot['binaryControl'];
@@ -362,8 +362,8 @@ function buildParsedDeviceSnapshot(params: {
     capabilities: string[];
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
     controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
-    controlWriteCapabilityId?: string;
-    controlObservationCapabilityId?: string;
+    binaryWriteCapabilityId?: string;
+    binaryObservationCapabilityId?: string;
     controlModel?: TargetDeviceSnapshot['controlModel'];
     steppedLoadProfile?: SteppedLoadProfile;
     nativeWriteCapabilities?: TargetDeviceSnapshot['nativeWriteCapabilities'];
@@ -385,7 +385,7 @@ function buildParsedDeviceSnapshot(params: {
         providers,
         targets,
         targetCaps,
-        controlCapabilityId,
+        binaryCapabilityId,
         powerEstimate,
         powerCapable,
         binaryControl,
@@ -398,8 +398,8 @@ function buildParsedDeviceSnapshot(params: {
         capabilities,
         flowBackedCapabilityIds,
         controlAdapter,
-        controlWriteCapabilityId,
-        controlObservationCapabilityId,
+        binaryWriteCapabilityId,
+        binaryObservationCapabilityId,
         controlModel,
         steppedLoadProfile,
         nativeWriteCapabilities,
@@ -423,10 +423,14 @@ function buildParsedDeviceSnapshot(params: {
         deviceType: resolveTargetDeviceType(targetCaps),
         ...resolveParsedDeviceSettings(device, deviceId, providers),
         controlModel,
+        binaryControllable: binaryControl !== undefined,
+        deviceRole: binaryCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger'
+            ? 'ev_charger'
+            : undefined,
         steppedLoadProfile,
         nativeWriteCapabilities,
         targetPowerConfig,
-        controlCapabilityId,
+        binaryCapabilityId,
         expectedPowerKw: powerEstimate.expectedPowerKw,
         expectedPowerSource: powerEstimate.expectedPowerSource,
         powerCapable,
@@ -443,8 +447,8 @@ function buildParsedDeviceSnapshot(params: {
         zoneId: resolveZoneId(device),
         capabilities,
         controlAdapter,
-        controlWriteCapabilityId,
-        controlObservationCapabilityId,
+        binaryWriteCapabilityId,
+        binaryObservationCapabilityId,
         binaryControlObservation,
         reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
@@ -464,7 +468,7 @@ function resolveDevicePowerState(params: {
     device: HomeyDeviceLike;
     deviceId: string;
     deviceLabel: string;
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     capabilities: string[];
     capabilityObj: DeviceCapabilityMap;
     livePowerWByDeviceId: LiveDevicePowerWatts;
@@ -478,7 +482,7 @@ function resolveDevicePowerState(params: {
     powerEstimate: ReturnType<typeof estimatePower>;
 } {
     const {
-        device, deviceId, deviceLabel, controlCapabilityId, capabilities, capabilityObj,
+        device, deviceId, deviceLabel, binaryCapabilityId, capabilities, capabilityObj,
         livePowerWByDeviceId, now, measuredPowerResolver, powerState, logger,
     } = params;
     const currentTemperature = getCurrentTemperature(capabilityObj);
@@ -490,7 +494,7 @@ function resolveDevicePowerState(params: {
         device,
         deviceId,
         deviceLabel,
-        controlCapabilityId,
+        binaryCapabilityId,
         measuredPowerKw: measuredPower.measuredPowerKw,
         now,
         state: powerState,

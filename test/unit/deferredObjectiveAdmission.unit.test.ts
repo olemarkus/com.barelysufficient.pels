@@ -17,7 +17,7 @@ const buildEvDevice = (
   name: overrides.id,
   targets: [],
   deviceClass: 'evcharger',
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   binaryControl: { on: true },
   ...overrides,
 }) as PlanInputDevice;

@@ -124,12 +124,8 @@ export type IdleDetectorInput = {
    * step. The detector never flips while we are the cause.
    */
   pelsCommandedShed: boolean;
-  /**
-   * Exclude devices that should never be classified — EV chargers (handled by
-   * the binary_release path) and devices without temperature observability.
-   */
+  /** Exclude devices without temperature observability. */
   hasTemperatureSetpoint: boolean;
-  isEvCharger: boolean;
 };
 
 // Rolling sample retained per device so the cycling detector can look back
@@ -199,14 +195,13 @@ const computeTemperatureGap = (
 };
 
 // Common shape applies to both the near-target / unresponsive paths and the
-// `capped_idle` cycling path — the device must be a non-EV temperature
-// device, observation must be trustworthy, the device must report itself on,
+// `capped_idle` cycling path — the device must expose a temperature setpoint,
+// observation must be trustworthy, the device must report itself on,
 // and PELS must not be the reason it's not drawing. The narrower
 // "currently idle" gate stays at the `measuredIsIdle` call sites only —
 // `capped_idle` deliberately accepts both on- and off-cycle ticks so the
 // cycling discriminator can see both halves of the device's duty cycle.
 const passesCommonEligibility = (input: IdleDetectorInput): boolean => {
-  if (input.isEvCharger) return false;
   if (!input.hasTemperatureSetpoint) return false;
   if (input.observationStale === true) return false;
   if (!input.observedOn) return false;

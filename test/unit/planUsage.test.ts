@@ -26,7 +26,6 @@ describe('plan usage budget exemption helpers', () => {
       {
         currentDrawKw: 0,
         budgetExempt: true,
-        controlCapabilityId: 'onoff',
         currentOn: false,
         expectedPowerKw: 1.5,
       },

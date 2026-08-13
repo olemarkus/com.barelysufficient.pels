@@ -1,9 +1,7 @@
 import {
   canTurnOnDevice,
-  recordActivationAttemptStarted,
 } from '../plan/planExecutorSupport';
 import { getLogger } from '../logging/logger';
-import { resolveCommandabilityDetail } from '../../packages/shared-domain/src/commandableNowReason';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import {
   type PlanExecutorBinaryContext,
@@ -48,7 +46,7 @@ export const canApplyRestoreSnapshot = (
   if (!canTurnOnDevice(snapshot)) {
     // Same wording the owner sees on the device card: both come from
     // `resolveCommandabilityDetail` over the same observed facts.
-    const suffix = ` (${resolveCommandabilityDetail(snapshot)})`;
+    const suffix = ' (observer reports the control unavailable)';
     logger.debug({
       event: 'restore_command_skipped',
       reasonCode: 'not_setable',
@@ -111,18 +109,6 @@ export const applyBinaryRestoreWithSnapshot = async (
         restoreSource: ctx.getRestoreLogSource(deviceId),
       });
       if (!outcome.applied) return false;
-      if (!outcome.flowBacked) {
-        logger.info({
-          event: 'binary_command_applied',
-          deviceId,
-          deviceName: name,
-          capabilityId: snapshot.controlCapabilityId ?? 'onoff',
-          desired: true,
-          reasonCode: ctx.getRestoreLogSource(deviceId),
-        });
-        recordBinaryRestoreActuation(ctx, { deviceId, name });
-        ctx.state.clearPendingSwapTarget(deviceId);
-      }
       return true;
     } catch (error) {
       logger.error({
@@ -170,44 +156,9 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
       logContext: 'capacity_control_off',
     });
     if (!outcome.applied) return false;
-    if (!outcome.flowBacked) {
-      logger.info({
-        event: 'binary_command_applied',
-        deviceId,
-        deviceName: name,
-        capabilityId: snapshot.controlCapabilityId ?? 'onoff',
-        desired: true,
-        reasonCode: 'capacity_control_off_restore',
-      });
-      ctx.state.clearDeviceShed(deviceId);
-      ctx.state.clearShedDecision(deviceId);
-    }
     return true;
   } catch (error) {
     logger.error({ event: 'executor_binary_error', msg: `Failed to restore ${name} via DeviceTransport`, err: error });
     return false;
   }
-};
-
-const recordBinaryRestoreActuation = (
-  ctx: PlanExecutorBinaryContext,
-  params: {
-    deviceId: string;
-    name: string;
-  },
-): void => {
-  const { deviceId, name } = params;
-  // Unconditional: every restore actuation stamps the 60-300 s restore cooldown
-  // and opens an activation attempt. Only `mode === 'plan'` used to, so a
-  // reconcile-driven restore armed no cooldown at all — the other half of how a
-  // re-assert could outrun the planner in inc_26449fb9.
-  const now = Date.now();
-  ctx.recordRestoreActuation(deviceId, name, now);
-  recordActivationAttemptStarted({
-    state: ctx.state,
-    diagnostics: ctx.deviceDiagnostics,
-    deviceId,
-    name,
-    nowTs: now,
-  });
 };

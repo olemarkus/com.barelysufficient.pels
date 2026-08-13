@@ -171,20 +171,6 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
                 capabilityIds,
             });
         },
-        notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value, source, ensureEventFields) => (
-            ctx.binarySettleOps.note({
-                state: ctx.binarySettleState,
-                deps: ctx.getBinarySettleDeps(),
-                deviceId: nextDeviceId,
-                capabilityId,
-                value,
-                source,
-                ensureEventFields,
-            })
-        ),
-        hasPendingBinarySettleWindow: (nextDeviceId, capabilityId) => (
-            ctx.consultPendingPredicate(nextDeviceId, capabilityId)
-        ),
         emitDeviceUpdateProcessed: (event) => {
           const emit = ctx.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p));
           emit(event);

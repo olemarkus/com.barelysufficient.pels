@@ -8,7 +8,8 @@ import {
 } from '../mocks/homey';
 import { schedulePlanRebuildFromPowerSample } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
-import type { StateOfChargeObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { StateOfChargeObservedProbe } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
 // Prevent real socket.io connections in app tests.
 vi.mock('../../lib/device/liveFeed', () => {
@@ -1119,7 +1120,7 @@ describe('MyApp initialization', () => {
         targets: [],
         measuredPowerKw: 1.2,
         expectedPowerKw: 1.2,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3224,7 +3225,7 @@ describe('periodic snapshot refresh scheduling', () => {
           deviceClass: 'evcharger',
           deviceType: 'onoff',
           targets: [],
-          controlCapabilityId: 'evcharger_charging',
+          binaryCapabilityId: 'evcharger_charging',
           controlAdapter: {
             kind: 'capability_adapter',
             activationRequired: false,
@@ -3295,7 +3296,7 @@ describe('periodic snapshot refresh scheduling', () => {
           deviceClass: 'evcharger',
           deviceType: 'onoff',
           targets: [],
-          controlCapabilityId: 'evcharger_charging',
+          binaryCapabilityId: 'evcharger_charging',
           controlAdapter: {
             kind: 'capability_adapter',
             activationRequired: false,
@@ -3425,7 +3426,7 @@ describe('periodic snapshot refresh scheduling', () => {
         'ev-1': { enabled: true, boostBelowPercent: 40 },
       };
       (app as any).deviceManager = withGetSnapshotByDeviceId({
-        getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
+        getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
           {
             id: 'ev-1',
             expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3472,7 +3473,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
     (app as any).deviceManager = withGetSnapshotByDeviceId({
-      getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
+      getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           id: 'ev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3511,7 +3512,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     (app as any).deviceManager = withGetSnapshotByDeviceId({
-      getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
+      getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           id: 'ev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3551,7 +3552,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'battery-1': { enabled: true, boostBelowPercent: 40 },
     };
     (app as any).deviceManager = withGetSnapshotByDeviceId({
-      getSnapshot: (): (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] => [
+      getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           id: 'battery-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3645,7 +3646,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
-    const snapshot: (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
@@ -3691,7 +3692,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
-    const snapshot: (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
@@ -3737,7 +3738,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TargetDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
+    const snapshot: TransportDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3789,7 +3790,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TargetDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
+    const snapshot: TransportDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3827,7 +3828,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.now();
     const nextReportedAt = initialReportedAt + 60_000;
-    const snapshot: (TargetDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
@@ -3868,7 +3869,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TargetDeviceSnapshot[] = [{
+    const snapshot: TransportDeviceSnapshot[] = [{
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',

@@ -10,7 +10,6 @@ import type {
   ReportedStepObservedProbe,
   SteppedLoadDecoration,
   SteppedLoadProfile,
-  TargetCapabilitySnapshot,
 } from '../../packages/contracts/src/types';
 import type {
   ExecutableObservedDeviceState,
@@ -66,11 +65,10 @@ SteppedLoadDecoration,
   controlAdapter?: DeviceControlAdapterSnapshot;
   /** Producer-resolved write authority and complete descriptor for each axis. */
   binaryAxis:
-    | { state: 'writable'; descriptor: Required<Pick<DeviceDescriptor, 'controlCapabilityId'>>
-      & Pick<DeviceDescriptor, 'flowBackedCapabilityIds'> }
+    | { state: 'writable' }
     | { state: 'unavailable' };
   targetAxis:
-    | { state: 'writable'; descriptor: TargetCapabilitySnapshot }
+    | { state: 'writable'; target: 'temperature' }
     | { state: 'unavailable' };
   stepAxis:
     | { state: 'writable'; profile: SteppedLoadProfile }
@@ -203,12 +201,11 @@ export class LifecycleFallbackDispatcher {
     observed: ExecutableObservedDeviceState,
     desired: number,
   ): void {
-    const targetCap = observed.target?.targetCap;
-    if (!targetCap) return;
+    if (!observed.target) return;
     const state = this.deps.buildTargetExecutorContext().state;
     const pending = state.pendingTargetCommands[observed.id];
     if (!pending) return;
-    if (pending.capabilityId === targetCap && Object.is(pending.desired, desired)) return;
+    if (pending.target === 'temperature' && Object.is(pending.desired, desired)) return;
     state.deletePendingTargetCommand(observed.id);
   }
 
@@ -251,11 +248,10 @@ export class LifecycleFallbackDispatcher {
     authorityToken: object,
   ): boolean {
     if (!observed.target) return false;
-    const { targetCap } = observed.target;
-    if (this.deps.targetCommandClaim.ownerOf(observed.id, targetCap) !== 'ordinary') return false;
+    if (this.deps.targetCommandClaim.ownerOf(observed.id, 'temperature') !== 'ordinary') return false;
     this.deps.targetCommandClaim.acquire(
       observed.id,
-      targetCap,
+      'temperature',
       'lifecycle',
       desired,
       (released) => this.retryAfterTargetClaimRelease(observed.id, authorityToken, released),
@@ -385,7 +381,6 @@ export class LifecycleFallbackDispatcher {
     ) ? getPendingTargetCommandDecision({
         state: targetContext.state,
         deviceId,
-        capabilityId: observed.target.targetCap,
         desired: behavior.temperature,
         nowMs: Date.now(),
       }) : null;

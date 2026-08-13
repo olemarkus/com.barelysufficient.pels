@@ -23,6 +23,6 @@ import { isEvDevice } from './evPlugState';
  * shared-domain (browser-safe, next to `isEvDevice`) so the settings UI can
  * narrow the same way the runtime does.
  */
-export const isEvObserved = <T extends { deviceClass?: string; controlCapabilityId?: string } & EvObservedProbe>(
+export const isEvObserved = <T extends { deviceClass?: string } & EvObservedProbe>(
   snapshot: T,
 ): snapshot is T & EvObservedFields => isEvDevice(snapshot);

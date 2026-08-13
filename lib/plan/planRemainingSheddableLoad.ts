@@ -1,5 +1,4 @@
 import type {
-  BinaryControlCapabilityId,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -45,7 +44,6 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingShe
   currentOn?: boolean;
   currentState?: string;
   budgetExempt: boolean;
-  controlCapabilityId?: BinaryControlCapabilityId;
 };
 
 export type RemainingSheddableTemperatureTarget = {
@@ -119,7 +117,6 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingS
   currentOn?: boolean;
   currentState?: string;
   budgetExempt?: boolean;
-  controlCapabilityId?: BinaryControlCapabilityId;
 };
 
 export function normalizeRemainingShedBehavior(behavior: RawShedBehavior): RemainingShedBehavior {
@@ -211,7 +208,7 @@ function toPlanResidualSteppedLoad(device: DevicePlanDevice): ResidualKwShedStep
     selectedStepId: device.selectedStepId,
     hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
     currentDrawKw: device.currentDrawKw,
-    controlCapabilityId: device.controlCapabilityId,
+    hasBinaryControl: isBinaryPlanDevice(device),
   };
 }
 
@@ -288,7 +285,6 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentOn: device.currentOn,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
-    controlCapabilityId: device.controlCapabilityId,
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,

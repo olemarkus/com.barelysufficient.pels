@@ -28,7 +28,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
-    | 'controlAdapter' | 'controlCapabilityId'
+    | 'controlAdapter' | 'binaryControllable' | 'deviceRole'
   >;
 
 // The device fields the settings-UI device DETAIL surface reads — a superset of
@@ -40,8 +40,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
 // stays structurally assignable, so callers pass unchanged.
 export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
-    | 'controlWriteCapabilityId'
-    | 'capabilities' | 'flowConflict'
+    'capabilities' | 'flowConflict'
   >
   // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto
   // the stepped-descriptor cluster; the `/ui_devices` snapshot physically carries
@@ -92,7 +91,7 @@ export const requiresNativeWiringForActivation = (device?: SettingsUiDeviceListI
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationRequired === true
   && device.controlAdapter.activationEnabled !== true
-  && device.controlCapabilityId !== 'evcharger_charging'
+  && device.deviceRole !== 'ev_charger'
 );
 
 export const supportsNativeWiringActivation = (device?: SettingsUiDeviceListItem | null): boolean => (

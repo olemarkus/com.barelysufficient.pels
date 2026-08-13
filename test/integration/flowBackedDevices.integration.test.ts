@@ -136,7 +136,7 @@ describe('Flow-backed device support', () => {
       flowBacked: true,
       binaryControl: { on: true },
       measuredPowerKw: 1.2,
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
     }));
   });
@@ -224,7 +224,7 @@ describe('Flow-backed device support', () => {
       binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
       measuredPowerKw: 7.2,
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       canSetControl: true,
     }));
   });

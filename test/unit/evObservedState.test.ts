@@ -24,7 +24,7 @@ describe('isEvObserved', () => {
   });
 
   it('is true for an EV charger identified by control capability', () => {
-    const s = snap({ controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' });
+    const s = snap({ deviceClass: 'evcharger', evChargingState: 'plugged_out' });
     expect(isEvObserved(s)).toBe(true);
   });
 

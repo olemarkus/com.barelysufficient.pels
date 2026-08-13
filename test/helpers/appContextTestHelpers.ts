@@ -18,9 +18,9 @@ import type {
   DeviceControlProfiles,
   EvBoostSettings,
   EvCarAssociations,
-  TargetDeviceSnapshot,
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
@@ -38,7 +38,7 @@ type MockHomey = FlowHomeyLike & {
 };
 
 type AppContextMockOptions = Omit<Partial<AppContext>, 'latestTargetSnapshot' | 'priceOptimizationEnabled' | 'priceOptimizationSettings'> & {
-  latestTargetSnapshot?: TargetDeviceSnapshot[];
+  latestTargetSnapshot?: TransportDeviceSnapshot[];
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, PriceOptimizationSettings>;
 };

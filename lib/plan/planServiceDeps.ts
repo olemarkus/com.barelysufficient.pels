@@ -56,10 +56,8 @@ export type PlanServiceDeps = {
   writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
-  // Devices for the binary settle. Binary-settle evidence
-  // (`binaryControlObservation`) is observer-internal and lives only on the
-  // device snapshot, so this is the raw snapshot list — never plan devices,
-  // which carry no evidence by type or (since the runtime strip) in memory.
+  // Minimal observer projection for binary confirmation; never raw transport
+  // snapshots or plan devices.
   getSettleDevices: () => PendingBinaryLiveDevice[];
   // EV charging state for the settings-UI read model, sourced from the observer
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The

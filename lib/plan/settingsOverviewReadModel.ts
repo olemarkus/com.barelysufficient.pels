@@ -12,10 +12,10 @@ import type {
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
 import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { isEvPlanDevice } from './planEvDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
@@ -98,7 +98,6 @@ export function buildSettingsOverviewDeviceReadModel(
   // narrow once so the snapshot can surface them. Non-EV devices have them
   // undefined. The raw `evChargingState` comes from the observer (its canonical
   // owner), NOT the plan device — see `getObservedEvChargingState`.
-  const ev = isEvPlanDevice(device) ? device : null;
   const temperature = resolveOverviewTemperatureState(device, deps);
   // The stepped discriminant, from the device's own ladder. This site used to
   // reconstruct a `controlModel` setting producer-map-first, which made its
@@ -127,7 +126,8 @@ export function buildSettingsOverviewDeviceReadModel(
     currentState: device.currentState,
     plannedState: device.plannedState,
     deviceType: producerDeviceType,
-    controlCapabilityId: device.controlCapabilityId,
+    binaryControllable: isBinaryPlanDevice(device),
+    deviceRole: deps.getObservedEvChargingState?.(device.id) !== undefined ? 'ev_charger' : undefined,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
     carChargingState: deps.getAssociatedCarChargingState?.(device.id),
     currentTarget: temperature.currentTarget,
@@ -140,13 +140,13 @@ export function buildSettingsOverviewDeviceReadModel(
     temperatureBoost: device.temperatureBoost,
     temperatureBoostActive: device.temperatureBoostActive,
     surplusAbsorbActive: device.surplusAbsorbActive,
-    evBoost: ev?.evBoost,
-    evBoostActive: ev?.evBoostActive,
+    evBoost: device.evBoost,
+    evBoostActive: device.evBoostActive,
     // Projected to the one property the wire type declares rather than passed
     // whole: the observation layer's session/invalidation bookkeeping is its own
     // business, and `level` is the producer's complete answer to whether this
     // charger has a battery level (`notes/ev-soc-layering.md`).
-    stateOfCharge: ev?.stateOfCharge ? { level: ev.stateOfCharge.level } : undefined,
+    stateOfCharge: device.stateOfCharge ? { level: device.stateOfCharge.level } : undefined,
     // Display-only staleness, sourced from the observer (not the plan device).
     observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,

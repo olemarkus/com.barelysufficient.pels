@@ -8,13 +8,14 @@
  */
 export { isPendingBinaryCommandActive } from '../observer/pendingBinaryCommandTypes';
 
-export const LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS = 90 * 1000;
-export const CLOUD_STEPPED_LOAD_COMMAND_PENDING_MS = 3 * 60 * 1000;
+import {
+  LOCAL_CONTROL_COMMAND_CONFIRMATION_MS,
+  resolveControlCommandConfirmationMs,
+  type CommunicationModel,
+} from '../observer/controlCommandConfirmation';
 
-type CommunicationModel = 'local' | 'cloud' | undefined;
+export const LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS = LOCAL_CONTROL_COMMAND_CONFIRMATION_MS;
 
 export function resolveSteppedLoadCommandPendingMs(communicationModel?: CommunicationModel): number {
-  return communicationModel === 'cloud'
-    ? CLOUD_STEPPED_LOAD_COMMAND_PENDING_MS
-    : LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
+  return resolveControlCommandConfirmationMs(communicationModel ?? 'local');
 }

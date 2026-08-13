@@ -22,7 +22,6 @@ export { isEvDevice } from './evPlugState';
  */
 export type CommandableNowInput = {
   deviceClass?: string;
-  controlCapabilityId?: string;
   available?: boolean;
 } & EvObservedProbe;
 
@@ -33,10 +32,6 @@ export type CommandableNowInput = {
  * anything derived from it is carried alongside the device — consumers that need
  * to explain the answer derive that from the same observed state, at the surface
  * that renders it (`resolveCommandabilityDetail`).
- *
- * The producer-injected resume-probe backoff is folded in downstream by
- * `toPlanDevice` (`projectCommandability`), not here: it is executor-owned
- * runtime state, not an observed fact.
  *
  * `isEvObserved` is the narrowing seam. Its false arm for a device that IS an EV
  * charger is unreachable by producer contract; if one ever did reach here it

@@ -97,7 +97,7 @@ describe('applyShedReleaseIntent', () => {
       intent: { kind: 'binary_release', deviceId: 'dev-1', name: 'Device 1' },
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -110,7 +110,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
     expect(result).toBe(true);
@@ -126,7 +126,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
     expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledWith(
@@ -147,7 +147,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved({ binaryControl: { on: false }, observedBinaryState: 'off' }),
-      snapshot: { id: 'dev-1', binaryControl: { on: false }, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: false }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -163,7 +163,7 @@ describe('applyShedReleaseIntent', () => {
       steppedLoadIntent: null,
       // 'unknown' is an off-union sentinel for "no trusted observation yet".
       observed: buildObserved({ observedBinaryState: 'unknown' as ExecutableObservedDeviceState['observedBinaryState'] }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -184,7 +184,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved({
-        target: { targetCap: 'target_temperature', observedValue: 22 },
+        target: { target: 'temperature', observedValue: 22 },
       }),
       snapshot: { id: 'dev-1' } as never,
       deps,
@@ -213,7 +213,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved({
-        target: { targetCap: 'target_temperature', observedValue: 18 },
+        target: { target: 'temperature', observedValue: 18 },
       }),
       snapshot: { id: 'dev-1' } as never,
       deps,
@@ -229,7 +229,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved({
-        target: { targetCap: 'target_temperature', observedValue: 18 },
+        target: { target: 'temperature', observedValue: 18 },
       }),
       snapshot: { id: 'dev-1' } as never,
       deps,
@@ -244,7 +244,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
     expect(result).toBe(true);
@@ -257,7 +257,7 @@ describe('applyShedReleaseIntent', () => {
   // a non-off observed step on a device that HAS a binary control — and this
   // dispatch is unreachable for those, so admitting the report cannot make PELS
   // command a step at a device it has deliberately turned off. If the
-  // `!snapshot.controlCapabilityId` routing above ever changes, that guarantee is
+  // `!snapshot.binaryCapabilityId` routing above ever changes, that guarantee is
   // gone and the admission needs its own "does PELS want this device on?" gate.
   it('never dispatches a stepped release for a binary-capable device observed off at a non-off step', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
@@ -274,7 +274,7 @@ describe('applyShedReleaseIntent', () => {
       snapshot: {
         id: 'dev-1',
         binaryControl: { on: false },
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
       } as never,
       deps,
     });
@@ -297,7 +297,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(true);
@@ -325,7 +325,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(true);
@@ -342,7 +342,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -357,7 +357,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low', reportedStepId: 'low', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -372,7 +372,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low', reportedStepId: 'low', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -385,7 +385,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -401,7 +401,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: undefined, currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -421,7 +421,7 @@ describe('applyShedReleaseIntent', () => {
           currentDrawKw: 0,
         },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -441,7 +441,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);
@@ -458,7 +458,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
       }),
-      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
+      snapshot: { id: 'dev-1' } as never,
       deps,
     });
     expect(result).toBe(false);

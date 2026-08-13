@@ -13,22 +13,18 @@
  * A HOLD NEEDS A TRANSITION, NOT A LEVEL. The single most dangerous mistake here
  * is reading "device is off while the plan says keep" as a user action: that is
  * ALSO what PELS failing to turn a device ON looks like. A slow device (cloud,
- * Zigbee, flow-backed) that takes longer than the 5 s settle window to confirm a
+ * Zigbee, flow-backed) that takes longer than its command-confirmation window to confirm a
  * restore emits exactly that shape, so a level-based test fabricates a hold on
  * the first shed/restore cycle and strands the device. `startHold` therefore
  * requires an observed ON→OFF transition on the control capability, which PELS's
  * unconfirmed ON can never produce.
  *
- * PROVENANCE. Three mechanisms answer "was this OFF ours?", and two have already
- * run upstream by the time an event arrives here:
- *  1. The 5 s local-write echo map — a matching echo makes the transport DROP the
- *     event outright, so it never reaches us.
- *  2. The 5 s binary settle window — a `settled` outcome emits no reconcile.
- *  3. The pending-command store — the only signal that survives to this point,
- *     and the only one covering a late echo and flow-backed control (which never
- *     calls `setCapability`, so it populates neither of the first two). It is
- *     consulted for a pending command in EITHER direction: mid-command is
- *     mid-command, and a pending ON is precisely the slow-restore case above.
+ * PROVENANCE. The observer-owned pending-command store answers "was this OFF
+ * ours?" for native and Flow-backed control alike. It is consulted for a
+ * pending command in EITHER direction: mid-command is mid-command, and a
+ * pending ON is precisely the slow-restore case above. A recently confirmed
+ * OFF remains attributable briefly so duplicate/reordered observations cannot
+ * be mistaken for a user action.
  *
  * PLAN-INDEPENDENT. A genuine outside OFF starts the hold regardless of whether
  * the current plan says keep, shed, or inactive, and regardless of availability,
@@ -77,7 +73,7 @@ export type ObservedBinaryChange = {
  */
 export type ExternalOffHoldObservedDevice = {
   id: string;
-  controlCapabilityId?: string;
+  binaryObservationCapabilityId?: string;
   binaryAxisOn: boolean;
   binaryAxisObservedAtMs?: number;
   evSessionInactive: boolean;
@@ -89,17 +85,9 @@ export function toExternalOffHoldObservedDevice(
   if (!device) return undefined;
   return {
     id: device.id,
-    controlCapabilityId: device.controlCapabilityId,
-    // EV's effective `binaryControl.on` is session-state-authoritative and may
-    // remain false after its raw `evcharger_charging` axis is explicitly turned
-    // on. Hold release follows that raw control axis; other binary devices have
-    // no separate fold.
-    binaryAxisOn: device.controlCapabilityId === 'evcharger_charging'
-      ? device.evCharging === true
-      : device.binaryControl?.on === true,
-    binaryAxisObservedAtMs: device.controlCapabilityId === 'evcharger_charging'
-      ? device.evChargingObservedAtMs
-      : device.binaryControlObservation?.observedAtMs,
+    binaryObservationCapabilityId: device.binaryControlObservation?.capabilityId,
+    binaryAxisOn: device.binaryControl?.on === true,
+    binaryAxisObservedAtMs: device.binaryControlObservation?.observedAtMs,
     // The device's own session question, asked directly of the decided
     // plug-state — this seam wants only that bit, not a whole commandability
     // resolution it would then throw away.
@@ -113,8 +101,8 @@ export function toExternalOffHoldObservedDevice(
  * live in its own engine, and its rebuild belongs to its own service.
  */
 export type ExternalOffHoldReconcileHooks = {
-  hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
-  clearRecentBinaryOffCommand: (deviceId: string, capabilityId: string) => void;
+  hasPendingBinaryCommand: (deviceId: string) => boolean;
+  clearRecentBinaryOffCommand: (deviceId: string) => void;
   rebuild: (reason: string) => Promise<unknown>;
 };
 
@@ -125,8 +113,8 @@ export type ExternalOffHoldSyncDeps = {
    * keep their own store, so asking main's about a sub-home device would report
    * "no pending command" for PELS's own write and fabricate a hold.
    */
-  hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
-  clearRecentBinaryOffCommand: (deviceId: string, capabilityId: string) => void;
+  hasPendingBinaryCommand: (deviceId: string) => boolean;
+  clearRecentBinaryOffCommand: (deviceId: string) => void;
   debugStructured?: StructuredDebugEmitter;
 };
 
@@ -197,7 +185,7 @@ function shouldStartHold(params: {
     device.evSessionInactive === true
     && !sawRawControlOnToOffTransition(changes, capabilityId)
   ) return false;
-  return !deps.hasPendingBinaryCommand(deviceId, capabilityId);
+  return !deps.hasPendingBinaryCommand(deviceId);
 }
 
 /**
@@ -223,7 +211,7 @@ export function syncExternalOffHoldForDevice(params: {
   if (!device || device.id !== deviceId) return 'none';
   // v1 is binary-capability only. A step-only stepped load has no affirmative
   // binary-axis evidence, so a step change must not read as an outside OFF.
-  const { controlCapabilityId: capabilityId } = device;
+  const { binaryObservationCapabilityId: capabilityId } = device;
   if (capabilityId === undefined) return 'none';
 
   if (device.binaryAxisOn) {
@@ -232,7 +220,7 @@ export function syncExternalOffHoldForDevice(params: {
     // provenance clears only on an explicit raw-axis OFF→ON action; the pull
     // sweep has its own timestamp comparison.
     if (sawRawControlOffToOnTransition(changes, capabilityId)) {
-      deps.clearRecentBinaryOffCommand(deviceId, capabilityId);
+      deps.clearRecentBinaryOffCommand(deviceId);
     }
     if (!policy.isHeld(deviceId)) return 'none';
     policy.clearHold(deviceId);
@@ -282,12 +270,12 @@ export function syncExternalOffHoldForDevice(params: {
  */
 export const isAffirmativelyOn = (
   device: {
-    controlCapabilityId?: string;
     binaryControl?: { on?: boolean };
     evCharging?: boolean;
+    evChargingState?: unknown;
   } | undefined,
 ): boolean => (
-  device?.controlCapabilityId === 'evcharger_charging'
+  device?.evChargingState !== undefined
     ? device.evCharging === true
     : device?.binaryControl?.on === true
 );

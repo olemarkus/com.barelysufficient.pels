@@ -8,7 +8,7 @@
 - `observationTrust.ts` — which observations count as trusted evidence.
 - `observedState.ts` / `observedDeviceStateProjection.ts` / `observedStateEvents.ts` — observed-state model and projections.
 - `idleClassifier.ts` / `idleDetector.ts` — `near_target_idle` / `unresponsive` / `capped_idle` classification (see `notes/idle-classification.md`).
-- `pendingBinaryCommands.ts` (+ types/formatting) / `binarySettle.ts` — pending binary command tracking and settle behavior.
+- `pendingBinaryCommands.ts` + `pendingBinaryCommandTypes.ts` — pending semantic binary commands and telemetry confirmation; capability routing stays in transport.
 - `observedHomePower.ts` / `observedPower.ts` — whole-home and per-device power views.
 - `externalOffHold.ts` — the "Leave off until turned on again" hold state and its persistence.
 

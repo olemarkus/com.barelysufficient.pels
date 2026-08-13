@@ -115,6 +115,12 @@ horizon gating because no future allocation is needed. `satisfied` remains a liv
 not a terminal completion before the deadline: if a later fresh reading drops below the target,
 the next cycle returns to normal deadline tracking.
 
+Observer stall evidence may also report a temperature objective as satisfied when the device's
+own thermostat has stopped or capped below the requested value. That evidence carries the exact
+setpoint against which it was classified and applies only when that setpoint is at least the
+smart-task target. A classification against a lowered ordinary-mode setpoint must never satisfy
+a higher smart-task target.
+
 ## Soft Temperature Runtime Semantics
 
 The first temperature UI stores the objective and lets horizon planning calculate planned hours.
@@ -873,8 +879,9 @@ The shipped status values on the diagnostic
 - `cannot_meet` — even using the reserve hour at the highest allowed hard-cap-safe
   behavior cannot plausibly meet the target before the deadline. (`hard-cap-safe` here
   means within the physical capacity hard cap.)
-- `satisfied` — current progress is at or above target. Live; if a later reading drops below
-  target, the next cycle returns to one of the values above.
+- `satisfied` — current progress is at or above target, or target-matched observer evidence says
+  the device has settled at its own thermostat/cap. Live; if a later reading drops below target
+  without applicable stall evidence, the next cycle returns to one of the values above.
 
 Live diagnostic status transitions still publish immediately on change (no hysteresis) for
 runtime lifecycle/debug handling. Public Flow/UI status is read from the active-plan record's

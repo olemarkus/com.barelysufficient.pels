@@ -9,7 +9,6 @@ import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../pa
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
 import type { StructuredDebugEmitter } from '../../logging/logger';
-import type { BinarySettleState } from '../../observer/binarySettle';
 import type { PowerEstimateState } from '../devicePowerEstimate';
 import type {
   ObservedDeviceStateEvent,
@@ -67,74 +66,6 @@ export type SteppedLoadFlowTriggerCard = {
     trigger: (tokens?: object, state?: object) => Promise<unknown> | unknown;
 };
 
-export type BinarySettleObservationCursor = {
-  observationSeq?: number;
-  observedAtMs?: number;
-};
-
-export type BinarySettleOutcome = 'settled' | 'drift' | 'none';
-
-export type BinarySettleReconcileEvent = {
-    deviceId: string;
-    observationSeq?: number;
-    observedAtMs?: number;
-    name?: string;
-    capabilityId?: string;
-    changes?: Array<{
-        capabilityId: string;
-        previousValue: string;
-        nextValue: string;
-    }>;
-};
-
-/**
- * Structural mirror of observer's `BinarySettleDeps`. Defined locally
- * so transport doesn't have to reference observer's type directly.
- */
-export type BinarySettleDepsForTransport = {
-    logger: {
-        structuredLog?: {
-            info?: (payload: Record<string, unknown>) => void;
-        };
-    };
-    clearLocalCapabilityWrite: (params: { deviceId: string; capabilityId: string }) => void;
-    isLiveFeedHealthy: () => boolean;
-    shouldTrackRealtimeDevice: (deviceId: string) => boolean;
-    getSnapshotById: (deviceId: string) => TargetDeviceSnapshot | undefined;
-    emitPlanReconcile: (event: BinarySettleReconcileEvent) => void;
-};
-
-/**
- * Observer-owned binarySettle operation bag. Wiring (`lib/app/`) builds
- * this against `lib/observer/binarySettle.ts`'s functions and passes it
- * to `DeviceTransport`. When omitted (legacy tests that construct
- * `DeviceTransport` directly), the transport falls back to its own
- * inert no-op stubs so behavior degrades gracefully. Transport supplies
- * `deps` at call time because some of those callbacks (e.g.
- * `emitPlanReconcile`) close over transport's own emitter.
- */
-export type DeviceTransportBinarySettleOps = {
-    start(params: {
-        state: BinarySettleState;
-        deps: BinarySettleDepsForTransport;
-        deviceId: string;
-        capabilityId: string;
-        value: unknown;
-        deviceName?: string;
-    }): void;
-    note(params: {
-        state: BinarySettleState;
-        deps: BinarySettleDepsForTransport;
-        deviceId: string;
-        capabilityId: string;
-        value: boolean;
-        source: 'realtime_capability' | 'device_update';
-        ensureEventFields?: () => BinarySettleObservationCursor;
-    }): BinarySettleOutcome;
-    hasWindow(state: BinarySettleState, deviceId: string, capabilityId: string): boolean;
-    clear(state: BinarySettleState, deviceId: string, capabilityId: string): void;
-    clearAll(state: BinarySettleState): void;
-};
 
 /**
  * Structural mirror of observer's `ObservedStateEmitterDispatcher` from
@@ -182,32 +113,6 @@ export type DeviceTransportOptions = {
      */
     onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
     /**
-     * Observer-owned binarySettle state. When omitted (legacy tests),
-     * transport falls back to inert no-op behaviour. When supplied,
-     * observer owns the state and transport routes all reads/writes
-     * through the injected `binarySettleOps` callbacks.
-     */
-    binarySettleState?: BinarySettleState;
-    /**
-     * Observer-owned binarySettle operation bag. See
-     * `DeviceTransportBinarySettleOps` and PR #4 of the
-     * observer/transport split.
-     */
-    binarySettleOps?: DeviceTransportBinarySettleOps;
-    /**
-     * Predicate consulted by transport's realtime parse pipeline to decide
-     * whether an incoming binary capability change is the device's reply to
-     * an in-flight write. Backed by observer's binarySettle store (and,
-     * post-#5, by the pending-binary-command store too) — observer owns
-     * the state; transport never reaches into observer directly. When the
-     * predicate is omitted, the suppression site falls back to the
-     * injected `binarySettleOps.hasWindow` (if available) or returns
-     * `false` so legacy tests degrade gracefully.
-     *
-     * See notes/state-management/observer-transport-split.md (PR #4).
-     */
-    pendingPredicate?: (deviceId: string, capabilityId: string) => boolean;
-    /**
      * Observer-owned dispatcher consulted by transport after translation of
      * each realtime event. Wiring (`lib/app/`) builds the dispatcher against
      * `lib/observer/observedStateEvents.ts`'s `ObservedStateEmitter`. When
@@ -231,34 +136,6 @@ export const createPeakPowerLogState = (): Map<string, { signature: string; emit
 // Re-exported from its owner beside the `LivePowerReport` type, so adding a
 // field cannot leave a second construction site behind.
 export { buildEmptyLivePowerReport } from './managerFetch';
-
-/**
- * Whether a raw capability echo may stand as evidence of the device's OBSERVED
- * ON/OFF TRUTH.
- *
- * Never for `evcharger_charging`: a charger's binary axis is
- * session-state-authoritative, so the plug-state observation is the evidence and
- * the raw boolean is not. The "unless the plug-state is absent" escape this used
- * to carry is gone with the case it covered — a device exposing
- * `evcharger_charging` must also expose `evcharger_charging_state` (capability
- * gate, `managerParse.ts`) and that capability must report a member of the Homey
- * enum or the device is dropped (contract gate, `managerParseDeviceFields.ts`).
- * An `evcharger` with no plug-state at all is the `target_power`/stepped-load
- * population, which has no `evcharger_charging` capability to ask about.
- *
- * This is NOT the question the per-write settle window asks. That window asks
- * whether PELS's write was acknowledged, and the raw echo is exactly the right
- * evidence for it — see `lib/observer/binarySettle.ts`. The two were one
- * predicate until 2026-08-13, and conflating them is what left every charger
- * write unsettled: settlement waited on "is the car drawing?" when the write had
- * asked "may the car draw?".
- */
-export function isRawBinaryObservedTruthEvidenceAllowed(
-    _snapshot: TransportDeviceSnapshot,
-    capabilityId: string,
-): boolean {
-    return capabilityId !== 'evcharger_charging';
-}
 
 export function summarizeSnapshotRefreshMetrics(snapshot: TransportDeviceSnapshot[]): SnapshotRefreshMetrics {
     let availableDevices = 0;
@@ -287,26 +164,4 @@ export function cloneBinaryControlObservation(
         ...evidence,
         observedCapabilityIds: [...evidence.observedCapabilityIds],
     };
-}
-
-/**
- * Inert binarySettle ops bag for tests and legacy callers that construct
- * `DeviceTransport` directly without supplying a real ops bag. Production
- * wiring (`app.ts`) always provides a real bag built against
- * `lib/observer/binarySettle.ts`; this default exists only so a no-arg
- * constructor stays usable. Tests that exercise binary-settle behaviour
- * pass real observer ops through the constructor options.
- */
-export function createInertBinarySettleOps(): DeviceTransportBinarySettleOps {
-    return {
-        start: () => {},
-        note: () => 'none',
-        hasWindow: () => false,
-        clear: () => {},
-        clearAll: () => {},
-    };
-}
-
-export function createEmptyBinarySettleState(): BinarySettleState {
-    return { pendingBinarySettleWindows: new Map() };
 }

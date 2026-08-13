@@ -155,7 +155,7 @@ describe('external-off hold — no rescue claims for a device that will not star
       id: 'heater-1',
       name: 'Water heater',
       targets: [],
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       binaryControl: { on: false },
       controllable: false,
       managed: true,

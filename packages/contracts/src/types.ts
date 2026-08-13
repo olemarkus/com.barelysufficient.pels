@@ -306,10 +306,11 @@ export type DeviceDescriptor = {
     // transport's zone tree (`DeviceTransport.getZoneTree`).
     zoneId?: string;
     controlModel?: DeviceControlModel;
-    controlCapabilityId?: BinaryControlCapabilityId;
     controlAdapter?: DeviceControlAdapterSnapshot;
-    controlWriteCapabilityId?: string;
-    controlObservationCapabilityId?: string;
+    /** Whether the observer exposes a commandable binary on/off axis. */
+    binaryControllable?: boolean;
+    /** Semantic device role resolved by the producer; never an SDK capability id. */
+    deviceRole?: 'ev_charger';
     // `steppedLoadProfile`/`targetPowerConfig` are deliberately NOT here
     // (stepped-descriptor slice of the discriminated-types refactor): they live on
     // `SteppedLoadDescriptorFields`, regrouped onto the snapshot by the
@@ -336,7 +337,6 @@ export type DeviceDescriptor = {
     // the banner can name it; absent otherwise (generic copy).
     flowConflict?: { conflictingCapabilities: readonly string[]; flowName?: string };
     flowBacked?: boolean;
-    flowBackedCapabilityIds?: string[];
     capabilities?: string[];
     canSetControl?: boolean;
     powerCapable?: boolean;
@@ -419,7 +419,7 @@ export type ObservedDeviceState = {
     // Unified binary observation for whether the device may draw power.
     // This is not the same as "is actively drawing power right now" for devices
     // with richer state, such as EV chargers or stepped loads.
-    // Present IFF the device has binary control (`controlCapabilityId` set); `.on`
+    // Present IFF the device has binary control; `.on`
     // is the observed binary state. A non-binary device has no `binaryControl` —
     // consumers must treat its absence exactly like the old fabricated `currentOn:
     // true` ("may always draw, so stays sheddable").

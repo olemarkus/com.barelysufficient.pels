@@ -94,7 +94,7 @@ export const syncRespectExternalOffRow = (params: {
   const device = deviceId ? params.getDeviceById(deviceId) : null;
   const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
   const optedIn = deviceId !== null && state.respectExternalOffMap[deviceId] === true;
-  const showRow = deviceId !== null && (device?.controlCapabilityId !== undefined || optedIn);
+  const showRow = deviceId !== null && (device?.binaryControllable === true || optedIn);
   rowEl.hidden = !showRow;
   if (!showRow || deviceId === null) {
     toggleEl.selected = false;

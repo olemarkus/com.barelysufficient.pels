@@ -2,11 +2,10 @@ import { isActivationObservationActiveNow } from '../../lib/plan/admission';
 
 describe('isActivationObservationActiveNow', () => {
   it('is true when the device reports effectively on', () => {
-    // `controlCapabilityId` is load-bearing: `isActivationObservationActiveNow`
+    // `binaryCapabilityId` is load-bearing: `isActivationObservationActiveNow`
     // reads the producer-resolved `currentOn`, which is the on/off truth only for
-    // a binary device (`controlCapabilityId` set).
+    // a binary device (`binaryCapabilityId` set).
     expect(isActivationObservationActiveNow({ currentDrawKw: 0,
-      controlCapabilityId: 'onoff',
       currentOn: true,
     })).toBe(true);
   });

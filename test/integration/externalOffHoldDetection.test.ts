@@ -32,13 +32,13 @@ import type {
   ReportedStepObservedProbe,
   SteppedLoadDecoration,
   SteppedLoadDescriptorProbe,
-  TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
 const NOW = new Date('2026-07-25T12:00:00Z').getTime();
 const DEVICE_ID = 'heater-1';
 
-type SnapshotProbe = TargetDeviceSnapshot
+type SnapshotProbe = TransportDeviceSnapshot
   & EvObservedProbe
   & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe
@@ -46,15 +46,30 @@ type SnapshotProbe = TargetDeviceSnapshot
 
 const buildSnapshot = (
   overrides: Partial<SnapshotProbe> = {},
-): SnapshotProbe => ({
-  id: DEVICE_ID,
-  name: 'Water heater',
-  targets: [],
-  deviceClass: 'other',
-  controlCapabilityId: 'onoff',
-  binaryControl: { on: false },
-  ...overrides,
-}) as TargetDeviceSnapshot;
+): SnapshotProbe => {
+  const explicitlyWithoutBinary = Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
+    && overrides.binaryCapabilityId === undefined;
+  const capabilityId = overrides.binaryCapabilityId ?? 'onoff';
+  return {
+    id: DEVICE_ID,
+    name: 'Water heater',
+    targets: [],
+    deviceClass: 'other',
+    ...(!explicitlyWithoutBinary ? {
+      binaryCapabilityId: capabilityId,
+      binaryControl: { on: false },
+      binaryControlObservation: {
+        valid: true,
+        capabilityId,
+        observedValue: false,
+        observedCapabilityIds: [capabilityId],
+        observedAtMs: NOW,
+        source: 'snapshot_refresh',
+      },
+    } : {}),
+    ...overrides,
+  } as SnapshotProbe;
+};
 
 type Harness = {
   ctx: AppContext;
@@ -65,7 +80,7 @@ type Harness = {
 const buildCtx = (params: {
   optedIn?: boolean;
   persistedHolds?: unknown;
-  pending?: { desired: boolean; capabilityId: string };
+  pending?: { desired: boolean };
   /** Make the hold blob unreadable, as a transient Homey settings failure does. */
   holdsUnreadable?: boolean;
 } = {}): Harness => {
@@ -88,11 +103,10 @@ const buildCtx = (params: {
   const deps: ExternalOffHoldSyncDeps = {
     policy: ctx.externalOffHold,
     // Provenance is resolved by the OWNING home's engine; the detector consumes
-    // the boolean, so the stub matches on device + capability like the real one.
-    hasPendingBinaryCommand: (deviceId, capabilityId) => (
+    // the device-keyed boolean.
+    hasPendingBinaryCommand: (deviceId) => (
       params.pending !== undefined
       && deviceId === DEVICE_ID
-      && params.pending.capabilityId === capabilityId
     ),
     clearRecentBinaryOffCommand,
   };
@@ -157,7 +171,7 @@ describe('syncExternalOffHoldForDevice — starting a hold', () => {
   });
 
   it('does not start a hold when the off matches a pending PELS off command', () => {
-    const h = buildCtx({ optedIn: true, pending: { desired: false, capabilityId: 'onoff' } });
+    const h = buildCtx({ optedIn: true, pending: { desired: false } });
     expect(sync(h, observedDeviceFor(h.ctx))).toBe('none');
   });
 
@@ -175,7 +189,7 @@ describe('syncExternalOffHoldForDevice — starting a hold', () => {
   it('does not start a hold for a device with no binary control handle', () => {
     const h = buildCtx({ optedIn: true });
     const observed = observedDeviceFor(h.ctx, {
-      controlCapabilityId: undefined,
+      binaryCapabilityId: undefined,
       binaryControl: undefined,
     });
     expect(sync(h, observed)).toBe('none');
@@ -210,13 +224,13 @@ describe('syncExternalOffHoldForDevice — an off LEVEL is not an off ACTION', (
   });
 
   it('starts no hold while PELS has an in-flight ON command (the slow-restore case)', () => {
-    const h = buildCtx({ optedIn: true, pending: { desired: true, capabilityId: 'onoff' } });
+    const h = buildCtx({ optedIn: true, pending: { desired: true } });
     expect(sync(h, observedDeviceFor(h.ctx))).toBe('none');
   });
 
-  it('starts a hold when the pending command is on a DIFFERENT capability', () => {
-    const h = buildCtx({ optedIn: true, pending: { desired: false, capabilityId: 'evcharger_charging' } });
-    expect(sync(h, observedDeviceFor(h.ctx))).toBe('started');
+  it('keeps pending attribution device-keyed', () => {
+    const h = buildCtx({ optedIn: true, pending: { desired: false } });
+    expect(sync(h, observedDeviceFor(h.ctx))).toBe('none');
   });
 
   it('records a real transition even while the persisted state is unreadable', () => {
@@ -234,9 +248,9 @@ describe('syncExternalOffHoldForDevice — an off LEVEL is not an off ACTION', (
 describe('syncExternalOffHoldForDevice — EV plug states', () => {
   const evSnapshot = (
     evChargingState: EvObservedProbe['evChargingState'],
-  ): Partial<TargetDeviceSnapshot & EvObservedProbe> => ({
+  ): Partial<TransportDeviceSnapshot & EvObservedProbe> => ({
     deviceClass: 'evcharger',
-    controlCapabilityId: 'evcharger_charging',
+    binaryCapabilityId: 'evcharger_charging',
     evChargingState,
   });
 
@@ -301,7 +315,7 @@ describe('syncExternalOffHoldForDevice — releasing a hold', () => {
       ON_TRANSITION,
     )).toBe('cleared');
     expect(h.ctx.externalOffHold?.isHeld(DEVICE_ID)).toBe(false);
-    expect(h.clearRecentBinaryOffCommand).toHaveBeenCalledWith(DEVICE_ID, 'onoff');
+    expect(h.clearRecentBinaryOffCommand).toHaveBeenCalledWith(DEVICE_ID);
   });
 
   it('does not clear PELS-OFF provenance from a stale ON level on an unrelated reconcile', () => {
@@ -326,8 +340,15 @@ describe('syncExternalOffHoldForDevice — releasing a hold', () => {
     expect(sync(h, observedDeviceFor(h.ctx))).toBe('started');
     const snapshot = buildSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
-      binaryControl: { on: false },
+      binaryControl: { on: true },
+      binaryControlObservation: {
+        valid: true,
+        capabilityId: 'evcharger_charging',
+        observedValue: true,
+        observedCapabilityIds: ['evcharger_charging'],
+        observedAtMs: NOW + 1,
+        source: 'snapshot_refresh',
+      },
       evCharging: true,
       evChargingState: 'plugged_in_paused',
       steppedLoadProfile: {
@@ -408,15 +429,21 @@ describe('external-off hold — release under an unreadable store', () => {
     const store = createPendingBinaryCommandStore({});
     store.recordConfirmedBinaryCommand({
       deviceId: DEVICE_ID,
-      capabilityId: 'evcharger_charging',
       desired: false,
       confirmedAtMs: NOW,
     });
     h.ctx.externalOffHold?.startHold(DEVICE_ID);
     const observed = toExternalOffHoldObservedDevice(buildSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
-      binaryControl: { on: false },
+      binaryControl: { on: true },
+      binaryControlObservation: {
+        valid: true,
+        capabilityId: 'evcharger_charging',
+        observedValue: true,
+        observedCapabilityIds: ['evcharger_charging'],
+        observedAtMs: NOW + 1,
+        source: 'snapshot_refresh',
+      },
       evCharging: true,
       evChargingObservedAtMs: NOW + 1,
       evChargingState: 'plugged_in_paused',
@@ -428,12 +455,11 @@ describe('external-off hold — release under an unreadable store', () => {
       isObservedOn: () => observed.binaryAxisOn,
       onObservedOn: () => store.clearRecentConfirmedOff(
         DEVICE_ID,
-        'evcharger_charging',
         observed.binaryAxisObservedAtMs,
       ),
     });
 
-    expect(store.hasRecentConfirmedOff(DEVICE_ID, 'evcharger_charging', NOW + 2)).toBe(false);
+    expect(store.hasRecentConfirmedOff(DEVICE_ID, NOW + 2)).toBe(false);
     expect(h.ctx.externalOffHold?.isHeld(DEVICE_ID)).toBe(false);
   });
 
@@ -445,9 +471,9 @@ describe('external-off hold — release under an unreadable store', () => {
     expect(isAffirmativelyOn({ binaryControl: { on: true } })).toBe(true);
     expect(isAffirmativelyOn({ binaryControl: { on: false } })).toBe(false);
     expect(isAffirmativelyOn({
-      controlCapabilityId: 'evcharger_charging',
       binaryControl: { on: false },
       evCharging: true,
+      evChargingState: 'plugged_in_paused',
     })).toBe(true);
     expect(isAffirmativelyOn({})).toBe(false);
     expect(isAffirmativelyOn(undefined)).toBe(false);

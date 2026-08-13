@@ -29,19 +29,15 @@ describe('planCurrentState', () => {
     // resolves the latched bit (here off), and the effective on/off follows.
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
-      controlCapabilityId: 'onoff',
     })).toBe('off');
 
     expect(resolveEffectiveCurrentOn({
       binaryControl: { on: false },
-      controlCapabilityId: 'onoff',
     })).toBe(false);
   });
 
   it('maps target-only devices to not_applicable and an unknown on/off state', () => {
     expect(resolveObservedCurrentState({
-      binaryControl: { on: true },
-      controlCapabilityId: undefined,
     })).toBe('not_applicable');
 
     expect(resolveEffectiveCurrentState({
@@ -71,7 +67,6 @@ describe('planCurrentState', () => {
       binaryControl: { on: true },
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
-      controlCapabilityId: 'onoff',
     })).toBe('on');
 
     expect(resolveEffectiveCurrentState({
@@ -90,7 +85,6 @@ describe('planCurrentState', () => {
       binaryControl: { on: true },
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'off',
-      controlCapabilityId: 'onoff',
     })).toBe('off');
 
     expect(resolveEffectiveCurrentState({

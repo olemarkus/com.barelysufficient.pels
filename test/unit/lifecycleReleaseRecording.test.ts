@@ -10,10 +10,10 @@ import type { PlanEngineState } from '../../lib/plan/planState';
 type PendingBinaryCommand = PlanEngineState['pendingBinaryCommands'][string];
 
 const offPending = (over: Partial<PendingBinaryCommand>): PendingBinaryCommand => ({
+  dispatchState: 'accepted',
   desired: false,
-  capabilityId: 'onoff',
-  flowBackedControl: true,
   startedMs: 0,
+  pendingMs: 90_000,
   ...over,
 });
 

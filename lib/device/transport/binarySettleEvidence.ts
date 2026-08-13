@@ -5,15 +5,15 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { BinaryControlObservation } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
-import { resolveEvChargingStateBinaryEvidence, resolveEvCurrentOn, toCapabilityTimestampMs } from '../managerControl';
+import { resolveEvCurrentOn, toCapabilityTimestampMs } from '../managerControl';
 import { recordSnapshotCapabilityObservations } from './managerObservation';
 import type { ObservedDeviceStateEvent } from './managerRealtimeHandlers';
 import { getLogger } from '../../logging/logger';
-import { cloneBinaryControlObservation, isRawBinaryObservedTruthEvidenceAllowed } from './transportTypes';
+import { cloneBinaryControlObservation } from './transportTypes';
 import type { TransportContext } from './transportContext';
 
 const moduleLogger = getLogger('device/transport');
@@ -41,19 +41,19 @@ export function readCapabilityValue(device: HomeyDeviceLike, capabilityId: strin
 
 export function resolveBinaryControlPayload(
     device: HomeyDeviceLike,
-    snapshot: TargetDeviceSnapshot,
-    previousSnapshot: TargetDeviceSnapshot | undefined,
+    snapshot: TransportDeviceSnapshot,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
 ): {
     present: boolean;
-    capabilityId: TargetDeviceSnapshot['controlCapabilityId'];
+    capabilityId: TransportDeviceSnapshot['binaryCapabilityId'];
     observedCapabilityId: string;
     value: unknown;
     observedAtMs?: number;
 } {
-    const capabilityId = snapshot.controlCapabilityId ?? previousSnapshot?.controlCapabilityId;
+    const capabilityId = snapshot.binaryCapabilityId ?? previousSnapshot?.binaryCapabilityId;
     const observedCapabilityId = (
-        snapshot.controlObservationCapabilityId
-        ?? previousSnapshot?.controlObservationCapabilityId
+        snapshot.binaryObservationCapabilityId
+        ?? previousSnapshot?.binaryObservationCapabilityId
         ?? capabilityId
     );
     if (!capabilityId || !observedCapabilityId) {
@@ -66,9 +66,9 @@ export function resolveBinaryControlPayload(
     };
 }
 
-export function hasInvalidBinaryControlPayload(snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike): boolean {
-    if (!snapshot.controlCapabilityId) return false;
-    const observedCapabilityId = snapshot.controlObservationCapabilityId ?? snapshot.controlCapabilityId;
+export function hasInvalidBinaryControlPayload(snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike): boolean {
+    if (!snapshot.binaryCapabilityId) return false;
+    const observedCapabilityId = snapshot.binaryObservationCapabilityId ?? snapshot.binaryCapabilityId;
     const payload = readCapabilityValue(device, observedCapabilityId);
     return payload.present && typeof payload.value !== 'boolean';
 }
@@ -83,7 +83,7 @@ export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: strin
 export function clearBinarySettleEvidenceForInvalidControlPayload(ctx: TransportContext, params: {
     deviceId: string;
     deviceName?: string;
-    capabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    capabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     source: BinaryControlObservation['source'];
     value: unknown;
 }): void {
@@ -136,7 +136,6 @@ export function applyBinarySettleEvidenceToSnapshot(
         if (rawPermission) mutableSnapshot.evChargingObservedAtMs = acceptedEvidence.observedAtMs;
         mutableSnapshot.binaryControl = {
             on: resolveEvCurrentOn({
-                evChargingState: mutableSnapshot.evChargingState,
                 evchargerCharging: mutableSnapshot.evCharging,
             }),
         };
@@ -146,27 +145,19 @@ export function applyBinarySettleEvidenceToSnapshot(
     mutableSnapshot.binaryControlObservation = acceptedEvidence;
     return acceptedEvidence;
 }
-export function persistBinarySettleEvidenceToSnapshot(
+export function applyCachedBinarySettleEvidenceToSnapshot(
     ctx: TransportContext,
-    snapshot: TargetDeviceSnapshot,
-    evidence: BinaryControlObservation,
-): BinaryControlObservation {
-    const acceptedEvidence = upsertBinarySettleEvidence(ctx, snapshot.id, evidence);
-    const mutableSnapshot = snapshot;
-    mutableSnapshot.binaryControlObservation = acceptedEvidence;
-    return acceptedEvidence;
-}
-
-export function applyCachedBinarySettleEvidenceToSnapshot(ctx: TransportContext, snapshot: TargetDeviceSnapshot): void {
+    snapshot: TransportDeviceSnapshot,
+): void {
     const cached = ctx.latestBinarySettleEvidenceByDeviceId.get(snapshot.id);
     if (!cached) return;
-    if (cached.capabilityId !== snapshot.controlCapabilityId) return;
+    if (cached.capabilityId !== snapshot.binaryCapabilityId) return;
     applyBinarySettleEvidenceToSnapshot(ctx, snapshot, cached);
 }
 
 export function clearContradictoryBinarySettleEvidence(ctx: TransportContext, params: {
     deviceId: string;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: TransportDeviceSnapshot;
     capabilityId: BinaryControlObservation['capabilityId'];
     observedValue: boolean;
     // The transport seam the contradicting read came in on. A `pull`
@@ -217,14 +208,14 @@ export function clearContradictoryBinarySettleEvidence(ctx: TransportContext, pa
 
 export function shouldClearBinarySettleEvidenceForSnapshot(
     ctx: TransportContext,
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
 ): boolean {
     return !ctx.shouldTrackRealtimeDevice(snapshot.id) || snapshot.managed === false;
 }
 
 export function reconcileBinarySettleEvidenceWithSnapshot(
     ctx: TransportContext,
-    snapshot: TargetDeviceSnapshot[],
+    snapshot: TransportDeviceSnapshot[],
 ): void {
     const activeDeviceIds = new Set(snapshot.map((device) => device.id));
     for (const deviceId of ctx.latestBinarySettleEvidenceByDeviceId.keys()) {
@@ -245,22 +236,9 @@ export function reconcileBinarySettleEvidenceWithSnapshot(
     }
 }
 
-export function shouldClearRawEvBinaryEvidenceForStatePayload(
-    ctx: TransportContext,
-    snapshot: TargetDeviceSnapshot,
-    sourceDevice: HomeyDeviceLike,
-): boolean {
-    if (snapshot.controlCapabilityId !== 'evcharger_charging') return false;
-    if (!readCapabilityValue(sourceDevice, 'evcharger_charging_state').present) return false;
-    const evidence = snapshot.binaryControlObservation
-        ?? ctx.latestBinarySettleEvidenceByDeviceId.get(snapshot.id);
-    if (!evidence || evidence.capabilityId !== 'evcharger_charging') return false;
-    return !evidence.observedCapabilityIds.includes('evcharger_charging_state');
-}
-
 export function reconcileBinarySettleEvidenceAfterSnapshotRefresh(
     ctx: TransportContext,
-    snapshot: TargetDeviceSnapshot[],
+    snapshot: TransportDeviceSnapshot[],
     devices: HomeyDeviceLike[],
 ): void {
     const devicesById = new Map<string, HomeyDeviceLike>();
@@ -276,18 +254,13 @@ export function reconcileBinarySettleEvidenceAfterSnapshotRefresh(
             clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
                 deviceId: deviceSnapshot.id,
                 deviceName: deviceSnapshot.name,
-                capabilityId: deviceSnapshot.controlCapabilityId,
+                capabilityId: deviceSnapshot.binaryCapabilityId,
                 source: 'snapshot_refresh',
                 value: readCapabilityValue(
                     sourceDevice,
-                    deviceSnapshot.controlObservationCapabilityId ?? deviceSnapshot.controlCapabilityId,
+                    deviceSnapshot.binaryObservationCapabilityId ?? deviceSnapshot.binaryCapabilityId,
                 ).value,
             });
-            continue;
-        }
-        if (shouldClearRawEvBinaryEvidenceForStatePayload(ctx, deviceSnapshot, sourceDevice)) {
-            clearBinarySettleEvidence(ctx, deviceSnapshot.id);
-            delete deviceSnapshot.binaryControlObservation;
             continue;
         }
         const payload = resolveBinaryControlPayload(sourceDevice, deviceSnapshot, deviceSnapshot);
@@ -308,42 +281,11 @@ export function reconcileBinarySettleEvidenceAfterSnapshotRefresh(
     }
 }
 
-export function applyEvStateSettleEvidenceFromDeviceUpdate(ctx: TransportContext, params: {
-    deviceId: string;
-    device: HomeyDeviceLike;
-    snapshot: TargetDeviceSnapshot;
-}): boolean {
-    const {
-        deviceId,
-        device,
-        snapshot,
-    } = params;
-    if (snapshot.controlCapabilityId !== 'evcharger_charging') return false;
-    const statePayload = readCapabilityValue(device, 'evcharger_charging_state');
-    if (!statePayload.present) return false;
-    const observedValue = resolveEvChargingStateBinaryEvidence(statePayload.value);
-    if (observedValue === undefined || statePayload.observedAtMs === undefined) {
-        clearBinarySettleEvidence(ctx, deviceId);
-        delete snapshot.binaryControlObservation;
-        return true;
-    }
-    const evidence: BinaryControlObservation = {
-        valid: true,
-        capabilityId: 'evcharger_charging',
-        observedValue,
-        observedCapabilityIds: ['evcharger_charging_state'],
-        observedAtMs: statePayload.observedAtMs,
-        source: 'device_update',
-    };
-    persistBinarySettleEvidenceToSnapshot(ctx, snapshot, evidence);
-    return true;
-}
-
 export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext, params: {
     deviceId: string;
     device: HomeyDeviceLike;
-    snapshot: TargetDeviceSnapshot | null;
-    previousSnapshot: TargetDeviceSnapshot | undefined;
+    snapshot: TransportDeviceSnapshot | null;
+    previousSnapshot: TransportDeviceSnapshot | undefined;
     skipInvalidControlPayload?: boolean;
 }): void {
     const {
@@ -370,12 +312,6 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         clearBinarySettleEvidence(ctx, deviceId);
         return;
     }
-    const evStateHandled = applyEvStateSettleEvidenceFromDeviceUpdate(ctx, {
-        deviceId,
-        device,
-        snapshot,
-    });
-    if (evStateHandled) return;
     if (skipInvalidControlPayload) return;
     const payload = resolveBinaryControlPayload(device, snapshot, previousSnapshot);
     if (!payload.present) {
@@ -393,6 +329,10 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         return;
     }
     if (!payload.capabilityId) return;
+    if (isOlderEvCommandObservation(payload, previousSnapshot)) {
+        applyCachedBinarySettleEvidenceToSnapshot(ctx, snapshot);
+        return;
+    }
     if (payload.observedAtMs === undefined) {
         clearContradictoryBinarySettleEvidence(ctx, {
             deviceId,
@@ -415,11 +355,21 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
     applyBinarySettleEvidenceToSnapshot(ctx, snapshot, evidence);
 }
 
+function isOlderEvCommandObservation(
+    payload: ReturnType<typeof resolveBinaryControlPayload>,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+): boolean {
+    return payload.capabilityId === 'evcharger_charging'
+        && payload.observedAtMs !== undefined
+        && previousSnapshot?.evChargingObservedAtMs !== undefined
+        && payload.observedAtMs <= previousSnapshot.evChargingObservedAtMs;
+}
+
 export function clearInvalidBinarySettleEvidenceFromDeviceUpdate(
     ctx: TransportContext,
     deviceId: string,
     device: HomeyDeviceLike,
-    previousSnapshot: TargetDeviceSnapshot | undefined,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
 ): { device: HomeyDeviceLike; hadInvalidBinaryControlPayload: boolean } {
     if (!previousSnapshot) return { device, hadInvalidBinaryControlPayload: false };
     const payload = resolveBinaryControlPayload(device, previousSnapshot, previousSnapshot);
@@ -450,11 +400,9 @@ export function applyBinaryObservationToSnapshot(
         mutableSnapshot.evChargingObservedAtMs = observedAtMs;
         mutableSnapshot.binaryControl = {
             on: resolveEvCurrentOn({
-                evChargingState: mutableSnapshot.evChargingState,
                 evchargerCharging: value,
             }),
         };
-        if (!isRawBinaryObservedTruthEvidenceAllowed(mutableSnapshot, capabilityId)) return;
     } else {
         mutableSnapshot.binaryControl = { on: value };
     }
@@ -491,49 +439,4 @@ export function recordRealtimeCapabilityObservation(ctx: TransportContext, param
         ...(cursor ?? ctx.nextObservationCursor(deviceId)),
         capabilityId: eventCapabilityId,
     });
-}
-
-export function handleFreshnessBinaryObservation(ctx: TransportContext, params: {
-    snapshot: TargetDeviceSnapshot;
-    deviceId: string;
-    eventCapabilityId: string;
-    binaryControlObservation?: BinaryControlObservation;
-}): boolean {
-    const {
-        snapshot,
-        deviceId,
-        eventCapabilityId,
-        binaryControlObservation,
-    } = params;
-    const acceptedObservation = binaryControlObservation
-        ? persistBinarySettleEvidenceToSnapshot(ctx, snapshot, binaryControlObservation)
-        : undefined;
-    if (!acceptedObservation) {
-        if (eventCapabilityId === 'evcharger_charging_state') {
-            clearBinarySettleEvidence(ctx, deviceId);
-            delete snapshot.binaryControlObservation;
-        }
-        return false;
-    }
-    let settleCursor: SettleCursor | undefined;
-    const ensureSettleCursor = (): SettleCursor => {
-        settleCursor ??= ctx.nextObservationCursor(deviceId);
-        return settleCursor;
-    };
-    const settleOutcome = ctx.binarySettleOps.note({
-        state: ctx.binarySettleState,
-        deps: ctx.getBinarySettleDeps(),
-        deviceId,
-        capabilityId: acceptedObservation.capabilityId,
-        value: acceptedObservation.observedValue,
-        source: 'realtime_capability',
-        ensureEventFields: ensureSettleCursor,
-    });
-    if (settleOutcome === 'none') return false;
-    recordRealtimeCapabilityObservation(ctx, {
-        deviceId,
-        eventCapabilityId,
-        observedCapabilityIds: acceptedObservation.observedCapabilityIds,
-    }, false, ensureSettleCursor());
-    return true;
 }

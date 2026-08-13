@@ -204,7 +204,7 @@ export const compactPelsTargetSnapshot = (
     name: snapshot.name,
     deviceType: snapshot.deviceType,
     controlModel: snapshot.controlModel,
-    controlCapabilityId: snapshot.controlCapabilityId,
+    binaryControllable: snapshot.binaryControl !== undefined,
     controlAdapter: snapshot.controlAdapter,
     capabilities: snapshot.capabilities,
     steppedLoadProfile: snapshot.steppedLoadProfile,

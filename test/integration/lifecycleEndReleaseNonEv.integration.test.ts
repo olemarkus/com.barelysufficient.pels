@@ -2,7 +2,7 @@
  * Integration test for the smart-task idle-bucket release executor path for non-EV
  * devices. Mirrors the EaseeMockCharger pattern in `test/integration/evDevices.integration.test.ts`
  * for two non-EV shapes:
- *   1. Binary heater (`controlCapabilityId: 'onoff'`, shedBehavior `turn_off`).
+ *   1. Binary heater (producer-resolved binary control, shedBehavior `turn_off`).
  *   2. Thermostat (`target_temperature` capability, shedBehavior
  *      `set_temperature`).
  *
@@ -65,16 +65,22 @@ type SetCapabilityCall = {
 const buildActuatorTransport = (
   setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>,
 ): ActuatorTransport => ({
-  setCapability,
-  applyDeviceTargets: () => Promise.reject(new Error('applyDeviceTargets not expected in release test')),
-  triggerFlowBackedBinaryControl: () => Promise.reject(new Error('flow binary not expected in release test')),
+  resolveTemperatureTarget: (_deviceId, desired) => desired,
+  requestBinaryControl: async (deviceId, desired) => {
+    await setCapability(deviceId, 'onoff', desired);
+    return undefined;
+  },
+  requestTemperatureTarget: async (deviceId, desired) => {
+    await setCapability(deviceId, 'target_temperature', desired);
+    return desired;
+  },
+  requestSteppedLoadStep: async () => ({ requested: false }),
 });
 
 const buildBinaryHeaterSnapshot = (): TargetDeviceSnapshot => ({
   id: 'heater-1',
   name: 'Mock Binary Heater',
   available: true,
-  controlCapabilityId: 'onoff',
   deviceClass: 'socket',
   deviceType: 'onoff',
   binaryControl: { on: true },
@@ -89,7 +95,6 @@ const buildThermostatSnapshot = (): TargetDeviceSnapshot => ({
   id: 'thermostat-1',
   name: 'Mock Thermostat',
   available: true,
-  controlCapabilityId: 'onoff',
   deviceClass: 'heater',
   deviceType: 'temperature',
   binaryControl: { on: true },
@@ -174,7 +179,7 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     state,
     targetCommandClaim: createTargetCommandClaim(),
     targetCommandOwner: 'ordinary',
-    getObservedState: (id) => snapshots.get(id),
+    getObservedTemperatureValue: (id) => snapshots.get(id)?.targets[0]?.value,
     // The capability-addressed setpoint write routes through the actuator over
     // the same `setCapability`, so `setCapabilityCalls` still observes it.
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
@@ -234,7 +239,7 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     state,
     targetCommandClaim: createTargetCommandClaim(),
     targetCommandOwner: 'ordinary',
-    getObservedState: (id) => snapshots.get(id),
+    getObservedTemperatureValue: (id) => snapshots.get(id)?.targets[0]?.value,
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     operatingMode: 'Home',
     recordShedActuation: () => {},
@@ -405,7 +410,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
 
       const intent = buildIntent(thermostat.id, thermostat.name);
       const observed = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { targetCap: 'target_temperature', observedValue: 22 },
+        target: { target: 'temperature', observedValue: 22 },
       });
       const deps = buildDeps({
         shedBehavior: { action: 'set_temperature', temperature: shedTemperature, stepId: null },
@@ -439,7 +444,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // from the observed-equals-target short-circuit in
       // `applyShedReleaseTemperature`.
       const refreshedObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { targetCap: 'target_temperature', observedValue: shedTemperature },
+        target: { target: 'temperature', observedValue: shedTemperature },
       });
       const secondResult = await applyShedReleaseIntent({
         intent,
@@ -472,7 +477,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
 
       const intent = buildIntent(thermostat.id, thermostat.name);
       const initialObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { targetCap: 'target_temperature', observedValue: 22 },
+        target: { target: 'temperature', observedValue: 22 },
       });
       const deps = buildDeps({
         shedBehavior: { action: 'set_temperature', temperature: shedTemperature, stepId: null },
@@ -492,7 +497,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // in-flight command (observation has not caught up).
       expect(harness.state.pendingTargetCommands[thermostat.id]).toBeDefined();
       expect(harness.state.pendingTargetCommands[thermostat.id]).toMatchObject({
-        capabilityId: 'target_temperature',
+        target: 'temperature',
         desired: shedTemperature,
       });
 
@@ -501,7 +506,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // window. (Production retries on the configured cadence; tests run
       // back-to-back inside the initial-attempt window, so no retry fires.)
       const staleObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { targetCap: 'target_temperature', observedValue: 22 },
+        target: { target: 'temperature', observedValue: 22 },
       });
       await applyShedReleaseIntent({
         intent,

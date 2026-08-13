@@ -194,9 +194,12 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the SDK-boundary behavior this e2e asserts.
     actuator: createDeviceActuator({
-      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
-      applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: async () => undefined,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestBinaryControl: async (deviceId, desired) => {
+        await deviceManager.setCapability(deviceId, 'onoff', desired);
+        return undefined;
+      },
+      requestTemperatureTarget: async (_deviceId, desired) => desired,
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
     getCapacityGuard: () => undefined,
@@ -235,7 +238,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     controllable: true,
     available: true,
     steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     // The device is already calibrated at step 'low'; the deferred objective
     // wants it kept on at low. The only outstanding action is the binary
     // turn-on (the device was turned off externally / is physically off).
@@ -262,7 +265,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
     expect(snapshot.binaryControl?.on).toBe(false);
     expect(snapshot.binaryControlObservation).toBeUndefined();
     expect(snapshot.controlModel).toBe('stepped_load');
-    expect(snapshot.controlCapabilityId).toBe('onoff');
+    expect(snapshot.binaryCapabilityId).toBe('onoff');
     expect(snapshot.reportedStepId).toBe('low');
     expect(snapshot.flowBacked).toBeUndefined();
     expect(snapshot.steppedLoadProfile?.steps.map((step) => step.id))
@@ -297,7 +300,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
       observedValue: false,
     }));
     expect(snapshot.controlModel).toBe('stepped_load');
-    expect(snapshot.controlCapabilityId).toBe('onoff');
+    expect(snapshot.binaryCapabilityId).toBe('onoff');
     expect(snapshot.canSetControl).toBe(true);
     expect(snapshot.reportedStepId).toBe('low');
 

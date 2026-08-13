@@ -185,16 +185,19 @@ describe('createSettingsHandler', () => {
     await flushMicrotasks();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
 
-    const apply = vi.fn(async () => ({ requested: true as const }));
+    const apply = vi.fn(async () => ({ requested: false as const }));
     const actuator = createTemperatureControlFencedActuator(
-      { apply },
+      {
+        apply,
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+      },
       () => temperatureControlDisabled,
     );
     const temperatureToggle = handler(TEMPERATURE_CONTROL_DISABLED_DEVICES);
 
     expect(deps.onTemperatureControlPolicyObserved).toHaveBeenCalledTimes(1);
     await expect(actuator.apply({
-      kind: 'target', deviceId: 'thermostat', capabilityId: 'target_temperature', value: 18,
+      kind: 'target', deviceId: 'thermostat', target: 'temperature', value: 18,
     })).resolves.toEqual({ requested: false });
     await expect(actuator.apply({
       kind: 'step',

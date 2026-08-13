@@ -2,15 +2,12 @@ import type { EvChargingState } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
   isEvChargingState,
-  resolveEvChargingStateBinaryEvidence,
-  resolveEvCurrentOn,
 } from '../managerControl';
 import {
   isStateOfChargeCapabilityId,
   updateStateOfChargeFromRealtimeCapability,
   updateStateOfChargeSessionBoundary,
 } from './stateOfCharge';
-import { formatBinaryState } from './managerRealtimeSupport';
 import type { RealtimeDeviceReconcileChange } from '../managerRuntime';
 import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 
@@ -18,7 +15,6 @@ export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
   normalizedValue: unknown;
   reconcileChange?: RealtimeDeviceReconcileChange;
-  binaryControlObservation?: TransportDeviceSnapshot['binaryControlObservation'];
 };
 
 export function applyFreshnessOnlyCapabilityUpdate(params: {
@@ -89,19 +85,10 @@ function applyEvChargingStateUpdate(
   const mutableSnapshot = snapshot;
   const observedAtMs = Date.now();
   mutableSnapshot.evChargingStateObservedAtMs = observedAtMs;
-  const binaryControlObservation = buildEvChargingStateBinaryControlObservation(value, observedAtMs);
-  if (binaryControlObservation) mutableSnapshot.binaryControlObservation = binaryControlObservation;
-  else delete mutableSnapshot.binaryControlObservation;
   if (Object.is(mutableSnapshot.evChargingState, value)) {
-    return { changed: false, normalizedValue: value, binaryControlObservation };
+    return { changed: false, normalizedValue: value };
   }
-  const previousCurrentOn = mutableSnapshot.binaryControl?.on ?? true;
   mutableSnapshot.evChargingState = value;
-  const nextCurrentOn = resolveEvCurrentOn({
-    evChargingState: mutableSnapshot.evChargingState,
-    evchargerCharging: mutableSnapshot.evCharging,
-  });
-  mutableSnapshot.binaryControl = { on: nextCurrentOn };
   // Session-boundary tracking is only meaningful for a known plug-state; a
   // normalised-unknown (`undefined`) transition has no session semantics.
   if (value !== undefined) {
@@ -114,36 +101,5 @@ function applyEvChargingStateUpdate(
   return {
     changed: true,
     normalizedValue: value,
-    binaryControlObservation,
-    reconcileChange: buildEvChargingStateReconcileChange(previousCurrentOn, nextCurrentOn),
-  };
-}
-
-function buildEvChargingStateReconcileChange(
-  previousCurrentOn: boolean,
-  nextCurrentOn: boolean,
-): RealtimeDeviceReconcileChange | undefined {
-  if (previousCurrentOn === nextCurrentOn) return undefined;
-  return {
-    capabilityId: 'evcharger_charging',
-    observedCapabilityId: 'evcharger_charging_state',
-    previousValue: formatBinaryState(previousCurrentOn),
-    nextValue: formatBinaryState(nextCurrentOn),
-  };
-}
-
-function buildEvChargingStateBinaryControlObservation(
-  value: EvChargingState | undefined,
-  observedAtMs: number,
-): TransportDeviceSnapshot['binaryControlObservation'] {
-  const observedValue = resolveEvChargingStateBinaryEvidence(value);
-  if (observedValue === undefined) return undefined;
-  return {
-    valid: true,
-    capabilityId: 'evcharger_charging',
-    observedValue,
-    observedCapabilityIds: ['evcharger_charging_state'],
-    observedAtMs,
-    source: 'realtime_capability',
   };
 }

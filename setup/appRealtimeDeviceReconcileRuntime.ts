@@ -135,12 +135,12 @@ function buildExternalOffHoldHooks(
 ): ExternalOffHoldReconcileHooks {
   return {
     hasPendingBinaryCommand: subHomeHooks?.hasPendingBinaryCommand
-      ?? ((deviceId, capabilityId) => (
-        ctx.planEngine?.hasPendingBinaryCommandForCapability(deviceId, capabilityId) === true
+      ?? ((deviceId) => (
+        ctx.planEngine?.hasAttributablePendingBinaryCommand(deviceId) === true
       )),
     clearRecentBinaryOffCommand: subHomeHooks?.clearRecentBinaryOffCommand
-      ?? ((deviceId, capabilityId) => {
-        ctx.planEngine?.clearRecentBinaryOffCommandForCapability(deviceId, capabilityId);
+      ?? ((deviceId) => {
+        ctx.planEngine?.clearRecentBinaryOffCommand(deviceId);
       }),
     rebuild: subHomeHooks?.rebuild
       ?? ((reason: string) => ctx.planService?.rebuildPlanFromCache(reason) ?? Promise.resolve()),

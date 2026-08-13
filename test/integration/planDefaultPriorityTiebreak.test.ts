@@ -21,7 +21,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   controllable: true,
   // Real parse output resolves a binary control capability for a sheddable
   // device; shed candidacy gates on writability (`isCanSetControl`).
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
   currentDrawKw: 1.5,
 }) as PlanInputDevice;
@@ -50,7 +50,13 @@ const buildRestoreDevice = (id: string): DevicePlanDevice => ({
   currentDrawKw: 1.5,
   currentState: 'off',
   plannedState: 'keep',
-  controlCapabilityId: 'onoff',
+  currentOn: false,
+  commandableNow: true,
+  expectedPowerKw: 1.5,
+  expectedPowerSource: 'default',
+  reason: { code: 'keep', detail: null },
+  controllable: true,
+  available: true,
   // priority intentionally omitted → default bucket.
 } as DevicePlanDevice);
 

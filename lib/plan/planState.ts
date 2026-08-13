@@ -1,4 +1,4 @@
-import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
+import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
@@ -9,13 +9,12 @@ import type {
 } from './planTypes';
 
 export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
-export type PendingBinaryLogContext = 'capacity' | 'capacity_control_off';
-export type PendingBinaryRestoreSource = 'shed_state' | 'current_plan';
 
 export type PendingTargetCommandState = {
-  capabilityId: string;
+  target: 'temperature';
   desired: number;
   startedMs: number;
+  pendingMs: number;
   lastAttemptMs: number;
   retryCount: number;
   nextRetryAtMs: number;
@@ -216,23 +215,7 @@ export class PlanEngineState {
 
   pendingRestores: Set<string> = new Set<string>();
 
-  pendingBinaryCommands: Record<string, {
-    capabilityId: BinaryControlCapabilityId;
-    desired: boolean;
-    startedMs: number;
-    pendingMs?: number;
-    flowBackedControl?: boolean;
-    logContext?: PendingBinaryLogContext;
-    restoreSource?: PendingBinaryRestoreSource;
-    reason?: string;
-    // True when issued by the smart-task lifecycle-end disable path (not a
-    // capacity shed); routes the deferred flow-backed confirmation through the
-    // diagnostic-only release recorder so it does not stamp the cooldown markers.
-    lifecycleRelease?: boolean;
-    lastObservedValue?: boolean | string;
-    lastObservedSource?: PendingTargetObservationSource;
-    lastObservedAtMs?: number;
-  }> = {};
+  pendingBinaryCommands: Record<string, PendingBinaryCommand> = {};
 
   pendingTargetCommands: Record<string, PendingTargetCommandState> = {};
 

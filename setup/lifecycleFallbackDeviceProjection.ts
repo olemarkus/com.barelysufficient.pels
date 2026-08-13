@@ -26,17 +26,11 @@ export const projectLifecycleFallbackDevice = (
     desiredStepId: device.desiredStepId,
     previousStepId: device.previousStepId,
     stepCommandStatus: device.stepCommandStatus,
-    binaryAxis: isCanSetControl(device) && device.controlCapabilityId !== undefined
-      ? {
-          state: 'writable',
-          descriptor: {
-            controlCapabilityId: device.controlCapabilityId,
-            flowBackedCapabilityIds: device.flowBackedCapabilityIds,
-          },
-        }
+    binaryAxis: isCanSetControl(device)
+      ? { state: 'writable' }
       : { state: 'unavailable' },
     targetAxis: device.temperatureControlDisabled !== true && targetDescriptor
-      ? { state: 'writable', descriptor: targetDescriptor }
+      ? { state: 'writable', target: 'temperature' }
       : { state: 'unavailable' },
     stepAxis: device.temperatureControlDisabled !== true && device.steppedLoadProfile
       ? { state: 'writable', profile: device.steppedLoadProfile }

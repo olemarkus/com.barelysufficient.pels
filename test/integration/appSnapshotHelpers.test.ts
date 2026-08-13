@@ -217,6 +217,7 @@ describe('appSnapshotHelpers', () => {
         ...snapshot[0],
         managed: true,
         controllable: true,
+        currentOn: true,
         // Stamped by `withHeadroomCurrentOn`, the producer boundary for devices
         // that reach the usage math straight off the transport.
         currentDrawKw: 1.2,

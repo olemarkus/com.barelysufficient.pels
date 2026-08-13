@@ -31,7 +31,6 @@ const heaterAt = (
   currentTemperature: 61.5,
   currentTarget: 65,
   plannedState: 'keep',
-  controlCapabilityId: 'onoff',
   ...overrides,
 });
 

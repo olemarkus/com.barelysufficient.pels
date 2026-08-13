@@ -69,7 +69,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
@@ -81,15 +81,14 @@ describe('executorConvergence stepped device drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-2',
         name: 'Heater',
-        binaryControl: { on: false },
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
@@ -101,15 +100,14 @@ describe('executorConvergence stepped device drift', () => {
         deviceType: 'temperature',
         currentState: 'not_applicable',
         plannedState: 'keep',
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-2',
         name: 'Heater',
-        binaryControl: { on: false },
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       })];
 
@@ -125,7 +123,7 @@ describe('executorConvergence stepped device drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
         pendingTargetCommand: {
@@ -138,8 +136,7 @@ describe('executorConvergence stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-2',
         name: 'Heater',
-        binaryControl: { on: false },
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       })];
 
@@ -151,7 +148,7 @@ describe('executorConvergence stepped device drift', () => {
         deviceType: 'temperature',
         currentState: 'not_applicable',
         plannedState: 'keep',
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
         pendingTargetCommand: {
@@ -165,7 +162,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       })];
 
@@ -181,7 +178,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryCommandPending: true,
         binaryCommandPendingDesired: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -199,7 +196,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         binaryCommandPending: true,
         binaryCommandPendingDesired: false,
@@ -218,7 +215,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
@@ -232,7 +229,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         binaryControl: { on: false },
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         targets: [],
       })];
@@ -246,7 +243,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         binaryControl: { on: true },
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         binaryCommandPending: true,
         binaryCommandPendingDesired: true,
@@ -265,7 +262,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         binaryControl: { on: true },
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
         targets: [],
       })];
@@ -282,7 +279,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         binaryControl: { on: true },
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
         binaryCommandPending: true,
         binaryCommandPendingDesired: false,
@@ -302,7 +299,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         controllable: false,
       })];
@@ -324,7 +321,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         // Stale observation still counts as evidence — `binaryControlObservation`
         // is present, just old; the live off-read drives drift against the plan's on.
         binaryControlObservation: buildBinaryObservation('onoff', false),
@@ -386,7 +383,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         selectedStepId: 'off',
         desiredStepId: 'low',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
@@ -412,7 +409,7 @@ describe('executorConvergence stepped device drift', () => {
         shedAction: 'turn_off',
         selectedStepId: 'max',
         desiredStepId: 'off',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
@@ -435,7 +432,7 @@ describe('executorConvergence stepped device drift', () => {
         shedAction: 'turn_off',
         selectedStepId: 'off',
         desiredStepId: 'off',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
@@ -457,7 +454,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         selectedStepId: 'off',
         desiredStepId: 'low',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
@@ -555,7 +552,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
@@ -636,7 +633,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: true },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         expectedPowerKw: 2,
         currentDrawKw: 2,
@@ -659,7 +656,7 @@ describe('executorConvergence stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
       })];
 
@@ -687,7 +684,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       plannedState: 'shed' as const,
       currentTarget: null,
       controllable: true,
-      controlCapabilityId: 'onoff' as const,
+      binaryCapabilityId: 'onoff' as const,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'low',
@@ -707,7 +704,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       plannedState: 'keep' as const,
       currentTarget: null,
       controllable: true,
-      controlCapabilityId: 'onoff' as const,
+      binaryCapabilityId: 'onoff' as const,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'low',

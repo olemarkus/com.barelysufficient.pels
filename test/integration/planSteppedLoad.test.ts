@@ -106,7 +106,7 @@ describe('planSteppedLoad', () => {
       plannedState: 'keep',
       selectedStepId: 'off',
       desiredStepId: 'max',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
     }));
 
     expect(transition?.effectiveTransition).toBe('restore_from_off_at_low');
@@ -120,7 +120,7 @@ describe('planSteppedLoad', () => {
       plannedState: 'keep',
       selectedStepId: 'low',
       desiredStepId: 'max',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
     }));
 
     expect(transition?.effectiveTransition).toBe('restore_from_off_at_low');
@@ -404,7 +404,7 @@ describe('planSteppedLoad', () => {
       toStepId: 'low',
     })).toBeCloseTo(1.25, 6);
     expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedInputDevice({ selectedStepId: 'low', currentDrawKw: 0.5, controlCapabilityId: undefined }),
+      device: steppedInputDevice({ selectedStepId: 'low', currentDrawKw: 0.5, binaryCapabilityId: undefined }),
       toStepId: 'off',
     })).toBeCloseTo(0.5, 6);
     expect(resolveSteppedLoadImmediateReliefKw({

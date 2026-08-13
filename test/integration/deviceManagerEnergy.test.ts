@@ -5,7 +5,6 @@ import {
   extractLiveMeterPowerWatts,
 } from '../../lib/device/managerEnergy';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
-import { applyDeviceTargets } from '../../lib/device/transport/deviceWrites';
 import { mockHomeyInstance } from '../mocks/homey';
 import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import {
@@ -411,26 +410,6 @@ describe('resolved home meter identity on the sample', () => {
 
     expect(getEnergyLiveReport).not.toHaveBeenCalled();
     expect(sample).toBeNull();
-  });
-
-  // `applyDeviceTargets` ends with its own `ctx.refreshSnapshot()` whose return
-  // value is DROPPED — nothing records that read's whole-home sample, so its
-  // identity claim is dropped with it. Structural: the test pins that the tail
-  // call ignores the returned sample rather than forwarding it anywhere.
-  it('drops the post-write re-read sample (and its identity) on the floor', async () => {
-    const refreshSnapshot = vi.fn().mockResolvedValue(
-      { powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' },
-    );
-    const ctx = {
-      logger,
-      isSdkReady: () => true,
-      latestSnapshot: [],
-      refreshSnapshot,
-    } as unknown as TransportContext;
-
-    await expect(applyDeviceTargets(ctx, { 'dev-1': 21 }, 'test')).resolves.toBeUndefined();
-
-    expect(refreshSnapshot).toHaveBeenCalledTimes(1);
   });
 
   // The arrangement observation RIDES THE SAMPLE (same admitted ingest as the

@@ -1,3 +1,8 @@
+import {
+  resolveControlCommandConfirmationMs,
+  type CommunicationModel,
+} from './controlCommandConfirmation';
+
 /**
  * Observer-owned pending-binary-command types and freshness predicates.
  *
@@ -16,8 +21,6 @@
  * observer remains a leaf (cruiser rule `no-observer-to-peer`).
  */
 
-import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
-
 /**
  * Observation sources that can settle a pending command. Identical to
  * `PendingTargetObservationSource` in `lib/plan/planTypes.ts`; defined
@@ -30,26 +33,14 @@ export type PendingObservationSource =
   | 'realtime_capability'
   | 'device_update';
 
-/**
- * Default local-device confirmation window. Mirrors the pre-split
- * `BINARY_COMMAND_PENDING_MS` constant from `lib/plan/planConstants.ts`,
- * which still re-exports the same number for legacy callers.
- */
-export const BINARY_COMMAND_PENDING_MS = 15000;
-export const CLOUD_BINARY_COMMAND_PENDING_MS = 75 * 1000;
-export const EV_START_COMMAND_PENDING_MS = 90 * 1000;
-
-export type CommunicationModel = 'local' | 'cloud' | undefined;
-
 export type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
 export type PendingBinaryCommandRestoreSource = 'shed_state' | 'current_plan';
 
 export type PendingBinaryCommand = {
-  capabilityId: BinaryControlCapabilityId;
+  dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
   startedMs: number;
-  pendingMs?: number;
-  flowBackedControl?: boolean;
+  pendingMs: number;
   logContext?: PendingBinaryCommandLogContext;
   restoreSource?: PendingBinaryCommandRestoreSource;
   reason?: string;
@@ -68,23 +59,21 @@ export type PendingBinaryCommand = {
 };
 
 
-export function resolveBinaryCommandPendingMs(communicationModel?: CommunicationModel): number {
-  return communicationModel === 'cloud' ? CLOUD_BINARY_COMMAND_PENDING_MS : BINARY_COMMAND_PENDING_MS;
+export function resolveBinaryCommandPendingMs(communicationModel: CommunicationModel): number {
+  return resolveControlCommandConfirmationMs(communicationModel);
 }
 
 export function getPendingBinaryCommandWindowMs(
   pending: PendingBinaryCommand,
-  communicationModel?: CommunicationModel,
 ): number {
-  return pending.pendingMs ?? resolveBinaryCommandPendingMs(communicationModel);
+  return pending.pendingMs;
 }
 
 export function isPendingBinaryCommandActive(params: {
   pending?: PendingBinaryCommand;
   nowMs?: number;
-  communicationModel?: CommunicationModel;
 }): boolean {
-  const { pending, nowMs = Date.now(), communicationModel } = params;
+  const { pending, nowMs = Date.now() } = params;
   if (!pending) return false;
-  return (nowMs - pending.startedMs) < getPendingBinaryCommandWindowMs(pending, communicationModel);
+  return (nowMs - pending.startedMs) < getPendingBinaryCommandWindowMs(pending);
 }

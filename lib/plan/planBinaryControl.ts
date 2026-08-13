@@ -5,7 +5,6 @@ import {
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
-  isFlowBackedBinaryControl,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
 // `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts` as
@@ -66,14 +65,10 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   }
   if (!controlPlan) return null;
 
-  const flowBackedControl = isFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
-
   return {
     deviceId,
     name,
-    capabilityId: controlPlan.capabilityId,
     desired,
-    flowBackedControl,
     logContext,
     restoreSource,
     reason,

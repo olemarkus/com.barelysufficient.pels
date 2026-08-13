@@ -28,6 +28,7 @@ const makeDevice = (
     & {
       reason?: DevicePlanDevice['reason'] | string;
       evChargingState?: string;
+      binaryCapabilityId?: string;
     },
 ): DevicePlanDevice => {
   const { binaryControl, ...rest } = overrides;
@@ -35,7 +36,7 @@ const makeDevice = (
     // `makeDevice` defaults `currentState` to `'off'`; `buildPlanDevice` defaults
     // to `'on'`, so set it explicitly before the spread can override it.
     currentState: 'off',
-    controlCapabilityId: 'onoff',
+    binaryCapabilityId: 'onoff',
     ...rest,
   });
   if (binaryControl === undefined) return device;
@@ -184,7 +185,7 @@ describe('plan restore device helpers', () => {
         id: 'no-binary-step',
         priority: 7,
         currentState: 'on',
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -199,7 +200,7 @@ describe('plan restore device helpers', () => {
     ];
 
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off', 'stale-off']);
-    // `no-binary-step` (a stepped device with no `controlCapabilityId`, e.g. a
+    // `no-binary-step` (a stepped device with no `binaryCapabilityId`, e.g. a
     // target-power load) carries no binary `currentOn`, but on/off is still a real
     // question answered by the STEP axis: parked at an active, below-highest step it
     // is restore-eligible (step it up), exactly as the retired `isObservedOn` resolved
@@ -215,7 +216,7 @@ describe('plan restore device helpers', () => {
   });
 
   it('classifies a step-only stepped device (no binary handle) for restore via the step axis', () => {
-    // A target-power stepped load has no `controlCapabilityId`/`currentOn`, so its
+    // A target-power stepped load has no `binaryCapabilityId`/`currentOn`, so its
     // restore eligibility comes from the STEP axis (mirrors the retired
     // `isObservedOff`/`isObservedOn`): off step ⇒ restore from off; active but
     // below-highest step ⇒ step up; highest step ⇒ nothing to restore. Without this
@@ -231,7 +232,7 @@ describe('plan restore device helpers', () => {
       makeDevice({
         id: `step-only-${selectedStepId}`,
         priority: 1,
-        controlCapabilityId: undefined,
+        binaryCapabilityId: undefined,
         currentState,
         steppedLoadProfile: steppedProfile,
         selectedStepId,
@@ -252,12 +253,18 @@ describe('plan restore device helpers', () => {
 
   it('uses generic producer commandability to mark off devices as staying off', () => {
     expect(reasonText(getInactiveReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
+      objectiveKind: 'ev_soc',
+      objectiveSessionInactive: true,
+      commandableNow: false,
+      commandabilityReason: 'charger_unplugged',
     })) ?? undefined)).toBe('inactive (charger is unplugged)');
     expect(getInactiveReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
+      objectiveKind: 'ev_soc',
+      commandableNow: true,
       expectedPowerSource: 'default',
     }))).toBeNull();
 
@@ -267,8 +274,12 @@ describe('plan restore device helpers', () => {
       ['ev1', makeDevice({
         id: 'ev1',
         name: 'EV 1',
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_out',
+        objectiveKind: 'ev_soc',
+        objectiveSessionInactive: true,
+        commandableNow: false,
+        commandabilityReason: 'charger_unplugged',
         expectedPowerSource: 'load-setting',
       })],
     ]);
@@ -354,7 +365,7 @@ describe('plan restore device helpers', () => {
     const inactiveSteppedEv = makeDevice({
       id: 'inactive-stepped-ev',
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       currentState: 'off',
       plannedState: 'inactive',
       evChargingState: 'plugged_out',

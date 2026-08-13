@@ -8,7 +8,7 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ currentDrawK
   name: 'Device',
   commandableNow: true,
   targets: [],
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   binaryControl: { on: false },
   controllable: true,
 }) as PlanInputDevice;

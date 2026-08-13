@@ -4,7 +4,7 @@ import {
   resolveEvBoostBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
 
-const EV = { controlCapabilityId: 'evcharger_charging' as const };
+const EV = { deviceClass: 'evcharger' as const };
 
 describe('resolveEvBoostBlockReason', () => {
   it('blocks the two plug-states PELS cannot drive toward a charge', () => {

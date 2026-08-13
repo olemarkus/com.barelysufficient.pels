@@ -94,9 +94,8 @@ Post-release executor boundary rollout:
   say what state PELS wants for each device; it should not encode whether the command is native,
   flow-backed, or otherwise transported.
 - `DeviceTransport` owns observed current state and device-specific actuation transport. Native
-  stepped-load capabilities, stepped-load flow requests, synthetic capability reporting, and Homey
-  write details belong behind that boundary. Flow-backed binary control is still transitional in
-  plan/executor code until that boundary moves separately.
+  binary/stepped capabilities, Flow requests, synthetic capability reporting, and Homey write
+  details belong behind that boundary. Plan/executor carry semantic commands only.
 - `lib/executor` owns desired-state execution: compare observed current state with desired state,
   issue the needed request through `DeviceTransport`, and handle pending, retry, wait, skip, and
   materialization behavior.
@@ -165,14 +164,12 @@ owns the on/off fold (`resolveCurrentOn` is `!(binaryOff || steppedOff)`), so a 
 step never resurrects an off device. See `snapshot-decomposition.md` for the disjointness argument
 that keeps this clear of the stepped shed-release dispatch path.
 
-The pending-binary-command admission rule (suppressing the snapshot echo of an in-flight binary
-write) lives in transport's parse pipeline. As of PR #4 of the observer/transport split
-(`notes/state-management/observer-transport-split.md`), transport consults that rule through an
-injected `pendingPredicate(deviceId, capabilityId)` callback supplied by wiring (`lib/app/`); the
-predicate is backed by observer's binarySettle store. Transport keeps the parse-pipeline location
-— the change is who owns the state the predicate reads. PR #5 added an analogous
-`observedStateDispatcher` callback for the post-translation event fan-out (observer owns the
-emitter, transport never statically imports observer).
+Pending binary confirmation is observer-owned and keyed only by device plus desired on/off state.
+The planner and executor never receive capability identifiers or EV-specific settlement state.
+Transport privately translates semantic commands to native capabilities or Flow cards; accepted
+dispatch records intent but does not alter observed truth. Normalized snapshot/realtime telemetry
+confirms the command within 90 seconds locally or 3 minutes for cloud devices. The injected
+`observedStateDispatcher` handles post-translation event fan-out without a static transport-to-observer import.
 
 Legacy compatibility fields may still exist in older snapshots and plans while migration is in
 progress:

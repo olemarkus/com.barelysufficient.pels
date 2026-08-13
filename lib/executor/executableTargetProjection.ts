@@ -20,6 +20,7 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
     deviceId: dev.id,
     name: dev.name,
     desired: plannedTarget,
+    communicationModel: dev.communicationModel,
     purpose: dev.plannedState === 'shed' && dev.shedAction === 'set_temperature'
       ? 'shed_temperature'
       : 'target_update',
@@ -54,9 +55,10 @@ export function buildExecutableTargetCommand(
   return {
     deviceId: intent.deviceId,
     name: intent.name,
-    targetCap: observed.target.targetCap,
+    target: 'temperature',
     desired: intent.desired,
     observedValue: observed.target.observedValue,
+    communicationModel: intent.communicationModel,
   };
 }
 

@@ -1,4 +1,3 @@
-import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
@@ -25,7 +24,7 @@ type PlanActionHandleResult = {
 
 type TargetCommandDispatchResult =
   | { applied: false; reason: 'skipped' | 'failed' | 'not_requested' }
-  | { applied: true; attemptType: 'send' | 'retry' };
+  | { applied: true; attemptType: 'send' | 'retry'; requestedValue: number };
 
 const resolveTargetCommandReasonCode = (params: {
   isRestoring: boolean;
@@ -53,9 +52,10 @@ export const applyShedTemperaturePlan = async (
     const result = await dispatchTargetCommand(ctx, {
       deviceId: action.deviceId,
       name: action.name,
-      targetCap: action.targetCap,
+      target: action.target,
       desired: action.desired,
       observedValue: action.observedValue,
+      communicationModel: action.communicationModel,
       skipContext: 'shedding',
     });
     if (!result.applied) return { handled: true, wrote: false };
@@ -63,8 +63,8 @@ export const applyShedTemperaturePlan = async (
       event: 'target_command_applied',
       deviceId: action.deviceId,
       deviceName: action.name,
-      capabilityId: action.targetCap,
-      targetValue: action.desired,
+      target: action.target,
+      targetValue: result.requestedValue,
       previousValue: action.observedValue ?? null,
       attemptType: result.attemptType,
       reasonCode: 'shedding',
@@ -96,7 +96,7 @@ export const trySetShedTemperature = async (
   params: {
     deviceId: string;
     name: string;
-    targetCap: string | undefined;
+    target: 'temperature' | undefined;
     shedTemp: number | null;
     canSetShedTemp: boolean;
   },
@@ -104,19 +104,18 @@ export const trySetShedTemperature = async (
   const {
     deviceId,
     name,
-    targetCap,
+    target,
     shedTemp,
     canSetShedTemp,
   } = params;
-  if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
+  if (!canSetShedTemp || !target || shedTemp === null) return { handled: false, wrote: false };
   const now = Date.now();
   try {
-    const observedValue = ctx.getObservedState(deviceId)
-      ?.targets?.find((entry) => entry.id === targetCap)?.value;
+    const observedValue = ctx.getObservedTemperatureValue(deviceId);
     const result = await dispatchTargetCommand(ctx, {
       deviceId,
       name,
-      targetCap,
+      target,
       desired: shedTemp,
       observedValue,
       skipContext: 'shedding',
@@ -126,8 +125,8 @@ export const trySetShedTemperature = async (
       event: 'target_command_applied',
       deviceId,
       deviceName: name,
-      capabilityId: targetCap,
-      targetValue: shedTemp,
+      target,
+      targetValue: result.requestedValue,
       previousValue: observedValue ?? null,
       attemptType: result.attemptType,
       reasonCode: 'shedding',
@@ -149,9 +148,10 @@ export const dispatchTargetCommand = async (
   params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     observedValue?: unknown;
+    communicationModel?: 'local' | 'cloud';
     skipContext: 'plan' | 'shedding' | 'overshoot';
     forceAgainstReleasedOpposing?: boolean;
   },
@@ -159,21 +159,22 @@ export const dispatchTargetCommand = async (
   const {
     deviceId,
     name,
-    targetCap,
-    desired: rawDesired,
+    target,
+    desired,
     observedValue,
+    communicationModel,
     skipContext,
     forceAgainstReleasedOpposing,
   } = params;
-  const target = ctx.getObservedState(deviceId)?.targets?.find((entry) => entry.id === targetCap);
-  const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
-  const latestObservedValue = target?.value;
+  const resolvedDesired = ctx.actuator.resolveTemperatureTarget(deviceId, desired);
+  const latestObservedValue = ctx.getObservedTemperatureValue(deviceId);
   const preflightResult = handleTargetCommandPreflight(ctx, {
     deviceId,
     name,
-    targetCap,
-    desired,
+    target,
+    desired: resolvedDesired,
     latestObservedValue,
+    communicationModel,
     skipContext,
     forceAgainstReleasedOpposing,
   });
@@ -183,9 +184,9 @@ export const dispatchTargetCommand = async (
   }
   if (!ctx.targetCommandClaim.acquire(
     deviceId,
-    targetCap,
+    target,
     ctx.targetCommandOwner,
-    desired,
+    resolvedDesired,
     ctx.onTargetCommandClaimReleased,
   )) {
     return { applied: false, reason: 'skipped' };
@@ -195,20 +196,21 @@ export const dispatchTargetCommand = async (
     result = await executeTargetCommandDispatch(ctx, {
       deviceId,
       name,
-      targetCap,
-      desired,
+      target,
+      desired: resolvedDesired,
       observedValue,
       skipContext,
       latestObservedValue,
       decisionType: preflightResult.decisionType,
+      communicationModel,
     });
     return result;
   } finally {
     ctx.targetCommandClaim.release(
       deviceId,
-      targetCap,
+      target,
       ctx.targetCommandOwner,
-      desired,
+      resolvedDesired,
       result.applied,
     );
   }
@@ -223,9 +225,10 @@ const applyTargetUpdatePlan = async (
     const result = await dispatchTargetCommand(ctx, {
       deviceId: action.deviceId,
       name: action.name,
-      targetCap: action.targetCap,
+      target: action.target,
       desired: action.desired,
       observedValue: action.observedValue,
+      communicationModel: action.communicationModel,
       skipContext: 'plan',
       forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
     });
@@ -234,8 +237,8 @@ const applyTargetUpdatePlan = async (
       event: 'target_command_applied',
       deviceId: action.deviceId,
       deviceName: action.name,
-      capabilityId: action.targetCap,
-      targetValue: action.desired,
+      target: action.target,
+      targetValue: result.requestedValue,
       previousValue: action.observedValue ?? null,
       attemptType: result.attemptType,
       reasonCode: resolveTargetCommandReasonCode({
@@ -254,7 +257,7 @@ const applyTargetUpdatePlan = async (
   } catch (error) {
     logger.error({
       event: 'executor_target_error',
-      msg: `Failed to set ${action.targetCap} for ${action.name} via DeviceTransport`,
+      msg: `Failed to set ${action.target} for ${action.name} via DeviceTransport`,
       err: error,
     });
     return false;
@@ -266,9 +269,10 @@ const handleTargetCommandPreflight = (
   params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     latestObservedValue: unknown;
+    communicationModel?: 'local' | 'cloud';
     skipContext: 'plan' | 'shedding' | 'overshoot';
     forceAgainstReleasedOpposing?: boolean;
   },
@@ -276,7 +280,7 @@ const handleTargetCommandPreflight = (
   const {
     deviceId,
     name,
-    targetCap,
+    target,
     desired,
     latestObservedValue,
     skipContext,
@@ -288,20 +292,20 @@ const handleTargetCommandPreflight = (
       reasonCode: 'already_matched',
       deviceId,
       deviceName: name,
-      capabilityId: targetCap,
+      target,
       desired,
       observedValue: latestObservedValue ?? null,
       skipContext,
     });
     logger.debug({
       event: 'executor_target_log_debug',
-      msg: `Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`,
+      msg: `Capacity: skip ${target} for ${name}, already ${desired}°C in current snapshot`,
     });
     return { type: 'skip', result: { applied: false, reason: 'skipped' } };
   }
   const lifecycleOwnedPending = ctx.getLifecycleOwnedPendingTargetCommand?.(deviceId);
   if (
-    lifecycleOwnedPending?.capabilityId === targetCap
+    lifecycleOwnedPending?.target === target
     && lifecycleOwnedPending.desired === desired
   ) {
     logger.debug({
@@ -309,7 +313,7 @@ const handleTargetCommandPreflight = (
       reasonCode: 'lifecycle_owned',
       deviceId,
       deviceName: name,
-      capabilityId: targetCap,
+      target,
       desired,
       retryCount: lifecycleOwnedPending.retryCount,
       skipContext,
@@ -323,7 +327,6 @@ const handleTargetCommandPreflight = (
   const decision = getPendingTargetCommandDecision({
     state: ctx.state,
     deviceId,
-    capabilityId: targetCap,
     desired,
     nowMs,
   });
@@ -336,7 +339,7 @@ const handleTargetCommandPreflight = (
     reasonCode: resolveTargetCommandSkipReasonCode(decision.pending.status),
     deviceId,
     deviceName: name,
-    capabilityId: targetCap,
+      target,
     desired,
     retryCount: decision.pending.retryCount,
     remainingMs: decision.remainingMs,
@@ -345,13 +348,13 @@ const handleTargetCommandPreflight = (
   if (decision.pending.status === 'temporary_unavailable') {
     logger.debug({
       event: 'executor_target_log_debug',
-      msg: `Capacity: skip ${targetCap} for ${name}, device temporarily unavailable `
+      msg: `Capacity: skip ${target} for ${name}, device temporarily unavailable `
         + `for ${remainingSec}s before retry (${skipContext})`,
     });
   } else {
     logger.debug({
       event: 'executor_target_log_debug',
-      msg: `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
+      msg: `Capacity: skip ${target} for ${name}, waiting ${remainingSec}s `
         + `for ${desired}°C confirmation (${skipContext})`,
     });
   }
@@ -363,45 +366,94 @@ const executeTargetCommandDispatch = async (
   params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     observedValue?: unknown;
     skipContext: 'plan' | 'shedding' | 'overshoot';
     latestObservedValue: unknown;
     decisionType: 'send' | 'retry';
+    communicationModel?: 'local' | 'cloud';
   },
 ): Promise<TargetCommandDispatchResult> => {
   const {
     deviceId,
     name,
-    targetCap,
+    target,
     desired,
     observedValue,
     skipContext,
     latestObservedValue,
     decisionType,
+    communicationModel,
   } = params;
   const nowMs = Date.now();
   try {
     const outcome = await ctx.actuator.apply({
       kind: 'target',
       deviceId,
-      ...(targetCap.startsWith('target_temperature') ? { targetKind: 'temperature' as const } : {}),
-      capabilityId: targetCap,
+      target: 'temperature',
       value: desired,
     });
     if (!outcome.requested) return { applied: false, reason: 'not_requested' };
+    if (outcome.kind !== 'target') {
+      throw new Error(`Target actuator returned ${outcome.kind} outcome for ${deviceId}`);
+    }
     if (ctx.isTargetCommandAuthorityCurrent?.() === false) {
       return { applied: false, reason: 'skipped' };
     }
+    const requestedValue = outcome.requestedTargetValue;
+    const pending = recordPendingTargetCommandAttempt({
+      state: ctx.state,
+      deviceId,
+      target,
+      desired: requestedValue,
+      nowMs,
+      observedValue: latestObservedValue ?? observedValue,
+      communicationModel,
+    });
+    const {
+      latestObservedValueAfterActuation,
+      pendingStillExists,
+    } = await syncPendingTargetCommandAfterActuation(ctx, {
+      deviceId,
+      name,
+      target: 'temperature',
+      desired: requestedValue,
+    });
+    const retryDelaySec = Math.max(1, Math.ceil((pending.nextRetryAtMs - nowMs) / 1000));
+    if (
+      decisionType === 'retry'
+      && pendingStillExists
+      && !Object.is(latestObservedValueAfterActuation, requestedValue)
+    ) {
+      await logPendingTargetRetry(ctx, {
+        deviceId,
+        name,
+        target: 'temperature',
+        desired: requestedValue,
+        retryCount: pending.retryCount,
+        retryDelaySec,
+        observedValue: pending.lastObservedValue,
+        observedSource: pending.lastObservedSource,
+        skipContext,
+      });
+    } else if (pendingStillExists) {
+      logger.debug({
+        event: 'executor_target_log_debug',
+        msg: `Capacity: awaiting ${target} confirmation for ${name} at ${requestedValue}°C `
+          + `(next retry in ${retryDelaySec}s)`,
+      });
+    }
+    return { applied: true, attemptType: decisionType, requestedValue };
   } catch (error) {
     const failedPending = recordFailedPendingTargetCommandAttempt({
       state: ctx.state,
       deviceId,
-      capabilityId: targetCap,
+      target,
       desired,
       nowMs,
       observedValue: latestObservedValue ?? observedValue,
+      communicationModel,
     });
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
     logger.error({
@@ -409,61 +461,20 @@ const executeTargetCommandDispatch = async (
       reasonCode: 'device_manager_write_failed',
       deviceId,
       deviceName: name,
-      capabilityId: targetCap,
+      target,
       desired,
       skipContext,
     });
     logger.info({
       event: 'executor_target_log',
-      msg: `Failed to set ${targetCap} for ${name}; treating device as temporarily unavailable `
+      msg: `Failed to set ${target} for ${name}; treating device as temporarily unavailable `
         + `for ${retryDelaySec}s before retry`,
     });
     logger.error({
       event: 'executor_target_error',
-      msg: `Failed to set ${targetCap} for ${name} via DeviceTransport`,
+      msg: `Failed to set ${target} for ${name} via DeviceTransport`,
       err: error,
     });
     return { applied: false, reason: 'failed' };
   }
-  const pending = recordPendingTargetCommandAttempt({
-    state: ctx.state,
-    deviceId,
-    capabilityId: targetCap,
-    desired,
-    nowMs,
-    observedValue: latestObservedValue ?? observedValue,
-  });
-  const {
-    latestObservedValueAfterActuation,
-    pendingStillExists,
-  } = await syncPendingTargetCommandAfterActuation(ctx, {
-    deviceId,
-    name,
-    targetCap,
-    desired,
-  });
-  const retryDelaySec = Math.max(1, Math.ceil((pending.nextRetryAtMs - nowMs) / 1000));
-  if (decisionType === 'retry' && pendingStillExists && !Object.is(latestObservedValueAfterActuation, desired)) {
-    await logPendingTargetRetry(ctx, {
-      deviceId,
-      name,
-      targetCap,
-      desired,
-      retryCount: pending.retryCount,
-      retryDelaySec,
-      observedValue: pending.lastObservedValue,
-      observedSource: pending.lastObservedSource,
-      skipContext,
-    });
-  } else if (pendingStillExists) {
-    logger.debug({
-      event: 'executor_target_log_debug',
-      msg: `Capacity: awaiting ${targetCap} confirmation for ${name} at ${desired}°C `
-        + `(next retry in ${retryDelaySec}s)`,
-    });
-  }
-  return {
-    applied: true,
-    attemptType: decisionType,
-  };
 };

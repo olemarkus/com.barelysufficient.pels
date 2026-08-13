@@ -15,12 +15,10 @@ describe('plan state resolution', () => {
     expect(resolveObservedCurrentState({
       steppedLoadProfile: profile,
       selectedStepId: 'low',
-      controlCapabilityId: undefined,
     })).toBe('on');
     expect(resolveObservedCurrentState({
       steppedLoadProfile: profile,
       selectedStepId: 'step_0',
-      controlCapabilityId: undefined,
     })).toBe('off');
   });
 
@@ -30,35 +28,24 @@ describe('plan state resolution', () => {
         steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
       },
       selectedStepId: undefined,
-      controlCapabilityId: undefined,
     })).toBe('not_applicable');
   });
 
   it('returns not_applicable for fresh devices without binary control', () => {
-    expect(resolveObservedCurrentState({
-      binaryControl: { on: true },
-      controlCapabilityId: undefined,
-    })).toBe('not_applicable');
+    expect(resolveObservedCurrentState({})).toBe('not_applicable');
   });
 
   it('returns not_applicable for fresh devices without binary control when currentOn is false', () => {
-    expect(resolveObservedCurrentState({
-      binaryControl: { on: false },
-      controlCapabilityId: undefined,
-    })).toBe('not_applicable');
+    expect(resolveObservedCurrentState({})).toBe('not_applicable');
   });
 
   it('returns not_applicable for a device without binary capability (structural, not staleness)', () => {
-    expect(resolveObservedCurrentState({
-      binaryControl: { on: false },
-      controlCapabilityId: undefined,
-    })).toBe('not_applicable');
+    expect(resolveObservedCurrentState({})).toBe('not_applicable');
   });
 
   it('resolves a binary device to its latched off label — never unknown from staleness', () => {
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
-      controlCapabilityId: 'onoff',
     })).toBe('off');
   });
 });

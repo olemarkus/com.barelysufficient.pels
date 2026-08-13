@@ -93,7 +93,15 @@ type Rig = { ctx: AppContext; registry: HomeRuntimeRegistry };
 const buildRig = (): Rig => {
   const ctx = createAppContextMock({
     homey: homeyLike,
-    deviceManager: { getSnapshot: () => [] } as unknown as AppContext['deviceManager'],
+    deviceManager: {
+      getSnapshot: () => [],
+      getBinaryCommandConfirmationSnapshot: () => [],
+      getAssociatedCar: () => undefined,
+      requestBinaryControl: vi.fn(async () => undefined),
+      requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
+      requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
+    } as unknown as AppContext['deviceManager'],
     latestTargetSnapshot: [],
     // Route the mock's structured-log seam to the REAL root logger so the
     // shared captureLogger helper observes the accessor's transition events.

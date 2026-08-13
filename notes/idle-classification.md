@@ -15,9 +15,9 @@ a false-missed verdict — the planner itself doesn't read the classification.
 
 | State | Meaning | UI | Log event | Producer effect |
 |-------|---------|----|-----------|-----------------|
-| `near_target_idle` | Device has stopped drawing while close to or above its setpoint. Normal behaviour — the device's own controller (water-heater stratification, thermostat hysteresis) decided to hold. | Quiet on the temperature card: the existing temperature/target fact line is sufficient. No reason line or chip. | `device_near_target_idle_started` / `..._cleared` | Promotes deferred-objective run to `met` with `metReason: 'stalled'`. |
+| `near_target_idle` | Device has stopped drawing while close to or above its setpoint. Normal behaviour — the device's own controller (water-heater stratification, thermostat hysteresis) decided to hold. | Quiet on the temperature card: the existing temperature/target fact line is sufficient. No reason line or chip. | `device_near_target_idle_started` / `..._cleared` | Promotes a deferred-objective run to `met` with `metReason: 'stalled'` only when the setpoint classified by the observer is at least that objective's target. |
 | `unresponsive` | Device is below setpoint and drawing nothing for an extended period. Almost always the device's own controller pausing between cycles (anti-cycle / overshoot guard / a wide internal hysteresis band); only rarely an actual fault. Copy stays understated — no breaker/wiring assertion. | Mild warning chip (`Not drawing power`) plus a status line. | `device_unresponsive_started` / `..._cleared` | None — a device that isn't actually reaching its target shouldn't be silently called "succeeded". |
-| `capped_idle` | Device is well below the PELS-commanded target but its own internal setpoint cap has opened. Temperature parks at a stable plateau several degrees below target while power cycles around the device's own anti-cycle hysteresis (e.g. Connected 300 capped internally at ~60 °C with a 65 °C PELS target). | Neutral status line (`Device reached its own setpoint cap (58° / 65°)`). No chip — the device is doing the right thing against its own cap. | `device_capped_idle_started` / `..._cleared` | Promotes run to `met` with `metReason: 'stalled_device_capped'`. Postmortem variant `met-by-device-cap` names the device's own setpoint cap as recourse (deliberately not the PELS-canonical "hard cap" per `feedback_hard_cap_is_physical.md`). |
+| `capped_idle` | Device is well below the PELS-commanded target but its own internal setpoint cap has opened. Temperature parks at a stable plateau several degrees below target while power cycles around the device's own anti-cycle hysteresis (e.g. Connected 300 capped internally at ~60 °C with a 65 °C PELS target). | Neutral status line (`Device reached its own setpoint cap (58° / 65°)`). No chip — the device is doing the right thing against its own cap. | `device_capped_idle_started` / `..._cleared` | Promotes a run to `met` with `metReason: 'stalled_device_capped'` only when the classified setpoint covers the objective target. Postmortem variant `met-by-device-cap` names the device's own setpoint cap as recourse (deliberately not the PELS-canonical "hard cap" per `feedback_hard_cap_is_physical.md`). |
 
 ## Detection criteria
 
@@ -25,7 +25,7 @@ All of these must hold for a device to be eligible for classification:
 
 - Has a temperature setpoint (`currentTarget` is finite). No setpoint, no
   near-goal signal, so we cannot distinguish "satisfied hold" from "broken".
-- Is **not** an EV charger (`controlCapabilityId !== 'evcharger_charging'`).
+- Has a temperature objective rather than an EV state-of-charge objective.
   EV pauses are modelled separately via `binary_release`.
 - Observation is fresh — the observer-resolved freshness (`!isDeviceObservationStale`, supplied to the classifier via the `getObservationStale` dep), not a plan-device flag.
 - Observably on (`currentState === 'on'`).
@@ -142,8 +142,9 @@ does).
 
 - `lib/observer/idleDetector.ts` — pure classifier and per-device state map.
 - `lib/observer/idleClassifier.ts` — per-cycle service: owns state, prunes
-  vanished devices, emits structured-log transitions, exposes a getter for
-  the read model.
+  vanished devices, emits structured-log transitions, exposes the plain
+  classification for the read model, and exposes objective evidence carrying
+  the exact temperature target against which the verdict was reached.
 - `lib/plan/planService.ts` — ticks the classifier once per plan emission
   via `tickIdleClassifier`. Idempotent on plan reference.
 - `lib/plan/settingsOverviewReadModel.ts` — reads classification through a
@@ -156,6 +157,13 @@ does).
 - `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` — renders the
   exceptional status line below the temperature card body; benign
   `near_target_idle` stays quiet.
+
+The deferred-objective bridge compares the observer-supplied target basis with
+the objective target before translating `near_target_idle` or `capped_idle`
+into success. A verdict reached while ordinary mode has lowered the device to
+40 °C therefore cannot satisfy a simultaneous 65 °C smart task. The observer
+owns the evidence; the objective layer owns whether it is sufficient for that
+objective. Neither layer branches on a device model or capability identifier.
 
 ### Short-deadline smart-task interaction
 

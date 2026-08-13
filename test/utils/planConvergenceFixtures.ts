@@ -6,6 +6,7 @@ import type {
   EvDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import {
+  withBinaryDiscriminant,
   withTemperatureDiscriminant,
   withEvDiscriminant,
 } from '../../lib/plan/planTypes';
@@ -15,20 +16,31 @@ import type { BinaryControlObservation } from '../../packages/contracts/src/type
 export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
   & TemperatureDiscriminantProbe
   & EvDiscriminantProbe
-  & BinaryControlDiscriminantProbe;
+  & BinaryControlDiscriminantProbe
+  & { binaryCapabilityId?: string; evChargingState?: string };
 
 // Regroup a loose output-device override bag (temperature/EV fields flat on the
 // base) onto the discriminated `DevicePlanDevice` shape.
 export const asOutputDevice = (
   loose: LooseOutputDevice,
-): DevicePlan['devices'][number] =>
-  withTemperatureDiscriminant(withEvDiscriminant(loose)) as DevicePlan['devices'][number];
+): DevicePlan['devices'][number] => {
+  const materialized = withMaterializedEvPlugState(loose);
+  const {
+    binaryCapabilityId, evChargingState: _evChargingState, binaryControl, currentOn, ...semantic
+  } = materialized;
+  return withBinaryDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
+    ...semantic,
+    ...(binaryCapabilityId !== undefined ? {
+      currentOn: currentOn ?? resolveFixtureCurrentOn({ ...materialized, binaryControl }),
+    } : {}),
+  }))) as DevicePlan['devices'][number];
+};
 
 export type LooseInputDevice = Partial<PlanInputDevice>
   & BinaryControlDiscriminantProbe
   & {
     evChargingState?: string;
-    controlCapabilityId?: string;
+    binaryCapabilityId?: string;
     // `binaryControlObservation` is a transport/observer snapshot field, not a
     // `PlanInputDevice` field; the production drift path reads only
     // `binaryControl`. Several fixtures still carry it as inert evidence — accept
@@ -52,7 +64,7 @@ export const inputDevice = (
   const materialized = withMaterializedEvPlugState(loose);
   return {
     ...materialized,
-    ...(materialized.controlCapabilityId !== undefined
+    ...(materialized.binaryCapabilityId !== undefined
       ? { currentOn: materialized.currentOn ?? resolveFixtureCurrentOn(materialized) }
       : {}),
   } as unknown as PlanInputDevice;
@@ -76,7 +88,7 @@ export const buildSteppedDevice = (
     plannedState: 'keep' as const,
     currentTarget: null,
     controllable: true,
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     steppedLoadProfile: steppedProfile,
     selectedStepId: 'low',
     desiredStepId: 'low',
@@ -96,7 +108,7 @@ export const buildBinaryDevice = (
     currentTarget: 21,
     plannedTarget: 21,
     controllable: true,
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     ...overrides,
   };
   return asOutputDevice({ ...merged, currentOn: resolveFixtureCurrentOn(merged) });
@@ -110,7 +122,7 @@ export const buildEvDevice = (
   currentTarget: null,
   plannedTarget: undefined,
   deviceClass: 'evcharger',
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
   deferredReleaseIntent: 'binary_restore',
   ...overrides,

@@ -7,18 +7,20 @@
  * returns the same value as the pre-PR version.
  */
 import { describe, expect, it } from 'vitest';
-import { canTurnOnDevice } from '../../lib/plan/planExecutorSupport';
-import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { canTurnOnDevice, type CanTurnOnDeviceSnapshot } from '../../lib/plan/planExecutorSupport';
+import type { EvObservedProbe } from '../../packages/contracts/src/types';
 
 const baseSnapshot = (
-  overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> = {},
-): TargetDeviceSnapshot & EvObservedProbe => ({
+  overrides: Partial<CanTurnOnDeviceSnapshot & EvObservedProbe & {
+    deviceClass?: string; canSetOnOff?: boolean;
+  }> = {},
+): CanTurnOnDeviceSnapshot & EvObservedProbe & { deviceClass?: string } => ({
   id: 'd1',
   name: 'Device',
   targets: [],
   binaryControl: { on: false },
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as CanTurnOnDeviceSnapshot & EvObservedProbe & { deviceClass?: string };
 
 describe('canTurnOnDevice — migrated to commandableNow + canSetControl producers', () => {
   it('returns false when the snapshot is missing', () => {
@@ -27,7 +29,6 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
 
   it('returns false when the device is unavailable', () => {
     expect(canTurnOnDevice(baseSnapshot({
-      controlCapabilityId: 'onoff',
       available: false,
     }))).toBe(false);
   });
@@ -35,8 +36,8 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
   it('returns false for an EV charger that is plugged_out', () => {
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
+      commandableNow: false,
       canSetControl: true,
       available: true,
     }))).toBe(false);
@@ -45,8 +46,8 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
   it('returns false for an EV charger that is discharging', () => {
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_discharging',
+      commandableNow: false,
       canSetControl: true,
       available: true,
     }))).toBe(false);
@@ -55,7 +56,6 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
   it('returns true for an EV charger plugged_in_charging with canSetControl=true', () => {
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',
       canSetControl: true,
       available: true,
@@ -65,7 +65,6 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
   it('returns true for an EV charger plugged_in_paused with canSetControl=true', () => {
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
       available: true,
@@ -75,7 +74,6 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
   it('returns false for an EV charger commandable but with canSetControl=false', () => {
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',
       canSetControl: false,
       available: true,
@@ -85,7 +83,6 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
   it('returns true for an onoff device with default flags', () => {
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'thermostat',
-      controlCapabilityId: 'onoff',
       available: true,
     }))).toBe(true);
   });
@@ -97,27 +94,28 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
     // this guard (the original chunk-2 TODO explicitly called it out).
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'thermostat',
-      controlCapabilityId: 'onoff',
       available: true,
-      // @ts-expect-error legacy snapshot field, not on the contract today
       canSetOnOff: false,
     }))).toBe(false);
   });
 
   it('returns false when there is no resolvable binary capability', () => {
-    expect(canTurnOnDevice(baseSnapshot({
+    expect(canTurnOnDevice({
+      id: 'target-only',
+      name: 'Target only',
+      targets: [],
       capabilities: ['measure_power'],
       available: true,
-    }))).toBe(false);
+    } as CanTurnOnDeviceSnapshot)).toBe(false);
   });
 
-  it('resolves capability from the capabilities array when controlCapabilityId is missing', () => {
-    // Mirrors the legacy `getBinaryControlPlan` fallback: capability-array
-    // hits unlock both the EV and onoff capabilities even without an
-    // explicit `controlCapabilityId`.
-    expect(canTurnOnDevice(baseSnapshot({
+  it('does not reconstruct the binary axis from raw capabilities', () => {
+    expect(canTurnOnDevice({
+      id: 'target-only',
+      name: 'Target only',
+      targets: [],
       capabilities: ['onoff'],
       available: true,
-    }))).toBe(true);
+    } as CanTurnOnDeviceSnapshot)).toBe(false);
   });
 });

@@ -13,7 +13,6 @@ import {
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
 import type {
-  BinaryControlCapabilityId,
   SteppedLoadProfile,
   SteppedLoadStep,
 } from '../../packages/contracts/src/types';
@@ -67,7 +66,6 @@ type StepTransitionCapableDevice = {
   // stepped device this folds the step-off axis, so it equals the old
   // `currentState === 'off'` decision the helpers used.
   currentOn?: boolean;
-  controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
   plannedState?: string;
   shedAction?: ShedAction;
 };
@@ -129,7 +127,6 @@ export function isSteppedLoadDevice(
 }
 
 type ObservedOnOffDevice = {
-  controlCapabilityId?: BinaryControlCapabilityId;
   currentOn?: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
@@ -247,7 +244,6 @@ export const resolveSteppedLoadTransition = (
 
 export const resolveSteppedKeepDesiredStepId = (
   device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields & {
-    controlCapabilityId?: BinaryControlCapabilityId;
     currentState?: string;
     currentOn?: boolean;
     plannedState?: string;

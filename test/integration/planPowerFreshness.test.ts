@@ -21,7 +21,7 @@ const buildDevice = (
   targets: [],
   // Shed candidacy gates on writability (`isCanSetControl`); a real binary
   // device resolves a control capability, so model that here.
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
   controllable: true,
   expectedPowerKw: 1.2,

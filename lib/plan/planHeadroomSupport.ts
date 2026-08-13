@@ -5,7 +5,7 @@ import { hasBinaryControlCapability } from '../../packages/shared-domain/src/bin
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { resolveCurrentOn } from '../observer/observedState';
 import { getCurrentDrawKw } from '../observer/observedPower';
-import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 export { isFiniteNumber };
 
@@ -13,8 +13,8 @@ type RawHeadroomDevice = {
   // Owner-side optional: this is still a transport snapshot at this seam, and
   // absence is exactly what `hasMeasuredDraw` goes on to record.
   measuredPowerKw?: number;
-  controlCapabilityId?: BinaryControlCapabilityId;
   binaryControl?: { on: boolean };
+  currentOn?: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
 };
@@ -219,4 +219,3 @@ export const resolveTrackedTransitionReconciliation = (params: {
   }
   return undefined;
 };
-

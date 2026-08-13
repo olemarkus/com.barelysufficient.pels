@@ -35,10 +35,7 @@ import type { TargetedMissState } from './transport/targetedSnapshotMerge';
 import type { LiveDevicePowerWatts } from './managerEnergy';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
-import {
-  clearLocalCapabilityWrite,
-  type RecentLocalCapabilityWrites,
-} from './transport/managerRealtimeSupport';
+import type { RecentLocalCapabilityWrites } from './transport/managerRealtimeSupport';
 import {
   initHomeyHttpClient,
   resolveHomeyInstance,
@@ -67,15 +64,10 @@ import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedComm
 import type { DeviceObservation } from './deviceObservation';
 import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
 import type { HomePowerSampleWithIdentity } from './transport/resolvedHomeMeterDispatch';
-import type { BinarySettleState } from '../observer/binarySettle';
 import {
   cloneBinaryControlObservation,
-  createEmptyBinarySettleState,
   createEstimateDecisionLogState,
-  createInertBinarySettleOps,
   createPeakPowerLogState,
-  type BinarySettleDepsForTransport,
-  type DeviceTransportBinarySettleOps,
   type DeviceTransportOptions,
   type DeviceTransportPowerState,
   type ResolvedTransportPowerState,
@@ -84,14 +76,16 @@ import {
 } from './transport/transportTypes';
 import { reconcileBinarySettleEvidenceWithSnapshot } from './transport/binarySettleEvidence';
 import {
+    buildBinaryCommandConfirmationSnapshot,
+    resolveTemperatureTarget,
+} from './transport/semanticControlResolution';
+import {
   handleRealtimeCapabilityUpdateWithProbe as runHandleRealtimeCapabilityUpdate,
 } from './transport/realtimeCapabilityHandling';
 import {
   handleRealtimeDeviceUpdateEvent,
 } from './transport/deviceUpdateHandling';
 import {
-  applyDeviceTargets as runApplyDeviceTargets,
-  previewDeviceTargets as runPreviewDeviceTargets,
   requestSteppedLoadStep as runRequestSteppedLoadStep,
   setCapability as runSetCapability,
 } from './transport/deviceWrites';
@@ -124,10 +118,7 @@ export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
 const PLAN_LIVE_STATE_OBSERVED_REFRESH_EVENT = 'plan_live_state_observed_refresh';
 
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
-export type { BinarySettleState } from '../observer/binarySettle';
 export type {
-  BinarySettleDepsForTransport,
-  DeviceTransportBinarySettleOps,
   DeviceTransportOptions,
   SnapshotRefreshMetrics,
   TransportObservedStateDispatcher,
@@ -177,8 +168,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
-    private binarySettleState: BinarySettleState;
-    private binarySettleOps: DeviceTransportBinarySettleOps;
     private observationState: DeviceTransportObservationState = createObservationState();
     private observationSeqByDeviceId: Map<string, number> = new Map();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
@@ -186,7 +175,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'] | undefined;
     private onSnapshotMutated: DeviceTransportOptions['onSnapshotMutated'] | undefined;
     private debugStructured: StructuredDebugEmitter | undefined;
-    private pendingPredicate: DeviceTransportOptions['pendingPredicate'] | undefined;
     private observedStateDispatcher: TransportObservedStateDispatcher | undefined;
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
@@ -221,11 +209,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         handleRealtimeDeviceUpdateEvent(this.ctx, device)
     );
 
-    /* eslint-disable complexity --
-     * Constructor wires every option in the bag; complexity is in the
-     * fan-out, not the logic. PR #4 added two more ?? branches
-     * (binarySettleOps + binarySettleState) on top of the existing
-     * options bag; consolidating the bag is left to a follow-up. */
+    /* eslint-disable complexity -- constructor wires the transport dependency bags. */
     constructor(
         homey: Homey.App,
         logger: Logger,
@@ -239,7 +223,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.debugStructured = options?.debugStructured;
         this.getFlowTriggerCard = options?.getFlowTriggerCard;
         this.onSnapshotMutated = options?.onSnapshotMutated;
-        this.pendingPredicate = options?.pendingPredicate;
         this.observedStateDispatcher = options?.observedStateDispatcher;
         this.observationProducers = createObservationProducers({
             emit: (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
@@ -251,8 +234,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 dispatch: (id, cap) => this.dispatchObservedStateForDevice(id, cap),
             }),
         });
-        this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
-        this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();
         if (providers) this.providers = providers;
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
@@ -291,17 +272,13 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             observationState: t.observationState,
             recentLocalCapabilityWrites: t.recentLocalCapabilityWrites,
             recentRealtimeCapabilityEventLogByKey: t.recentRealtimeCapabilityEventLogByKey,
-            binarySettleState: t.binarySettleState,
-            binarySettleOps: t.binarySettleOps,
             observationProducers: t.observationProducers,
             getFlowTriggerCard: t.getFlowTriggerCard,
             nextObservationCursor: (deviceId, nowMs) => t.nextObservationCursor(deviceId, nowMs),
             dispatchObservedStateChanged: (event) => t.dispatchObservedStateChanged(event),
             dispatchPlanReconcile: (event) => t.dispatchPlanReconcile(event),
             emitPlanReconcileEvent: (event) => t.emitPlanReconcileEvent(event),
-            consultPendingPredicate: (deviceId, capabilityId) => t.consultPendingPredicate(deviceId, capabilityId),
             shouldTrackRealtimeDevice: (deviceId) => t.shouldTrackRealtimeDevice(deviceId),
-            getBinarySettleDeps: () => t.getBinarySettleDeps(),
             applyDeviceDriverOverride: (device) => (
                 applyDeviceDriverOverride(device, t.providers.getDeviceDriverIdOverride)
             ),
@@ -310,7 +287,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             setTrackedDevice: (deviceId, device) => { t.latestTrackedDevicesById.set(deviceId, device); },
             deleteTrackedDevice: (deviceId) => { t.latestTrackedDevicesById.delete(deviceId); },
             isSdkReady: () => t.sdkReady,
-            updateLocalSnapshot: (deviceId, updates) => t.updateLocalSnapshot(deviceId, updates),
             dispatchObservedStateForDevice: (deviceId, capabilityId) => (
                 t.dispatchObservedStateForDevice(deviceId, capabilityId)
             ),
@@ -377,6 +353,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+
+    getBinaryCommandConfirmationSnapshot() {
+        return buildBinaryCommandConfirmationSnapshot(this.latestSnapshot);
+    }
     getSnapshotByDeviceId(id: string): TargetDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
     getUiPickerDevices(): TargetDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
     // Poll-path home power read; also fans the additional (sub-home) meter
@@ -406,7 +386,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);
     }
-    setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
+    setSnapshotForTests(snapshot: TransportDeviceSnapshot[]): void {
         // Mirror the production refresh funnel (`commitRefreshedSnapshot`): commit
         // the snapshot, then dispatch the observed-state refresh so the observer
         // projection is fed exactly as it is in production. Without this, a test
@@ -416,7 +396,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.setSnapshot(snapshot);
         this.dispatchObservedStateRefresh(snapshot);
     }
-    setSnapshot(s: TargetDeviceSnapshot[]): void {
+    setSnapshot(s: TransportDeviceSnapshot[]): void {
         this.latestSnapshot = s;
         this.syncLatestSnapshotIndex();
         reconcileBinarySettleEvidenceWithSnapshot(this.ctx, s);
@@ -508,18 +488,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         return runRefreshSnapshot(this.ctx, options);
     }
 
-    // Optimistic binary write-back: a shed (turn-off) is trusted as observed
-    // truth immediately so the planner doesn't re-shed before the device echoes.
-    // (The former `target` branch was dead — the sole caller only ever passes
-    // `{ on }` — and was removed.)
-    updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void {
-        const snap = this.latestSnapshot.find((d) => d.id === deviceId);
-        if (!snap) return;
-        snap.binaryControl = { on: updates.on };
-        snap.lastLocalWriteMs = Date.now();
-    }
-
-
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
         return computePeriodicStatusMetrics(this.ctx);
     }
@@ -548,6 +516,48 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         return runSetCapability(this.ctx, deviceId, capabilityId, value);
     }
 
+    /**
+     * Semantic binary write. Raw capability and native-vs-Flow routing stay
+     * inside the transport owner seam and never enter planner/executor intent.
+     */
+    async requestBinaryControl(
+        deviceId: string,
+        desired: boolean,
+        triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
+    ): Promise<void> {
+        const snapshot = this.latestSnapshotById.get(deviceId)
+            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        const capabilityId = snapshot?.binaryCapabilityId;
+        if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);
+        if (snapshot.flowBackedCapabilityIds?.includes(capabilityId) === true) {
+            await triggerFlow(deviceId, capabilityId, desired);
+            return;
+        }
+        await runSetCapability(this.ctx, deviceId, capabilityId, desired);
+    }
+
+    /** Resolve the exact semantic setpoint before executor pending/retry preflight. */
+    resolveTemperatureTarget(deviceId: string, desired: number): number {
+        return resolveTemperatureTarget(this.latestSnapshot, deviceId, desired);
+    }
+
+    /** Semantic primary-temperature write; transport resolves the SDK target. */
+    async requestTemperatureTarget(deviceId: string, desired: number): Promise<number> {
+        const snapshot = this.latestSnapshotById.get(deviceId)
+            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        const target = snapshot?.targets.find((entry) => entry.id.startsWith('target_temperature'));
+        if (!target) throw new Error(`No temperature target binding for device ${deviceId}`);
+        const requested = await runSetCapability(this.ctx, deviceId, target.id, desired);
+        if (typeof requested !== 'number') throw new Error(`Invalid temperature request for device ${deviceId}`);
+        return requested;
+    }
+
+    isFlowBackedCapability(deviceId: string, capabilityId: string): boolean {
+        const snapshot = this.latestSnapshotById.get(deviceId)
+            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
+    }
+
     async requestSteppedLoadStep(params: {
         deviceId: string;
         profile: SteppedLoadProfile;
@@ -559,14 +569,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         return runRequestSteppedLoadStep(this.ctx, params);
     }
 
-    async applyDeviceTargets(targets: Record<string, number>, contextInfo = ''): Promise<void> {
-        return runApplyDeviceTargets(this.ctx, targets, contextInfo);
-    }
-
-    previewDeviceTargets(targets: Record<string, number>, contextInfo = ''): void {
-        runPreviewDeviceTargets(this.ctx, targets, contextInfo);
-    }
-
     getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
@@ -576,7 +578,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.observationProducers.destroy();
         void this.liveFeed?.stop();
         this.liveFeed = null;
-        this.binarySettleOps.clearAll(this.binarySettleState);
         this.latestBinarySettleEvidenceByDeviceId.clear();
         this.latestTrackedDevicesById.clear();
         this.removeAllListeners();
@@ -591,24 +592,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         livePowerWByDeviceId: LiveDevicePowerWatts,
     ): TargetDeviceSnapshot | null {
         return parseSnapshotDevice(this.ctx, device, now, livePowerWByDeviceId);
-    }
-
-    /**
-     * Single suppression-predicate entrypoint consulted by the realtime
-     * parse pipeline ("is there an in-flight write that should suppress
-     * this observation as an echo?"). Backed by observer's binarySettle
-     * store via the injected `pendingPredicate` callback; when no
-     * predicate is wired (legacy unit tests) we fall back to the local
-     * `binarySettleState` Map so existing behaviour is preserved.
-     *
-     * Per PR #4 of the observer/transport split, transport never
-     * statically imports observer; the predicate is just a function
-     * reference passed in at construction time
-     * (notes/state-management/observer-transport-split.md).
-     */
-    private consultPendingPredicate(deviceId: string, capabilityId: string): boolean {
-        if (this.pendingPredicate) return this.pendingPredicate(deviceId, capabilityId) === true;
-        return this.binarySettleOps.hasWindow(this.binarySettleState, deviceId, capabilityId);
     }
 
     /**
@@ -709,22 +692,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event);
     }
 
-    private getBinarySettleDeps(): BinarySettleDepsForTransport {
-        const recentLocalCapabilityWrites = this.recentLocalCapabilityWrites;
-        return {
-            logger: this.logger,
-            clearLocalCapabilityWrite: (params: { deviceId: string; capabilityId: string }) => (
-                clearLocalCapabilityWrite({
-                    recentLocalCapabilityWrites,
-                    deviceId: params.deviceId,
-                    capabilityId: params.capabilityId,
-                })
-            ),
-            isLiveFeedHealthy: () => this.liveFeed?.isHealthy() === true,
-            shouldTrackRealtimeDevice: (deviceId: string) => this.shouldTrackRealtimeDevice(deviceId),
-            getSnapshotById: (deviceId: string) => this.latestSnapshotById.get(deviceId),
-            emitPlanReconcile: (event) => this.emitPlanReconcileEvent(event),
-        }; }
     private syncLatestSnapshotIndex(): void { this.latestSnapshotById
         = new Map(this.latestSnapshot.map((device) => [device.id, device])); }
 

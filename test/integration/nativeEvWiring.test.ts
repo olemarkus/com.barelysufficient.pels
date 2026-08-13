@@ -69,8 +69,8 @@ describe('native EV wiring shim', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-      controlCapabilityId: 'evcharger_charging',
-      controlWriteCapabilityId: 'charging_button',
+      binaryCapabilityId: 'evcharger_charging',
+      binaryWriteCapabilityId: 'charging_button',
       powerCapable: true,
     }));
   });
@@ -93,8 +93,8 @@ describe('native EV wiring shim', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-      controlCapabilityId: 'evcharger_charging',
-      controlWriteCapabilityId: 'charging_button',
+      binaryCapabilityId: 'evcharger_charging',
+      binaryWriteCapabilityId: 'charging_button',
     }));
   });
 
@@ -110,13 +110,13 @@ describe('native EV wiring shim', () => {
     const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      controlWriteCapabilityId: 'charging_button',
-      controlObservationCapabilityId: 'evcharger_charging',
+      binaryWriteCapabilityId: 'charging_button',
+      binaryObservationCapabilityId: 'evcharger_charging',
       binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
@@ -141,8 +141,8 @@ describe('native EV wiring shim', () => {
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
-      controlCapabilityId: 'evcharger_charging',
-      controlWriteCapabilityId: 'charging_button',
+      binaryCapabilityId: 'evcharger_charging',
+      binaryWriteCapabilityId: 'charging_button',
       controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
         activationRequired: false,
@@ -212,13 +212,13 @@ describe('native EV wiring shim', () => {
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      controlWriteCapabilityId: 'charging_button',
-      controlObservationCapabilityId: 'evcharger_charging',
+      binaryWriteCapabilityId: 'charging_button',
+      binaryObservationCapabilityId: 'evcharger_charging',
       binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       powerCapable: true,
@@ -247,12 +247,12 @@ describe('native EV wiring shim', () => {
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go2-mock',
       name: 'Zaptec Go 2 Mock',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      controlWriteCapabilityId: 'charging_button',
+      binaryWriteCapabilityId: 'charging_button',
       binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
@@ -282,7 +282,7 @@ describe('native EV wiring shim', () => {
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go2-compat-mock',
       name: 'Zaptec Go 2 compatibility mock',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
         activationEnabled: true,
@@ -339,11 +339,11 @@ describe('native EV wiring shim', () => {
 
     expect(home).toEqual(expect.objectContaining({
       id: 'zaptec-home',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }));
     expect(pro).toEqual(expect.objectContaining({
       id: 'zaptec-pro',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }));
   });
 
@@ -439,14 +439,14 @@ describe('native EV wiring shim', () => {
     })]);
 
     expect(parsed).toEqual(expect.objectContaining({
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       controlAdapter: {
         kind: 'capability_adapter',
         activationRequired: false,
         activationEnabled: false,
       },
-      controlWriteCapabilityId: undefined,
-      controlObservationCapabilityId: undefined,
+      binaryWriteCapabilityId: undefined,
+      binaryObservationCapabilityId: undefined,
       binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
       canSetControl: false,
@@ -510,8 +510,8 @@ describe('native EV wiring shim', () => {
     const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
-      controlCapabilityId: 'evcharger_charging',
-      controlWriteCapabilityId: 'charging_button',
+      binaryCapabilityId: 'evcharger_charging',
+      binaryWriteCapabilityId: 'charging_button',
       binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
     }));
@@ -570,7 +570,7 @@ describe('native EV wiring shim', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }));
     expect(parsed.flowBacked).toBeUndefined();
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();

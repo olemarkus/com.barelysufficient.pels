@@ -32,7 +32,7 @@ import type { EvChargingState } from '../../contracts/src/types';
  * never re-derive EV-ness from either field alone. Either signal alone is
  * sufficient — see {@link isEvDevice} for why the union is the contract.
  */
-export type EvDeviceIdentity = { deviceClass?: string; controlCapabilityId?: string };
+export type EvDeviceIdentity = { deviceClass?: string };
 
 /**
  * EV-device predicate. A device is "EV" if EITHER its `deviceClass` is
@@ -42,13 +42,12 @@ export type EvDeviceIdentity = { deviceClass?: string; controlCapabilityId?: str
  * missing.
  */
 export const isEvDevice = (dev: EvDeviceIdentity): boolean => (
-  dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
+  dev.deviceClass === 'evcharger'
 );
 
 /**
  * Whether PELS may drive the charger, judged on plug-state alone (availability
- * and the resume-probe backoff are separate inputs, folded in by
- * `resolveCommandableNow`).
+ * is folded in by `resolveCommandableNow`).
  *
  * **Only `plugged_out` and `plugged_in_discharging` block.** `plugged_in` does
  * NOT, and that is the point: the value is vendor-defined and inconsistent
@@ -56,9 +55,8 @@ export const isEvDevice = (dev: EvDeviceIdentity): boolean => (
  * to it (a start command is exactly what those want); Wallbox maps its `Paused`
  * state to it and never emits `plugged_in_paused` at all — so treating it as a
  * block let PELS's own pause create a state PELS then refused to leave. go-e and
- * Zaptec also use it for a finished session, where a start command is a no-op.
- * PELS probes that connected state and backs off when the charger does not start
- * (`lib/executor/evResumeReachability.ts`).
+ * Zaptec also use it for a finished session, where a start command may be a
+ * no-op; generic command confirmation handles that like any other device.
  *
  * The exhaustiveness guard is load-bearing: a new `EvChargingState` member must
  * be classified here rather than inheriting the commandable default.
@@ -141,41 +139,3 @@ export const isEvPlugStateConnected = (evChargingState: EvChargingState): boolea
 export const isEvChargerNotResumable = (evChargingState: EvChargingState): boolean => (
   evChargingState === 'plugged_in'
 );
-
-/**
- * The EV resume-probe posture (`lib/executor/evResumeReachability.ts`):
- *
- * - `eligibleForStartProbe` — PELS may try to start this charger and learn from
- *   the outcome, which is what buys the 15/30/60 min backoff instead of a
- *   per-cycle retry.
- * - `activityObserved` — affirmative evidence that charge is flowing, which
- *   clears any recorded probe failure.
- *
- * Only `plugged_in` is eligible, and the asymmetry is the point. That state is
- * ambiguous: an Easee at op mode 7 "Awaiting Authentication" lands there and the
- * `evcharger_charging` write IS the authorization, so PELS must try — while a
- * Zaptec holding a car at its own charge limit reports the same value and will
- * never start. No capability separates them, so only the attempt does.
- *
- * `plugged_in_paused` is not ambiguous. It means a session that can resume, so
- * a backoff would buy nothing and cost the one escape the ladder has. Nothing
- * about a full car ever changes — it stays plugged in, available, and not
- * charging — so were it probed too, none of `hasRecovered`'s triggers could
- * fire and the only way out would be the 60-minute retry. Because a charger
- * whose car starts asking for current again moves to this state, LEAVING the
- * eligible set is what releases the backoff: the projection short-circuits on
- * `!eligibleForStartProbe` and hands back base commandability.
- *
- * That makes the boundary a decision rather than a wording difference, so every
- * producer of `plugged_in_paused` has to mean it — see
- * `resolveZaptecChargingStateFromChargeMode` and the realtime normalizer in
- * `lib/device/nativeEvWiring.ts`, which resolve a FINISHED or merely-unknown
- * session to `plugged_in` instead.
- */
-export const resolveEvStartProbePosture = (evChargingState: EvChargingState): {
-  eligibleForStartProbe: boolean;
-  activityObserved: boolean;
-} => ({
-  eligibleForStartProbe: evChargingState === 'plugged_in',
-  activityObserved: evChargingState === 'plugged_in_charging',
-});

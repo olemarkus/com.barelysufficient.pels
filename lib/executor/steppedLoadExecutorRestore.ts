@@ -5,7 +5,6 @@ import {
 } from '../utils/deviceControlProfiles';
 import {
   canTurnOnDevice,
-  recordActivationAttemptStarted,
 } from '../plan/planExecutorSupport';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type {
@@ -174,16 +173,12 @@ export const executeSteppedLoadRestoreBinary = async (
     action: ExecutableSteppedLoadDevice;
     snapshot: ExecutorDeviceSnapshot;
     name: string;
-    onoffViolated: boolean;
-    stepViolated: boolean;
   },
 ): Promise<boolean> => {
   const {
     action,
     snapshot,
     name,
-    onoffViolated,
-    stepViolated,
   } = params;
   ctx.state.pendingRestores.add(action.id);
   try {
@@ -194,35 +189,6 @@ export const executeSteppedLoadRestoreBinary = async (
     });
     if (!applied) return false;
     ctx.state.markSteppedBinaryRestoreAttempt(action.id, Date.now());
-    logger.info({
-      event: 'stepped_load_binary_transition_applied',
-      deviceId: action.id,
-      deviceName: name,
-      desiredBinaryState: true,
-      effectiveTransition: 'restore_from_off_at_low',
-      stepPreparationPurpose: null,
-      transitionPhase: 'binary_transition',
-      onoffViolated,
-      stepViolated,
-      // Step evidence present when activation began. This is diagnostic only;
-      // activation never treats it as proof that a vendor will retain the step.
-      stepMaterializationSource: action.stepActuation.materialization.kind === 'materialized'
-        ? action.stepActuation.materialization.source
-        : null,
-      reasonCode: 'keep_invariant',
-    });
-    const now = Date.now();
-    // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
-    // recorder): this stamps the restore *cooldown*, which must fire regardless of actuation channel.
-    // Unconditional since the reconcile lane was removed — see binaryRestoreHelpers.
-    ctx.recordRestoreActuation(action.id, name, now);
-    recordActivationAttemptStarted({
-      state: ctx.state,
-      diagnostics: ctx.deviceDiagnostics,
-      deviceId: action.id,
-      name,
-      nowTs: now,
-    });
     return true;
   } catch (error) {
     logger.error({

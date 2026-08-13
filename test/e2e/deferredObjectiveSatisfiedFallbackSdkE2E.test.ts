@@ -132,7 +132,7 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     await charger.setCapabilityValue('measure_battery', 80);
     await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
-    await vi.advanceTimersByTimeAsync(29_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     await drainPending();
     expect(putSpy.mock.calls.filter(([path]) => path === CHARGING_PATH)).toHaveLength(2);
 

@@ -29,14 +29,10 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.
     getPlanDevices: scope.getPlanDevices,
-    // The binary settle reads the observer-internal `binaryControlObservation`
-    // straight off the device snapshot — it is not (and must not be) on the
-    // plan-facing `PlanInputDevice`. Pending commands only exist for commanded
-    // devices, so the unfiltered snapshot is a harmless superset.
-    getSettleDevices: () => ctx.latestTargetSnapshot.map((device) => ({
-      ...device,
-      associatedCar: deviceManager.getAssociatedCar(device.id),
-    })),
+    // Explicit observer projection: transport capability and Flow bindings must
+    // never cross into the plan-owned service merely because structural typing
+    // accepts a wider object.
+    getSettleDevices: () => deviceManager.getBinaryCommandConfirmationSnapshot(),
     // EV charging state for the settings-UI read model comes from the observer
     // (its canonical owner), not the plan device — the planner carries only the
     // resolved flat EV plug-state sub-fields, not the raw observed plug-state. NB: do NOT

@@ -88,7 +88,15 @@ const buildRig = (): Rig => {
     // `getSnapshot` lets a real plan rebuild complete (the status writer reads
     // the raw snapshot via `deviceManager.getSnapshot()`); without it the rebuild
     // throws and resolves `{ failed: true }`, masking the ready-edge/status paths.
-    deviceManager: { getSnapshot: () => [] } as unknown as AppContext['deviceManager'],
+    deviceManager: {
+      getSnapshot: () => [],
+      getBinaryCommandConfirmationSnapshot: () => [],
+      getAssociatedCar: () => undefined,
+      requestBinaryControl: vi.fn(async () => undefined),
+      requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
+      requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
+    } as unknown as AppContext['deviceManager'],
     latestTargetSnapshot: [],
   });
   let membershipReady = true;
@@ -1507,7 +1515,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       name: 'Annex load',
       targets: [],
       deviceType: 'onoff',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       canSetControl: true,
       controllable: true,
@@ -1517,10 +1525,18 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       measuredPowerKw: 4,
       expectedPowerKw: 4, expectedPowerSource: 'default',
     } as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
-    const setCapability = vi.fn(async () => undefined);
+    const setCapability = vi.fn(async (..._args: unknown[]) => undefined);
     const deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => [load],
+      getBinaryCommandConfirmationSnapshot: () => [],
+      getAssociatedCar: () => undefined,
       setCapability,
+      requestBinaryControl: (deviceId: string, desired: boolean) => (
+        setCapability(deviceId, 'onoff', desired).then(() => undefined)
+      ),
+      requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      resolveTemperatureTarget: (_deviceId: string, desired: number) => desired,
+      requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
       applyDeviceTargets: vi.fn(async () => undefined),
     });
     rig.ctx.deviceManager = deviceManager as unknown as AppContext['deviceManager'];

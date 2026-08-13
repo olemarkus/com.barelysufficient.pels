@@ -49,7 +49,7 @@ const batteryInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInput
     // A battery has no control capability and no temperature target. The control
     // gates that keep it inert key on `controllable: false` + non-temperature, not
     // on the binary-control axis, so the default binary axis here is harmless.
-    controlCapabilityId: undefined,
+    binaryCapabilityId: undefined,
     targets: [],
     measuredPowerKw: 1.2, // charging at +1.2 kW (background usage)
     ...overrides,

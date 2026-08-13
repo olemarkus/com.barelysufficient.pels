@@ -41,6 +41,7 @@ export const createFencedActuator = (
   base: Actuator,
   isFenced: (deviceId: string) => boolean,
 ): Actuator => ({
+  resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
     isFenced(command.deviceId) ? Promise.resolve({ requested: false }) : base.apply(command)
   ),

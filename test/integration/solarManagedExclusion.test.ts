@@ -56,7 +56,7 @@ const solarInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDe
     deviceType: 'onoff',
     managed: true,
     controllable: false,
-    controlCapabilityId: undefined,
+    binaryCapabilityId: undefined,
     targets: [],
     measuredPowerKw: 3.0, // producing +3.0 kW (POSITIVE)
     ...overrides,

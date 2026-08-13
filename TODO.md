@@ -1174,19 +1174,11 @@ program) remain deferred.*
       fixture-level only — 29 comparison sites and 245 `model: 'stepped_load'` literals removed (13 runtime,
       228 TS fixtures, 4 in the Playwright JS stub; the stub's `device_control_profiles` entries KEEP the tag
       on purpose, labelled as legacy persisted data), no other intended reachable behaviour change.
+      Follow-ups resolved by the semantic-control refactor (2026-08-12): the settings UI now consumes the
+      producer-resolved `binaryControllable` bit, and `toPlanDevice` consumes normalized `binaryControl` while
+      stripping all raw transport bindings. `controlCapabilityId` no longer crosses the transport boundary, so
+      neither surface can re-inline that SDK discriminant.
       Open follow-ups from the review of the modality-containment change (P2, deferred):
-      - *Settings UI still inlines the binary discriminant.* `deviceDetail/solarSurplus.ts`,
-        `deviceDetail/respectExternalOff.ts` and `deviceDetail/temperatureControlDisabled.ts` each spell
-        `controlCapabilityId !== undefined` themselves. `hasBinaryControlCapability` is browser-safe precisely so
-        they need not, the way `isSteppedLoadSnapshot` already serves the UI. Migrating them is what earns the
-        shared-domain placement; until then the module's audience is narrower than its location suggests.
-      - *`toPlanDevice` is a projection, not a transport producer.* `setup/appInit/toPlanDevice.ts` keeps
-        `controlCapabilityId !== undefined` at the `currentOn` stamp and in `resolveExternalOffHoldActive`. The
-        `lib/device/**` sites are correctly exempt — the transport RESOLVES the capability, so there the field
-        test IS the definition — but `toPlanDevice` consumes a `DecoratedDeviceSnapshot` and projects it, and the
-        comment above the stamp already names the drift risk ("`isBinaryPlanDevice` re-asserts it as a required
-        `boolean`"). Two spellings of one invariant across a seam is the failure mode this change closed
-        elsewhere. Decide whether a projection counts as a producer, and say so in one place.
       - *Producer-shaped functions stranded in `lib/plan`.* `withHeadroomCurrentOn` (`planHeadroomSupport.ts`,
         its own comment: "the twin of `toPlanDevice`") and `resolveSurplusOnlyPosture` (`planSurplusAbsorb.ts`)
         have no `lib/plan` callers at all — only `setup/**` and `flowCards/**`. Both take raw transport shapes
@@ -2062,7 +2054,7 @@ program) remain deferred.*
 - [ ] **Verify: leave-off row on switchable binaries, hero chip touch target, real-device dark pass.**
       *Persona:* owner on a real phone.
       *Hypothesis:* three spot checks the stack review could not settle from fixtures — the
-      binary water-heater fixture lacks `controlCapabilityId` so the "Leave off until turned on
+      binary water-heater fixture lacks the producer-resolved `binaryControllable` bit so the "Leave off until turned on
       again" row never rendered (real switchable binaries should get it); the hero Smart-task
       chip measures ~34–40 px (under the 48 px minimum); and the segmented dual-labels + hero
       chip have no real-Homey dark-theme capture (host-CSS bleed is invisible to emulation).
@@ -3708,7 +3700,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       that is itself standing down for a reservation — a real write, and exactly the class of
       failure the redesign exists to prevent. `test/integration/planHeadroomReserve.test.ts` has no
       running third device, so it cannot reach the swap path.
-      (b) *Stepped path.* Every fixture in that file is binary (`controlCapabilityId: 'onoff'`), and
+      (b) *Stepped path.* Every fixture in that file is binary (`binaryControllable: true`), and
       no test calls `admitSteppedRestore` with reserves. Uncovered: the stepped stand-down (which
       now also applies `buildOffSteppedRestoreShedUpdate`, added 2026-08-01) and the reserve
       round-trip arithmetic on both gates (`availableHeadroom - reservedKw` in, `+ reservedKw` out).

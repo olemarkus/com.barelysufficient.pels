@@ -1,5 +1,4 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
-import { isEvPlanDevice } from './planEvDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { PlanEngineState } from './planState';
 import type { CurrentHourPriceLevel, PlanContext } from './planContext';
@@ -165,7 +164,6 @@ export function buildInitialPlanDevices(params: {
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: isPendingBinaryCommandActive({
         pending: deps.pendingBinaryCommandStore.peek(dev.id),
-        communicationModel: dev.communicationModel,
       }) && deps.pendingBinaryCommandStore.peek(dev.id)?.desired === true,
       currentState,
       currentTarget,
@@ -185,7 +183,7 @@ export function buildInitialPlanDevices(params: {
     // `evBoostActive` lives on the orthogonal `EvKind` cluster; narrow before
     // reading. Non-EV devices never have boost active, so the `false` fallback
     // matches the prior behaviour.
-    state.evBoostActiveByDevice[dev.id] = isEvPlanDevice(base) && base.evBoostActive === true;
+    state.evBoostActiveByDevice[dev.id] = base.evBoostActive === true;
     const t2 = Date.now();
     const withOffStateReason = applyOffStateReason({
       planDevice: base,

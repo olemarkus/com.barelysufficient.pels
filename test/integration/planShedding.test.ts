@@ -19,7 +19,8 @@ import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTest
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe
+    & { binaryCapabilityId?: string } = {},
 ): PlanInputDevice => {
   const merged = {
     id: 'dev',
@@ -27,8 +28,8 @@ const buildDevice = (
     targets: [],
     // Real parse output resolves a binary control capability for a sheddable
     // device; shed candidacy gates on writability (`isCanSetControl`), so model
-    // that here. A cap-less device overrides with `controlCapabilityId: undefined`.
-    controlCapabilityId: 'onoff' as const,
+    // that here. A cap-less device overrides with `binaryCapabilityId: undefined`.
+    binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
     ...overrides,
   };
@@ -665,7 +666,8 @@ describe('buildSheddingPlan', () => {
   it('marks temperature candidate with unconfirmedRelief when a pending target command matches shed temperature', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-heater'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
+      pendingMs: 90_000,
       desired: 15,
       startedMs: Date.now() - 5000,
       lastAttemptMs: Date.now() - 5000,
@@ -745,9 +747,10 @@ describe('buildSheddingPlan', () => {
   it('does not treat temporarily unavailable target writes as unconfirmed relief', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-heater'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 15,
       startedMs: Date.now() - 5000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30000,
@@ -1094,7 +1097,7 @@ describe('buildSheddingPlan', () => {
         expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       }),
       buildDevice({
         id: 'bath',
@@ -1625,7 +1628,7 @@ describe('buildSheddingPlan', () => {
         currentDrawKw: 1.193,
         expectedPowerKw: 1.25,
         binaryControl: { on: true },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         controllable: true,
         budgetExempt: false,
       }),
@@ -2105,9 +2108,10 @@ describe('buildSheddingPlan', () => {
   it('keeps shedding other devices when a binary shed command is still unconfirmed', async () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands.bath = {
-      capabilityId: 'onoff',
+      dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
     };
 
     const devices = [
@@ -2164,9 +2168,10 @@ describe('buildSheddingPlan', () => {
   it('keeps shedding other devices when a stepped binary-off command is still unconfirmed', async () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands['connected-300'] = {
-      capabilityId: 'onoff',
+      dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
     };
 
     const devices = [
@@ -2185,7 +2190,7 @@ describe('buildSheddingPlan', () => {
         currentDrawKw: 1.193,
         expectedPowerKw: 1.25,
         binaryControl: { on: true },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         controllable: true,
       }),
       buildDevice({
@@ -2234,7 +2239,7 @@ describe('buildSheddingPlan', () => {
   it('does not let a pending restore make an observed-off device shed-eligible during overshoot', async () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands.tank = {
-      capabilityId: 'onoff',
+      dispatchState: 'accepted',
       desired: true,
       startedMs: Date.now() - 5_000,
       pendingMs: 75_000,
@@ -2259,7 +2264,7 @@ describe('buildSheddingPlan', () => {
             expectedPowerKw: 3,
             binaryControl: { on: false },
             controllable: true,
-            controlCapabilityId: 'onoff',
+            binaryCapabilityId: 'onoff',
           }),
         ],
         total: 8,

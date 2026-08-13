@@ -22,17 +22,12 @@
  * "step not known" case; a stale binary read resolves to its latched on/off.
  */
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
-import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import type {
-  BinaryControlCapabilityId,
-  SteppedLoadProfile,
-} from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 export type ObservedCurrentStateInput = {
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
   binaryControl?: { on: boolean };
-  controlCapabilityId?: BinaryControlCapabilityId;
   // No `controlModel`: every resolver below asks the stepped question
   // structurally, through `isSteppedLoadSnapshot`. The producer-only setting was
   // carried here unread.
@@ -46,7 +41,7 @@ export type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
 
 type StepCurrentStateInput = Pick<
   ObservedCurrentStateInput,
-  'steppedLoadProfile' | 'selectedStepId' | 'controlCapabilityId'
+  'steppedLoadProfile' | 'selectedStepId'
 > & { binaryControl?: { on: boolean } };
 
 function stepIsAtOff(
@@ -102,7 +97,7 @@ export function resolveObservedSteppedLoadCurrentState(
   // Only short-circuit on binary off when the device actually has a binary
   // capability — a defaulted `currentOn: false` on a step-only device must not
   // mask the step state.
-  if (hasBinaryControlCapability(device) && device.binaryControl?.on === false) return 'off';
+  if (device.binaryControl?.on === false) return 'off';
   if (!device.selectedStepId) return 'unknown';
   const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   if (!selectedStep) return 'unknown';
@@ -136,11 +131,10 @@ export function resolveObservedCurrentState(
       steppedLoadProfile: device.steppedLoadProfile,
       selectedStepId: device.selectedStepId,
       binaryControl: device.binaryControl,
-      controlCapabilityId: device.controlCapabilityId,
     });
     if (steppedState !== 'unknown') return steppedState;
   }
-  if (!hasBinaryControlCapability(device)) {
+  if (device.binaryControl === undefined) {
     return 'not_applicable';
   }
   return (device.binaryControl?.on ?? true) ? 'on' : 'off';

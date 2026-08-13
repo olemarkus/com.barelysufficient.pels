@@ -382,9 +382,9 @@ describe('Device plan snapshot', () => {
 
     const pendingStartedMs = Date.now();
     (app as any).planEngine.state.pendingBinaryCommands['dev-pending'] = {
-      capabilityId: 'onoff',
       desired: true,
       startedMs: pendingStartedMs,
+      pendingMs: 90_000,
     };
     (app as any).planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
     (app as any).planEngine.state.lastInstabilityMs = Date.now();
@@ -409,7 +409,7 @@ describe('Device plan snapshot', () => {
         targets: [],
         binaryControl: { on: true },
         currentState: 'on',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControlObservation: {
           valid: true,
           capabilityId: 'onoff',
@@ -585,9 +585,9 @@ describe('Device plan snapshot', () => {
     structuredEvents.length = 0;
 
     (app as any).planEngine.state.pendingBinaryCommands['dev-off-pending'] = {
-      capabilityId: 'onoff',
       desired: false,
       startedMs: Date.now(),
+      pendingMs: 90_000,
     };
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -654,9 +654,9 @@ describe('Device plan snapshot', () => {
     structuredEvents.length = 0;
 
     (app as any).planEngine.state.pendingBinaryCommands['dev-on-pending'] = {
-      capabilityId: 'onoff',
       desired: true,
       startedMs: Date.now(),
+      pendingMs: 90_000,
     };
 
     (app as any).deviceManager.setSnapshotForTests([
@@ -1088,7 +1088,7 @@ describe('Device plan snapshot', () => {
         name: 'Lamp',
         targets: [],
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
         lastFreshDataMs: Date.now(),
       },
@@ -1124,7 +1124,7 @@ describe('Device plan snapshot', () => {
         name: 'Lamp',
         targets: [],
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
       },
     ]);
@@ -1160,7 +1160,7 @@ describe('Device plan snapshot', () => {
         name: 'Lamp',
         targets: [],
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
         lastFreshDataMs: Date.now(),
       },
@@ -1176,7 +1176,7 @@ describe('Device plan snapshot', () => {
         name: 'Lamp',
         targets: [],
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
       },
     ]);
@@ -1352,9 +1352,9 @@ describe('Device plan snapshot', () => {
           name: 'Heater A',
           plannedState: 'shed',
           currentState: 'on',
+          currentOn: true,
           currentTarget: null,
           controllable: true,
-          controlCapabilityId: 'onoff',
           reason: fixtureDeviceReason('shed due to capacity'),
         },
       ],
@@ -1593,8 +1593,9 @@ describe('Device plan snapshot', () => {
         {
           id: 'dev-1',
           name: 'Heater A',
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           binaryControl: { on: false },
+          currentOn: false,
           plannedState: 'keep',
           currentState: 'off',
           currentTarget: null,
@@ -1642,9 +1643,10 @@ describe('Device plan snapshot', () => {
         targets: [],
         expectedPowerKw: 2.5,
         priority: 1,
-        binaryControl: { on: false },
+        currentOn: false,
+        canSetControl: true,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       },
     ]);
     const nextState = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -1672,9 +1674,10 @@ describe('Device plan snapshot', () => {
         targets: [],
         expectedPowerKw: 1,
         priority: 1,
-        binaryControl: { on: false },
+        currentOn: false,
+        canSetControl: true,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
       },
     ]);
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -1772,7 +1775,7 @@ describe('Device plan snapshot', () => {
         targets: [],
         measuredPowerKw: 1,
         expectedPowerKw: 1,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
         priority: 1,
@@ -1783,7 +1786,7 @@ describe('Device plan snapshot', () => {
         targets: [],
         measuredPowerKw: 1,
         expectedPowerKw: 1,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
         priority: 10,
@@ -1803,7 +1806,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         expectedPowerKw: 1,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
         priority: 1,
@@ -1813,7 +1816,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater B',
         targets: [],
         expectedPowerKw: 1,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
         controllable: true,
         priority: 10,
@@ -1846,9 +1849,8 @@ describe('Device plan snapshot', () => {
       id: 'dev-1',
       name: 'Heater A',
       targets: [],
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
-      binaryControl: { on: true },
       controllable: true,
     }]);
 
@@ -1858,7 +1860,7 @@ describe('Device plan snapshot', () => {
       id: 'dev-1',
       name: 'Heater A',
       targets: [],
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       binaryControl: { on: true },
       controllable: true,
@@ -1882,19 +1884,14 @@ describe('Device plan snapshot', () => {
       name: 'No On/Off Device',
       targets: [],
       capabilities: ['measure_power'],
-      binaryControl: { on: true },
       controllable: true,
     }]);
 
-    const before = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
     await (app as any).applySheddingToDevice('dev-1', 'No On/Off Device');
 
     expect(putSpy).not.toHaveBeenCalled();
     const after = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
     expect(typeof after).toBe('number');
-    if (typeof before === 'number') {
-      expect(after).toBeGreaterThanOrEqual(before);
-    }
   });
 
   it('uses currentState on for controllable temperature devices without onoff', async () => {
@@ -1967,7 +1964,7 @@ describe('Device plan snapshot', () => {
       id: 'thermostat-1',
       name: 'Room Thermostat',
       class: 'thermostat',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff', 'target_temperature', 'measure_power', 'measure_temperature'],
       capabilitiesObj: {
         onoff: { value: false, id: 'onoff' },
@@ -2051,7 +2048,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         expectedPowerKw: 1,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -2137,7 +2134,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         expectedPowerKw: 1,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -2190,7 +2187,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         expectedPowerKw: 0.5,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -2260,9 +2257,10 @@ describe('Device plan snapshot', () => {
           name: 'Heater A',
           plannedState: 'keep',
           currentState: 'off',
+          currentOn: false,
           currentTarget: null,
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           expectedPowerKw: 0.5,
           reason: fixtureDeviceReason('keep'),
         },
@@ -2309,9 +2307,10 @@ describe('Device plan snapshot', () => {
           name: 'Heater A',
           plannedState: 'keep',
           currentState: 'off',
+          currentOn: false,
           currentTarget: null,
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           expectedPowerKw: 0.5,
           reason: fixtureDeviceReason('keep'),
         },
@@ -3244,7 +3243,7 @@ describe('Dry run mode', () => {
         targets: [],
         measuredPowerKw: 2,
         expectedPowerKw: 2,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -4054,7 +4053,7 @@ describe('Dry run mode', () => {
       id: 'dev-1',
       name: 'Read-only relay',
       targets: [],
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       canSetOnOff: false,
       binaryControl: { on: true },
@@ -4180,6 +4179,7 @@ describe('Dry run mode', () => {
           deviceType: 'temperature',
           plannedState: 'shed',
           currentState: 'keep',
+          currentOn: true,
           plannedTarget: 12,
           currentTarget: 20,
           shedAction: 'set_temperature',
@@ -4219,7 +4219,7 @@ describe('Dry run mode', () => {
       id: 'dev-1',
       name: 'Failing device',
       targets: [],
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       binaryControl: { on: true },
       controllable: true,
@@ -4228,7 +4228,7 @@ describe('Dry run mode', () => {
       id: 'dev-2',
       name: 'Healthy device',
       targets: [],
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       binaryControl: { on: true },
       controllable: true,
@@ -4253,10 +4253,11 @@ describe('Dry run mode', () => {
           name: 'Failing device',
           plannedState: 'shed',
           currentState: 'keep',
+          currentOn: true,
           currentTarget: null,
           shedAction: 'turn_off',
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           reason: fixtureDeviceReason('shed due to capacity'),
         },
         {
@@ -4264,10 +4265,11 @@ describe('Dry run mode', () => {
           name: 'Healthy device',
           plannedState: 'shed',
           currentState: 'keep',
+          currentOn: true,
           currentTarget: null,
           shedAction: 'turn_off',
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           reason: fixtureDeviceReason('shed due to capacity'),
         },
       ],
@@ -4322,7 +4324,7 @@ describe('Dry run mode', () => {
         id: 'spotter',
         name: 'Spotter kjøkkenbenk',
         targets: [],
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
         binaryControl: { on: false }, // currently shed/off
         controllable: true,
@@ -4397,7 +4399,7 @@ describe('Dry run mode', () => {
         id: 'spotter',
         name: 'Spotter kjøkkenbenk',
         targets: [],
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
         binaryControl: { on: false },
         controllable: true,

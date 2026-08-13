@@ -2,6 +2,7 @@ import type {
   AssociatedCarSnapshot,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
 
 /**
  * Adds `getSnapshotByDeviceId` derived from the same backing snapshot source
@@ -21,12 +22,21 @@ import type {
 export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetDeviceSnapshot[] }>(
   mock: T,
 ): T & {
-  getSnapshotByDeviceId: (deviceId: string) => TargetDeviceSnapshot | undefined;
+  getSnapshotByDeviceId: (deviceId: string) => (TargetDeviceSnapshot & TransportControlBindingProbe) | undefined;
   getAssociatedCar: (deviceId: string) => AssociatedCarSnapshot | undefined;
   dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void;
+  isFlowBackedCapability: (deviceId: string, capabilityId: string) => boolean;
 } => ({
   dispatchObservedStateForDevice: () => {},
   getAssociatedCar: () => undefined,
+  isFlowBackedCapability: (deviceId, capabilityId) => {
+    const snapshot = mock.getSnapshot().find((entry) => entry.id === deviceId) as
+      | (TargetDeviceSnapshot & TransportControlBindingProbe)
+      | undefined;
+    return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
+  },
   ...mock,
-  getSnapshotByDeviceId: (deviceId: string) => mock.getSnapshot().find((entry) => entry.id === deviceId),
+  getSnapshotByDeviceId: (deviceId: string) => mock.getSnapshot().find((entry) => entry.id === deviceId) as
+    | (TargetDeviceSnapshot & TransportControlBindingProbe)
+    | undefined,
 });

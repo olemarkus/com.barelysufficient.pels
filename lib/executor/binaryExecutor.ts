@@ -1,8 +1,7 @@
-import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import {
   isBinaryControlled,
+  isBinaryObservedOff,
   isBinaryOnOrUnknown,
-  resolveBinaryCommandCurrentOn,
 } from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import {
@@ -12,11 +11,8 @@ import {
   getBinaryControlPlan,
 } from '../plan/planBinaryControl';
 import {
-  resolveBinaryShedReasonCode,
-  selectShedActuationRecorder,
   shedActuationStampsCapacityMarkers,
 } from './lifecycleReleaseRecording';
-import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableObservedDeviceState,
@@ -189,8 +185,8 @@ export const applyDeferredBinaryCommand = async (
     : ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   // Requires a binary control handle (onoff or evcharger_charging). The actuation is
   // device-agnostic — the dispatched command's capability is derived from the device's
-  // `controlCapabilityId`, never hardcoded — so this accepts any binary control.
-  if (!snapshot || !hasBinaryControlCapability(snapshot)) return false;
+  // `binaryCapabilityId`, never hardcoded — so this accepts any binary control.
+  if (!snapshot || !isBinaryControlled(snapshot)) return false;
 
   if (intent.kind === 'binary_release') {
     // A released binary device is just onoff=false; release only one that is
@@ -200,7 +196,7 @@ export const applyDeferredBinaryCommand = async (
     // default) bypasses the capacity precheck / pendingSheds path so it does not
     // stamp the cooldown markers. The binary-on check is the trusted-evidence
     // gate, mirroring applyShedReleaseBinaryOff's gate.
-    if (isBinaryReleaseAlreadySettled(snapshot, options.forceAgainstReleasedOpposing)) return false;
+    if (options.forceAgainstReleasedOpposing !== true && isBinaryObservedOff(snapshot)) return false;
     return applyBinarySheddingToDevice(ctx, {
       deviceId: intent.deviceId,
       deviceName: intent.name,
@@ -228,40 +224,6 @@ export const applyDeferredBinaryCommand = async (
     snapshot,
     logContext: 'capacity',
   });
-};
-
-const isBinaryReleaseAlreadySettled = (
-  snapshot: ExecutorDeviceSnapshot,
-  forceAgainstReleasedOpposing: boolean | undefined,
-): boolean => forceAgainstReleasedOpposing !== true
-  && isBinaryControlled(snapshot)
-  && !resolveBinaryCommandCurrentOn(snapshot);
-
-const recordDirectBinaryShedActuation = (
-  ctx: PlanExecutorBinaryContext,
-  params: {
-    deviceId: string;
-    name: string;
-    capabilityId: BinaryControlCapabilityId;
-    reason?: string;
-    lifecycleRelease?: boolean;
-    now: number;
-  },
-): void => {
-  const { deviceId, name, capabilityId, reason, lifecycleRelease, now } = params;
-  logger.info({
-    event: 'binary_command_applied',
-    deviceId,
-    deviceName: name,
-    capabilityId,
-    desired: false,
-    reasonCode: resolveBinaryShedReasonCode(reason, lifecycleRelease),
-  });
-  selectShedActuationRecorder({
-    lifecycleRelease,
-    recordShedActuation: ctx.recordShedActuation,
-    recordReleaseShedActuation: ctx.recordReleaseShedActuation,
-  })(deviceId, name, now);
 };
 
 const turnOffDevice = async (
@@ -299,14 +261,13 @@ const turnOffDevice = async (
       desired: false,
       logContext: 'capacity',
       hasTargets: hasTarget,
-      capabilityId: snapshotEntry?.controlCapabilityId ?? null,
+      controlAxis: 'binary',
     });
     logger.debug({ event: 'executor_binary_log_debug', msg: hasTarget
       ? `Capacity: skip turn_off for ${name}, device has no onoff capability`
       : `Capacity: skip turn_off for ${name}, device has no onoff or temperature target` });
     return false;
   }
-  const now = Date.now();
   try {
     const outcome = await runBinaryControl({
       ctx,
@@ -320,16 +281,6 @@ const turnOffDevice = async (
       forceAgainstReleasedOpposing,
     });
     if (!outcome.applied) return false;
-    if (!outcome.flowBacked) {
-      recordDirectBinaryShedActuation(ctx, {
-        deviceId,
-        name,
-        capabilityId: snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
-        reason,
-        lifecycleRelease,
-        now,
-      });
-    }
     return true;
   } catch (error) {
     logger.error({ event: 'executor_binary_error', msg: `Failed to turn off ${name} via DeviceTransport`, err: error });

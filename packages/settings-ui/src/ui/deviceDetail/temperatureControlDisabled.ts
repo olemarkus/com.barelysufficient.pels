@@ -48,7 +48,7 @@ const canOfferTemperatureControlSwitch = (
   if (selected) return true;
   if (!supportsTemperatureDevice(device)) return false;
   return device?.capabilities?.includes('onoff') === true
-    || device?.controlCapabilityId !== undefined;
+    || device?.binaryControllable === true;
 };
 
 export const syncTemperatureControlDisabledRow = (params: {

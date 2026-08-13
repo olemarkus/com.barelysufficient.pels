@@ -15,11 +15,8 @@
  */
 
 import type { EvObservedProbe } from '../../contracts/src/types';
-import {
-  type EvBlockingChargingState,
-  isEvPlugStateBlocked,
-} from './evPlugState';
 import { isEvObserved } from './evObservedState';
+import { type EvBlockingChargingState, isEvPlugStateBlocked } from './evPlugState';
 
 /**
  * TOTAL over the blocking plug-states — a `Record`, not a lookup that can miss,
@@ -33,13 +30,12 @@ export const EV_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
 };
 
 export const DEVICE_UNAVAILABLE_REASON = 'device unavailable';
-export const EV_RESUME_PROBE_FAILED_REASON = 'charging did not start';
+export const BINARY_COMMAND_RETRY_REASON = 'device did not respond';
 
 type CommandabilityDetailInput = {
-  deviceClass?: string;
-  controlCapabilityId?: string;
-  available?: boolean;
-} & EvObservedProbe;
+  commandabilityReason?: 'charger_unplugged' | 'charger_discharging' | 'device_unavailable'
+    | 'binary_command_retry';
+};
 
 /**
  * Why PELS is not commanding this device, in the owner's words. Call it only for
@@ -47,19 +43,14 @@ type CommandabilityDetailInput = {
  * nothing to say, and returning a string for one would be the `null`-means-fine
  * shape this replaced.
  *
- * The branches mirror, in order, the three inputs that can veto a command: the
- * EV plug-state, availability, and the executor's resume-probe backoff. Only the
- * first two are observable from the device, so the backoff is the remainder —
- * which is sound exactly while those three are the whole set. **A fourth veto
- * source must add a branch here**, or it will silently render as "charging did
- * not start"; `test/unit/commandabilityDetail.test.ts` pins all three.
+ * The branches mirror the observer-resolved reasons that can veto a command.
  */
 export const resolveCommandabilityDetail = (dev: CommandabilityDetailInput): string => {
-  if (isEvObserved(dev) && isEvPlugStateBlocked(dev.evChargingState)) {
-    return EV_BLOCK_REASONS[dev.evChargingState];
-  }
-  if (dev.available === false) return DEVICE_UNAVAILABLE_REASON;
-  return EV_RESUME_PROBE_FAILED_REASON;
+  if (dev.commandabilityReason === 'charger_unplugged') return EV_BLOCK_REASONS.plugged_out;
+  if (dev.commandabilityReason === 'charger_discharging') return EV_BLOCK_REASONS.plugged_in_discharging;
+  if (dev.commandabilityReason === 'device_unavailable') return DEVICE_UNAVAILABLE_REASON;
+  if (dev.commandabilityReason === 'binary_command_retry') return BINARY_COMMAND_RETRY_REASON;
+  return DEVICE_UNAVAILABLE_REASON;
 };
 
 /**
@@ -82,7 +73,6 @@ export const EV_BOOST_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
  */
 export const resolveEvBoostBlockReason = (dev: {
   deviceClass?: string;
-  controlCapabilityId?: string;
 } & EvObservedProbe): string | null => {
   if (!isEvObserved(dev) || !isEvPlugStateBlocked(dev.evChargingState)) return null;
   return EV_BOOST_BLOCK_REASONS[dev.evChargingState];

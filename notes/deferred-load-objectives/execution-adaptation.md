@@ -291,7 +291,9 @@ draw **real power** in an expensive hour — which work item 2 already covers. A
 release would add control churn for no benefit and is not pursued.
 
 (The strict `>= target` satiation check in `planHistoryInProgressState.diagnosticProgressAtTarget`
-and the `near_target_idle → 'stalled' → met` classification stay as-is.)
+stays as-is. `near_target_idle → 'stalled' → met` additionally requires the observer's
+classification target to be at least the smart-task target, so an ordinary-mode setback cannot
+complete a higher target.)
 
 ## Work item 4 — Cold-start release (don't dump the catch-up into an expensive hour) — DONE
 

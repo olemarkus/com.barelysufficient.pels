@@ -44,7 +44,7 @@ const thermostat = (): TargetDeviceSnapshot => ({
   deviceType: 'temperature',
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
-  controlCapabilityId: 'onoff',
+  binaryControllable: true,
   binaryControl: { on: true },
 });
 
@@ -186,15 +186,22 @@ describe('disabled temperature control', () => {
   });
 
   it('fences target and step commands live while allowing binary commands', async () => {
-    const apply = vi.fn(async () => ({ requested: true as const }));
+    const apply = vi.fn(async (command) => (
+      command.kind === 'binary'
+        ? { requested: true as const, kind: 'binary' as const }
+        : { requested: false as const }
+    ));
     let disabled = true;
     const actuator = createTemperatureControlFencedActuator(
-      { apply },
+      {
+        apply,
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+      },
       () => disabled,
     );
 
     await expect(actuator.apply({
-      kind: 'target', deviceId: 'thermostat-1', capabilityId: 'target_temperature', value: 18,
+      kind: 'target', deviceId: 'thermostat-1', target: 'temperature', value: 18,
     })).resolves.toEqual({ requested: false });
     await expect(actuator.apply({
       kind: 'step',
@@ -205,16 +212,22 @@ describe('disabled temperature control', () => {
       planningCurrentA: 0,
     })).resolves.toEqual({ requested: false });
     await expect(actuator.apply({
-      kind: 'binary', deviceId: 'thermostat-1', control: 'onoff', desired: false, flowBacked: false,
-    })).resolves.toEqual({ requested: true });
+      kind: 'binary', deviceId: 'thermostat-1', desired: false,
+    })).resolves.toEqual({
+      requested: true,
+      kind: 'binary',
+    });
     await expect(actuator.apply({
-      kind: 'binary', deviceId: 'thermostat-1', control: 'onoff', desired: true, flowBacked: false,
-    })).resolves.toEqual({ requested: true });
+      kind: 'binary', deviceId: 'thermostat-1', desired: true,
+    })).resolves.toEqual({
+      requested: true,
+      kind: 'binary',
+    });
     expect(apply).toHaveBeenCalledTimes(2);
 
     disabled = false;
     await actuator.apply({
-      kind: 'target', deviceId: 'thermostat-1', capabilityId: 'target_temperature', value: 20,
+      kind: 'target', deviceId: 'thermostat-1', target: 'temperature', value: 20,
     });
     expect(apply).toHaveBeenCalledTimes(3);
   });

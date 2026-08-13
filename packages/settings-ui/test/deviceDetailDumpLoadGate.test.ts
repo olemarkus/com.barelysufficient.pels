@@ -81,7 +81,7 @@ const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): Targe
   deviceClass: 'socket',
   powerCapable: true,
   binaryControl: { on: false },
-  controlCapabilityId: 'onoff',
+  binaryControllable: true,
   capabilities: ['onoff'],
   ...overrides,
 }) as TargetDeviceSnapshot;
@@ -209,7 +209,8 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
       hasManagedSolarDevice: true,
       device: buildBinaryDevice({
         deviceClass: 'evcharger',
-        controlCapabilityId: 'evcharger_charging',
+        binaryControllable: true,
+        deviceRole: 'ev_charger',
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
       }),
     });
@@ -229,7 +230,7 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
   it('hides the row on a device without a binary control capability', async () => {
     await openPanel({
       hasManagedSolarDevice: true,
-      device: buildBinaryDevice({ controlCapabilityId: undefined, capabilities: [] }),
+      device: buildBinaryDevice({ binaryControllable: false, capabilities: [] }),
     });
     expect(dumpLoadRow()?.hidden).toBe(true);
   });

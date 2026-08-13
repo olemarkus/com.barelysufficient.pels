@@ -11,6 +11,8 @@ import type {
   PlanInputDevice,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
+import { resolveControlCommandConfirmationMs } from '../observer/controlCommandConfirmation';
 
 type PendingTargetDecision =
   | { type: 'send' }
@@ -20,13 +22,12 @@ type PendingTargetDecision =
 export function getPendingTargetCommandDecision(params: {
   state: Pick<PlanEngineState, 'pendingTargetCommands'>;
   deviceId: string;
-  capabilityId: string;
   desired: number;
   nowMs: number;
 }): PendingTargetDecision {
-  const { state, deviceId, capabilityId, desired, nowMs } = params;
+  const { state, deviceId, desired, nowMs } = params;
   const pending = state.pendingTargetCommands[deviceId];
-  if (!pending || pending.capabilityId !== capabilityId || pending.desired !== desired) {
+  if (!pending || pending.target !== 'temperature' || pending.desired !== desired) {
     return { type: 'send' };
   }
   if (nowMs >= pending.nextRetryAtMs) {
@@ -42,29 +43,34 @@ export function getPendingTargetCommandDecision(params: {
 export function recordPendingTargetCommandAttempt(params: {
   state: Pick<PlanEngineState, 'pendingTargetCommands'>;
   deviceId: string;
-  capabilityId: string;
+  target: 'temperature';
   desired: number;
   nowMs: number;
   observedValue?: unknown;
+  communicationModel?: 'local' | 'cloud';
 }): PendingTargetCommandState {
   const {
     state,
     deviceId,
-    capabilityId,
+    target,
     desired,
     nowMs,
     observedValue,
+    communicationModel,
   } = params;
   const previous = state.pendingTargetCommands[deviceId];
-  const isRetry = previous?.capabilityId === capabilityId && previous.desired === desired;
+  const isRetry = previous?.target === 'temperature' && previous.desired === desired;
   const retryCount = isRetry ? previous.retryCount + 1 : 0;
   const entry: PendingTargetCommandState = {
-    capabilityId,
+    target,
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
+    pendingMs: isRetry ? previous.pendingMs : resolveControlCommandConfirmationMs(communicationModel ?? 'local'),
     lastAttemptMs: nowMs,
     retryCount,
-    nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),
+    nextRetryAtMs: nowMs + (isRetry
+      ? getTargetCommandRetryDelayMs(retryCount)
+      : resolveControlCommandConfirmationMs(communicationModel ?? 'local')),
     status: 'waiting_confirmation',
     lastObservedValue: resolvePendingTargetObservedValue({
       isRetry,
@@ -82,26 +88,29 @@ export function recordPendingTargetCommandAttempt(params: {
 export function recordFailedPendingTargetCommandAttempt(params: {
   state: Pick<PlanEngineState, 'pendingTargetCommands'>;
   deviceId: string;
-  capabilityId: string;
+  target: 'temperature';
   desired: number;
   nowMs: number;
   observedValue?: unknown;
+  communicationModel?: 'local' | 'cloud';
 }): PendingTargetCommandState {
   const {
     state,
     deviceId,
-    capabilityId,
+    target,
     desired,
     nowMs,
     observedValue,
+    communicationModel,
   } = params;
   const previous = state.pendingTargetCommands[deviceId];
-  const isRetry = previous?.capabilityId === capabilityId && previous.desired === desired;
+  const isRetry = previous?.target === 'temperature' && previous.desired === desired;
   const retryCount = isRetry ? previous.retryCount + 1 : 0;
   const entry: PendingTargetCommandState = {
-    capabilityId,
+    target,
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
+    pendingMs: isRetry ? previous.pendingMs : resolveControlCommandConfirmationMs(communicationModel ?? 'local'),
     lastAttemptMs: nowMs,
     retryCount,
     nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),
@@ -145,7 +154,7 @@ export function prunePendingTargetCommandsForPlan(params: {
       reason: 'plan_no_longer_wants',
       deviceId,
       deviceName: device?.name,
-      capabilityId: pending.capabilityId,
+      target: pending.target,
       desired: pending.desired,
     });
   }
@@ -183,7 +192,7 @@ export function syncPendingTargetCommands(params: {
       }
       continue;
     }
-    const observedValue = getObservedTargetValue(liveDevice, pending.capabilityId);
+    const observedValue = getObservedTargetValue(liveDevice);
 
     if (handleConfirmedPendingTargetObservation({
       state,
@@ -285,11 +294,8 @@ function getTargetCommandRetryDelayMs(retryCount: number): number {
   return TARGET_COMMAND_RETRY_DELAYS_MS[index];
 }
 
-function getObservedTargetValue(
-  liveDevice: PlanInputDevice,
-  capabilityId: string,
-): unknown {
-  return liveDevice.targets.find((target) => target.id === capabilityId)?.value;
+function getObservedTargetValue(liveDevice: PlanInputDevice): unknown {
+  return getPrimaryTargetCapability(liveDevice.targets)?.value;
 }
 
 function clearPendingTargetCommandForMissingDevice(params: {
@@ -307,7 +313,7 @@ function clearPendingTargetCommandForMissingDevice(params: {
     event: 'pending_target_command_cleared',
     reason: 'device_missing',
     deviceId,
-    capabilityId: pending.capabilityId,
+    target: pending.target,
     source,
   });
   return true;
@@ -353,7 +359,7 @@ function handleConfirmedPendingTargetObservation(params: {
     event: 'pending_target_command_confirmed',
     deviceId,
     deviceName: name,
-    capabilityId: pending.capabilityId,
+    target: pending.target,
     desired: pending.desired,
     source,
   });
@@ -391,7 +397,7 @@ function handleTemporaryUnavailablePendingTargetObservation(params: {
     event: 'pending_target_command_unavailable',
     deviceId,
     deviceName: name,
-    capabilityId: pending.capabilityId,
+    target: pending.target,
     observed: formatObservedTarget(observedValue),
     source,
     retryInSec: remainingSec,
@@ -426,7 +432,7 @@ function updatePendingTargetWaitingObservation(params: {
     event: 'pending_target_command_waiting',
     deviceId,
     deviceName: name,
-    capabilityId: pending.capabilityId,
+    target: pending.target,
     observed: formatObservedTarget(observedValue),
     source,
     expected: pending.desired,
@@ -441,7 +447,7 @@ function updatePendingTargetWaitingObservation(params: {
       event: 'target_waiting_for_confirmation',
       deviceId,
       deviceName: name,
-      capabilityId: pending.capabilityId,
+      target: pending.target,
       observed: formatObservedTarget(observedValue),
       previousObserved: previousObservedSource !== undefined
         ? formatObservedTarget(previousObservedValue)
@@ -481,7 +487,7 @@ function maybeEmitRepeatedPendingConfirmation(params: {
     event: 'target_waiting_for_confirmation',
     deviceId,
     deviceName: name,
-    capabilityId: pending.capabilityId,
+    target: pending.target,
     observed: formatObservedTarget(observedValue),
     source,
     expected: pending.desired,

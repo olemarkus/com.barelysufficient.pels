@@ -1,8 +1,6 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
     isEvChargingState,
-    resolveEvChargingStateBinaryEvidence,
-    resolveEvCurrentOn,
 } from '../managerControl';
 import {
     isStateOfChargeCapabilityId,
@@ -22,7 +20,7 @@ export function applyCapabilityObservation(
     capabilityId: string,
     observation: CapabilityObservation,
 ): boolean {
-    if (capabilityId === nextSnapshot.controlCapabilityId) {
+    if (capabilityId === nextSnapshot.binaryCapabilityId) {
         return applyControlCapabilityObservation(nextSnapshot, observation);
     }
     if (capabilityId === 'evcharger_charging_state') {
@@ -48,27 +46,22 @@ function applyControlCapabilityObservation(
     if (typeof observation.value !== 'boolean') return false;
     const previousCurrentOn = snapshot.binaryControl?.on;
     const previousEvCharging = snapshot.evCharging;
-    if (snapshot.controlCapabilityId === 'evcharger_charging') {
+    if (snapshot.binaryCapabilityId === 'evcharger_charging') {
         snapshot.evCharging = observation.value;
         snapshot.evChargingObservedAtMs = observation.observedAt;
-        snapshot.binaryControl = {
-            on: resolveEvCurrentOn({
-                evChargingState: snapshot.evChargingState,
-                evchargerCharging: snapshot.evCharging,
-            }),
-        };
+        snapshot.binaryControl = { on: observation.value };
     } else {
         snapshot.binaryControl = { on: observation.value };
     }
     if (
         previousCurrentOn === snapshot.binaryControl?.on
-        && snapshot.controlCapabilityId !== 'evcharger_charging'
+        && snapshot.binaryCapabilityId !== 'evcharger_charging'
     ) {
         return false;
     }
     if (
         previousCurrentOn === snapshot.binaryControl?.on
-        && snapshot.controlCapabilityId === 'evcharger_charging'
+        && snapshot.binaryCapabilityId === 'evcharger_charging'
         && previousEvCharging === snapshot.evCharging
     ) {
         return false;
@@ -103,25 +96,6 @@ function applyEvChargingStateObservation(
     snapshot.evChargingStateObservedAtMs = observation.observedAt;
     if (snapshot.evChargingState === normalized) return false;
     snapshot.evChargingState = normalized;
-    snapshot.binaryControl = {
-        on: resolveEvCurrentOn({
-            evChargingState: snapshot.evChargingState,
-            evchargerCharging: snapshot.evCharging,
-        }),
-    };
-    const binaryEvidence = resolveEvChargingStateBinaryEvidence(normalized);
-    if (binaryEvidence !== undefined && observation.source !== 'local_write') {
-        snapshot.binaryControlObservation = {
-            valid: true,
-            capabilityId: 'evcharger_charging',
-            observedValue: binaryEvidence,
-            observedCapabilityIds: ['evcharger_charging_state'],
-            observedAtMs: observation.observedAt,
-            source: observation.source,
-        };
-    } else {
-        delete snapshot.binaryControlObservation;
-    }
     // Unconditional: the plug-state contract gate drops a device that reports a
     // non-enum value, so a normalised state is always known here.
     updateStateOfChargeSessionBoundary({
@@ -277,7 +251,7 @@ function doesCapabilityObservationMatchSnapshot(
     capabilityId: string,
     observationValue: unknown,
 ): boolean {
-    if (capabilityId === snapshot.controlCapabilityId) {
+    if (capabilityId === snapshot.binaryCapabilityId) {
         return matchesCurrentControlObservation(snapshot, observationValue);
     }
     if (capabilityId === 'measure_power') {
@@ -297,7 +271,7 @@ function matchesCurrentControlObservation(
     snapshot: TransportDeviceSnapshot,
     observationValue: unknown,
 ): boolean {
-    const currentControlValue = snapshot.controlCapabilityId === 'evcharger_charging'
+    const currentControlValue = snapshot.binaryCapabilityId === 'evcharger_charging'
         ? snapshot.evCharging
         : snapshot.binaryControl?.on;
     return currentControlValue === observationValue;

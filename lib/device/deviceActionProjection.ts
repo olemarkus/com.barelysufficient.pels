@@ -16,7 +16,6 @@
  *    narrows automatically via structural compatibility.
  */
 import type {
-  BinaryControlCapabilityId,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   EvObservedProbe,
@@ -55,7 +54,6 @@ import {
 // `no-device-to-peer-except-power` layering rule.
 
 export type BinaryControlPlan = {
-  capabilityId: BinaryControlCapabilityId;
   canSet: boolean;
 };
 
@@ -71,7 +69,6 @@ type ControllableFlags = {
 
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & EvObservedProbe & {
   deviceClass?: string;
-  controlCapabilityId?: BinaryControlCapabilityId;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -181,15 +178,14 @@ export type BinaryControlPlanInput = BinaryCapabilityResolveInput & {
 };
 
 export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryControlPlan | null {
-  const capabilityId = resolveBinaryCapabilityId(snapshot);
-  if (!snapshot || !capabilityId) return null;
+  if (!snapshot || !hasBinaryAxis(snapshot)) return null;
   return {
-    capabilityId,
     // Routed through `resolveCanSetControl` so the planner-side producer bit
     // (consumed by the migrated `canTurnOnDevice`) and the legacy
     // `getBinaryControlPlan().canSet` view stay bit-exact in lockstep.
     canSet: resolveCanSetControl({
-      controlCapabilityId: snapshot.controlCapabilityId,
+      binaryControl: snapshot.binaryControl,
+      currentOn: snapshot.currentOn,
       capabilities: snapshot.capabilities,
       canSetControl: snapshot.canSetControl,
       canSetOnOff: snapshot.canSetOnOff,
@@ -200,19 +196,14 @@ export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryC
 
 
 type BinaryCapabilityResolveInput = {
-  controlCapabilityId?: BinaryControlCapabilityId;
+  binaryControl?: { on: boolean };
+  currentOn?: boolean;
   capabilities?: string[];
 };
 
-function resolveBinaryCapabilityId(
-  snapshot?: BinaryCapabilityResolveInput,
-): BinaryControlPlan['capabilityId'] | undefined {
-  if (!snapshot) return undefined;
-  if (snapshot.controlCapabilityId) return snapshot.controlCapabilityId;
-  if (snapshot.capabilities?.includes('evcharger_charging')) return 'evcharger_charging';
-  if (snapshot.capabilities?.includes('onoff')) return 'onoff';
-  return undefined;
-}
+const hasBinaryAxis = (snapshot: BinaryCapabilityResolveInput): boolean => (
+  snapshot.binaryControl !== undefined || typeof snapshot.currentOn === 'boolean'
+);
 
 // `resolveCanSetBinaryControl` collapsed into `resolveCanSetControl` above
 // (chunk 6 of the planner-detype refactor). `getBinaryControlPlan` now routes
@@ -293,10 +284,9 @@ export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
  * existing snapshot shapes the executor passes in.
  */
 export function resolveCanSetControl(input: CanSetControlResolveInput): boolean {
-  const capabilityId = resolveBinaryCapabilityId(input);
-  if (!capabilityId) return false;
+  if (!hasBinaryAxis(input)) return false;
   if (input.canSetControl === false) return false;
-  if (capabilityId === 'onoff' && input.canSetOnOff === false) return false;
+  if (input.canSetOnOff === false) return false;
   return true;
 }
 
@@ -324,7 +314,7 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  * EV blocks and stay outside this gate.
  */
 export function isEvPhysicallyUnplugged(
-  dev: { deviceClass?: string; controlCapabilityId?: string } & EvObservedProbe,
+  dev: { deviceClass?: string } & EvObservedProbe,
 ): boolean {
   // `isEvObserved` scopes the question to EV devices, so a non-EV device can
   // never read as an EV block, and the plug-state it narrows to is the same one
@@ -383,7 +373,7 @@ export type ShedIntentBehaviorInput = {
 export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
   controllable: boolean;
-  controlCapabilityId?: BinaryControlCapabilityId;
+  hasBinaryControl: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   primaryTarget?: TargetCapabilitySnapshot | null;
 };
@@ -412,7 +402,7 @@ const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | nul
 };
 
 export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionIntent => {
-  const { shedBehavior, controllable, controlCapabilityId, primaryTarget } = input;
+  const { shedBehavior, controllable, hasBinaryControl, primaryTarget } = input;
   // set_temperature requires both a primary target capability (so the executor has a write
   // surface and a normalised setpoint) AND `controllable === true` for this cycle. Cap-off
   // devices configured for set_temperature collapse to the binary fallback below; the planner
@@ -435,7 +425,7 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
     if (controllable && shedBehavior.action === 'set_step') {
       return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
-    if (controlCapabilityId === undefined) {
+    if (!hasBinaryControl) {
       return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
   }

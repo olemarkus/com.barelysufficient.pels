@@ -1,4 +1,3 @@
-import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import type { BinaryPlanInputKind, PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import type { DevicePlanDevice, BinaryControlKind } from './planTypes';
 
@@ -14,9 +13,9 @@ import type { DevicePlanDevice, BinaryControlKind } from './planTypes';
  * sound. Dedicated overloads narrow the output `DevicePlanDevice` and the input
  * `PlanInputDevice`; the generic overload preserves a structural caller's type.
  *
- * The runtime predicate is the browser-safe `hasBinaryControlCapability`
- * boolean (`controlCapabilityId !== undefined`): capability presence is the
- * source of truth for binary status. Delegating keeps exactly one definition of
+ * The runtime predicate is the producer-resolved `currentOn` boolean: observed
+ * binary state is the source of truth for binary status. Keeping the predicate
+ * here provides exactly one definition of
  * "is this a binary device", and shared-domain stays browser-safe (it never
  * imports the plan device types — the narrowing overloads live here, in the plan
  * layer), mirroring `isTemperaturePlanDevice`/`isEvPlanDevice`.
@@ -29,9 +28,9 @@ import type { DevicePlanDevice, BinaryControlKind } from './planTypes';
  */
 export function isBinaryPlanDevice(device: DevicePlanDevice): device is DevicePlanDevice & BinaryControlKind;
 export function isBinaryPlanDevice(device: PlanInputDevice): device is PlanInputDevice & BinaryPlanInputKind;
-export function isBinaryPlanDevice<T extends { controlCapabilityId?: string }>(
+export function isBinaryPlanDevice<T extends object>(
   device: T,
 ): device is T & (T extends PlanInputDevice ? BinaryPlanInputKind : BinaryControlKind);
-export function isBinaryPlanDevice(device: { controlCapabilityId?: string }): boolean {
-  return hasBinaryControlCapability(device);
+export function isBinaryPlanDevice(device: object): boolean {
+  return 'currentOn' in device && typeof device.currentOn === 'boolean';
 }

@@ -94,7 +94,7 @@ describe('swap lifecycle completion', () => {
   });
 
   it('completes a step-only swap target (no binary handle) once the requested step is reported', () => {
-    // Regression: a step-only stepper (controlCapabilityId undefined) used to be
+    // Regression: a step-only stepper (binaryCapabilityId undefined) used to be
     // short-circuited to "not complete" by the binary gate, holding its source
     // until the stale-swap timeout. Completion must be decided on the step axis.
     const swapState = emptySwapState();
@@ -103,7 +103,7 @@ describe('swap lifecycle completion', () => {
 
     const reachedTarget = steppedPlanDevice({
       id: 'target',
-      controlCapabilityId: undefined,
+      currentOn: undefined,
       currentState: 'on',
       reportedStepId: 'max',
     });
@@ -111,7 +111,7 @@ describe('swap lifecycle completion', () => {
 
     const belowTarget = steppedPlanDevice({
       id: 'target',
-      controlCapabilityId: undefined,
+      currentOn: undefined,
       currentState: 'on',
       reportedStepId: 'low',
     });

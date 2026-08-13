@@ -20,7 +20,6 @@ import type { MainMeterSelection } from '../../../packages/contracts/src/mainMet
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
-import type { BinarySettleState } from '../../observer/binarySettle';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { DeviceFetchResult } from './managerFetch';
 import type { HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
@@ -36,8 +35,6 @@ import type {
   PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import type {
-  BinarySettleDepsForTransport,
-  DeviceTransportBinarySettleOps,
   ResolvedTransportPowerState,
   SteppedLoadFlowTriggerCard,
   TransportObservedStateDispatcher,
@@ -104,8 +101,6 @@ export type TransportContext = {
   readonly observationState: DeviceTransportObservationState;
   readonly recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   readonly recentRealtimeCapabilityEventLogByKey: Map<string, number>;
-  readonly binarySettleState: BinarySettleState;
-  readonly binarySettleOps: DeviceTransportBinarySettleOps;
 
   /** The read-only observation producers, built together in `observationProducers.ts`. */
   readonly observationProducers: {
@@ -118,9 +113,7 @@ export type TransportContext = {
   dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void;
   dispatchPlanReconcile(event: PlanRealtimeUpdateEvent): void;
   emitPlanReconcileEvent(event: PlanRealtimeUpdateEvent): void;
-  consultPendingPredicate(deviceId: string, capabilityId: string): boolean;
   shouldTrackRealtimeDevice(deviceId: string): boolean;
-  getBinarySettleDeps(): BinarySettleDepsForTransport;
 
   applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike;
   parseDevice(
@@ -135,7 +128,6 @@ export type TransportContext = {
   // Write-seam collaborators.
   readonly getFlowTriggerCard: ((cardId: string) => SteppedLoadFlowTriggerCard | undefined) | undefined;
   isSdkReady(): boolean;
-  updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void;
   dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void;
   refreshSnapshot(options?: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null>;
 
@@ -178,7 +170,7 @@ export type TransportContext = {
   fetchDevicesForSnapshot(): Promise<DeviceFetchResult>;
   fetchDevicesByKnownIds(): Promise<DeviceFetchResult>;
   // Commit-side seams owned by the leaf (snapshot index + event bridge + live feed).
-  setSnapshot(snapshot: TargetDeviceSnapshot[]): void;
+  setSnapshot(snapshot: TransportDeviceSnapshot[]): void;
   dispatchObservedStateRefresh(snapshot: TargetDeviceSnapshot[]): void;
   updateLiveFeedTrackedDevices(deviceIds: string[]): void;
 };

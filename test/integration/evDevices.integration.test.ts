@@ -52,7 +52,7 @@ type SnapshotEntry = {
   id: string;
   name: string;
   deviceClass?: string;
-  controlCapabilityId?: string;
+  binaryCapabilityId?: string;
   // The observed binary state moved off `currentOn` onto the `binaryControl`
   // cluster; `evChargingState` rides on the EV-observed cluster. This local view
   // DTO carries both as the assertions read them.
@@ -215,7 +215,7 @@ describe('EV charger integration', { retry: 2 }, () => {
       expect(entry).toEqual(expect.objectContaining({
         id: charger.idValue,
         deviceClass: 'evcharger',
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         binaryControl: { on: expectedOn },
         evChargingState: state,
       }));
@@ -223,6 +223,9 @@ describe('EV charger integration', { retry: 2 }, () => {
   );
 
   it('sheds and later restores an Easee-like charger through evcharger_charging only', async () => {
+    // MockDevice capability timestamps use the wall clock. Keep the planner
+    // clock on the same basis so confirmation-time cooldowns are meaningful.
+    currentTimeMs = originalDateNow();
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in_charging');
     const app = await createEvApp(charger);
@@ -240,8 +243,16 @@ describe('EV charger integration', { retry: 2 }, () => {
       binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       expectedPowerKw: 7.2,
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }));
+    expect((app as any).deviceManager.getBinaryCommandConfirmationSnapshot()).toContainEqual(
+      expect.objectContaining({
+        id: charger.idValue,
+        binaryCommandConfirmation: expect.objectContaining({ state: 'observed', observedValue: false }),
+      }),
+    );
+    expect((app as any).planEngine.state.pendingBinaryCommands[charger.idValue]).toBeUndefined();
+    expect((app as any).planEngine.state.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
 
     currentTimeMs += 61_000;
     (app as any).computeDynamicSoftLimit = () => 10.0;
@@ -264,7 +275,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(entry).toEqual(expect.objectContaining({
       binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }));
   });
 

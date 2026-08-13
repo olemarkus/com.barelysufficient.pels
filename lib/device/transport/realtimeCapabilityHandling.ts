@@ -2,29 +2,27 @@
  * Realtime per-capability update handling for `DeviceTransport`, extracted as
  * homey-free free functions over a shared `TransportContext`. Translates an
  * incoming Web-API capability event into snapshot mutations + observed-state /
- * plan-reconcile dispatches, honouring echo-suppression, binary-settle windows,
- * native stepped-load drift, and freshness-only capabilities. Low-level helpers
+ * plan-reconcile dispatches, honouring target/step echo suppression, pending
+ * binary-command confirmation, native stepped-load drift, and freshness-only capabilities. Low-level helpers
  * live in `realtimeCapabilityShared`; native stepped-load handling in
  * `nativeSteppedRealtime`.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { getLogger } from '../../logging/logger';
 import { recordCapabilityObservation } from './managerObservation';
 import { formatBinaryState, formatTargetValue } from './managerRealtimeSupport';
 import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
 import {
   didMeasurePowerBecomeSignificantlyPositive,
-  type ObservedDeviceStateEvent,
   type PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import { normalizeNativeEvCapabilityUpdate } from '../nativeEvWiring';
 import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
   applyBinaryObservationToSnapshot,
   clearBinarySettleEvidenceForInvalidControlPayload,
-  handleFreshnessBinaryObservation,
   recordRealtimeCapabilityObservation,
 } from './binarySettleEvidence';
 import {
@@ -42,10 +40,8 @@ import type { TransportContext } from './transportContext';
 
 const moduleLogger = getLogger('device/transport');
 
-type ObservedCursorFields = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
-
 const resolveBinaryAxisOn = (
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     fallback: boolean,
 ): boolean => (
@@ -54,7 +50,6 @@ const resolveBinaryAxisOn = (
         : (snapshot.binaryControl?.on ?? fallback)
 );
 
-/** Returns true if the change was handled by the binary settle window. */
 function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -64,7 +59,7 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
 }): boolean {
     const {
         snapshotIndex,
-        deviceId,
+        deviceId: _deviceId,
         capabilityId,
         value,
         changes,
@@ -76,58 +71,7 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
         capabilityId,
         previousCurrentOn ?? true,
     );
-    // Check the settle window before the equality check so a confirmation
-    // observation (value === currentOn) can still settle it.
-    //
-    // The raw echo settles the window for EVERY control capability, chargers
-    // included. The window's question is "was PELS's write acknowledged?", and
-    // the raw axis is the axis PELS wrote, so it is the answer: measured at p50
-    // 7.3 s and never later than 9.2 s, on all 115 charger writes in the
-    // 2026-08-11→13 production log. Settlement used to be gated on
-    // `isRawBinaryObservedTruthEvidenceAllowed`, which excludes chargers because
-    // their observed on/off truth is plug-state-authoritative — a different
-    // question. That gate left the window waiting on `evcharger_charging_state`,
-    // i.e. "is the car drawing?", which arrived at p50 29.7 s and never at all
-    // when the car was full or had stopped by itself (8 of 58 starts). So every
-    // charger write ran to timeout and reported drift against a snapshot older
-    // than the write, on a command the charger had accepted. Whether the car
-    // then draws is the EV resume probe's question, with its own deadline and
-    // back-off ladder; this window must not answer it too.
-    //
-    // Observed on/off truth is unaffected: `applyBinaryObservationToSnapshot`
-    // still resolves a charger's `binaryControl.on` through `resolveEvCurrentOn`,
-    // where the plug-state stays authoritative.
-    const hasSettleWindow = ctx.binarySettleOps.hasWindow(ctx.binarySettleState, deviceId, capabilityId);
-    if (hasSettleWindow) {
-        applyBinaryObservationToSnapshot(ctx, snapshot, capabilityId, value, 'realtime_capability');
-    }
-    let settleCursor: ObservedCursorFields | undefined;
-    const ensureSettleCursor = (): ObservedCursorFields => {
-        settleCursor ??= ctx.nextObservationCursor(deviceId);
-        return settleCursor;
-    };
-    const settleOutcome = ctx.binarySettleOps.note({
-        state: ctx.binarySettleState,
-        deps: ctx.getBinarySettleDeps(),
-        deviceId,
-        capabilityId,
-        value,
-        source: 'realtime_capability',
-        ensureEventFields: ensureSettleCursor,
-    });
-    if (settleOutcome !== 'none') {
-        // Record the observation so freshness tracking advances even for settle events.
-        recordRealtimeCapabilityObservation(ctx, {
-            deviceId,
-            eventCapabilityId: capabilityId,
-            observedCapabilityIds: [capabilityId],
-        }, false, ensureSettleCursor());
-        return true; // reconcile already emitted by settle window on drift; none needed on settle
-    }
-
-    if (!hasSettleWindow) {
-        applyBinaryObservationToSnapshot(ctx, snapshot, capabilityId, value, 'realtime_capability');
-    }
+    applyBinaryObservationToSnapshot(ctx, snapshot, capabilityId, value, 'realtime_capability');
     // Resolve both sides through the may-draw default before comparing so an
     // absent (non-binary) previous state can't read as a spurious on<->on change.
     const previousOn = previousBinaryAxisOn;
@@ -159,12 +103,6 @@ function handleFreshnessOnlyCapabilityUpdate(
         value,
     });
     const reconcileChange = result.reconcileChange;
-    if (handleFreshnessBinaryObservation(ctx, {
-        snapshot,
-        deviceId,
-        eventCapabilityId: capabilityId,
-        binaryControlObservation: result.binaryControlObservation,
-    })) return;
     if (!result.changed) return;
     recordCapabilityObservation({
         state: ctx.observationState,
@@ -211,7 +149,7 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
     deviceId: string;
     capabilityId: string;
     value: unknown;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: TransportDeviceSnapshot;
 }): void {
     const {
         snapshotIndex,
@@ -222,7 +160,7 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
     } = params;
     const changes: PlanRealtimeUpdateEvent['changes'] = [];
 
-    if (capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean') {
+    if (capabilityId === snapshot.binaryCapabilityId && typeof value === 'boolean') {
         const settled = applyBinaryCapabilityUpdate(ctx, { snapshotIndex, deviceId, capabilityId, value, changes });
         if (settled) {
             emitCapabilityEventReceived(
@@ -235,7 +173,7 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
         }
     }
     if (
-        capabilityId === snapshot.controlCapabilityId
+        capabilityId === snapshot.binaryCapabilityId
         && (capabilityId === 'onoff' || capabilityId === 'evcharger_charging')
         && typeof value !== 'boolean'
     ) {
@@ -348,12 +286,13 @@ export function handleRealtimeCapabilityUpdate(
             effectiveCapabilityId,
             effectiveValue,
         );
-        // Skip echo suppression when a binary settle window is active so the
-        // confirmation observation can close it immediately.
-        const hasBinarySettleWindow = effectiveCapabilityId === snapshot.controlCapabilityId
-            && ctx.consultPendingPredicate(deviceId, effectiveCapabilityId);
+        // A binary write is never observed optimistically. Its matching echo is
+        // therefore real observed truth and must pass through even when no
+        // pending consumer is currently attached. Target/step writes retain
+        // their duplicate-event suppression.
+        const isBinaryObservation = effectiveCapabilityId === snapshot.binaryCapabilityId;
         if (
-            !hasBinarySettleWindow
+            !isBinaryObservation
             && hasMatchingRecentLocalWrite(ctx, deviceId, effectiveCapabilityId, normalizedValue)
         ) {
             continue;

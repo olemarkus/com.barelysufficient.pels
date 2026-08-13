@@ -7,7 +7,6 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { getLogger } from '../../logging/logger';
 import { recordCapabilityObservation } from './managerObservation';
@@ -36,7 +35,7 @@ const moduleLogger = getLogger('device/transport');
 function resolveNativeSteppedCapabilityUpdateKind(params: {
     capabilityId: string;
     value: unknown;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: TransportDeviceSnapshot;
 }): {
     isNativePowerStepUpdate: boolean;
 } | null {
@@ -50,7 +49,7 @@ function resolveNativeSteppedCapabilityUpdateKind(params: {
                 [capabilityId]: { value },
             },
         });
-    const isNativeBinaryUpdate = capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean';
+    const isNativeBinaryUpdate = capabilityId === snapshot.binaryCapabilityId && typeof value === 'boolean';
     if (!isNativePowerStepUpdate && !isNativeBinaryUpdate) {
         return null;
     }
