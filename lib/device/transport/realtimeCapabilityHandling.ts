@@ -11,7 +11,6 @@
  */
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { getLogger } from '../../logging/logger';
-import { resolveEvCurrentOn } from '../managerControl';
 import { recordCapabilityObservation } from './managerObservation';
 import { formatBinaryState, formatTargetValue } from './managerRealtimeSupport';
 import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
@@ -21,7 +20,7 @@ import {
   type PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import { normalizeNativeEvCapabilityUpdate } from '../nativeEvWiring';
-import { MIN_SIGNIFICANT_POWER_W, isRawBinarySettlementEvidenceAllowed } from './transportTypes';
+import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
 import {
   applyBinaryObservationToSnapshot,
   clearBinarySettleEvidenceForInvalidControlPayload,
@@ -79,43 +78,43 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     );
     // Check the settle window before the equality check so a confirmation
     // observation (value === currentOn) can still settle it.
+    //
+    // The raw echo settles the window for EVERY control capability, chargers
+    // included. The window's question is "was PELS's write acknowledged?", and
+    // the raw axis is the axis PELS wrote, so it is the answer: measured at p50
+    // 7.3 s and never later than 9.2 s, on all 115 charger writes in the
+    // 2026-08-11→13 production log. Settlement used to be gated on
+    // `isRawBinaryObservedTruthEvidenceAllowed`, which excludes chargers because
+    // their observed on/off truth is plug-state-authoritative — a different
+    // question. That gate left the window waiting on `evcharger_charging_state`,
+    // i.e. "is the car drawing?", which arrived at p50 29.7 s and never at all
+    // when the car was full or had stopped by itself (8 of 58 starts). So every
+    // charger write ran to timeout and reported drift against a snapshot older
+    // than the write, on a command the charger had accepted. Whether the car
+    // then draws is the EV resume probe's question, with its own deadline and
+    // back-off ladder; this window must not answer it too.
+    //
+    // Observed on/off truth is unaffected: `applyBinaryObservationToSnapshot`
+    // still resolves a charger's `binaryControl.on` through `resolveEvCurrentOn`,
+    // where the plug-state stays authoritative.
     const hasSettleWindow = ctx.binarySettleOps.hasWindow(ctx.binarySettleState, deviceId, capabilityId);
-    const isSettlementEvidence = isRawBinarySettlementEvidenceAllowed(snapshot, capabilityId);
-    if (hasSettleWindow && isSettlementEvidence) {
+    if (hasSettleWindow) {
         applyBinaryObservationToSnapshot(ctx, snapshot, capabilityId, value, 'realtime_capability');
-    }
-    if (hasSettleWindow && !isSettlementEvidence) {
-        if (capabilityId === 'evcharger_charging') {
-            snapshot.binaryControl = {
-                on: resolveEvCurrentOn({
-                    evChargingState: snapshot.evChargingState,
-                    evchargerCharging: snapshot.evCharging,
-                }),
-            };
-        }
-        recordRealtimeCapabilityObservation(ctx, {
-            deviceId,
-            eventCapabilityId: capabilityId,
-            observedCapabilityIds: [capabilityId],
-        });
-        return true;
     }
     let settleCursor: ObservedCursorFields | undefined;
     const ensureSettleCursor = (): ObservedCursorFields => {
         settleCursor ??= ctx.nextObservationCursor(deviceId);
         return settleCursor;
     };
-    const settleOutcome = isSettlementEvidence
-        ? ctx.binarySettleOps.note({
-            state: ctx.binarySettleState,
-            deps: ctx.getBinarySettleDeps(),
-            deviceId,
-            capabilityId,
-            value,
-            source: 'realtime_capability',
-            ensureEventFields: ensureSettleCursor,
-        })
-        : 'none';
+    const settleOutcome = ctx.binarySettleOps.note({
+        state: ctx.binarySettleState,
+        deps: ctx.getBinarySettleDeps(),
+        deviceId,
+        capabilityId,
+        value,
+        source: 'realtime_capability',
+        ensureEventFields: ensureSettleCursor,
+    });
     if (settleOutcome !== 'none') {
         // Record the observation so freshness tracking advances even for settle events.
         recordRealtimeCapabilityObservation(ctx, {

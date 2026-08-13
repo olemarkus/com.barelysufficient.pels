@@ -1,10 +1,15 @@
 import {
-  LOCAL_BINARY_SETTLE_WINDOW_MS,
+  BINARY_SETTLE_WINDOW_MS,
   clearAllPendingBinarySettleWindows,
   createBinarySettleState,
   notePendingBinarySettleObservation,
   startPendingBinarySettleWindow,
 } from '../../lib/observer/binarySettle';
+import {
+  BINARY_COMMAND_PENDING_MS,
+  CLOUD_BINARY_COMMAND_PENDING_MS,
+  EV_START_COMMAND_PENDING_MS,
+} from '../../lib/observer/pendingBinaryCommandTypes';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 function buildSettleSnapshot(overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot {
@@ -114,7 +119,7 @@ describe('observer binarySettle device identity hygiene', () => {
 });
 
 describe('observer binarySettle timeout finalization', () => {
-  // The 5-second settle window is a reconciliation boundary: if no confirming
+  // The settle window is a reconciliation boundary: if no confirming
   // observation arrives, the window must close, the local-write suppression
   // entry must be cleared (so subsequent realtime events stop being treated as
   // our own echoes), and reconcile fires ONLY when the snapshot proves a drift.
@@ -145,7 +150,7 @@ describe('observer binarySettle timeout finalization', () => {
         value: true,
       });
 
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
 
       // Suppression cleared even when snapshot is missing — the local-write
       // record must not outlive the settle window.
@@ -182,7 +187,7 @@ describe('observer binarySettle timeout finalization', () => {
         value: true,
       });
 
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
 
       // No snapshot means we can't confidently report drift; staying quiet is
       // the right call so a single transient SDK miss doesn't trigger spurious
@@ -218,7 +223,7 @@ describe('observer binarySettle timeout finalization', () => {
         deviceName: 'EV Charger',
       });
 
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
 
       expect(info).toHaveBeenCalledWith(expect.objectContaining({
         event: 'binary_write_timeout',
@@ -269,7 +274,7 @@ describe('observer binarySettle timeout finalization', () => {
         value: true,
       });
 
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
 
       expect(info).toHaveBeenCalledWith(expect.objectContaining({
         event: 'binary_write_timeout',
@@ -309,7 +314,7 @@ describe('observer binarySettle timeout finalization', () => {
         value: true,
       });
 
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
 
       expect(info).not.toHaveBeenCalled();
       expect(emitPlanReconcile).not.toHaveBeenCalled();
@@ -344,7 +349,7 @@ describe('observer binarySettle timeout finalization', () => {
       // Non-boolean values reach this function from target/setNumber paths
       // that share the same wiring; settle is binary-only and must skip them.
       expect(state.pendingBinarySettleWindows.size).toBe(0);
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
       expect(info).not.toHaveBeenCalled();
     } finally {
       clearAllPendingBinarySettleWindows(state);
@@ -469,11 +474,107 @@ describe('observer binarySettle timeout finalization', () => {
       // timeout — otherwise the second clear would surface a `binary_write_timeout`
       // log after the window already settled.
       info.mockClear();
-      vi.advanceTimersByTime(LOCAL_BINARY_SETTLE_WINDOW_MS);
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
       expect(info).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'binary_write_timeout' }));
     } finally {
       clearAllPendingBinarySettleWindows(state);
       vi.useRealTimers();
     }
+  });
+
+  // Regression for the production shape this window was resized for. The old
+  // 5 s window did not even cover the write round-trip — a charger's write took
+  // p50 6.9 s just to be accepted — so it expired first and reconciled against a
+  // snapshot that predated the write, reporting drift back to `off` on a start
+  // that was in fact succeeding. The window must still be open when the device's
+  // acknowledgement lands, and must settle on it rather than time out.
+  it('is still open when a late acknowledgement lands, and settles on it', () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    const emitPlanReconcile = vi.fn();
+    const state = createBinarySettleState();
+
+    try {
+      const deps = {
+        logger: { structuredLog: { info } },
+        clearLocalCapabilityWrite: vi.fn(),
+        isLiveFeedHealthy: () => true,
+        shouldTrackRealtimeDevice: () => true,
+        // Still reporting the pre-write value, which is exactly what the old
+        // 5 s timeout turned into a drift reconcile.
+        getSnapshotById: () => buildSettleSnapshot({
+          controlCapabilityId: 'evcharger_charging',
+          binaryControl: { on: false },
+        }),
+        emitPlanReconcile,
+      };
+
+      startPendingBinarySettleWindow({
+        state, deps, deviceId: 'dev-1', capabilityId: 'evcharger_charging', value: true,
+      });
+
+      vi.advanceTimersByTime(44_300);
+      expect(info).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'binary_write_timeout' }));
+      expect(emitPlanReconcile).not.toHaveBeenCalled();
+
+      const outcome = notePendingBinarySettleObservation({
+        state, deps,
+        deviceId: 'dev-1', capabilityId: 'evcharger_charging',
+        value: true, source: 'realtime_capability',
+      });
+
+      expect(outcome).toBe('settled');
+      expect(emitPlanReconcile).not.toHaveBeenCalled();
+    } finally {
+      clearAllPendingBinarySettleWindows(state);
+      vi.useRealTimers();
+    }
+  });
+
+  // A car that will not accept charge (full battery, car-side stop, a vendor
+  // schedule) leaves `evcharger_charging_state` at `plugged_in`, so no settling
+  // observation ever arrives and timing out IS the answer. The window length is
+  // therefore also a choice about when PELS concludes a start did not take —
+  // pinned here so it stays aligned with the EV resume probe's own deadline.
+  it('still times out when no settling observation ever arrives', () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    const emitPlanReconcile = vi.fn();
+    const state = createBinarySettleState();
+
+    try {
+      const deps = {
+        logger: { structuredLog: { info } },
+        clearLocalCapabilityWrite: vi.fn(),
+        isLiveFeedHealthy: () => true,
+        shouldTrackRealtimeDevice: () => true,
+        getSnapshotById: () => buildSettleSnapshot({
+          controlCapabilityId: 'evcharger_charging',
+          binaryControl: { on: false },
+        }),
+        emitPlanReconcile,
+      };
+
+      startPendingBinarySettleWindow({
+        state, deps, deviceId: 'dev-1', capabilityId: 'evcharger_charging', value: true,
+      });
+
+      vi.advanceTimersByTime(BINARY_SETTLE_WINDOW_MS);
+
+      expect(info).toHaveBeenCalledWith(expect.objectContaining({ event: 'binary_write_timeout' }));
+      expect(emitPlanReconcile).toHaveBeenCalled();
+    } finally {
+      clearAllPendingBinarySettleWindows(state);
+      vi.useRealTimers();
+    }
+  });
+
+  it('never expires while a binary command is still inside its pending window', () => {
+    // The settle timeout must not contradict the pending-command store: if it
+    // fired first, PELS would report drift for a command it still considers
+    // outstanding. EV start is the longest of those windows.
+    expect(BINARY_SETTLE_WINDOW_MS).toBeGreaterThanOrEqual(EV_START_COMMAND_PENDING_MS);
+    expect(BINARY_SETTLE_WINDOW_MS).toBeGreaterThanOrEqual(CLOUD_BINARY_COMMAND_PENDING_MS);
+    expect(BINARY_SETTLE_WINDOW_MS).toBeGreaterThanOrEqual(BINARY_COMMAND_PENDING_MS);
   });
 });

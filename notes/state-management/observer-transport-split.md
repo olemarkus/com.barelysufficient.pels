@@ -179,6 +179,54 @@ statically import observer; the predicate is just a function reference passed
 in at wiring time. The parse pipeline keeps producing pre-merged snapshots,
 which matches the current shape.
 
+### Settle window: what settles it, and how long it waits
+
+Two separate questions were collapsed into one predicate, and the collapse is
+what broke the window on chargers.
+
+**What settles it.** The window asks "was PELS's write acknowledged?", and the
+answer is the device's echo on the capability PELS wrote. Settlement used to be
+gated on `isRawBinarySettlementEvidenceAllowed`, which excludes
+`evcharger_charging` — correctly, but for a *different* question: a charger's
+observed on/off truth is plug-state-authoritative (`resolveEvCurrentOn`). Using
+that gate for settlement made the window wait on `evcharger_charging_state`,
+i.e. "is the car drawing?", when the write had asked "may the car draw?". The
+predicate is now named `isRawBinaryObservedTruthEvidenceAllowed` and governs only
+the truth question; settlement takes the raw echo for every control capability.
+
+The 2026-08-11→13 production log measures why that ordering matters. Across 62
+charger turn-ons:
+
+| step | p50 | p90 | max | missing |
+|---|---|---|---|---|
+| raw `evcharger_charging` ack | 7.3 s | 7.8 s | 9.2 s | **0 / 62** |
+| `evcharger_charging_state` → on | 30.7 s | 210.7 s | 286.8 s | 3 |
+| device tracked-usage rise | 36.5 s | 136.7 s | 267.6 s | 6 |
+| whole-home draw +600 W | 19.7 s | 129.7 s | 250.0 s | 2 |
+
+The acknowledgement is the only step that is always present and tightly bounded.
+Everything below it is long-tailed and sometimes never arrives at all — a full
+battery, a car-side stop, or a vendor schedule legitimately leaves the plug-state
+at `plugged_in` forever. Keying settlement there meant every charger write ran to
+timeout and reported drift against a snapshot older than the write, on a command
+the charger had in fact accepted.
+
+**How long it waits.** One common `BINARY_SETTLE_WINDOW_MS` for every device and
+capability, deliberately **not** sized per device class. The window is armed
+before dispatch (a device echo can arrive before the write promise resolves, so
+re-arming on acceptance would miss it), so it must cover the round-trip plus the
+ack — 9.2 s at the observed maximum. It is set far above that, to 90 s, because
+the timeout is now the abnormal path only: it must never fire while the command
+is still inside its own pending window, the longest of which is
+`EV_START_COMMAND_PENDING_MS`, or PELS would report drift for a command it still
+considers outstanding. That inequality is pinned by a unit test rather than
+written as an alias.
+
+**What this window does not answer.** Whether the device then draws belongs to
+the EV resume probe and to the pending-restore reservation, each with its own
+deadline. The settle window must not duplicate them — that duplication was the
+bug.
+
 ### Plan→device write inversion: killed in the same effort
 
 `lib/plan/planBinaryControl.ts:217` `deviceManager.setCapability(...)`, plus

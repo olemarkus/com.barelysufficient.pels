@@ -13,7 +13,7 @@ import { resolveEvChargingStateBinaryEvidence, resolveEvCurrentOn, toCapabilityT
 import { recordSnapshotCapabilityObservations } from './managerObservation';
 import type { ObservedDeviceStateEvent } from './managerRealtimeHandlers';
 import { getLogger } from '../../logging/logger';
-import { cloneBinaryControlObservation, isRawBinarySettlementEvidenceAllowed } from './transportTypes';
+import { cloneBinaryControlObservation, isRawBinaryObservedTruthEvidenceAllowed } from './transportTypes';
 import type { TransportContext } from './transportContext';
 
 const moduleLogger = getLogger('device/transport');
@@ -454,7 +454,7 @@ export function applyBinaryObservationToSnapshot(
                 evchargerCharging: value,
             }),
         };
-        if (!isRawBinarySettlementEvidenceAllowed(mutableSnapshot, capabilityId)) return;
+        if (!isRawBinaryObservedTruthEvidenceAllowed(mutableSnapshot, capabilityId)) return;
     } else {
         mutableSnapshot.binaryControl = { on: value };
     }

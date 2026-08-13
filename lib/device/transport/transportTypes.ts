@@ -233,7 +233,8 @@ export const createPeakPowerLogState = (): Map<string, { signature: string; emit
 export { buildEmptyLivePowerReport } from './managerFetch';
 
 /**
- * Whether a raw capability write may stand as binary settlement evidence.
+ * Whether a raw capability echo may stand as evidence of the device's OBSERVED
+ * ON/OFF TRUTH.
  *
  * Never for `evcharger_charging`: a charger's binary axis is
  * session-state-authoritative, so the plug-state observation is the evidence and
@@ -244,8 +245,15 @@ export { buildEmptyLivePowerReport } from './managerFetch';
  * enum or the device is dropped (contract gate, `managerParseDeviceFields.ts`).
  * An `evcharger` with no plug-state at all is the `target_power`/stepped-load
  * population, which has no `evcharger_charging` capability to ask about.
+ *
+ * This is NOT the question the per-write settle window asks. That window asks
+ * whether PELS's write was acknowledged, and the raw echo is exactly the right
+ * evidence for it — see `lib/observer/binarySettle.ts`. The two were one
+ * predicate until 2026-08-13, and conflating them is what left every charger
+ * write unsettled: settlement waited on "is the car drawing?" when the write had
+ * asked "may the car draw?".
  */
-export function isRawBinarySettlementEvidenceAllowed(
+export function isRawBinaryObservedTruthEvidenceAllowed(
     _snapshot: TransportDeviceSnapshot,
     capabilityId: string,
 ): boolean {
