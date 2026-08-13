@@ -37,6 +37,39 @@ tracked as P1/P2/P3 follow-up below.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] **The pending-restore reservation runs on one fixed clock against a 20 s-to-never distribution.**
+      `PENDING_RESTORE_WINDOW_MS = 3 min` (`lib/plan/planConstants.ts`) reserves headroom for a
+      device that has been restored but has not yet drawn. Its own comment gives a thermostat
+      rationale ("Elements typically fire within 1-2 minutes"). Measured against 62 EV-charger
+      turn-ons in the 2026-08-11→13 production log, the load appears in whole-home draw at p50
+      19.7 s, p90 129.7 s, **max 250.0 s**, and never at all in 2 cases. One fixed window is wrong
+      at both ends:
+      **(a) under-hold** — 250 s exceeds the 180 s window, so on the slowest starts the reserve
+      expires before the load lands and PELS can admit another device into headroom that is about
+      to be consumed;
+      **(b) over-hold** — the reserve re-arms per restore attempt, so a car that will never draw
+      compounds: 5 charger-only reservation episodes ran past 180 s, the longest 689 s, each
+      holding 1.38 kW back from other devices.
+      The confirm half is already measurement-driven and works (`PENDING_RESTORE_CONFIRMED_FRACTION
+      = 0.5` releases at p50 ~20 s); the gap is the negative case — nothing releases the reserve
+      when measurement shows the device is not going to draw, and nothing stops the re-arm. Wants
+      its own design and its own SDK-boundary e2e because it changes admission behaviour. Note the
+      two failure modes need different fixes. Found 2026-08-13. [P1]
+- [ ] **A restored EV charger draws at its reset limit until the step command lands.**
+      On restore the executor writes the binary on and the step ~0.1 s later, but the charger
+      applies the step 14-30 s later (`stepped_load_command_requested` →
+      `stepped_feedback_confirmed`: p50 14.1 s, p90 27.4 s, n=192). In that gap it charges at
+      32 A / 7.36 kW instead of the planned 6 A / 1.38 kW. All four hard-cap breaches in the
+      2026-08-11→13 production log (9.42 / 8.69 / 7.24 / 6.86 kW) are this shape, each followed
+      by an immediate re-shed; 8 of 53 ON periods lasted under two minutes (shortest 8 s), which
+      is most of the charger's on/off flapping (peak 13 commands in one hour). `lib/executor/AGENTS.md`
+      already records why the post-activation `force` reassert exists — activation resets the
+      device-side step limit — so the reassert is sent; the gap is that the vendor takes tens of
+      seconds to honour it. Candidate directions: admit the restore against the device's
+      worst-case activation draw rather than the requested step, or hold the shed decision for a
+      restore-settling window matched to the observed step-apply latency. Needs the activation
+      attribution fix (shipped alongside this entry) first, so the backoff ladder can learn.
+      Found 2026-08-13. [P1]
 - [ ] **The plan-history recorder has no abandon-grace or plausibility gate.**
       `DeferredObjectivePlanHistoryRecorder`'s constructor (`planHistory.ts`) takes whatever
       `deps.load()` returns. A transient corrupt/empty SDK read normalizes to an empty envelope,
@@ -1282,6 +1315,29 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **An activation attempt's inactive close and its attribution-window expiry disagree about penalty.**
+      `syncActivationPenaltyState` (`lib/plan/admission/activationBackoff.ts`) tests
+      `shouldCloseAttemptAsInactive` before `hasAttributionWindowExpired`, so an inactive
+      observation arriving at or after `ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS` closes as
+      `inactive` and **preserves** the penalty, never reaching the expiry path. The expiry path's
+      own comment says the opposite for exactly that device: "a device that was admitted and chose
+      not to draw (legitimate-zero, e.g. heater at setpoint) is still a successful exercise of the
+      cautious admission as long as the household stayed safe through the window" — i.e. it would
+      **clear** the penalty when a clean whole-home sample was seen. Which is right depends on
+      whether "never drew" should count against the device, and that is a semantics call, not a
+      reordering: swapping the branches changes when penalties clear and therefore when restores
+      are admitted. Pre-existing (the ordering is unchanged on both sides of PR #2097); surfaced by
+      CodeRabbit there and pinned by a boundary test so the current behaviour is at least explicit.
+      Found 2026-08-13. [P2]
+- [ ] **The stepped axis can still close an activation attempt before the step command lands.**
+      `ACTIVATION_INACTIVE_MIN_ELAPSED_MS` now stops an off reading from closing an attempt that
+      is too young to have seen its command land, but a step-up opens an attempt
+      (`lib/executor/steppedLoadExecutorCommand.ts`) whose in-flight signal is the stepped command
+      state, not the binary one. A single elapsed-time floor does not transfer cleanly there:
+      `CLOUD_STEPPED_LOAD_COMMAND_PENDING_MS` is 180 s, which exceeds the 120 s
+      `ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS`, so a floor sized to it would be subsumed by the
+      expiry branch and the inequality that keeps the binary floor honest would no longer hold.
+      Wants its own design and its own evidence. Found 2026-08-13. [P2]
 - [ ] **Split the three meanings collapsed into `progressCurrentValue`'s `undefined`.**
       `lib/objectives/deferredObjectives/diagnosticFields.ts` returns `number | undefined`, and
       the `undefined` means three different things: `generic_energy` has no band dimension (a

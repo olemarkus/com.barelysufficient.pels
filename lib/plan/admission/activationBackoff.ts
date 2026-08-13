@@ -13,6 +13,31 @@ import { isSteppedDeviceAtActiveStep, isSteppedDeviceAtOffStep } from '../../uti
 export type { ActivationAttemptSource } from '../planState';
 
 export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS;
+/**
+ * How old an attempt must be before an "off" reading is allowed to close it as
+ * `inactive`.
+ *
+ * The post-actuation snapshot refresh runs 5 s after a restore, which is far
+ * sooner than a device can be seen drawing — an EV charger starts at p50 ~30 s.
+ * Reading zero draw at 5 s closed the attempt immediately, which stranded the
+ * attribution window: the overshoot the restore actually caused arrived after
+ * the attempt was already gone, so it was never attributed and the backoff
+ * ladder never learned. In production 61 of 63 inactive closes fired under 10 s.
+ *
+ * Below this age an off reading is pre-command evidence, not a failed
+ * activation. Kept strictly below ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS so
+ * this floor can never swallow the attribution window: an attempt that no
+ * inactive observation closes is still closed by the expiry branch, so raising
+ * the floor cannot leak one. That inequality is pinned by a unit test.
+ *
+ * Note the branch ordering this does NOT change: `syncActivationPenaltyState`
+ * tests inactive before expiry, so an inactive observation arriving at or after
+ * the attribution window closes as `inactive` (penalty preserved) rather than
+ * taking the `quiet` expiry path (which can clear it). That precedence predates
+ * this floor and is pinned below; the semantic question it raises is tracked in
+ * `TODO.md`.
+ */
+export const ACTIVATION_INACTIVE_MIN_ELAPSED_MS = 60 * 1000;
 export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 5 * 60 * 1000;
 export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = ACTIVATION_SETBACK_RESTORE_BLOCK_MS;
 export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
@@ -147,6 +172,22 @@ const elapsedMs = (startedMs: number, nowTs: number): number => Math.max(0, nowT
 
 const hasAttributionWindowExpired = (attemptStartedMs: number, nowTs: number): boolean => (
   elapsedMs(attemptStartedMs, nowTs) >= ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS
+);
+
+/**
+ * An attempt closes as `inactive` only once it is old enough that an off
+ * reading could have seen the command land — see
+ * ACTIVATION_INACTIVE_MIN_ELAPSED_MS. Uniform across device classes on purpose:
+ * the rule is about how stale the evidence is, not about which device produced
+ * it, and admission must not branch on device class.
+ */
+const shouldCloseAttemptAsInactive = (params: {
+  observation?: ActivationBackoffObservation;
+  attemptStartedMs: number;
+  nowTs: number;
+}): boolean => (
+  isActivationObservationExplicitlyInactive(params.observation)
+  && elapsedMs(params.attemptStartedMs, params.nowTs) >= ACTIVATION_INACTIVE_MIN_ELAPSED_MS
 );
 
 const remainingSeconds = (remainingMs: number): number => Math.max(0, Math.ceil(remainingMs / 1000));
@@ -299,7 +340,7 @@ export function syncActivationPenaltyState(params: {
 
   const source = getAttemptSource(state, deviceId);
 
-  if (isActivationObservationExplicitlyInactive(observation)) {
+  if (shouldCloseAttemptAsInactive({ observation, attemptStartedMs, nowTs })) {
     const closeResult = closeActivationAttempt({
       state,
       deviceId,

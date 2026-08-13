@@ -6,6 +6,7 @@ import {
     mergeFresherCapabilityObservations,
 } from '../../lib/device/transport/managerObservation';
 import {
+    BINARY_SETTLE_WINDOW_MS,
     clearAllPendingBinarySettleWindows,
     clearPendingBinarySettleWindow,
     createBinarySettleState,
@@ -3674,7 +3675,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
 
-                await vi.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(BINARY_SETTLE_WINDOW_MS);
                 expect(realtimeListener).not.toHaveBeenCalled();
 
                 deviceManager.injectDeviceUpdateForTest({
@@ -3831,7 +3832,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.setSnapshotForTests([]);
 
-                await vi.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(BINARY_SETTLE_WINDOW_MS);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
             } finally {
@@ -3870,7 +3871,7 @@ describe('DeviceTransport', () => {
                     },
                 });
 
-                await vi.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(BINARY_SETTLE_WINDOW_MS);
 
                 expect(deviceManager.getSnapshot()).toEqual([]);
                 expect(realtimeListener).not.toHaveBeenCalled();
@@ -3904,7 +3905,7 @@ describe('DeviceTransport', () => {
                     binaryControl: { on: false },
                 }));
 
-                await vi.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(BINARY_SETTLE_WINDOW_MS);
 
                 deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
@@ -4272,7 +4273,7 @@ describe('DeviceTransport', () => {
                     // Write off (desired=false), snapshot immediately updated to false
                     await deviceManager.setCapability('dev1', 'onoff', false);
                     // No binary observations arrive
-                    await vi.advanceTimersByTimeAsync(5000);
+                    await vi.advanceTimersByTimeAsync(BINARY_SETTLE_WINDOW_MS);
 
                     // snapshot.currentOn=false matches desired=false => no reconcile at timeout
                     expect(realtimeListener).not.toHaveBeenCalled();
@@ -6381,7 +6382,7 @@ describe('DeviceTransport', () => {
                     },
                 });
 
-                await vi.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(BINARY_SETTLE_WINDOW_MS);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6457,6 +6458,65 @@ describe('DeviceTransport', () => {
                         },
                     },
                 });
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    binaryControl: { on: true },
+                    evCharging: false,
+                    evChargingState: 'plugged_in_charging',
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        // The settle window's widening from 5 s to BINARY_SETTLE_WINDOW_MS widens
+        // this suppression with it — EV chargers are the only capability that sets
+        // `suppressRawBinaryChange`. Pinned at 30 s: inside the new window, far
+        // outside the old one, and squarely in the range where a charger's
+        // `evcharger_charging_state` echo has still not arrived (measured p50 29.7 s).
+        it('still drops a stale raw EV off well after the old 5s window, while the state says charging', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
+                    getNativeEvWiringEnabled: () => true,
+                }, undefined, withRealBinarySettle());
+                await evDeviceManager.init();
+                const zaptecPayload = (chargingButton: boolean) => ({
+                    id: 'ev1',
+                    name: 'Zaptec',
+                    class: 'evcharger',
+                    driverId: 'homey:app:com.zaptec:go',
+                    ownerUri: 'homey:app:com.zaptec',
+                    capabilities: [
+                        'measure_power',
+                        'charging_button',
+                        'charge_mode',
+                        'alarm_generic.car_connected',
+                    ],
+                    capabilitiesObj: {
+                        measure_power: { value: 0, id: 'measure_power' },
+                        charging_button: { value: chargingButton, id: 'charging_button', setable: true },
+                        charge_mode: { value: 'Charging', id: 'charge_mode' },
+                        'alarm_generic.car_connected': {
+                            value: true,
+                            id: 'alarm_generic.car_connected',
+                        },
+                    },
+                });
+                mockApiGet.mockResolvedValue({ ev1: zaptecPayload(true) });
+
+                await evDeviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
+
+                await vi.advanceTimersByTimeAsync(30_000);
+
+                evDeviceManager.injectDeviceUpdateForTest(zaptecPayload(false));
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6691,7 +6751,12 @@ describe('DeviceTransport', () => {
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'charging_button', false);
 
             expect(realtimeListener).not.toHaveBeenCalled();
-            expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(1);
+            // The normalized raw echo IS the acknowledgement of the write, so it
+            // settles the window here rather than leaving it open for the
+            // plug-state. `binaryControl.on` is unmoved by that: the charger's
+            // observed on/off truth stays plug-state-authoritative, which is why
+            // it still reads `true` against a raw `false`.
+            expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(0);
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
                 evChargingState: 'plugged_in_charging',
@@ -6699,7 +6764,23 @@ describe('DeviceTransport', () => {
 
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'charge_mode', 'Charging finished');
 
-            expect(realtimeListener).not.toHaveBeenCalled();
+            // The window already settled on the acknowledgement, so this plug-state
+            // transition is no longer swallowed as "the write landed" — it is
+            // reported as what it is: the charger's draw actually stopping. That is
+            // an ordinary observed change the planner should rebuild on (root
+            // AGENTS.md, "Drift is now just a changed input"), and on the turn-on
+            // side it is the charger arriving at full current, which is precisely
+            // the input capacity control must not learn late.
+            expect(realtimeListener).toHaveBeenCalledTimes(1);
+            expect(realtimeListener.mock.calls[0][0]).toEqual(expect.objectContaining({
+                deviceId: 'ev1',
+                changes: [expect.objectContaining({
+                    capabilityId: 'evcharger_charging',
+                    observedCapabilityId: 'evcharger_charging_state',
+                    previousValue: 'on',
+                    nextValue: 'off',
+                })],
+            }));
             expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(0);
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 // Finished = connected idle/off (state-authoritative), even though the proprietary

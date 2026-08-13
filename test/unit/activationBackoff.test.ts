@@ -1,7 +1,8 @@
-import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
+import { type HeadroomCardDeviceLike, withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
+  ACTIVATION_INACTIVE_MIN_ELAPSED_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
 } from '../../lib/plan/admission/activationBackoff';
 import {
@@ -326,18 +327,33 @@ describe('activation backoff', () => {
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000,
     });
 
+    const reopenedAt = start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000;
+    // `currentOn: false` is the off-evidence the explicit-inactive check reads
+    // (the producer-resolved on/off truth). It is declared on
+    // `ActivationBackoffObservation`, so it is set directly.
+    const inactiveObservation = {
+      currentOn: false,
+      available: true,
+      currentDrawKw: 0,
+    };
+
+    // The post-actuation snapshot refresh lands ~5 s in, long before any device
+    // could be seen drawing. That reading is older than the command, so it must
+    // not close the attempt.
+    const tooEarlySync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: reopenedAt + 5_000,
+      observation: inactiveObservation,
+    });
+    expect(tooEarlySync.attemptOpen).toBe(true);
+    expect(tooEarlySync.transitions).toEqual([]);
+
     const inactiveSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000 + 5_000,
-      // `currentOn: false` is the off-evidence the explicit-inactive check reads
-      // (the producer-resolved on/off truth). It is declared on
-      // `ActivationBackoffObservation`, so it is set directly.
-      observation: {
-        currentOn: false,
-        available: true,
-        currentDrawKw: 0,
-      },
+      nowTs: reopenedAt + ACTIVATION_INACTIVE_MIN_ELAPSED_MS,
+      observation: inactiveObservation,
     });
     expect(inactiveSync.attemptOpen).toBe(false);
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
@@ -637,7 +653,9 @@ describe('activation backoff', () => {
     const inactiveSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + 20_000,
+      // Past the inactive-close floor but still inside the attribution window,
+      // so this exercises the inactive branch rather than the expiry branch.
+      nowTs: start + ACTIVATION_INACTIVE_MIN_ELAPSED_MS + 20_000,
       // `currentOn: false` is the off-evidence the explicit-inactive check reads.
       observation: {
         currentOn: false,
@@ -1285,6 +1303,44 @@ describe('activation backoff', () => {
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
   });
 
+  it('closes as inactive, not quiet, when the off reading arrives at the attribution window', () => {
+    // Branch precedence: `syncActivationPenaltyState` tests inactive before
+    // expiry, so an inactive observation at or past the attribution window takes
+    // the inactive path (penalty preserved) rather than the quiet path (which
+    // can clear it). Pinned because the elapsed floor makes an attempt more
+    // likely to still be open when a late off reading lands. Pre-existing
+    // ordering — see the TODO on reconciling the two paths' semantics.
+    const state = createPlanEngineState();
+    const start = Date.now();
+    state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 1, lastSetbackMs: start - 60_000 };
+    recordActivationAttemptStart({
+      state, deviceId: 'dev-1', source: 'pels_restore', nowTs: start,
+    });
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: true,
+    });
+
+    const atExpiry = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
+      observation: { currentOn: false, available: true, currentDrawKw: 0 },
+    });
+
+    expect(atExpiry.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+    expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(1);
+  });
+
+  it('leaves the attribution-window expiry as the backstop that closes a stalled attempt', () => {
+    // If the inactive-close floor ever reached the attribution window, the
+    // expiry branch would become the only closer and the floor dead code — the
+    // attempt could never be closed as `inactive` at all.
+    expect(ACTIVATION_INACTIVE_MIN_ELAPSED_MS).toBeLessThan(ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS);
+  });
+
   it('closes an open activation attempt on a fresh explicit inactive observation even when usage is unchanged', () => {
     const state = createPlanEngineState();
     const start = Date.now();
@@ -1313,18 +1369,39 @@ describe('activation backoff', () => {
       nowTs: start + 6_000,
     });
 
+    // Typed against the real input contract rather than cast: if
+    // `HeadroomCardDeviceLike` gains or renames a field, this regression must
+    // fail to compile instead of quietly exercising a shape production cannot
+    // produce.
+    const buildOffDevice = (atMs: number): HeadroomCardDeviceLike[] => [{
+      id: 'dev-1',
+      name: 'Heater',
+      currentOn: false,
+      currentState: 'off',
+      available: true,
+      expectedPowerKw: 0,
+      currentDrawKw: 0,
+      lastFreshDataMs: atMs,
+    }];
+
+    // The post-actuation snapshot refresh reads zero draw ~1 s after the attempt
+    // opened. It cannot have seen the command land, so the attempt must survive.
+    syncHeadroomCardState({
+      state,
+      devices: buildOffDevice(start + 7_000),
+      nowTs: start + 7_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    });
+
+    expect(state.activationAttemptByDevice['dev-1']?.startedMs).toBe(start + 6_000);
+    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
+
+    const closesAt = start + 6_000 + ACTIVATION_INACTIVE_MIN_ELAPSED_MS;
     expect(syncHeadroomCardState({
       state,
-      devices: [buildTrackedDevice({
-        id: 'dev-1',
-        name: 'Heater',
-        binaryControl: { on: false },
-        currentOn: false,
-        currentState: 'off',
-        expectedPowerKw: 0,
-        lastFreshDataMs: start + 7_000,
-      })] as any,
-      nowTs: start + 7_000,
+      devices: buildOffDevice(closesAt),
+      nowTs: closesAt,
       reconciliationContext: 'snapshot_refresh',
       diagnostics: diagnostics as any,
     })).toBe(true);
