@@ -322,6 +322,15 @@ export class PlanEngineState {
 
   softOvershootPendingSinceMs: number | null = null;
 
+  /**
+   * Remaining hourly capacity budget (kWh) as of the last soft-limit
+   * computation. Always resolved — the hour's budget is a fact about the hour,
+   * independent of which pace is in force — so consumers read a plain number.
+   * Read by the shed grace to price what waiting would cost; 0 means the hour is
+   * spent, which buys no grace at all.
+   */
+  hourlyRemainingKWh: number = 0;
+
   overshootStartedMs: number | null = null;
 
   lastOvershootEscalationMs: number | null = null;

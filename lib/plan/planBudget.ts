@@ -42,10 +42,10 @@ const EOH_DRAIN_TAU_MIN = 4;
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
-}): { allowedKw: number; hourlyBudgetExhausted: boolean } {
+}): { allowedKw: number; hourlyBudgetExhausted: boolean; remainingKWh: number } {
   const { capacitySettings, powerTracker } = params;
   const netBudgetKWh = resolveUsableCapacityKw(capacitySettings);
-  if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false };
+  if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 };
 
   const now = Date.now();
   const hourContext = getCurrentHourContext(powerTracker, now);
@@ -67,7 +67,9 @@ export function computeDynamicSoftLimit(params: {
   const drainCeilingKw = sustainableRateKw * Math.exp(hourContext.minutesRemaining / EOH_DRAIN_TAU_MIN);
   const allowedKw = Math.min(burstRateKw, drainCeilingKw);
 
-  return { allowedKw, hourlyBudgetExhausted };
+  // `remainingKWh` travels out because it is the only honest price of waiting:
+  // the shed grace spends it, and it is already computed here.
+  return { allowedKw, hourlyBudgetExhausted, remainingKWh };
 }
 
 /**
