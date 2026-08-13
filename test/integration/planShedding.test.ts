@@ -112,6 +112,8 @@ describe('buildSheddingPlan', () => {
 
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
+      hourRemainingKWh: 4.7,
+      restoreTransientPossible: false,
       state,
       nowTs: Date.now(),
     });
@@ -169,6 +171,8 @@ describe('buildSheddingPlan', () => {
 
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
+      hourRemainingKWh: 4.7,
+      restoreTransientPossible: false,
       state,
       nowTs: Date.now(),
     });
@@ -216,6 +220,8 @@ describe('buildSheddingPlan', () => {
 
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
+      hourRemainingKWh: 4.7,
+      restoreTransientPossible: false,
       state,
       nowTs: Date.now(),
     });

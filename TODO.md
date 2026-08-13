@@ -58,10 +58,19 @@ tracked as P1/P2/P3 follow-up below.
 - [ ] **A restored EV charger draws at its reset limit until the step command lands.**
       On restore the executor writes the binary on and the step ~0.1 s later, but the charger
       applies the step 14-30 s later (`stepped_load_command_requested` →
-      `stepped_feedback_confirmed`: p50 14.1 s, p90 27.4 s, n=192). In that gap it charges at
-      32 A / 7.36 kW instead of the planned 6 A / 1.38 kW. All four hard-cap breaches in the
-      2026-08-11→13 production log (9.42 / 8.69 / 7.24 / 6.86 kW) are this shape, each followed
-      by an immediate re-shed; 8 of 53 ON periods lasted under two minutes (shortest 8 s), which
+      `stepped_feedback_confirmed`: p50 14.1 s, p90 27.4 s, n=192). In that gap it reports step
+      `32a` instead of the commanded `6a` — 12 of the 14 `32a` reports in the 2026-08-11→13
+      production log followed a `6a` command issued 1-18 s earlier (the other 2 were a deliberate
+      ladder climb to `32a`). Measured draw during the overshoot is **5.5-6.3 kW, not the step's
+      nominal 7.36 kW**; treat `parsedPowerW` as the step's configured rating, never as evidence of
+      draw. Exposure is bounded by the charger's 30 s post-command report, and in the five episodes
+      that provoked a response PELS force-stopped it after 4.7-21.4 s (logged relief 3.592 and
+      5.552 kW). The other nine resolved to `6a` at the next report with nothing reacting, so their
+      true duration is unmeasurable — anywhere from ~0 to 30 s. All four hard-cap breaches
+      (9.42 / 8.69 / 7.24 / 6.86 kW) sit in the five-episode group. Collateral matters as much as the
+      overshoot: in 08-11 20:05 the water heater was stepped down and switched off *before* the
+      charger was, and in 08-12 02:49 two thermostats went off alongside — the charger's overshoot
+      is paid for by other rooms. 8 of 53 ON periods lasted under two minutes (shortest 8 s), which
       is most of the charger's on/off flapping (peak 13 commands in one hour). `lib/executor/AGENTS.md`
       already records why the post-activation `force` reassert exists — activation resets the
       device-side step limit — so the reassert is sent; the gap is that the vendor takes tens of

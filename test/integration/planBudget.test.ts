@@ -16,7 +16,7 @@ describe('planBudget', () => {
         capacitySettings: { limitKw: 5, marginKw: 5 },
         powerTracker: {},
       });
-      expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false });
+      expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 });
     });
 
     it('allows burst rate mid-hour when under budget', () => {

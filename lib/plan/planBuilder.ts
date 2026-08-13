@@ -46,7 +46,10 @@ import {
   buildDailyBudgetContext as buildPlanDailyBudgetContext,
   resolveDailySoftLimitBucket,
 } from './planDailyBudgetWindow';
-import { syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt } from './admission';
+import {
+  ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
+  syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt,
+} from './admission';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 import type {
@@ -145,15 +148,21 @@ export class PlanBuilder {
   }
 
   public computeDynamicSoftLimit(): number {
+    // Computed unconditionally: the hour's remaining budget is a fact about the
+    // hour, not about which pace is in force, so an override replaces the pace
+    // and leaves the budget untouched. Resolving it on both paths keeps
+    // `hourlyRemainingKWh` a plain number for every consumer.
+    const result = computeDynamicSoftLimit({
+      capacitySettings: this.capacitySettings,
+      powerTracker: this.powerTracker,
+    });
+    this.state.hourlyRemainingKWh = result.remainingKWh;
+
     const override = this.deps.getDynamicSoftLimitOverride?.();
     if (typeof override === 'number' && Number.isFinite(override)) {
       this.state.hourlyBudgetExhausted = false;
       return override;
     }
-    const result = computeDynamicSoftLimit({
-      capacitySettings: this.capacitySettings,
-      powerTracker: this.powerTracker,
-    });
     this.state.hourlyBudgetExhausted = result.hourlyBudgetExhausted;
     return result.allowedKw;
   }
@@ -362,6 +371,14 @@ export class PlanBuilder {
     this.logPowerFreshness(context);
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
+      // Stamped by `computeDynamicSoftLimit` a few lines above, from the same
+      // hourly budget the soft limit itself is paced against.
+      hourRemainingKWh: this.state.hourlyRemainingKWh,
+      // Only price a wait when a restore PELS issued is still settling, and only
+      // while power is actually observable — a `stale_fail_closed` headroom is a
+      // blind-mode shed and must never be delayed.
+      restoreTransientPossible: context.powerFreshnessState === 'fresh'
+        && this.hasOpenActivationAttempt(nowTs),
       state: this.state,
       nowTs,
     });
@@ -383,11 +400,27 @@ export class PlanBuilder {
         log: (...args: unknown[]) => this.deps.log(...args),
         debugStructured: this.deps.debugStructured,
         structuredLog: this.deps.structuredLog,
-      }, overshootDecision.actionable),
+      }, overshootDecision.shedActionable),
     );
     this.applySheddingUpdates(sheddingPlan);
 
     return { context, sheddingPlan, overshootDecision };
+  }
+
+  /**
+   * Is any activation attempt still open — i.e. did PELS restore a device
+   * recently enough that its draw may still be ramping? This is the signal that
+   * a capacity deficit right now might be a transient of PELS's own making
+   * rather than a settled rate. Bounded by the attribution window, which
+   * `syncActivationPenaltyState` also uses to close a stalled attempt.
+   */
+  private hasOpenActivationAttempt(nowTs: number): boolean {
+    return Object.values(this.state.activationAttemptByDevice).some((attempt) => {
+      const startedMs = attempt.startedMs;
+      if (typeof startedMs !== 'number' || !Number.isFinite(startedMs)) return false;
+      const elapsed = nowTs - startedMs;
+      return elapsed >= 0 && elapsed < ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS;
+    });
   }
 
   private syncConfirmedRestoreAttributionAttempts(

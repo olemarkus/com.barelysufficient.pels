@@ -6,6 +6,7 @@ import {
   POWER_SAMPLE_STALE_THRESHOLD_MS,
 } from '../../lib/plan/planPowerFreshness';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -247,6 +248,7 @@ describe('planner behavior under stale power freshness states', () => {
     tracker: { lastTimestamp?: number };
     capacityGuard?: CapacityGuard;
     structuredLog?: { info?: ReturnType<typeof vi.fn>; warn?: ReturnType<typeof vi.fn> };
+    state?: ReturnType<typeof createPlanEngineState>;
   }): PlanBuilder {
     return new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
@@ -265,7 +267,7 @@ describe('planner behavior under stale power freshness states', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
-    }, createPlanEngineState());
+    }, params.state ?? createPlanEngineState());
   }
 
   it('does not proactively shed solely because power data is in stale-hold', async () => {
@@ -305,6 +307,29 @@ describe('planner behavior under stale power freshness states', () => {
       event: 'power_sample_stale_hold_entered',
       syntheticHeadroomKw: 0,
     }));
+  });
+
+  // The shed grace buys time only when a deficit might be a restore PELS itself
+  // is driving AND power is observable. Blind mode is the one place waiting is
+  // never right, so an open activation attempt must not soften a fail-closed
+  // shed. A first cut of the grace gated every deficit and delayed exactly this.
+  it('grants no shed grace while power is stale, even with a restore in flight', async () => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
+    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
+    capacityGuard.reportTotalPower(4.9);
+    const state = createPlanEngineState();
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev1',
+      source: 'pels_restore',
+      nowTs: Date.now(),
+    });
+
+    const builder = buildBuilder({ tracker, capacityGuard, state });
+    const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
+
+    expect(plan.meta.powerFreshnessState).toBe('stale_fail_closed');
+    expect(plan.devices[0]?.plannedState).toBe('shed');
   });
 
   it('allows fail-closed shedding and clears once a fresh sample returns', async () => {

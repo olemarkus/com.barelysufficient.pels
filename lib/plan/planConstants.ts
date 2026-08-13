@@ -16,6 +16,25 @@ export const OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS = 2 * 60 * 1000;
 // Ignore rounding-scale soft-limit deficits unless they persist long enough to look real.
 export const SOFT_OVERSHOOT_DEADBAND_KW = 0.05;
 export const SOFT_OVERSHOOT_PERSIST_MS = 20 * 1000;
+// How much of the hour's REMAINING budget we are willing to spend while waiting to
+// see whether a deficit is real, before shedding. The hard cap is an hourly mean
+// (`notes/safe-pace-two-constraints.md`), so a deficit is a rate, not yet a fact
+// about the hour: a transient that self-corrects costs a few Wh, while shedding
+// costs comfort now, 1-5 min of device downtime, and — because deferring a load
+// inside the same hour does not lower the hourly mean — saves no energy at all.
+// The asymmetry is the whole argument for waiting; 2% keeps the wager small.
+export const SHED_GRACE_HEADROOM_FRACTION = 0.02;
+// Ceiling on that wait regardless of how cheap it looks, so a tiny deficit in a
+// wide-open hour cannot defer shedding indefinitely. Sized from the measured
+// transients: a charger overshoot resolved to its commanded step, or was shed,
+// within ~30 s (bounded by its 30 s post-command report), so 60 s covers one with
+// margin while staying far below the 2-minute activation attribution window.
+// Deliberately NOT justified by any existing 60 s constant: the nearest one,
+// `CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS`, is the shortfall *clear* timer and
+// requires sustained POSITIVE headroom — the opposite condition — and the
+// sustained-shortfall alert's threshold is per-Flow user configuration, not a
+// fixed deadline. There is no precedent here to match, only evidence to fit.
+export const SHED_GRACE_MAX_MS = 60 * 1000;
 // Reserve headroom for recently restored devices whose elements have not yet fired.
 // Elements typically fire within 1-2 minutes; 3 minutes covers slower thermal responses.
 export const PENDING_RESTORE_WINDOW_MS = 3 * 60 * 1000;
