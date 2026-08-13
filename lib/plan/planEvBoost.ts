@@ -1,7 +1,6 @@
-import type { DevicePlanDevice, EvKind, PlanInputDevice } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getLogger } from '../logging/logger';
 import { resolveBoostActive } from '../device/deviceActionProjection';
-import { isEvPlanDevice } from './planEvDevice';
 
 // `resolveEvBoostActive` moved to `lib/device/deviceActionProjection.ts`
 // as chunk 1 of the planner-detype refactor. Re-exported here so every
@@ -21,9 +20,8 @@ export function emitEvBoostStateChange(params: {
   // gated on the EV narrowing. A non-EV device never has EV fields set, so the
   // null fallbacks below are equivalent — but the guard keeps the reads sound
   // against the EV-omitted base.
-  const ev = isEvPlanDevice(dev) ? dev : null;
-  const stateOfCharge = ev?.stateOfCharge;
-  const boostBelowPercent = ev?.evBoost?.boostBelowPercent;
+  const stateOfCharge = dev.stateOfCharge;
+  const boostBelowPercent = dev.evBoost?.boostBelowPercent;
   logger.debug({
     event: 'ev_boost_state_changed',
     deviceId: dev.id,
@@ -35,7 +33,6 @@ export function emitEvBoostStateChange(params: {
     level: stateOfCharge?.level ?? null,
     // The plug-state itself, off the EV cluster: it is what every commandability
     // question is answered from, so it is what the log should show.
-    evChargingState: ev?.evChargingState ?? null,
   });
 }
 
@@ -50,27 +47,28 @@ export function buildBoostPlanDeviceFields(params: {
   | 'temperatureBoostActive'
   | 'boostActive'
   | 'surplusAbsorbActive'
-> & Partial<EvKind> {
+  | 'evBoost'
+  | 'evBoostActive'
+  | 'stateOfCharge'
+> {
   const { dev, temperatureBoostActive, evBoostActive, surplusAbsorbActive } = params;
   // Returns the EV cluster as a PARTIAL: these fields are collected into a loose
   // bag that only becomes an `EvKind` when `withEvDiscriminant` regroups it at the
   // construction site — which is also where EV-ness is decided.
-  // The EV cluster (`evChargingState`, `evBoost`, `stateOfCharge`) is sourced only from EV
+  // The EV cluster (`evBoost`, `stateOfCharge`) is sourced only from EV
   // devices; gate the reads on the EV narrowing. `evBoostActive` is resolved by
   // the caller and carried regardless (it is `false` for non-EV devices). The
   // returned `EvKind` is regrouped onto the variant by `withEvDiscriminant` at
   // the construction site. `currentTemperature` is no longer carried here — it
   // rides on the orthogonal `TemperatureKind` cluster, attached by the producer
   // via `withTemperatureDiscriminant`.
-  const ev = isEvPlanDevice(dev) ? dev : null;
   return {
     temperatureBoost: dev.temperatureBoost,
     temperatureBoostActive,
     boostActive: resolveBoostActive({ temperatureBoostActive, evBoostActive }),
     surplusAbsorbActive,
-    evChargingState: ev?.evChargingState,
-    evBoost: ev?.evBoost,
+    evBoost: dev.evBoost,
     evBoostActive,
-    stateOfCharge: ev?.stateOfCharge,
+    stateOfCharge: dev.stateOfCharge,
   };
 }

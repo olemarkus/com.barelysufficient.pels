@@ -414,11 +414,11 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // External-off hold: both must come from THIS bundle. Main's pending store
       // never saw this device's commands, so it would report PELS's own write as
       // an outside action; main's plan does not contain the device at all.
-      hasPendingBinaryCommand: (deviceId, capabilityId) => (
-        planEngine.hasPendingBinaryCommandForCapability(deviceId, capabilityId)
+      hasPendingBinaryCommand: (deviceId) => (
+        planEngine.hasAttributablePendingBinaryCommand(deviceId)
       ),
-      clearRecentBinaryOffCommand: (deviceId, capabilityId) => (
-        planEngine.clearRecentBinaryOffCommandForCapability(deviceId, capabilityId)),
+      clearRecentBinaryOffCommand: (deviceId) => (
+        planEngine.clearRecentBinaryOffCommand(deviceId)),
       rebuild: (reason) => planService.rebuildPlanFromCache(reason),
     }),
     updateHomeConfig: (next) => {

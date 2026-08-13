@@ -22,7 +22,7 @@ type DeviceClassKey = string;
 export function getControlCapabilityId(params: {
   deviceClassKey: DeviceClassKey;
   capabilities: string[];
-}): TransportDeviceSnapshot['controlCapabilityId'] {
+}): TransportDeviceSnapshot['binaryCapabilityId'] {
   const { deviceClassKey, capabilities } = params;
   if (deviceClassKey === 'evcharger' && capabilities.includes('evcharger_charging')) {
     return 'evcharger_charging';
@@ -48,12 +48,11 @@ export function getControlCapabilityId(params: {
 export function getCurrentOn(params: {
   deviceClassKey: DeviceClassKey;
   capabilityObj: DeviceCapabilityMap;
-  controlCapabilityId?: TransportDeviceSnapshot['controlCapabilityId'];
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
 }): boolean | undefined {
-  const { deviceClassKey, capabilityObj, controlCapabilityId } = params;
-  if (controlCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger') {
+  const { capabilityObj, binaryCapabilityId } = params;
+  if (binaryCapabilityId === 'evcharger_charging') {
     return resolveEvCurrentOnObservation({
-      evChargingState: getEvChargingState(capabilityObj),
       evchargerCharging: getEvCharging(capabilityObj),
     });
   }
@@ -64,20 +63,12 @@ export function getCurrentOn(params: {
 }
 
 export function resolveEvCurrentOn(params: {
-  evChargingState: EvChargingState | undefined;
   evchargerCharging: unknown;
 }): boolean {
-  const { evChargingState, evchargerCharging } = params;
-  // The charge-state string is authoritative (Homey requires both EV
-  // capabilities on a charger). `currentOn` = "free to draw": only
-  // `plugged_in_charging` is on; a paused charger is held off — commandable,
-  // but NOT on, exactly like a binary device with onoff=false. The raw
-  // `evcharger_charging` boolean is consulted only as a fallback when the state
-  // string is absent (a transient pull gap), so a boolean lingering `true`
-  // during a pause cannot contradict the state.
-  if (evChargingState !== undefined) {
-    return evChargingState === 'plugged_in_charging';
-  }
+  const { evchargerCharging } = params;
+  // `evcharger_charging` is the command/readback axis. Charging-state telemetry
+  // answers whether energy is physically flowing, which is deliberately a
+  // separate fact: the car may refuse to charge after the command was accepted.
   if (evchargerCharging === true) {
     return true;
   }
@@ -88,16 +79,10 @@ export function resolveEvCurrentOn(params: {
 }
 
 export function resolveEvCurrentOnObservation(params: {
-  evChargingState: EvChargingState | undefined;
   evchargerCharging: unknown;
 }): boolean | undefined {
-  const { evChargingState, evchargerCharging } = params;
-  // State-authoritative (see resolveEvCurrentOn): the charge-state string wins
-  // when present; the raw boolean is only a transient state-missing fallback,
-  // and `undefined` defers to the previous-snapshot synthesis upstream.
-  if (evChargingState !== undefined) {
-    return resolveEvCurrentOn({ evChargingState, evchargerCharging });
-  }
+  const { evchargerCharging } = params;
+  // Only a read of the command capability is a command-state observation.
   if (evchargerCharging === true) return true;
   if (evchargerCharging === false) return false;
   return undefined;
@@ -118,24 +103,24 @@ export function resolveEvChargingStateBinaryEvidence(evChargingState: unknown): 
 }
 
 export function getCanSetControl(
-  controlCapabilityId: TransportDeviceSnapshot['controlCapabilityId'],
-  controlWriteCapabilityIdOrCapabilityObj: string | DeviceCapabilityMap | undefined = undefined,
+  binaryCapabilityId: TransportDeviceSnapshot['binaryCapabilityId'],
+  binaryWriteCapabilityIdOrCapabilityObj: string | DeviceCapabilityMap | undefined = undefined,
   capabilityObj?: DeviceCapabilityMap,
 ): boolean | undefined {
-  if (!controlCapabilityId) return undefined;
+  if (!binaryCapabilityId) return undefined;
   const resolvedCapabilityObj = (
     capabilityObj
     ?? (
-      typeof controlWriteCapabilityIdOrCapabilityObj === 'object'
-      ? controlWriteCapabilityIdOrCapabilityObj
+      typeof binaryWriteCapabilityIdOrCapabilityObj === 'object'
+      ? binaryWriteCapabilityIdOrCapabilityObj
       : undefined
     )
   );
   if (!resolvedCapabilityObj) return undefined;
-  const resolvedControlWriteCapabilityId = typeof controlWriteCapabilityIdOrCapabilityObj === 'string'
-    ? controlWriteCapabilityIdOrCapabilityObj
+  const resolvedControlWriteCapabilityId = typeof binaryWriteCapabilityIdOrCapabilityObj === 'string'
+    ? binaryWriteCapabilityIdOrCapabilityObj
     : undefined;
-  const capability = resolvedCapabilityObj[resolvedControlWriteCapabilityId ?? controlCapabilityId];
+  const capability = resolvedCapabilityObj[resolvedControlWriteCapabilityId ?? binaryCapabilityId];
   if (!capability) return undefined;
   if (typeof capability.setable === 'boolean') {
     return capability.setable;
@@ -298,10 +283,10 @@ function buildEvSnapshotChangeLines(
   if (previousEv.available !== nextEv.available) {
     changes.push(`available ${String(previousEv.available !== false)} -> ${String(nextEv.available !== false)}`);
   }
-  if (previousEv.controlCapabilityId !== nextEv.controlCapabilityId) {
+  if (previousEv.binaryCapabilityId !== nextEv.binaryCapabilityId) {
     changes.push(
-      `control ${previousEv.controlCapabilityId ?? 'unknown'} `
-      + `-> ${nextEv.controlCapabilityId ?? 'unknown'}`,
+      `control ${previousEv.binaryCapabilityId ?? 'unknown'} `
+      + `-> ${nextEv.binaryCapabilityId ?? 'unknown'}`,
     );
   }
   if (previousEv.expectedPowerKw !== nextEv.expectedPowerKw) {
@@ -316,7 +301,7 @@ function formatEvSnapshotDiscovery(snapshot: TransportDeviceSnapshot): string {
     `evState=${snapshot.evChargingState ?? 'unknown'}`,
     `available=${snapshot.available !== false}`,
     `expectedPowerKw=${snapshot.expectedPowerKw}`,
-    `control=${snapshot.controlCapabilityId ?? 'unknown'}`,
+    `control=${snapshot.binaryCapabilityId ?? 'unknown'}`,
   ].join(', ');
 }
 

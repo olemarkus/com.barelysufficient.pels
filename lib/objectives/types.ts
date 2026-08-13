@@ -1,6 +1,5 @@
 import type {
   EvChargingState,
-  BinaryControlCapabilityId,
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   SteppedLoadProfile,
@@ -39,11 +38,6 @@ export type ObjectiveDeviceInput = {
   name: string;
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
-  // Carried so the canonical `isEvDevice` identity (deviceClass OR the
-  // evcharger_charging capability) is type-visible here, matching the runtime
-  // `PlanInputDevice` that flows in. The EV power-fallbacks in objectiveSteps /
-  // planningSpeed rely on it.
-  controlCapabilityId?: BinaryControlCapabilityId;
   steppedLoadProfile?: SteppedLoadProfile;
   priority?: number;
   // The observed `evcharger_charging_state` capability, produced by the transport

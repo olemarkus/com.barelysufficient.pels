@@ -94,12 +94,13 @@ const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): Restore
 type InputDeviceFixture = Partial<PlanInputDevice>
   & BinaryControlDiscriminantProbe
   & TemperatureDiscriminantProbe
-  & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' };
+  & { evChargingState?: string; binaryCapabilityId?: string; deviceType?: 'temperature' | 'onoff' };
 type PlanDeviceFixture = Partial<DevicePlanDevice>
   & TemperatureDiscriminantProbe
   & {
     reason?: DevicePlanDevice['reason'] | string;
     evChargingState?: string;
+    binaryCapabilityId?: string;
     deviceType?: 'temperature' | 'onoff';
   };
 
@@ -179,7 +180,7 @@ describe('plan diagnostics observations', () => {
         name: 'Water Heater',
         deviceType: 'onoff',
         targets: [],
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
         controllable: true,
         available: true,
@@ -215,7 +216,7 @@ describe('plan diagnostics observations', () => {
         name: 'Water Heater',
         deviceType: 'onoff',
         targets: [],
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
         controllable: true,
         available: true,
@@ -274,9 +275,10 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'ev-1',
         name: 'Driveway EV',
+        objectiveKind: 'ev_soc',
         deviceType: 'onoff',
         targets: [],
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         binaryControl: { on: false },
         controllable: true,
@@ -285,10 +287,11 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'ev-1',
         name: 'Driveway EV',
+        objectiveKind: 'ev_soc',
         currentState: 'off',
         plannedState: 'shed',
         currentTarget: null,
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         controllable: true,
         available: true,

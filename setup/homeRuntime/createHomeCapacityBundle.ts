@@ -47,7 +47,7 @@ import type {
 } from '../../lib/power/trackerTypes';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
-import { createEvResumeReachability } from '../../lib/executor/evResumeReachability';
+import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
@@ -159,8 +159,8 @@ export type RealtimeReconcileHooks = {
    * so answering either from MAIN would fabricate holds (PELS's own write looks
    * external) and rebuild a plan that does not contain the device.
    */
-  hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
-  clearRecentBinaryOffCommand: (deviceId: string, capabilityId: string) => void;
+  hasPendingBinaryCommand: (deviceId: string) => boolean;
+  clearRecentBinaryOffCommand: (deviceId: string) => void;
   rebuild: (reason: string) => Promise<unknown>;
 };
 
@@ -302,14 +302,14 @@ function buildSubHomeScope(params: {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
     getTracker, getServiceForSync, getPlanEngineForPending, modeCatalog,
   } = params;
-  const evResumeReachability = createEvResumeReachability({
+  const binaryCommandReachability = createBinaryCommandReachability({
     requestRebuild: () => {
       queueMicrotask(() => {
         if (!isTornDown()) void getServiceForSync()?.rebuildPlanFromCache('binary_command_reachability_changed');
       });
     },
     scheduleRebuild: (deviceId, dueAtMs) => {
-      const key = `evResumeProbe:${homeId}:${deviceId}`;
+      const key = `binaryCommandReachability:${homeId}:${deviceId}`;
       ctx.timers.registerTimeout(key, setTimeout(() => {
         if (isTornDown()) return;
         ctx.timers.clear(key);
@@ -317,7 +317,7 @@ function buildSubHomeScope(params: {
       }, Math.max(0, dueAtMs - Date.now())));
     },
     clearScheduledRebuild: (deviceId) => {
-      ctx.timers.clear(`evResumeProbe:${homeId}:${deviceId}`);
+      ctx.timers.clear(`binaryCommandReachability:${homeId}:${deviceId}`);
     },
   });
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
@@ -354,16 +354,16 @@ function buildSubHomeScope(params: {
         getBasePriorityForDevice: (id) => (
           getConfiguredPriorityFromHomeModeCatalog(modeCatalog.getSnapshot(), id)
         ),
-        getPendingBinaryCommand: (id, model) => getPlanEngineForPending()
-          ?.getPendingBinaryCommandForDevice(id, model) ?? null,
-        clearRecentBinaryOffCommand: (id, capabilityId, observedOnAtMs) => getPlanEngineForPending()
-          ?.clearRecentBinaryOffCommandForCapability(id, capabilityId, observedOnAtMs),
-        projectCommandability: evResumeReachability.project,
-        pruneCommandability: evResumeReachability.prune,
+        getPendingBinaryCommand: (id) => getPlanEngineForPending()
+          ?.getPendingBinaryCommandForDevice(id) ?? null,
+        clearRecentBinaryOffCommand: (id, observedOnAtMs) => getPlanEngineForPending()
+          ?.clearRecentBinaryOffCommand(id, observedOnAtMs),
+        projectCommandability: binaryCommandReachability.project,
+        pruneCommandability: binaryCommandReachability.prune,
       });
     },
-    binaryCommandLifecycle: evResumeReachability.lifecycle,
-    disposeBinaryCommandReachability: evResumeReachability.dispose,
+    binaryCommandLifecycle: binaryCommandReachability.lifecycle,
+    disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
     persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),

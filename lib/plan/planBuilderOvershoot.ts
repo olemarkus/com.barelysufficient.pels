@@ -476,7 +476,6 @@ function trackPlanDeviceForOvershoot(
   const pendingBinaryCommand = pendingBinaryCommandStore.peek(device.id);
   const pendingBinaryCommandActive = isPendingBinaryCommandActive({
     pending: pendingBinaryCommand,
-    communicationModel: device.communicationModel,
   });
   return {
     id: device.id,

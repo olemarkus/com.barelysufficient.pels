@@ -2,7 +2,6 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
-import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
@@ -56,7 +55,7 @@ export type ObjectiveSampleDevice = ObservedDeviceState
   & StateOfChargeObservedProbe
   & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe
-  & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType' | 'controlCapabilityId'>
+  & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType'>
   & { currentDrawKw: number };
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
@@ -75,7 +74,7 @@ export function buildObjectiveProfileSample(
     };
   }
 
-  if (isEvDevice(device) && hasObservedStateOfCharge(device)) {
+  if (hasObservedStateOfCharge(device)) {
     // `level` answers usability, and no `Number.isFinite` re-check follows it —
     // the producer stands behind the level or reports none.
     const { level } = device.stateOfCharge;

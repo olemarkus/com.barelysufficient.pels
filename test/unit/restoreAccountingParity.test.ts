@@ -17,7 +17,7 @@
  *
  * Edge-case coverage closes TODO §"Before chunk 6 — expand restore-accounting
  * cascade-parity test coverage." (2026-05-27):
- *  - (a) stepped, `controlCapabilityId: undefined`, already at lowest active step
+ *  - (a) stepped, `binaryCapabilityId: undefined`, already at lowest active step
  *        (path-2 → path-3 fall-through with `restoreStep.planningPowerW === 0`
  *        when the profile lowest-active step has no positive planning kW).
  *  - (b) stepped, `selectedStepId` absent and `hasKnownEffectiveStep === false`
@@ -72,7 +72,12 @@ const buildRestoreFixture = (
   overrides: Partial<DevicePlanDevice>
     & TemperatureDiscriminantProbe
     & BinaryControlDiscriminantProbe
-    & { evChargingState?: string; controlModel?: DeviceControlModel; deviceType?: 'temperature' | 'onoff' },
+    & {
+      evChargingState?: string;
+      binaryCapabilityId?: string;
+      controlModel?: DeviceControlModel;
+      deviceType?: 'temperature' | 'onoff';
+    },
 ): RestoreFixture => buildPlanDevice(
   overrides as Parameters<typeof buildPlanDevice>[0],
 ) as RestoreFixture;
@@ -128,7 +133,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     name: 'EV',
     binaryControl: { on: false },
     currentState: 'off',
-    controlCapabilityId: 'evcharger_charging',
+    binaryCapabilityId: 'evcharger_charging',
     // No measured / expected / planning kW — exercises the EV fallback path.
   });
   const deviceB = buildRestoreFixture({
@@ -163,7 +168,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   // Edge-case fixtures added 2026-05-27 to harden cascade-parity coverage
   // before chunk 6 removes the legacy fallback.
   //
-  // (a) Stepped device, `controlCapabilityId: undefined`, already at lowest active
+  // (a) Stepped device, `binaryCapabilityId: undefined`, already at lowest active
   //     step. Profile has every step at planningPowerW = 0, so
   //     `getSteppedLoadRestoreStep` returns a zero-power step which fails the
   //     `> 0` guard. Both legacy and producer fall through to path-3
@@ -177,7 +182,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     controlModel: 'stepped_load',
     steppedLoadProfile: zeroPowerSteppedProfile,
     selectedStepId: 'low',
-    controlCapabilityId: undefined,
+    binaryCapabilityId: undefined,
     planningPowerKw: 0,
   });
   // (b) Stepped device with `selectedStepId` absent and

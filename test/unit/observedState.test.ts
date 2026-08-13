@@ -55,21 +55,16 @@ describe('resolveObservedCurrentState — four-valued label (separate from the o
     // resolves to its latched bit (here off).
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
-      controlCapabilityId: 'onoff',
     })).toBe('off');
   });
 
   it('returns "not_applicable" for a target-only device (no binary capability) — structural, not staleness', () => {
     expect(resolveObservedCurrentState({
-      binaryControl: { on: false },
-      controlCapabilityId: undefined,
     })).toBe('not_applicable');
   });
 
   it('resolves a step-only device from its step state, not its defaulted binary', () => {
     expect(resolveObservedSteppedLoadCurrentState({
-      binaryControl: { on: false },
-      controlCapabilityId: undefined,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'medium',
     })).toBe('on');

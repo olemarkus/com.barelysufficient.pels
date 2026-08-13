@@ -10,15 +10,7 @@
  * subscriptions (the projection must be fed before any listener that reads it).
  */
 import type Homey from 'homey';
-import { DeviceTransport, type DeviceTransportBinarySettleOps } from '../../lib/device/deviceTransport';
-import {
-  clearAllPendingBinarySettleWindows,
-  clearPendingBinarySettleWindow,
-  hasPendingBinarySettleWindow,
-  notePendingBinarySettleObservation,
-  startPendingBinarySettleWindow,
-  type BinarySettleState,
-} from '../../lib/observer/binarySettle';
+import { DeviceTransport } from '../../lib/device/deviceTransport';
 import type {
   ObservedStateChangedEvent,
   ObservedStateEmitter,
@@ -71,7 +63,6 @@ export type DeviceTransportWiringDeps = {
   getStructuredLogger: () => PinoLogger | undefined;
   installStructuredLogger: () => PinoLogger;
   getPowerCalibrationStore: () => PowerCalibrationStore;
-  getObserverBinarySettleState: () => BinarySettleState;
   getObservedStateEmitter: () => ObservedStateEmitter;
   getObservedHomePower: () => ObservedHomePower;
   getObservedDeviceStateProjection: () => ObservedDeviceStateProjection;
@@ -92,24 +83,6 @@ export type DeviceTransportWiringDeps = {
   getHomeMembershipService: () => HomeMembershipService | undefined;
   scheduleRealtimeDeviceReconcile: (event: RealtimeDeviceReconcileEvent) => void;
 };
-
-/**
- * Build the observer-owned binarySettle operation bag passed into
- * `DeviceTransport`. Binds each observer function so transport can
- * invoke them through the bag without statically referencing
- * `lib/observer/binarySettle.ts` (cruiser rule
- * `no-device-to-peer-except-power`). PR #4 of the observer/transport
- * split — `notes/state-management/observer-transport-split.md`.
- */
-function buildObserverBinarySettleOps(): DeviceTransportBinarySettleOps {
-  return {
-    start: startPendingBinarySettleWindow,
-    note: notePendingBinarySettleObservation,
-    hasWindow: hasPendingBinarySettleWindow,
-    clear: clearPendingBinarySettleWindow,
-    clearAll: clearAllPendingBinarySettleWindows,
-  };
-}
 
 function shouldRebuildPlanForRealtimeEvSocObservation(
   deps: DeviceTransportWiringDeps,
@@ -232,11 +205,6 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
       observeCalibrationSnapshotMutation(snapshot, nowMs);
       ctx.deviceControlHelpers.reconcileTargetPowerReachability([snapshot], nowMs);
     },
-    binarySettleState: deps.getObserverBinarySettleState(),
-    binarySettleOps: buildObserverBinarySettleOps(),
-    pendingPredicate: (deviceId, capabilityId) => (
-      hasPendingBinarySettleWindow(deps.getObserverBinarySettleState(), deviceId, capabilityId)
-    ),
     observedStateDispatcher: deps.getObservedStateEmitter().asDispatcher(deps.getObservedHomePower()),
     evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey),
   });

@@ -23,7 +23,7 @@ const buildInputDevice = (
 ): PlanInputDevice => {
   const merged = {
     targets: [] as PlanInputDevice['targets'],
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
     controllable: true,
     managed: true,

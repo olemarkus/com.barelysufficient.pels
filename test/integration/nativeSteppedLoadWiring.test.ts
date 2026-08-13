@@ -906,7 +906,6 @@ describe('native stepped-load wiring', () => {
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'max',
       desiredStepId: 'medium',
-      controlCapabilityId: 'onoff',
       controlAdapter: {
         kind: 'capability_adapter',
         activationAvailable: true,
@@ -964,7 +963,6 @@ describe('native stepped-load wiring', () => {
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'max',
-      controlCapabilityId: 'onoff',
       reason: { code: 'keep', detail: null },
     });
 
@@ -1112,7 +1110,6 @@ describe('native stepped-load wiring', () => {
       },
       selectedStepId: '16a',
       desiredStepId: '6a',
-      controlCapabilityId: 'evcharger_charging',
       controlAdapter: {
         kind: 'capability_adapter',
         activationRequired: false,

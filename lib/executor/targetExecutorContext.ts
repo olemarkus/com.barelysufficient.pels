@@ -1,4 +1,3 @@
-import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
 import type { PendingTargetCommandState } from '../plan/planState';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -20,7 +19,7 @@ export type PlanExecutorTargetContext = {
    * raw transport snapshot. Narrowed to the only field it consumes. `undefined`
    * before the first observation for the device lands.
    */
-  getObservedState: (deviceId: string) => Pick<ObservedDeviceState, 'targets'> | undefined;
+  getObservedTemperatureValue: (deviceId: string) => unknown;
   /**
    * Executor-owned lifecycle fallback has claimed this command from the
    * ordinary plan state. A matching ordinary dispatch must stand down even
@@ -45,7 +44,7 @@ export type PlanExecutorTargetContext = {
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     observedValue?: unknown;
     observedSource?: string;

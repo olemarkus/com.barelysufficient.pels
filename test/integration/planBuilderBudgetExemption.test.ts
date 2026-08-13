@@ -13,7 +13,7 @@ import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 // `binaryControl` moved off the `PlanInputDevice` base onto the binary cluster.
-// Route a loose fixture (with `controlCapabilityId` so the device stays binary)
+// Route a loose fixture (with `binaryCapabilityId` so the device stays binary)
 // through the discriminant regrouper to reattach it.
 const buildInputDevice = (
   loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
@@ -23,7 +23,7 @@ const buildInputDevice = (
   },
 ): PlanInputDevice => {
   const merged = {
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
     ...loose,
   };

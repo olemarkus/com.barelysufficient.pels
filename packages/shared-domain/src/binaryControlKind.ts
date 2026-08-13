@@ -1,7 +1,7 @@
 /**
  * Device-KIND classification for binary (on/off) control, shared so the planner
  * (`lib/plan`), observer (`lib/observer`) and executor (`lib/executor`) branch on
- * one predicate instead of each inlining the `controlCapabilityId` presence test.
+ * one predicate instead of each inlining an SDK capability-id presence test.
  * Same vocabulary-containment goal as `isTemperatureControlDevice`
  * (`temperatureDeviceKind.ts`) and `isEvDevice` (`evPlugState.ts`): the
  * discriminant lives here, and consumers ask "is this a binary device?" without
@@ -37,5 +37,9 @@
  * snapshot still tests for it separately; this predicate narrows nothing.
  */
 export const hasBinaryControlCapability = (
-  dev: { controlCapabilityId?: string } | null | undefined,
-): boolean => dev?.controlCapabilityId !== undefined;
+  dev: { binaryControl?: unknown; currentOn?: boolean; binaryControllable?: boolean } | null | undefined,
+): boolean => Boolean(dev && (
+  dev.binaryControl !== undefined
+  || 'currentOn' in dev
+  || dev.binaryControllable === true
+));

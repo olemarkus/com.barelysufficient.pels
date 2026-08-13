@@ -18,7 +18,6 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { isEvPlanDevice } from '../../lib/plan/planEvDevice';
 import {
   isDeviceObservationStale,
   STALE_DEVICE_OBSERVATION_MS,
@@ -39,7 +38,11 @@ const inputDevice = (
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
     & EvDiscriminantProbe
-    & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+    & {
+      evChargingState?: string;
+      binaryCapabilityId?: string;
+      deviceType?: 'temperature' | 'onoff';
+    } = {},
 ): PlanInputDevice => buildPlanInputDevice(o as Parameters<typeof buildPlanInputDevice>[0]);
 
 const steppedInput = (
@@ -47,7 +50,11 @@ const steppedInput = (
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
     & EvDiscriminantProbe
-    & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+    & {
+      evChargingState?: string;
+      binaryCapabilityId?: string;
+      deviceType?: 'temperature' | 'onoff';
+    } = {},
 ): PlanInputDevice => steppedInputDevice(o as Parameters<typeof steppedInputDevice>[0]);
 
 /** Build a `shedReasons` map from string reason codes (test convenience). */
@@ -64,7 +71,7 @@ const currentTargetOf = (device: DevicePlanDevice): number | null | undefined =>
 
 /** Narrow a plan device to read its EV boost-active flag in assertions. */
 const evBoostActiveOf = (device: DevicePlanDevice): boolean | undefined =>
-  (isEvPlanDevice(device) ? device.evBoostActive : undefined);
+  (device.objectiveKind === 'ev_soc' ? device.evBoostActive : undefined);
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
@@ -284,6 +291,7 @@ describe('buildInitialPlanDevices', () => {
         id: 'charger',
         name: 'Driveway charger',
         deviceClass: 'evcharger',
+        objectiveKind: 'ev_soc',
         deviceType: 'onoff',
         targets: [],
         budgetExempt: false,
@@ -311,7 +319,6 @@ describe('buildInitialPlanDevices', () => {
       selectedStepId: 'max',
       desiredStepId: 'max',
       targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
-      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
       currentDrawKw: 0.5,
@@ -589,9 +596,10 @@ describe('buildInitialPlanDevices', () => {
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
-      capabilityId: 'onoff',
+      dispatchState: 'accepted',
       desired: true,
       startedMs: Date.now(),
+      pendingMs: 90_000,
     };
 
     const [planDevice] = buildInitialPlanDevices({
@@ -663,9 +671,10 @@ describe('buildInitialPlanDevices', () => {
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
-      capabilityId: 'onoff',
+      dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now(),
+      pendingMs: 90_000,
     };
 
     const [planDevice] = buildInitialPlanDevices({
@@ -696,7 +705,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Heater',
       binaryControl: { on: false },
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       currentState: 'unknown',
     });
 
@@ -860,7 +869,7 @@ describe('buildInitialPlanDevices', () => {
     const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
       binaryControl: { on: true }, // stale: device still looks 'on' in the snapshot
       controllable: true,
@@ -892,7 +901,7 @@ describe('buildInitialPlanDevices', () => {
     const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',
       expectedPowerSource: 'default',
       binaryControl: { on: true },
@@ -923,7 +932,7 @@ describe('buildInitialPlanDevices', () => {
     const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       binaryControl: { on: true },
       controllable: true,
     });
@@ -968,7 +977,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
   it('turn_off is a valid shed action for a stepped device with onoff', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       selectedStepId: 'max',
       binaryControl: { on: true },
     });
@@ -990,9 +999,8 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
   it('turn_off must not be selected as shed action for a stepped device without binary control', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: undefined,
+      binaryCapabilityId: undefined,
       selectedStepId: 'max',
-      binaryControl: { on: true },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1014,7 +1022,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   it('turn_off shed sets desiredStepId to the lowest step, not the current medium step', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       selectedStepId: 'medium',
       binaryControl: { on: true },
     });
@@ -1037,7 +1045,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   it('turn_off shed targets the zero-usage off step when starting from max step', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       selectedStepId: 'max',
       binaryControl: { on: true },
     });
@@ -1062,7 +1070,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   it('turn_off shed keeps desiredStepId=off when device is already at the lowest step', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       selectedStepId: 'off',
       binaryControl: { on: false },
     });
@@ -1089,7 +1097,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('restore (keep) normalizes off-step desiredStepId to lowest non-zero step', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       selectedStepId: 'off',
       binaryControl: { on: false },
     });
@@ -1111,7 +1119,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('preserves runtime stepped restore intent for keep devices while confirmation is still pending', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       binaryControl: { on: true },
       selectedStepId: 'low',
       desiredStepId: 'max',
@@ -1138,7 +1146,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('restore (keep) normalizes unknown-step off devices to lowest non-zero step and expected load', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       selectedStepId: undefined,
       desiredStepId: 'max',
       binaryControl: { on: false },
@@ -1162,7 +1170,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('leaves stepped restore intent unchanged when no positive restore step exists', () => {
     const device = steppedInput({
       id: 'dev-1',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       binaryControl: { on: false },
       selectedStepId: undefined,
       desiredStepId: undefined,

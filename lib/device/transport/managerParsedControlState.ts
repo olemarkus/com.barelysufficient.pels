@@ -8,6 +8,7 @@ import {
 } from '../managerControl';
 import { resolveParsedControlState } from './managerParseSnapshot';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 const moduleLogger = getLogger('device/parsed-control-state');
 
@@ -31,13 +32,13 @@ export function resolveDeviceParsedControlState(params: {
   deviceName: string | null;
   deviceLabel: string;
   deviceClassKey: string;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-  controlWriteCapabilityId?: string;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
+  binaryWriteCapabilityId?: string;
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
   evChargingState: EvChargingState | undefined;
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
-  previousSnapshot?: TargetDeviceSnapshot;
+  previousSnapshot?: TransportDeviceSnapshot;
   suppressDropLog?: boolean;
 }): ParsedControlStateResult {
   const {
@@ -47,8 +48,8 @@ export function resolveDeviceParsedControlState(params: {
     deviceName,
     deviceLabel,
     deviceClassKey,
-    controlCapabilityId,
-    controlWriteCapabilityId,
+    binaryCapabilityId,
+    binaryWriteCapabilityId,
     capabilityObj,
     evCharging,
     evChargingState,
@@ -56,33 +57,33 @@ export function resolveDeviceParsedControlState(params: {
     previousSnapshot,
     suppressDropLog = false,
   } = params;
-  const observedCurrentOn = getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId });
-  const invalidControlPayload = hasInvalidControlPayload({ capabilityObj, controlCapabilityId });
+  const observedCurrentOn = getCurrentOn({ deviceClassKey, capabilityObj, binaryCapabilityId });
+  const invalidControlPayload = hasInvalidControlPayload({ capabilityObj, binaryCapabilityId });
   // `currentOn` ("whether the device may draw power") is strictly `boolean`, so
   // an unobserved control needs a fallback — see `resolveUnobservedControlFallback`.
   const resolvedCurrentOn: ResolvedControlFallback = observedCurrentOn === undefined
-    ? resolveUnobservedControlFallback({ invalidControlPayload, previousSnapshot, controlCapabilityId })
+    ? resolveUnobservedControlFallback({ invalidControlPayload, previousSnapshot, binaryCapabilityId })
     : { currentOn: observedCurrentOn, trusted: true };
   const parsedControlState = resolveParsedControlState({
     debugStructured,
     deviceId,
     deviceName,
     deviceLabel,
-    controlCapabilityId,
-    controlWriteCapabilityId,
+    binaryCapabilityId,
+    binaryWriteCapabilityId,
     capabilityObj,
     evCharging,
     evChargingState,
     flowBackedCapabilityIds,
     currentOn: resolvedCurrentOn.currentOn,
   });
-  if (!suppressDropLog && controlCapabilityId && (observedCurrentOn === undefined || invalidControlPayload)) {
+  if (!suppressDropLog && binaryCapabilityId && (observedCurrentOn === undefined || invalidControlPayload)) {
     logDroppedControlState({
       logger,
       deviceId,
       deviceName,
       deviceLabel,
-      controlCapabilityId,
+      binaryCapabilityId,
       capabilityObj,
     });
   }
@@ -90,7 +91,7 @@ export function resolveDeviceParsedControlState(params: {
     resolvedOn: parsedControlState.resolvedOn,
     binaryControl: resolveBinaryControl({
       currentOn: parsedControlState.resolvedOn,
-      controlCapabilityId,
+      binaryCapabilityId,
       previousSnapshot,
     }),
     canSetControl: parsedControlState.canSetControl,
@@ -106,7 +107,7 @@ export function resolveDeviceParsedControlState(params: {
  * including a transient capability drop on a partial update — is NOT binary this
  * cycle and gets `undefined` (consumers treat absence as "may always draw"). This
  * matches the plan-layer `isBinaryPlanDevice` guard, which keys on the same
- * current `controlCapabilityId`, so the observed snapshot and the plan device
+ * current `binaryCapabilityId`, so the observed snapshot and the plan device
  * agree about what a capability drop means.
  *
  * The on-state still latches the prior `.on` for a binary device whose VALUE read
@@ -116,11 +117,11 @@ export function resolveDeviceParsedControlState(params: {
  */
 function resolveBinaryControl(params: {
   currentOn?: boolean;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-  previousSnapshot?: TargetDeviceSnapshot;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
+  previousSnapshot?: TransportDeviceSnapshot;
 }): { on: boolean } | undefined {
-  const { currentOn, controlCapabilityId, previousSnapshot } = params;
-  if (controlCapabilityId === undefined) return undefined;
+  const { currentOn, binaryCapabilityId, previousSnapshot } = params;
+  if (binaryCapabilityId === undefined) return undefined;
   return { on: currentOn ?? previousSnapshot?.binaryControl?.on ?? false };
 }
 
@@ -171,35 +172,35 @@ function resolveBinaryControl(params: {
  */
 function resolveUnobservedControlFallback(params: {
   invalidControlPayload: boolean;
-  previousSnapshot?: TargetDeviceSnapshot;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  previousSnapshot?: TransportDeviceSnapshot;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
 }): ResolvedControlFallback {
-  const { invalidControlPayload, previousSnapshot, controlCapabilityId } = params;
+  const { invalidControlPayload, previousSnapshot, binaryCapabilityId } = params;
   // A wrong-typed value is a different anomaly — latch the previous observation
   // (coupled to device-drop handling).
   if (invalidControlPayload) {
-    const previousTrusted = resolvePreviousTrustedCurrentOn({ previousSnapshot, controlCapabilityId });
+    const previousTrusted = resolvePreviousTrustedCurrentOn({ previousSnapshot, binaryCapabilityId });
     if (previousTrusted !== undefined) return { currentOn: previousTrusted, trusted: true };
     return {
-      currentOn: resolvePreviousCurrentOn({ previousSnapshot, controlCapabilityId }),
+      currentOn: resolvePreviousCurrentOn({ previousSnapshot, binaryCapabilityId }),
       trusted: false,
     };
   }
   // Binary device (control capability present) with a missing value → no new
   // evidence. Preserve prior trusted evidence; otherwise synthesize
   // non-optimistic `false` as a contract filler only.
-  if (controlCapabilityId !== undefined) {
-    const previousTrusted = resolvePreviousTrustedCurrentOn({ previousSnapshot, controlCapabilityId });
+  if (binaryCapabilityId !== undefined) {
+    const previousTrusted = resolvePreviousTrustedCurrentOn({ previousSnapshot, binaryCapabilityId });
     if (previousTrusted !== undefined) return { currentOn: previousTrusted, trusted: true };
     return { currentOn: false, trusted: false };
   }
   // No control capability NOW. If the device was binary on the previous
   // snapshot, this is a transient capability drop (a partial update) — preserve
   // the prior state rather than synthesising an on-transition.
-  if (previousSnapshot?.controlCapabilityId !== undefined) {
+  if (previousSnapshot?.binaryCapabilityId !== undefined) {
     const previousTrusted = resolvePreviousTrustedCurrentOn({
       previousSnapshot,
-      controlCapabilityId: previousSnapshot.controlCapabilityId,
+      binaryCapabilityId: previousSnapshot.binaryCapabilityId,
     });
     return {
       currentOn: previousTrusted ?? previousSnapshot.binaryControl?.on,
@@ -212,36 +213,36 @@ function resolveUnobservedControlFallback(params: {
 }
 
 function resolvePreviousTrustedCurrentOn(params: {
-  previousSnapshot?: TargetDeviceSnapshot;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  previousSnapshot?: TransportDeviceSnapshot;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
 }): boolean | undefined {
-  const { previousSnapshot, controlCapabilityId } = params;
-  if (!previousSnapshot || !controlCapabilityId) return undefined;
-  if (previousSnapshot.controlCapabilityId !== controlCapabilityId) return undefined;
+  const { previousSnapshot, binaryCapabilityId } = params;
+  if (!previousSnapshot || !binaryCapabilityId) return undefined;
+  if (previousSnapshot.binaryCapabilityId !== binaryCapabilityId) return undefined;
   const previousObservation = previousSnapshot.binaryControlObservation;
-  if (previousObservation?.capabilityId !== controlCapabilityId) return undefined;
+  if (previousObservation?.capabilityId !== binaryCapabilityId) return undefined;
   const previousOn = previousSnapshot.binaryControl?.on;
   if (previousOn !== previousObservation.observedValue) return undefined;
   return previousOn;
 }
 
 function resolvePreviousCurrentOn(params: {
-  previousSnapshot?: TargetDeviceSnapshot;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  previousSnapshot?: TransportDeviceSnapshot;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
 }): boolean | undefined {
-  const { previousSnapshot, controlCapabilityId } = params;
+  const { previousSnapshot, binaryCapabilityId } = params;
   if (!previousSnapshot) return undefined;
-  if (previousSnapshot.controlCapabilityId !== controlCapabilityId) return undefined;
+  if (previousSnapshot.binaryCapabilityId !== binaryCapabilityId) return undefined;
   return previousSnapshot.binaryControl?.on;
 }
 
 function hasInvalidControlPayload(params: {
   capabilityObj: DeviceCapabilityMap;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
 }): boolean {
-  const { capabilityObj, controlCapabilityId } = params;
-  if (!controlCapabilityId) return false;
-  const capability = capabilityObj[controlCapabilityId];
+  const { capabilityObj, binaryCapabilityId } = params;
+  if (!binaryCapabilityId) return false;
+  const capability = capabilityObj[binaryCapabilityId];
   if (!capability || !('value' in capability)) return false;
   if (capability.value === undefined) return false;
   return typeof capability.value !== 'boolean';
@@ -252,7 +253,7 @@ function logDroppedControlState(params: {
   deviceId: string;
   deviceName: string | null;
   deviceLabel: string;
-  controlCapabilityId: NonNullable<TargetDeviceSnapshot['controlCapabilityId']>;
+  binaryCapabilityId: NonNullable<TransportDeviceSnapshot['binaryCapabilityId']>;
   capabilityObj: DeviceCapabilityMap;
 }): void {
   const {
@@ -260,21 +261,21 @@ function logDroppedControlState(params: {
     deviceId,
     deviceName,
     deviceLabel,
-    controlCapabilityId,
+    binaryCapabilityId,
     capabilityObj,
   } = params;
-  const rawValue = capabilityObj[controlCapabilityId]?.value;
+  const rawValue = capabilityObj[binaryCapabilityId]?.value;
   (logger.structuredLog ?? moduleLogger).error({
     event: 'device_snapshot_control_state_dropped',
-    reasonCode: controlCapabilityId === 'evcharger_charging'
+    reasonCode: binaryCapabilityId === 'evcharger_charging'
       ? 'missing_ev_charging_state'
       : 'missing_boolean_onoff',
     source: 'snapshot_parse',
     deviceId,
     ...(deviceName ? { deviceName } : {}),
     deviceLabel,
-    capabilityId: controlCapabilityId,
-    controlCapabilityId,
+    capabilityId: binaryCapabilityId,
+    binaryCapabilityId,
     rawValue: rawValue ?? null,
     rawValueType: typeof rawValue,
   });

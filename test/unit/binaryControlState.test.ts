@@ -77,9 +77,8 @@ describe('binary observed-state predicates', () => {
 });
 
 // Producer readers behind the charger re-shed fix (prod 2026-07-26):
-// `resolveBinaryCommandCurrentOn` folds observed charging activity and the
-// producer-resolved raw charge permission into a strict command-equivalence bit;
-// `isTrustedObservedBinaryOff` answers whether evidence says the control is off.
+// `resolveBinaryCommandCurrentOn` reads only the producer-resolved command
+// control; physical EV charging activity is a separate fact.
 describe('observed binary control-value readers', () => {
   const observation = (overrides: Partial<{
     capabilityId: string;
@@ -94,10 +93,10 @@ describe('observed binary control-value readers', () => {
   });
 
   describe('resolveBinaryCommandCurrentOn', () => {
-    it('is on for either charging activity or raw charge permission', () => {
+    it('does not treat physical charging activity as command acceptance', () => {
       expect(resolveBinaryCommandCurrentOn(
         { binaryControl: { on: false }, evCharging: true },
-      )).toBe(true);
+      )).toBe(false);
       expect(resolveBinaryCommandCurrentOn(
         { binaryControl: { on: true }, evCharging: false },
       )).toBe(true);
@@ -124,34 +123,30 @@ describe('observed binary control-value readers', () => {
   describe('isTrustedObservedBinaryOff', () => {
     it('is true only for a matching off-evidence record', () => {
       expect(isTrustedObservedBinaryOff({
-        controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: observation(),
       })).toBe(true);
     });
 
     it('is false without an evidence record (latched fallback is not evidence)', () => {
       expect(isTrustedObservedBinaryOff({
-        controlCapabilityId: 'evcharger_charging',
         binaryControl: { on: false },
       })).toBe(false);
     });
 
-    it('is false when the evidence covers a different control capability', () => {
+    it('trusts normalized evidence without re-reading a transport address', () => {
       expect(isTrustedObservedBinaryOff({
-        controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: observation({ capabilityId: 'onoff' }),
-      })).toBe(false);
+      })).toBe(true);
     });
 
     it('is false when the evidence says on', () => {
       expect(isTrustedObservedBinaryOff({
-        controlCapabilityId: 'onoff',
         binaryControlObservation: observation({ capabilityId: 'onoff', observedValue: true }),
       })).toBe(false);
     });
 
-    it('is false without a control capability or snapshot', () => {
-      expect(isTrustedObservedBinaryOff({ binaryControlObservation: observation() })).toBe(false);
+    it('uses semantic evidence even without a transport capability field', () => {
+      expect(isTrustedObservedBinaryOff({ binaryControlObservation: observation() })).toBe(true);
       expect(isTrustedObservedBinaryOff(undefined)).toBe(false);
     });
   });

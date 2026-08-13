@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isCommandableNow, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 
-const EV = { controlCapabilityId: 'evcharger_charging' as const };
+const EV = { deviceClass: 'evcharger' as const };
 
 describe('resolveCommandableNow', () => {
   it('is a boolean over two observed facts — plug-state and availability', () => {

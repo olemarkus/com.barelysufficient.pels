@@ -8,10 +8,6 @@ import {
   getRecentLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
 } from './transport/managerRealtimeSupport';
-import {
-  resolveEvChargingStateBinaryEvidence,
-  resolveEvCurrentOn,
-} from './managerControl';
 import { EV_SOC_CAPABILITY_ID } from './transport/stateOfCharge';
 import { getLogger } from '../logging/logger';
 import {
@@ -27,7 +23,7 @@ import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak'
 const moduleLogger = getLogger('device/manager-runtime');
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
-type RealtimeControlCapabilityId = NonNullable<TransportDeviceSnapshot['controlCapabilityId']>;
+type RealtimeControlCapabilityId = NonNullable<TransportDeviceSnapshot['binaryCapabilityId']>;
 
 export type RealtimeDeviceReconcileChange = {
   capabilityId: string;
@@ -238,27 +234,27 @@ function resolveExplicitControlObservation(params: {
   parsed: TransportDeviceSnapshot;
   previous: TransportDeviceSnapshot | null;
 }): {
-  controlCapabilityId: RealtimeControlCapabilityId;
+  binaryCapabilityId: RealtimeControlCapabilityId;
   value: boolean;
   observedCapabilityId: string;
 } | null {
   const { device, parsed, previous } = params;
-  const controlCapabilityId = parsed.controlCapabilityId ?? previous?.controlCapabilityId;
-  if (typeof controlCapabilityId !== 'string') return null;
-  if (!isRealtimeControlCapability(controlCapabilityId)) return null;
+  const binaryCapabilityId = parsed.binaryCapabilityId ?? previous?.binaryCapabilityId;
+  if (typeof binaryCapabilityId !== 'string') return null;
+  if (!isRealtimeControlCapability(binaryCapabilityId)) return null;
   const observation = getExplicitObservedBinaryObservation({
     device,
-    controlCapabilityId,
-    controlObservationCapabilityId: (
-      parsed.controlObservationCapabilityId
-      ?? previous?.controlObservationCapabilityId
-      ?? controlCapabilityId
+    binaryCapabilityId,
+    binaryObservationCapabilityId: (
+      parsed.binaryObservationCapabilityId
+      ?? previous?.binaryObservationCapabilityId
+      ?? binaryCapabilityId
     ),
     previousEvChargingState: previous?.evChargingState,
     previousEvCharging: previous?.evCharging,
   });
   if (!observation) return null;
-  return { controlCapabilityId, ...observation };
+  return { binaryCapabilityId, ...observation };
 }
 
 function getPreservedBinaryControlObservation(
@@ -267,8 +263,8 @@ function getPreservedBinaryControlObservation(
 ): TransportDeviceSnapshot['binaryControlObservation'] {
   if (!previous?.binaryControlObservation) return undefined;
   if (
-    parsed.controlCapabilityId !== undefined
-    && previous.binaryControlObservation.capabilityId !== parsed.controlCapabilityId
+    parsed.binaryCapabilityId !== undefined
+    && previous.binaryControlObservation.capabilityId !== parsed.binaryCapabilityId
   ) return undefined;
   const nextObservation = parsed.binaryControlObservation;
   if (
@@ -291,6 +287,7 @@ function applyBinaryControlObservation(params: {
     if (rawPermissionObserved) {
       parsed.evCharging = observation.observedValue;
       parsed.evChargingObservedAtMs = observation.observedAtMs;
+      parsed.binaryControl = { on: observation.observedValue };
     } else if (previous) {
       if (parsed.evCharging === undefined) {
         parsed.evCharging = previous.evCharging;
@@ -300,13 +297,8 @@ function applyBinaryControlObservation(params: {
         parsed.evChargingState = previous.evChargingState;
         parsed.evChargingStateObservedAtMs = previous.evChargingStateObservedAtMs;
       }
+      if (previous.binaryControl) parsed.binaryControl = { ...previous.binaryControl };
     }
-    parsed.binaryControl = {
-      on: resolveEvCurrentOn({
-        evChargingState: parsed.evChargingState,
-        evchargerCharging: parsed.evCharging,
-      }),
-    };
   } else {
     parsed.binaryControl = { on: observation.observedValue };
   }
@@ -320,57 +312,48 @@ type ExplicitBinaryObservation = Pick<ExplicitControlObservation, 'value' | 'obs
 
 function getChangedEvBinaryObservation(params: {
   device: HomeyDeviceLike;
-  controlCapabilityId?: TransportDeviceSnapshot['controlCapabilityId'];
-  previousEvChargingState?: string;
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
   previousEvCharging?: boolean;
 }): ExplicitBinaryObservation | undefined {
   const {
-    device, controlCapabilityId, previousEvChargingState, previousEvCharging,
+    device, binaryCapabilityId, previousEvCharging,
   } = params;
-  if (controlCapabilityId !== 'evcharger_charging') return undefined;
+  if (binaryCapabilityId !== 'evcharger_charging') return undefined;
   const rawControlValue = device.capabilitiesObj?.evcharger_charging?.value;
   if (typeof rawControlValue === 'boolean' && rawControlValue !== previousEvCharging) {
     return { value: rawControlValue, observedCapabilityId: 'evcharger_charging' };
   }
-  const rawStateValue = device.capabilitiesObj?.evcharger_charging_state?.value;
-  if (rawStateValue === undefined || Object.is(rawStateValue, previousEvChargingState)) {
-    return undefined;
-  }
-  const stateValue = resolveEvChargingStateBinaryEvidence(rawStateValue);
-  return stateValue === undefined
-    ? undefined
-    : { value: stateValue, observedCapabilityId: 'evcharger_charging_state' };
+  return undefined;
 }
 
 function getExplicitObservedBinaryObservation(params: {
   device: HomeyDeviceLike;
-  controlCapabilityId?: TransportDeviceSnapshot['controlCapabilityId'];
-  controlObservationCapabilityId?: TransportDeviceSnapshot['controlObservationCapabilityId'];
+  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
+  binaryObservationCapabilityId?: TransportDeviceSnapshot['binaryObservationCapabilityId'];
   previousEvChargingState?: string;
   previousEvCharging?: boolean;
 }): { value: boolean; observedCapabilityId: string } | undefined {
   const {
     device,
-    controlCapabilityId,
-    controlObservationCapabilityId,
-    previousEvChargingState,
+    binaryCapabilityId,
+    binaryObservationCapabilityId,
     previousEvCharging,
   } = params;
-  if (typeof controlObservationCapabilityId !== 'string') return undefined;
+  if (typeof binaryObservationCapabilityId !== 'string') return undefined;
   const changedEvObservation = getChangedEvBinaryObservation({
-    device, controlCapabilityId, previousEvChargingState, previousEvCharging,
+    device, binaryCapabilityId, previousEvCharging,
   });
   if (changedEvObservation) return changedEvObservation;
-  const value = device.capabilitiesObj?.[controlObservationCapabilityId]?.value;
+  const value = device.capabilitiesObj?.[binaryObservationCapabilityId]?.value;
   if (typeof value === 'boolean') {
-    return { value, observedCapabilityId: controlObservationCapabilityId };
+    return { value, observedCapabilityId: binaryObservationCapabilityId };
   }
   // An EV commonly observes effective session state through
   // `evcharger_charging_state`, but its raw boolean control axis is still a
   // distinct explicit user/Flow action. When state itself did not change, retain
   // that raw observation so external-off provenance can see ON/OFF transitions.
-  const rawControlValue = controlCapabilityId === 'evcharger_charging'
-    ? device.capabilitiesObj?.[controlCapabilityId]?.value
+  const rawControlValue = binaryCapabilityId === 'evcharger_charging'
+    ? device.capabilitiesObj?.[binaryCapabilityId]?.value
     : undefined;
   return typeof rawControlValue === 'boolean'
     ? { value: rawControlValue, observedCapabilityId: 'evcharger_charging' }
@@ -392,7 +375,7 @@ function preserveRecentLocalBinaryState(params: {
     binaryValueExplicitlyObserved,
   } = params;
   if (!previous || !recentLocalCapabilityWrites) return;
-  const capabilityId = parsed.controlCapabilityId ?? previous.controlCapabilityId;
+  const capabilityId = parsed.binaryCapabilityId ?? previous.binaryCapabilityId;
   if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return;
   // Without an explicit observation, parseDevice may synthesize a default that
   // must not be treated as stronger than a recent local write. Once the payload
@@ -420,7 +403,7 @@ function resolveBinaryReconcileChange(
   previous: TransportDeviceSnapshot,
   next: TransportDeviceSnapshot,
 ): RealtimeDeviceReconcileChange {
-  const rawEvAxisObserved = next.controlCapabilityId === 'evcharger_charging'
+  const rawEvAxisObserved = next.binaryCapabilityId === 'evcharger_charging'
     && next.binaryControlObservation?.observedCapabilityIds.includes('evcharger_charging') === true;
   const previousOn = rawEvAxisObserved
     ? (previous.evCharging ?? resolveBinaryOn(previous))
@@ -430,8 +413,8 @@ function resolveBinaryReconcileChange(
     : resolveBinaryOn(next);
   const observedCapabilityId = next.binaryControlObservation?.observedCapabilityIds[0];
   return {
-    capabilityId: next.controlCapabilityId ?? previous.controlCapabilityId ?? 'onoff',
-    ...(next.controlCapabilityId === 'evcharger_charging' && observedCapabilityId
+    capabilityId: next.binaryCapabilityId ?? previous.binaryCapabilityId ?? 'onoff',
+    ...(next.binaryCapabilityId === 'evcharger_charging' && observedCapabilityId
       ? { observedCapabilityId }
       : {}),
     previousValue: formatBinaryState(previousOn),
@@ -475,7 +458,7 @@ function getObservedCapabilityIds(
 
   const capabilityIds = new Set<string>();
   if (options.binaryValueExplicitlyObserved) {
-    capabilityIds.add(next.controlCapabilityId ?? previous.controlCapabilityId ?? 'onoff');
+    capabilityIds.add(next.binaryCapabilityId ?? previous.binaryCapabilityId ?? 'onoff');
   }
   if (previous.measuredPowerKw !== next.measuredPowerKw) {
     capabilityIds.add('measure_power');

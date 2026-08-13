@@ -5,13 +5,9 @@ import {
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
   buildBinaryControlLogMessage,
-  buildFlowBackedBinaryControlRequestLogMessage,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
-import {
-  EV_START_COMMAND_PENDING_MS,
-  resolveBinaryCommandPendingMs,
-} from '../observer/pendingBinaryCommandTypes';
+import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
@@ -28,16 +24,12 @@ export type DispatchBinaryControlResult =
 /**
  * Outcome of a decide-and-dispatch call, surfaced to executor callers.
  *
- * `flowBacked` carries the producer-resolved routing decision
- * (`BinaryControlDecision.flowBackedControl`) outward so post-write recording
- * sites never re-derive it from the snapshot. This is what seals the
- * flow-vs-native transport detail behind this seam: the executor records
- * direct actuation only when a real capability write happened
- * (`applied && !flowBacked`); a flow trigger leaves no direct write to record.
+ * Every successful dispatch stays pending until observer telemetry confirms
+ * the commanded binary value. Transport routing does not change that lifecycle.
  */
 export type BinaryControlOutcome =
   | { applied: false }
-  | { applied: true; flowBacked: boolean };
+  | { applied: true };
 
 /**
  * Transport seam for binary-control dispatch. Executor talks to this
@@ -60,8 +52,8 @@ export type BinaryControlTransport = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   /**
    * The single device write seam. Binary control routes through
-   * `actuator.apply({ kind: 'binary', ... })`; the actuator owns the
-   * flow-vs-native routing on the producer-resolved `flowBacked` flag.
+   * `actuator.apply({ kind: 'binary', ... })`; transport privately resolves
+   * native capability versus Flow routing.
    */
   actuator: Actuator;
 };
@@ -71,7 +63,7 @@ const logger = getLogger('executor/binary-dispatch');
 /**
  * Convenience wrapper: ask the plan layer to decide (reading state via the
  * transport's bound `observation`) and, if it returns a decision, dispatch
- * it via the same transport. Returns `{ applied: true, flowBacked }` when the
+ * it via the same transport. Returns `{ applied: true }` when the
  * underlying dispatch succeeded, `{ applied: false }` when the plan skipped or
  * the dispatch failed.
  *
@@ -95,8 +87,7 @@ export async function decideAndDispatchBinaryControl(params: {
 }): Promise<BinaryControlOutcome> {
   const {
     transport, deviceId, name, desired, snapshot, logContext,
-    restoreSource, reason, lifecycleRelease,
-    forceAgainstReleasedOpposing,
+    restoreSource, reason, lifecycleRelease, forceAgainstReleasedOpposing,
   } = params;
   const decision = decideBinaryControl({
     pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
@@ -119,7 +110,7 @@ export async function decideAndDispatchBinaryControl(params: {
     isAuthorityCurrent: params.isAuthorityCurrent,
   });
   if (!result.ok) return { applied: false };
-  return { applied: true, flowBacked: decision.flowBackedControl };
+  return { applied: true };
 }
 
 /**
@@ -151,21 +142,30 @@ export async function dispatchBinaryControlDecision(params: {
   const {
     decision, transport, snapshot, isAuthorityCurrent,
   } = params;
-  recordPendingForDispatch({ store: transport.pendingBinaryCommandStore, decision, snapshot });
+  recordPendingForDispatch({
+    store: transport.pendingBinaryCommandStore,
+    decision,
+    snapshot,
+  });
   try {
-    const requested = await dispatchBinaryCommand({
+    const outcome = await dispatchBinaryCommand({
       decision,
       transport,
     });
-    if (!requested) {
+    if (!outcome.requested) {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
+    }
+    if (outcome.kind !== 'binary') {
+      throw new Error(`Binary actuator returned ${outcome.kind} outcome for ${decision.deviceId}`);
     }
     if (isAuthorityCurrent?.() === false) {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
-    transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
+    if (transport.pendingBinaryCommandStore.peek(decision.deviceId)) {
+      transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
+    }
     emitBinaryCommandSuccess({
       decision,
     });
@@ -188,13 +188,9 @@ function recordPendingForDispatch(params: {
 }): void {
   const { store, decision, snapshot } = params;
   store.record(decision.deviceId, {
-    capabilityId: decision.capabilityId,
     desired: decision.desired,
     startedMs: Date.now(),
-    pendingMs: decision.capabilityId === 'evcharger_charging' && decision.desired
-      ? EV_START_COMMAND_PENDING_MS
-      : resolveBinaryCommandPendingMs(snapshot?.communicationModel),
-    flowBackedControl: decision.flowBackedControl,
+    pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel ?? 'local'),
     logContext: decision.logContext,
     restoreSource: decision.restoreSource,
     ...(decision.reason ? { reason: decision.reason } : {}),
@@ -205,27 +201,14 @@ function recordPendingForDispatch(params: {
 async function dispatchBinaryCommand(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
-}): Promise<boolean> {
+}): ReturnType<Actuator['apply']> {
   const { decision, transport } = params;
   const outcome = await transport.actuator.apply({
     kind: 'binary',
     deviceId: decision.deviceId,
-    control: decision.capabilityId,
     desired: decision.desired,
-    flowBacked: decision.flowBackedControl,
   });
-  if (!outcome.requested) return false;
-  if (decision.flowBackedControl) {
-    logger.info({
-      event: 'flow_backed_binary_command_requested',
-      deviceId: decision.deviceId,
-      deviceName: decision.name,
-      capabilityId: decision.capabilityId,
-      desired: decision.desired,
-      logContext: decision.logContext,
-    });
-  }
-  return true;
+  return outcome;
 }
 
 function emitBinaryCommandSuccess(params: {
@@ -233,10 +216,10 @@ function emitBinaryCommandSuccess(params: {
 }): void {
   const { decision } = params;
   logger.info({
-    event: decision.flowBackedControl ? 'flow_backed_binary_command_succeeded' : 'binary_command_succeeded',
+    event: 'binary_command_succeeded',
     deviceId: decision.deviceId,
     deviceName: decision.name,
-    capabilityId: decision.capabilityId,
+    controlAxis: 'binary',
     desired: decision.desired,
     logContext: decision.logContext,
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
@@ -247,7 +230,6 @@ function emitBinaryCommandSuccess(params: {
       name: decision.name,
       reason: decision.reason,
       restoreSource: decision.restoreSource,
-      flowBackedControl: decision.flowBackedControl,
     }),
   });
 }
@@ -258,12 +240,12 @@ function emitBinaryCommandFailure(params: {
 }): void {
   const { decision, err } = params;
   logger.error({
-    event: decision.flowBackedControl ? 'flow_backed_binary_command_failed' : 'binary_command_failed',
-    reasonCode: decision.flowBackedControl ? 'flow_trigger_failed' : 'device_manager_write_failed',
+    event: 'binary_command_failed',
+    reasonCode: 'control_request_failed',
     deviceId: decision.deviceId,
     deviceName: decision.name,
     desired: decision.desired,
-    capabilityId: decision.capabilityId,
+    controlAxis: 'binary',
     logContext: decision.logContext,
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
@@ -271,7 +253,6 @@ function emitBinaryCommandFailure(params: {
     msg: buildBinaryControlFailureLogMessage({
       desired: decision.desired,
       name: decision.name,
-      flowBackedControl: decision.flowBackedControl,
     }),
   });
 }
@@ -282,7 +263,6 @@ function buildBinaryControlSuccessLogMessage(params: {
   name: string;
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
-  flowBackedControl: boolean;
 }): string {
   const {
     logContext,
@@ -290,28 +270,15 @@ function buildBinaryControlSuccessLogMessage(params: {
     name,
     reason,
     restoreSource,
-    flowBackedControl,
   } = params;
-  if (flowBackedControl) {
-    return buildFlowBackedBinaryControlRequestLogMessage({
-      logContext,
-      desired,
-      name,
-      reason,
-      restoreSource,
-    });
-  }
   return buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource });
 }
 
 function buildBinaryControlFailureLogMessage(params: {
   desired: boolean;
   name: string;
-  flowBackedControl: boolean;
 }): string {
-  const { desired, name, flowBackedControl } = params;
+  const { desired, name } = params;
   const verb = `${desired ? 'turn on' : 'turn off'}`;
-  return flowBackedControl
-    ? `Failed to request ${verb} ${name} via flow`
-    : `Failed to ${verb} ${name} via DeviceTransport`;
+  return `Failed to ${verb} ${name} via DeviceTransport`;
 }

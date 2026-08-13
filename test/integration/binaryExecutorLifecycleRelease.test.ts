@@ -11,11 +11,9 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ExecutableReleaseIntent } from '../../lib/executor/executablePlan';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 
-// Direct (non-flow-backed) marker-routing for the binary lifecycle-disable path.
-// The flow-backed half is covered by a real-recorder assertion in planExecutor.test.ts
-// (handleConfirmedBinaryCommand). Here the recorders mirror PlanExecutor's real ones:
-// recordShedActuation stamps the capacity cooldown markers; recordReleaseShedActuation does
-// not. So asserting which recorder fires also asserts the marker outcome.
+// Dispatch-level coverage for the binary lifecycle-disable path. Accounting is
+// intentionally absent here: every binary transport remains pending until the
+// PlanExecutor receives observer confirmation (covered in planExecutor.test.ts).
 const buildCtx = (snapshot: TargetDeviceSnapshot) => {
   const state = createPlanEngineState();
   const setCapabilityCalls: { capabilityId: string; value: boolean }[] = [];
@@ -42,12 +40,13 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
       observation,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
-        setCapability: async (_deviceId: string, capabilityId: string, value: unknown) => {
-          setCapabilityCalls.push({ capabilityId, value: value as boolean });
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+        requestSteppedLoadStep: async () => ({ requested: false }),
+        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+          setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
           return undefined;
         },
-        applyDeviceTargets: () => Promise.resolve(),
-        triggerFlowBackedBinaryControl: () => Promise.reject(new Error('flow binary not expected in release test')),
+        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
       }),
     }),
     getRestoreLogSource: () => 'current_plan',
@@ -62,7 +61,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
 
 const onoffSnapshot: TargetDeviceSnapshot = {
   id: 'dev-1',
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   capabilities: ['onoff'],
   canSetControl: true,
   binaryControl: { on: true },
@@ -71,7 +70,7 @@ const onoffSnapshot: TargetDeviceSnapshot = {
 
 const evSnapshot: TargetDeviceSnapshot = {
   id: 'ev-1',
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   capabilities: ['evcharger_charging'],
   canSetControl: true,
   binaryControl: { on: true },
@@ -81,7 +80,7 @@ const evSnapshot: TargetDeviceSnapshot = {
 } as unknown as TargetDeviceSnapshot;
 
 describe('binary lifecycle-disable marker routing (direct paths)', () => {
-  it('non-EV direct: lifecycleRelease alone records via the release recorder and leaves the markers clean', async () => {
+  it('non-EV direct: lifecycleRelease stays pending without accounting at SDK acceptance', async () => {
     const h = buildCtx(onoffSnapshot);
     // Pass only lifecycleRelease — applyBinarySheddingToDevice derives skipPrecheck/trackPendingShed.
     const applied = await applyBinarySheddingToDevice(h.ctx, {
@@ -91,13 +90,14 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     });
     expect(applied).toBe(true);
     expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: false }]);
-    expect(h.recordReleaseShedActuation).toHaveBeenCalledTimes(1);
+    expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
     expect(h.recordShedActuation).not.toHaveBeenCalled();
+    expect(h.state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false, lifecycleRelease: true });
     expect(h.state.lastInstabilityMs).toBeNull();
     expect(h.state.lastDeviceShedMs['dev-1']).toBeUndefined();
   });
 
-  it('non-EV direct: a capacity shed (no lifecycleRelease) still stamps the markers', async () => {
+  it('non-EV direct: a capacity shed stays pending without accounting at SDK acceptance', async () => {
     const h = buildCtx(onoffSnapshot);
     const applied = await applyBinarySheddingToDevice(h.ctx, {
       deviceId: 'dev-1',
@@ -105,19 +105,21 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
       skipPrecheck: true,
     });
     expect(applied).toBe(true);
-    expect(h.recordShedActuation).toHaveBeenCalledTimes(1);
+    expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
-    expect(h.state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(h.state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(h.state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false });
   });
 
-  it('EV binary_release (lifecycle-end): records via the release recorder and leaves the markers clean', async () => {
+  it('binary_release uses the same semantic binary path for a charger', async () => {
     const h = buildCtx(evSnapshot);
     const intent: ExecutableReleaseIntent = { kind: 'binary_release', deviceId: 'ev-1', name: 'Charger' };
     const applied = await applyDeferredBinaryCommand(h.ctx, intent, undefined);
     expect(applied).toBe(true);
-    expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'evcharger_charging', value: false }]);
-    expect(h.recordReleaseShedActuation).toHaveBeenCalledTimes(1);
+    expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: false }]);
+    expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
     expect(h.recordShedActuation).not.toHaveBeenCalled();
+    expect(h.state.pendingBinaryCommands['ev-1']).toMatchObject({ desired: false, lifecycleRelease: true });
     expect(h.state.lastInstabilityMs).toBeNull();
     expect(h.state.lastDeviceShedMs['ev-1']).toBeUndefined();
   });

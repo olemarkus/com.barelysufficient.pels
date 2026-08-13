@@ -98,7 +98,12 @@ describe('app init plan service wiring', () => {
   it('routes plan engine debug logging through the fixed plan topic', () => {
     const logDebug = vi.fn();
     const engineCtx = createAppContextMock({
-      deviceManager: {} as AppContext['deviceManager'],
+      deviceManager: {
+        requestBinaryControl: vi.fn(async () => undefined),
+        requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+        resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
+        requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
+      } as unknown as AppContext['deviceManager'],
       logDebug,
     });
     const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
@@ -110,7 +115,7 @@ describe('app init plan service wiring', () => {
   });
 
   it('rechecks main-home ownership at the final actuator seam', async () => {
-    const setCapability = vi.fn(async () => undefined);
+    const setCapability = vi.fn(async (..._args: unknown[]) => undefined);
     let currentHomeId = 'main';
     let configuredMeterSources: ConfiguredMeterSources = {
       state: 'resolved' as const,
@@ -120,6 +125,13 @@ describe('app init plan service wiring', () => {
       deviceManager: {
         setCapability,
         applyDeviceTargets: vi.fn(async () => undefined),
+        requestBinaryControl: vi.fn(async () => undefined),
+        requestTemperatureTarget: async (_deviceId: string, desired: number) => {
+          await setCapability('heater-1', 'target_temperature', desired);
+          return desired;
+        },
+        resolveTemperatureTarget: (_deviceId: string, desired: number) => desired,
+        requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
       } as unknown as AppContext['deviceManager'],
       homeMembership: {
         getHomeIdForDevice: () => currentHomeId,
@@ -133,11 +145,15 @@ describe('app init plan service wiring', () => {
     const command = {
       kind: 'target' as const,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature' as const,
       value: 21,
     };
 
-    await expect(actuator.apply(command)).resolves.toEqual({ requested: true });
+    await expect(actuator.apply(command)).resolves.toEqual({
+      requested: true,
+      kind: 'target',
+      requestedTargetValue: 21,
+    });
     configuredMeterSources = {
       state: 'resolved',
       deviceIds: new Set(['heater-1']),
@@ -162,7 +178,7 @@ describe('app init plan service wiring', () => {
     );
   });
 
-  it('passes the transport-resolved controlCapabilityId through to plan devices', () => {
+  it('projects transport binary bindings into semantic planner fields', () => {
     const serviceCtx = createAppContextMock({
       planEngine: {} as AppContext['planEngine'],
       latestTargetSnapshot: [
@@ -172,7 +188,8 @@ describe('app init plan service wiring', () => {
           name: 'Socket',
           targets: [],
           capabilities: ['onoff'],
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
+          binaryControl: { on: false },
         },
         {
           id: 'ev-1',
@@ -181,7 +198,8 @@ describe('app init plan service wiring', () => {
           deviceClass: 'evcharger',
           targets: [],
           capabilities: ['evcharger_charging', 'evcharger_charging_state'],
-          controlCapabilityId: 'evcharger_charging',
+          binaryCapabilityId: 'evcharger_charging',
+          binaryControl: { on: false },
         },
         { expectedPowerKw: 1, expectedPowerSource: 'default',
           id: 'temp-1',
@@ -203,15 +221,15 @@ describe('app init plan service wiring', () => {
     const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx));
 
     const planDevices = (service as unknown as {
-      deps: { getPlanDevices: () => Array<{ id: string; controlCapabilityId?: 'onoff' | 'evcharger_charging' }> };
+      deps: { getPlanDevices: () => Array<{ id: string; currentOn?: boolean; objectiveKind?: string }> };
     }).deps.getPlanDevices();
 
     expect(planDevices).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'socket-1', controlCapabilityId: 'onoff' }),
-      expect.objectContaining({ id: 'ev-1', controlCapabilityId: 'evcharger_charging' }),
+      expect.objectContaining({ id: 'socket-1', currentOn: false }),
+      expect.objectContaining({ id: 'ev-1', currentOn: false, objectiveKind: 'ev_soc' }),
     ]));
     const tempDevice = planDevices.find((d) => d.id === 'temp-1');
-    expect(tempDevice?.controlCapabilityId).toBeUndefined();
+    expect(tempDevice?.currentOn).toBeUndefined();
   });
 
   it('fails fast when plan engine wiring is missing', () => {

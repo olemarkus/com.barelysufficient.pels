@@ -14,37 +14,22 @@ export type ExecutablePlan = {
 /**
  * The decomposed snapshot surface the executor consumes: observer-owned
  * observed truth (`ObservedDeviceState`) plus the descriptor config its
- * actuation gates read (binary control routing, commandability, the stepped
- * ladder). Deliberately narrower than the raw producer `TargetDeviceSnapshot` —
- * the executor is a downstream consumer, so it depends on the decomposed halves,
- * never the full producer snapshot. The full snapshot remains structurally
- * assignable to this, so producers feed it unchanged.
- *
- * INVARIANT callers may rely on: `steppedLoadProfile` is producer-resolved, and
- * its PRESENCE is the stepped-load discriminant. Ask it through
- * `isSteppedLoadSnapshot` (`packages/shared-domain/src/steppedLoadObservedState.ts`),
- * which narrows the profile to required; do not read `controlModel`, which is a
- * producer-only setting and is no longer carried here. `check-control-model-vocab`
- * enforces that in `lib/plan` and `lib/executor` with no exemptions.
- *
- * Governing docs: `lib/executor/AGENTS.md` (executor layer boundaries) and
- * `notes/state-management/snapshot-decomposition.md` (why the snapshot is split).
+ * actuation gates read (commandability and the stepped-load ladder).
+ * Deliberately narrower than the raw producer
+ * `TargetDeviceSnapshot` — the executor is a downstream consumer, so it depends
+ * on the decomposed halves, never the full producer snapshot. The full snapshot
+ * remains structurally assignable to this, so producers feed it unchanged.
  */
 export type ExecutorDeviceSnapshot = ObservedDeviceState
   & Pick<
     DeviceDescriptor,
-    | 'controlCapabilityId'
-    | 'flowBackedCapabilityIds'
     | 'capabilities'
     | 'canSetControl'
     | 'communicationModel'
     | 'deviceClass'
   >
-  // Owner-widening, not a planner shape: the profile is off the base
-  // `DeviceDescriptor` (it lives on `SteppedLoadDescriptorFields`), so the
-  // executor takes the sanctioned probe in order to ASK the guard rather than to
-  // read the profile freely. See the invariant above.
-  & SteppedLoadDescriptorProbe;
+  & SteppedLoadDescriptorProbe
+  & { currentOn?: boolean; commandableNow?: boolean };
 
 export type ExecutableDeviceIntent = {
   id: string;
@@ -93,7 +78,7 @@ export type ExecutableObservedDeviceState = {
 };
 
 export type ExecutableObservedTargetState = {
-  targetCap: string;
+  target: 'temperature';
   observedValue: unknown;
 };
 
@@ -145,15 +130,17 @@ export type ExecutableTargetIntent = {
   deviceId: string;
   name: string;
   desired: number;
+  communicationModel?: 'local' | 'cloud';
   purpose: 'target_update' | 'shed_temperature';
 };
 
 export type ExecutableTargetCommand = {
   deviceId: string;
   name: string;
-  targetCap: string;
+  target: 'temperature';
   desired: number;
   observedValue: unknown;
+  communicationModel?: 'local' | 'cloud';
 };
 
 export type ExecutableTargetUpdate = ExecutableTargetCommand & {

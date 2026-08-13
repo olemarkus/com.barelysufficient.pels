@@ -10,7 +10,7 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 // Regression coverage for the shed-candidacy writability gate.
 //
 // A device that survives the capability gate via a target capability but has no
-// resolvable binary control (`controlCapabilityId === undefined` — e.g. a
+// resolvable binary control (`binaryCapabilityId === undefined` — e.g. a
 // thermostat on the default `turn_off` shed behaviour that lost its `onoff`
 // capability) must NOT be offered as a binary shed candidate: the executor would
 // no-op the turn_off (`getBinaryControlPlan === null`), so crediting its power in
@@ -64,7 +64,7 @@ const buildCapacityGuard = (): CapacityGuard => ({
 
 // A thermostat-class device that survives the capability gate (target +
 // measure_temperature) but lost `onoff`. Its control capability is gone this
-// cycle, so the producer revokes binary status (`controlCapabilityId` undefined,
+// cycle, so the producer revokes binary status (`binaryCapabilityId` undefined,
 // `binaryControl` undefined — see `resolveBinaryControl`) while `resolvedOn`
 // keeps it managed. Its default shed behaviour is turn_off, so it still routes
 // through the binary candidate path despite being unwritable.
@@ -72,7 +72,7 @@ const capLessTargetBearing: PlanInputDevice = {
   id: 'unwritable',
   name: 'Heater (lost onoff)',
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-  controlCapabilityId: undefined,
+  binaryCapabilityId: undefined,
   controllable: true,
   expectedPowerKw: 2,
 } as unknown as PlanInputDevice;
@@ -81,7 +81,7 @@ const writableBinary: PlanInputDevice = {
   id: 'writable',
   name: 'Socket',
   targets: [],
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
   currentOn: true,
   controllable: true,

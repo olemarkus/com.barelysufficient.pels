@@ -1,8 +1,5 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { EvChargingState } from '../../packages/contracts/src/types';
-import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -10,7 +7,6 @@ import type {
 } from '../../packages/planner-types/src/planInputDevice';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
-  BinaryControlCapabilityId,
   DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
@@ -116,24 +112,10 @@ export type NonSteppedLoadKind = Record<never, never>;
  * groups the cluster onto the variant WITHOUT asserting presence the producer
  * does not guarantee.
  *
- * The flat EV plug-state sub-fields (`evBlockReason` / `evSessionInactive` /
- * `evChargerNotResumable`) are gone: each duplicated a semantic `evChargingState`
- * already carries, so consumers derive them through
- * `packages/shared-domain/src/evPlugState.ts` instead.
+ * Raw plug-state stays in observer/transport. Planning carries only the
+ * producer-resolved objective and commandability facts on its base type.
  */
 export type EvKind = {
-  /**
-   * The observed plug-state, REQUIRED on the narrowed shape for the same reason
-   * `BinaryControlKind.currentOn` is: the parse boundary guarantees it. Every EV
-   * charger exposes `evcharger_charging_state` (the amp/step axis — `target_power`,
-   * stepped-load — is a different axis, not a substitute), and a device that
-   * cannot report a member of the Homey enum for it is dropped rather than
-   * managed. Every plug-state question is answered from this value via
-   * `packages/shared-domain/src/evPlugState.ts`; no derived bit is carried
-   * alongside, and `scripts/check-ev-vocab.mjs` keeps consumers from re-inlining
-   * `plugged_*` literals.
-   */
-  evChargingState: EvChargingState;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -193,10 +175,8 @@ export type TemperatureKind = {
  *
  * `currentOn` is REQUIRED on the narrowed shape: a binary device's on-state is
  * always resolved to a concrete boolean by the producer. The guard's runtime
- * discriminant is `controlCapabilityId !== undefined` (a flat base field) — so a
- * device whose control capability is absent THIS cycle (e.g. a transient
- * capability drop) is NOT a binary device this cycle and the cluster is omitted:
- * capability presence is the source of truth for binary status.
+ * discriminant is producer-resolved `currentOn !== undefined`; transport
+ * capability presence is resolved before this boundary.
  */
 export type BinaryControlKind = {
   // The single public on/off truth for a binary device: a strict boolean the
@@ -296,14 +276,10 @@ export function withSteppedDiscriminant<TBase extends object>(
  * shape a construction/merge site carries before the cluster is regrouped onto
  * the orthogonal `EvKind` intersection. Used by `withEvDiscriminant`.
  *
- * `evChargingState` is NOT a planner field (the observer owns the raw plug-state;
- * the planner carries the resolved flat EV sub-fields on the base). It is listed
- * here only so `withEvDiscriminant` strips any stale copy a `...snapshot`/
- * `...device` spread carried in, and so the regrouped result type omits it from
- * the base.
+ * Raw plug-state never enters this construction shape; the adapter strips it
+ * before producing a `PlanInputDevice`.
  */
 export type EvDiscriminantProbe = {
-  evChargingState?: EvChargingState;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -323,18 +299,13 @@ export type EvDiscriminantProbe = {
  * `EvKind`. The result's base part is `Omit<TBase, keyof EvDiscriminantProbe>`,
  * matching the EV-stripped `DevicePlanDeviceBase`.
  *
- * The raw observed `evChargingState` is observer-owned and must never ride on a
- * plan device. It is no longer a planner field, but a `...snapshot`/`...device`
- * spread upstream could still carry a stale copy in; strip and discard it here so
- * it can never survive onto the regrouped result.
  */
-export function withEvDiscriminant<TBase extends { deviceClass?: string; controlCapabilityId?: string }>(
+export function withEvDiscriminant<TBase>(
   loose: TBase & EvDiscriminantProbe,
 ):
-  | (Omit<TBase, keyof EvDiscriminantProbe> & EvKind)
-  | Omit<TBase, keyof EvDiscriminantProbe> {
+  Omit<TBase, keyof EvDiscriminantProbe> & EvKind {
   const {
-    evBoost, evBoostActive, stateOfCharge, evChargingState, ...base
+    evBoost, evBoostActive, stateOfCharge, ...base
   } = loose;
   // Discriminated like `withBinaryDiscriminant`: the cluster is attached only to
   // an actual EV device, so a non-EV device cannot carry a stale plug-state a
@@ -342,14 +313,12 @@ export function withEvDiscriminant<TBase extends { deviceClass?: string; control
   // EV device always has a plug-state (the parse boundary drops one that cannot
   // report a valid member), so `undefined` here means a hand-built fixture
   // dropped the value, not a state the planner has to model.
-  if (!isEvDevice(base)) return base;
   return {
     ...base,
-    evChargingState: evChargingState as EvChargingState,
     ...(evBoost !== undefined ? { evBoost } : {}),
     ...(evBoostActive !== undefined ? { evBoostActive } : {}),
     ...(stateOfCharge !== undefined ? { stateOfCharge } : {}),
-  };
+  } as Omit<TBase, keyof EvDiscriminantProbe> & EvKind;
 }
 
 /**
@@ -413,9 +382,8 @@ export type BinaryControlDiscriminantProbe = {
  * UNLIKE `withEvDiscriminant`/`withTemperatureDiscriminant` (orthogonal clusters
  * whose fields are optional and always re-attached), `binaryControl` is REQUIRED
  * on the cluster, so this recomputes a boolean discriminant like
- * `withSteppedDiscriminant`: `controlCapabilityId` presence. Capability presence
- * is the source of truth for binary status — a device whose control capability
- * is absent this cycle (e.g. a transient drop) is regrouped WITHOUT the cluster
+ * `withSteppedDiscriminant`: resolved binary state presence. A device whose
+ * binary state is absent this cycle is regrouped WITHOUT the cluster
  * (no longer binary). Stripping is essential: an object spread can never remove a
  * key, so a stale `binaryControl` would otherwise survive onto a non-binary
  * result. When binary, the producer always resolves a concrete on-state;
@@ -427,13 +395,13 @@ export type BinaryControlDiscriminantProbe = {
  * stepped-off inputs via `resolveCurrentOn`, so the produced `BinaryControlKind`
  * always carries a faithful `currentOn` rather than a placeholder.
  */
-export function withBinaryDiscriminant<TBase extends { controlCapabilityId?: BinaryControlCapabilityId }>(
+export function withBinaryDiscriminant<TBase>(
   loose: TBase & BinaryControlDiscriminantProbe,
 ):
   | (Omit<TBase, keyof BinaryControlDiscriminantProbe> & BinaryControlKind)
   | Omit<TBase, keyof BinaryControlDiscriminantProbe> {
   const { binaryControl, currentOn, ...base } = loose;
-  if (hasBinaryControlCapability(base)) {
+  if (binaryControl !== undefined || currentOn !== undefined) {
     const stepped = base as { steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string };
     // The raw `binaryControl` is STRIPPED off the result (it stays
     // transport/observer-internal). It still feeds the on/off fold here when the
@@ -465,8 +433,7 @@ type DevicePlanDeviceBase = {
   deviceType?: 'temperature' | 'onoff';
   // `binaryControl` is split off onto the orthogonal `BinaryControlKind` cluster;
   // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
-  // Present iff the device is binary (`controlCapabilityId` set); a transient
-  // capability drop revokes binary status for that cycle.
+  // Present iff the producer resolved a binary `currentOn` value.
   currentState: string;
   plannedState: PlannedDeviceState;
   // `currentTarget`, `currentTemperature`, and `plannedTarget` (planner output)
@@ -490,8 +457,10 @@ type DevicePlanDeviceBase = {
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
-  controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
+  evBoost?: EvBoostConfig;
+  evBoostActive?: boolean;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
   // EV cluster fields (`evBoost`, `evBoostActive`, `stateOfCharge`) are split off
   // onto the orthogonal `EvKind`; reach them through the `isEvPlanDevice` guard
   // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields below are on
@@ -507,6 +476,9 @@ type DevicePlanDeviceBase = {
    * fabricated `currentOn: true`.
    */
   commandableNow: boolean;
+  commandabilityReason?: PlanInputDevice['commandabilityReason'];
+  objectiveKind?: PlanInputDevice['objectiveKind'];
+  objectiveSessionInactive?: boolean;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;

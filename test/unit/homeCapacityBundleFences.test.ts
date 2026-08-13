@@ -12,20 +12,29 @@ import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 
-const command: DeviceCommand = { kind: 'target', deviceId: 'd1', value: 21 };
+const command: DeviceCommand = { kind: 'target', deviceId: 'd1', target: 'temperature', value: 21 };
+const acceptedTargetOutcome = (): ActuatorOutcome => ({
+  requested: true,
+  kind: 'target',
+  requestedTargetValue: 21,
+});
+const testActuator = (apply: Actuator['apply']): Actuator => ({
+  apply,
+  resolveTemperatureTarget: (_deviceId, desired) => desired,
+});
 
 describe('createFencedActuator (point-of-use actuation fence)', () => {
   it('delegates to the base actuator while not fenced', async () => {
-    const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
-    const base: Actuator = { apply };
+    const apply = vi.fn(async (): Promise<ActuatorOutcome> => acceptedTargetOutcome());
+    const base = testActuator(apply);
     const outcome = await createFencedActuator(base, () => false).apply(command);
     expect(apply).toHaveBeenCalledWith(command);
-    expect(outcome).toEqual({ requested: true });
+    expect(outcome).toEqual(acceptedTargetOutcome());
   });
 
   it('no-ops (requested:false, base untouched) once fenced', async () => {
-    const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
-    const base: Actuator = { apply };
+    const apply = vi.fn(async (): Promise<ActuatorOutcome> => acceptedTargetOutcome());
+    const base = testActuator(apply);
     let fenced = false;
     const actuator = createFencedActuator(base, () => fenced);
     await actuator.apply(command);
@@ -38,8 +47,8 @@ describe('createFencedActuator (point-of-use actuation fence)', () => {
   });
 
   it('passes the command device id to the point-of-use fence', async () => {
-    const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
-    const base: Actuator = { apply };
+    const apply = vi.fn(async (): Promise<ActuatorOutcome> => acceptedTargetOutcome());
+    const base = testActuator(apply);
     const seenDeviceIds: string[] = [];
     const actuator = createFencedActuator(base, (deviceId) => {
       seenDeviceIds.push(deviceId);
@@ -63,8 +72,8 @@ describe('prepared bundle sample fence', () => {
     fence.bindReader(() => sample);
     const endFirst = fence.begin(7);
     const endSecond = fence.begin(7);
-    const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
-    const actuator = createFencedActuator({ apply }, () => fence.isSuperseded());
+    const apply = vi.fn(async (): Promise<ActuatorOutcome> => acceptedTargetOutcome());
+    const actuator = createFencedActuator(testActuator(apply), () => fence.isSuperseded());
 
     sample = { state: 'pending' };
     await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
@@ -74,7 +83,7 @@ describe('prepared bundle sample fence', () => {
 
     endSecond();
     expect(fence.isActive()).toBe(false);
-    await expect(actuator.apply(command)).resolves.toEqual({ requested: true });
+    await expect(actuator.apply(command)).resolves.toEqual(acceptedTargetOutcome());
     expect(apply).toHaveBeenCalledExactlyOnceWith(command);
   });
 });

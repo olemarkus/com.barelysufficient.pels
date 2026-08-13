@@ -37,7 +37,6 @@ describe('sumControlledUsageKw', () => {
       {
         controllable: true,
         plannedState: 'keep',
-        controlCapabilityId: 'onoff',
         currentOn: false,
         currentDrawKw: 0,
         planningPowerKw: 1.4,

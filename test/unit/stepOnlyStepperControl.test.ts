@@ -16,7 +16,7 @@ import { sumControlledUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 
 // A step-only stepper: a `target_power`-style load with a stepped profile but NO
-// binary handle (`controlCapabilityId === undefined`, so `currentOn === undefined`).
+// binary handle (`binaryCapabilityId === undefined`, so `currentOn === undefined`).
 // Its on/off lives ENTIRELY on the step axis. These tests pin that the predicates
 // every step-only fix routes through resolve it from the step, not the (absent)
 // binary truth.
@@ -49,8 +49,8 @@ describe('isSteppedDeviceAtOffStep / isSteppedDeviceAtActiveStep', () => {
 
 describe('isPlanDeviceObservedOff / isPlanDeviceObservedOn — kind-aware on/off', () => {
   it('reads the binary truth for a binary device', () => {
-    const off = { controlCapabilityId: 'onoff' as const, currentOn: false };
-    const on = { controlCapabilityId: 'onoff' as const, currentOn: true };
+    const off = { binaryCapabilityId: 'onoff' as const, currentOn: false };
+    const on = { binaryCapabilityId: 'onoff' as const, currentOn: true };
     expect(isPlanDeviceObservedOff(off)).toBe(true);
     expect(isPlanDeviceObservedOn(off)).toBe(false);
     expect(isPlanDeviceObservedOff(on)).toBe(false);
@@ -60,7 +60,7 @@ describe('isPlanDeviceObservedOff / isPlanDeviceObservedOn — kind-aware on/off
   it('reads a binary+stepped device via currentOn (which already folds step-off)', () => {
     // currentOn is the resolved truth here; the step fields must NOT double-resolve.
     const binarySteppedOff = {
-      controlCapabilityId: 'onoff' as const, currentOn: false,
+      binaryCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: profile, selectedStepId: 'low',
     };
     expect(isPlanDeviceObservedOff(binarySteppedOff)).toBe(true);
@@ -137,7 +137,7 @@ describe('resolveSteppedKeepDesiredStepId — step-only steppers keep their step
       selectedStepId: 'high',
       desiredStepId: 'low',
       plannedState: 'keep',
-      // step-only: no controlCapabilityId, no currentOn
+      // step-only: no binaryCapabilityId, no currentOn
     })).toBe('low');
   });
 
@@ -152,7 +152,6 @@ describe('resolveSteppedKeepDesiredStepId — step-only steppers keep their step
 
   it('is unchanged for a binary+stepped device (routes through currentOn)', () => {
     expect(resolveSteppedKeepDesiredStepId({
-      controlCapabilityId: 'onoff',
       currentOn: true,
       steppedLoadProfile: profile,
       selectedStepId: 'high',
@@ -167,11 +166,11 @@ describe('raw-snapshot currentOn stamping (powerSample / headroom seams)', () =>
   // `currentOn`. Reading `!currentOn` directly treats an idle-but-ON binary device
   // as off (and charges expected kW). The seam stamps `currentOn` first.
   it('stamps currentOn from binaryControl so the on/off read is correct', () => {
-    const stampedOn = withHeadroomCurrentOn({ controlCapabilityId: 'onoff', binaryControl: { on: true } });
+    const stampedOn = withHeadroomCurrentOn({ binaryCapabilityId: 'onoff', binaryControl: { on: true } });
     expect(stampedOn.currentOn).toBe(true);
     expect(isPlanDeviceObservedOff(stampedOn)).toBe(false);
 
-    const stampedOff = withHeadroomCurrentOn({ controlCapabilityId: 'onoff', binaryControl: { on: false } });
+    const stampedOff = withHeadroomCurrentOn({ binaryCapabilityId: 'onoff', binaryControl: { on: false } });
     expect(stampedOff.currentOn).toBe(false);
     expect(isPlanDeviceObservedOff(stampedOff)).toBe(true);
   });

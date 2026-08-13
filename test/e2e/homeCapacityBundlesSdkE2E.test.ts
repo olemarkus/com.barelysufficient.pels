@@ -536,15 +536,20 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(1000);
     meterState.subW = 5000;
     await advancePollsUntil(() => wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false));
+
+    // SDK acceptance only records a pending command. Let the device publish the
+    // commanded binary value and the ordinary observation loop confirm it before
+    // expecting persisted actuation accounting.
+    await subDevice.setCapabilityValue('onoff', false);
+    await subDevice.setCapabilityValue('measure_power', 0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
     const lastControlled = mockHomeyInstance.settings.get('device_last_controlled_ms:h_sub') as
       | Record<string, number>
       | undefined;
     expect(lastControlled?.['device-sub']).toBeGreaterThan(0);
 
     // Restart shortly after the shed. The device reports off + idle now.
-    await subDevice.setCapabilityValue('onoff', false);
-    await subDevice.setCapabilityValue('measure_power', 0);
-    await vi.advanceTimersByTimeAsync(10_000);
     await app.onUninit();
     await drainPending();
     putSpy.mockClear();

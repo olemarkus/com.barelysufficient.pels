@@ -18,15 +18,16 @@ describe('requiresNativeWiringForActivation', () => {
   it('requires native wiring only when Zaptec-style support exists without an effective EV control capability', () => {
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
-      controlCapabilityId: undefined,
+      binaryControllable: false,
     } as any)).toBe(true);
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: true },
-      controlCapabilityId: undefined,
+      binaryControllable: false,
     } as any)).toBe(false);
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
-      controlCapabilityId: 'evcharger_charging',
+      binaryControllable: true,
+      deviceRole: 'ev_charger',
     } as any)).toBe(false);
   });
 });

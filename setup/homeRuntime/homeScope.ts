@@ -34,7 +34,7 @@ import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagn
 import type { AppContext } from '../../lib/app/appContext';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
-import { createEvResumeReachability } from '../../lib/executor/evResumeReachability';
+import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
@@ -218,19 +218,19 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     // preserving exact single-home behavior.
     isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
   });
-  const evResumeReachability = createEvResumeReachability({
+  const binaryCommandReachability = createBinaryCommandReachability({
     requestRebuild: () => {
       queueMicrotask(() => { void ctx.planService?.rebuildPlanFromCache('binary_command_reachability_changed'); });
     },
     scheduleRebuild: (deviceId, dueAtMs) => {
-      const key = `evResumeProbe:${homeId}:${deviceId}`;
+      const key = `binaryCommandReachability:${homeId}:${deviceId}`;
       ctx.timers.registerTimeout(key, setTimeout(() => {
         ctx.timers.clear(key);
         void ctx.planService?.rebuildPlanFromCache('binary_command_reachability_deadline');
       }, Math.max(0, dueAtMs - Date.now())));
     },
     clearScheduledRebuild: (deviceId) => {
-      ctx.timers.clear(`evResumeProbe:${homeId}:${deviceId}`);
+      ctx.timers.clear(`binaryCommandReachability:${homeId}:${deviceId}`);
     },
   });
   return {
@@ -256,12 +256,12 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // complement and the planned-set filter — all shared with every sub-home
       // bundle, see `buildHomePlanDevices`.
       return buildHomePlanDevices(ctx, homeId, {
-        projectCommandability: evResumeReachability.project,
-        pruneCommandability: evResumeReachability.prune,
+        projectCommandability: binaryCommandReachability.project,
+        pruneCommandability: binaryCommandReachability.prune,
       });
     },
-    binaryCommandLifecycle: evResumeReachability.lifecycle,
-    disposeBinaryCommandReachability: evResumeReachability.dispose,
+    binaryCommandLifecycle: binaryCommandReachability.lifecycle,
+    disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     setCapacityInShortfall: (inShortfall) => (
       ctx.homey.settings.set(homeScopedSettingsKey(CAPACITY_IN_SHORTFALL, homeId), inShortfall)
     ),

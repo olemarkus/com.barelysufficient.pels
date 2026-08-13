@@ -35,14 +35,16 @@ import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim'
 import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
 import { projectLifecycleFallbackDevice } from '../../setup/lifecycleFallbackDeviceProjection';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { Actuator } from '../../lib/actuator/deviceActuator';
+import type { DeviceCommand } from '../../lib/actuator/deviceCommand';
 
 type ExecutorDispatcherDeps = ConstructorParameters<typeof ExecutorLifecycleFallbackDispatcher>[0];
 type LegacyLifecycleFallbackDevice = Omit<
 LifecycleFallbackDevice,
 'binaryAxis' | 'targetAxis' | 'stepAxis'
 > & {
-  controlCapabilityId?: string;
-  flowBackedCapabilityIds?: string[];
+  binaryControl?: { on: boolean };
+  currentOn?: boolean;
   targets?: DecoratedDeviceSnapshot['targets'];
   steppedLoadProfile?: DecoratedDeviceSnapshot['steppedLoadProfile'];
   binaryWritable?: boolean;
@@ -72,19 +74,24 @@ ExecutorDispatcherDeps,
 
 const withLifecycleAxes = (candidate: LegacyLifecycleFallbackDevice): LifecycleFallbackDevice => {
   const targetDescriptor = candidate.targets?.[0];
+  const {
+    binaryControl: _binaryControl,
+    currentOn: _currentOn,
+    targets: _targets,
+    steppedLoadProfile: _steppedLoadProfile,
+    binaryWritable: _binaryWritable,
+    targetWritable: _targetWritable,
+    stepWritable: _stepWritable,
+    ...device
+  } = candidate;
   return {
-    ...candidate,
-    binaryAxis: candidate.binaryWritable !== false && candidate.controlCapabilityId
-      ? {
-          state: 'writable',
-          descriptor: {
-            controlCapabilityId: candidate.controlCapabilityId,
-            flowBackedCapabilityIds: candidate.flowBackedCapabilityIds,
-          },
-        }
+    ...device,
+    binaryAxis: candidate.binaryWritable !== false
+      && typeof candidate.currentOn === 'boolean'
+      ? { state: 'writable' }
       : { state: 'unavailable' },
     targetAxis: candidate.targetWritable !== false && targetDescriptor
-      ? { state: 'writable', descriptor: targetDescriptor }
+      ? { state: 'writable', target: 'temperature' }
       : { state: 'unavailable' },
     stepAxis: candidate.stepWritable !== false && candidate.steppedLoadProfile
       ? { state: 'writable', profile: candidate.steppedLoadProfile }
@@ -145,7 +152,38 @@ class LifecycleFallbackDispatcher {
 }
 
 const flush = async (): Promise<void> => {
-  for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+  for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+};
+
+const createTestActuator = (
+  implementation: (command: DeviceCommand) => Promise<{ requested: boolean }> = async () => ({ requested: true }),
+): Actuator & { apply: ReturnType<typeof vi.fn> } => {
+  const apply = vi.fn(async (command: DeviceCommand) => {
+    const result = await implementation(command);
+    if (!result.requested) return { requested: false as const };
+    if (command.kind === 'binary') {
+      return {
+        requested: true as const,
+        kind: 'binary' as const,
+      };
+    }
+    if (command.kind === 'target') {
+      return {
+        requested: true as const,
+        kind: 'target' as const,
+        requestedTargetValue: command.value,
+      };
+    }
+    return {
+      requested: true as const,
+      kind: 'step' as const,
+      steppedResult: { requested: true as const, transport: 'native_capability' as const },
+    };
+  });
+  return {
+    apply,
+    resolveTemperatureTarget: (_deviceId, desired) => desired,
+  };
 };
 
 const observedFromDevice = (
@@ -154,8 +192,8 @@ const observedFromDevice = (
   id: device.id,
   name: device.name,
   targets: device.targets,
-  binaryControl: device.controlCapabilityId
-    ? { on: device.currentState !== 'off' }
+  binaryControl: 'currentOn' in device && typeof device.currentOn === 'boolean'
+    ? { on: device.currentOn }
     : undefined,
   available: device.available,
   ...('reportedStepId' in device && typeof device.reportedStepId === 'string'
@@ -165,7 +203,7 @@ const observedFromDevice = (
 
 const buildDryRunRequests = (): { axis: string; request: LifecycleFallbackRequest }[] => {
   const binaryDevice = buildPlanInputDevice({
-    id: 'device-1', name: 'Device', controlCapabilityId: 'onoff', binaryControl: { on: true }, targets: [],
+    id: 'device-1', name: 'Device', binaryControl: { on: true }, currentOn: true, targets: [],
   });
   const targetDevice = buildPlanInputDevice({
     id: 'device-1', name: 'Device', targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
@@ -395,7 +433,6 @@ describe('LifecycleFallbackDispatcher', () => {
       targets: [],
       available: true,
       canSetControl: true,
-      controlCapabilityId: 'evcharger_charging',
       binaryControl: { on: true },
     } as DecoratedDeviceSnapshot);
 
@@ -422,9 +459,9 @@ describe('LifecycleFallbackDispatcher', () => {
       expectedPowerSource: 'default',
       targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       available: true,
-      controlCapabilityId: 'onoff',
       capabilities: ['onoff'],
       canSetControl: true,
+      binaryControl: { on: true },
       temperatureControlDisabled: true,
       steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }] },
     } as DecoratedDeviceSnapshot);
@@ -440,7 +477,7 @@ describe('LifecycleFallbackDispatcher', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
     const planState = createPlanEngineState();
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const recordReleaseShedActuation = vi.fn();
     const device = buildPlanInputDevice({
       id: 'heater-1',
@@ -458,7 +495,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state: planState,
         targetCommandClaim: createTargetCommandClaim(),
         targetCommandOwner: 'ordinary',
-        getObservedState: () => ({ targets: [{ id: 'target_temperature', value: 21, unit: 'C' }] }),
+        getObservedTemperatureValue: () => 21,
         actuator,
         operatingMode: 'Home',
         recordShedActuation: vi.fn(),
@@ -474,6 +511,8 @@ describe('LifecycleFallbackDispatcher', () => {
     await flush();
     expect(actuator.apply).toHaveBeenCalledTimes(1);
     expect(recordReleaseShedActuation).toHaveBeenCalledWith('heater-1', 'Heater', 1_000_000);
+    const retryAtMs = dispatcher.getOwnedTargetPending(device.id)?.nextRetryAtMs;
+    expect(retryAtMs).toBeTypeOf('number');
 
     // Ordinary planning owns and prunes a different target-pending map.
     prunePendingTargetCommandsForPlan({
@@ -484,7 +523,7 @@ describe('LifecycleFallbackDispatcher', () => {
     await flush();
     expect(actuator.apply).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(30_001);
+    vi.setSystemTime((retryAtMs ?? 1_000_000) + 1);
     dispatcher.converge({ deviceId: device.id, objectiveKind: 'temperature' });
     await flush();
     expect(actuator.apply).toHaveBeenCalledTimes(2);
@@ -495,7 +534,7 @@ describe('LifecycleFallbackDispatcher', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
     let observedValue = 21;
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const buildDevice = () => buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -512,9 +551,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state: createPlanEngineState(),
         targetCommandClaim: createTargetCommandClaim(),
         targetCommandOwner: 'ordinary',
-        getObservedState: () => ({
-          targets: [{ id: 'target_temperature', value: observedValue, unit: 'C' }],
-        }),
+        getObservedTemperatureValue: () => observedValue,
         actuator,
         operatingMode: 'Home',
         recordShedActuation: vi.fn(),
@@ -544,7 +581,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('uses observer target drift instead of a stale settled transport snapshot', async () => {
     const state = createPlanEngineState();
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -563,7 +600,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state,
         targetCommandClaim: createTargetCommandClaim(),
         targetCommandOwner: 'ordinary',
-        getObservedState: () => ({ targets: [{ id: 'target_temperature', value: 21, unit: 'C' }] }),
+        getObservedTemperatureValue: () => 21,
         actuator,
         operatingMode: 'Home',
         recordShedActuation: vi.fn(),
@@ -582,7 +619,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('uses observer target settlement instead of issuing from a stale transport snapshot', async () => {
     const state = createPlanEngineState();
-    const actuator = { apply: vi.fn() };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -610,14 +647,14 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('falls back to binary off when configured temperature control has no target capability', async () => {
     const state = createPlanEngineState();
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
       available: true,
-      controlCapabilityId: 'onoff',
       binaryControl: { on: true },
+      currentOn: true,
       targets: [],
     });
     const observation = {
@@ -633,7 +670,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state,
         targetCommandClaim: createTargetCommandClaim(),
         targetCommandOwner: 'ordinary',
-        getObservedState: () => ({ targets: [] }),
+        getObservedTemperatureValue: () => undefined,
         actuator,
         operatingMode: 'Home',
         recordShedActuation: vi.fn(),
@@ -665,25 +702,23 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(actuator.apply).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'binary',
       deviceId: 'heater-1',
-      control: 'onoff',
       desired: false,
     }));
   });
 
   it('dispatches a flow-backed binary fallback from observer ON despite stale transport OFF', async () => {
     const state = createPlanEngineState();
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const device = {
       ...buildPlanInputDevice({
         id: 'charger-1',
         name: 'Charger',
         controllable: false,
         available: true,
-        controlCapabilityId: 'onoff',
         binaryControl: { on: false },
+        currentOn: false,
         targets: [],
       }),
-      flowBackedCapabilityIds: ['onoff'],
     };
     const observation = {
       getSnapshot: () => [device],
@@ -724,19 +759,18 @@ describe('LifecycleFallbackDispatcher', () => {
       kind: 'binary',
       deviceId: 'charger-1',
       desired: false,
-      flowBacked: true,
     }));
   });
 
   it('settles from observer OFF without dispatching against stale transport ON', async () => {
-    const actuator = { apply: vi.fn() };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'charger-1',
       name: 'Charger',
       controllable: false,
       available: true,
-      controlCapabilityId: 'onoff',
       binaryControl: { on: true },
+      currentOn: true,
       targets: [],
     });
     const dispatcher = new LifecycleFallbackDispatcher({
@@ -1100,14 +1134,13 @@ describe('LifecycleFallbackDispatcher', () => {
     ['set_temperature is malformed', { action: 'set_temperature', temperature: null, stepId: null }],
     ['turn_off has no executable control', { action: 'turn_off', temperature: null, stepId: null }],
   ] as const)('settles an unsupported fallback when %s', async (_scenario, behavior) => {
-    const actuator = { apply: vi.fn() };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Unsupported heater',
       controllable: false,
       available: true,
       targets: [],
-      controlCapabilityId: undefined,
     });
     const dispatcher = new LifecycleFallbackDispatcher({
       getDevice: () => device,
@@ -1130,8 +1163,8 @@ describe('LifecycleFallbackDispatcher', () => {
       ...buildPlanInputDevice({
         id: 'heater-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
+        currentOn: true,
         targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       }),
       binaryWritable: false,
@@ -1150,8 +1183,8 @@ describe('LifecycleFallbackDispatcher', () => {
       ...buildPlanInputDevice({
         id: 'heater-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
+        currentOn: true,
         targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       }),
       binaryWritable: true,
@@ -1169,7 +1202,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('waits for a numeric target observation before dispatching fallback', async () => {
     const state = createPlanEngineState();
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -1186,7 +1219,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state,
         targetCommandClaim: createTargetCommandClaim(),
         targetCommandOwner: 'ordinary',
-        getObservedState: () => ({ targets: [{ id: 'target_temperature', unit: 'C' }] }),
+        getObservedTemperatureValue: () => undefined,
         actuator,
         operatingMode: 'Home',
         recordShedActuation: vi.fn(),
@@ -1209,7 +1242,7 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       nowMs: 1_000_000,
       observedValue: 21,
@@ -1217,14 +1250,14 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       nowMs: 1_030_001,
       observedValue: 21,
     });
     const dueAtMs = planState.pendingTargetCommands['heater-1']?.nextRetryAtMs ?? 0;
     vi.setSystemTime(dueAtMs);
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -1238,7 +1271,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const targetCommandClaim = createTargetCommandClaim();
     const targetContext: PlanExecutorTargetContext = {
       state: planState,
-      getObservedState: () => ({ targets: [{ id: 'target_temperature', value: 21, unit: 'C' }] }),
+        getObservedTemperatureValue: () => 21,
       getLifecycleOwnedPendingTargetCommand,
       targetCommandClaim,
       targetCommandOwner: 'ordinary',
@@ -1261,7 +1294,7 @@ describe('LifecycleFallbackDispatcher', () => {
     await dispatchTargetCommand(targetContext, {
       deviceId: 'heater-1',
       name: 'Heater',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       observedValue: 21,
       skipContext: 'plan',
@@ -1289,7 +1322,7 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       nowMs: 1_000_000,
       observedValue: 21,
@@ -1297,14 +1330,14 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       nowMs: 1_030_001,
       observedValue: 21,
     });
     const dueAtMs = planState.pendingTargetCommands['heater-1']?.nextRetryAtMs ?? 0;
     vi.setSystemTime(dueAtMs);
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const device = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -1318,7 +1351,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const targetCommandClaim = createTargetCommandClaim();
     const targetContext: PlanExecutorTargetContext = {
       state: planState,
-      getObservedState: () => ({ targets: [{ id: 'target_temperature', value: 21, unit: 'C' }] }),
+        getObservedTemperatureValue: () => 21,
       getLifecycleOwnedPendingTargetCommand,
       targetCommandClaim,
       targetCommandOwner: 'ordinary',
@@ -1342,7 +1375,7 @@ describe('LifecycleFallbackDispatcher', () => {
     await dispatchTargetCommand(targetContext, {
       deviceId: 'heater-1',
       name: 'Heater',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       observedValue: 21,
       skipContext: 'plan',
@@ -1369,7 +1402,7 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       nowMs: 1_000_000,
       observedValue: 21,
@@ -1378,14 +1411,14 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       nowMs: 1_030_001,
       observedValue: 21,
     });
     expect(planState.pendingTargetCommands['heater-1']?.retryCount).toBe(1);
     let observedValue = 21;
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const buildDevice = () => buildPlanInputDevice({
       id: 'heater-1',
       name: 'Heater',
@@ -1402,7 +1435,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state: planState,
         targetCommandClaim: createTargetCommandClaim(),
         targetCommandOwner: 'ordinary',
-        getObservedState: () => ({ targets: [{ id: 'target_temperature', value: observedValue, unit: 'C' }] }),
+      getObservedTemperatureValue: () => observedValue,
         actuator,
         operatingMode: 'Home',
         recordShedActuation: vi.fn(),
@@ -1452,17 +1485,15 @@ describe('LifecycleFallbackDispatcher', () => {
       targets: [{ id: 'target_temperature', value: 21, unit: 'C', min: 5, max: 30, step: 1 }],
     });
     let resolveActuator: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn(() => new Promise<{ requested: true }>((resolve) => { resolveActuator = resolve; })),
-    };
+    const actuator = createTestActuator(
+      () => new Promise<{ requested: true }>((resolve) => { resolveActuator = resolve; }),
+    );
     function getLifecycleOwnedPendingTargetCommand(deviceId: string) {
       return dispatcher.getOwnedTargetPending(deviceId);
     }
     const ordinaryContext: PlanExecutorTargetContext = {
       state: planState,
-      getObservedState: () => ({
-        targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
-      }),
+      getObservedTemperatureValue: () => 21,
       getLifecycleOwnedPendingTargetCommand,
       targetCommandClaim,
       targetCommandOwner: 'ordinary',
@@ -1487,7 +1518,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const ordinaryResult = await dispatchTargetCommand(ordinaryContext, {
       deviceId: device.id,
       name: device.name,
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 5,
       observedValue: 21,
       skipContext: 'plan',
@@ -1498,7 +1529,7 @@ describe('LifecycleFallbackDispatcher', () => {
     resolveActuator?.({ requested: true });
     await flush();
     expect(dispatcher.getOwnedTargetPending(device.id)).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 5,
     });
     expect(planState.pendingTargetCommands[device.id]).toBeUndefined();
@@ -1514,19 +1545,16 @@ describe('LifecycleFallbackDispatcher', () => {
       targets: [{ id: 'target_temperature', value: 18, unit: 'C', min: 5, max: 30, step: 1 }],
     });
     let resolveLifecycle: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn()
-        .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveLifecycle = resolve; }))
-        .mockResolvedValue({ requested: true }),
-    };
+    const actuatorImplementation = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveLifecycle = resolve; }))
+      .mockResolvedValue({ requested: true });
+    const actuator = createTestActuator(actuatorImplementation);
     function getLifecycleOwnedPendingTargetCommand(deviceId: string) {
       return dispatcher.getOwnedTargetPending(deviceId);
     }
     const ordinaryContext: PlanExecutorTargetContext = {
       state: planState,
-      getObservedState: () => ({
-        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
-      }),
+      getObservedTemperatureValue: () => 18,
       getLifecycleOwnedPendingTargetCommand,
       isLifecycleFallbackActive: (deviceId) => dispatcher.isActive(deviceId),
       targetCommandClaim,
@@ -1552,7 +1580,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const ordinary = await dispatchTargetCommand(ordinaryContext, {
       deviceId: device.id,
       name: device.name,
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       observedValue: 18,
       skipContext: 'plan',
@@ -1569,7 +1597,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const stillOwned = await dispatchTargetCommand(ordinaryContext, {
       deviceId: device.id,
       name: device.name,
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       observedValue: 18,
       skipContext: 'plan',
@@ -1581,7 +1609,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const freshOrdinary = await dispatchTargetCommand(ordinaryContext, {
       deviceId: device.id,
       name: device.name,
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       observedValue: 18,
       skipContext: 'plan',
@@ -1601,22 +1629,20 @@ describe('LifecycleFallbackDispatcher', () => {
     recordPendingTargetCommandAttempt({
       state: planState,
       deviceId: 'heater-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 20,
       nowMs: Date.now(),
       observedValue: 5,
     });
     let observedValue = 20;
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const targetCommandClaim = createTargetCommandClaim();
     function getLifecycleOwnedPendingTargetCommand(deviceId: string) {
       return dispatcher.getOwnedTargetPending(deviceId);
     }
     const targetContext: PlanExecutorTargetContext = {
       state: planState,
-      getObservedState: () => ({
-        targets: [{ id: 'target_temperature', value: observedValue, unit: 'C' }],
-      }),
+      getObservedTemperatureValue: () => observedValue,
       getLifecycleOwnedPendingTargetCommand,
       isLifecycleFallbackActive: (deviceId) => dispatcher.isActive(deviceId),
       targetCommandClaim,
@@ -1663,7 +1689,7 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(await dispatchTargetCommand(targetContext, {
       deviceId: 'heater-1',
       name: 'Heater',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 20,
       observedValue,
       skipContext: 'plan',
@@ -1675,7 +1701,7 @@ describe('LifecycleFallbackDispatcher', () => {
   it('retains settled target authority until abandon permits an ordinary command', async () => {
     const planState = createPlanEngineState();
     const targetCommandClaim = createTargetCommandClaim();
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     let observedValue = 21;
     const buildDevice = () => buildPlanInputDevice({
       id: 'heater-1',
@@ -1689,9 +1715,7 @@ describe('LifecycleFallbackDispatcher', () => {
     }
     const ordinaryContext: PlanExecutorTargetContext = {
       state: planState,
-      getObservedState: () => ({
-        targets: [{ id: 'target_temperature', value: observedValue, unit: 'C' }],
-      }),
+      getObservedTemperatureValue: () => observedValue,
       getLifecycleOwnedPendingTargetCommand,
       isLifecycleFallbackActive: (deviceId) => dispatcher.isActive(deviceId),
       targetCommandClaim,
@@ -1721,7 +1745,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const blocked = await dispatchTargetCommand(ordinaryContext, {
       deviceId: 'heater-1',
       name: 'Heater',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       observedValue: 5,
       skipContext: 'plan',
@@ -1734,7 +1758,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const ordinaryResult = await dispatchTargetCommand(ordinaryContext, {
       deviceId: 'heater-1',
       name: 'Heater',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       observedValue: 5,
       skipContext: 'plan',
@@ -1753,8 +1777,8 @@ describe('LifecycleFallbackDispatcher', () => {
         name: 'Charger',
         controllable: false,
         available: true,
-        controlCapabilityId: 'onoff',
         binaryControl: { on: false },
+        currentOn: false,
         targets: [],
       }),
       binaryWritable: true,
@@ -1765,7 +1789,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getSnapshot: () => [snapshot],
       getSnapshotByDeviceId: () => snapshot,
     } as unknown as DeviceObservation;
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const binaryCommandClaim = createBinaryCommandClaim();
     const dispatcher = new ExecutorLifecycleFallbackDispatcher({
       capacityDryRun: () => false,
@@ -1819,7 +1843,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     const snapshot = {
       ...buildPlanInputDevice({
-        id: 'heater-1', name: 'Heater', controlCapabilityId: 'onoff', binaryControl: { on: true }, targets: [],
+        id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
       targetWritable: false,
@@ -1829,9 +1853,9 @@ describe('LifecycleFallbackDispatcher', () => {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
     } as unknown as DeviceObservation;
     let resolveWrite: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn(() => new Promise<{ requested: true }>((resolve) => { resolveWrite = resolve; })),
-    };
+    const actuator = createTestActuator(
+      () => new Promise<{ requested: true }>((resolve) => { resolveWrite = resolve; }),
+    );
     const binaryCommandClaim = createBinaryCommandClaim();
     const buildContext = (owner: 'lifecycle' | 'ordinary'): PlanExecutorBinaryContext => ({
       state,
@@ -1868,7 +1892,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     const snapshot = {
       ...buildPlanInputDevice({
-        id: 'heater-1', name: 'Heater', controlCapabilityId: 'onoff', binaryControl: { on: true }, targets: [],
+        id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
       targetWritable: false,
@@ -1879,9 +1903,9 @@ describe('LifecycleFallbackDispatcher', () => {
     } as unknown as DeviceObservation;
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     store.record(snapshot.id, {
-      capabilityId: 'onoff', desired: true, startedMs: Date.now(), flowBackedControl: false,
+      desired: true, startedMs: Date.now(), pendingMs: 90_000,
     });
-    const actuator = { apply: vi.fn().mockResolvedValue({ requested: true }) };
+    const actuator = createTestActuator();
     const ctx: PlanExecutorBinaryContext = {
       state,
       observation,
@@ -1897,7 +1921,7 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(await runBinaryControl({
       ctx, deviceId: snapshot.id, name: snapshot.name, desired: false, snapshot,
       logContext: 'capacity', lifecycleRelease: true,
-    })).toEqual({ applied: true, flowBacked: false });
+    })).toEqual({ applied: true });
     expect(store.peek(snapshot.id)).toMatchObject({ desired: false, lifecycleRelease: true });
   });
 
@@ -1905,7 +1929,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     const snapshot = {
       ...buildPlanInputDevice({
-        id: 'heater-1', name: 'Heater', controlCapabilityId: 'onoff', binaryControl: { on: true }, targets: [],
+        id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
       targetWritable: false,
@@ -1917,9 +1941,9 @@ describe('LifecycleFallbackDispatcher', () => {
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     let current = true;
     let resolveWrite: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn(() => new Promise<{ requested: true }>((resolve) => { resolveWrite = resolve; })),
-    };
+    const actuator = createTestActuator(
+      () => new Promise<{ requested: true }>((resolve) => { resolveWrite = resolve; }),
+    );
     const ctx: PlanExecutorBinaryContext = {
       state,
       observation,
@@ -1947,18 +1971,17 @@ describe('LifecycleFallbackDispatcher', () => {
       const state = createPlanEngineState();
       let observedOn = false;
       const buildSnapshot = () => buildPlanInputDevice({
-        id: 'heater-1', name: 'Heater', controlCapabilityId: 'onoff', binaryControl: { on: observedOn }, targets: [],
+        id: 'heater-1', name: 'Heater', binaryControl: { on: observedOn }, currentOn: observedOn, targets: [],
       });
       const snapshot = buildSnapshot();
       const observation = {
         getSnapshot: () => [buildSnapshot()], getSnapshotByDeviceId: () => buildSnapshot(),
       } as unknown as DeviceObservation;
       let resolveOrdinary: ((value: { requested: true }) => void) | undefined;
-      const actuator = {
-        apply: vi.fn()
-          .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
-          .mockResolvedValue({ requested: true }),
-      };
+      const actuatorImplementation = vi.fn()
+        .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
+        .mockResolvedValue({ requested: true });
+      const actuator = createTestActuator(actuatorImplementation);
       const binaryCommandClaim = createBinaryCommandClaim();
       let lastRefreshedObserved: ReturnType<typeof buildExecutableObservedDeviceState> | undefined;
       const buildBinaryContext = (): PlanExecutorBinaryContext => ({
@@ -2030,7 +2053,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const buildSnapshot = () => ({
       ...buildPlanInputDevice({
         id: 'heater-1', name: 'Stepped heater', controlModel: 'stepped_load',
-        controlCapabilityId: 'onoff', binaryControl: { on: observedOn }, targets: [],
+        binaryControl: { on: observedOn }, currentOn: observedOn, targets: [],
         reportedStepId: 'low', selectedStepId: 'low', steppedLoadProfile: profile,
       }),
       binaryWritable: true,
@@ -2039,11 +2062,10 @@ describe('LifecycleFallbackDispatcher', () => {
       getSnapshot: () => [buildSnapshot()], getSnapshotByDeviceId: () => buildSnapshot(),
     } as unknown as DeviceObservation;
     let resolveOrdinary: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn()
-        .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
-        .mockResolvedValue({ requested: true }),
-    };
+    const actuatorImplementation = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
+      .mockResolvedValue({ requested: true });
+    const actuator = createTestActuator(actuatorImplementation);
     const binaryCommandClaim = createBinaryCommandClaim();
     const binaryContext: PlanExecutorBinaryContext = {
       state, observation, capacityDryRun: false,
@@ -2084,7 +2106,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
 
     const ordinary = executeSteppedLoadRestoreBinary(steppedContext, {
-      action, snapshot: buildSnapshot(), name: action.name, onoffViolated: true, stepViolated: false,
+      action, snapshot: buildSnapshot(), name: action.name,
     });
     const request: LifecycleFallbackRequest = {
       kind: 'binary_off', observed: buildExecutableObservedDeviceState(buildSnapshot()),
@@ -2104,18 +2126,17 @@ describe('LifecycleFallbackDispatcher', () => {
     let observedOn = false;
     const buildSnapshot = () => buildPlanInputDevice({
       id: 'heater-1', name: 'Stepped heater', controlModel: 'stepped_load',
-      controlCapabilityId: 'onoff', binaryControl: { on: observedOn }, targets: [],
+        binaryControl: { on: observedOn }, currentOn: observedOn, targets: [],
       reportedStepId: 'low', selectedStepId: 'low', steppedLoadProfile: profile,
     });
     const observation = {
       getSnapshot: () => [buildSnapshot()], getSnapshotByDeviceId: () => buildSnapshot(),
     } as unknown as DeviceObservation;
     let resolveLifecycle: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn()
-        .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveLifecycle = resolve; }))
-        .mockResolvedValue({ requested: true }),
-    };
+    const actuatorImplementation = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveLifecycle = resolve; }))
+      .mockResolvedValue({ requested: true });
+    const actuator = createTestActuator(actuatorImplementation);
     const binaryCommandClaim = createBinaryCommandClaim();
     const transport = () => ({
       observation,
@@ -2165,14 +2186,13 @@ describe('LifecycleFallbackDispatcher', () => {
     });
     const device = buildDevice();
     let resolveOrdinary: ((value: { requested: true }) => void) | undefined;
-    const actuator = {
-      apply: vi.fn()
-        .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
-        .mockResolvedValue({ requested: true }),
-    };
+    const actuatorImplementation = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
+      .mockResolvedValue({ requested: true });
+    const actuator = createTestActuator(actuatorImplementation);
     const targetContext: PlanExecutorTargetContext = {
       state,
-      getObservedState: () => ({ targets: [{ id: 'target_temperature', value: observedValue, unit: 'C' }] }),
+      getObservedTemperatureValue: () => observedValue,
       targetCommandClaim,
       targetCommandOwner: 'ordinary',
       actuator,
@@ -2195,7 +2215,7 @@ describe('LifecycleFallbackDispatcher', () => {
       if (pendingObservedValue !== undefined) lifecyclePendingObservedValue = pendingObservedValue;
     };
     const ordinary = dispatchTargetCommand(targetContext, {
-      deviceId: 'heater-1', name: 'Heater', targetCap: 'target_temperature',
+      deviceId: 'heater-1', name: 'Heater', target: 'temperature',
       desired: 20, observedValue: 5, skipContext: 'plan',
     });
     expect(dispatcher.converge({
@@ -2254,6 +2274,7 @@ describe('LifecycleFallbackDispatcher', () => {
     let observedStepId = 'low';
     const buildObservedDevice = () => buildPlanInputDevice({
       id: 'heater-1', name: 'Heater', controlModel: 'stepped_load', targets: [],
+      binaryControl: undefined,
       reportedStepId: observedStepId, selectedStepId: observedStepId, steppedLoadProfile: profile,
     });
     const observedDevice = buildObservedDevice();

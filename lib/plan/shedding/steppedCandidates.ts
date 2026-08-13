@@ -359,7 +359,6 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   const pendingEntry = pendingBinaryCommandStore.peek(device.id);
   const pendingBinary = isPendingBinaryCommandActive({
     pending: pendingEntry,
-    communicationModel: device.communicationModel,
   }) ? pendingEntry : undefined;
   return {
     ...device,

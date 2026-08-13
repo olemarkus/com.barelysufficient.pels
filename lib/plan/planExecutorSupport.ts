@@ -1,12 +1,7 @@
 import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
-import type {
-  DeviceDescriptor,
-  EvObservedProbe,
-  ObservedDeviceState,
-} from '../../packages/contracts/src/types';
+import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import { isCanSetControl } from '../device/deviceActionProjection';
-import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import {
   type ActivationAttemptSource,
   closeActivationAttemptForShed,
@@ -33,34 +28,28 @@ const isShedThrottled = (params: {
  * Restore-time admission gate: true when the device is commandable AND its
  * binary control capability is writeable this cycle. Reads producer-resolved
  * bits (`commandableNow`, `canSetControlResolved`) when present (planner
- * call sites) and falls back to fresh resolution from raw snapshot fields
- * (`evChargingState`, `available`, `controlCapabilityId`, `capabilities`,
- * `canSetControl`, legacy `canSetOnOff`) for the executor call sites that
- * pass the decomposed snapshot halves.
+ * call sites) and falls back to resolution from the observer's semantic binary
+ * state plus descriptor writeability flags for executor snapshot call sites.
  *
  * Chunk 6 of the planner-detype refactor: producer now resolves both bits
  * so this gate no longer round-trips through `getBinaryControlPlan` +
  * `getEvRestoreBlockReason`.
  *
- * Reads observed truth (commandability inputs: `evChargingState`/`available`)
- * plus the descriptor capability config — the decomposed snapshot halves, not
+ * Reads observer-resolved commandability plus descriptor writeability — the decomposed snapshot halves, not
  * the raw producer `TargetDeviceSnapshot`. The full snapshot stays assignable.
  */
 export type CanTurnOnDeviceSnapshot = ObservedDeviceState
-  & Pick<DeviceDescriptor, 'deviceClass' | 'controlCapabilityId' | 'capabilities' | 'canSetControl'>
-  // Producer-fed funnel: `ObservedDeviceState` omits `evChargingState` by design,
-  // but the transport snapshots this gate is called with physically carry it, and
-  // the gate resolves commandability from it. Widening with the probe is what
-  // makes that read visible in the type instead of happening behind its back.
-  & EvObservedProbe;
+  & Pick<DeviceDescriptor, 'capabilities' | 'canSetControl'>
+  & { currentOn?: boolean; commandableNow?: boolean };
 
 export const canTurnOnDevice = (snapshot?: CanTurnOnDeviceSnapshot): boolean => {
   if (!snapshot) return false;
   // `canTurnOnDevice` takes a raw observed snapshot, so this IS the producer
   // call — the one sanctioned reader of the plug-state for this carrier.
-  if (!resolveCommandableNow(snapshot)) return false;
+  if (snapshot.commandableNow === false || snapshot.available === false) return false;
   if (!isCanSetControl({
-    controlCapabilityId: snapshot.controlCapabilityId,
+    binaryControl: snapshot.binaryControl,
+    currentOn: snapshot.currentOn,
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
     canSetOnOff: (snapshot as { canSetOnOff?: boolean }).canSetOnOff,

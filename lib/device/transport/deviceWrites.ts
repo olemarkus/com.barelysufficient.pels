@@ -1,8 +1,8 @@
 /**
  * Device write seam for `DeviceTransport`, extracted as homey-free free
- * functions over a shared `TransportContext`. Applies capability writes (with
- * optimistic binary write-back + binary-settle window start), target batches,
- * previews, and stepped-load step requests. The actual SDK write lands in
+ * functions over a shared `TransportContext`. Applies capability writes without
+ * fabricating observed truth, plus target batches, previews, and stepped-load
+ * step requests. The actual SDK write lands in
  * `managerHomeyApi.setRawCapabilityValue`, which already takes plain data.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
@@ -13,7 +13,6 @@ import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
-import { isRealtimeControlCapability } from '../managerRuntime';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { clearLocalCapabilityWrite, recordLocalCapabilityWrite } from './managerRealtimeSupport';
 import { recordLocalWriteObservation } from './managerObservation';
@@ -70,8 +69,8 @@ export async function setCapability(
     const normalizedValue = normalizeCapabilityValue(ctx, deviceId, capabilityId, value);
     const snapshotBefore = ctx.latestSnapshot.find((device) => device.id === deviceId);
     const writeCapabilityId = (
-        snapshotBefore?.controlCapabilityId === capabilityId
-          ? snapshotBefore.controlWriteCapabilityId ?? capabilityId
+        snapshotBefore?.binaryCapabilityId === capabilityId
+          ? snapshotBefore.binaryWriteCapabilityId ?? capabilityId
           : capabilityId
     );
     logEvCapabilityRequest({
@@ -90,14 +89,6 @@ export async function setCapability(
         capabilityId,
         value: normalizedValue,
     });
-    ctx.binarySettleOps.start({
-        state: ctx.binarySettleState,
-        deps: ctx.getBinarySettleDeps(),
-        deviceId,
-        capabilityId,
-        value: normalizedValue,
-        deviceName: snapshotBefore?.name,
-    });
     emitCapabilityWriteDebug(ctx, {
         event: 'device_capability_write_requested',
         deviceId,
@@ -114,7 +105,6 @@ export async function setCapability(
             deviceId,
             capabilityId,
         });
-        ctx.binarySettleOps.clear(ctx.binarySettleState, deviceId, capabilityId);
         throw error;
     }
     emitCapabilityWriteDebug(ctx, {
@@ -126,31 +116,19 @@ export async function setCapability(
         value: normalizedValue,
     });
 
-    // Keep local binary turn-off optimistic, but let binary turn-on stay pending until
-    // telemetry confirms it. A restore request is intent, not observed truth.
-    const preservedLocalState = typeof normalizedValue === 'boolean'
-        && isRealtimeControlCapability(capabilityId)
-        && normalizedValue === false;
-    if (preservedLocalState) {
-        ctx.updateLocalSnapshot(deviceId, { on: normalizedValue });
-    }
-
     recordLocalWriteObservation({
         state: ctx.observationState,
         latestSnapshot: ctx.latestSnapshot,
         deviceId,
         capabilityId,
         value: normalizedValue,
-        preservedLocalState,
+        preservedLocalState: false,
     });
-
-    if (preservedLocalState) {
-        // Optimistic shed write mutates binaryControl in place but skips the
-        // realtime dispatch funnel; push it so the projection stays faithful.
-        // Dispatched AFTER recordLocalWriteObservation, which advances
-        // lastLocalWriteMs — so the projected value captures that final
-        // timestamp rather than an earlier one (no shadow divergence).
-        // Safe: syncLivePlanState is serialized; onoff isn't a SoC capability.
+    // The accepted write advances only command metadata (`lastLocalWriteMs`),
+    // never observed capability truth. Publish the unchanged observed state so
+    // the observer projection remains an exact shadow while confirmation still
+    // has to arrive through snapshot/realtime telemetry.
+    if (snapshotBefore?.binaryCapabilityId === capabilityId) {
         ctx.dispatchObservedStateForDevice(deviceId, capabilityId);
     }
 
@@ -255,68 +233,5 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
             err: normalizedError,
         });
         return { requested: false };
-    }
-}
-
-export async function applyDeviceTargets(
-    ctx: TransportContext,
-    targets: Record<string, number>,
-    contextInfo = '',
-): Promise<void> {
-    if (!ctx.isSdkReady()) {
-        ctx.logger.debug({ event: 'sdk_api_unavailable_apply_targets_skipped' });
-        return;
-    }
-    for (const device of ctx.latestSnapshot) {
-        const targetValue = targets[device.id];
-        if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-        const targetCap = device.targets?.[0]?.id;
-        if (!targetCap) continue;
-        try {
-            const appliedValue = await setCapability(ctx, device.id, targetCap, targetValue);
-            (ctx.logger.structuredLog ?? moduleLogger).info({
-                event: 'device_target_applied',
-                deviceId: device.id,
-                deviceName: device.name,
-                capabilityId: targetCap,
-                appliedValue,
-                context: contextInfo,
-            });
-        } catch (error) {
-            (ctx.logger.structuredLog ?? moduleLogger).error({
-                event: 'device_target_apply_failed',
-                deviceId: device.id, deviceName: device.name, capabilityId: targetCap,
-                targetValue, context: contextInfo, err: normalizeError(error),
-            });
-        }
-    }
-    // Post-write re-read. Its live-power lane still feeds per-device attribution
-    // (`byDeviceId` -> `parseSnapshotDeviceList`). The returned whole-home sample
-    // is dropped here, and with it the meter identity it carries: identity is
-    // published only by the admitted sample ingest, so a read nobody records
-    // claims nothing — by construction, not by a gate.
-    await ctx.refreshSnapshot();
-}
-
-export function previewDeviceTargets(
-    ctx: TransportContext,
-    targets: Record<string, number>,
-    contextInfo = '',
-): void {
-    for (const device of ctx.latestSnapshot) {
-        const targetValue = targets[device.id];
-        if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-        const targetCap = device.targets?.[0]?.id;
-        if (!targetCap) continue;
-        const target = device.targets.find((entry) => entry.id === targetCap);
-        const normalizedValue = normalizeTargetCapabilityValue({ target, value: targetValue });
-        (ctx.logger.structuredLog ?? moduleLogger).info({
-            event: 'device_target_preview',
-            deviceId: device.id,
-            deviceName: device.name,
-            capabilityId: targetCap,
-            normalizedValue,
-            context: contextInfo,
-        });
     }
 }

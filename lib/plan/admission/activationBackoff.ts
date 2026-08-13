@@ -1,4 +1,4 @@
-import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../../packages/contracts/src/types';
+import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import type {
   ActivationAttemptState,
   ActivationAttemptSource,
@@ -9,6 +9,7 @@ import { isActivelyDrawing } from '../../observer/observedPower';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from '../planConstants';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import { isSteppedDeviceAtActiveStep, isSteppedDeviceAtOffStep } from '../../utils/deviceControlProfiles';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 
 export type { ActivationAttemptSource } from '../planState';
 
@@ -44,7 +45,6 @@ export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
-  controlCapabilityId?: BinaryControlCapabilityId;
   currentState?: string;
   // The producer-resolved on/off truth (present iff binary). The in/active reads
   // below narrow on its presence and read it directly. A step-only stepper carries
@@ -225,8 +225,8 @@ export function isActivationObservationExplicitlyInactive(
   // step — read that from the step axis, or from the producer-resolved step label
   // `currentState` for the restore caller that builds a label-only observation.
   // Binary reasoning is untouched (gated on `currentOn === undefined`).
-  if (observation.currentOn === false) return true;
-  if (observation.currentOn === undefined
+  if (isBinaryPlanDevice(observation) && !observation.currentOn) return true;
+  if (!isBinaryPlanDevice(observation)
     && (isSteppedDeviceAtOffStep(observation) || observation.currentState === 'off')) return true;
   return false;
 }
@@ -236,11 +236,11 @@ export function isActivationObservationActiveNow(
 ): boolean {
   if (!observation) return false;
   if (observation.available === false) return false;
-  if (observation.currentOn === true) return true;
+  if (isBinaryPlanDevice(observation) && observation.currentOn) return true;
   // Step-only stepper at an active step is on regardless of measurement (no binary
   // handle to read) — from the step axis, or the `currentState` label for the
   // label-only restore caller; binary devices keep their measured-draw fallback.
-  if (observation.currentOn === undefined
+  if (!isBinaryPlanDevice(observation)
     && (isSteppedDeviceAtActiveStep(observation) || observation.currentState === 'on')) return true;
   return isActivelyDrawing({ currentDrawKw: observation.currentDrawKw });
 }

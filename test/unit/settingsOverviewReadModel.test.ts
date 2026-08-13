@@ -177,7 +177,7 @@ describe('settingsOverviewReadModel', () => {
     // the raw plug-state (materialized + stripped by the test builder, mirroring toPlanDevice).
     const device = buildPlanDevice({
       id: 'ev-1',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
     });
 
@@ -193,7 +193,7 @@ describe('settingsOverviewReadModel', () => {
   it('surfaces the EV battery reading so the card can show it beside the level', () => {
     const device = buildPlanDevice({
       id: 'ev-1',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       stateOfCharge: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500 }),
     });
 
@@ -263,7 +263,7 @@ describe('settingsOverviewReadModel', () => {
     const device = buildPlanDevice({
       id: 'externally-controlled-thermostat',
       deviceType: 'onoff',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       shedAction: 'turn_off',
     });
     const readModel = buildSettingsOverviewReadModel(
@@ -310,7 +310,7 @@ describe('settingsOverviewReadModel', () => {
     const drawing = buildPlanDevice({
       id: 'thermo',
       deviceType: 'temperature',
-      controlCapabilityId: undefined,
+      binaryCapabilityId: undefined,
       currentState: 'not_applicable',
       currentTarget: 21,
       currentTemperature: 22,
@@ -322,7 +322,7 @@ describe('settingsOverviewReadModel', () => {
     const settled = buildPlanDevice({
       id: 'thermo',
       deviceType: 'temperature',
-      controlCapabilityId: undefined,
+      binaryCapabilityId: undefined,
       currentState: 'not_applicable',
       currentTarget: 21,
       currentTemperature: 22,

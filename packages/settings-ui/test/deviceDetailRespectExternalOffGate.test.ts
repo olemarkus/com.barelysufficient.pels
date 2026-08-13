@@ -91,7 +91,7 @@ const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): Targe
   deviceClass: 'socket',
   powerCapable: true,
   binaryControl: { on: true },
-  controlCapabilityId: 'onoff',
+  binaryControllable: true,
   capabilities: ['onoff'],
   ...overrides,
 }) as TargetDeviceSnapshot;
@@ -217,7 +217,8 @@ describe('device detail "Leave off until turned on again" gating', () => {
     await openPanel({
       device: buildBinaryDevice({
         deviceClass: 'evcharger',
-        controlCapabilityId: 'evcharger_charging',
+        binaryControllable: true,
+        deviceRole: 'ev_charger',
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
       }),
     });
@@ -230,7 +231,7 @@ describe('device detail "Leave off until turned on again" gating', () => {
     await openPanel({
       device: buildBinaryDevice({
         deviceType: 'temperature',
-        controlCapabilityId: undefined,
+        binaryControllable: false,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         capabilities: ['target_temperature'],
       }),
@@ -241,7 +242,7 @@ describe('device detail "Leave off until turned on again" gating', () => {
   it('keeps the row visible (escape hatch) when opted in but the shape no longer qualifies', async () => {
     // The only opt-OUT must stay reachable, or the device is held off with no way back.
     await openPanel({
-      device: buildBinaryDevice({ controlCapabilityId: undefined, capabilities: [] }),
+      device: buildBinaryDevice({ binaryControllable: false, capabilities: [] }),
       optedIn: true,
     });
     expect(row()?.hidden).toBe(false);
@@ -390,7 +391,7 @@ describe('device detail "Disable temperature control"', () => {
     vi.resetModules();
     buildDom();
     mockSiblings();
-    await openPanel({ device: buildTemperatureBinaryDevice({ controlCapabilityId: undefined, capabilities: ['target_temperature'] }) });
+    await openPanel({ device: buildTemperatureBinaryDevice({ binaryControllable: false, capabilities: ['target_temperature'] }) });
     expect(temperatureControlRow()?.hidden).toBe(true);
   });
 
@@ -403,7 +404,7 @@ describe('device detail "Disable temperature control"', () => {
     buildDom();
     mockSiblings();
     await openPanel({
-      device: buildTemperatureBinaryDevice({ controlCapabilityId: undefined, capabilities: ['target_temperature'] }),
+      device: buildTemperatureBinaryDevice({ binaryControllable: false, capabilities: ['target_temperature'] }),
       activeSmartTask: true,
       temperatureControlDisabled: true,
     });

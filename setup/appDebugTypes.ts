@@ -87,7 +87,7 @@ export type PelsTargetSnapshotSummary = {
   name: string;
   deviceType?: string;
   controlModel?: TargetDeviceSnapshot['controlModel'];
-  controlCapabilityId?: string;
+  binaryControllable?: boolean;
   controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
   capabilities?: string[];
   steppedLoadProfile?: SteppedLoadProfile;

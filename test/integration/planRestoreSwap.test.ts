@@ -296,7 +296,7 @@ describe('restore swap helpers', () => {
     expect(estimateRestorePower(buildPlanDevice({ currentDrawKw: 0 }))).toBe(1);
     expect(estimateRestorePower(buildPlanDevice({
       currentDrawKw: 0,
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }))).toBe(1.38);
   });
 
@@ -417,7 +417,7 @@ describe('resolveRestorePowerSource', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({ currentDrawKw: 0 }))).toBe('expected');
     expect(resolveRestorePowerSource(buildPlanDevice({
       currentDrawKw: 0,
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
     }))).toBe('expected');
   });
 

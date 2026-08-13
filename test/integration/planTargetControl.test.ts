@@ -17,6 +17,9 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
   withBinaryDiscriminant(withTemperatureDiscriminant({
     id: deviceId,
     expectedPowerKw: 1,
+    expectedPowerSource: 'default' as const,
+    currentDrawKw: 0,
+    commandableNow: true,
     name,
     deviceType: 'temperature' as const,
     binaryControl: { on: true },
@@ -46,9 +49,10 @@ describe('syncPendingTargetCommands', () => {
   it('logs a user-visible waiting message on the first unresolved observation', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 1_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 1_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -70,7 +74,7 @@ describe('syncPendingTargetCommands', () => {
       event: 'target_waiting_for_confirmation',
       deviceId: 'dev-1',
       deviceName: 'Heater',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       observed: '27°C',
       source: 'realtime_capability',
       expected: 23,
@@ -80,9 +84,10 @@ describe('syncPendingTargetCommands', () => {
   it('logs the observed transition when the unresolved target changes again', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 10_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -107,7 +112,7 @@ describe('syncPendingTargetCommands', () => {
       event: 'target_waiting_for_confirmation',
       deviceId: 'dev-1',
       deviceName: 'Heater',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       observed: '27°C',
       previousObserved: '25.5°C',
       source: 'realtime_capability',
@@ -118,9 +123,10 @@ describe('syncPendingTargetCommands', () => {
   it('does not emit a user-visible waiting log when only the source changes', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 10_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -151,9 +157,10 @@ describe('syncPendingTargetCommands', () => {
       vi.setSystemTime(nowMs);
       const state = createPlanEngineState();
       state.pendingTargetCommands['dev-1'] = {
-        capabilityId: 'target_temperature',
+        target: 'temperature',
         desired: 23,
         startedMs: nowMs - 90_000,
+        pendingMs: 90_000,
         lastAttemptMs: nowMs - 90_000,
         retryCount: 0,
         nextRetryAtMs: nowMs + 30_000,
@@ -179,7 +186,7 @@ describe('syncPendingTargetCommands', () => {
         event: 'target_waiting_for_confirmation',
         deviceId: 'dev-1',
         deviceName: 'Heater',
-        capabilityId: 'target_temperature',
+        target: 'temperature',
         observed: '27°C',
         source: 'snapshot_refresh',
         expected: 23,
@@ -192,18 +199,20 @@ describe('syncPendingTargetCommands', () => {
   it('tracks confirmations independently across multiple devices', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
       status: 'waiting_confirmation',
     };
     state.pendingTargetCommands['dev-2'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -234,7 +243,7 @@ describe('syncPendingTargetCommands', () => {
       event: 'target_waiting_for_confirmation',
       deviceId: 'dev-2',
       deviceName: 'Heater B',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       observed: '25°C',
       source: 'realtime_capability',
       expected: 21,
@@ -244,9 +253,10 @@ describe('syncPendingTargetCommands', () => {
   it('clears a pending target command when the device is missing during snapshot refresh', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -270,7 +280,7 @@ describe('syncPendingTargetCommands', () => {
       event: 'pending_target_command_cleared',
       reason: 'device_missing',
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       source: 'snapshot_refresh',
     }));
   });
@@ -278,9 +288,10 @@ describe('syncPendingTargetCommands', () => {
   it('keeps a pending target command when the device is only missing from a realtime pass', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -308,9 +319,10 @@ describe('syncPendingTargetCommands', () => {
   it('does not emit confirmation waiting logs for temporarily unavailable targets', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 10_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 1,
       nextRetryAtMs: Date.now() + 30_000,
@@ -342,9 +354,10 @@ describe('prunePendingTargetCommandsForPlan', () => {
   it('clears a pending target command when the plan changes to a different desired target', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
@@ -383,9 +396,10 @@ describe('recordPendingTargetCommandAttempt', () => {
   it('does not carry stale observed metadata into a fresh non-retry pending command', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 10_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 1,
       nextRetryAtMs: Date.now() + 20_000,
@@ -398,13 +412,13 @@ describe('recordPendingTargetCommandAttempt', () => {
     const pending = recordPendingTargetCommandAttempt({
       state,
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 18,
       nowMs: Date.now(),
     });
 
     expect(pending).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 18,
       retryCount: 0,
     });
@@ -419,14 +433,14 @@ describe('recordPendingTargetCommandAttempt', () => {
     const pending = recordFailedPendingTargetCommandAttempt({
       state,
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 18,
       nowMs: Date.now(),
       observedValue: 21,
     });
 
     expect(pending).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 18,
       retryCount: 0,
       status: 'temporary_unavailable',

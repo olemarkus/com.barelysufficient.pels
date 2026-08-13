@@ -64,8 +64,7 @@ the cruiser rule promote to error.
 > energy report read in the device layer (`managerFetch` → `managerHomeyApi` →
 > `managerEnergy`); `updateHomePowerFromReport` now pushes the resolved scalar
 > to observer via a new `setHomePowerW(w)` method on the `observedStateDispatcher`
-> callback bag (same injection pattern as the event dispatcher and
-> `pendingPredicate`; transport still does not import observer). Wiring
+> callback bag; transport still does not import observer. Wiring
 > (`lib/app/appSnapshotHelpers.ts`) reads the value back from the observer via a
 > `getHomePowerW` dep wired in `app.ts` (lib/app → observer is an allowed edge).
 > Observer introduces **no** `lib/power/**` import — the correction to the
@@ -166,33 +165,24 @@ Reasoning:
   edge that directly violates the existing `no-observer-to-peer` rule
   (`.dependency-cruiser.cjs:109-115`). That rule was deliberate; we keep it.
 
-### Settle suppression: injected predicate from wiring
+### Command confirmation is observer-owned and semantic
 
-Today `shouldSuppressPendingBinaryChange`
-(`managerRealtimeHandlers.ts:400-420`) runs inside transport's parse pipeline,
-before reconcile produces the merged snapshot. Post-split, observer holds
-pending state but transport's parse needs to consult it.
-
-Resolution: transport accepts a `pendingPredicate(deviceId, capabilityId)`
-callback supplied by `lib/app/` and backed by observer. Transport does not
-statically import observer; the predicate is just a function reference passed
-in at wiring time. The parse pipeline keeps producing pre-merged snapshots,
-which matches the current shape.
+Pending binary commands are keyed by device and desired on/off state. No raw
+capability identifier crosses into observer, planner, or executor state. The
+observer confirms them from normalized telemetry within one generic window:
+90 seconds for local devices and 3 minutes for cloud devices. An accepted SDK
+or Flow dispatch records intent and accounting, but never fabricates observed
+state. Transport alone retains the private capability/Flow binding needed to
+translate the semantic command.
 
 ### Settle window: what settles it, and how long it waits
 
-Two separate questions were collapsed into one predicate, and the collapse is
-what broke the window on chargers.
-
-**What settles it.** The window asks "was PELS's write acknowledged?", and the
-answer is the device's echo on the capability PELS wrote. Settlement used to be
-gated on `isRawBinarySettlementEvidenceAllowed`, which excludes
-`evcharger_charging` — correctly, but for a *different* question: a charger's
-observed on/off truth is plug-state-authoritative (`resolveEvCurrentOn`). Using
-that gate for settlement made the window wait on `evcharger_charging_state`,
-i.e. "is the car drawing?", when the write had asked "may the car draw?". The
-predicate is now named `isRawBinaryObservedTruthEvidenceAllowed` and governs only
-the truth question; settlement takes the raw echo for every control capability.
+**What settles it.** The pending command asks "was PELS's write acknowledged?",
+and the answer is the device's readback on the same semantic binary axis. For an
+EV charger, `evcharger_charging=true` therefore settles only from a read of
+`evcharger_charging=true`. `evcharger_charging_state` remains an independent
+physical/session observation: a car may stay paused or refuse charging after the
+command was accepted, without turning that accepted command into a timeout.
 
 The 2026-08-11→13 production log measures why that ordering matters. Across 62
 charger turn-ons:
@@ -260,7 +250,7 @@ events directly via its own EventEmitter; post-PR observer owns the emitter
 (`lib/observer/observedStateEvents.ts`, class `ObservedStateEmitter`) and
 transport routes the events through it via a dispatcher callback bag
 (`observedStateDispatcher`) injected at construction time. Same pattern as
-PR #4's `pendingPredicate`. The transport-side control-relevance boolean stays
+the existing observer-dispatcher injection. The transport-side control-relevance boolean stays
 inside transport — it is a snapshot-vs-snapshot change filter, not
 drift-against-plan-intent. (Since renamed `observedControlStateChanged`; it was
 `shouldReconcilePlan`, a producer naming a plan operation.)
@@ -309,23 +299,18 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    to rename, kill the historical `DeviceManager` identifier, and fold
    in the secondary cleanup of moving `stateOfCharge.ts` into
    `lib/device/transport/`.)
-6. **Wire the injected `pendingPredicate`** and move pending/settle state into
+6. **Move pending/confirmation state into
    observer. Observer subscribes to transport events. (PR #4 — shipped:
-   `lib/device/managerBinarySettle.ts` moved to `lib/observer/binarySettle.ts`;
    pending-binary-command sync/store moved into `lib/observer/pendingBinaryCommands.ts`
    and `lib/observer/pendingBinaryCommandTypes.ts`; the dispatcher
    `lib/executor/binaryControlDispatch.ts` now returns a discriminated
    `{ok: true} | {ok: false; reason: 'dispatch_failed'}` result and owns
    pending writes/deletes through the observer-owned store; plan's
-   `decideBinaryControl` no longer touches pending state; transport accepts a
-   `pendingPredicate(deviceId, capabilityId)` callback supplied by wiring
-   (`app.ts`) and backed by observer's binarySettle store. PR #5 inverted
+   `decideBinaryControl` no longer touches pending state. PR #5 inverted
    the event-ownership relationship instead of having observer subscribe
    to transport: observer now owns the emitter and transport dispatches
    into it via the injected `observedStateDispatcher` callback bag (same
-   pattern as `pendingPredicate`). Transport's default ops bag is inert (no-op
-   stubs + empty state); tests that exercise binary-settle behaviour pass
-   real observer ops through the constructor options. No static observer
+   event dispatch pattern). No static observer
    import remains in `lib/device/`; the `no-device-to-peer-except-power`
    cruiser rule stays a single error rule with no exceptions.)
 7. **Three-way realtime split**: translation in transport, drift detection in

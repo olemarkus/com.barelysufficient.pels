@@ -169,12 +169,12 @@ function recordSnapshotControlObservation(options: RecordSnapshotObservationOpti
         capabilityIdSet,
     } = options;
     if (
-        !snapshot.controlCapabilityId
-        || (capabilityIdSet && !capabilityIdSet.has(snapshot.controlCapabilityId))
+        !snapshot.binaryCapabilityId
+        || (capabilityIdSet && !capabilityIdSet.has(snapshot.binaryCapabilityId))
     ) {
         return false;
     }
-    const controlValue = snapshot.controlCapabilityId === 'evcharger_charging'
+    const controlValue = snapshot.binaryCapabilityId === 'evcharger_charging'
         ? snapshot.evCharging
         : snapshot.binaryControl?.on;
     if (typeof controlValue !== 'boolean') {
@@ -184,7 +184,7 @@ function recordSnapshotControlObservation(options: RecordSnapshotObservationOpti
         state,
         latestSnapshot: [],
         deviceId,
-        capabilityId: snapshot.controlCapabilityId,
+        capabilityId: snapshot.binaryCapabilityId,
         value: controlValue,
         source,
         observedAt,

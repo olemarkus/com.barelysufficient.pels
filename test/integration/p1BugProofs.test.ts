@@ -74,10 +74,14 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // This proof never drives a step write; supply an actuator over the device
     // manager's writes so the executor's stepped binding has a seam to call.
-    actuator: createDeviceActuator({
-      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
-      applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: async () => undefined,
+      actuator: createDeviceActuator({
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+        requestSteppedLoadStep: async () => ({ requested: false }),
+      requestBinaryControl: async (deviceId, desired) => {
+        await deviceManager.setCapability(deviceId, 'onoff', desired);
+        return undefined;
+      },
+      requestTemperatureTarget: async (_deviceId, desired) => desired,
     }),
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
@@ -192,7 +196,7 @@ describe('P1 bug proofs', () => {
           targets: [],
           binaryControl: { on: true },
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           currentDrawKw: 0,
           binaryCommandPending: true,
         }) as PlanInputDevice,
@@ -205,7 +209,7 @@ describe('P1 bug proofs', () => {
           targets: [],
           binaryControl: { on: true },
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
         }) as PlanInputDevice,
       ],
       shedSet: new Set(['shed']),
@@ -325,7 +329,7 @@ describe('P1 bug proofs', () => {
     const { executor, deviceManager } = buildExecutor([{
       id: 'dev-1',
       name: 'Heater',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -344,7 +348,7 @@ describe('P1 bug proofs', () => {
         plannedState: 'shed',
         currentTarget: 21,
         plannedTarget: 21,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         reason: fixtureDeviceReason('shed due to capacity'),
       })],
     });

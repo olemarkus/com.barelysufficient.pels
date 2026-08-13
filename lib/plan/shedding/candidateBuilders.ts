@@ -54,7 +54,6 @@ export function buildBinaryCandidate(
   const pendingEntry = pendingBinaryCommandStore.peek(device.id);
   const pendingBinary = isPendingBinaryCommandActive({
     pending: pendingEntry,
-    communicationModel: device.communicationModel,
   }) ? pendingEntry : undefined;
   return {
     ...device,
@@ -94,7 +93,7 @@ export function buildTemperatureCandidate(params: {
   const pending = pendingTargetCommands[device.id];
   const unconfirmedRelief = pending !== undefined
     && pending.status === 'waiting_confirmation'
-    && pending.capabilityId === targetCapabilityId
+    && pending.target === 'temperature'
     && pending.desired === shedTemperature;
   return {
     ...device,

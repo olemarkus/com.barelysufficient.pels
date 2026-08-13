@@ -45,7 +45,6 @@
  * `lib/observer/**`.
  */
 import type {
-  BinaryControlCapabilityId,
   RestorePowerSource,
   SteppedLoadProfile,
   SteppedLoadStep,
@@ -87,7 +86,7 @@ export type ResidualKwShedSteppedDevice = {
   hasKnownEffectiveStep: boolean;
   /** Producer-resolved current draw (see `getCurrentDrawKw`). */
   currentDrawKw: number;
-  controlCapabilityId?: BinaryControlCapabilityId;
+  hasBinaryControl: boolean;
 };
 
 export type ResidualKwShedDeviceInput = {
@@ -239,7 +238,7 @@ function canFinishSteppedTurnOffWithBinaryResidual(params: {
   const { steppedLoad, shedAction, targetStep } = params;
   if (
     shedAction !== 'turn_off'
-    || steppedLoad.controlCapabilityId === undefined
+    || !steppedLoad.hasBinaryControl
     || !steppedLoad.selectedStepId
     || targetStep?.id !== steppedLoad.selectedStepId
   ) {

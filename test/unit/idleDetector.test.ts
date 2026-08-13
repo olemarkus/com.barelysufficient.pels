@@ -22,19 +22,10 @@ const baseInput = (overrides: Partial<IdleDetectorInput> = {}): IdleDetectorInpu
   observationStale: false,
   pelsCommandedShed: false,
   hasTemperatureSetpoint: true,
-  isEvCharger: false,
   ...overrides,
 });
 
 describe('classifyIdleState — eligibility gates', () => {
-  it('returns active and clears state for EV chargers', () => {
-    const state: IdleDetectorState = new Map();
-    state.set('dev-1', { idleSinceMs: 0, lastClassification: 'near_target_idle', samples: [], firstSampleAtMs: 0 });
-    const result = classifyIdleState(baseInput({ isEvCharger: true }), state);
-    expect(result.classification).toBe('active');
-    expect(state.has('dev-1')).toBe(false);
-  });
-
   it('returns active for devices without a temperature setpoint', () => {
     const result = classifyIdleState(
       baseInput({ hasTemperatureSetpoint: false, targetTemperature: undefined }),

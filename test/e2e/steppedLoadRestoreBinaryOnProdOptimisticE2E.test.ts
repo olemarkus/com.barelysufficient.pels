@@ -122,7 +122,7 @@ const buildHoiaxDevice = (params: { nativeStepValue: unknown; freshIso: string }
     measure_temperature: { value: 60, lastUpdated: freshIso },
     // Prod-observed trigger: onoff capability VALUE is ABSENT (a
     // should-never-happen anomaly; capabilitiesObj.onoff left unset). The
-    // capability is still advertised in `capabilities`, so controlCapabilityId
+    // capability is still advertised in `capabilities`, so binaryCapabilityId
     // resolves to 'onoff', but the parser has no boolean to trust → currentOn
     // honest false, binaryControlObservation undefined (observed state 'unknown').
     // CONNECTED_200 profile: off(0)/low(700)/medium(1300)/max(2000).
@@ -219,9 +219,12 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the prod restore behavior this e2e asserts.
     actuator: createDeviceActuator({
-      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
-      applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: async () => undefined,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestBinaryControl: async (deviceId, desired) => {
+        await deviceManager.setCapability(deviceId, 'onoff', desired);
+        return undefined;
+      },
+      requestTemperatureTarget: async (_deviceId, desired) => desired,
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
     getCapacityGuard: () => undefined,
@@ -253,7 +256,7 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
     // `binaryControl`, `currentTarget` and `steppedLoadProfile` live on their
     // orthogonal discriminant clusters; route the stepped/temperature parts
     // through `steppedPlanDevice` and re-tie the binary cluster with
-    // `withBinaryDiscriminant` (the device is binary — `controlCapabilityId` set).
+    // `withBinaryDiscriminant` (the device is binary — `binaryCapabilityId` set).
     withBinaryDiscriminant({
       ...steppedPlanDevice({
         id: DEVICE_ID,
@@ -263,7 +266,7 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
         plannedState: 'keep',
         controllable: true,
         steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
-        controlCapabilityId: 'onoff',
+        currentOn: false,
         selectedStepId,
         desiredStepId: 'low',
         reason: KEEP_REASON,
@@ -312,7 +315,7 @@ describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-c
     expect(cycle1Snapshot.binaryControl?.on).toBe(false);
     expect(cycle1Snapshot.binaryControlObservation).toBeUndefined();
     expect(cycle1Snapshot.controlModel).toBe('stepped_load');
-    expect(cycle1Snapshot.controlCapabilityId).toBe('onoff');
+    expect(cycle1Snapshot.binaryCapabilityId).toBe('onoff');
     expect(cycle1Snapshot.reportedStepId).toBe('max');
 
     const cycle1Device = buildHoiaxDevice({ nativeStepValue: 'high_power', freshIso: cycle1Iso });

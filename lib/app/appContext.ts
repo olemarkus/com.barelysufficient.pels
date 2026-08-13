@@ -185,7 +185,7 @@ export type AppContext = {
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     observedValue?: unknown;
     observedSource?: string;

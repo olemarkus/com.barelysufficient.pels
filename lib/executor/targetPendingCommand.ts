@@ -18,22 +18,22 @@ export const syncPendingTargetCommandAfterActuation = async (
   params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
   },
 ): Promise<TargetCommandPostActuationState> => {
-  const { deviceId, name, targetCap, desired } = params;
+  const { deviceId, name, target, desired } = params;
   await waitForImmediateObservedState();
   ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
-  const latestObservedValueAfterActuation = getLatestObservedTargetValue(ctx, deviceId, targetCap);
-  let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, targetCap, desired);
+  const latestObservedValueAfterActuation = ctx.getObservedTemperatureValue(deviceId);
+  let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, desired);
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
     ctx.state.deletePendingTargetCommand(deviceId);
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
     logger.debug({
       event: 'executor_target_log_debug',
-      msg: `Capacity: confirmed ${targetCap} for ${name} at ${desired}°C immediately after actuation`,
+      msg: `Capacity: confirmed ${target} for ${name} at ${desired}°C immediately after actuation`,
     });
   }
   return {
@@ -42,28 +42,19 @@ export const syncPendingTargetCommandAfterActuation = async (
   };
 };
 
-const getLatestObservedTargetValue = (
-  ctx: PlanExecutorTargetContext,
-  deviceId: string,
-  targetCap: string,
-): unknown => ctx.getObservedState(deviceId)
-  ?.targets?.find((entry) => entry.id === targetCap)
-  ?.value;
-
 const hasMatchingPendingTargetCommand = (
   ctx: PlanExecutorTargetContext,
   deviceId: string,
-  targetCap: string,
   desired: number,
-): boolean => ctx.state.pendingTargetCommands[deviceId]?.capabilityId === targetCap
-    && ctx.state.pendingTargetCommands[deviceId]?.desired === desired;
+): boolean => ctx.state.pendingTargetCommands[deviceId]?.target === 'temperature'
+  && ctx.state.pendingTargetCommands[deviceId]?.desired === desired;
 
 export const logPendingTargetRetry = async (
   ctx: PlanExecutorTargetContext,
   params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     retryCount: number;
     retryDelaySec: number;
@@ -75,7 +66,7 @@ export const logPendingTargetRetry = async (
   const {
     deviceId,
     name,
-    targetCap,
+    target,
     desired,
     retryCount,
     retryDelaySec,
@@ -85,14 +76,14 @@ export const logPendingTargetRetry = async (
   } = params;
   logger.info({ event: 'executor_target_log', msg: `Target mismatch still present for ${name}; observed `
     + `${formatObservedTarget(observedValue)} `
-    + `via ${observedSource ?? 'unknown'}, retrying ${targetCap} to ${desired}°C` });
-  logger.debug({ event: 'executor_target_log_debug', msg: `Capacity: retried ${targetCap} for ${name} to ${desired}°C `
+    + `via ${observedSource ?? 'unknown'}, retrying ${target} to ${desired}°C` });
+  logger.debug({ event: 'executor_target_log_debug', msg: `Capacity: retried ${target} for ${name} to ${desired}°C `
     + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
   try {
     await ctx.logTargetRetryComparison?.({
       deviceId,
       name,
-      targetCap,
+      target,
       desired,
       observedValue,
       observedSource,

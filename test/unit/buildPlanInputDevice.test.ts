@@ -1,6 +1,5 @@
 import type {
   BinaryControlDiscriminantProbe,
-  EvDiscriminantProbe,
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
@@ -50,16 +49,17 @@ describe('buildPlanInputDevice', () => {
     const device = buildPlanInputDevice({
       id: 'dev-3',
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      currentOn: true,
       priority: 4,
       expectedPowerKw: 7.2,
+      objectiveKind: 'ev_soc',
     });
 
     expect(device.deviceClass).toBe('evcharger');
-    expect(device.controlCapabilityId).toBe('evcharger_charging');
+    expect((device as PlanInputDevice & { currentOn: boolean }).currentOn).toBe(true);
     expect(device.priority).toBe(4);
     expect(device.expectedPowerKw).toBe(7.2);
-    expect((device as PlanInputDevice & EvDiscriminantProbe).evChargingState).toBeUndefined();
+    expect(device.objectiveKind).toBe('ev_soc');
   });
 
   it('replaces the default targets array when an override is supplied', () => {

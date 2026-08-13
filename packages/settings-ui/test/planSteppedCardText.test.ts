@@ -97,7 +97,7 @@ describe('resolveSteppedLevelFact', () => {
     expect(resolveSteppedLevelFact({
       ...baseDevice,
       currentState: 'on',
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in_charging',
       steppedLoad: steppedLoad({ reportedStepId: '16a' }),
     })).toBe('Charging · level 16 A');
@@ -108,18 +108,18 @@ describe('resolveSteppedEvExceptionLabel', () => {
   it('is null for non-EV devices and for routine charging', () => {
     expect(resolveSteppedEvExceptionLabel({})).toBeNull();
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in_charging',
     })).toBeNull();
   });
 
   it('surfaces the exceptional EV states for the reason slot', () => {
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_out',
     })).toBe('Unplugged');
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in_paused',
     })).toBe('Paused');
   });
@@ -128,20 +128,20 @@ describe('resolveSteppedEvExceptionLabel', () => {
     // Signal 2 is off: no current is on offer, so nothing is waiting on the car.
     // Holds whether or not PELS is the one controlling the charger.
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in',
       currentState: 'off',
     })).toBe('Not charging');
     // No read-back at all is not evidence of a charge command either.
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in',
     })).toBe('Not charging');
   });
 
   it('reads "Waiting for car" only when the charger is on and no current flows', () => {
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in',
       currentState: 'on',
     })).toBe('Waiting for car');
@@ -151,7 +151,7 @@ describe('resolveSteppedEvExceptionLabel', () => {
     // The charger really is switched on and really is not delivering; simulation
     // changes what PELS would do, not what the device reports.
     expect(resolveSteppedEvExceptionLabel({
-      controlCapabilityId: 'evcharger_charging',
+      deviceRole: 'ev_charger',
       evChargingState: 'plugged_in',
       currentState: 'on',
     })).toBe('Waiting for car');
@@ -886,7 +886,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
 describe('battery level on the EV charger fact line', () => {
   const evCard = (overrides: Record<string, unknown> = {}) => ({
     currentState: 'on',
-    controlCapabilityId: 'evcharger_charging',
+    deviceRole: 'ev_charger' as const,
     steppedLoad: steppedLoad({ reportedStepId: '16a', targetStepId: '16a' }),
     ...overrides,
   });
@@ -934,7 +934,7 @@ describe('battery level on the EV charger fact line', () => {
     // Only an EV charger has a car behind it; a water heater carrying a stray
     // percentage must not render one.
     expect(resolveSteppedLevelFact(evCard({
-      controlCapabilityId: 'onoff',
+      deviceRole: undefined,
       stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBe('Level 16 A');
   });

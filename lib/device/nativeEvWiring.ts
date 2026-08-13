@@ -133,8 +133,8 @@ export function applyNativeEvWiringOverlay(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   controlAdapter?: DeviceControlAdapterSnapshot;
-  controlWriteCapabilityId?: string;
-  controlObservationCapabilityId?: string;
+  binaryWriteCapabilityId?: string;
+  binaryObservationCapabilityId?: string;
 } {
   const {
     device,
@@ -163,8 +163,8 @@ export function applyNativeEvWiringOverlay(params: {
 
   const nextCapabilities = [...capabilities];
   const nextCapabilityObj: DeviceCapabilityMap = { ...capabilityObj };
-  let controlWriteCapabilityId: string | undefined;
-  let controlObservationCapabilityId: string | undefined;
+  let binaryWriteCapabilityId: string | undefined;
+  let binaryObservationCapabilityId: string | undefined;
 
   if (!hasCapability(nextCapabilities, 'evcharger_charging')) {
     nextCapabilities.push('evcharger_charging');
@@ -176,8 +176,8 @@ export function applyNativeEvWiringOverlay(params: {
         nextCapabilityObj.charge_mode?.lastUpdated,
       ),
     };
-    controlWriteCapabilityId = 'charging_button';
-    controlObservationCapabilityId = 'evcharger_charging';
+    binaryWriteCapabilityId = 'charging_button';
+    binaryObservationCapabilityId = 'evcharger_charging';
   }
 
   if (!hasCapability(nextCapabilities, 'evcharger_charging_state')) {
@@ -199,8 +199,8 @@ export function applyNativeEvWiringOverlay(params: {
       activationRequired: false,
       activationEnabled: true,
     },
-    controlWriteCapabilityId,
-    controlObservationCapabilityId,
+    binaryWriteCapabilityId,
+    binaryObservationCapabilityId,
   };
 }
 

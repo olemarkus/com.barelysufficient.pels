@@ -9,10 +9,6 @@ import {
   ObservedDeviceStateProjection,
 } from './lib/observer/observedDeviceStateProjection';
 import type { PlanEngine } from './lib/plan/planEngine';
-import {
-  createBinarySettleState,
-  type BinarySettleState,
-} from './lib/observer/binarySettle';
 import type { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import type { PendingTargetObservationSource } from './lib/plan/planTypes';
 import type { PlanService } from './lib/plan/planService';
@@ -252,15 +248,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public priceFlowTagPublisher?: PriceFlowTagPublisher;
   public deviceManager!: DeviceTransport;
   /**
-   * Observer-owned binarySettle state, constructed by wiring before
-   * `DeviceTransport` so the predicate the transport consults at the
-   * realtime parse pipeline points at the same store. Per PR #4 of the
-   * observer/transport split (notes/state-management/observer-transport-split.md),
-   * transport never statically imports observer; the state and the
-   * predicate both flow in via DeviceTransport's constructor options.
-   */
-  private observerBinarySettleState: BinarySettleState = createBinarySettleState();
-  /**
    * Observer-owned emitter for post-translation realtime events
    * (`observed-state-changed`, `plan-reconcile-observed`). Wiring builds
    * it during `initDeviceManager`, binds transport's dispatcher to it,
@@ -483,7 +470,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getPlanService: () => this.planService,
     getStablePowerSampleRevision: () => this.powerSamplePipeline.getStableSampleRevision(),
     getPowerCalibrationStore: () => this.powerCalibrationStore,
-    getObserverBinarySettleState: () => this.observerBinarySettleState,
     getObservedStateEmitter: () => this.observedStateEmitter,
     getObservedHomePower: () => this.observedHomePower,
     getObservedDeviceStateProjection: () => this.observedDeviceStateProjection,
@@ -589,7 +575,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public async logTargetRetryComparison(params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     observedValue?: unknown;
     observedSource?: string;
@@ -599,7 +585,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     await logHomeyDeviceComparisonForDebugFromApp({
       app: this,
       deviceId: params.deviceId,
-      reason: `target_retry:${params.skipContext}:${params.targetCap}`,
+      reason: `target_retry:${params.skipContext}:${params.target}`,
       expectedTarget: params.desired,
       observedTarget: params.observedValue,
       observedSource: params.observedSource,

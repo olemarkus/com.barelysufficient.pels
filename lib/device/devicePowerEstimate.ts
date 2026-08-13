@@ -53,7 +53,7 @@ export function estimatePower(params: {
   device: HomeyDeviceLike;
   deviceId: string;
   deviceLabel: string;
-  controlCapabilityId?: BinaryControlCapabilityId;
+  binaryCapabilityId?: BinaryControlCapabilityId;
   measuredPowerKw?: number;
   now: number;
   state: Required<PowerEstimateState>;
@@ -63,7 +63,7 @@ export function estimatePower(params: {
     device,
     deviceId,
     deviceLabel,
-    controlCapabilityId,
+    binaryCapabilityId,
     measuredPowerKw,
     now,
     state,
@@ -76,7 +76,7 @@ export function estimatePower(params: {
     loadW,
     peakKw: resolveLearnedPeakKw(state.lastKnownPowerKw[deviceId], now),
     energyEstimateW: getHomeyEnergyEstimateWatts(device),
-    controlCapabilityId,
+    binaryCapabilityId,
   });
 
   // The losing candidates are passed to the log, not returned. They are what
@@ -119,9 +119,9 @@ function resolveExpectedPower(params: {
   loadW: number | null;
   peakKw: number | null;
   energyEstimateW: number | null;
-  controlCapabilityId?: BinaryControlCapabilityId;
+  binaryCapabilityId?: BinaryControlCapabilityId;
 }): Pick<PowerEstimateResult, 'expectedPowerKw' | 'expectedPowerSource' | 'hasEnergyEstimate'> {
-  const { override, loadW, peakKw, energyEstimateW, controlCapabilityId } = params;
+  const { override, loadW, peakKw, energyEstimateW, binaryCapabilityId } = params;
 
   // Gated like every other rung. The two writers of the override map validate
   // before storing, so this is defence in depth rather than a known hole — but
@@ -145,7 +145,7 @@ function resolveExpectedPower(params: {
     };
   }
   return {
-    expectedPowerKw: controlCapabilityId === 'evcharger_charging'
+    expectedPowerKw: binaryCapabilityId === 'evcharger_charging'
       ? EV_DEFAULT_EXPECTED_POWER_KW
       : DEFAULT_EXPECTED_POWER_KW,
     expectedPowerSource: 'default',

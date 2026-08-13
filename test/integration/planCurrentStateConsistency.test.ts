@@ -21,7 +21,7 @@ const buildLiveDevice = (
   name: 'Heater',
   targets: [],
   binaryControl: { on: false },
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   controllable: true,
   expectedPowerKw: 1.8,
   ...overrides,
@@ -42,7 +42,7 @@ const buildPlan = (
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
-    controlCapabilityId: 'onoff',
+    binaryCapabilityId: 'onoff',
     ...overrides,
   })) as DevicePlanDevice],
 });
@@ -86,9 +86,10 @@ describe('planner current-state consistency', () => {
     const state = createPlanEngineState();
     if (pendingRestore) {
       state.pendingBinaryCommands[liveDevice.id] = {
-        capabilityId: 'onoff',
+        dispatchState: 'accepted',
         desired: true,
         startedMs: Date.now(),
+        pendingMs: 90_000,
       };
     }
 

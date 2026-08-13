@@ -1,4 +1,4 @@
-import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
 /**
@@ -7,10 +7,8 @@ import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/
  * names no Homey capability ID, flow card, or native/synthetic channel; the
  * actuator maps the intent onto transport's capability/channel writes.
  *
- * Resolution belongs in the producer: `flowBacked` (whether a binary control is
- * a Homey Flow trigger vs a direct capability write) is snapshot-derived and is
- * resolved by the producing layer before the command is constructed. The actuator
- * only *routes* on the flag — it does not decide it.
+ * Transport resolves native-vs-Flow routing from its private binding. Every
+ * accepted binary dispatch remains pending until observer telemetry confirms it.
  *
  * See `notes/state-management/actuator-write-seam.md` for the two-write-contracts
  * design (transport input = channel-shaped; actuator input = intent-shaped).
@@ -19,26 +17,14 @@ export type DeviceCommand =
   | {
     kind: 'binary';
     deviceId: string;
-    /** Which binary control to drive — a control outcome, not an SDK channel. */
-    control: BinaryControlCapabilityId;
     desired: boolean;
-    /** Producer-resolved: true → route via the Flow trigger, not setCapability. */
-    flowBacked: boolean;
   }
   | {
     kind: 'target';
     deviceId: string;
     /** Producer-resolved target family used by policy fences before transport routing. */
-    targetKind?: 'temperature';
-    /**
-     * Present → write the single addressed capability via `setCapability`
-     * (propagates failures so the caller's retry/pending path fires). Absent →
-     * batch via `applyDeviceTargets` (swallows errors + refreshes).
-     */
-    capabilityId?: string;
+    target: 'temperature';
     value: number;
-    /** Free-text context tag forwarded to transport for diagnostics. */
-    contextInfo?: string;
   }
   | {
     kind: 'step';
@@ -57,14 +43,14 @@ export type DeviceCommand =
  * actuator layer carries no peer dependency on `lib/device/**`.
  */
 export type ActuatorTransport = {
-  setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
-  applyDeviceTargets: (targets: Record<string, number>, contextInfo?: string) => Promise<void>;
-  triggerFlowBackedBinaryControl: (
+  requestBinaryControl: (
     deviceId: string,
-    capabilityId: BinaryControlCapabilityId,
     desired: boolean,
   ) => Promise<void>;
-  requestSteppedLoadStep?: (params: {
+  requestTemperatureTarget: (deviceId: string, desired: number) => Promise<number>;
+  /** Resolve the exact semantic setpoint before pending/retry preflight. */
+  resolveTemperatureTarget: (deviceId: string, desired: number) => number;
+  requestSteppedLoadStep: (params: {
     deviceId: string;
     profile: SteppedLoadProfile;
     desiredStepId: string;
@@ -80,8 +66,20 @@ export type ActuatorTransport = {
  * stepped-load surface). It is **not** an idempotency signal — callers own
  * "already in posture" skips and never call the actuator in that case.
  */
-export type ActuatorOutcome = {
-  requested: boolean;
-  /** Present for `step` commands so callers can record desired-step bookkeeping. */
-  steppedResult?: SteppedLoadStepRequestResult;
-};
+export type ActuatorOutcome =
+  | { requested: false }
+  | {
+    requested: true;
+    kind: 'binary';
+  }
+  | {
+    requested: true;
+    kind: 'target';
+    /** Transport-resolved value actually sent for a normalized target command. */
+    requestedTargetValue: number;
+  }
+  | {
+    requested: true;
+    kind: 'step';
+    steppedResult: SteppedLoadStepRequestResult;
+  };

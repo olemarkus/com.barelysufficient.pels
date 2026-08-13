@@ -22,12 +22,6 @@
  * `isPlanActivelyConverging` emptiness probe; no consumer reads or
  * evicts it in place.
  */
-import type {
-  AssociatedCarSnapshot,
-  BinaryControlCapabilityId,
-  EvObservedProbe,
-  MeasuredPowerObservedProbe,
-} from '../../packages/contracts/src/types';
 import {
   type PendingBinaryCommand,
   type PendingObservationSource,
@@ -35,8 +29,6 @@ import {
   isPendingBinaryCommandActive,
 } from './pendingBinaryCommandTypes';
 import { getLogger } from '../logging/logger';
-import { formatPendingBinaryObservedValue } from './pendingBinaryCommandFormatting';
-import { MIN_ACTIVE_MEASURED_POWER_KW } from './observedPower';
 
 export type {
   PendingBinaryCommand,
@@ -47,15 +39,20 @@ export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;
 
 export type BinaryCommandLifecycleEvent = {
   deviceId: string;
-  capabilityId: BinaryControlCapabilityId;
   desired: boolean;
   startedAtMs?: number;
   settledAtMs?: number;
-  evidenceSource?: 'charging_state' | 'measured_power' | 'associated_car' | 'boolean_fallback';
+};
+
+export type BinaryCommandDispatchAcceptedEvent = {
+  deviceId: string;
+  desired: boolean;
+  startedAtMs: number;
+  confirmationMs: number;
 };
 
 export type BinaryCommandLifecycleListener = {
-  onDispatchAccepted?: (event: BinaryCommandLifecycleEvent) => void;
+  onDispatchAccepted?: (event: BinaryCommandDispatchAcceptedEvent) => void;
   onDispatchFailed?: (event: BinaryCommandLifecycleEvent) => void;
   onConfirmed?: (event: BinaryCommandLifecycleEvent) => void;
   onTimedOut?: (event: BinaryCommandLifecycleEvent) => void;
@@ -69,8 +66,9 @@ export type BinaryCommandLifecycleListener = {
  * store is the single source of truth in both directions.
  */
 export class PendingBinaryCommandStore {
+  private readonly deferredConfirmationByDevice = new Map<string, () => void>();
+
   private readonly recentConfirmedOffByDevice = new Map<string, {
-    capabilityId: BinaryControlCapabilityId;
     confirmedAtMs: number;
   }>();
 
@@ -80,12 +78,20 @@ export class PendingBinaryCommandStore {
   ) {}
 
   recordDispatchAccepted(deviceId: string, command: BinaryCommandLifecycleEvent): void {
+    const pending = this.backing[deviceId];
+    if (!pending) return;
+    this.backing[deviceId] = { ...pending, dispatchState: 'accepted' };
     this.lifecycle?.onDispatchAccepted?.({
-      ...command,
       deviceId,
-      startedAtMs: this.backing[deviceId]?.startedMs,
-      settledAtMs: Date.now(),
+      desired: command.desired,
+      startedAtMs: pending.startedMs,
+      confirmationMs: getPendingBinaryCommandWindowMs(pending),
     });
+    const confirm = this.deferredConfirmationByDevice.get(deviceId);
+    if (confirm) {
+      this.deferredConfirmationByDevice.delete(deviceId);
+      confirm();
+    }
   }
 
   recordDispatchFailed(deviceId: string, command: BinaryCommandLifecycleEvent): void {
@@ -100,22 +106,19 @@ export class PendingBinaryCommandStore {
   lifecycleConfirmed(
     deviceId: string,
     command: PendingBinaryCommand,
-    observation: PendingBinaryObservationSnapshot,
+    observation: ObservedBinaryCommandConfirmation,
   ): void {
     this.lifecycle?.onConfirmed?.({
       deviceId,
-      capabilityId: command.capabilityId,
       desired: command.desired,
       startedAtMs: command.startedMs,
       settledAtMs: observation.observedAtMs,
-      evidenceSource: observation.evidenceSource,
     });
   }
 
   lifecycleTimedOut(deviceId: string, command: PendingBinaryCommand): void {
     this.lifecycle?.onTimedOut?.({
       deviceId,
-      capabilityId: command.capabilityId,
       desired: command.desired,
       startedAtMs: command.startedMs,
       settledAtMs: Date.now(),
@@ -123,8 +126,21 @@ export class PendingBinaryCommandStore {
   }
 
   /** Record a freshly issued command keyed by `deviceId`; replaces any prior entry. */
-  record(deviceId: string, command: PendingBinaryCommand): void {
-    this.backing[deviceId] = command;
+  record(deviceId: string, command: Omit<PendingBinaryCommand, 'dispatchState'>): void {
+    this.backing[deviceId] = { ...command, dispatchState: 'dispatching' };
+  }
+
+  /** Whether transport accepted the request and observer settlement may commit it. */
+  isDispatchAccepted(deviceId: string): boolean {
+    return this.backing[deviceId]?.dispatchState === 'accepted';
+  }
+
+  deferConfirmation(deviceId: string, confirm: () => void): void {
+    this.deferredConfirmationByDevice.set(deviceId, confirm);
+  }
+
+  clearDeferredConfirmation(deviceId: string): void {
+    this.deferredConfirmationByDevice.delete(deviceId);
   }
 
   /**
@@ -136,30 +152,27 @@ export class PendingBinaryCommandStore {
    */
   recordConfirmedBinaryCommand(params: {
     deviceId: string;
-    capabilityId: BinaryControlCapabilityId;
     desired: boolean;
     confirmedAtMs?: number;
   }): void {
     const {
-      deviceId, capabilityId, desired, confirmedAtMs = Date.now(),
+      deviceId, desired, confirmedAtMs = Date.now(),
     } = params;
     const current = this.recentConfirmedOffByDevice.get(deviceId);
     if (desired) {
       if (
-        current?.capabilityId === capabilityId
-        && confirmedAtMs > current.confirmedAtMs
+        current && confirmedAtMs > current.confirmedAtMs
       ) {
         this.recentConfirmedOffByDevice.delete(deviceId);
       }
       return;
     }
     if (current && current.confirmedAtMs > confirmedAtMs) return;
-    this.recentConfirmedOffByDevice.set(deviceId, { capabilityId, confirmedAtMs });
+    this.recentConfirmedOffByDevice.set(deviceId, { confirmedAtMs });
   }
 
   hasRecentConfirmedOff(
     deviceId: string,
-    capabilityId: BinaryControlCapabilityId,
     nowMs = Date.now(),
   ): boolean {
     const recent = this.recentConfirmedOffByDevice.get(deviceId);
@@ -168,18 +181,16 @@ export class PendingBinaryCommandStore {
       this.recentConfirmedOffByDevice.delete(deviceId);
       return false;
     }
-    return recent.capabilityId === capabilityId;
+    return true;
   }
 
   clearRecentConfirmedOff(
     deviceId: string,
-    capabilityId: BinaryControlCapabilityId,
     observedOnAtMs?: number,
   ): void {
     const recent = this.recentConfirmedOffByDevice.get(deviceId);
     if (
-      recent?.capabilityId === capabilityId
-      && (observedOnAtMs === undefined || observedOnAtMs > recent.confirmedAtMs)
+      recent && (observedOnAtMs === undefined || observedOnAtMs > recent.confirmedAtMs)
     ) {
       this.recentConfirmedOffByDevice.delete(deviceId);
     }
@@ -187,15 +198,14 @@ export class PendingBinaryCommandStore {
 
   isBinaryChangeAttributableToPels(
     deviceId: string,
-    capabilityId: BinaryControlCapabilityId,
   ): boolean {
-    return this.get(deviceId)?.capabilityId === capabilityId
-      || this.hasRecentConfirmedOff(deviceId, capabilityId);
+    return this.get(deviceId) !== undefined || this.hasRecentConfirmedOff(deviceId);
   }
 
   /** Clear the pending entry for a device, if any. */
   clear(deviceId: string): void {
     delete this.backing[deviceId];
+    this.deferredConfirmationByDevice.delete(deviceId);
   }
 
   /** Return the active pending entry, transparently evicting stale entries. */
@@ -210,7 +220,6 @@ export class PendingBinaryCommandStore {
       event: 'pending_binary_command_cleared',
       reason: 'stale_age',
       deviceId,
-      capabilityId: entry.capabilityId,
       desired: entry.desired,
       ageMs: nowMs - entry.startedMs,
       timeoutMs: getPendingBinaryCommandWindowMs(entry),
@@ -318,7 +327,6 @@ function reconcilePendingEntry(params: {
   if (!isPendingBinaryCommandActive({
     pending,
     nowMs,
-    communicationModel: liveDevice?.communicationModel,
   })) {
     store.clear(deviceId);
     store.lifecycleTimedOut(deviceId, pending);
@@ -326,7 +334,7 @@ function reconcilePendingEntry(params: {
       event: 'pending_binary_command_timed_out',
       deviceId,
       deviceName: liveDevice ? liveDevice.name : undefined,
-      capabilityId: pending.capabilityId,
+      controlAxis: 'binary',
       desired: pending.desired,
       ageMs: nowMs - pending.startedMs,
       timeoutMs: getPendingBinaryCommandWindowMs(pending),
@@ -341,31 +349,16 @@ function reconcilePendingEntry(params: {
   if (!observation) return false;
   const observedValue = observation.observedValue;
   if (observedValue === pending.desired) {
-    store.recordConfirmedBinaryCommand({
-      deviceId,
-      capabilityId: pending.capabilityId,
-      desired: pending.desired,
-      confirmedAtMs: observation.observedAtMs,
+    const confirm = (): void => confirmPendingBinaryCommand({
+      store, deviceId, pending, liveDevice, source, observation, onConfirmed,
     });
-    onConfirmed?.({
-      deviceId,
-      liveDevice,
-      pending,
-      source,
-      confirmedAtMs: observation.observedAtMs,
-    });
-    store.lifecycleConfirmed(deviceId, pending, observation);
-    store.clear(deviceId);
-    logger.debug({
-      event: 'pending_binary_command_confirmed',
-      deviceId,
-      deviceName: liveDevice.name,
-      capabilityId: pending.capabilityId,
-      observedValue: formatPendingBinaryObservedValue(pending.capabilityId, observedValue),
-      source,
-    });
+    if (store.isDispatchAccepted(deviceId)) confirm();
+    else store.deferConfirmation(deviceId, confirm);
     return true;
   }
+  // A newer contradiction supersedes an earlier matching echo seen while the
+  // request was still dispatching. Acceptance must never replay stale evidence.
+  store.clearDeferredConfirmation(deviceId);
 
   if (
     pending.lastObservedValue === observedValue
@@ -388,12 +381,54 @@ function reconcilePendingEntry(params: {
     event: 'pending_binary_command_waiting',
     deviceId,
     deviceName: liveDevice.name,
-    capabilityId: pending.capabilityId,
-    observedValue: formatPendingBinaryObservedValue(pending.capabilityId, observedValue),
-    expected: formatPendingBinaryObservedValue(pending.capabilityId, pending.desired),
+    controlAxis: 'binary',
+    observedValue,
+    expected: pending.desired,
     source,
   });
   return true;
+}
+
+function confirmPendingBinaryCommand(params: {
+  store: PendingBinaryCommandStore;
+  deviceId: string;
+  pending: PendingBinaryCommand;
+  liveDevice: PendingBinaryLiveDevice;
+  source: PendingObservationSource;
+  observation: ObservedBinaryCommandConfirmation;
+  onConfirmed?: (params: {
+    deviceId: string;
+    liveDevice: PendingBinaryLiveDevice;
+    pending: PendingBinaryCommand;
+    source: PendingObservationSource;
+    confirmedAtMs: number;
+  }) => void;
+}): void {
+  const {
+    store, deviceId, pending, liveDevice, source, observation, onConfirmed,
+  } = params;
+  store.recordConfirmedBinaryCommand({
+    deviceId,
+    desired: pending.desired,
+    confirmedAtMs: observation.observedAtMs,
+  });
+  onConfirmed?.({
+    deviceId,
+    liveDevice,
+    pending,
+    source,
+    confirmedAtMs: observation.observedAtMs,
+  });
+  store.lifecycleConfirmed(deviceId, pending, observation);
+  store.clear(deviceId);
+  logger.debug({
+    event: 'pending_binary_command_confirmed',
+    deviceId,
+    deviceName: liveDevice.name,
+    controlAxis: 'binary',
+    observedValue: observation.observedValue,
+    source,
+  });
 }
 
 function resolveStore(params: {
@@ -412,140 +447,37 @@ function resolveStore(params: {
  * device. Mirrors `PlanInputDevice` fields without dragging the plan
  * layer into observer's import graph.
  *
- * Intersected with `EvObservedProbe` (rather than re-declaring the field): the
- * binary-settle feeder is the transport-owned snapshot list
- * (`getSettleDevices` in `setup/appInit/createPlanService.ts`), whose objects
- * physically carry the observed EV plug-state the consumer-facing snapshot
- * type omits — this is an OWNER-fed settle seam, the same probe-declared
- * carriage as `TransportDeviceSnapshot`.
+ * The producer explicitly projects only these confirmation facts; raw transport
+ * capability and Flow bindings never enter this observer/planner handoff.
  */
 export type PendingBinaryLiveDevice = {
   id: string;
   name: string;
-  communicationModel?: 'local' | 'cloud';
-  binaryControlObservation?: PendingBinaryObservationSnapshot;
-  associatedCar?: AssociatedCarSnapshot;
-} & EvObservedProbe & MeasuredPowerObservedProbe;
-
-export type PendingBinaryObservationSnapshot = {
-  capabilityId: BinaryControlCapabilityId;
-  observedValue: boolean;
-  observedAtMs: number;
-  observedCapabilityIds: string[];
-  evidenceSource?: BinaryCommandLifecycleEvent['evidenceSource'];
+  binaryCommandConfirmation:
+    | { state: 'unavailable' }
+    | {
+      state: 'observed';
+      observedValue: boolean;
+      observedAtMs: number;
+    };
 };
+
+type ObservedBinaryCommandConfirmation = Extract<
+  PendingBinaryLiveDevice['binaryCommandConfirmation'],
+  { state: 'observed' }
+>;
 
 function getSettlingBinaryObservation(
   liveDevice: PendingBinaryLiveDevice,
   pending: PendingBinaryCommand,
-): PendingBinaryObservationSnapshot | undefined {
-  const observation = liveDevice.binaryControlObservation;
-  if (pending.capabilityId === 'evcharger_charging' && pending.desired) {
-    return resolveSettlingEvStartObservation(liveDevice, pending, observation);
-  }
-  if (!observation) return undefined;
-  if (observation.capabilityId !== pending.capabilityId) return undefined;
+): ObservedBinaryCommandConfirmation | undefined {
+  const observation = liveDevice.binaryCommandConfirmation;
+  if (observation.state === 'unavailable') return undefined;
   if (!Number.isFinite(observation.observedAtMs)) return undefined;
-  if (observation.observedAtMs <= pending.startedMs) return undefined;
-  if (pending.capabilityId === 'evcharger_charging') {
-    return resolveSettlingEvObservation(liveDevice, observation);
-  }
+  // Millisecond timestamps can be equal when Homey echoes the capability value
+  // synchronously inside the SDK write. The command was only dispatched because
+  // the prior observed value disagreed, so a matching observation at the same
+  // timestamp is valid post-dispatch evidence.
+  if (observation.observedAtMs < pending.startedMs) return undefined;
   return observation;
-}
-
-function resolveSettlingEvObservation(
-  liveDevice: PendingBinaryLiveDevice,
-  observation: PendingBinaryObservationSnapshot,
-): PendingBinaryObservationSnapshot | undefined {
-  if (liveDevice.evChargingState === undefined) {
-    return observation.observedCapabilityIds.includes('evcharger_charging_state')
-      ? undefined
-      : observation;
-  }
-  return observation.observedCapabilityIds.includes('evcharger_charging_state')
-    ? observation
-    : undefined;
-}
-
-function resolveSettlingEvStartObservation(
-  liveDevice: PendingBinaryLiveDevice,
-  pending: PendingBinaryCommand,
-  observation: PendingBinaryObservationSnapshot | undefined,
-): PendingBinaryObservationSnapshot | undefined {
-  const validObservation = getValidEvStartBinaryObservation(observation, pending);
-  const stateEvidence = getEvStateEvidence(validObservation);
-  const measuredEvidence = getEvMeasuredPowerEvidence(liveDevice);
-  const carEvidence = getEvAssociatedCarEvidence(liveDevice);
-  const evidence = [
-    ...(stateEvidence ? [stateEvidence] : []),
-    ...(measuredEvidence ? [measuredEvidence] : []),
-    ...(carEvidence ? [carEvidence] : []),
-  ];
-  const confirming = evidence.find((entry) => entry.observedAtMs > pending.startedMs && entry.charging);
-  if (confirming) {
-    return {
-      capabilityId: pending.capabilityId,
-      observedValue: true,
-      observedAtMs: confirming.observedAtMs,
-      observedCapabilityIds: validObservation?.observedCapabilityIds ?? [],
-      evidenceSource: confirming.source,
-    };
-  }
-  if (evidence.length > 0) {
-    return validObservation ? {
-      ...validObservation,
-      observedValue: false,
-      evidenceSource: stateEvidence?.source,
-    } : undefined;
-  }
-  if (liveDevice.evChargingState !== undefined) return undefined;
-  return validObservation ? { ...validObservation, evidenceSource: 'boolean_fallback' } : undefined;
-}
-
-function getValidEvStartBinaryObservation(
-  observation: PendingBinaryObservationSnapshot | undefined,
-  pending: PendingBinaryCommand,
-): PendingBinaryObservationSnapshot | undefined {
-  if (!observation || observation.capabilityId !== pending.capabilityId) return undefined;
-  if (!Number.isFinite(observation.observedAtMs) || observation.observedAtMs <= pending.startedMs) return undefined;
-  return observation;
-}
-
-type EvStartEvidence = {
-  observedAtMs: number;
-  charging: boolean;
-  source: NonNullable<BinaryCommandLifecycleEvent['evidenceSource']>;
-};
-
-function getEvStateEvidence(
-  observation: PendingBinaryObservationSnapshot | undefined,
-): EvStartEvidence | undefined {
-  if (!observation?.observedCapabilityIds.includes('evcharger_charging_state')) return undefined;
-  return {
-    observedAtMs: observation.observedAtMs,
-    charging: observation.observedValue,
-    source: 'charging_state',
-  };
-}
-
-function getEvMeasuredPowerEvidence(liveDevice: PendingBinaryLiveDevice): EvStartEvidence | undefined {
-  if (
-    liveDevice.measuredPowerObservedAtMs === undefined
-    || !Number.isFinite(liveDevice.measuredPowerObservedAtMs)
-    || !Number.isFinite(liveDevice.measuredPowerKw)
-  ) return undefined;
-  return {
-    observedAtMs: liveDevice.measuredPowerObservedAtMs,
-    charging: (liveDevice.measuredPowerKw ?? 0) > MIN_ACTIVE_MEASURED_POWER_KW,
-    source: 'measured_power',
-  };
-}
-
-function getEvAssociatedCarEvidence(liveDevice: PendingBinaryLiveDevice): EvStartEvidence | undefined {
-  if (!liveDevice.associatedCar) return undefined;
-  return {
-    observedAtMs: liveDevice.associatedCar.chargingStateObservedAtMs,
-    charging: liveDevice.associatedCar.chargingState === 'plugged_in_charging',
-    source: 'associated_car',
-  };
 }

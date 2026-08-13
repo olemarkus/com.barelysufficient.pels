@@ -93,7 +93,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
-    targetCap: string;
+    target: 'temperature';
     desired: number;
     observedValue?: unknown;
     observedSource?: string;
@@ -251,14 +251,12 @@ export class PlanExecutor {
     confirmedAtMs?: number;
   }): void {
     const { deviceId, liveDevice, pending } = params;
-    if (!pending.flowBackedControl) return;
-
     const now = params.confirmedAtMs ?? Date.now();
     logger.info({
       event: 'binary_command_applied',
       deviceId,
       deviceName: liveDevice.name,
-      capabilityId: pending.capabilityId,
+      controlAxis: 'binary',
       desired: pending.desired,
       reasonCode: resolveConfirmedBinaryCommandReasonCode(pending),
     });
@@ -278,10 +276,11 @@ export class PlanExecutor {
           name: liveDevice.name,
           nowTs: now,
         });
+        this.state.clearPendingSwapTarget(deviceId);
       }
 
     } else {
-      // Binary OFF confirmed (flow-backed). The lifecycle-vs-capacity recorder selection
+      // Binary OFF confirmed. The lifecycle-vs-capacity recorder selection
       // comes from the shared helper so it stays in lockstep with the direct path: a
       // smart-task lifecycle-end disable records diagnostics only via the release recorder
       // (no capacity cooldown markers, because it is a planning decision, not capacity
@@ -319,7 +318,9 @@ export class PlanExecutor {
     if (!this.targetExecutorContext) {
       this.targetExecutorContext = {
         state: this.state,
-        getObservedState: this.deps.getObservedState,
+        getObservedTemperatureValue: (deviceId) => (
+          this.deps.getObservedState(deviceId)?.targets[0]?.value
+        ),
         getLifecycleOwnedPendingTargetCommand: (deviceId) => (
           this.lifecycleFallbackDispatcher?.getOwnedTargetPending(deviceId)
         ),
@@ -367,7 +368,11 @@ export class PlanExecutor {
         // Route step writes through the single actuator seam; the `{ requested: false }`
         // fallback matches the absent-stepped-surface arm of SteppedLoadStepRequestResult.
         requestSteppedLoadStep: (params) => this.deps.actuator.apply({ kind: 'step', ...params })
-          .then((outcome) => outcome.steppedResult ?? { requested: false as const }),
+          .then((outcome) => (
+            outcome.requested && outcome.kind === 'step'
+              ? outcome.steppedResult
+              : { requested: false as const }
+          )),
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };
     }

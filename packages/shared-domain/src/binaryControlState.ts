@@ -15,7 +15,7 @@
  *
  * Browser-safe: a structural shape, no Homey SDK types.
  */
-import type { BinaryControlCapabilityId, BinaryControlObservation } from '../../contracts/src/types';
+import type { BinaryControlObservation } from '../../contracts/src/types';
 
 type BinaryControlObserved = { binaryControl?: { on: boolean } };
 
@@ -69,7 +69,6 @@ export const getBinaryOn = (device: BinaryControlled): boolean => device.binaryC
  * all fit. Browser-safe: contracts types only, no Homey SDK types.
  */
 type ObservedBinaryControlFields = BinaryControlObserved & {
-  controlCapabilityId?: BinaryControlCapabilityId;
   binaryControlObservation?: Pick<
     BinaryControlObservation,
     'valid' | 'capabilityId' | 'observedValue' | 'observedCapabilityIds'
@@ -77,23 +76,15 @@ type ObservedBinaryControlFields = BinaryControlObserved & {
 };
 
 /**
- * Planner command-equivalence state as one strict boolean.
- *
- * The ordinary binary state is the complete answer for generic controls. EV
- * chargers add one orthogonal producer-resolved fact: `evCharging=true` means
- * charging is permitted even when the activity-derived binary state is still
- * off (`plugged_in`, car not accepting charge). Conversely, observed charging
- * activity is on even if the raw control read lags false. OR the two trusted
- * facts here so the planner compares desired commands against one non-nullable
- * value and never interprets the EV capability ID or plug-state enum.
- *
- * This is a command de-duplication projection only and does not redefine
- * transport, session, SoC, or UI state.
+ * Planner command-equivalence state as one strict boolean. The producer has
+ * already resolved the device-specific control capability into
+ * `binaryControl`; physical activity such as EV charging remains a separate
+ * fact and must not change whether an accepted binary command has settled.
  */
 export function resolveBinaryCommandCurrentOn(
   snapshot: BinaryControlled & { evCharging?: boolean },
 ): boolean {
-  return snapshot.binaryControl.on || snapshot.evCharging === true;
+  return snapshot.binaryControl.on;
 }
 
 /**
@@ -110,9 +101,7 @@ export function resolveBinaryCommandCurrentOn(
  * changes no load.
  */
 export function isTrustedObservedBinaryOff(snapshot: ObservedBinaryControlFields | undefined): boolean {
-  if (!snapshot?.controlCapabilityId) return false;
-  const observation = snapshot.binaryControlObservation;
+  const observation = snapshot?.binaryControlObservation;
   if (observation?.valid !== true) return false;
-  if (observation.capabilityId !== snapshot.controlCapabilityId) return false;
   return observation.observedValue === false;
 }

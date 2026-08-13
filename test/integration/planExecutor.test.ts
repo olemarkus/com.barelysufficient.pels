@@ -3,7 +3,10 @@ import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExec
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import {
+  createPendingBinaryCommandStore,
+  syncPendingBinaryCommands,
+} from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
 import { makeFlowBackedBinaryTrigger } from '../../setup/appInit/buildDeviceActuator';
 import {
@@ -35,6 +38,7 @@ import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import { hasPlanExecutionDrift } from '../../lib/executor/executorConvergence';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
@@ -42,6 +46,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
+import { normalizeTargetCapabilityValue } from '../../lib/utils/targetCapabilities';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
@@ -77,6 +82,7 @@ const pd = (
       currentTemperature?: number;
       plannedTarget?: number;
       evChargingState?: string;
+      binaryCapabilityId?: string;
     },
 ): DevicePlanDevice => withTemperatureDiscriminant(
   // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
@@ -108,7 +114,7 @@ const buildPlan = (): DevicePlan => ({
       plannedTarget: 21,
       controllable: true,
       available: true,
-      controlCapabilityId: 'onoff' as const,
+      currentOn: false,
       reason: KEEP_REASON,
     }),
   ],
@@ -132,7 +138,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       plannedTarget,
       controllable: true,
       available: true,
-      controlCapabilityId: 'onoff' as const,
+      currentOn: true,
       reason: KEEP_REASON,
     }),
   ],
@@ -141,19 +147,19 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
 const buildExecutor = (
   state = createPlanEngineState(),
   // Accept the loose snapshot literals call sites declare (where
-  // `controlCapabilityId` widens to `string` and richer fields like
+  // `binaryCapabilityId` widens to `string` and richer fields like
   // `deviceClass`/`targets`/`flowBacked` may be present) and normalise to the
   // strict snapshot array the transport mock expects.
   snapshotInput: readonly (
     Partial<
-      TargetDeviceSnapshot & EvObservedProbe
+      TransportDeviceSnapshot & EvObservedProbe
       & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
     > & { id: string }
   )[] = [
     {
       id: 'dev-1',
       name: 'Heater',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
       binaryControl: { on: false },
@@ -166,7 +172,7 @@ const buildExecutor = (
   overrides: Partial<PlanExecutorDeps> & { structuredLog?: unknown; debugStructured?: unknown } = {},
 ) => {
   const { structuredLog: _structuredLog, debugStructured: _debugStructuredOverride, ...depsOverrides } = overrides;
-  const snapshot = snapshotInput as (TargetDeviceSnapshot & EvObservedProbe)[];
+  const snapshot = snapshotInput as (TransportDeviceSnapshot & EvObservedProbe)[];
   const triggerCards = {
     desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
     flow_backed_device_turn_on_requested: { trigger: vi.fn().mockResolvedValue(true) },
@@ -227,9 +233,28 @@ const buildExecutor = (
     // Route writes through the actuator over the SAME device-manager methods + the
     // shared production flow-trigger factory, so routing matches production wiring.
     actuator: createDeviceActuator({
-      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
-      applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: makeFlowBackedBinaryTrigger(flowMock),
+      resolveTemperatureTarget: (deviceId, desired) => {
+        const target = deviceManager.getSnapshotByDeviceId(deviceId)?.targets?.[0];
+        if (!target) throw new Error('No temperature target binding');
+        return normalizeTargetCapabilityValue({ target, value: desired });
+      },
+      requestBinaryControl: async (deviceId, desired) => {
+        const live = deviceManager.getSnapshotByDeviceId(deviceId);
+        const capabilityId = live?.binaryCapabilityId;
+        if (!capabilityId) throw new Error('No binary control binding');
+        if (live.flowBackedCapabilityIds?.includes(capabilityId)) {
+          await makeFlowBackedBinaryTrigger(flowMock)(deviceId, capabilityId, desired);
+          return;
+        }
+        await deviceManager.setCapability(deviceId, capabilityId, desired);
+      },
+      requestTemperatureTarget: async (deviceId, desired) => {
+        const target = deviceManager.getSnapshotByDeviceId(deviceId)?.targets?.[0];
+        if (!target) throw new Error('No temperature target binding');
+        const requested = normalizeTargetCapabilityValue({ target, value: desired });
+        await deviceManager.setCapability(deviceId, target.id, requested);
+        return requested;
+      },
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
     getCapacityGuard: () => undefined,
@@ -358,13 +383,16 @@ describe('PlanExecutor shortfall side-effect retry', () => {
 describe('PlanExecutor declined actuator requests', () => {
   it('does not record a fenced binary request as a write or leave pending state', async () => {
     const state = createPlanEngineState();
-    const apply = vi.fn(async () => ({ requested: false }));
-    const actuator: Actuator = { apply };
+    const apply = vi.fn(async () => ({ requested: false as const }));
+    const actuator: Actuator = {
+      apply,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+    };
     const persistLastControlledMs = vi.fn();
     const { executor } = buildExecutor(state, [{
       id: 'dev-1',
       name: 'Heater',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -387,7 +415,7 @@ describe('PlanExecutor declined actuator requests', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
     });
@@ -395,9 +423,7 @@ describe('PlanExecutor declined actuator requests', () => {
     expect(apply).toHaveBeenCalledWith({
       kind: 'binary',
       deviceId: 'dev-1',
-      control: 'onoff',
       desired: false,
-      flowBacked: false,
     });
     expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
@@ -411,14 +437,17 @@ describe('PlanExecutor declined actuator requests', () => {
 
   it('does not record a fenced target request as a write or pending retry', async () => {
     const state = createPlanEngineState();
-    const apply = vi.fn(async () => ({ requested: false }));
-    const actuator: Actuator = { apply };
+    const apply = vi.fn(async () => ({ requested: false as const }));
+    const actuator: Actuator = {
+      apply,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+    };
     const persistLastControlledMs = vi.fn();
     const { executor } = buildExecutor(state, [{
       id: 'dev-1',
       expectedPowerKw: 1,
       name: 'Heater',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -433,8 +462,7 @@ describe('PlanExecutor declined actuator requests', () => {
     expect(apply).toHaveBeenCalledWith({
       kind: 'target',
       deviceId: 'dev-1',
-      targetKind: 'temperature',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       value: 23,
     });
     expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] });
@@ -454,7 +482,7 @@ describe('PlanExecutor restore logging', () => {
       {
         id: 'bad-step',
         name: 'Bad stepped load',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -462,7 +490,7 @@ describe('PlanExecutor restore logging', () => {
       {
         id: 'dev-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -495,7 +523,7 @@ describe('PlanExecutor restore logging', () => {
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           reason: CAPACITY_REASON,
         }),
       ],
@@ -522,7 +550,7 @@ describe('PlanExecutor restore logging', () => {
       {
         id: 'dev-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -558,7 +586,7 @@ describe('PlanExecutor restore logging', () => {
       {
         id: 'dev-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -595,7 +623,7 @@ describe('PlanExecutor restore logging', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -659,7 +687,7 @@ describe('PlanExecutor restore logging', () => {
       id: 'dev-1',
       name: 'EV Charger',
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -697,7 +725,7 @@ describe('PlanExecutor restore logging', () => {
       id: 'dev-1',
       name: 'EV Charger',
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -774,7 +802,7 @@ describe('PlanExecutor restore logging', () => {
       [{
         id: 'dev-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         flowBacked: true,
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
@@ -797,7 +825,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
     });
@@ -808,10 +836,10 @@ describe('PlanExecutor restore logging', () => {
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'flow_backed_binary_command_requested',
+      event: 'binary_command_succeeded',
       deviceId: 'dev-1',
       deviceName: 'Heater',
-      capabilityId: 'onoff',
+      controlAxis: 'binary',
       desired: false,
       logContext: 'capacity',
     }));
@@ -821,12 +849,11 @@ describe('PlanExecutor restore logging', () => {
     }));
     expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(state.pendingBinaryCommands['dev-1']).toMatchObject({
-      capabilityId: 'onoff',
       desired: false,
     });
   });
 
-  it('records flow-backed restore actuation only after confirmation and keeps pending swap protection until then', async () => {
+  it('records a fast flow-backed restore confirmation exactly once', async () => {
     const state = createPlanEngineState();
     state.shedDecidedMs['dev-1'] = Date.now() - 10_000;
     state.swapByDevice['dev-1'] = {
@@ -838,7 +865,7 @@ describe('PlanExecutor restore logging', () => {
       [{
         id: 'dev-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         flowBacked: true,
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
@@ -847,6 +874,25 @@ describe('PlanExecutor restore logging', () => {
       }],
     );
 
+    flowBackedTurnOnTrigger.trigger.mockImplementation(async () => {
+      const pending = state.pendingBinaryCommands['dev-1'];
+      expect(pending).toMatchObject({ desired: true });
+      syncPendingBinaryCommands({
+        store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        liveDevices: [{
+          id: 'dev-1',
+          name: 'Heater',
+          binaryCommandConfirmation: {
+            state: 'observed',
+            observedValue: true,
+            observedAtMs: pending.startedMs + 1,
+          },
+        }],
+        source: 'device_update',
+        onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
+      });
+    });
+
     await executor.applyPlanActions(buildPlan());
 
     expect(flowBackedTurnOnTrigger.trigger).toHaveBeenCalledWith(
@@ -854,15 +900,19 @@ describe('PlanExecutor restore logging', () => {
       { deviceId: 'dev-1' },
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
-    expect(state.swapByDevice['dev-1']).toMatchObject({ pendingTarget: true });
-
-    executor.handleConfirmedBinaryCommand({
-      deviceId: 'dev-1',
-      liveDevice: { id: 'dev-1', name: 'Heater' },
-      pending: state.pendingBinaryCommands['dev-1'],
-      confirmedAtMs: Date.now(),
+    const acceptedPending = state.pendingBinaryCommands['dev-1'];
+    syncPendingBinaryCommands({
+      store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      liveDevices: [{
+        id: 'dev-1', name: 'Heater',
+        binaryCommandConfirmation: {
+          state: 'observed', observedValue: true, observedAtMs: acceptedPending.startedMs + 1,
+        },
+      }],
+      source: 'rebuild',
+      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
     });
+    expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',
@@ -876,17 +926,20 @@ describe('PlanExecutor restore logging', () => {
       startedMs: expect.any(Number),
       source: 'pels_restore',
     });
-    expect(state.swapByDevice['dev-1']).toMatchObject({ pendingTarget: true });
+    expect(state.swapByDevice['dev-1']).toBeUndefined();
+    expect(logCapture.events.filter((event) => (
+      event.event === 'binary_command_applied' && event.deviceId === 'dev-1'
+    ))).toHaveLength(1);
   });
 
-  it('records flow-backed shed actuation only after confirmation', async () => {
+  it('records flow-backed shed accounting only after observed confirmation', async () => {
     const state = createPlanEngineState();
     const { executor } = buildExecutor(
       state,
       [{
         id: 'dev-1',
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         flowBacked: true,
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
@@ -909,18 +962,17 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
     });
 
     expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    const pending = state.pendingBinaryCommands['dev-1'];
+    expect(pending).toMatchObject({ desired: false });
 
     executor.handleConfirmedBinaryCommand({
-      deviceId: 'dev-1',
-      liveDevice: { id: 'dev-1', name: 'Heater' },
-      pending: state.pendingBinaryCommands['dev-1'],
-      confirmedAtMs: Date.now(),
+      deviceId: 'dev-1', liveDevice: { id: 'dev-1', name: 'Heater' }, pending,
     });
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -930,55 +982,6 @@ describe('PlanExecutor restore logging', () => {
       reasonCode: 'shedding',
     }));
     expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
-    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
-  });
-
-  it('does NOT stamp capacity cooldown markers on a confirmed flow-backed lifecycle-release', () => {
-    // Regression for the flow-backed half of the binary lifecycle-release bug: the
-    // marker stamp is deferred to handleConfirmedBinaryCommand, so a pending entry
-    // tagged lifecycleRelease must route through the diagnostic-only recorder and
-    // leave lastInstabilityMs / lastDeviceShedMs untouched (a lifecycle disable is a
-    // planning decision, not capacity pressure).
-    const state = createPlanEngineState();
-    const { executor } = buildExecutor(
-      state,
-      [{
-        id: 'dev-1',
-        name: 'Heater',
-        controlCapabilityId: 'onoff',
-        flowBacked: true,
-        flowBackedCapabilityIds: ['onoff'],
-        canSetControl: true,
-        available: true,
-        binaryControl: { on: true },
-      }],
-    );
-    state.pendingBinaryCommands['dev-1'] = {
-      capabilityId: 'onoff',
-      desired: false,
-      startedMs: Date.now(),
-      flowBackedControl: true,
-      logContext: 'capacity',
-      lifecycleRelease: true,
-    };
-
-    executor.handleConfirmedBinaryCommand({
-      deviceId: 'dev-1',
-      liveDevice: { id: 'dev-1', name: 'Heater' },
-      pending: state.pendingBinaryCommands['dev-1'],
-      confirmedAtMs: Date.now(),
-    });
-
-    // The confirmation log attributes the event as a lifecycle release, not a shed.
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_applied',
-      deviceId: 'dev-1',
-      desired: false,
-      reasonCode: 'lifecycle_release',
-    }));
-    expect(state.lastInstabilityMs).toBeNull();
-    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
-    // The diagnostic / last-controlled bookkeeping still happens via the release recorder.
     expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
   });
 
@@ -1013,6 +1016,19 @@ describe('PlanExecutor restore logging', () => {
     await executor.applyPlanActions(buildPlan());
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    const restorePending = nextState.pendingBinaryCommands['dev-1'];
+    syncPendingBinaryCommands({
+      store: createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
+      liveDevices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        binaryCommandConfirmation: {
+          state: 'observed', observedValue: true, observedAtMs: restorePending.startedMs + 1,
+        },
+      }],
+      source: 'device_update',
+      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
+    });
     expect(nextState.lastRestoreMs).toBeGreaterThan(previousLastRestoreMs);
     expect(nextState.lastDeviceRestoreMs['dev-1']).toBeGreaterThan(previousDeviceRestoreMs);
     expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
@@ -1035,7 +1051,7 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [{
       id: 'dev-1',
       name: 'Heater',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -1057,12 +1073,25 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    const shedPending = nextState.pendingBinaryCommands['dev-1'];
+    syncPendingBinaryCommands({
+      store: createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
+      liveDevices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        binaryCommandConfirmation: {
+          state: 'observed', observedValue: false, observedAtMs: shedPending.startedMs + 1,
+        },
+      }],
+      source: 'device_update',
+      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
+    });
     expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({ penaltyLevel: 2 }));
     expect(deviceDiagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'pels_shed',
@@ -1087,7 +1116,7 @@ describe('PlanExecutor restore logging', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1104,7 +1133,7 @@ describe('PlanExecutor restore logging', () => {
       event: 'target_command_applied',
       deviceId: 'dev-1',
       deviceName: 'Heater',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       targetValue: 23,
       previousValue: 16,
       attemptType: 'send',
@@ -1131,7 +1160,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1146,12 +1175,11 @@ describe('PlanExecutor pending target commands', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       retryCount: 0,
     });
-
-    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] - 1);
+    vi.advanceTimersByTime(90_000 - 1);
     await executor.applyPlanActions(plan);
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
 
@@ -1160,15 +1188,15 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(2);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       retryCount: 1,
     });
-    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Target mismatch still present for Heater; observed 18°C via unknown, retrying target_temperature to 23°C' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Target mismatch still present for Heater; observed 18°C via unknown, retrying temperature to 23°C' }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       targetValue: 23,
       previousValue: 18,
       attemptType: 'retry',
@@ -1178,7 +1206,7 @@ describe('PlanExecutor pending target commands', () => {
     expect(deps.logTargetRetryComparison).toHaveBeenCalledWith({
       deviceId: 'dev-1',
       name: 'Heater',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       observedValue: 18,
       observedSource: undefined,
@@ -1195,7 +1223,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1210,20 +1238,20 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       retryCount: 0,
       status: 'temporary_unavailable',
     });
-    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater; treating device as temporarily unavailable for 30s before retry' }));
-    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater via DeviceTransport' }));
-    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set temperature for Heater; treating device as temporarily unavailable for 30s before retry' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set temperature for Heater via DeviceTransport' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: skip temperature for Heater, device temporarily unavailable for 30s before retry (plan)' }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_failed',
       reasonCode: 'device_manager_write_failed',
       deviceId: 'dev-1',
       deviceName: 'Heater',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       skipContext: 'plan',
     }));
@@ -1231,7 +1259,7 @@ describe('PlanExecutor pending target commands', () => {
       event: 'target_command_skipped',
       reasonCode: 'temporarily_unavailable',
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       skipContext: 'plan',
     }));
@@ -1262,7 +1290,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1280,7 +1308,7 @@ describe('PlanExecutor pending target commands', () => {
     expect(deviceManager.setCapability).toHaveBeenNthCalledWith(1, 'dev-1', 'target_temperature', 15);
     expect(deviceManager.setCapability).toHaveBeenNthCalledWith(2, 'dev-1', 'onoff', false);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 15,
       status: 'temporary_unavailable',
     });
@@ -1292,7 +1320,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1314,7 +1342,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1328,7 +1356,7 @@ describe('PlanExecutor pending target commands', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       targetValue: 23,
       previousValue: 18,
       attemptType: 'send',
@@ -1344,7 +1372,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Connected 300',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1356,10 +1384,12 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 45);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 45,
       retryCount: 0,
     });
+    await executor.applyPlanActions(buildTargetPlan(40, 46));
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
   });
 
   it('logs shed-temperature target updates as shedding work instead of overshoot', async () => {
@@ -1369,7 +1399,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1404,7 +1434,7 @@ describe('PlanExecutor pending target commands', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       targetValue: 15,
       previousValue: 22,
       attemptType: 'send',
@@ -1419,9 +1449,10 @@ describe('PlanExecutor pending target commands', () => {
   it('respects pending target retry backoff instead of writing again immediately', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
@@ -1435,7 +1466,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1456,9 +1487,10 @@ describe('PlanExecutor pending target commands', () => {
   it('clears a pending target retry when the live snapshot is already confirmed after actuation', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
@@ -1472,7 +1504,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1500,21 +1532,22 @@ describe('PlanExecutor pending target commands', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       targetValue: 23,
       previousValue: 25,
       attemptType: 'retry',
       reasonCode: 'retry_pending_confirmation',
     }));
-    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: confirmed target_temperature for Heater at 23°C immediately after actuation' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: confirmed temperature for Heater at 23°C immediately after actuation' }));
   });
 
   it('keeps retry observation metadata aligned with the live snapshot instead of a stale plan currentTarget', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
+      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
@@ -1528,7 +1561,7 @@ describe('PlanExecutor pending target commands', () => {
         id: 'dev-1',
         expectedPowerKw: 1,
         name: 'Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -1558,14 +1591,14 @@ describe('PlanExecutor stepped loads', () => {
 
   const steppedSnapshot = (
     overrides: Partial<
-      TargetDeviceSnapshot & EvObservedProbe & SteppedLoadDecoration
+      TransportDeviceSnapshot & EvObservedProbe & SteppedLoadDecoration
       & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
     > = {},
-  ): (TargetDeviceSnapshot & EvObservedProbe)[] => [{
+  ): (TransportDeviceSnapshot & EvObservedProbe)[] => [{
     id: 'dev-1',
     expectedPowerKw: 1,
     name: 'Tank',
-    controlCapabilityId: 'onoff',
+    binaryCapabilityId: 'onoff',
     canSetControl: true,
     available: true,
     binaryControl: { on: true },
@@ -1574,7 +1607,7 @@ describe('PlanExecutor stepped loads', () => {
     steppedLoadProfile: steppedProfile,
     reportedStepId: 'low',
     ...overrides,
-  } as TargetDeviceSnapshot & EvObservedProbe];
+  } as TransportDeviceSnapshot & EvObservedProbe];
 
   const steppedPlan = (overrides: Record<string, unknown> = {}): DevicePlan => {
     const merged = {
@@ -1586,7 +1619,7 @@ describe('PlanExecutor stepped loads', () => {
       plannedTarget: 68,
       controllable: true,
       available: true,
-      controlCapabilityId: 'onoff' as const,
+      binaryCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
       commandableNow: true,
       steppedLoadProfile: steppedProfile,
@@ -1810,7 +1843,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
 
-  // Regression: prod 2026-06-03 — a Høiax water heater (controlCapabilityId 'onoff')
+  // Regression: prod 2026-06-03 — a Høiax water heater (binaryCapabilityId 'onoff')
   // deferred to its cheap window, the step was written, but the onoff read came back
   // non-boolean so `binaryControlObservation` was absent and `currentOn` defaulted to
   // the optimistic `true`. The plan kept the device (assumed on) while the executor
@@ -1901,7 +1934,7 @@ describe('PlanExecutor stepped loads', () => {
       id: 'dev-1',
       expectedPowerKw: 1,
       name: 'Tank',
-      controlCapabilityId: 'onoff' as const,
+      binaryCapabilityId: 'onoff' as const,
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -1935,7 +1968,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
       id: 'dev-1',
       name: 'Tank',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
@@ -1950,7 +1983,7 @@ describe('PlanExecutor stepped loads', () => {
         id: 'dev-1',
         name: 'Tank',
         ownerUri: 'homey:app:no.hoiax',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         capabilities: ['onoff', 'max_power_3000'],
         capabilitiesObj: {
           onoff: { value: true },
@@ -2128,8 +2161,8 @@ describe('PlanExecutor stepped loads', () => {
     const { executor } = buildExecutor();
     const plan = preparedRestoreFromOffPlan({
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in_paused',
+      objectiveKind: 'ev_soc',
+      commandableNow: true,
     });
     const evPlan: DevicePlan = {
       ...plan,
@@ -2139,7 +2172,8 @@ describe('PlanExecutor stepped loads', () => {
     // The plug-state rides on the EV cluster now — it is the single source every
     // commandability question is answered from, so the plan device carries it
     // instead of a fan of derived bits.
-    expect(evPlan.devices[0]).toHaveProperty('evChargingState');
+    expect(evPlan.devices[0]).not.toHaveProperty('evChargingState');
+    expect(evPlan.devices[0]).toHaveProperty('objectiveKind', 'ev_soc');
     expect(executor.hasStablePlanActuation(evPlan)).toBe(true);
   });
 
@@ -2159,7 +2193,11 @@ describe('PlanExecutor stepped loads', () => {
   const evDeadlinePlan = (
     overrides: Partial<DevicePlanDevice>
       & BinaryControlDiscriminantProbe
-      & { currentTarget?: number | null; evChargingState?: string } = {},
+      & {
+        currentTarget?: number | null;
+        evChargingState?: string;
+        binaryCapabilityId?: string;
+      } = {},
   ): DevicePlan => ({
     meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
     devices: [pd({
@@ -2173,7 +2211,7 @@ describe('PlanExecutor stepped loads', () => {
       controllable: true,
       reason: KEEP_REASON,
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       binaryControl: { on: false },
       deferredReleaseIntent: 'binary_restore',
@@ -2257,7 +2295,6 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deps } = buildExecutor(
       undefined,
       steppedSnapshot({
-        binaryControl: { on: true },
         binaryControlObservation: onoffObservation(true),
       }),
     );
@@ -2405,7 +2442,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2433,7 +2470,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2462,7 +2499,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2492,7 +2529,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2522,7 +2559,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -2559,7 +2596,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -2590,7 +2627,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2617,7 +2654,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -2641,7 +2678,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2681,13 +2718,11 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_skipped',
-      reasonCode: 'missing_control_targets',
+      event: 'binary_command_failed',
+      reasonCode: 'control_request_failed',
       deviceId: 'dev-1',
       deviceName: 'Tank',
       desired: false,
-      hasTargets: false,
-      capabilityId: null,
       logContext: 'capacity',
     }));
 
@@ -2711,13 +2746,11 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_skipped',
-      reasonCode: 'missing_onoff_capability',
+      event: 'binary_command_failed',
+      reasonCode: 'control_request_failed',
       deviceId: 'dev-1',
       deviceName: 'Tank',
       desired: false,
-      hasTargets: true,
-      capabilityId: null,
       logContext: 'capacity',
     }));
   });
@@ -2727,7 +2760,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2758,7 +2791,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2785,7 +2818,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2816,7 +2849,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2846,7 +2879,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -2882,13 +2915,13 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
       },
     ];
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, state } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -2898,13 +2931,8 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_applied',
-      deviceId: 'dev-1',
-      deviceName: 'Tank',
-      desired: false,
-      reasonCode: 'full_shed_to_off',
-    }));
+    expect(state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false });
+    expect(logCapture.findEvent('binary_command_applied')).toBeUndefined();
   });
 
   it('prepares a turn_off stepped shed at the lowest non-zero step before binary off', async () => {
@@ -2912,7 +2940,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -2942,16 +2970,11 @@ describe('PlanExecutor stepped loads', () => {
       effectiveTransition: 'full_shed_to_off',
       binaryTarget: false,
     }));
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'stepped_load_binary_transition_applied',
-      desiredBinaryState: false,
-      effectiveTransition: 'full_shed_to_off',
-      stepPreparationPurpose: 'prepare_for_off',
-      transitionPhase: 'binary_transition',
-    }));
-    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
-    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
-    expect((deps.homey.settings.set as any)).toHaveBeenCalledWith(
+    expect(state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false });
+    expect(logCapture.findEvent('binary_command_applied')).toBeUndefined();
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
+    expect((deps.homey.settings.set as any)).not.toHaveBeenCalledWith(
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
@@ -2963,7 +2986,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -3001,7 +3024,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -3037,7 +3060,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-restore',
         name: 'Restore Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -3045,7 +3068,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-shed',
         name: 'Shed Heater',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -3097,7 +3120,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -3120,7 +3143,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: true },
@@ -3146,7 +3169,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
         binaryControl: { on: false },
@@ -3177,7 +3200,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   const steppedPlan = (
     overrides: Partial<DevicePlanDevice>
       & SteppedDiscriminantProbe
-      & { currentTarget?: number | null; plannedTarget?: number } = {},
+      & {
+        currentTarget?: number | null;
+        plannedTarget?: number;
+        binaryCapabilityId?: string;
+      } = {},
   ): DevicePlan => ({
     meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
     devices: [pd({
@@ -3187,7 +3214,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       plannedState: 'keep',
       currentTarget: null,
       controllable: true,
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       reason: KEEP_REASON,
       steppedLoadProfile: steppedProfile,
       reportedStepId: 'low',
@@ -3198,7 +3225,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   const buildLiveDevices = (
-    overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & SteppedDiscriminantProbe = {},
+    overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & SteppedDiscriminantProbe
+      & { binaryCapabilityId?: string } = {},
   ): PlanInputDevice[] => {
     const merged = {
       id: 'dev-1',
@@ -3206,7 +3234,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       name: 'Tank',
       targets: [],
       steppedLoadProfile: steppedProfile,
-      controlCapabilityId: 'onoff' as const,
+      binaryCapabilityId: 'onoff' as const,
       ...overrides,
     };
     return [
@@ -3222,16 +3250,16 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // (the snapshot carries `reportedStepId`); accepted on the loose override so
     // call sites can mirror the plan's selected step, then spread inertly.
     overrides: Partial<
-      TargetDeviceSnapshot & EvObservedProbe
+      TransportDeviceSnapshot & EvObservedProbe
       & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
     > & { selectedStepId?: string } = { binaryControl: { on: false } },
-  ): (TargetDeviceSnapshot & EvObservedProbe & SteppedLoadDescriptorProbe)[] => {
+  ): (TransportDeviceSnapshot & EvObservedProbe & SteppedLoadDescriptorProbe)[] => {
     const { selectedStepId: _selectedStepId, ...snapshotOverrides } = overrides;
     return [{
       id: 'dev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Tank',
-      controlCapabilityId: 'onoff' as const,
+      binaryCapabilityId: 'onoff' as const,
       canSetControl: true,
       available: true,
       binaryControl: { on: false },
@@ -3781,7 +3809,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           plannedState: 'shed',
           currentTarget: null,
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           reason: CAPACITY_REASON,
         }),
         pd({
@@ -3791,7 +3819,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           plannedState: 'keep',
           currentTarget: null,
           controllable: true,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
@@ -3815,7 +3843,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
-  it('defers keep-invariant restore when shed devices exist but step preparation is not reported', async () => {
+  it('allows keep-invariant restore at the lowest active step even before step telemetry arrives', async () => {
     const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
@@ -3848,7 +3876,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     await executor.applyPlanActions(plan);
 
-    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('restores a keep-invariant device before its step is reported', async () => {
@@ -3919,7 +3947,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       currentTarget: null, controllable: true, available: true, reason: CAPACITY_REASON,
-      controlCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
+      binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };
     const steppedDevice = (desiredStepId: string) => ({
@@ -3927,7 +3955,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentTarget: null, controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
-      controlCapabilityId: 'onoff' as const, currentOn: false,
+      binaryCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,
       selectedStepId: 'off',
       desiredStepId,
@@ -4200,7 +4228,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1',
           name: 'Tank',
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
           binaryControl: { on: false },
@@ -4232,7 +4260,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1',
           name: 'Tank',
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
           binaryControl: { on: false },
@@ -4268,7 +4296,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1',
           name: 'Tank',
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
           binaryControl: { on: true },
@@ -4291,7 +4319,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
             currentTarget: 21,
             plannedTarget: 21,
             controllable: true,
-            controlCapabilityId: 'onoff',
+            binaryCapabilityId: 'onoff',
             reason: CAPACITY_REASON,
           }),
         ],
@@ -4306,7 +4334,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1',
           name: 'Tank',
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
           binaryControl: { on: false }, // binary already off
@@ -4335,7 +4363,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1',
           name: 'Tank',
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
           binaryControl: { on: true }, // binary still on
@@ -4377,7 +4405,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       id: 'dev-1',
       expectedPowerKw: 1,
       name: 'Elbillader',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       canSetControl: true,
       available: true,
       controlModel: 'stepped_load' as const,
@@ -4390,7 +4418,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'turn_off',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       selectedStepId: 'low',
       desiredStepId: 'off',
       reason: CAPACITY_REASON,
@@ -4410,17 +4438,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
 
-    it('skips off for a paused charger without consulting observation provenance', async () => {
-      // A paused charger remains distinct from active charging, but planner
-      // command equivalence is the strict resolved binary bit. Observation
-      // provenance does not make an already-matched OFF command actionable.
+    it('skips off for a paused charger when the binary command axis is already off', async () => {
       const state = createPlanEngineState();
       const { executor, deviceManager } = buildExecutor(state, chargerSnapshot({
         binaryControl: { on: false },
-        binaryControlObservation: {
-          ...trustedOffObservation,
-          observedCapabilityIds: ['evcharger_charging_state'],
-        },
+        binaryControlObservation: trustedOffObservation,
       }));
 
       await executor.applyPlanActions(chargerShedPlan());
@@ -4440,6 +4462,18 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(chargerShedPlan());
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
+      const pending = state.pendingBinaryCommands['dev-1'];
+      syncPendingBinaryCommands({
+        store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        liveDevices: [{
+          id: 'dev-1', name: 'Charger',
+          binaryCommandConfirmation: {
+            state: 'observed', observedValue: false, observedAtMs: pending.startedMs + 1,
+          },
+        }],
+        source: 'device_update',
+        onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
+      });
       expect(typeof state.lastInstabilityMs).toBe('number');
       expect(typeof state.lastDeviceShedMs['dev-1']).toBe('number');
     });

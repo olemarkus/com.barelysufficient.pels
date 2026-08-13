@@ -11,6 +11,7 @@ import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard } from '../../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
 
@@ -24,10 +25,10 @@ const steppedProfile: SteppedLoadProfile = {
 
 const nativeSteppedSnapshot = (
   overrides: Partial<
-    TargetDeviceSnapshot & MeasuredPowerObservedProbe
+    TransportDeviceSnapshot & MeasuredPowerObservedProbe
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
   > = {},
-): TargetDeviceSnapshot & MeasuredPowerObservedProbe
+): TransportDeviceSnapshot & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'dev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -346,7 +347,7 @@ describe('registerFlowCards', () => {
           name: 'My Easee Charger',
           deviceClass: 'evcharger',
           deviceType: 'onoff',
-          controlCapabilityId: 'evcharger_charging',
+          binaryCapabilityId: 'evcharger_charging',
           capabilities: ['measure_power', 'evcharger_charging', 'target_power'],
           controlAdapter: undefined,
           suggestedSteppedLoadProfile: undefined,

@@ -91,12 +91,12 @@ function mergeSnapshotObservationsForDevice(params: {
     });
     preserveNewerReportedStepObservation(previous, snapshot);
 
-    if (snapshot.controlCapabilityId) {
+    if (snapshot.binaryCapabilityId) {
         mergeCapabilityObservation({
             state,
             deviceId: snapshot.id,
             deviceName: snapshot.name,
-            capabilityId: snapshot.controlCapabilityId,
+            capabilityId: snapshot.binaryCapabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
             logger,
@@ -137,8 +137,6 @@ function mergeSnapshotObservationsForDevice(params: {
         sourceDevice,
         logger,
     });
-    dropRawEvBinaryObservationWhenStatePresent(snapshot, sourceDevice);
-
     const maxRetainedMs = getMaxRetainedObservationTimeMs(state, snapshot);
     if (maxRetainedMs > 0) {
         snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, maxRetainedMs) || undefined;
@@ -157,14 +155,6 @@ function preserveBinaryControlObservation(params: {
     const previousObservation = previous.binaryControlObservation;
     const nextObservation = snapshot.binaryControlObservation;
     if (!previousObservation) return;
-    if (previousObservation.capabilityId === 'evcharger_charging' && snapshot.evChargingState !== undefined) {
-        if (!previousObservation.observedCapabilityIds.includes('evcharger_charging_state')) {
-            if (nextObservation?.observedCapabilityIds.includes('evcharger_charging_state')) return;
-            delete snapshot.binaryControlObservation;
-            return;
-        }
-        if (nextObservation && nextObservation.observedAtMs >= previousObservation.observedAtMs) return;
-    }
     if (!nextObservation || nextObservation.observedAtMs < previousObservation.observedAtMs) {
         snapshot.binaryControlObservation = {
             ...previousObservation,
@@ -172,24 +162,6 @@ function preserveBinaryControlObservation(params: {
         };
     }
 }
-
-function dropRawEvBinaryObservationWhenStatePresent(
-    snapshot: TransportDeviceSnapshot,
-    sourceDevice: HomeyDeviceLike,
-): void {
-    const mutableSnapshot = snapshot;
-    if (
-        mutableSnapshot.evChargingState === undefined
-        && sourceDevice.capabilitiesObj?.evcharger_charging_state?.value === undefined
-    ) {
-        return;
-    }
-    const observation = mutableSnapshot.binaryControlObservation;
-    if (!observation || observation.capabilityId !== 'evcharger_charging') return;
-    if (observation.observedCapabilityIds.includes('evcharger_charging_state')) return;
-    delete mutableSnapshot.binaryControlObservation;
-}
-
 function mergeStateOfChargeObservationsForDevice(params: {
     state: DeviceTransportObservationState;
     snapshot: TransportDeviceSnapshot;
@@ -242,7 +214,7 @@ function getMaxRetainedObservationTimeMs(
         'measure_power',
         'measure_temperature',
         'evcharger_charging_state',
-        ...(snapshot.controlCapabilityId ? [snapshot.controlCapabilityId] : []),
+        ...(snapshot.binaryCapabilityId ? [snapshot.binaryCapabilityId] : []),
         ...snapshot.targets.map((target) => target.id),
     ];
     let max = 0;
@@ -370,7 +342,7 @@ function emitBinaryConsolidation(
     winner: ConsolidationWinner,
     reason: string,
 ): void {
-    if (ctx.capabilityId !== ctx.nextSnapshot.controlCapabilityId) return;
+    if (ctx.capabilityId !== ctx.nextSnapshot.binaryCapabilityId) return;
     ctx.debugStructured?.({
         event: 'binary_observation_consolidated',
         deviceId: ctx.deviceId,

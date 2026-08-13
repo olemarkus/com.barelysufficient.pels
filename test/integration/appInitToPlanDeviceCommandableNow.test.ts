@@ -1,6 +1,6 @@
 /**
  * Coverage for `toPlanDevice`'s commandableNow enrichment: the producer seam
- * populates `commandableNow` + `commandableNowReason` on every `PlanInputDevice`
+ * populates `commandableNow` + `commandabilityReason` on every `PlanInputDevice`
  * so planner consumers read the resolved bit instead of branching on raw
  * `evChargingState` / `available`.
  *
@@ -10,7 +10,6 @@
  * `deviceActionProjectionCommandableNow.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
-import { isEvPlanDevice } from '../../lib/plan/planEvDevice';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
@@ -25,7 +24,7 @@ const buildEvSnapshot = (
   name: 'EV charger',
   targets: [],
   deviceClass: 'evcharger',
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   binaryControl: { on: false },
   ...overrides,
 }) as TargetDeviceSnapshot;
@@ -41,16 +40,33 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_in_paused' }));
     expect(result.commandableNow).toBe(true);
-    // The plug-state itself rides onto the EV cluster; nothing derived from it is
-    // carried alongside, so there is one place to read and one place to change.
-    expect(isEvPlanDevice(result) && result.evChargingState).toBe('plugged_in_paused');
+    expect(result.objectiveKind).toBe('ev_soc');
+    expect(result).not.toHaveProperty('evChargingState');
   });
 
   it('populates commandableNow=false for a plugged-out EV charger', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_out' }));
     expect(result.commandableNow).toBe(false);
-    expect(isEvPlanDevice(result) && result.evChargingState).toBe('plugged_out');
+    expect(result.objectiveSessionInactive).toBe(true);
+    expect(result).not.toHaveProperty('evChargingState');
+  });
+
+  it('carries the semantic retry reason with a reachability veto', () => {
+    const ctx = ctxAtFixedNow();
+    const result = toPlanDevice(
+      ctx,
+      buildEvSnapshot({ evChargingState: 'plugged_in_paused' }),
+      {
+        projectCommandability: () => ({
+          commandableNow: false,
+          reason: 'binary_command_retry',
+        }),
+      },
+    );
+
+    expect(result.commandableNow).toBe(false);
+    expect(result.commandabilityReason).toBe('binary_command_retry');
   });
 
   it('carries no plug-state for a charger that has no plug-state capability, and leaves it commandable', () => {
@@ -60,7 +76,7 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     // outside the enum never gets this far — it is dropped at parse.)
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: undefined }));
-    expect(isEvPlanDevice(result) && result.evChargingState).toBeUndefined();
+    expect(result).not.toHaveProperty('evChargingState');
     expect(result.commandableNow).toBe(true);
   });
 
@@ -89,53 +105,4 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     expect(result.canSetControlResolved).toBe(false);
   });
 
-  // The probe exists to disambiguate `plugged_in`, which carries BOTH an Easee
-  // awaiting authorization (the write is the authorization — it lands) and a
-  // finished session behind a full car (it never will). A paused session is not
-  // ambiguous, so probing it would only expose it to a back-off nothing can
-  // clear: `plugged_in_paused` is where a Zaptec parks a car that started
-  // wanting current again, and it never leaves that state on its own.
-  describe('EV start-probe posture', () => {
-    const posture = (evChargingState: EvObservedProbe['evChargingState']) => {
-      const captured: Array<{ eligibleForStartProbe: boolean; activityObserved: boolean }> = [];
-      toPlanDevice(ctxAtFixedNow(), buildEvSnapshot({ evChargingState }), {
-        projectCommandability: (params) => {
-          captured.push({
-            eligibleForStartProbe: params.eligibleForStartProbe,
-            activityObserved: params.activityObserved,
-          });
-          return params.base;
-        },
-      });
-      return captured[0];
-    };
-
-    it('probes a bare plugged_in charger', () => {
-      expect(posture('plugged_in')).toEqual({
-        eligibleForStartProbe: true,
-        activityObserved: false,
-      });
-    });
-
-    it('never probes a paused session, so no back-off can strand it', () => {
-      expect(posture('plugged_in_paused')).toEqual({
-        eligibleForStartProbe: false,
-        activityObserved: false,
-      });
-    });
-
-    it('reports observed activity while charging, and does not probe it', () => {
-      expect(posture('plugged_in_charging')).toEqual({
-        eligibleForStartProbe: false,
-        activityObserved: true,
-      });
-    });
-
-    it('does not probe an unplugged charger', () => {
-      expect(posture('plugged_out')).toEqual({
-        eligibleForStartProbe: false,
-        activityObserved: false,
-      });
-    });
-  });
 });

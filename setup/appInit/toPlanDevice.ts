@@ -2,7 +2,7 @@ import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observe
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { resolveCanSetControl } from '../../lib/device/deviceActionProjection';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import { resolveEvStartProbePosture } from '../../packages/shared-domain/src/evPlugState';
+import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
@@ -16,6 +16,8 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
+import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
+import type { BinaryCommandabilityProjection } from '../../lib/plan/admission/binaryCommandReachability';
 import {
   buildStepPowerCalibrationView,
   resolveHasRecentObservedDraw,
@@ -33,7 +35,6 @@ import {
   resolveEvTargetPowerPlannerProfile,
   withoutTargetPowerReachability,
 } from '../../lib/device/targetPowerReachability';
-import type { CommandabilityProjection } from '../../lib/executor/evResumeReachability';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
 // plain binary-power control device — NOT an enabled continuous / target-power
@@ -58,23 +59,18 @@ export type ToPlanDeviceOptions = {
   /** When false, skip the surplus-absorb posture entirely — never stamp `surplusOnly`. Default true. */
   surplusPostureEnabled?: boolean;
   /** In-flight binary command resolver. Default reads MAIN's engine via `ctx.planEngine`. */
-  getPendingBinaryCommand?: (
-    deviceId: string,
-    communicationModel?: 'local' | 'cloud',
-  ) => { desired: boolean } | null;
+  getPendingBinaryCommand?: (deviceId: string) => { desired: boolean } | null;
   /** Owning-home PELS-OFF provenance cleanup for pull-observed ON. */
   clearRecentBinaryOffCommand?: (
     deviceId: string,
-    capabilityId: string,
     observedOnAtMs: number,
   ) => void;
   projectCommandability?: (params: {
     deviceId: string;
-    eligibleForStartProbe: boolean;
-    activityObserved: boolean;
-    available?: boolean;
-    base: CommandabilityProjection;
-  }) => CommandabilityProjection;
+    base: boolean;
+    observedOn: boolean;
+    available: boolean;
+  }) => BinaryCommandabilityProjection;
   pruneCommandability?: (presentDeviceIds: ReadonlySet<string>) => void;
 };
 
@@ -88,28 +84,22 @@ function resolvePendingBinaryCommand(
   opts: ToPlanDeviceOptions | undefined,
 ): { desired: boolean } | null | undefined {
   if (opts?.getPendingBinaryCommand) {
-    return opts.getPendingBinaryCommand(device.id, device.communicationModel);
+    return opts.getPendingBinaryCommand(device.id);
   }
-  return ctx.planEngine?.getPendingBinaryCommandForDevice?.(device.id, device.communicationModel);
+  return ctx.planEngine?.getPendingBinaryCommandForDevice?.(device.id);
 }
 
 function resolvePlanCommandability(
   device: DecoratedDeviceSnapshot & EvObservedProbe,
   opts: ToPlanDeviceOptions | undefined,
-): boolean {
-  // Two independent inputs to the same answer: the observed facts (plug-state +
-  // availability) and the executor-owned resume-probe backoff. Only the second
-  // needs the producer, because it is runtime state no observation can express.
+): BinaryCommandabilityProjection {
   const base = resolveCommandableNow(device);
-  const probePosture = isEvObserved(device)
-    ? resolveEvStartProbePosture(device.evChargingState)
-    : { eligibleForStartProbe: false, activityObserved: false };
   return opts?.projectCommandability?.({
     deviceId: device.id,
-    ...probePosture,
-    available: device.available,
     base,
-  }) ?? base;
+    observedOn: resolveCurrentOn(device),
+    available: device.available !== false,
+  }) ?? { commandableNow: base, reason: 'none' };
 }
 
 /**
@@ -126,7 +116,7 @@ export function resolveExternalOffHoldActive(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
 ): boolean {
-  if (device.controlCapabilityId === undefined) return false;
+  if (device.binaryControl === undefined) return false;
   if (ctx.externalOffHold?.isHeld(device.id) !== true) return false;
   return !resolveCurrentOn(device);
 }
@@ -193,8 +183,8 @@ function resolveSurplusPostureForDevice(params: {
   if (opts?.surplusPostureEnabled === false) return false;
   return resolveSurplusOnlyPosture({
     surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
-    controlCapabilityId: device.controlCapabilityId,
-    deviceClass: device.deviceClass,
+    hasBinaryControl: device.binaryControl !== undefined,
+    objectiveKind: isEvObserved(device) ? 'ev_soc' : undefined,
     targets: device.targets,
     steppedLoadProfile: device.steppedLoadProfile,
     plainBinaryControlModel,
@@ -348,6 +338,49 @@ function resolveEffectiveTemperatureBoost(
   return ctx.getTemperatureBoostConfig?.(device.id);
 }
 
+type PlanCommandabilityReason = PlanInputDevice['commandabilityReason'];
+
+function resolvePlanCommandabilityReason(
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+): PlanCommandabilityReason | undefined {
+  if (device.available === false) return 'device_unavailable';
+  if (device.evChargingState === 'plugged_out') return 'charger_unplugged';
+  if (device.evChargingState === 'plugged_in_discharging') return 'charger_discharging';
+  return undefined;
+}
+
+function resolvePlanObjective(
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+): Pick<PlanInputDevice, 'objectiveKind' | 'objectiveSessionInactive'> {
+  if (isEvObserved(device)) {
+    return {
+      objectiveKind: 'ev_soc',
+      objectiveSessionInactive: isEvSessionInactive(device.evChargingState),
+    };
+  }
+  return {
+    objectiveKind: device.targets.length > 0 ? 'temperature' : undefined,
+    objectiveSessionInactive: false,
+  };
+}
+
+function resolveManagedControlPosture(
+  ctx: AppContext,
+  device: DecoratedDeviceSnapshot,
+): { controllable: boolean; managed: boolean } {
+  const observeOnly = device.deviceClass === 'battery' || device.deviceClass === 'solarpanel';
+  if (observeOnly) {
+    return {
+      controllable: device.controllable === true,
+      managed: device.managed !== false,
+    };
+  }
+  return {
+    controllable: ctx.isCapacityControlEnabled(device.id),
+    managed: ctx.resolveManagedState(device.id),
+  };
+}
+
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
 // it resolves the flat EV sub-fields below and strips the raw field off the
@@ -385,9 +418,14 @@ export function toPlanDevice(
     ctx,
     device,
   );
-  const commandableNow = resolvePlanCommandability(device, opts);
+  const commandability = resolvePlanCommandability(device, opts);
+  const commandableNow = commandability.commandableNow;
+  const commandabilityReason = commandability.reason === 'binary_command_retry'
+    ? commandability.reason
+    : resolvePlanCommandabilityReason(device);
+  const objective = resolvePlanObjective(device);
   const canSetControlResolved = resolveCanSetControl({
-    controlCapabilityId: device.controlCapabilityId,
+    binaryControl: device.binaryControl,
     capabilities: device.capabilities,
     canSetControl: device.canSetControl,
     canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
@@ -402,9 +440,7 @@ export function toPlanDevice(
   // `controllable: true` for a device whose settings say so. The structural stamp closes
   // that window: a present observe-only device is NEVER controllable here. Other-device
   // resolution is unchanged (the stamp equals the re-resolved value).
-  const isObserveOnlyRole = device.deviceClass === 'battery' || device.deviceClass === 'solarpanel';
-  const controllable = isObserveOnlyRole ? device.controllable === true : ctx.isCapacityControlEnabled(device.id);
-  const managed = isObserveOnlyRole ? device.managed !== false : ctx.resolveManagedState(device.id);
+  const { controllable, managed } = resolveManagedControlPosture(ctx, device);
   // The continuous / target-power / non-binary classification is resolved HERE
   // (the producer may read the `controlModel` setting + target-power config) so
   // the planner helper carries no such branch (control-model vocab rule).
@@ -426,7 +462,7 @@ export function toPlanDevice(
   });
   const residualKw = buildResidualKwForPlanDevice({
     device,
-    controlCapabilityId: device.controlCapabilityId,
+    hasBinaryControl: device.binaryControl !== undefined,
     shedBehavior,
   });
   // The plan-input device type is a discriminated union on the stepped
@@ -436,10 +472,12 @@ export function toPlanDevice(
   // pair. The descriptor (`TargetDeviceSnapshot`) keeps the profile as a plain
   // optional (out of scope for this slice), so `device.steppedLoadProfile` is
   // read directly here.
-  // `evChargingState` is NOT stripped: it rides onto the EV cluster
-  // (`withEvDiscriminant` regroups it), where it is the single source every
-  // plug-state question is answered from. Nothing derived from it is carried.
+  // Raw transport bindings and observations are stripped before planning.
   const {
+    binaryCapabilityId: _binaryCapabilityId,
+    binaryWriteCapabilityId: _binaryWriteCapabilityId,
+    binaryObservationCapabilityId: _binaryObservationCapabilityId,
+    flowBackedCapabilityIds: _flowBackedCapabilityIds,
     temperatureControlDisabled: _temperatureControlDisabled,
     steppedLoadProfile: _confirmedSteppedLoadProfile,
     targetPowerConfig: _targetPowerConfig,
@@ -458,8 +496,9 @@ export function toPlanDevice(
     // (`getSettleDevices`), never off a plan device.
     binaryControl: _binaryControl,
     binaryControlObservation: _binaryControlObservation,
+    evChargingState: _evChargingState,
     ...deviceFields
-  } = device;
+  } = device as typeof device & TransportControlBindingProbe & EvObservedProbe;
   return withSteppedDiscriminant({
     ...deviceFields,
     ...steppedCluster,
@@ -487,10 +526,10 @@ export function toPlanDevice(
     // axis, so `binaryControl` can stay off the plan kinds.
     currentState: resolveObservedCurrentState(device),
     // The public on/off truth, resolved once here for binary devices (present
-    // IFF `controlCapabilityId` is set this cycle). `isBinaryPlanDevice`
+    // IFF the observer resolved a binary axis this cycle). `isBinaryPlanDevice`
     // re-asserts it as a required `boolean`; non-binary devices carry no on/off
     // truth.
-    ...(device.controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
+    ...(device.binaryControl !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
     // Observe-only role (battery/solar): structural stamp (always managed observe-only);
     // else re-resolve.
     managed,
@@ -506,6 +545,8 @@ export function toPlanDevice(
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow,
+    ...(commandabilityReason ? { commandabilityReason } : {}),
+    ...objective,
     canSetControlResolved,
     residualKw,
     // The single place the device's draw is decided: the meter's reading, or 0.

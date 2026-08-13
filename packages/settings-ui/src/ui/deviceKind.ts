@@ -26,13 +26,13 @@ export const isEvChargerDevice = (device: SettingsUiDeviceDetailItem | null | un
 );
 
 export const hasEvChargingControl = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
-  device?.controlCapabilityId === 'evcharger_charging'
+  device?.deviceRole === 'ev_charger' && device.binaryControllable === true
 );
 
 export const isNativeEvWiringActive = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationEnabled === true
-  && device.controlWriteCapabilityId === 'charging_button'
+  && device.deviceRole === 'ev_charger'
 );
 
 export const hasEvTargetPowerPreset = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => {

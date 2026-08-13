@@ -3,15 +3,6 @@ import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
-import {
-    createBinarySettleState,
-    clearAllPendingBinarySettleWindows,
-    clearPendingBinarySettleWindow,
-    hasPendingBinarySettleWindow,
-    notePendingBinarySettleObservation,
-    startPendingBinarySettleWindow,
-} from '../../lib/observer/binarySettle';
-import type { DeviceTransportBinarySettleOps } from '../../lib/device/deviceTransport';
 import type { Logger } from '../../lib/utils/types';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type {
@@ -57,18 +48,6 @@ const mockApiGet = vi.fn();
 const mockApiPut = vi.fn().mockResolvedValue(undefined);
 const mockGetLiveReport = vi.fn();
 
-function realBinarySettle() {
-    const state = createBinarySettleState();
-    const ops: DeviceTransportBinarySettleOps = {
-        start: startPendingBinarySettleWindow,
-        note: notePendingBinarySettleObservation,
-        hasWindow: hasPendingBinarySettleWindow,
-        clear: clearPendingBinarySettleWindow,
-        clearAll: clearAllPendingBinarySettleWindows,
-    };
-    return { binarySettleState: state, binarySettleOps: ops };
-}
-
 type Harness = {
     transport: DeviceTransport;
     projection: ObservedDeviceStateProjection;
@@ -93,7 +72,6 @@ async function buildHarness(): Promise<Harness> {
         undefined,
         undefined,
         {
-            ...realBinarySettle(),
             observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
         },
     );
@@ -275,7 +253,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
-    it('optimistic shed write keeps the projection binaryControl faithful to the snapshot', async () => {
+    it('accepted shed write does not fabricate an observed binary state', async () => {
         const h = await buildHarness();
         homeyApi.setRestClient({
             get: (path) => mockHomeyInstance.api.get(path),
@@ -301,32 +279,8 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             // projection must receive the dispatched delta to stay faithful.
             await h.transport.setCapability('dev1', 'onoff', false);
 
-            expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(false);
-            expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
-            assertShadowEquality(h);
-        } finally {
-            h.transport.destroy();
-        }
-    });
-
-    it('binary settle (write then confirming observation) keeps the projection faithful', async () => {
-        const h = await buildHarness();
-        homeyApi.setRestClient({
-            get: (path) => mockHomeyInstance.api.get(path),
-            post: (path, body) => mockHomeyInstance.api.post(path, body),
-            put: (path, body) => mockHomeyInstance.api.put(path, body),
-        });
-        try {
-            mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
-            await h.transport.refreshSnapshot();
-
-            // Restore: turn-on is NOT optimistic — it opens a settle window and
-            // stays pending until the device confirms. The confirming observation
-            // closes the settle and must leave the projection == snapshot.
-            await h.transport.setCapability('dev1', 'onoff', true);
-            h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
-
             expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(true);
+            expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
             assertShadowEquality(h);
         } finally {
             h.transport.destroy();

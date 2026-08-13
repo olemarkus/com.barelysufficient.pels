@@ -105,7 +105,6 @@ const buildDeviceReading = (
   expectedPowerKw: 1,
   expectedPowerSource: 'default',
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
-  controlCapabilityId: 'onoff',
   binaryControl: { on: false },
   deviceType: 'temperature',
   controlModel: 'stepped_load',

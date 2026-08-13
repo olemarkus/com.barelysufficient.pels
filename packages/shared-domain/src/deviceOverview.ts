@@ -1,5 +1,4 @@
 import type {
-  BinaryControlCapabilityId,
   DeviceStateOfChargeSnapshot,
   EvChargingState,
   SteppedLoadProfile,
@@ -83,7 +82,8 @@ export type DeviceOverviewSnapshot = {
    * device reports.
    */
   deviceType?: 'temperature' | 'onoff';
-  controlCapabilityId?: BinaryControlCapabilityId;
+  binaryControllable?: boolean;
+  deviceRole?: 'ev_charger';
   evChargingState?: EvChargingState;
   /**
    * The PRODUCER-RESOLVED current draw (`getCurrentDrawKw`), never the raw
@@ -179,7 +179,7 @@ const isSteppedLoadDevice = (device: DeviceOverviewSnapshot): boolean => (
   device.steppedLoad !== undefined
 );
 const isEvChargerDevice = (device: DeviceOverviewSnapshot): boolean => (
-  device.controlCapabilityId === 'evcharger_charging'
+  device.deviceRole === 'ev_charger'
 );
 
 // Takes only the field it reads, so callers holding a plain plan device (which

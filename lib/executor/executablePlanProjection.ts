@@ -237,7 +237,7 @@ export const resolveObservedBinaryStateFromSnapshot = (
   // Prefer the producer-resolved `currentOn` — the drift path feeds a live plan
   // device that carries it (not the raw `binaryControl`); the raw-snapshot executor
   // path has no `currentOn`, so it falls back to the observed binary axis.
-  snapshot: Pick<ObservedDeviceState, 'binaryControl' | 'evCharging'> & { currentOn?: boolean },
+  snapshot: Pick<ObservedDeviceState, 'binaryControl'> & { currentOn?: boolean },
 ): 'on' | 'off' => {
   if (typeof snapshot.currentOn === 'boolean') return snapshot.currentOn ? 'on' : 'off';
   if (isBinaryControlled(snapshot)) {
@@ -253,7 +253,7 @@ const buildObservedTargetState = (
   const primaryTarget = snapshot.targets?.[0];
   return primaryTarget
     ? {
-      targetCap: primaryTarget.id,
+      target: 'temperature',
       observedValue: primaryTarget.value,
     }
     : null;

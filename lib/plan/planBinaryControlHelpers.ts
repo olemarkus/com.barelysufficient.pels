@@ -1,9 +1,5 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import type {
-  BinaryControlCapabilityId,
-  DeviceDescriptor,
-  ObservedDeviceState,
-} from '../../packages/contracts/src/types';
+import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   isBinaryControlled,
@@ -20,11 +16,11 @@ const logger = getLogger('plan/binary-helpers');
  * gates consult. Narrower than the raw producer `TargetDeviceSnapshot` — the
  * full snapshot remains assignable, so callers pass it unchanged.
  */
-export type BinaryControlDecisionSnapshot = ObservedDeviceState
+export type BinaryControlDecisionSnapshot = Pick<ObservedDeviceState, 'targets' | 'binaryControl'>
   & Pick<
     DeviceDescriptor,
-    'controlCapabilityId' | 'flowBackedCapabilityIds' | 'capabilities' | 'canSetControl' | 'communicationModel'
-  >;
+    'capabilities' | 'canSetControl' | 'communicationModel'
+  > & { currentOn?: boolean };
 
 // `BinaryControlPlan` is owned by the producer
 // (`lib/device/deviceActionProjection.ts`) — plan consumes the same flat
@@ -37,10 +33,9 @@ export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
 
 /**
  * The plan layer hands one of these to the executor per cycle for each
- * device that should actuate. The plan has already recorded the matching
- * `pendingBinaryCommands` entry on the engine state before producing the
- * decision; executor dispatches and, on failure, clears the entry back
- * out via `dispatchBinaryControlDecision`.
+ * device that should actuate. The executor records provisional pending state
+ * before dispatch, accepts it only after transport success and a live authority
+ * check, and clears it when dispatch cannot proceed.
  *
  * Keep this struct flat and serializable — it is the structural seam the
  * cruiser rule pins between `lib/plan/` (decision producer) and
@@ -49,9 +44,7 @@ export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
 export type BinaryControlDecision = {
   deviceId: string;
   name: string;
-  capabilityId: BinaryControlPlan['capabilityId'];
   desired: boolean;
-  flowBackedControl: boolean;
   logContext: BinaryControlLogContext;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
@@ -98,7 +91,7 @@ export function shouldSkipBinaryControl(params: {
       desired,
       logContext,
       hasTargets,
-      capabilityId: snapshot?.controlCapabilityId ?? null,
+      controlAxis: 'binary',
     });
     return true;
   }
@@ -109,7 +102,7 @@ export function shouldSkipBinaryControl(params: {
       deviceId,
       deviceName: name,
       desired,
-      capabilityId: controlPlan.capabilityId,
+      controlAxis: 'binary',
       logContext,
     });
     return true;
@@ -125,7 +118,7 @@ export function shouldSkipBinaryControl(params: {
       deviceId,
       deviceName: name,
       desired,
-      capabilityId: controlPlan.capabilityId,
+      controlAxis: 'binary',
       logContext,
     });
     return true;
@@ -137,7 +130,7 @@ export function shouldSkipBinaryControl(params: {
       deviceId,
       deviceName: name,
       desired,
-      capabilityId: controlPlan.capabilityId,
+      controlAxis: 'binary',
       logContext,
     });
     return true;
@@ -182,13 +175,13 @@ function hasOppositePendingBinaryCommand(params: {
   controlPlan: BinaryControlPlan;
   desired: boolean;
 }): boolean {
-  const { pendingBinaryCommandStore, deviceId, controlPlan, desired } = params;
+  const { pendingBinaryCommandStore, deviceId, desired } = params;
   // `peek` (not `get`): freshness-eviction stays owned by the matching-pending
   // guard below; this read only asks whether an un-superseded opposite intent
   // exists right now.
   const pending = pendingBinaryCommandStore.peek(deviceId);
   if (!pending) return false;
-  return pending.capabilityId === controlPlan.capabilityId && pending.desired !== desired;
+  return pending.desired !== desired;
 }
 
 export function hasPendingMatchingBinaryCommand(params: {
@@ -197,49 +190,13 @@ export function hasPendingMatchingBinaryCommand(params: {
   controlPlan: BinaryControlPlan;
   desired: boolean;
 }): boolean {
-  const { pendingBinaryCommandStore, deviceId, controlPlan, desired } = params;
+  const { pendingBinaryCommandStore, deviceId, desired } = params;
   // `get` (not `peek`): this read owns freshness-eviction — a stale
   // in-flight entry must not suppress a fresh actuation. Eviction is
   // performed once, inside the store.
   const pending = pendingBinaryCommandStore.get(deviceId);
   if (!pending) return false;
-  return pending.capabilityId === controlPlan.capabilityId && pending.desired === desired;
-}
-
-export function isFlowBackedBinaryControl(
-  snapshot: Pick<DeviceDescriptor, 'flowBackedCapabilityIds'> | undefined,
-  capabilityId: BinaryControlCapabilityId,
-): boolean {
-  return Array.isArray(snapshot?.flowBackedCapabilityIds)
-    && snapshot.flowBackedCapabilityIds.includes(capabilityId);
-}
-
-export function buildFlowBackedBinaryControlRequestLogMessage(params: {
-  logContext: BinaryControlLogContext;
-  desired: boolean;
-  name: string;
-  reason?: string;
-  restoreSource?: BinaryControlRestoreSource;
-}): string {
-  const {
-    logContext,
-    desired,
-    name,
-    reason,
-    restoreSource = 'current_plan',
-  } = params;
-  if (desired) {
-    const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource });
-    return `${prefix}: requested turn on for ${name}${suffix}`;
-  }
-  if (reason && logContext === 'capacity') {
-    return `Capacity: requested turn off for ${name} (${reason})`;
-  }
-  if (logContext === 'capacity') {
-    return `Capacity: requested turn off for ${name} (shedding)`;
-  }
-  return `Capacity control off: requested turn off for ${name}`;
+  return pending.desired === desired;
 }
 
 export function resolveBinaryRestoreSuffix(params: {
@@ -280,8 +237,3 @@ export function buildBinaryControlLogMessage(params: {
   }
   return `Capacity control off: turned off ${name}`;
 }
-
-// `formatPendingBinaryObservedValue` moved to
-// `lib/observer/pendingBinaryCommandFormatting.ts` in PR #4 of the
-// observer/transport split. Only `syncPendingBinaryCommands` (also moved to
-// observer) consumed it, so plan no longer exports the helper.

@@ -7,7 +7,7 @@ import { resolveBinaryOn } from '../../utils/binaryControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 export type ExplicitControlObservation = {
-  controlCapabilityId: NonNullable<TransportDeviceSnapshot['controlCapabilityId']>;
+  binaryCapabilityId: NonNullable<TransportDeviceSnapshot['binaryCapabilityId']>;
   value: boolean;
   observedCapabilityId: string;
 };
@@ -20,13 +20,13 @@ export function applyExplicitBinaryObservation(params: {
   const {
     parsed,
     observation: {
-      controlCapabilityId,
+      binaryCapabilityId,
       value,
       observedCapabilityId,
     },
     observedAtMs,
   } = params;
-  if (controlCapabilityId === 'evcharger_charging') {
+  if (binaryCapabilityId === 'evcharger_charging') {
     if (observedCapabilityId === 'evcharger_charging') {
       parsed.evCharging = value;
       if (observedAtMs !== undefined) parsed.evChargingObservedAtMs = observedAtMs;
@@ -35,7 +35,6 @@ export function applyExplicitBinaryObservation(params: {
     }
     parsed.binaryControl = {
       on: resolveEvCurrentOn({
-        evChargingState: parsed.evChargingState,
         evchargerCharging: parsed.evCharging,
       }),
     };
@@ -45,7 +44,7 @@ export function applyExplicitBinaryObservation(params: {
   if (observedAtMs === undefined) return;
   parsed.binaryControlObservation = {
     valid: true,
-    capabilityId: controlCapabilityId,
+    capabilityId: binaryCapabilityId,
     observedValue: value,
     observedCapabilityIds: [observedCapabilityId],
     observedAtMs,
@@ -85,7 +84,10 @@ export function resolveExplicitBinaryEvidence(params: {
   if (previousEvidence.value !== observation.value) {
     return { accepted: true, observedAtMs: receivedAtMs };
   }
-  return { accepted: true, observedAtMs: previousEvidence.observedAtMs };
+  return {
+    accepted: true,
+    observedAtMs: previousEvidence.observedAtMs ?? receivedAtMs,
+  };
 }
 
 export function preserveStaleBundledEvState(params: {
@@ -99,7 +101,7 @@ export function preserveStaleBundledEvState(params: {
   } = params;
   if (
     !previous
-    || observation.controlCapabilityId !== 'evcharger_charging'
+    || observation.binaryCapabilityId !== 'evcharger_charging'
     || observation.observedCapabilityId !== 'evcharger_charging'
   ) return;
   const previousStateObservedAtMs = previous.evChargingStateObservedAtMs;
@@ -120,7 +122,7 @@ function resolvePreviousExplicitBinaryEvidence(
   observation: ExplicitControlObservation,
 ): { value?: boolean; observedAtMs?: number } {
   const rawEvAxis = (
-    observation.controlCapabilityId === 'evcharger_charging'
+    observation.binaryCapabilityId === 'evcharger_charging'
     && observation.observedCapabilityId === 'evcharger_charging'
   );
   if (rawEvAxis) {
@@ -139,7 +141,7 @@ function resolvePreviousExplicitBinaryEvidence(
     };
   }
   if (
-    previousObservation?.capabilityId === observation.controlCapabilityId
+    previousObservation?.capabilityId === observation.binaryCapabilityId
     && previousObservation.observedCapabilityIds.includes(observation.observedCapabilityId)
   ) {
     return {
@@ -157,7 +159,7 @@ export function preserveRejectedExplicitBinaryObservation(params: {
 }): void {
   const { parsed, previous, observation } = params;
   if (
-    observation.controlCapabilityId === 'evcharger_charging'
+    observation.binaryCapabilityId === 'evcharger_charging'
     && observation.observedCapabilityId === 'evcharger_charging'
   ) {
     if (parsed.evChargingStateObservedAtMs === undefined) {
@@ -168,7 +170,6 @@ export function preserveRejectedExplicitBinaryObservation(params: {
     parsed.evChargingObservedAtMs = previous.evChargingObservedAtMs;
     parsed.binaryControl = {
       on: resolveEvCurrentOn({
-        evChargingState: parsed.evChargingState,
         evchargerCharging: parsed.evCharging,
       }),
     };
@@ -189,12 +190,11 @@ export function preserveRejectedExplicitBinaryObservation(params: {
     }
     return;
   }
-  if (observation.controlCapabilityId === 'evcharger_charging') {
+  if (observation.binaryCapabilityId === 'evcharger_charging') {
     parsed.evChargingState = previous.evChargingState;
     parsed.evChargingStateObservedAtMs = previous.evChargingStateObservedAtMs;
     parsed.binaryControl = {
       on: resolveEvCurrentOn({
-        evChargingState: previous.evChargingState,
         evchargerCharging: parsed.evCharging,
       }),
     };

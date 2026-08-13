@@ -16,7 +16,7 @@ const NOW = 1_700_000_000_000;
 const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveDeviceInput => ({
   id: 'ev-cap',
   name: 'EV (capability only)',
-  controlCapabilityId: 'evcharger_charging',
+  deviceClass: 'evcharger',
   currentDrawKw: 0,
   expectedPowerKw: 7,
   ...extra,
@@ -44,7 +44,7 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
     const device = {
       id: 'ev-cap',
       name: 'EV (capability only)',
-      controlCapabilityId: 'evcharger_charging',
+      deviceClass: 'evcharger',
       stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: NOW }),
       lastFreshDataMs: NOW,
       // Producer-resolved: this charger has no meter, which resolves to 0 kW.

@@ -1,5 +1,6 @@
 import type { Mock } from 'vitest';
-import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvObservedProbe } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { Logger } from '../../lib/utils/types';
 import {
   getCanSetControl,
@@ -34,7 +35,6 @@ import {
   writeErrorToStderr,
 } from '../../lib/device/transport/managerHomeyApi';
 import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
-import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
@@ -81,40 +81,38 @@ describe('device manager support helpers', () => {
 
     expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff', 'evcharger_charging'] })).toBe('evcharger_charging');
     expect(getControlCapabilityId({ deviceClassKey: 'socket', capabilities: ['onoff'] })).toBe('onoff');
-    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, controlCapabilityId: 'evcharger_charging' })).toBe(false);
+    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, binaryCapabilityId: 'evcharger_charging' })).toBe(false);
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: { evcharger_charging_state: { value: 'plugged_in_paused' } },
-      controlCapabilityId: 'evcharger_charging',
-    })).toBe(false);
+      binaryCapabilityId: 'evcharger_charging',
+    })).toBeUndefined();
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: { evcharger_charging_state: { value: 'plugged_in_charging' } },
-      controlCapabilityId: 'evcharger_charging',
-    })).toBe(true);
-    // State-authoritative: the charge-state string wins over the raw
-    // `evcharger_charging` boolean. A paused charger is off (held off —
-    // commandable, but not on) even if the boolean still reads `true`.
+      binaryCapabilityId: 'evcharger_charging',
+    })).toBeUndefined();
+    // Charging-state telemetry does not redefine the command/readback axis.
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: {
         evcharger_charging: { value: true },
         evcharger_charging_state: { value: 'plugged_in_paused' },
       },
-      controlCapabilityId: 'evcharger_charging',
-    })).toBe(false);
+      binaryCapabilityId: 'evcharger_charging',
+    })).toBe(true);
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: {
         evcharger_charging: { value: true },
         evcharger_charging_state: { value: 'plugged_out' },
       },
-      controlCapabilityId: 'evcharger_charging',
-    })).toBe(false);
+      binaryCapabilityId: 'evcharger_charging',
+    })).toBe(true);
     expect(getCurrentOn({
       deviceClassKey: 'socket',
       capabilityObj: { onoff: { value: true } },
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
     })).toBe(true);
     expect(getCanSetControl('evcharger_charging', capabilityObj)).toBe(true);
     expect(getCanSetControl('onoff', capabilityObj)).toBe(false);
@@ -161,12 +159,12 @@ describe('device manager support helpers', () => {
 
   it('logs EV command and snapshot changes', () => {
     const logger = createLogger();
-    const previousSnapshot: (TargetDeviceSnapshot & EvObservedProbe)[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', expectedPowerKw: 0, expectedPowerSource: 'default', controlCapabilityId: 'evcharger_charging' },
+    const previousSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = [
+      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
     ];
-    const nextSnapshot: (TargetDeviceSnapshot & EvObservedProbe)[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: true }, evChargingState: 'plugged_in_charging', expectedPowerKw: 7.2, expectedPowerSource: 'default', controlCapabilityId: 'evcharger_charging' },
-      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', expectedPowerKw: 0, expectedPowerSource: 'default', controlCapabilityId: 'evcharger_charging' },
+    const nextSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = [
+      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: true }, evChargingState: 'plugged_in_charging', expectedPowerKw: 7.2, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
+      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
     ];
 
     logEvCapabilityRequest({
@@ -380,7 +378,7 @@ describe('device manager support helpers', () => {
   });
 
   it('does not probe an empty capability id when no binary control capability is known', () => {
-    const latestSnapshot: TargetDeviceSnapshot[] = [];
+    const latestSnapshot: TransportDeviceSnapshot[] = [];
     const capabilityAccesses: string[] = [];
     const capabilitiesObj = new Proxy({}, {
       get(target, prop, receiver) {
@@ -630,10 +628,9 @@ describe('parser-valid device without onoff is not eligible for turn_off actuati
     const result = getBinaryControlPlan({
       id: 'dev-temp',
       name: 'Hot Water Tank',
-      // No controlCapabilityId, no 'onoff' in capabilities
+      // No binaryCapabilityId, no 'onoff' in capabilities
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
       canSetControl: true,
-      binaryControl: { on: false },
     } as never);
 
     // Null = no binary control plan = turn_off cannot actuate even though parser accepted.
@@ -654,7 +651,6 @@ describe('parser-valid device without onoff is not eligible for turn_off actuati
       name: 'Hot Water Tank',
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
       canSetControl: true,
-      binaryControl: { on: false },
     } as never);
 
     // Parser accepts; actuation gate rejects.

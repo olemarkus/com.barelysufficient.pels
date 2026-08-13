@@ -26,7 +26,7 @@ describe('planLiveStateMerge', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: true },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [],
       })];
 
@@ -42,7 +42,7 @@ describe('planLiveStateMerge', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: true },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [],
         available: true,
       })];
@@ -56,7 +56,7 @@ describe('planLiveStateMerge', () => {
         id: 'dev-1',
         name: 'Tank',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
@@ -195,7 +195,7 @@ describe('planLiveStateMerge', () => {
         name: 'Tank',
         binaryControl: { on: true },
         currentOn: true,
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         selectedStepId: 'off',
         targets: [],
       })];
@@ -223,7 +223,7 @@ describe('planLiveStateMerge', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
@@ -241,7 +241,7 @@ describe('planLiveStateMerge', () => {
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryCommandPending: false,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];

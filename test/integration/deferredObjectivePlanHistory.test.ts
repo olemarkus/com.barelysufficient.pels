@@ -2885,7 +2885,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           currentTemperature: 58,
           currentTarget: 65,
           plannedState: 'keep',
-          controlCapabilityId: 'onoff',
         }], cursor);
         cursor += tickMs;
         drawing = !drawing;

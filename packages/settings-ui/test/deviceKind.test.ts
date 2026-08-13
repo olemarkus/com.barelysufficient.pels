@@ -41,7 +41,7 @@ describe('resolveDeviceDetailKind', () => {
       deviceClass: 'socket',
       deviceType: 'onoff',
       controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
-      controlWriteCapabilityId: 'charging_button',
+      deviceRole: 'ev_charger',
     });
     expect(resolveDeviceDetailKind(device)).toBe('ev_charger');
   });
@@ -51,7 +51,8 @@ describe('resolveDeviceDetailKind', () => {
     const device = buildDevice({
       deviceClass: 'socket',
       deviceType: 'onoff',
-      controlCapabilityId: 'evcharger_charging',
+      binaryControllable: true,
+      deviceRole: 'ev_charger',
     });
     expect(resolveDeviceDetailKind(device)).toBe('ev_charger');
   });

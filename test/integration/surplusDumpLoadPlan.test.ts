@@ -52,7 +52,7 @@ const buildInputDevice = (
 ): PlanInputDevice => {
   const merged = {
     targets: [] as PlanInputDevice['targets'],
-    controlCapabilityId: 'onoff' as const,
+    binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
     controllable: true,
     managed: true,
@@ -408,12 +408,13 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot) => {
       observation,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
-        setCapability: async (_deviceId: string, capabilityId: string, value: unknown) => {
-          setCapabilityCalls.push({ capabilityId, value: value as boolean });
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+        requestSteppedLoadStep: async () => ({ requested: false }),
+        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+          setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
           return undefined;
         },
-        applyDeviceTargets: () => Promise.resolve(),
-        triggerFlowBackedBinaryControl: () => Promise.reject(new Error('flow binary not expected here')),
+        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
       }),
     }),
     getRestoreLogSource: () => 'shed_state',
@@ -428,7 +429,7 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot) => {
 
 const offPumpSnapshot: TargetDeviceSnapshot = {
   id: PUMP,
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   capabilities: ['onoff'],
   canSetControl: true,
   binaryControl: { on: false },
@@ -522,7 +523,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     name: 'Pool pump',
     targets: [],
     deviceClass: 'socket',
-    controlCapabilityId: 'onoff',
+    binaryCapabilityId: 'onoff',
     binaryControl: { on: false },
     ...overrides,
   }) as TargetDeviceSnapshot;

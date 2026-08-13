@@ -2,7 +2,6 @@ import type { ObservedDeviceState } from '../../../packages/contracts/src/types'
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { ObservedDeviceStateRefreshPayload } from '../../../packages/contracts/src/observedDeviceState';
 import type { HomeyDeviceLike } from '../../utils/types';
-import { resolveEvChargingStateBinaryEvidence } from '../managerControl';
 import type { RecentLocalCapabilityWrites } from './managerRealtimeSupport';
 import {
   reconcileRealtimeDeviceUpdate,
@@ -69,7 +68,7 @@ export type DeviceUpdateProcessedDebugEvent = {
   filteredChangeCount: number;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
-  controlCapabilityId: string | null;
+  binaryCapabilityId: string | null;
   rawBinaryObserved: boolean;
   rawBinaryValue: boolean | null;
   binarySettleOutcome: BinarySettleOutcome;
@@ -173,8 +172,8 @@ export function handleRealtimeDeviceUpdate(params: {
   // Extract explicit settlement evidence before reconcile so the settle window
   // receives the observed value rather than a preserved snapshot value.
   const priorSnapshot = latestSnapshot.find((s) => s.id === deviceId);
-  const controlCapabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
-  const rawBinaryValue = extractRawBinaryValue(device, controlCapabilityId);
+  const binaryCapabilityId = priorSnapshot?.binaryObservationCapabilityId ?? priorSnapshot?.binaryCapabilityId;
+  const rawBinaryValue = extractRawBinaryValue(device, binaryCapabilityId);
   const binaryEvidence = extractBinarySettleEvidence(device, priorSnapshot);
 
   const result = reconcileRealtimeDeviceUpdate({
@@ -210,7 +209,7 @@ export function handleRealtimeDeviceUpdate(params: {
     deviceName: label,
     priorSnapshot,
     currentSnapshot: result.currentSnapshot,
-    controlCapabilityId,
+    binaryCapabilityId,
     rawBinaryValue,
     binarySettleOutcome: settleResult.binarySettleOutcome,
     hadChanges,
@@ -330,7 +329,7 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
     createObservationCursor,
   } = params;
   const deviceId = currentSnapshot?.id;
-  const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
+  const binaryCapabilityId = currentSnapshot?.binaryCapabilityId;
 
   if (shouldSuppressPendingBinaryChange({
     binaryEvidence,
@@ -383,7 +382,7 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
   deviceName?: string;
   priorSnapshot: TransportDeviceSnapshot | undefined;
   currentSnapshot: TransportDeviceSnapshot | null;
-  controlCapabilityId: string | undefined;
+  binaryCapabilityId: string | undefined;
   rawBinaryValue: boolean | undefined;
   binarySettleOutcome: BinarySettleOutcome;
   hadChanges: boolean;
@@ -398,7 +397,7 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
     deviceName,
     priorSnapshot,
     currentSnapshot,
-    controlCapabilityId,
+    binaryCapabilityId,
     rawBinaryValue,
     binarySettleOutcome,
     hadChanges,
@@ -420,7 +419,7 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
     filteredChangeCount: filteredChanges.length,
     changes: filteredChanges,
     observedCapabilityIds,
-    controlCapabilityId: controlCapabilityId ?? null,
+    binaryCapabilityId: binaryCapabilityId ?? null,
     rawBinaryObserved: hasRawBinaryObservation(rawBinaryValue),
     rawBinaryValue: rawBinaryValue ?? null,
     binarySettleOutcome,
@@ -506,33 +505,8 @@ function extractBinarySettleEvidence(
   device: HomeyDeviceLike,
   priorSnapshot: TransportDeviceSnapshot | undefined,
 ): BinarySettleEvidence {
-  const capabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
+  const capabilityId = priorSnapshot?.binaryObservationCapabilityId ?? priorSnapshot?.binaryCapabilityId;
   if (capabilityId === undefined) return {};
-
-  if (priorSnapshot?.controlCapabilityId === 'evcharger_charging') {
-    const rawStateValue = device.capabilitiesObj?.evcharger_charging_state?.value;
-    if (rawStateValue !== undefined) {
-      const stateEvidence = resolveEvChargingStateBinaryEvidence(rawStateValue);
-      const rawBinaryValue = extractRawBinaryValue(device, capabilityId);
-      if (
-        Object.is(rawStateValue, priorSnapshot.evChargingState)
-        && stateEvidence !== undefined
-        && rawBinaryValue !== undefined
-        && rawBinaryValue !== stateEvidence
-      ) {
-        return { suppressRawBinaryChange: true };
-      }
-      return {
-        value: stateEvidence,
-        suppressRawBinaryChange: true,
-      };
-    }
-    if (priorSnapshot.evChargingState !== undefined) {
-      return {
-        suppressRawBinaryChange: extractRawBinaryValue(device, capabilityId) !== undefined,
-      };
-    }
-  }
 
   return { value: extractRawBinaryValue(device, capabilityId) };
 }

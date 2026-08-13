@@ -35,7 +35,7 @@ const evDevice = (id: string, evChargingState: EvChargingState): SnapshotEntry =
   deviceClass: 'evcharger',
   targets: [],
   capabilities: ['evcharger_charging', 'evcharger_charging_state'],
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   evChargingState,
   lastFreshDataMs: Date.now(),
 } as SnapshotEntry);

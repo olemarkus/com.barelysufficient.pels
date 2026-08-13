@@ -26,6 +26,7 @@ import {
   type SteppedDiscriminantProbe,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
+import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 
 // Local wrappers that route a `binaryControl` override through the binary
 // discriminant regrouper — the field moved off the base device types onto the
@@ -124,7 +125,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'max',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       measuredPowerKw: 2.9,
     });
     const steppedAtLowestActive = buildPlanInputDevice({
@@ -135,7 +136,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       measuredPowerKw: 1.2,
     });
 
@@ -175,7 +176,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
   // chunk 6 — expand cascade-parity test in test/planRemainingSheddableLoad.test.ts."
   //
   // Four edge cases the producer-resolved path and the legacy fallback handle:
-  //   (a) Stepped, `controlCapabilityId: undefined`, already at the lowest active
+  //   (a) Stepped, `binaryCapabilityId: undefined`, already at the lowest active
   //       step. With selectedStepId set, both paths see a target step
   //       different from the current step → both report residual = measured
   //       draw. (The binary-finish gate that would zero this out only fires
@@ -199,7 +200,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'max',
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       measuredPowerKw: 2.9,
     });
 
@@ -212,7 +213,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
-      controlCapabilityId: undefined,
+      binaryCapabilityId: undefined,
       measuredPowerKw: 1.2,
     });
 
@@ -225,7 +226,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       measuredPowerKw: 1.8,
     });
 
@@ -310,9 +311,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
                 ...(device.selectedStepId !== undefined ? { selectedStepId: device.selectedStepId } : {}),
                 hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
                 currentDrawKw: device.currentDrawKw,
-                ...(device.controlCapabilityId !== undefined
-                  ? { controlCapabilityId: device.controlCapabilityId }
-                  : {}),
+                hasBinaryControl: isBinaryPlanDevice(device),
               },
             }
             : {}),
@@ -364,7 +363,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
-      controlCapabilityId: 'onoff',
+      binaryCapabilityId: 'onoff',
       reportedStepId: 'medium',
       measuredPowerKw: 2.05,
     });
@@ -396,7 +395,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
           profile: steppedDevice.steppedLoadProfile!,
           hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
           currentDrawKw: device.currentDrawKw,
-          controlCapabilityId: device.controlCapabilityId,
+          hasBinaryControl: isBinaryPlanDevice(device),
         },
       },
       shedBehavior: { action: 'turn_off' },
@@ -435,7 +434,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
           controlModel: 'stepped_load',
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'low',
-          controlCapabilityId: undefined,
+          binaryCapabilityId: undefined,
           measuredPowerKw: 1.2,
         }),
         residualKw: { shed: 1.2 },
@@ -456,7 +455,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
           binaryControl: { on: true },
           controlModel: 'stepped_load',
           steppedLoadProfile: steppedProfile,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           measuredPowerKw: 1.8,
         }),
         residualKw: { shed: 1.8 },
@@ -478,7 +477,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
           binaryControl: { on: true },
           controlModel: 'stepped_load',
           steppedLoadProfile: steppedProfile,
-          controlCapabilityId: 'onoff',
+          binaryCapabilityId: 'onoff',
           reportedStepId: 'medium',
           measuredPowerKw: 2.05,
         }),

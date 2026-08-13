@@ -84,7 +84,6 @@ describe('handleDeferredDeadlineReached — unavailable device must not disarm w
       communicationModel: 'local',
       binaryAxis: {
         state: 'writable',
-        descriptor: { controlCapabilityId: 'onoff', flowBackedCapabilityIds: [] },
       },
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'unavailable' },
@@ -131,7 +130,6 @@ describe('handleDeferredDeadlineReached — observer availability is authoritati
       communicationModel: 'local',
       binaryAxis: {
         state: 'writable',
-        descriptor: { controlCapabilityId: 'onoff', flowBackedCapabilityIds: [] },
       },
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'unavailable' },

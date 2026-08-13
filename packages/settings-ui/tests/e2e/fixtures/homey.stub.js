@@ -327,7 +327,8 @@
           name: 'Zaptec Go',
           currentState: 'not_applicable',
           plannedState: 'keep',
-          controlCapabilityId: 'evcharger_charging',
+          binaryControllable: true,
+          deviceRole: 'ev_charger',
           evChargingState: 'plugged_in_charging',
           priority: 4,
           controllable: true,
@@ -554,7 +555,8 @@
     deviceClass: 'evcharger',
     deviceType: 'onoff',
     currentOn: false,
-    controlCapabilityId: 'evcharger_charging',
+    binaryControllable: true,
+    deviceRole: 'ev_charger',
     evChargingState: 'plugged_in_paused',
     measuredPowerKw: 0,
     expectedPowerKw: 7.2,
@@ -631,7 +633,7 @@
         // EV) — see the device-detail dump-load specs. A pool pump is a load
         // that can safely wait for the sun (unlike the water heater the copy
         // explicitly warns against).
-        controlCapabilityId: 'onoff',
+        binaryControllable: true,
         capabilities: ['onoff'],
         measuredPowerKw: 0,
         expectedPowerKw: 1.0,
@@ -673,7 +675,8 @@
         deviceClass: 'evcharger',
         deviceType: 'onoff',
         controlModel: 'stepped_load',
-        controlCapabilityId: 'evcharger_charging',
+        binaryControllable: true,
+        deviceRole: 'ev_charger',
         evChargingState: 'plugged_in_charging',
         currentOn: true,
         measuredPowerKw: 1.38,

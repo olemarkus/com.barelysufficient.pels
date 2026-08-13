@@ -46,7 +46,6 @@ const buildSnapshot = (overrides: Partial<DecoratedDeviceSnapshot>): DecoratedDe
   expectedPowerSource: 'default',
   targets: [],
   binaryControl: { on: false },
-  controlCapabilityId: 'onoff',
   ...overrides,
 });
 

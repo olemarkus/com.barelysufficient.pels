@@ -50,6 +50,7 @@ const mainDevice = {
   zoneId: 'z1',
   available: true,
   capabilities: [],
+  targets: [],
   controllable: true,
   measuredPowerKw: 2,
 } as unknown as TargetDeviceSnapshot;
@@ -59,6 +60,7 @@ const subDevice = {
   zoneId: 'z2',
   available: true,
   capabilities: [],
+  targets: [],
   controllable: true,
   measuredPowerKw: 1.5,
 } as unknown as TargetDeviceSnapshot;
@@ -218,7 +220,6 @@ describe('filterDevicesForHome identity guard', () => {
 
 describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
   it('preserves commandability state while meter authority is unavailable', () => {
-    const pruneCommandability = vi.fn();
     const ctx = createAppContextMock({
       latestTargetSnapshot: [mainDevice],
       homeMembership: {
@@ -231,8 +232,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       } as unknown as NonNullable<ReturnType<typeof createAppContextMock>['homeMembership']>,
     });
 
-    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID, { pruneCommandability })).toEqual([]);
-    expect(pruneCommandability).not.toHaveBeenCalled();
+    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
   });
 
   it('includes every device while no sub-homes exist', () => {

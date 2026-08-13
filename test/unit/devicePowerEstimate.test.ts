@@ -376,7 +376,7 @@ describe('estimatePower', () => {
     // decides makes it live again.
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-ev', deviceLabel: 'Charger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       now: Date.now(), state: buildState(), logger,
     });
     expect(result.expectedPowerSource).toBe('default');

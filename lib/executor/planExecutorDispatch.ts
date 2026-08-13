@@ -172,13 +172,13 @@ const applyShedTemperatureIntent = async (
 ): Promise<boolean> => {
   const command = buildExecutableTargetCommand(intent, observed);
   if (core.capacityDryRun()) {
-    logger.info({ event: 'executor_plan_log', msg: `Capacity (dry run): would set ${command?.targetCap || 'target'} `
+    logger.info({ event: 'executor_plan_log', msg: `Capacity (dry run): would set ${command?.target || 'target'} `
       + `for ${intent.name} to ${intent.desired}°C (shedding)` });
     return false;
   }
   if (!command) return false;
   if (Object.is(command.observedValue, command.desired)) {
-    logger.debug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting ${command.targetCap || 'target'} `
+    logger.debug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting ${command.target || 'target'} `
       + `for ${intent.name}, already at ${intent.desired}°C` });
     return false;
   }
@@ -463,18 +463,18 @@ export const applySheddingToDeviceImpl = async (
     }
     const name = deviceName;
     const shedBehavior = core.getShedBehavior(deviceId);
-    const targetCap = snapshotState?.targets?.[0]?.id;
+    const target = snapshotState?.targets?.[0] ? 'temperature' as const : undefined;
     const shedTemp = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null
       ? shedBehavior.temperature
       : null;
-    const canSetShedTemp = Boolean(targetCap && shedTemp !== null);
+    const canSetShedTemp = Boolean(target && shedTemp !== null);
     // Mark as pending before async operation
     core.state.pendingSheds.add(deviceId);
     try {
       const shedTemperatureResult = await dispatchTrySetShedTemperature(core, {
         deviceId,
         name,
-        targetCap,
+        target,
         shedTemp,
         canSetShedTemp,
       });
@@ -501,7 +501,7 @@ const dispatchTrySetShedTemperature = async (
   params: {
     deviceId: string;
     name: string;
-    targetCap: string | undefined;
+    target: 'temperature' | undefined;
     shedTemp: number | null;
     canSetShedTemp: boolean;
   },

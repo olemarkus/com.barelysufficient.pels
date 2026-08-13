@@ -21,6 +21,9 @@ describe('buildDeviceActuator', () => {
       deviceManager: {
         setCapability: vi.fn(async () => undefined),
         applyDeviceTargets: vi.fn(async () => undefined),
+        requestBinaryControl: vi.fn(async () => undefined),
+        requestTemperatureTarget: vi.fn(async () => undefined),
+        resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
         requestSteppedLoadStep,
       },
       homey: { flow: { getTriggerCard: vi.fn() } },
@@ -39,7 +42,11 @@ describe('buildDeviceActuator', () => {
       planningCurrentA: 4,
     });
 
-    expect(outcome.steppedResult).toEqual({ requested: true, transport: 'flow' });
+    expect(outcome).toEqual({
+      requested: true,
+      kind: 'step',
+      steppedResult: { requested: true, transport: 'flow' },
+    });
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({
       deviceId: 'stepped-1',
@@ -64,6 +71,10 @@ describe('buildDeviceActuator', () => {
       deviceManager: {
         setCapability: vi.fn(async () => undefined),
         applyDeviceTargets,
+        requestBinaryControl: vi.fn(async () => undefined),
+        requestTemperatureTarget: vi.fn(async () => undefined),
+        resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
+        requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
       },
       homey: { flow: { getTriggerCard: vi.fn() } },
       temperatureControlPolicyState: 'unavailable',
@@ -74,7 +85,7 @@ describe('buildDeviceActuator', () => {
     await expect(actuator!.apply({
       kind: 'target',
       deviceId: 'missing-thermostat',
-      targetKind: 'temperature',
+      target: 'temperature',
       value: 5,
     })).resolves.toEqual({ requested: false });
     expect(applyDeviceTargets).not.toHaveBeenCalled();

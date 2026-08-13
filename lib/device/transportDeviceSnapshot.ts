@@ -1,4 +1,6 @@
 import type {
+  BinaryControlCapabilityId,
+  BinaryControlObservation,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
   ReportedStepObservedProbe,
@@ -7,6 +9,20 @@ import type {
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
+
+/**
+ * Raw Homey routing metadata. This is deliberately private to the transport
+ * owner seam: consumers receive semantic binary/target/step state and never a
+ * capability or Flow address.
+ */
+export type TransportControlBindingProbe = {
+  binaryCapabilityId?: BinaryControlCapabilityId;
+  binaryWriteCapabilityId?: string;
+  binaryObservationCapabilityId?: string;
+  flowBackedCapabilityIds?: string[];
+};
+
+export type TransportBinaryControlObservation = BinaryControlObservation;
 
 /**
  * Owner-side snapshot shape (discriminated-types refactor). The transport stores
@@ -35,6 +51,9 @@ import type {
  * (`packages/shared-domain/src/*ObservedState.ts`).
  */
 export type TransportDeviceSnapshot =
-  TargetDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe
+  Omit<TargetDeviceSnapshot, 'binaryControlObservation'> & {
+    binaryControlObservation?: TransportBinaryControlObservation;
+  } & EvObservedProbe & TemperatureObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
-  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
+  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+  & TransportControlBindingProbe;

@@ -1,7 +1,6 @@
 import type { DevicePlan, PlanInputDevice, SteppedClusterFields } from './planTypes';
 import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { isEvPlanDevice } from './planEvDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
@@ -65,7 +64,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
   return {
     ...plan,
     // Keeping the live-plan merge in one place makes reconciliation easier to audit.
-    // eslint-disable-next-line complexity -- wide live/prior field merge; ?? fallbacks + discriminant re-tie inherent
     devices: plan.devices.map((device) => {
       const live = liveById.get(device.id);
       if (!live) return device;
@@ -99,7 +97,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // then regroup through `withEvDiscriminant`. The observed `evChargingState`
       // is re-sourced from the LIVE device (it is an observation, so the freshest
       // one wins), and `commandableNow` with it.
-      const evDevice = isEvPlanDevice(device) ? device : null;
       // The temperature cluster (`currentTarget` / `currentTemperature`) is
       // orthogonal to the stepped axis and off the base, so the `...device`
       // spread does not carry it at the type level. Re-source `currentTarget`
@@ -109,10 +106,9 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
         ...device,
         commandableNow: live.commandableNow,
-        evChargingState: isEvPlanDevice(live) ? live.evChargingState : undefined,
-        evBoost: evDevice?.evBoost,
-        evBoostActive: evDevice?.evBoostActive,
-        stateOfCharge: evDevice?.stateOfCharge,
+        evBoost: device.evBoost,
+        evBoostActive: device.evBoostActive,
+        stateOfCharge: device.stateOfCharge,
         ...steppedCluster,
         currentState: mergedCurrentState,
         currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
@@ -131,7 +127,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         expectedPowerKw: live.expectedPowerKw,
         expectedPowerSource: live.expectedPowerSource,
         currentDrawKw: live.currentDrawKw,
-        controlCapabilityId: live.controlCapabilityId,
         binaryCommandPending: live.binaryCommandPending,
         // Deliberately NOT the producer's `!== false` collapse — for either
         // field. This is a MERGE, not a build: the plan device already carries a
@@ -223,7 +218,6 @@ function resolveCurrentStateFromPlanInput(
   // this recompute agrees with `toPlanDevice` (both concrete/latched).
   return resolveObservedCurrentState({
     ...(isBinaryPlanDevice(liveDevice) ? { binaryControl: { on: liveDevice.currentOn } } : {}),
-    controlCapabilityId: liveDevice.controlCapabilityId,
     steppedLoadProfile: mergedProfile,
     selectedStepId: mergedSelectedStepId,
   });

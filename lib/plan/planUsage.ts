@@ -1,4 +1,4 @@
-import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { isPlanDeviceObservedOff } from './planSteppedLoad';
 
@@ -6,11 +6,10 @@ type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
   // Producer-resolved on/off truth, present iff the device is binary
-  // (`controlCapabilityId` set). A step-only stepper carries no `currentOn`; its
+  // (`binaryCapabilityId` set). A step-only stepper carries no `currentOn`; its
   // off-state is read from the step axis, so the stepped fields travel too.
   currentOn?: boolean;
   currentState?: string;
-  controlCapabilityId?: BinaryControlCapabilityId;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
   plannedState?: string;
@@ -114,4 +113,3 @@ const resolveBudgetExemptProjectedKw = (dev: UsageDevice): number => {
   // Reached only when the draw is 0, so the fallback arm is 0 — not "the draw".
   return getHighestKnownPowerKw(dev).kw;
 };
-

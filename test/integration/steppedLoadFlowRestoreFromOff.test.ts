@@ -32,7 +32,7 @@
  * still owns the on/off fold — `binaryControl.on` stays false, so a non-off
  * observed step never resurrects a charger PELS has turned off. The stepped
  * shed-release dispatch path is unaffected: it runs only for devices with NO
- * binary control capability (`!snapshot.controlCapabilityId` in
+ * binary control capability (`!snapshot.binaryCapabilityId` in
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -163,7 +163,7 @@ const buildRestoreTo6aPlan = (
         plannedState: 'keep',
         controllable: true,
         steppedLoadProfile: profile,
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         selectedStepId: decorated.selectedStepId ?? '6a',
         desiredStepId: '6a',
         lastDesiredStepId: '6a',
@@ -191,7 +191,7 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
         plannedState: 'keep',
         controllable: true,
         steppedLoadProfile: EV_PROFILE,
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         reportedStepId: decorated.reportedStepId,
         selectedStepId: decorated.selectedStepId ?? '6a',
         desiredStepId: '8a',
@@ -268,9 +268,12 @@ const buildHarness = (
     deviceManager: deviceManager as never,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
-      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
-      applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: async () => undefined,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestBinaryControl: async (deviceId, desired) => {
+        await deviceManager.setCapability(deviceId, 'evcharger_charging', desired);
+        return undefined;
+      },
+      requestTemperatureTarget: async (_deviceId, desired) => desired,
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
     getCapacityGuard: () => undefined,
@@ -414,7 +417,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     // Pin the prod-observed parsed state: trusted-off binary via
     // evcharger_charging, no native stepped wiring, flow-backed profile only.
     expect(snapshot.binaryControl?.on).toBe(false);
-    expect(snapshot.controlCapabilityId).toBe('evcharger_charging');
+    expect(snapshot.binaryCapabilityId).toBe('evcharger_charging');
     expect(snapshot.reportedStepId).toBeUndefined();
 
     const {

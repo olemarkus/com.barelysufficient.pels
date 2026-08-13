@@ -45,7 +45,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import {
+  createPendingBinaryCommandStore,
+  syncPendingBinaryCommands,
+} from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import {
   parseDevice,
@@ -168,7 +171,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     controllable: true,
     available: true,
     steppedLoadProfile: snapshot.steppedLoadProfile,
-    controlCapabilityId: 'evcharger_charging' as const,
+    binaryCapabilityId: 'evcharger_charging' as const,
     selectedStepId: snapshot.reportedStepId ?? '15a',
     desiredStepId: 'off',
     reason: SHED_REASON,
@@ -191,6 +194,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     )),
   });
 
+  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
   const deps: PlanExecutorDeps = {
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
@@ -199,9 +203,12 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     deviceManager: deviceManager as never,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
-      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
-      applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: async () => undefined,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestBinaryControl: async (deviceId, desired) => {
+        await deviceManager.setCapability(deviceId, 'evcharger_charging', desired);
+        return undefined;
+      },
+      requestTemperatureTarget: async (_deviceId, desired) => desired,
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
     getCapacityGuard: () => undefined,
@@ -212,10 +219,12 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore,
   };
+  const executor = new PlanExecutor(deps, state);
   return {
-    executor: new PlanExecutor(deps, state),
+    executor,
+    pendingBinaryCommandStore,
     state,
     setCapability,
   };
@@ -242,14 +251,14 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     let charging = true;
     let snapshot = parseChargerSnapshot({ charging, nowMs: Date.now() }, logger);
 
-    const { executor, state, setCapability } = buildExecutor(
+    const { executor, state, setCapability, pendingBinaryCommandStore } = buildExecutor(
       () => snapshot,
       (value) => { charging = value; },
     );
 
     // Pin the real parsed snapshot fields that drive the bug.
     expect(snapshot.controlModel).toBe('stepped_load');
-    expect(snapshot.controlCapabilityId).toBe('evcharger_charging');
+    expect(snapshot.binaryCapabilityId).toBe('evcharger_charging');
     expect(snapshot.binaryControl?.on).toBe(true);
     expect(snapshot.evCharging).toBe(true);
 
@@ -258,10 +267,8 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     const offWritesAfterCycle1 = setCapability.mock.calls
       .filter((call) => call[1] === 'evcharger_charging' && call[2] === false).length;
     expect(offWritesAfterCycle1).toBe(1);
-    const stampAfterRealShed = state.lastInstabilityMs;
-    const deviceStampAfterRealShed = state.lastDeviceShedMs[DEVICE_ID];
-    expect(stampAfterRealShed).toBe(Date.now());
-    expect(deviceStampAfterRealShed).toBe(Date.now());
+    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.lastDeviceShedMs[DEVICE_ID]).toBeUndefined();
 
     // The charger echoed the write: observed switch false, 0 kW, trusted-off
     // binary observation — the exact prod consolidation ("values_match").
@@ -274,6 +281,22 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
       capabilityId: 'evcharger_charging',
       observedValue: false,
     });
+    syncPendingBinaryCommands({
+      store: pendingBinaryCommandStore,
+      liveDevices: [{
+        id: DEVICE_ID,
+        name: 'Elbillader',
+        binaryCommandConfirmation: {
+          state: 'observed', observedValue: false, observedAtMs: Date.now(),
+        },
+      }],
+      source: 'snapshot_refresh',
+      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
+    });
+    const stampAfterRealShed = state.lastInstabilityMs;
+    const deviceStampAfterRealShed = state.lastDeviceShedMs[DEVICE_ID];
+    expect(stampAfterRealShed).toBe(Date.now());
+    expect(deviceStampAfterRealShed).toBe(Date.now());
 
     // Cycles 2..N: the service re-applies the held plan every ~35 s (prod:
     // one rebuild ≈ one off-write, 321 in one evening). The pending window

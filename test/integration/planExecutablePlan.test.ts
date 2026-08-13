@@ -113,10 +113,11 @@ describe('planExecutablePlan', () => {
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 21,
       observedValue: 16,
       isRestoring: true,
+      communicationModel: undefined,
     });
   });
 
@@ -126,7 +127,7 @@ describe('planExecutablePlan', () => {
       name: 'Target only',
       currentState: 'not_applicable',
       plannedState: 'keep',
-      controlCapabilityId: undefined,
+      binaryCapabilityId: undefined,
       currentTarget: 19,
       plannedTarget: 21,
     });
@@ -153,7 +154,7 @@ describe('planExecutablePlan', () => {
       id: 'ev-1',
       name: 'EV Charger',
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      binaryCapabilityId: 'evcharger_charging',
       plannedState: 'keep',
       currentState: 'on',
       evChargingState: 'plugged_in_paused',
@@ -298,10 +299,11 @@ describe('planExecutablePlan', () => {
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
-      targetCap: 'target_temperature',
+      target: 'temperature',
       desired: 20,
       observedValue: 18,
       isRestoring: false,
+      communicationModel: undefined,
     });
   });
 });

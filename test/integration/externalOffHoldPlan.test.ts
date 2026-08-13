@@ -46,7 +46,7 @@ const makeDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice
     ...buildPlanDevice({
       id: 'heater-1',
       currentState: 'off',
-      controlCapabilityId: 'onoff',
+      currentOn: false,
       controllable: true,
       ...overrides,
     }),
@@ -104,7 +104,7 @@ describe('external-off hold — plan reason', () => {
         id: 'ev-1',
         currentState: 'off',
         deviceClass: 'evcharger',
-        controlCapabilityId: 'evcharger_charging',
+        binaryCapabilityId: 'evcharger_charging',
         controllable: true,
         externalOffHoldActive: true,
         evChargingState: 'plugged_out',
@@ -170,7 +170,7 @@ describe('external-off hold — plan-device propagation', () => {
     context: buildContext([buildPlanInputDevice({
       id: 'heater-1',
       name: 'Water heater',
-      controlCapabilityId: 'onoff',
+      currentOn: false,
       controllable: true,
       managed: true,
       currentState: 'off',
@@ -208,7 +208,7 @@ const HEATER = 'heater-1';
 
 const offHeaterSnapshot: TargetDeviceSnapshot = {
   id: HEATER,
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   capabilities: ['onoff'],
   canSetControl: true,
   binaryControl: { on: false },
@@ -231,12 +231,13 @@ const buildExecutorCtx = (held: boolean) => {
       observation,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
-        setCapability: async (_deviceId: string, capabilityId: string, value: unknown) => {
-          setCapabilityCalls.push({ capabilityId, value: value as boolean });
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+        requestSteppedLoadStep: async () => ({ requested: false }),
+        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+          setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
           return undefined;
         },
-        applyDeviceTargets: () => Promise.resolve(),
-        triggerFlowBackedBinaryControl: () => Promise.reject(new Error('flow binary not expected here')),
+        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
       }),
     }),
     getRestoreLogSource: () => 'shed_state',

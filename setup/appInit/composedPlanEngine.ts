@@ -21,7 +21,6 @@ import {
   type HeadroomForDeviceDecision,
   type HeadroomUsageObservation,
 } from '../../lib/plan/planHeadroomDevice';
-import { isPendingBinaryCommandActive } from '../../lib/plan/planObservationPolicy';
 import type { PlanEngineState } from '../../lib/plan/planState';
 import {
   decoratePlanWithPendingTargetCommands,
@@ -170,25 +169,21 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.pendingBinaryCommandStore.hasAny();
   }
 
-  public getPendingBinaryCommandForDevice(
-    deviceId: string,
-    communicationModel?: 'local' | 'cloud',
-  ): { desired: boolean } | null {
-    const pending = this.pendingBinaryCommandStore.peek(deviceId);
-    if (!pending || !isPendingBinaryCommandActive({ pending, communicationModel })) return null;
+  public getPendingBinaryCommandForDevice(deviceId: string): { desired: boolean } | null {
+    const pending = this.pendingBinaryCommandStore.get(deviceId);
+    if (!pending) return null;
     return { desired: pending.desired };
   }
 
-  public hasPendingBinaryCommandForCapability(deviceId: string, capabilityId: string): boolean {
-    return this.pendingBinaryCommandStore.isBinaryChangeAttributableToPels(deviceId, capabilityId);
+  public hasAttributablePendingBinaryCommand(deviceId: string): boolean {
+    return this.pendingBinaryCommandStore.isBinaryChangeAttributableToPels(deviceId);
   }
 
-  public clearRecentBinaryOffCommandForCapability(
+  public clearRecentBinaryOffCommand(
     deviceId: string,
-    capabilityId: string,
     observedOnAtMs?: number,
   ): void {
-    this.pendingBinaryCommandStore.clearRecentConfirmedOff(deviceId, capabilityId, observedOnAtMs);
+    this.pendingBinaryCommandStore.clearRecentConfirmedOff(deviceId, observedOnAtMs);
   }
 
   public evaluateHeadroomForDevice(params: {

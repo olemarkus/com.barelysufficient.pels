@@ -11,9 +11,9 @@
 // layers entirely. Rule 3 is narrower and its opposite in spirit: control
 // MODALITY is exactly what these layers may branch on, but only through the ONE
 // predicate that defines it — never by re-inlining the discriminant field test.
-// The BINARY axis is the whole of rule 3 now: because `controlCapabilityId ===
-// undefined` reads as ordinary absence-handling rather than as classification, it
-// drifted into nine call sites.
+// The binary axis is represented by semantic `currentOn` presence. Nullish
+// presence checks go through `isBinaryPlanDevice`; boolean reads remain valid
+// because they answer the different question "is it on?".
 //
 // The stepped axis used to be policed here too, as `model === 'stepped_load'`.
 // That field is gone: `DeviceControlProfile` is a union of one, so the tag
@@ -37,23 +37,17 @@
 // `isStarvationSupportedDeviceClass`); consumers call those predicates.
 //
 // Detection is AST-based (not raw regex) and deliberately NARROW so legitimate
-// capability ids ('onoff' as a controlCapabilityId, 'target_temperature' as a
-// write target) and copy strings never false-positive:
+// capability ids ('onoff', 'target_temperature') and copy strings never false-positive:
 //   1. bare device-CLASS family-name string literals, and
 //   2. `===`/`!==` comparisons where one operand is a `.deviceType` / `.deviceClass`
 //      property access (seen through parens / `as` / non-null / `satisfies`
 //      wrappers) and the other is a string literal (any value).
-// Rule 3 additionally matches a truthiness read of the binary discriminant —
-// `!x.controlCapabilityId`, `if (x.controlCapabilityId)`, `Boolean(...)`, and the
-// control operand of a standalone `x.controlCapabilityId && …` guard — because the
-// comparison form failing the build is otherwise just a lesson in which spelling
-// evades it; two executor branches were already written that way.
 //
 // Like check-ev-vocab, this is a tripwire for the obvious/copy-pasted patterns,
 // not a sandbox: it will not catch a branch laundered through an intermediate
 // variable (`const dt = d.deviceType; if (dt === 'temperature')`), a method-call
 // chain (`d.deviceType?.toLowerCase() === ...`), a destructure-then-compare, or
-// exotica like `typeof x.controlCapabilityId === 'string'` / loose `== null`.
+// exotica like `typeof x.currentOn === 'boolean'` / loose `== null`.
 // Those are review-caught.
 //
 // Runs in `ci:checks` (the pre-push hook and the CI checks job).
@@ -90,9 +84,9 @@ const KIND_DISCRIMINANT_PROPS = new Set(['deviceType', 'deviceClass']);
 // (`model === 'stepped_load'`) was removed with the field itself — see the header.
 const MODALITY_DISCRIMINANTS = [
   {
-    prop: 'controlCapabilityId',
+    prop: 'currentOn',
     literal: undefined, // compared against `undefined`/`null`, not a string
-    predicate: 'hasBinaryControlCapability (shared-domain) / isBinaryPlanDevice (lib/plan)',
+    predicate: 'isBinaryPlanDevice (lib/plan)',
   },
 ];
 
@@ -103,13 +97,8 @@ function isNullishOperand(node) {
   return ts.isIdentifier(n) && n.text === 'undefined';
 }
 
-// Discriminants whose truthiness answers the same question as their nullish
-// comparison, so a boolean-context read is the same classification spelled
-// differently. `controlCapabilityId` is the whole set: its type is a union of
-// non-empty literals, so `!x.controlCapabilityId` and `x.controlCapabilityId ===
-// undefined` agree, and the first is exactly what a future author reaches for
-// when the comparison form fails the build. `steppedLoadProfile` is deliberately
-// NOT here, and since 2026-08-12 the reason is narrower than it used to be: the
+// `currentOn` truthiness is intentionally absent: it means observed off/on, not
+// binary-modality presence. `steppedLoadProfile` is also deliberately absent: the
 // stepped discriminant IS presence (`isSteppedLoadSnapshot`), so a bare presence
 // read is no longer a "different question". It stays out because on the stepped
 // axis presence is also how an ordinary optional-field null guard is spelled
@@ -122,17 +111,15 @@ function isNullishOperand(node) {
 // with the field (see the header), so the comparison form is unrepresentable
 // rather than merely forbidden — there is no `=== 'stepped_load'` left for a
 // tripwire to catch on this axis.
-const TRUTHINESS_DISCRIMINANTS = new Map([
-  ['controlCapabilityId', 'hasBinaryControlCapability (shared-domain) / isBinaryPlanDevice (lib/plan)'],
-]);
+const TRUTHINESS_DISCRIMINANTS = new Map();
 
 /**
  * Report every discriminant read that is used directly as a boolean. `expr` is
  * an expression already known to sit in a boolean context; recursion carries
  * that context down through the operators that preserve it — `!`, parentheses,
- * and `&&`/`||` — so `if (!a.controlCapabilityId || b)` is caught at the leaf.
+ * and `&&`/`||` — so `if (!a.currentOn || b)` is caught at the leaf.
  *
- * `??` is deliberately not recursed into: `x.controlCapabilityId ?? 'onoff'` is a
+ * `??` is deliberately not recursed into: `x.currentOn ?? 'onoff'` is a
  * defaulting read, not a classification, and flagging it would push authors into
  * a worse shape rather than toward the predicate.
  */
@@ -172,7 +159,7 @@ function booleanContextExpression(node) {
   if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
     return node.operand;
   }
-  // `Boolean(x.controlCapabilityId)` — the other spelling within easy reach.
+  // `Boolean(x.currentOn)` — the other spelling within easy reach.
   if (
     ts.isCallExpression(node)
     && ts.isIdentifier(unwrap(node.expression))
@@ -275,7 +262,7 @@ function collectOffenders(sourceFile, relPath, offenders, modalityOffenders) {
     if (condition !== null) {
       collectTruthinessReads(condition, sourceFile, relPath, modalityOffenders);
     }
-    // (3c) a standalone short-circuit guard — `const x = d.controlCapabilityId && f()`
+    // (3c) a standalone short-circuit guard — `const x = d.currentOn && f()`
     // — where no enclosing `if`/`!` supplies the boolean context. Only the LEFT
     // operand, and only for `&&`: that is the control operand, the one being
     // tested. `||`'s left operand is a value being defaulted from (the `??` case

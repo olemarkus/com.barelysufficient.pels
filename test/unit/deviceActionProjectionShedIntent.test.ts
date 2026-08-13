@@ -27,7 +27,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
     })).toEqual({ kind: 'turn_off' });
   });
 
@@ -35,7 +35,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_temperature', temperature: 17.3, stepId: null },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
       primaryTarget: target({ step: 0.5 }),
     })).toEqual({ kind: 'set_temperature', temperature: 17.5 });
   });
@@ -44,7 +44,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_temperature', temperature: 100, stepId: null },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
       primaryTarget: target({ min: 5, max: 28 }),
     })).toEqual({ kind: 'set_temperature', temperature: 28 });
   });
@@ -53,7 +53,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_temperature', temperature: 18, stepId: null },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
       primaryTarget: null,
     })).toEqual({ kind: 'turn_off' });
   });
@@ -62,7 +62,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_temperature', temperature: null, stepId: null },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
       primaryTarget: target(),
     })).toEqual({ kind: 'turn_off' });
   });
@@ -71,7 +71,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -80,7 +80,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: null },
       controllable: true,
-      controlCapabilityId: undefined,
+      hasBinaryControl: false,
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -89,7 +89,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'does_not_exist' },
       controllable: true,
-      controlCapabilityId: undefined,
+      hasBinaryControl: false,
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -98,7 +98,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
       controllable: true,
-      controlCapabilityId: undefined,
+      hasBinaryControl: false,
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -107,7 +107,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'turn_off' });
   });
@@ -116,7 +116,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: true,
-      controlCapabilityId: 'onoff',
+      hasBinaryControl: true,
     })).toEqual({ kind: 'turn_off' });
   });
 
@@ -132,7 +132,7 @@ describe('resolveShedIntent', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: false,
-      controlCapabilityId: undefined,
+      hasBinaryControl: false,
     })).toEqual({ kind: 'turn_off' });
   });
 
@@ -142,7 +142,7 @@ describe('resolveShedIntent', () => {
       expect(resolveShedIntent({
         shedBehavior: { action: 'set_temperature', temperature: 17, stepId: null },
         controllable: false,
-        controlCapabilityId: 'onoff',
+        hasBinaryControl: true,
         primaryTarget: target(),
       })).toEqual({ kind: 'turn_off' });
     });
@@ -151,7 +151,7 @@ describe('resolveShedIntent', () => {
       expect(resolveShedIntent({
         shedBehavior: { action: 'set_temperature', temperature: 17, stepId: null },
         controllable: false,
-        controlCapabilityId: 'onoff',
+        hasBinaryControl: true,
         steppedLoadProfile: steppedProfile,
         primaryTarget: target(),
       })).toEqual({ kind: 'turn_off' });
@@ -161,7 +161,7 @@ describe('resolveShedIntent', () => {
       expect(resolveShedIntent({
         shedBehavior: { action: 'set_step', temperature: null, stepId: null },
         controllable: false,
-        controlCapabilityId: undefined,
+        hasBinaryControl: false,
         steppedLoadProfile: steppedProfile,
       })).toEqual({ kind: 'set_step', targetStepId: 'low' });
     });
@@ -170,7 +170,7 @@ describe('resolveShedIntent', () => {
       expect(resolveShedIntent({
         shedBehavior: { action: 'set_step', temperature: null, stepId: null },
         controllable: false,
-        controlCapabilityId: 'onoff',
+        hasBinaryControl: true,
         steppedLoadProfile: steppedProfile,
       })).toEqual({ kind: 'turn_off' });
     });
@@ -181,12 +181,12 @@ describe('resolveShedIntent', () => {
   // `onoff` resolves to NO control capability — `getControlCapabilityId` only
   // returns 'evcharger_charging' for `deviceClass === 'evcharger'`. The legacy
   // `resolveHasBinaryControl` fallback used to call such a device binary by
-  // scanning raw capabilities; collapsing onto `controlCapabilityId`
+  // scanning raw capabilities; collapsing onto `binaryCapabilityId`
   // intentionally drops that case, since PELS has no resolved capability to
   // command its binary state. The shed-intent gate must therefore treat it as
   // a non-binary (step-only fallback) device.
   describe('de-drift: evcharger_charging capability without evcharger class', () => {
-    it('resolves no controlCapabilityId for a non-evcharger device with only evcharger_charging', () => {
+    it('resolves no binaryCapabilityId for a non-evcharger device with only evcharger_charging', () => {
       expect(getControlCapabilityId({
         deviceClassKey: 'other',
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
@@ -198,7 +198,7 @@ describe('resolveShedIntent', () => {
         shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
         controllable: true,
         // De-drift: no resolved control capability, so the binary gate is off.
-        controlCapabilityId: undefined,
+        hasBinaryControl: false,
         steppedLoadProfile: steppedProfile,
       })).toEqual({ kind: 'set_step', targetStepId: 'low' });
     });

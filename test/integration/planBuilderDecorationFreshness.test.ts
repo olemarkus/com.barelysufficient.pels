@@ -25,7 +25,7 @@ const evDevice = (): PlanDevice => ({
   currentState: 'off',
   plannedState: 'keep',
   controllable: true,
-  controlCapabilityId: 'evcharger_charging',
+  binaryCapabilityId: 'evcharger_charging',
   deviceClass: 'evcharger',
   currentOn: false,
   currentTarget: null,

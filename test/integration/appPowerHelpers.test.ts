@@ -2193,7 +2193,7 @@ describe('recordPowerSampleForApp', () => {
         id: 'dev-budget',
         name: 'Budget exempt heater',
         targets: [],
-        controlCapabilityId: 'onoff',
+        binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
         measuredPowerKw: 0,
         expectedPowerKw: 0.8,

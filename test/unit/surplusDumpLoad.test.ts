@@ -36,7 +36,7 @@ const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 
 const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnlyPosture>[0]> = {}) => ({
   surplusWilling: true,
-  controlCapabilityId: 'onoff' as const,
+  hasBinaryControl: true,
   deviceClass: 'socket',
   targets: [],
   steppedLoadProfile: undefined,
@@ -55,9 +55,8 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
   it.each([
     ['not willing', { surplusWilling: false }],
     ['willing absent', { surplusWilling: undefined }],
-    ['no binary control capability', { controlCapabilityId: undefined }],
-    ['EV charging capability', { controlCapabilityId: 'evcharger_charging' as const }],
-    ['EV device class', { deviceClass: 'evcharger' }],
+    ['no binary control capability', { hasBinaryControl: false }],
+    ['EV charging capability', { objectiveKind: 'ev_soc' as const }],
     ['stepped-load profile', { steppedLoadProfile: steppedProfile }],
     ['temperature target', { targets: [{ id: 'target_temperature', value: 20, unit: 'C' }] }],
     // Continuous / target-power / non-binary control is pre-resolved at the
@@ -87,7 +86,7 @@ const dumpLoad = (id: string, overrides: Parameters<typeof buildPlanInputDevice>
   id,
   name: `Dump ${id}`,
   deviceType: 'onoff',
-  controlCapabilityId: 'onoff',
+  binaryControllable: true,
   surplusOnly: true,
   expectedPowerKw: 1,
   ...overrides,
@@ -168,7 +167,7 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
 
   it('never holds a device without the surplusOnly posture', () => {
     const state = createPlanEngineState(0);
-    const plain = buildPlanInputDevice({ id: 'b', deviceType: 'onoff', controlCapabilityId: 'onoff' });
+    const plain = buildPlanInputDevice({ id: 'b', deviceType: 'onoff', binaryControllable: true });
     expect(resolveSurplusHold({ devices: [plain], state, excludeIds: new Set() }).holdIds.size).toBe(0);
   });
 
@@ -336,7 +335,7 @@ describe('resolveSurplusEligibility (mixed temp + binary pool)', () => {
     const state = createPlanEngineState(0);
     state.surplusEligibilityByDevice.pump = { eligible: true, sinceMs: 0 };
     // Same device, posture revoked (no surplusOnly, no temp config).
-    const plain = buildPlanInputDevice({ id: 'pump', deviceType: 'onoff', controlCapabilityId: 'onoff' });
+    const plain = buildPlanInputDevice({ id: 'pump', deviceType: 'onoff', binaryControllable: true });
     allocatorPass({ state, devices: [plain], signedNetKw: -2, nowTs: 10_000 });
     expect(state.surplusEligibilityByDevice.pump).toBeUndefined();
   });

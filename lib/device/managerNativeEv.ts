@@ -64,8 +64,8 @@ export function resolveFlowCapabilityOverlay(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   controlAdapter?: DeviceControlAdapterSnapshot;
-  controlWriteCapabilityId?: string;
-  controlObservationCapabilityId?: string;
+  binaryWriteCapabilityId?: string;
+  binaryObservationCapabilityId?: string;
   flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
   requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
@@ -156,8 +156,8 @@ export function resolveFlowCapabilityOverlay(params: {
     capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
     capabilityObj,
     controlAdapter,
-    controlWriteCapabilityId: nativeEvOverlay.controlWriteCapabilityId,
-    controlObservationCapabilityId: nativeEvOverlay.controlObservationCapabilityId,
+    binaryWriteCapabilityId: nativeEvOverlay.binaryWriteCapabilityId,
+    binaryObservationCapabilityId: nativeEvOverlay.binaryObservationCapabilityId,
     flowAugmentedDeviceType,
     flowBackedCapabilityIds,
     requiredFlowCapabilityIds,
@@ -245,11 +245,11 @@ function resolveOverlayControlAdapter(params: {
 
 function isNativeEvControlAdapterActive(params: {
   controlAdapter?: DeviceControlAdapterSnapshot;
-  controlWriteCapabilityId?: string;
+  binaryWriteCapabilityId?: string;
 }): boolean {
   return params.controlAdapter?.kind === 'capability_adapter'
     && params.controlAdapter.activationEnabled === true
-    && params.controlWriteCapabilityId === 'charging_button';
+    && params.binaryWriteCapabilityId === 'charging_button';
 }
 
 function resolveActiveNativeSteppedProfile(params: {

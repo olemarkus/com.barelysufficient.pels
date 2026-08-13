@@ -22,7 +22,7 @@ import {
 import { filterDevicesForHome } from '../homeMembership';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import type { AppContext } from '../../lib/app/appContext';
-import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
+import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import { rankActiveDevicePriorities } from '../../packages/shared-domain/src/modePriorities';
@@ -65,21 +65,18 @@ const runSnapshotPrePass = (
       const device = snapshot.find((entry) => entry.id === deviceId);
       const observation = toExternalOffHoldObservedDevice(device);
       if (
-        !device?.controlCapabilityId
-        || observation?.binaryAxisOn !== true
+        observation?.binaryAxisOn !== true
         || observation.binaryAxisObservedAtMs === undefined
       ) return;
       if (options?.clearRecentBinaryOffCommand) {
         options.clearRecentBinaryOffCommand(
           deviceId,
-          device.controlCapabilityId,
           observation.binaryAxisObservedAtMs,
         );
         return;
       }
-      ctx.planEngine?.clearRecentBinaryOffCommandForCapability(
+      ctx.planEngine?.clearRecentBinaryOffCommand(
         deviceId,
-        device.controlCapabilityId,
         observation.binaryAxisObservedAtMs,
       );
     },
@@ -109,12 +106,6 @@ export const buildHomePlanDevices = (
   options?: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
   const homeDevices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId);
-  const membershipAuthorityAvailable = ctx.homeMembership
-    ? ctx.homeMembership.getConfiguredMeterSources().state === 'resolved'
-    : homeId === MAIN_HOME_ID;
-  if (membershipAuthorityAvailable) {
-    options?.pruneCommandability?.(new Set(homeDevices.map((device) => device.id)));
-  }
   const devices = homeDevices
     .map((device) => toPlanDevice(ctx, device, options))
     .filter(isRuntimePlannedDevice);

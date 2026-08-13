@@ -42,7 +42,6 @@
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { normalizeError } from '../utils/errorUtils';
-import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
 import { buildPlanDetailSignature } from './planLogging';
 import { createPlanRebuildOutcome } from './planRebuildMetrics';
 import { getLogger } from '../logging/logger';
@@ -52,7 +51,12 @@ import type {
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
-import { createIdleClassifier, type IdleClassifier, type IdleClassifierDeviceInput } from '../observer/idleClassifier';
+import {
+  createIdleClassifier,
+  type IdleClassifier,
+  type IdleClassifierDeviceInput,
+} from '../observer/idleClassifier';
+import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';

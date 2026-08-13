@@ -7,7 +7,7 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { shouldEmitWindowed } from '../../logging/logDedupe';
 import { getRecentLocalCapabilityWrite } from './managerRealtimeSupport';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
@@ -32,17 +32,17 @@ export function isFreshnessOnlyCapability(capabilityId: string): boolean {
         || isStateOfChargeCapabilityId(capabilityId);
 }
 
-function isReconcileCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
-    return capabilityId === snapshot.controlCapabilityId
+function isReconcileCapability(snapshot: TransportDeviceSnapshot, capabilityId: string): boolean {
+    return capabilityId === snapshot.binaryCapabilityId
         || snapshot.targets.some((t) => t.id === capabilityId);
 }
 
-function isTrackedCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
+function isTrackedCapability(snapshot: TransportDeviceSnapshot, capabilityId: string): boolean {
     return isReconcileCapability(snapshot, capabilityId) || isFreshnessOnlyCapability(capabilityId);
 }
 
 export function resolveRealtimeCapabilityEvent(
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
 ): { capabilityId: string; value: unknown } | null {
@@ -50,12 +50,12 @@ export function resolveRealtimeCapabilityEvent(
         return { capabilityId, value };
     }
     if (
-        snapshot.controlObservationCapabilityId
-        && snapshot.controlCapabilityId
-        && capabilityId === snapshot.controlObservationCapabilityId
+        snapshot.binaryObservationCapabilityId
+        && snapshot.binaryCapabilityId
+        && capabilityId === snapshot.binaryObservationCapabilityId
     ) {
         return {
-            capabilityId: snapshot.controlCapabilityId,
+            capabilityId: snapshot.binaryCapabilityId,
             value,
         };
     }

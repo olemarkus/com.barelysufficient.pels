@@ -14,7 +14,7 @@ const buildDevice = (id: string, priority: number): PlanInputDevice => withBinar
     expectedPowerKw: 1,
     priority,
   }),
-  controlCapabilityId: 'onoff',
+  binaryCapabilityId: 'onoff',
   currentOn: false,
 }) as PlanInputDevice;
 
