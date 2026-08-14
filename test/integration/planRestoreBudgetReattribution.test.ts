@@ -91,6 +91,7 @@ const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
 });
 
 const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
+  available: true,
   id: DEVICE_ID,
   name: 'Heater',
   targets: [],

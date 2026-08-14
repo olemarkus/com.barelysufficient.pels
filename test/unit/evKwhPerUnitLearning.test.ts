@@ -28,6 +28,7 @@ const MIN_SOC_RISE_PERCENT = 0.2;
 const evDevice = (
   overrides: Partial<TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {},
 ): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
+  available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Charger',

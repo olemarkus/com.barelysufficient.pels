@@ -160,11 +160,11 @@ describe('device manager support helpers', () => {
   it('logs EV command and snapshot changes', () => {
     const logger = createLogger();
     const previousSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
+      { available: true, id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
     ];
     const nextSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: true }, evChargingState: 'plugged_in_charging', expectedPowerKw: 7.2, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
-      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
+      { available: true, id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: true }, evChargingState: 'plugged_in_charging', expectedPowerKw: 7.2, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
+      { available: true, id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
     ];
 
     logEvCapabilityRequest({
@@ -410,7 +410,7 @@ describe('device manager support helpers', () => {
   it('does not let an older bundled device update roll back exact step evidence', () => {
     const newerObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
     const olderObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
-    const latestSnapshot: TransportDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
+    const latestSnapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev-1',
       name: 'Charger',
       targets: [{ id: 'target_power', value: 5_750, unit: 'W' }],
@@ -422,7 +422,7 @@ describe('device manager support helpers', () => {
     reconcileRealtimeDeviceUpdate({
       latestSnapshot,
       device: { id: 'ev-1', name: 'Charger' },
-      parseDevice: () => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+      parseDevice: () => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
         id: 'ev-1',
         name: 'Charger',
         targets: [{ id: 'target_power', value: 5_520, unit: 'W' }],

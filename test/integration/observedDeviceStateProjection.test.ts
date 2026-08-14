@@ -123,7 +123,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
     });
 
     it('projects the complete exact-step observation cluster', () => {
-        const snapshot: TransportDeviceSnapshot = { expectedPowerKw: 1, expectedPowerSource: 'default',
+        const snapshot: TransportDeviceSnapshot = { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
             id: 'ev-1',
             name: 'Charger',
             targets: [],
@@ -357,6 +357,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
 // hand-shaped events — no transport needed for ordering/dedup semantics.
 describe('ObservedDeviceStateProjection apply guard', () => {
     const baseObserved = (id: string, currentOn: boolean) => ({
+        available: true,
         id,
         name: id,
         targets: [],
@@ -452,7 +453,8 @@ describe('ObservedDeviceStateProjection apply guard', () => {
 // exercise the seed's interaction with the ordered apply guard directly.
 describe('ObservedDeviceStateProjection seedMissing', () => {
     const baseObserved = (id: string, currentOn: boolean) => ({
-    expectedPowerKw: 1,
+        available: true,
+        expectedPowerKw: 1,
         id,
         name: id,
         targets: [],

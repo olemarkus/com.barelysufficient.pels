@@ -27,11 +27,16 @@ describe('Redesign plan UI', () => {
     return {
       ...snapshot,
       devices: snapshot.devices.map((device) => {
+        const normalized = {
+          ...device,
+          controllable: device.controllable ?? true,
+          available: device.available ?? true,
+        };
         if (typeof device.reason === 'string') {
-          return { ...device, reason: fixtureDeviceReason(device.reason) };
+          return { ...normalized, reason: fixtureDeviceReason(device.reason) };
         }
-        if (device.reason && typeof device.reason === 'object') return device;
-        return { ...device, reason: DEFAULT_REASON };
+        if (device.reason && typeof device.reason === 'object') return normalized;
+        return { ...normalized, reason: DEFAULT_REASON };
       }),
     };
   };

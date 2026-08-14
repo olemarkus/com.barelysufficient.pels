@@ -375,7 +375,7 @@ function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
       inactiveDevices.push(device);
       continue;
     }
-    if (device.plannedState === 'shed' && device.currentState === 'off' && device.controllable !== false) {
+    if (device.plannedState === 'shed' && device.currentState === 'off' && device.controllable) {
       restoreBlockedDevices.push(device);
     }
   }

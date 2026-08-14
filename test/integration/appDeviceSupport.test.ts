@@ -21,7 +21,7 @@ const makeSettings = (initial: Record<string, unknown>) => {
   };
 };
 
-const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'vt-1',
   name: 'VThermo',
   deviceType: 'temperature',
@@ -29,7 +29,7 @@ const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, 
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
 });
 
-const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'socket-1',
   name: 'Garage Socket',
   deviceType: 'onoff',
@@ -156,7 +156,7 @@ describe('disableUnsupportedDevices', () => {
       [CONTROLLABLE_DEVICES]: { 'ev1': true, 'socket-1': true },
     });
     const debugStructured = vi.fn();
-    const evDevice: TargetDeviceSnapshot = { expectedPowerKw: 1, expectedPowerSource: 'default',
+    const evDevice: TargetDeviceSnapshot = { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev1',
       name: 'EV Charger',
       deviceType: 'onoff',
@@ -219,6 +219,7 @@ describe('seedMissingModeTargets', () => {
     powerCapable: true,
     targets: [{ id: 'target_temperature', value: 21, unit: '°C', min: 5, max: 35, step: 0.5 }],
     ...overrides,
+    available: overrides.available ?? true,
   });
 
   const baseSettings = (modeTargets: Record<string, Record<string, number>>) => makeSettings({

@@ -50,6 +50,7 @@ const buildDom = () => {
 type TestDevice = TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
 
 const buildDevice = (overrides: Partial<TestDevice> = {}): TestDevice => ({
+  available: true,
   id: 'heater-1',
   name: 'Hall Heater',
   targets: [],

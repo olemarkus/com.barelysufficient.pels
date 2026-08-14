@@ -337,7 +337,8 @@ export type PlanInputDeviceBase = {
    * planned hours the field is absent and the override drops out.
    */
   deadlineFloorTargetC?: number;
-  controllable?: boolean;
+  /** Producer-resolved control eligibility; absence is not a planner state. */
+  controllable: boolean;
   managed?: boolean;
   /**
    * Producer-resolved "Run on solar surplus" dump-load posture (PR-7). `true`
@@ -363,7 +364,8 @@ export type PlanInputDeviceBase = {
    */
   externalOffHoldActive?: true;
   budgetExempt?: boolean;
-  available?: boolean;
+  /** Producer-resolved device reachability; absence is not a planner state. */
+  available: boolean;
   zone?: string;
   lastFreshDataMs?: number;
   lastLocalWriteMs?: number;

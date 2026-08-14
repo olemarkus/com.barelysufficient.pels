@@ -229,10 +229,10 @@ const resolveEligibleForStarvation = (params: {
   // "manual"/"external" starvation cause.
   if (device.externalOffHoldActive === true) return false;
   return inputDevice.managed === true
-    && inputDevice.controllable === true
-    && device.controllable !== false
-    && inputDevice.available !== false
-    && device.available !== false;
+    && inputDevice.controllable
+    && device.controllable
+    && inputDevice.available
+    && device.available;
 };
 
 // A restore held for `insufficient_headroom` is blocked against the binding soft limit.
@@ -281,7 +281,7 @@ const resolveStarvationSuppression = (params: {
   budgetReleasableHeadroomHold: boolean;
 }): StarvationSuppressionNormalization => {
   const { device, inputDevice, isEv, budgetReleasableHeadroomHold } = params;
-  if (isEv || !inputDevice || device.controllable === false || inputDevice.controllable !== true) {
+  if (isEv || !inputDevice || !device.controllable || !inputDevice.controllable) {
     return noStarvationSuppression();
   }
   const reason = device.reason;
@@ -351,7 +351,7 @@ const buildDiagnosticsObservation = (params: {
     observationFresh,
   } = params;
   const isEv = isEvLikeDevice(device, inputDevice);
-  const includeDemandMetrics = !isEv && device.controllable !== false && device.available !== false;
+  const includeDemandMetrics = !isEv && device.controllable && device.available;
   const desiredTarget = resolveDesiredTemperatureTarget({
     desiredForMode,
     inputDevice,

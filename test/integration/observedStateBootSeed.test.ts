@@ -29,7 +29,7 @@ import type { EvChargingState, TargetDeviceSnapshot } from '../../packages/contr
 
 type SnapshotEntry = TargetDeviceSnapshot & { evChargingState?: EvChargingState };
 
-const evDevice = (id: string, evChargingState: EvChargingState): SnapshotEntry => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+const evDevice = (id: string, evChargingState: EvChargingState): SnapshotEntry => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id,
   name: id,
   deviceClass: 'evcharger',

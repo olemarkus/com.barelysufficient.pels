@@ -52,6 +52,7 @@ const baseSnapshot = (
   > & Partial<SteppedLoadDecoration> = {},
 ): TargetDeviceSnapshot & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
+  available: true,
   id: 'dev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',

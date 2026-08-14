@@ -189,6 +189,7 @@ describe('app init plan service wiring', () => {
       planEngine: {} as AppContext['planEngine'],
       latestTargetSnapshot: [
         {
+          available: true,
           id: 'socket-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Socket',
@@ -198,6 +199,7 @@ describe('app init plan service wiring', () => {
           binaryControl: { on: false },
         },
         {
+          available: true,
           id: 'ev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'EV',
@@ -207,7 +209,7 @@ describe('app init plan service wiring', () => {
           binaryCapabilityId: 'evcharger_charging',
           binaryControl: { on: false },
         },
-        { expectedPowerKw: 1, expectedPowerSource: 'default',
+        { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
           id: 'temp-1',
           name: 'Thermostat',
           targets: [],

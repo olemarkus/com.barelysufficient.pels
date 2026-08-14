@@ -13,6 +13,7 @@ const buildDevice = (
   deviceType: 'temperature',
   targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
   ...overrides,
+  available: overrides.available ?? true,
 });
 
 describe('smart-task Flow device capability', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isCommandableNow, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 
-const EV = { deviceClass: 'evcharger' as const };
+const EV = { deviceClass: 'evcharger' as const, available: true };
 
 describe('resolveCommandableNow', () => {
   it('is a boolean over two observed facts — plug-state and availability', () => {
@@ -15,7 +15,7 @@ describe('resolveCommandableNow', () => {
   it('asks the plug-state question only of EV devices', () => {
     // A non-EV device carries no plug-state at all — absence here means exactly
     // "not an EV charger", never "an EV charger we could not read".
-    expect(resolveCommandableNow({ deviceClass: 'thermostat' })).toBe(true);
+    expect(resolveCommandableNow({ deviceClass: 'thermostat', available: true })).toBe(true);
   });
 
   it('leaves an EV device with no plug-state commandable', () => {

@@ -107,7 +107,7 @@ export function resolveSurplusOnlyPosture(params: {
     && !isSteppedLoadSnapshot(params)
     && params.plainBinaryControlModel
     && params.targets?.some((target) => target.id === 'target_temperature') !== true
-    && params.controllable !== false
+    && params.controllable
     && params.managed !== false;
 }
 

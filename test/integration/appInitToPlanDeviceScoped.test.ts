@@ -24,8 +24,10 @@ import type {
 // shape a sub-home must NOT hold off (it has no surplus signal to satisfy).
 const SURPLUS_DEVICE_ID = 'dump-load-1';
 const buildSurplusWillingSnapshot = (): TargetDeviceSnapshot & EvObservedProbe => ({
+  available: true,
   id: SURPLUS_DEVICE_ID,
   expectedPowerKw: 1,
+  expectedPowerSource: 'default',
   name: 'Dump load',
   targets: [],
   deviceClass: 'socket',
@@ -52,11 +54,19 @@ const buildSurplusCtx = (): AppContext => {
 };
 
 describe('toPlanDevice — R7b per-home options', () => {
+  it('preserves an explicitly unavailable transport snapshot', () => {
+    const ctx = buildSurplusCtx();
+    const snapshot = { ...buildSurplusWillingSnapshot(), available: false };
+
+    expect(toPlanDevice(ctx, snapshot).available).toBe(false);
+  });
+
   it('keeps a disabled temperature-only device fail-closed without inventing binary control', () => {
     const ctx = createAppContextMock();
     ctx.isCapacityControlEnabled = vi.fn(() => true);
     ctx.resolveManagedState = vi.fn(() => true);
     const temperatureOnly = {
+      available: true,
       id: 'temperature-only',
       name: 'Temperature-only thermostat',
       deviceType: 'temperature',

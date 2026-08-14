@@ -37,6 +37,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),
+        available: snapshot.available,
         ...projectReportedStepObservation(snapshot),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
@@ -57,7 +58,6 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
             observedCapabilityIds: [...snapshot.binaryControlObservation.observedCapabilityIds],
         };
     }
-    if (snapshot.available !== undefined) projected.available = snapshot.available;
     if (snapshot.lastFreshDataMs !== undefined) projected.lastFreshDataMs = snapshot.lastFreshDataMs;
     if (snapshot.lastLocalWriteMs !== undefined) projected.lastLocalWriteMs = snapshot.lastLocalWriteMs;
     if (snapshot.lastUpdated !== undefined) projected.lastUpdated = snapshot.lastUpdated;

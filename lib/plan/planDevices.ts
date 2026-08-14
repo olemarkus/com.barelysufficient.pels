@@ -138,7 +138,7 @@ export function buildInitialPlanDevices(params: {
     }
     const currentTarget = getPrimaryTargetCapability(dev.targets)?.value ?? null;
     const currentState = resolveCurrentState(dev);
-    const controllable = dev.controllable !== false;
+    const controllable = dev.controllable;
     const shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null } = (
       isSteppedLoadDevice(dev) || supportsTemperature
     )

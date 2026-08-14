@@ -13,6 +13,7 @@ const snap = (
   name: 'D',
   targets: [],
   ...over,
+  available: over.available ?? true,
 });
 
 describe('hasObservedTemperature', () => {

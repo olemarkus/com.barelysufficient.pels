@@ -153,7 +153,7 @@ function planShedding(
   if (result.shedSet.size === 0) {
     if (measurementDecision.escalatedSameSample) {
       const controllableDeviceCount = context.devices
-        .filter((device) => device.controllable !== false)
+        .filter((device) => device.controllable)
         .length;
       if (controllableDeviceCount > 0) {
         emitOvershootEscalationBlocked({

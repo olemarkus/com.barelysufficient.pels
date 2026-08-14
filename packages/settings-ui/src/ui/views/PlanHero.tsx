@@ -112,7 +112,7 @@ const isResumingDevice = (device: PlanDeviceSnapshot): boolean => (
 );
 
 // A managed device PELS has NOT finished easing off: it has Power-limit control
-// (`controllable !== false`) and is either still running (`stateKind ===
+// (`controllable`) and is either still running (`stateKind ===
 // 'active'`) OR has been selected for shedding but has not yet settled.
 // `resolvePlanStateKind` marks a device `held` the instant the plan says shed,
 // so an `active`-only check would miss a managed load that is still drawing and
@@ -132,7 +132,7 @@ const isPendingShedStillRunning = (device: PlanDeviceSnapshot): boolean => (
   (device.currentDrawKw ?? 0) > 0
 );
 const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean => (
-  device.controllable !== false && (
+  device.controllable && (
     device.stateKind === 'active'
     || (device.plannedState === 'shed' && isPendingShedStillRunning(device))
   )
@@ -870,7 +870,7 @@ export const PlanHero = ({
         meta={meta}
         isLimiting={isLimiting}
         solarNowText={solarNowText}
-        hasControllableDevice={devices.some((d) => d.controllable !== false)}
+        hasControllableDevice={devices.some((d) => d.controllable)}
       />
       <EnergySection meta={meta} cheapestUpcomingText={cheapestUpcomingText} />
       <p class="plan-hero__decision" data-positive={decision.positive ? '' : undefined}>

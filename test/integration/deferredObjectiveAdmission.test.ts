@@ -132,6 +132,7 @@ const buildDevice = (params: {
   selectedStepId: string;
   priority?: number;
 }): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
+  available: true,
   id: DEVICE_ID,
   name: 'Water Heater',
   commandableNow: true,
@@ -230,7 +231,7 @@ const buildContender = (params: {
   nowMs: number;
   controllable?: boolean;
   priority?: number;
-}): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
+}): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0,
   id: CONTENDER_ID,
   name: 'Contender',
   commandableNow: true,

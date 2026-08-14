@@ -22,6 +22,7 @@ const buildInputDevice = (
   loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & { id: string; name: string },
 ): PlanInputDevice => {
   const merged = {
+    available: true,
     targets: [] as PlanInputDevice['targets'],
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },

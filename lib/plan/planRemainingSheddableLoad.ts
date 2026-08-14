@@ -113,7 +113,7 @@ export type RemainingSheddableLoadParams = {
 
 type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
-  controllable?: boolean;
+  controllable: boolean;
   currentOn?: boolean;
   currentState?: string;
   budgetExempt?: boolean;
@@ -281,7 +281,7 @@ export function sumRemainingSheddableLoadKw(params: {
 function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice): RemainingSheddableBaseDevice {
   return {
     id: device.id,
-    controllable: device.controllable !== false,
+    controllable: device.controllable,
     currentOn: device.currentOn,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,

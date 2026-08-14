@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { parsePlanSnapshot } from '../src/ui/planSnapshotParse.ts';
 
 const deviceWith = (reason: unknown): unknown => ({
-  devices: [{ id: 'dev-1', name: 'Water heater', reason }],
+  devices: [{ id: 'dev-1', name: 'Water heater', controllable: true, available: true, reason }],
 });
 
 describe('parsePlanSnapshot target-name guard', () => {
@@ -42,5 +42,37 @@ describe('parsePlanSnapshot target-name guard', () => {
   it('does not require a target name from codes that never render one', () => {
     expect(parsePlanSnapshot(deviceWith({ code: 'capacity' }))).not.toBeNull();
     expect(parsePlanSnapshot(deviceWith({ code: 'cooldown_restore', remainingSec: 42 }))).not.toBeNull();
+  });
+});
+
+describe('parsePlanSnapshot resolved boolean guard', () => {
+  it.each([
+    ['controllable', undefined],
+    ['controllable', 'true'],
+    ['available', undefined],
+    ['available', 1],
+  ])('rejects a non-boolean or absent %s field', (field, fieldValue) => {
+    const device = {
+      id: 'dev-1',
+      name: 'Water heater',
+      controllable: true,
+      available: true,
+      reason: { code: 'capacity' },
+      [field]: fieldValue,
+    };
+
+    expect(parsePlanSnapshot({ devices: [device] })).toBeNull();
+  });
+
+  it('preserves explicit false values', () => {
+    expect(parsePlanSnapshot({
+      devices: [{
+        id: 'dev-1',
+        name: 'Water heater',
+        controllable: false,
+        available: false,
+        reason: { code: 'capacity' },
+      }],
+    })).not.toBeNull();
   });
 });

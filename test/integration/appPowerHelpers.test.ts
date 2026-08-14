@@ -2127,6 +2127,7 @@ describe('recordPowerSampleForApp', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getLatestTargetSnapshot = () => ([
       {
+        available: true,
         id: 'dev-budget',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2136,6 +2137,7 @@ describe('recordPowerSampleForApp', () => {
         budgetExempt: true,
       },
       {
+        available: true,
         id: 'dev-other',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2190,6 +2192,7 @@ describe('recordPowerSampleForApp', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getLatestTargetSnapshot = () => ([
       {
+        available: true,
         id: 'dev-budget',
         name: 'Budget exempt heater',
         targets: [],
@@ -2243,6 +2246,7 @@ describe('recordPowerSampleForApp', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getLatestTargetSnapshot = () => ([
       {
+        available: true,
         id: 'dev-budget',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2304,6 +2308,7 @@ describe('recordPowerSampleForApp', () => {
     let observedAtMs = start;
     const getLatestTargetSnapshot = () => ([
       {
+        available: true,
         id: 'fresh-heater',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2313,6 +2318,7 @@ describe('recordPowerSampleForApp', () => {
         measuredPowerObservedAtMs: observedAtMs,
       },
       {
+        available: true,
         id: 'steady-heater',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2322,6 +2328,7 @@ describe('recordPowerSampleForApp', () => {
         measuredPowerObservedAtMs: observedAtMs - 61_000,
       },
       {
+        available: true,
         id: 'timestampless-heater',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2330,6 +2337,7 @@ describe('recordPowerSampleForApp', () => {
         measuredPowerKw: 0.9,
       },
       {
+        available: true,
         id: 'estimated-heater',
         name: 'Estimated heater',
         targets: [],
@@ -2382,6 +2390,7 @@ describe('recordPowerSampleForApp', () => {
     let observedAtMs = start;
     const getLatestTargetSnapshot = () => ([
       {
+        available: true,
         id: 'idle-heater',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
@@ -2458,6 +2467,7 @@ describe('recordPowerSampleForApp', () => {
     let observedAtMs = start;
     const getLatestTargetSnapshot = () => ([
       {
+        available: true,
         id: 'heater-objective',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,

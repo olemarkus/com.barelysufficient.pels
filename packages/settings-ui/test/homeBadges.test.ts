@@ -33,7 +33,7 @@ const buildHomesPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'dev-main',
   name: 'Hall heater',
   deviceClass: 'heater',
@@ -420,6 +420,47 @@ describe('devices list home badges', () => {
     } finally {
       vi.doUnmock('../src/ui/homeBadges.ts');
     }
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['non-boolean', 'yes'],
+  ])('rejects a device whose availability is %s at the WebView boundary', async (_label, available) => {
+    const malformedDevice = { ...buildDevice(), available } as unknown as TargetDeviceSnapshot;
+    const homey = createHomeyMock({ uiState: { devices: [malformedDevice] } });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { getTargetDevices } = await import('../src/ui/devices.ts');
+    const { state } = await import('../src/ui/state.ts');
+    state.hasManagedSolarDevice = true;
+    state.hasExhibitedExport = true;
+    state.surplusPoolReachable = true;
+
+    await expect(getTargetDevices()).rejects.toThrow('Invalid device list response.');
+    expect(state.hasManagedSolarDevice).toBe(true);
+    expect(state.hasExhibitedExport).toBe(true);
+    expect(state.surplusPoolReachable).toBe(true);
+  });
+
+  it('rejects malformed discovery data before rendering or caching it', async () => {
+    const malformedDevice = { ...buildDevice(), available: undefined } as unknown as TargetDeviceSnapshot;
+    const homey = createHomeyMock({
+      apiHandlers: {
+        'POST /ui_refresh_devices': () => ({ devices: [malformedDevice] }),
+      },
+      uiState: { devices: THREE_DEVICES },
+    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { refreshDevices } = await import('../src/ui/devices.ts');
+    const { state } = await import('../src/ui/state.ts');
+    const { showToast } = await import('../src/ui/toast.ts');
+    state.latestDevices = THREE_DEVICES;
+
+    await refreshDevices();
+
+    expect(state.latestDevices).toEqual(THREE_DEVICES);
+    expect(showToast).toHaveBeenCalledWith('Invalid device list response.', 'warn');
   });
 
   it('fetches badge membership on the discovery path so new devices render badged', async () => {

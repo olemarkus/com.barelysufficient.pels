@@ -104,6 +104,7 @@ const buildDevice = (
     TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe
   > = {},
 ): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+  available: true,
   id,
   name,
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],

@@ -82,6 +82,8 @@ const buildDevice = (
     ],
   },
   ...overrides,
+  controllable: overrides.controllable ?? true,
+  available: overrides.available ?? true,
 }) as PlanInputDevice;
 
 const buildTemperatureDevice = (
@@ -104,6 +106,8 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
+  controllable: overrides.controllable ?? true,
+  available: overrides.available ?? true,
 })) as PlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
@@ -859,6 +863,8 @@ describe('ConcurrentEligibleTaskTracker', () => {
         { id: 'low', planningPowerW: 1000 },
       ],
     },
+    controllable: true,
+    available: true,
   }) as PlanInputDevice;
 
   const buildEligibleObjective = (deadlineAtMs: number) => ({
@@ -3016,6 +3022,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // thermal fallback (measured → expected → power), the planner builds a
     // horizon plan from the live draw and the smart task can progress.
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
+      controllable: true, available: true,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Mill v2 Panel Heater',
@@ -3103,7 +3110,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 0 kW step. The producer must walk down the candidate list to
     // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
     // horizon plan still builds.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
       id: 'heater-1',
       name: 'Idle Panel Heater',
       commandableNow: true,
@@ -3172,7 +3179,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // halves are asserted below; the SDK-boundary regression for the 2026-08-01
   // incident lives in `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
   it('plans a thermostat with no declared power instead of reporting missing_charge_rate', () => {
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Powerless Thermostat',
@@ -3233,7 +3240,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // positive number; the tag was a producer-side fact this layer reconstructed.
     // `controlModel` is deliberately ABSENT from this fixture so the case fails if
     // the consumer ever goes back to inferring the gap from it.
-    const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+    const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Water heater with no live ladder',
@@ -3460,6 +3467,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           { id: 'top', planningPowerW: 3000 },
         ],
       },
+      controllable: true,
+      available: true,
     }) as PlanInputDevice;
 
     // Target = current + 30%, profile rate = 0.2 kWh/% → 30 × 0.2 = 6 kWh.

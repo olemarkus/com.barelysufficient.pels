@@ -38,6 +38,7 @@ const settingsStore = (params: {
 const UNAVAILABLE = { devices: {}, state: 'unavailable' as const };
 
 const thermostat = (): TargetDeviceSnapshot => ({
+  available: true,
   id: 'thermostat-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Thermostat',
@@ -117,6 +118,7 @@ describe('disabled temperature control', () => {
       disabledDevices: {},
       deviceId: 'charger',
       device: {
+        available: true,
         id: 'charger', name: 'EV charger', deviceType: 'onoff', deviceClass: 'evcharger', targets: [],
         expectedPowerKw: 1, expectedPowerSource: 'default',
       },

@@ -35,7 +35,7 @@ const mockSharedModules = () => {
   }));
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Test Device',
   targets: [],

@@ -258,6 +258,26 @@ describe('DeviceTransport', () => {
             ]);
         });
 
+        it.each([
+            { label: 'omitted', availability: {} },
+            { label: 'non-boolean', availability: { available: 'unexpected' as never } },
+        ])('resolves $label SDK availability to true at the parser boundary', ({ availability }) => {
+            const [parsed] = deviceManager.parseDeviceListForTests([{
+                id: 'availability-boundary',
+                name: 'Availability Boundary',
+                class: 'thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                },
+                ...availability,
+            }]);
+
+            expect(parsed.available).toBe(true);
+        });
+
         it('drops devices with invalid onoff telemetry when no previous observation can be preserved', () => {
             const parsed = deviceManager.parseDeviceListForTests([{
                 id: 'thermo-2',
@@ -1926,6 +1946,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -1955,6 +1976,7 @@ describe('DeviceTransport', () => {
 
         it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
@@ -2014,6 +2036,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
@@ -2186,6 +2209,7 @@ describe('DeviceTransport', () => {
             // physical toggle delivered as a device.update must still flip currentOn
             // even when it carries no lastUpdated and contradicts prior evidence.
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2310,6 +2334,7 @@ describe('DeviceTransport', () => {
             try {
                 const originalObservedAtMs = new Date('2026-06-03T06:00:00.000Z').getTime();
                 deviceManager.setSnapshotForTests([{
+                    available: true,
                     id: 'dev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Heater',
@@ -2353,6 +2378,7 @@ describe('DeviceTransport', () => {
         it('rejects an older raw EV OFF from a delayed device.update', () => {
             const newerRawObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
@@ -2399,6 +2425,7 @@ describe('DeviceTransport', () => {
         it('rejects stale raw EV OFF and stale paused state from one delayed update', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
@@ -2463,6 +2490,7 @@ describe('DeviceTransport', () => {
         it('keeps the state clock after a raw EV event and rejects a later stale state', () => {
             const stateObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
@@ -2546,6 +2574,7 @@ describe('DeviceTransport', () => {
         it('preserves EV state when stale raw OFF is bundled with timestamp-less paused state', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
@@ -2602,6 +2631,7 @@ describe('DeviceTransport', () => {
         it('preserves the EV state clock after stale raw evidence bundles unchanged timestamp-less state', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
@@ -2676,6 +2706,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2758,6 +2789,7 @@ describe('DeviceTransport', () => {
         it('uses device.update capability lastUpdated as the binary evidence timestamp', async () => {
             const observedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2792,6 +2824,7 @@ describe('DeviceTransport', () => {
 
         it('does not reattach cached evidence when an explicit timestamp-less boolean contradicts it', async () => {
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2840,6 +2873,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2882,6 +2916,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2919,6 +2954,7 @@ describe('DeviceTransport', () => {
 
         it('does not reattach cached evidence when snapshot refresh has a contradictory timestamp-less boolean', async () => {
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2958,6 +2994,7 @@ describe('DeviceTransport', () => {
 
         it('clears binary evidence when a device disappears from snapshot refresh', async () => {
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -2989,6 +3026,7 @@ describe('DeviceTransport', () => {
 
         it('clears binary evidence on destroy', async () => {
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
@@ -3025,6 +3063,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             evDeviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
@@ -3088,6 +3127,7 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability' as const,
             };
             evDeviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
@@ -3145,6 +3185,7 @@ describe('DeviceTransport', () => {
                 source: 'snapshot_refresh' as const,
             };
             evDeviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
@@ -3214,6 +3255,7 @@ describe('DeviceTransport', () => {
                     source: 'snapshot_refresh' as const,
                 };
                 evDeviceManager.setSnapshotForTests([{
+                    available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Easee',
@@ -3280,6 +3322,7 @@ describe('DeviceTransport', () => {
                     source: 'realtime_capability' as const,
                 };
                 evDeviceManager.setSnapshotForTests([{
+                    available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Easee',
@@ -5372,6 +5415,7 @@ describe('DeviceTransport', () => {
 
         it('ignores realtime state of charge capability updates for non-EV devices', () => {
             deviceManager.setSnapshotForTests([{
+                available: true,
                 id: 'sensor1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Battery Sensor',
@@ -7794,6 +7838,7 @@ describe('DeviceTransport', () => {
                 const observationState = createObservationState();
                 const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
                 const previousSnapshot: (TransportDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+                    available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Zaptec',
@@ -7843,6 +7888,7 @@ describe('DeviceTransport', () => {
                 const realtimeObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
                 const refreshObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
                 const previousSnapshot: TransportDeviceSnapshot[] = [{
+                    available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Zaptec',

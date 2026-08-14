@@ -84,6 +84,7 @@ const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
 });
 
 const buildHeater = (params: { on: boolean; exempt: boolean }): PlanInputDevice => withBinaryDiscriminant({
+  available: true,
   id: HEATER_ID,
   name: 'Water Heater',
   targets: [],
@@ -98,6 +99,7 @@ const buildHeater = (params: { on: boolean; exempt: boolean }): PlanInputDevice 
 }) as PlanInputDevice;
 
 const buildThermostat = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
+  available: true,
   id: THERMOSTAT_ID,
   name: 'Thermostat',
   targets: [],

@@ -41,6 +41,8 @@ const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
   && typeof value === 'object'
   && typeof (value as { id?: unknown }).id === 'string'
   && typeof (value as { name?: unknown }).name === 'string'
+  && typeof (value as { controllable?: unknown }).controllable === 'boolean'
+  && typeof (value as { available?: unknown }).available === 'boolean'
   && hasStructuredReason((value as { reason?: unknown }).reason)
 );
 

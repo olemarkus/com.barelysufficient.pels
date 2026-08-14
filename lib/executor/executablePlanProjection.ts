@@ -53,7 +53,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
   return {
     id: planDevice.id,
     name: planDevice.name,
-    controllable: planDevice.controllable !== false,
+    controllable: planDevice.controllable,
     target: buildExecutableTargetIntent(planDevice),
     binary: buildExecutableBinaryIntent(planDevice),
     release: buildExecutableReleaseIntent(planDevice, planMeta),
@@ -68,7 +68,7 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
     return {
       id: planDevice.id,
       name: planDevice.name,
-      controllable: planDevice.controllable !== false,
+      controllable: planDevice.controllable,
       target: null,
       binary: null,
       release: null,
@@ -216,7 +216,7 @@ export function buildExecutableObservedDeviceState(
     id: snapshot.id,
     name: snapshot.name,
     snapshot,
-    available: typeof snapshot.available === 'boolean' ? snapshot.available : null,
+    available: snapshot.available,
     commandableNow: snapshot.commandableNow ?? resolveCommandableNow(snapshot),
     binaryControl: snapshot.binaryControl,
     observedBinaryState: resolveObservedBinaryStateFromSnapshot(snapshot),

@@ -64,6 +64,8 @@ export const inputDevice = (
   const materialized = withMaterializedEvPlugState(loose);
   return {
     ...materialized,
+    controllable: materialized.controllable ?? true,
+    available: materialized.available ?? true,
     ...(materialized.binaryCapabilityId !== undefined
       ? { currentOn: materialized.currentOn ?? resolveFixtureCurrentOn(materialized) }
       : {}),

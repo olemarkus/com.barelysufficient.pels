@@ -50,7 +50,7 @@ export type ExecutableObservedDeviceState = {
   id: string;
   name: string;
   snapshot: ExecutorDeviceSnapshot;
-  available: boolean | null;
+  available: boolean;
   commandableNow: boolean;
   // The raw observed binary axis, carried for the actuation-path readers
   // (`executableSteppedLoadProjection` / `shedReleaseActuation` read it via

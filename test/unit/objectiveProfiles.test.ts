@@ -26,6 +26,7 @@ const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;
 
 const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
+  available: true,
   id: 'heater-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
@@ -39,6 +40,7 @@ const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & Temperature
 });
 
 const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
+  available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Charger',

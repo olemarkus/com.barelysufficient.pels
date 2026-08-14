@@ -20,6 +20,8 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
     expectedPowerSource: 'default' as const,
     currentDrawKw: 0,
     commandableNow: true,
+    controllable: true,
+    available: true,
     name,
     deviceType: 'temperature' as const,
     binaryControl: { on: true },

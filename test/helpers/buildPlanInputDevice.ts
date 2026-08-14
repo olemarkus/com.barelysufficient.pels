@@ -37,7 +37,9 @@ export function buildPlanInputDevice(
   // exact runtime shape callers rely on rather than routing through
   // `withBinaryDiscriminant`, whose runtime stripping (binaryControl omitted
   // without `binaryCapabilityId`) would change every consumer's fixture.
-  const { commandableNow, measuredPowerKw, currentDrawKw, ...rest } = overrides;
+  const {
+    available, commandableNow, controllable, measuredPowerKw, currentDrawKw, ...rest
+  } = overrides;
   return {
     name: overrides.id,
     targets: [],
@@ -59,10 +61,12 @@ export function buildPlanInputDevice(
     // `'default'` is what the producer emits for a device nothing is known
     // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
+    controllable: controllable ?? true,
+    available: available ?? true,
     // Required base field: resolve it the way the producer does rather than
     // leaving it undefined, so no consumer can read absence as "not commandable".
     // Spread LAST and `??`-guarded so an explicit `commandableNow: undefined`
     // override cannot erase the required field, while an explicit `false` stands.
-    commandableNow: commandableNow ?? resolveCommandableNow(rest),
+    commandableNow: commandableNow ?? resolveCommandableNow({ ...rest, available: available ?? true }),
   } as unknown as PlanInputDevice;
 }

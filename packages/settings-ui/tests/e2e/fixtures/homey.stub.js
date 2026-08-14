@@ -922,6 +922,13 @@
   };
 
   ensureEvSupportState();
+  // Mirror the runtime snapshot producer: availability is resolved before the
+  // device list crosses the Homey API bridge, so every inward snapshot carries
+  // an explicit boolean. Preserve scenario-specific false values.
+  settings.target_devices_snapshot = settings.target_devices_snapshot.map((device) => ({
+    available: true,
+    ...device,
+  }));
 
   // Mirror the runtime producer (`lib/price/exportPrice.ts` applyExportPrices):
   // when export pricing is enabled, each hour gains an incl-VAT export price =

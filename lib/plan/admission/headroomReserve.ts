@@ -345,7 +345,7 @@ function isStartable(device: DevicePlanDevice): boolean {
   return device.plannedState !== 'shed'
     && device.plannedState !== 'inactive'
     && device.externalOffHoldActive !== true
-    && device.available !== false
+    && device.available
     && device.commandableNow !== false;
 }
 

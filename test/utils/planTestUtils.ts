@@ -120,6 +120,7 @@ const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'on
  */
 export const withMaterializedEvPlugState = <T extends {
   deviceClass?: string; deviceRole?: 'ev_charger'; binaryCapabilityId?: string;
+  available?: boolean;
 }>(
   overrides: T & { evChargingState?: string },
 ): T & {
@@ -131,6 +132,7 @@ export const withMaterializedEvPlugState = <T extends {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
   const dev = {
     ...overrides,
+    available: overrides.available ?? true,
     evChargingState: overrides.evChargingState as EvChargingState | undefined,
   };
   const isEv = overrides.deviceClass === 'evcharger'
@@ -310,10 +312,9 @@ DevicePlanDevice => {
     // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
     // Same treatment again, for the same reason: both are REQUIRED on the plan
-    // device because the producer resolves them for every device, and `?? true`
-    // reproduces the producer's own collapse (`dev.controllable !== false`,
-    // `dev.available !== false`) so a fixture that says nothing gets a managed,
-    // reachable device — while an explicit `false` still lands.
+    // device because the producer resolves them for every device. A fixture
+    // that says nothing represents the ordinary managed, reachable case, while
+    // an explicit `false` still lands.
     controllable: overrides.controllable ?? true,
     available: overrides.available ?? true,
     ...(reason !== undefined
@@ -340,7 +341,7 @@ export const buildPlanInputDevice = (
   } = {},
 ): PlanInputDevice => {
   const {
-    currentTarget: _currentTarget, currentTemperature,
+    available, controllable, currentTarget: _currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
@@ -368,7 +369,6 @@ export const buildPlanInputDevice = (
     name: 'Device',
     targets: [],
     ...(!binaryExplicitlyDisabled ? { binaryControl: o.binaryControl ?? { on: true } } : {}),
-    controllable: true,
     currentState,
     ...withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
@@ -388,6 +388,8 @@ export const buildPlanInputDevice = (
     // `'default'` is what the producer emits for a device nothing is known
     // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
+    controllable: controllable ?? true,
+    available: available ?? true,
   }) as PlanInputDevice;
 };
 

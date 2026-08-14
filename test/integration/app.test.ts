@@ -3428,6 +3428,7 @@ describe('periodic snapshot refresh scheduling', () => {
       (app as any).deviceManager = withGetSnapshotByDeviceId({
         getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
           {
+            available: true,
             id: 'ev-1',
             expectedPowerKw: 1, expectedPowerSource: 'default',
             name: 'Garage Charger',
@@ -3475,6 +3476,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
+          available: true,
           id: 'ev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Garage Charger',
@@ -3514,6 +3516,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
+          available: true,
           id: 'ev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Garage Charger',
@@ -3554,6 +3557,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
+          available: true,
           id: 'battery-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Battery Sensor',
@@ -3647,6 +3651,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+      available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
@@ -3693,6 +3698,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+      available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
@@ -3738,7 +3744,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TransportDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
+    const snapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3790,7 +3796,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TransportDeviceSnapshot[] = [{ expectedPowerKw: 1, expectedPowerSource: 'default',
+    const snapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3829,6 +3835,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const initialReportedAt = Date.now();
     const nextReportedAt = initialReportedAt + 60_000;
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+      available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',
@@ -3870,6 +3877,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
     const snapshot: TransportDeviceSnapshot[] = [{
+      available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Garage Charger',

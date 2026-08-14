@@ -224,7 +224,7 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
   };
 
   for (const device of plan.devices) {
-    if (device.controllable !== false) {
+    if (device.controllable) {
       if (device.plannedState === 'shed') {
         summary.devicesOff += 1;
       } else if (device.plannedState === 'keep') {
