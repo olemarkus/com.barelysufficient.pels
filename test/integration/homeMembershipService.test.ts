@@ -2303,10 +2303,11 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     expect(service.isMainHomeActuationFenced()).toBe(true);
   });
 
-  // Automatic (no explicit Main meter) resolves the whole-home reading from
-  // whichever `cumulative` item the payload yields first, which may be a meter
-  // area's own meter. The CONFIGURED id is null and proves nothing, so authority
-  // is resolved from the identity the poll actually sampled.
+  // Automatic (no explicit Main meter) resolves the whole-home reading from a
+  // sole readable `cumulative` item or retains a meter proven by an earlier
+  // unambiguous poll. That may still be a meter area's own meter when it is the
+  // sole readable candidate. The CONFIGURED id is null and proves nothing, so
+  // authority is resolved from the identity the poll actually sampled.
   describe('Automatic sampled-meter ownership', () => {
     const buildAutomaticService = (warn: (payload: unknown) => void = vi.fn()) => {
       createHomesStore(homeyLike).write({

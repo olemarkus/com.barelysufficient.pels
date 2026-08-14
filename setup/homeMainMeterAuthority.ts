@@ -12,9 +12,11 @@
  * unresolved callback), so it fired twice per gate evaluation.
  *
  * Why Automatic needs the sampled identity at all: with Main on Automatic the
- * CONFIGURED id is `null` and proves nothing, while the whole-home reading still
- * comes from whichever `cumulative` item the Homey Energy payload yielded. In a
- * multi-meter house that item can be a meter area's own meter, which would drive
+ * CONFIGURED id is `null` and proves nothing, while the whole-home reading comes
+ * from a sole readable `cumulative` item or a meter proven by an earlier
+ * unambiguous Automatic poll. In a multi-meter house that item can still be a
+ * meter area's own meter when it is temporarily the sole readable candidate,
+ * which would drive
  * two independent controllers from ONE physical sample over disjoint device sets
  * — the invariant `notes/multi-home-model.md` forbids.
  *

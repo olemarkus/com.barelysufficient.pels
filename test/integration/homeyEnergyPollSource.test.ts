@@ -1,4 +1,5 @@
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
+import { createHomeyEnergyPollSource } from '../../setup/appInit/createHomeyEnergyPollSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { requireConfiguredPowerSource } from '../../setup/powerSourceSettings';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -299,5 +300,39 @@ describe('HomeyEnergyPollSource', () => {
 
     expect(recordPowerSample).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ['admitted', true],
+    ['superseded', false],
+  ] as const)('retains an Automatic meter only when its poll sample is %s', async (state, retained) => {
+    const noteAdmittedAutomaticHomeMeter = vi.fn();
+    const source = createHomeyEnergyPollSource({
+      getPowerSource: () => 'homey_energy',
+      timers: new TimerRegistry(),
+      deviceManager: {
+        pollHomePowerW: vi.fn().mockResolvedValue({
+          powerW: 2_100,
+          resolvedHomeMeterDeviceId: 'meter-main',
+          automaticHomeMeterDeviceId: 'meter-main',
+          homeMeterArrangement: 'identified',
+        }),
+        noteAdmittedAutomaticHomeMeter,
+      },
+      getStructuredDebugEmitter: () => vi.fn(),
+      error: vi.fn(),
+    }, {
+      recordPowerSample: vi.fn().mockResolvedValue(state === 'admitted'
+        ? { state: 'admitted', revision: 1 }
+        : { state: 'superseded', revision: 1, latestRevision: 2 }),
+    });
+
+    await source.pollNow();
+
+    if (retained) {
+      expect(noteAdmittedAutomaticHomeMeter).toHaveBeenCalledWith('meter-main');
+    } else {
+      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
+    }
   });
 });

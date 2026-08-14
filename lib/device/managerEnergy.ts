@@ -13,47 +13,77 @@ const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-/**
- * The Automatic (no explicit selection) whole-home reading, resolved WITH the
- * identity of the item it came from.
- *
- * `deviceId` is the load-bearing field: Automatic takes the FIRST `cumulative`
- * item, which in a multi-meter house is not necessarily the Main home's own
- * meter and may even be a meter area's. Ownership can only be proven when the
- * sampled identity is known, so the reading carries it rather than leaving the
- * caller to guess. `null` means the resolved item carried no usable id (the
- * reading is still valid; its ownership simply cannot be proven).
- *
- * `cumulativeItemCount` is the ambiguity signal: exactly one cumulative item
- * means Automatic is unambiguous, more than one means the choice was arbitrary.
- */
-export type AutomaticHomePowerReading = {
-  watts: number;
-  deviceId: string | null;
-  cumulativeItemCount: number;
-};
+/** Automatic whole-home resolution at the untrusted Homey Energy boundary. */
+export type AutomaticHomePowerResolution =
+  | {
+    state: 'resolved';
+    watts: number;
+    deviceId: string | null;
+    cumulativeItemCount: number;
+  }
+  | { state: 'ambiguous'; cumulativeItemCount: number }
+  | { state: 'unavailable'; cumulativeItemCount: number };
 
 const toNonEmptyString = (value: unknown): string | null => (
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 );
 
-export const extractAutomaticHomePowerReading = (
+type CumulativeMeterReading = {
+  watts: number;
+  deviceId: string | null;
+};
+
+const resolveCumulativeMeterReading = (
+  item: UnknownRecord,
+  seenDeviceIds: Set<string>,
+): CumulativeMeterReading | null => {
+  const watts = toFiniteNumber(asRecord(item.values)?.W);
+  if (watts === null) return null;
+  const deviceId = toNonEmptyString(item.id);
+  if (deviceId !== null && seenDeviceIds.has(deviceId)) return null;
+  if (deviceId !== null) seenDeviceIds.add(deviceId);
+  return { watts, deviceId };
+};
+
+/**
+ * Resolve Automatic without letting Homey's report order choose control
+ * authority. A sole finite cumulative item is authoritative. When several are
+ * usable, only a previously resolved id may break the tie; otherwise the read
+ * is explicitly ambiguous and no whole-home sample is produced.
+ *
+ * `preferredDeviceId` is session evidence supplied by the transport owner. An
+ * id-less aggregate can be accepted only when it is the sole usable candidate,
+ * because it cannot be matched safely once several cumulative items exist.
+ */
+export const resolveAutomaticHomePowerReading = (
   liveReport: unknown,
-): AutomaticHomePowerReading | null => {
+  preferredDeviceId: string | null,
+): AutomaticHomePowerResolution => {
   const report = asRecord(liveReport);
-  if (!report || !Array.isArray(report.items)) return null;
+  if (!report || !Array.isArray(report.items)) {
+    return { state: 'unavailable', cumulativeItemCount: 0 };
+  }
   const cumulativeItems = report.items
     .map(asRecord)
     .filter((item): item is UnknownRecord => item !== null && item.type === 'cumulative');
   const cumulativeItemCount = cumulativeItems.length;
+  const candidates: CumulativeMeterReading[] = [];
+  const seenDeviceIds = new Set<string>();
   for (const item of cumulativeItems) {
-    const values = asRecord(item.values);
-    const watts = toFiniteNumber(values?.W);
-    if (watts !== null) {
-      return { watts, deviceId: toNonEmptyString(item.id), cumulativeItemCount };
+    const candidate = resolveCumulativeMeterReading(item, seenDeviceIds);
+    if (candidate !== null) candidates.push(candidate);
+  }
+  if (candidates.length === 0) return { state: 'unavailable', cumulativeItemCount };
+  if (candidates.length === 1) {
+    return { state: 'resolved', ...candidates[0], cumulativeItemCount };
+  }
+  if (preferredDeviceId !== null) {
+    const matches = candidates.filter(({ deviceId }) => deviceId === preferredDeviceId);
+    if (matches.length === 1) {
+      return { state: 'resolved', ...matches[0], cumulativeItemCount };
     }
   }
-  return null;
+  return { state: 'ambiguous', cumulativeItemCount };
 };
 
 /**
@@ -63,7 +93,7 @@ export const extractAutomaticHomePowerReading = (
  * carrying its real device id (and NOT as a `device` item); every other
  * power-reporting device appears as a `device` item. So the selection matches
  * `deviceId` across BOTH item types. Negative watts pass through (export —
- * same net semantics as `extractAutomaticHomePowerReading`). Returns `null` when the
+ * same net semantics as `resolveAutomaticHomePowerReading`). Returns `null` when the
  * id is absent or its reading is non-finite — it NEVER falls back to the first
  * cumulative item, because a silent fallback would mask a wrong or missing
  * selection with another meter's data.
@@ -94,8 +124,8 @@ export type LiveMeterItem = { id: string; type: LiveMeterItemType };
  * lists exactly those. Order and duplicates from the report are preserved-then-
  * deduped by id (first wins). An id-less cumulative item (some Homey setups
  * emit the whole-home aggregate without an id) is intentionally omitted: it
- * can't be pinned to a selection and is already covered by "Automatic" (the
- * first cumulative item). Names are NOT carried here — the report has none;
+ * can't be pinned to a selection and is covered by Automatic only when it is
+ * the sole usable cumulative item. Names are NOT carried here — the report has none;
  * the adapter joins id→name from the device list.
  */
 export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {

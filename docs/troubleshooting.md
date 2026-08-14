@@ -133,8 +133,9 @@ Resuming, Idle, Off, Manual, and more) means.
 PELS plans on a live whole-home power reading. If the Overview shows nothing:
 
 - **Using Homey Energy?** Confirm **Power source** is set to **Power meter**
-  (Settings → Limits & safety), and that your meter either has **Tracks total
-  home energy consumption** enabled or is selected directly under
+  (Settings → Limits & safety). **Automatic** needs one readable meter with
+  **Tracks total home energy consumption** enabled before it can establish a
+  source; if several are present, select the correct one directly under
   **Whole-home meter**. See [Using Homey Energy](/homey-energy).
 - **Selected a specific meter?** Check that it is available and still reporting
   power in Homey Energy — a selected meter that stops reporting is never

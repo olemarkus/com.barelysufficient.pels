@@ -16,7 +16,6 @@
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
-import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
@@ -40,11 +39,13 @@ export {
 import {
   fetchDevicesByIds,
   fetchDevicesWithFallback,
-  fetchLivePowerReport as fetchLivePowerReportFromSdk,
   type DeviceFetchResult,
   type DeviceFetchSource,
   type LivePowerReport,
 } from './managerFetch';
+import { fetchLivePowerReport } from './livePowerReport';
+export { fetchLivePowerReport } from './livePowerReport';
+export { pollHomePowerWithMeterFanOut } from './homePowerPoll';
 import { fetchZoneTree } from './managerZones';
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
@@ -392,84 +393,6 @@ export async function fetchDevicesByKnownIds(ctx: TransportContext): Promise<Dev
 export async function fetchDevicesForDebug(ctx: TransportContext): Promise<HomeyDeviceLike[]> {
     return (await ctx.fetchDevicesForSnapshot()).devices;
 }
-
-export async function fetchLivePowerReport(
-    ctx: TransportContext,
-    mainMeterSelection?: MainMeterSelection,
-): Promise<LivePowerReport> {
-    // Resolved here (the producer seam) so both callers — the 10s homey_energy
-    // poll and the snapshot-refresh implicit sample — honour the selection.
-    // The additional (sub-home) meter ids are read fresh per call for the same
-    // reason; only the POLL caller dispatches the per-meter readings onward
-    // (`DeviceTransport.pollHomePowerW`), so sub-home sampling stays on the
-    // predictable 10s poll cadence.
-    const selection: MainMeterSelection = mainMeterSelection
-        ?? ctx.providers.getHomeyEnergyMeterSelection?.()
-        ?? { state: 'resolved', meterDeviceId: null };
-    const report = await fetchLivePowerReportFromSdk({
-        logger: ctx.logger,
-        debugStructured: ctx.debugStructured,
-        // The SDK adapter still needs a concrete extraction choice. On
-        // unavailable authority we may fetch Automatic for the per-device and
-        // additional-meter lanes, but discard its Main value below.
-        meterDeviceId: selection.state === 'resolved' ? selection.meterDeviceId : null,
-        additionalMeterDeviceIds: ctx.providers.getAdditionalMeterDeviceIds?.() ?? [],
-    });
-    return selection.state === 'resolved' ? report : { ...report, homePowerW: null };
-}
-
-
-/**
- * Poll-path home power read (`DeviceTransport.pollHomePowerW` body): one live
- * report serves every home. The additional (sub-home) meter readings resolved
- * from the SAME payload are fanned out to the `onAdditionalMeterReadings`
- * provider BEFORE the main-home null handling — a poll where main's reading is
- * missing must still deliver the sub-home readings that DID resolve. Poll path
- * only: the snapshot-refresh read does not fan out sub-meter readings, and in
- * flow mode (`power_source=flow`) the poll never runs, so sub-home pipelines
- * simply receive no samples there (freshness machinery reports the gap). The
- * dispatch is contained — a consumer throw can never break the main sample path.
- *
- * The resolved main-meter IDENTITY is deliberately NOT dispatched here or
- * anywhere else on the read path: it rides the returned sample
- * (`HomePowerSampleWithIdentity`) into whichever caller records it, and is
- * published to membership by the admitted sample ingest
- * (`PowerSamplePipeline`). The poll source's own discard checks (generation +
- * power source, applied BEFORE it records) therefore gate the identity for
- * free, and a discarded sample discards its identity claim with it.
- *
- * `authorizeFanOut` gates the sub-meter dispatch on the poll source's own
- * liveness (its generation + power-source checks — `HomeyEnergyPollSource.pollNow`).
- * The fan-out fires from INSIDE this `await`, BEFORE the poll source applies its
- * discard, so without the gate a stale-generation poll (a whole-home-meter /
- * power-source restart superseded it) could deliver an out-of-order sub-meter
- * sample that resolves AFTER its replacement. Sub-meter delivery stays decoupled
- * from a non-null main reading (dispatched before the null return). Omitted =
- * authorized (no other caller drives this path).
- */
-export async function pollHomePowerWithMeterFanOut(
-    ctx: TransportContext,
-    authorizeFanOut?: () => boolean,
-): Promise<HomePowerSampleWithIdentity | null> {
-    const report = await fetchLivePowerReport(ctx);
-    const onAdditionalMeterReadings = ctx.providers.onAdditionalMeterReadings;
-    if (
-        onAdditionalMeterReadings
-        && (authorizeFanOut === undefined || authorizeFanOut())
-        && Object.keys(report.additionalMeterPowerW).length > 0
-    ) {
-        try {
-            onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
-        } catch (error) {
-            ctx.logger.debug({
-                event: 'additional_meter_readings_dispatch_failed',
-                error: normalizeError(error).message,
-            });
-        }
-    }
-    return updateHomePowerFromReport(ctx, report);
-}
-
 
 function getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
     return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'

@@ -38,10 +38,10 @@ import { readHomeConfigRuntimeActivation } from './multiHomeActivation';
  *   not change which meter measures what.
  *
  * Known limitation — the Automatic arm is the constant `main:automatic`, not
- * the device it resolves to: `extractAutomaticHomePowerReading` samples the
- * first usable cumulative item, so a Homey reorder/availability change (or a
- * roster edit that re-fences the very device Automatic had elected) can
- * silently switch the physically sampled device with no fingerprint change.
+ * the device it resolves to: Automatic retains a previously proven cumulative
+ * meter while it remains present, but a change to the sole usable candidate
+ * (or a roster edit that re-fences the elected device) can still change the
+ * physical scope without changing this signature.
  * Bounded, not open-ended: `homeMeterOwnership.ts` refuses any Homey-Energy
  * save that leaves Main on Automatic while meter areas exist, so the
  * areas-plus-Automatic shape survives only on legacy configs saved before

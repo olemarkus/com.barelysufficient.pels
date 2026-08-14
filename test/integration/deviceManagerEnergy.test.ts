@@ -1,6 +1,5 @@
 import type Homey from 'homey';
 import {
-  extractAutomaticHomePowerReading,
   extractLiveMeterItems,
   extractLiveMeterPowerWatts,
 } from '../../lib/device/managerEnergy';
@@ -9,92 +8,11 @@ import { mockHomeyInstance } from '../mocks/homey';
 import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import {
   fetchLivePowerReport as fetchTransportLivePowerReport,
-  pollHomePowerWithMeterFanOut,
 } from '../../lib/device/transport/snapshotRefresh';
+import { pollHomePowerWithMeterFanOut } from '../../lib/device/transport/homePowerPoll';
 import type { TransportContext } from '../../lib/device/transport/transportContext';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { Logger } from '../../lib/utils/types';
-
-describe('extractAutomaticHomePowerReading', () => {
-  it('returns watts AND the identity of the item they came from', () => {
-    const report = {
-      items: [
-        { type: 'device', id: 'd1', values: { W: 100 } },
-        { type: 'cumulative', id: 'han-meter', values: { W: 4500 } },
-      ],
-    };
-    expect(extractAutomaticHomePowerReading(report))
-      .toEqual({ watts: 4500, deviceId: 'han-meter', cumulativeItemCount: 1 });
-  });
-
-  it('resolves deviceId null when the cumulative item carries no usable id', () => {
-    // Homey's aggregate whole-home item can arrive without an id. The READING is
-    // still valid; only its ownership is unprovable, which is what null means —
-    // callers must never read it as proof of non-collision.
-    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', values: { W: 4500 } }] }))
-      .toEqual({ watts: 4500, deviceId: null, cumulativeItemCount: 1 });
-    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', id: '   ', values: { W: 10 } }] }))
-      .toEqual({ watts: 10, deviceId: null, cumulativeItemCount: 1 });
-  });
-
-  it('counts EVERY cumulative item, so an arbitrary Automatic pick is visible', () => {
-    const report = {
-      items: [
-        { type: 'sum', values: { W: 9999 } },
-        { type: 'cumulative', id: 'meter-main', values: { W: 3000 } },
-        { type: 'cumulative', id: 'meter-rental', values: { W: 5000 } },
-      ],
-    };
-    // First cumulative item still wins; the count is what exposes that the
-    // choice was arbitrary among several meters.
-    expect(extractAutomaticHomePowerReading(report))
-      .toEqual({ watts: 3000, deviceId: 'meter-main', cumulativeItemCount: 2 });
-  });
-
-  it('skips a non-finite cumulative item but still counts it', () => {
-    const report = {
-      items: [
-        { type: 'cumulative', id: 'broken', values: { W: NaN } },
-        { type: 'cumulative', id: 'good', values: { W: 700 } },
-      ],
-    };
-    expect(extractAutomaticHomePowerReading(report))
-      .toEqual({ watts: 700, deviceId: 'good', cumulativeItemCount: 2 });
-  });
-
-  it('returns null for a missing or empty report', () => {
-    expect(extractAutomaticHomePowerReading(null)).toBeNull();
-    expect(extractAutomaticHomePowerReading(undefined)).toBeNull();
-    expect(extractAutomaticHomePowerReading({})).toBeNull();
-    expect(extractAutomaticHomePowerReading({ items: [] })).toBeNull();
-  });
-
-  it('returns null when there are no cumulative items', () => {
-    const report = {
-      items: [
-        { type: 'device', id: 'd1', values: { W: 100 } },
-        { type: 'sum', values: { W: 500 } },
-      ],
-    };
-    expect(extractAutomaticHomePowerReading(report)).toBeNull();
-  });
-
-  it('passes negative (export) and zero watts through', () => {
-    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', id: 'm', values: { W: -1200 } }] }))
-      .toEqual({ watts: -1200, deviceId: 'm', cumulativeItemCount: 1 });
-    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', id: 'm', values: { W: 0 } }] }))
-      .toEqual({ watts: 0, deviceId: 'm', cumulativeItemCount: 1 });
-  });
-
-  it('returns null for non-finite or missing W', () => {
-    expect(extractAutomaticHomePowerReading({
-      items: [{ type: 'cumulative', values: { W: Infinity } }],
-    })).toBeNull();
-    expect(extractAutomaticHomePowerReading({
-      items: [{ type: 'cumulative', values: {} }],
-    })).toBeNull();
-  });
-});
 
 describe('extractLiveMeterPowerWatts', () => {
   it('matches the id in a cumulative item (Homey-marked whole-home meter)', () => {
@@ -258,6 +176,45 @@ describe('fetchLivePowerReport', () => {
     expect(result.byDeviceId).toEqual({ 'han-meter': 3200 });
   });
 
+  it('classifies unresolved Automatic candidates as ambiguous instead of choosing by order', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
+        { type: 'cumulative', id: 'meter-main', values: { W: 3_000 } },
+      ],
+    });
+
+    const result = await fetchLivePowerReport({ logger });
+
+    expect(result).toMatchObject({
+      homeMeterResolution: 'ambiguous',
+      homePowerW: null,
+      resolvedHomeMeterDeviceId: null,
+      cumulativeItemCount: 2,
+    });
+  });
+
+  it('uses a preferred Automatic candidate without considering its relative power', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
+        { type: 'cumulative', id: 'meter-main', values: { W: 3_000 } },
+      ],
+    });
+
+    const result = await fetchLivePowerReport({
+      logger,
+      preferredAutomaticMeterDeviceId: 'meter-main',
+    });
+
+    expect(result).toMatchObject({
+      homeMeterResolution: 'resolved',
+      homePowerW: 3_000,
+      resolvedHomeMeterDeviceId: 'meter-main',
+      cumulativeItemCount: 2,
+    });
+  });
+
   it('resolves homePowerW to null when the selected meter is missing, keeping the rest of the report', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       totalGenerated: { W: 600 },
@@ -313,6 +270,7 @@ describe('transport Main-meter authority', () => {
     });
     const ctx = {
       logger,
+      automaticHomeMeterState: { preferredDeviceId: null },
       providers: {
         // The live provider has recovered by the time the SDK call starts, but
         // the refresh cycle must remain bound to its captured start selection.
@@ -326,6 +284,82 @@ describe('transport Main-meter authority', () => {
     expect(report.homePowerW).toBeNull();
     expect(report.byDeviceId).toEqual({ 'sub-meter': 1_200 });
     expect(report.additionalMeterPowerW).toEqual({ 'sub-meter': 1_200 });
+  });
+
+  it('retains the sole Automatic meter when a second cumulative item appears first', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport')
+      .mockResolvedValueOnce({
+        items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3_000 } }],
+      })
+      .mockResolvedValueOnce({
+        items: [
+          { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
+          { type: 'cumulative', id: 'meter-main', values: { W: 3_200 } },
+        ],
+      });
+    const automaticHomeMeterState = { preferredDeviceId: null as string | null };
+    const ctx = {
+      logger,
+      automaticHomeMeterState,
+      providers: {
+        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      },
+    } as unknown as TransportContext;
+
+    const first = await pollHomePowerWithMeterFanOut(ctx, () => true);
+    automaticHomeMeterState.preferredDeviceId = first?.automaticHomeMeterDeviceId ?? null;
+    const reordered = await pollHomePowerWithMeterFanOut(ctx, () => true);
+
+    expect(first).toMatchObject({
+      powerW: 3_000,
+      resolvedHomeMeterDeviceId: 'meter-main',
+    });
+    expect(automaticHomeMeterState.preferredDeviceId).toBe('meter-main');
+    expect(reordered).toMatchObject({
+      powerW: 3_200,
+      resolvedHomeMeterDeviceId: 'meter-main',
+    });
+  });
+
+  it('returns an Automatic candidate without retaining it before admission', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'meter-stale', values: { W: 3_000 } }],
+    });
+    const automaticHomeMeterState = { preferredDeviceId: null as string | null };
+    const ctx = {
+      logger,
+      automaticHomeMeterState,
+      providers: {
+        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      },
+    } as unknown as TransportContext;
+
+    const sample = await pollHomePowerWithMeterFanOut(ctx, () => false);
+
+    expect(automaticHomeMeterState.preferredDeviceId).toBeNull();
+    expect(sample?.automaticHomeMeterDeviceId).toBe('meter-stale');
+  });
+
+  it('fans out area readings when Automatic Main is ambiguous', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'meter-main', values: { W: 3_000 } },
+        { type: 'cumulative', id: 'meter-area', values: { W: 1_200 } },
+      ],
+    });
+    const onAdditionalMeterReadings = vi.fn();
+    const ctx = {
+      logger,
+      automaticHomeMeterState: { preferredDeviceId: null },
+      providers: {
+        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+        getAdditionalMeterDeviceIds: () => ['meter-area'],
+        onAdditionalMeterReadings,
+      },
+    } as unknown as TransportContext;
+
+    await expect(pollHomePowerWithMeterFanOut(ctx, () => true)).resolves.toBeNull();
+    expect(onAdditionalMeterReadings).toHaveBeenCalledWith({ 'meter-area': 1_200 }, expect.any(Number));
   });
 });
 
@@ -358,7 +392,11 @@ describe('resolved home meter identity on the sample', () => {
 
     const sample = await transport.refreshSnapshot();
 
-    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area', homeMeterArrangement: 'identified' });
+    expect(sample).toEqual({
+      powerW: 4_200,
+      resolvedHomeMeterDeviceId: 'm-area',
+      homeMeterArrangement: 'identified',
+    });
   });
 
   it('carries a NULL identity when the reading has no attributable id', async () => {
@@ -385,6 +423,7 @@ describe('resolved home meter identity on the sample', () => {
     });
     const ctx = {
       logger,
+      automaticHomeMeterState: { preferredDeviceId: null },
       providers: {
         getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
       },
@@ -392,10 +431,14 @@ describe('resolved home meter identity on the sample', () => {
 
     const sample = await pollHomePowerWithMeterFanOut(ctx, () => true);
 
-    // The poll source's own discard checks run BEFORE it records this sample,
-    // so a stale-generation or wrong-source poll drops the identity claim
-    // together with the watts — no separate gate exists to drift.
-    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area', homeMeterArrangement: 'identified' });
+    // The candidate rides to the poll source's admitted-ingest boundary. A
+    // stale, wrong-source, or superseded sample therefore cannot retain it.
+    expect(sample).toEqual({
+      powerW: 4_200,
+      resolvedHomeMeterDeviceId: 'm-area',
+      homeMeterArrangement: 'identified',
+      automaticHomeMeterDeviceId: 'm-area',
+    });
   });
 
   it('does NOT read live power on a fast refresh, so no sample and no identity exist', async () => {
@@ -428,14 +471,6 @@ describe('resolved home meter identity on the sample', () => {
       'identified',
     ],
     [
-      'an id-less pick among SEVERAL cumulative items proves neither',
-      [
-        { type: 'cumulative', values: { W: 3_100 } },
-        { type: 'cumulative', id: 'other', values: { W: 900 } },
-      ],
-      'unproven',
-    ],
-    [
       // Latching `idless_aggregate_only` here would make the area save refuse
       // with "not supported" while the Whole-home meter picker offers this very
       // device meter — naming it is the remedy, so the read proves neither.
@@ -457,6 +492,22 @@ describe('resolved home meter identity on the sample', () => {
     const sample = await transport.refreshSnapshot();
 
     expect(sample?.homeMeterArrangement).toBe(expected);
+  });
+
+  it('several cumulative items produce no Automatic sample without a proven preference', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', values: { W: 3_100 } },
+        { type: 'cumulative', id: 'other', values: { W: 900 } },
+      ],
+    });
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    await expect(transport.refreshSnapshot()).resolves.toBeNull();
   });
 
   it('an empty report yields NO sample, so no arrangement can publish at all', async () => {

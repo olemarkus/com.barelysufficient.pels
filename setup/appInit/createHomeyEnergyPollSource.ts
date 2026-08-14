@@ -12,7 +12,10 @@ import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
   getPowerSource(): PowerSource;
-  readonly deviceManager?: DeviceTransport;
+  readonly deviceManager?: Pick<
+    DeviceTransport,
+    'pollHomePowerW' | 'noteAdmittedAutomaticHomeMeter'
+  >;
   getStructuredDebugEmitter(component: 'devices', debugTopic: 'devices'): StructuredDebugEmitter;
   error(...args: unknown[]): void;
 };
@@ -30,16 +33,17 @@ export type HomeyEnergyPollSourceHost = {
  */
 export const createHomeyEnergyPollSource = (
   host: HomeyEnergyPollSourceHost,
-  pipeline: PowerSamplePipeline,
+  pipeline: Pick<PowerSamplePipeline, 'recordPowerSample'>,
 ): HomeyEnergyPollSource => new HomeyEnergyPollSource({
   getPowerSource: () => host.getPowerSource(),
   timers: host.timers,
   pollHomePower: async (authorizeFanOut) => (await host.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
-  // Admission is explicitly discarded: this source reports, it does not own the
-  // outcome of the ingest it feeds.
-  recordPowerSample: (sample) => pipeline
-    .recordPowerSample(sample.powerW, undefined, sample)
-    .then(() => undefined),
+  recordPowerSample: async (sample) => {
+    const admission = await pipeline.recordPowerSample(sample.powerW, undefined, sample);
+    if (admission.state === 'admitted' && sample.automaticHomeMeterDeviceId != null) {
+      host.deviceManager?.noteAdmittedAutomaticHomeMeter(sample.automaticHomeMeterDeviceId);
+    }
+  },
   debugStructured: host.getStructuredDebugEmitter('devices', 'devices'),
   error: (...args) => host.error(...args),
 });
