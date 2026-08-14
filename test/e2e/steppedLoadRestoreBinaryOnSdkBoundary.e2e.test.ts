@@ -232,6 +232,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     // Mirrors the honestly-parsed snapshot for the missing-onoff anomaly:
     // currentOn:false with no trusted binary observation.
     binaryControl: { on: false },
+    currentOn: false,
     currentState: 'off',
     plannedState: 'keep' as const,
     controllable: true,

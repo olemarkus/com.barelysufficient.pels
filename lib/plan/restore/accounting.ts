@@ -2,7 +2,6 @@ import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../../utils/deviceControlProfiles';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
@@ -74,7 +73,9 @@ function resolveSteppedRestorePower(
 ): { kw: number; source: RestorePowerSource } | null {
   if (!isSteppedLoadDevice(dev)) return null;
 
-  if (dev.currentState !== 'off' && isFiniteNumber(dev.planningPowerKw) && dev.planningPowerKw > 0) {
+  // `planningPowerKw` is finite by producer contract (`resolveSteppedClusterFields`
+  // finiteness-gates every rung), so only the domain question remains.
+  if (dev.currentState !== 'off' && dev.planningPowerKw > 0) {
     return { kw: dev.planningPowerKw, source: 'planning' };
   }
 

@@ -23,6 +23,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   // device; shed candidacy gates on writability (`isCanSetControl`).
   binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
+  currentOn: true,
   currentDrawKw: 1.5,
 }) as PlanInputDevice;
 

@@ -24,7 +24,6 @@ export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 // continues to surface this name for compatibility with the many target-
 // command callers that already import it from here.
 import type { PendingObservationSource } from '../observer/pendingBinaryCommandTypes';
-import { resolveCurrentOn } from '../observer/observedState';
 export type PendingTargetObservationSource = PendingObservationSource;
 
 export type PendingTargetCommandStatus =
@@ -423,43 +422,33 @@ export type BinaryControlDiscriminantProbe = {
  * Regroup the binary-control field off a loose bag onto a single
  * `BinaryControlKind` intersection — or omit it when the device is non-binary.
  *
- * UNLIKE `withEvDiscriminant`/`withTemperatureDiscriminant` (orthogonal clusters
- * whose fields are optional and always re-attached), `binaryControl` is REQUIRED
- * on the cluster, so this recomputes a boolean discriminant like
- * `withSteppedDiscriminant`: resolved binary state presence. A device whose
- * binary state is absent this cycle is regrouped WITHOUT the cluster
- * (no longer binary). Stripping is essential: an object spread can never remove a
- * key, so a stale `binaryControl` would otherwise survive onto a non-binary
- * result. When binary, the producer always resolves a concrete on-state;
- * `?? { on: false }` mirrors the transport's `resolveBinaryControl` fallback for
- * the (invariant-impossible) case a spread dropped the value. `currentOn` (the
- * public strict-boolean on/off truth) is regrouped alongside: a caller that
- * pre-resolved it (the production producer always does) keeps that value;
- * otherwise the regrouper resolves the correct on-state from the same binary +
- * stepped-off inputs via `resolveCurrentOn`, so the produced `BinaryControlKind`
- * always carries a faithful `currentOn` rather than a placeholder.
+ * Like the temperature and stepped regroupers, this DISCRIMINATES rather than
+ * always re-attaching: the discriminant is the producer-resolved `currentOn`
+ * alone (`resolveCurrentOn` runs once at `toPlanDevice`), so a device with no
+ * binary axis this cycle is regrouped WITHOUT the cluster — and so is a loose
+ * bag carrying only the RAW `binaryControl`, which means it skipped its
+ * producer. The regrouper deliberately does not re-resolve the on-state from
+ * raw evidence; resolution belongs to the producer.
+ *
+ * Stripping is essential either way: an object spread can never remove a key,
+ * so the raw `binaryControl` (transport/observer-internal) would otherwise
+ * survive onto the plan kinds.
  */
 export function withBinaryDiscriminant<TBase>(
   loose: TBase & BinaryControlDiscriminantProbe,
 ):
   | (Omit<TBase, keyof BinaryControlDiscriminantProbe> & BinaryControlKind)
   | Omit<TBase, keyof BinaryControlDiscriminantProbe> {
-  const { binaryControl, currentOn, ...base } = loose;
-  if (binaryControl !== undefined || currentOn !== undefined) {
-    const stepped = base as { steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string };
-    // The raw `binaryControl` is STRIPPED off the result (it stays
-    // transport/observer-internal). It still feeds the on/off fold here when the
-    // caller didn't pre-resolve `currentOn` — the production producer always
-    // pre-resolves it at `toPlanDevice`, so this fallback is the invariant-safety
-    // path for a loose bag that carried only the raw binary state.
-    return {
-      ...base,
-      currentOn: currentOn ?? resolveCurrentOn({
-        binaryControl: binaryControl ?? { on: false },
-        steppedLoadProfile: stepped.steppedLoadProfile,
-        selectedStepId: stepped.selectedStepId,
-      }),
-    };
+  const { binaryControl: _strippedBinaryControl, currentOn, ...base } = loose;
+  // The discriminant is the producer-resolved `currentOn` ALONE: the producer
+  // resolves the strict boolean once (`resolveCurrentOn` at `toPlanDevice` /
+  // the fixture builders' mirror), so a bag carrying only the raw
+  // `binaryControl` has skipped its producer and is regrouped WITHOUT the
+  // cluster rather than re-resolved here. The raw `binaryControl` is still
+  // STRIPPED off the result either way (it stays transport/observer-internal
+  // and a spread can never remove a key).
+  if (currentOn !== undefined) {
+    return { ...base, currentOn };
   }
   return { ...base };
 }

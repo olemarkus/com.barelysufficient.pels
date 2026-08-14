@@ -105,9 +105,9 @@ function pickTemperatureClusterFields(
 }
 
 // Source the binary on/off truth only when the input device is binary this cycle;
-// `withBinaryDiscriminant` re-derives presence from `binaryCapabilityId`. The
-// producer-resolved `currentOn` is forwarded from the input device unchanged — it
-// is resolved once at `toPlanDevice`, not recomputed.
+// `withBinaryDiscriminant` keys the cluster on that resolved `currentOn`. The
+// value is forwarded from the input device unchanged — it is resolved once at
+// `toPlanDevice`, not recomputed.
 function resolveInputBinaryControlField(
   dev: PlanInputDevice,
 ): { currentOn?: boolean } {

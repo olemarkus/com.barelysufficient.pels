@@ -166,9 +166,10 @@ const getSteppedLoadProfileForDevice = (
   device: SteppedDiscriminantProbe | PlanInputDevice | DevicePlanDevice,
 ): SteppedLoadProfile | null => {
   // All three input shapes carry `steppedLoadProfile` only on their stepped
-  // variant; treat the value as the probe shape for the guard + read.
+  // variant; treat the value as the probe shape for the guard + read. The guard
+  // proves the profile, so the read is plain.
   const probe = device as SteppedDiscriminantProbe;
-  return isSteppedLoadDevice(probe) ? (probe.steppedLoadProfile ?? null) : null;
+  return isSteppedLoadDevice(probe) ? probe.steppedLoadProfile : null;
 };
 
 export const resolveSteppedLoadInitialDesiredStepId = (

@@ -147,9 +147,9 @@ export function hasStableSteppedLoadBinaryRestoreActuation(
   // stepper has no on/off to write (its restore rides the step axis instead).
   if (!isBinaryPlanDevice(dev)) return false;
   // The binary axis must read a trusted off: `currentOn` is the producer-resolved
-  // on/off truth, and `=== false` is the same gate the transition resolver uses
-  // for its restore-from-off branch (unknown is not off).
-  if (dev.currentOn !== false) return false;
+  // strict boolean, the same gate the transition resolver uses for its
+  // restore-from-off branch.
+  if (dev.currentOn) return false;
   if (dev.binaryCommandPending === true) return false;
   if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) return false;
   const transition = resolveSteppedLoadTransition(dev, resolveSteppedKeepDesiredStepId(dev));

@@ -79,7 +79,7 @@ export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {
 }
 
 export function isSteppedRestoreCandidate(device: DevicePlanDevice): device is SteppedPlanDevice {
-  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
+  if (!isSteppedLoadDevice(device) || device.steppedLoadProfile.steps.length === 0) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
   const observedState = resolveRestoreObservedState(device);
   return observedState === 'off'
@@ -90,7 +90,7 @@ export function isSteppedRestoreCandidate(device: DevicePlanDevice): device is S
 }
 
 export function isOffSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
-  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
+  if (!isSteppedLoadDevice(device) || device.steppedLoadProfile.steps.length === 0) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
   return resolveRestoreObservedState(device) === 'off';
 }
@@ -100,7 +100,7 @@ export function isOffSteppedRestoreCandidate(device: DevicePlanDevice): boolean 
 // binary handle) resolve their on-state from the step too, so a binary-only
 // `currentOn` check would drop them — use this at the "active stepped" sites.
 export function isActiveSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
-  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
+  if (!isSteppedLoadDevice(device) || device.steppedLoadProfile.steps.length === 0) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
   return resolveRestoreObservedState(device) === 'on';
 }
