@@ -78,8 +78,7 @@ const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
 // (`resolveDefaultControlModel`), so for a non-stepped device the two arms were
 // the same question asked twice.
 const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
-  dev.deviceType === 'temperature'
-  || typeof dev.plannedTarget === 'number'
+  dev.temperature !== undefined
 );
 
 const PlanCard = ({

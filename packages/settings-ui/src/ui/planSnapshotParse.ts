@@ -46,11 +46,53 @@ const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
   && hasStructuredReason((value as { reason?: unknown }).reason)
 );
 
+const isFiniteNumber = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isFinite(value)
+);
+
+// The temperature facet is atomic: a complete finite trio, or no facet at all.
+// The adapter validates ONCE here; inward of this seam (`shared-domain`, the
+// views) the facet is trusted as-is — there are no nullable temperature fields
+// left for a consumer to hedge on.
+const hasValidTemperatureFacet = (value: unknown): boolean => (
+  Boolean(value)
+  && typeof value === 'object'
+  && isFiniteNumber((value as { currentTarget?: unknown }).currentTarget)
+  && isFiniteNumber((value as { currentTemperature?: unknown }).currentTemperature)
+  && isFiniteNumber((value as { plannedTarget?: unknown }).plannedTarget)
+);
+
+// Junk in ⇒ the whole facet is dropped (never a partial or nullable field):
+// a snapshot from an older build (or a malformed push) renders as a
+// non-temperature card rather than a card with invented numbers. `deviceType`
+// is demoted with it, exactly as the runtime producer co-produces the two —
+// otherwise this seam would emit the one shape the whole refactor forbids: a
+// device branded `'temperature'` with no facet behind it.
+const withValidatedTemperatureFacet = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => {
+  const facet = (device as { temperature?: unknown }).temperature;
+  if (facet === undefined || hasValidTemperatureFacet(facet)) return device;
+  const { temperature: _dropped, ...rest } = device as PlanDeviceSnapshot & { temperature?: unknown };
+  return { ...rest, deviceType: 'onoff' } as PlanDeviceSnapshot;
+};
+
+const needsTemperatureFacetSanitizing = (device: PlanDeviceSnapshot): boolean => {
+  const facet = (device as { temperature?: unknown }).temperature;
+  return facet !== undefined && !hasValidTemperatureFacet(facet);
+};
+
 export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
   if (!value || typeof value !== 'object') return null;
   const devices = (value as { devices?: unknown }).devices;
-  if (devices !== undefined && (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot))) {
+  if (devices === undefined) return value as PlanSnapshot;
+  if (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot)) {
     return null;
   }
-  return value as PlanSnapshot;
+  // Identity-preserving on the clean path: consumers (and the byte-identical
+  // Main-scope read) rely on an untouched payload passing through as-is; a
+  // copy exists only to carry a sanitized device list.
+  if (!devices.some(needsTemperatureFacetSanitizing)) return value as PlanSnapshot;
+  return {
+    ...(value as PlanSnapshot),
+    devices: devices.map(withValidatedTemperatureFacet),
+  };
 };

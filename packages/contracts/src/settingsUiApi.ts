@@ -231,7 +231,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
   name: string;
   deviceClass?: string;
-  plannedTarget?: number;
   priority?: number;
   zone?: string;
   budgetExempt?: boolean;
@@ -242,7 +241,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   surplusAbsorbActive?: boolean;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
-  currentTemperature?: number;
   stateKind?: string;
   stateTone?: string;
   starvation?: SettingsUiPlanDeviceStarvation;

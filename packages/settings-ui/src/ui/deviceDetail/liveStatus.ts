@@ -55,8 +55,7 @@ const formatKw = (value: number): string => `${value.toFixed(1)} kW`;
 // disagrees with the card for the same plan snapshot.
 const isMeasuredOnlyCard = (dev: PlanDeviceSnapshot): boolean => (
   dev.steppedLoad !== undefined
-  || dev.deviceType === 'temperature'
-  || typeof dev.plannedTarget === 'number'
+  || dev.temperature !== undefined
 );
 
 // Mirror of the Overview card's power-fact grammar: `Reported … kW` when the
@@ -110,7 +109,7 @@ const getRow = (): {
 // use: temperature devices show measured/target, stepped devices (including EV
 // chargers, whose battery and charging state fold in) show the level fact.
 const resolveFactText = (dev: PlanDeviceSnapshot): string => {
-  if (dev.deviceType === 'temperature' || typeof dev.plannedTarget === 'number') {
+  if (dev.temperature !== undefined) {
     return resolveTemperatureLine(dev as Parameters<typeof resolveTemperatureLine>[0]) ?? '';
   }
   if (dev.steppedLoad !== undefined) {

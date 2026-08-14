@@ -762,21 +762,17 @@ describe('resolveSteppedStatusLine', () => {
 });
 
 describe('resolveSteppedTemperatureText', () => {
-  it('returns formatted arrow text when both temperatures are present', () => {
-    expect(resolveSteppedTemperatureText({ currentTemperature: 20.5, plannedTarget: 50 }))
+  it('returns formatted text when the temperature facet is present', () => {
+    expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 20.5, plannedTarget: 50 } }))
       .toBe('20.5 °C · target 50 °C');
   });
 
-  it('returns null when currentTemperature is absent', () => {
-    expect(resolveSteppedTemperatureText({ plannedTarget: 50 })).toBeNull();
-  });
-
-  it('returns null when plannedTarget is absent', () => {
-    expect(resolveSteppedTemperatureText({ currentTemperature: 20.5 })).toBeNull();
+  it('returns null without the facet — a stepped device that is not temperature-observed', () => {
+    expect(resolveSteppedTemperatureText({})).toBeNull();
   });
 
   it('rounds target temperature to integer', () => {
-    expect(resolveSteppedTemperatureText({ currentTemperature: 37.2, plannedTarget: 49.8 }))
+    expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 37.2, plannedTarget: 49.8 } }))
       .toBe('37.2 °C · target 50 °C');
   });
 });

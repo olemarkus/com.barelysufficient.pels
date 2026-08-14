@@ -68,11 +68,14 @@ describe('overview transition signature', () => {
       controllable: true,
       available: true,
       currentDrawKw: 0,
-      currentTarget: 16,
     });
-    const running = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 14 });
-    const idle = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 20.8 });
-    const idleWobble = buildDeviceOverviewTransitionSignature({ ...base, currentTemperature: 20.9 });
+    const at = (currentTemperature: number) => ({
+      ...base,
+      temperature: { currentTemperature, currentTarget: 16, plannedTarget: 16 },
+    });
+    const running = buildDeviceOverviewTransitionSignature(at(14));
+    const idle = buildDeviceOverviewTransitionSignature(at(20.8));
+    const idleWobble = buildDeviceOverviewTransitionSignature(at(20.9));
     expect(idle).not.toBe(running);
     expect(idleWobble).toBe(idle);
   });
@@ -105,10 +108,13 @@ describe('device overview formatter', () => {
       reason: r('keep'),
       currentDrawKw: 0,
       expectedPowerKw: 1,
-      currentTarget: 16,
     });
-    expect(formatDeviceOverview({ ...base, currentTemperature: 20.8 }).stateMsg).toBe('Idle');
-    expect(formatDeviceOverview({ ...base, currentTemperature: 14.2 }).stateMsg)
+    const at = (currentTemperature: number) => ({
+      ...base,
+      temperature: { currentTemperature, currentTarget: 16, plannedTarget: 16 },
+    });
+    expect(formatDeviceOverview(at(20.8)).stateMsg).toBe('Idle');
+    expect(formatDeviceOverview(at(14.2)).stateMsg)
       .toBe('Active (temperature-managed)');
   });
 

@@ -13,8 +13,7 @@ type ReasonDevice = Parameters<typeof resolveTemperatureReasonLine>[0];
 const activeDevice = (overrides: Record<string, unknown> = {}): ReasonDevice => ({
   id: 'heater-1',
   name: 'Hall Heater',
-  currentTemperature: 21,
-  plannedTarget: 23,
+  temperature: { currentTemperature: 21, currentTarget: 23, plannedTarget: 23 },
   currentState: 'on',
   plannedState: 'keep',
   controllable: true,

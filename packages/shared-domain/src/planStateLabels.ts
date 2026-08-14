@@ -182,10 +182,6 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
   device.currentState === 'not_applicable' || isOnLike(device.currentState)
 );
 
-const asFiniteNumber = (value: unknown): number | null => (
-  typeof value === 'number' && Number.isFinite(value) ? value : null
-);
-
 // A target-only device (`not_applicable` — no on/off axis) that has reached its
 // target and is drawing nothing is doing nothing: "Idle", not "Running".
 // `not_applicable → active` is otherwise pure inference, and prod 2026-08-01
@@ -205,17 +201,13 @@ const asFiniteNumber = (value: unknown): number | null => (
 // the shed floor or while a target command is in flight, and prefer
 // `plannedTarget` when it is higher than the observed setpoint.
 //
-// Structural dependency: nothing here checks that `currentTarget` is a
-// temperature — the comparison is safe only because producers populate
-// `currentTemperature` exclusively for temperature-observed devices. If a
-// producer ever widens it (e.g. a charger's internal temperature beside an
-// ampere target), this predicate must learn a unit guard.
 export const isSatisfiedTargetOnlyDevice = (device: DeviceOverviewSnapshot): boolean => {
   if (device.currentState !== 'not_applicable') return false;
   if (device.pendingTargetCommand) return false;
-  const currentTemperature = asFiniteNumber(device.currentTemperature);
-  const currentTarget = asFiniteNumber(device.currentTarget);
-  if (currentTemperature === null || currentTarget === null) return false;
+  // The atomic temperature facet is the unit guard: it exists only for
+  // temperature-observed devices, and it is complete when present.
+  if (!device.temperature) return false;
+  const { currentTemperature, currentTarget, plannedTarget } = device.temperature;
   if (
     device.shedAction === 'set_temperature'
     && typeof device.shedTemperature === 'number'
@@ -223,8 +215,7 @@ export const isSatisfiedTargetOnlyDevice = (device: DeviceOverviewSnapshot): boo
   ) {
     return false;
   }
-  const plannedTarget = asFiniteNumber(device.plannedTarget);
-  const effectiveTarget = plannedTarget !== null ? Math.max(currentTarget, plannedTarget) : currentTarget;
+  const effectiveTarget = Math.max(currentTarget, plannedTarget);
   if (currentTemperature < effectiveTarget - 0.1) return false;
   // Read directly: `currentDrawKw` is required and producer-resolved, so there is
   // no absence to default and re-validating here would be a consumer distrusting

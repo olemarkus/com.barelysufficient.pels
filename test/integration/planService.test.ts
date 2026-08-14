@@ -170,8 +170,8 @@ describe('PlanService', () => {
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
-    expect(planUpdatedCalls[0][1].devices[0].currentTarget).toBe(19);
-    expect(planUpdatedCalls[1][1].devices[0].currentTarget).toBe(21);
+    expect(planUpdatedCalls[0][1].devices[0].temperature.currentTarget).toBe(19);
+    expect(planUpdatedCalls[1][1].devices[0].temperature.currentTarget).toBe(21);
   });
 
   it('ignores shortfall reason jitter when computing comparable detail changes', async () => {
@@ -818,7 +818,7 @@ describe('PlanService', () => {
           plannedState: 'shed',
           stateKind: 'held',
           stateTone: 'held',
-          currentTemperature: 16,
+          temperature: expect.objectContaining({ currentTemperature: 16 }),
           pendingTargetCommand: expect.objectContaining({
             desired: 20,
             retryCount: 1,
@@ -1190,6 +1190,7 @@ describe('PlanService', () => {
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
         commandableNow: true,
+        currentTarget: 18,
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
         deviceType: 'temperature',
         binaryCapabilityId: 'onoff',
@@ -1248,7 +1249,7 @@ describe('PlanService', () => {
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentTarget: 18,
+          temperature: expect.objectContaining({ currentTarget: 18 }),
         }),
       ],
     }));
@@ -1333,7 +1334,7 @@ describe('PlanService', () => {
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentTarget: 20,
+          temperature: expect.objectContaining({ currentTarget: 20 }),
         }),
       ],
     }));
@@ -2015,7 +2016,7 @@ describe('PlanService', () => {
         expect.objectContaining({
           id: 'dev-1',
           currentState: 'off',
-          currentTarget: 21,
+          temperature: expect.objectContaining({ currentTarget: 21 }),
         }),
       ],
     }));

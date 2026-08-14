@@ -18,6 +18,7 @@ import {
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { DevicePlan } from './planTypes';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 
 export type OverviewEmitDeps = {
   isOverviewDebugEnabled?: () => boolean;
@@ -58,6 +59,23 @@ function recordOverviewChange(
   const overviewDevice = {
     ...device,
     steppedLoad: buildOverviewSteppedLoad(device),
+    // The temperature facet, built from the narrowed plan device — the same
+    // atomic shape the read model emits. Without it this seam would see no
+    // temperature at all (the overview shape carries the trio as ONE object,
+    // not as flat fields), and `isSatisfiedTargetOnlyDevice` could never
+    // classify a satisfied target-only device as idle: the log would say
+    // `active` while the card says `Idle`. The observer overlay the read model
+    // applies is deliberately NOT replicated here — see the P2 in `TODO.md`
+    // about giving both carriers one overview shape.
+    ...(isTemperaturePlanDevice(device)
+      ? {
+        temperature: {
+          currentTarget: device.currentTarget,
+          currentTemperature: device.currentTemperature,
+          plannedTarget: device.plannedTarget,
+        },
+      }
+      : {}),
     // The draw needs no adapter: the display/log helpers read `currentDrawKw`,
     // the producer-resolved field the plan device already carries — one value,
     // two seams, no second answer anywhere in the planner.
