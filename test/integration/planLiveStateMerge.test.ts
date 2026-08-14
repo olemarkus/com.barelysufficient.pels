@@ -1,4 +1,5 @@
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import {
   canRefreshPlanSnapshotFromLiveState,
@@ -140,7 +141,7 @@ describe('planLiveStateMerge', () => {
       const result = buildLiveStatePlan(plan, liveDevices);
 
       expect(result.devices[0].currentState).toBe('off');
-      expect(result.devices[0].selectedStepId).toBe('max');
+      expect(isSteppedLoadDevice(result.devices[0]) ? result.devices[0].selectedStepId : undefined).toBe('max');
     });
 
     it('clears stale reported step evidence when live stepped state only has fallback evidence', () => {
@@ -197,13 +198,15 @@ describe('planLiveStateMerge', () => {
         selectedStepId: 'low',
         reportedStepId: 'low',
       })]);
+      // The telemetry gap as the producer emits it: no step evidence resolved
+      // this cycle, so the stepped cluster was refused and the live device is
+      // non-stepped (`resolveSteppedClusterFields`).
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
         name: 'Tank',
         binaryControl: { on: false },
         targets: [],
         controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile,
       })];
 
       const result = buildLiveStatePlan(plan, liveDevices);
@@ -352,7 +355,7 @@ describe('planLiveStateMerge', () => {
       // Without the fix: desiredStepId stays 'low' while selectedStepId='off',
       // which causes the executor to fire a step-UP restore command for a shed device.
       expect(result.devices[0].desiredStepId).toBe('off');
-      expect(result.devices[0].selectedStepId).toBe('off');
+      expect(isSteppedLoadDevice(result.devices[0]) ? result.devices[0].selectedStepId : undefined).toBe('off');
       expect(result.devices[0].plannedState).toBe('shed');
     });
 
@@ -380,7 +383,7 @@ describe('planLiveStateMerge', () => {
 
       // desiredStepId must stay 'low' — the step-DOWN command should still be issued
       expect(result.devices[0].desiredStepId).toBe('low');
-      expect(result.devices[0].selectedStepId).toBe('max');
+      expect(isSteppedLoadDevice(result.devices[0]) ? result.devices[0].selectedStepId : undefined).toBe('max');
     });
 
     it('does not clamp desiredStepId for keep devices', () => {

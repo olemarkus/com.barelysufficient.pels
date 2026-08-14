@@ -1,4 +1,5 @@
 import { resolveSteppedShedRung } from '../../lib/plan/shedding/steppedCandidates';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { getSteppedLoadShedTargetStep } from '../../lib/plan/planSteppedLoad';
 import { steppedInputDevice } from '../utils/planTestUtils';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
@@ -37,7 +38,7 @@ const initialTargetFor = (
 ) => getSteppedLoadShedTargetStep({
   device,
   shedAction,
-  currentDesiredStepId: device.selectedStepId,
+  currentDesiredStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
 });
 
 describe('stepped shed rung descent', () => {

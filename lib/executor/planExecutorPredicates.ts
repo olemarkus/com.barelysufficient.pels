@@ -105,7 +105,7 @@ export function hasStableSteppedLoadStepActuation(
 ): boolean {
   if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
   const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  if (!desiredStepId || !dev.selectedStepId) return false;
+  if (!desiredStepId) return false;
   const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
   if (!desiredStep) return false;
   if (shouldInitializeUnknownRunningStep(dev, desiredStep, commandSession)) {

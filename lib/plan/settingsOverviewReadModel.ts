@@ -154,7 +154,7 @@ export function buildSettingsOverviewDeviceReadModel(
     observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,
     shedTemperature: device.shedTemperature,
-    selectedStepId: device.selectedStepId,
+    selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
     desiredStepId: device.desiredStepId,
     reportedStepId: device.reportedStepId,
     targetStepId: device.targetStepId,

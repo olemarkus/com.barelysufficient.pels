@@ -88,7 +88,7 @@ function hasSettledPostActuationState(
   if (
     isSteppedLoadDevice(baseDevice)
     && baseDevice.desiredStepId
-    && liveDevice.selectedStepId !== baseDevice.desiredStepId
+    && (!isSteppedLoadDevice(liveDevice) || liveDevice.selectedStepId !== baseDevice.desiredStepId)
   ) {
     return false;
   }
@@ -133,7 +133,10 @@ function hasRelevantBinaryExecutionDrift(
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
   if (isSteppedLoadDevice(previousDevice)) {
-    return previousDevice.selectedStepId !== liveDevice.selectedStepId
+    // A live device that lost its stepped cluster counts as drift: the tracked
+    // step can no longer be read at its previous value.
+    return !isSteppedLoadDevice(liveDevice)
+      || previousDevice.selectedStepId !== liveDevice.selectedStepId
       || previousDevice.currentState !== liveDevice.currentState
       || hasSteppedEvidenceChanged(previousDevice, liveDevice);
   }

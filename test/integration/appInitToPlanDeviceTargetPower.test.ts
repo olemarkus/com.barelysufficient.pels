@@ -29,6 +29,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
       targets: [],
       controlModel: 'stepped_load',
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(runtimeConfig),
+      selectedStepId: '6a',
       targetPowerConfig: baseConfig,
       binaryControl: { on: true },
     };
@@ -71,8 +72,9 @@ describe('toPlanDevice target-power reachability boundary', () => {
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config),
       targetPowerConfig: config,
       binaryControl: { on: true },
-      // No `selectedStepId`, so the first rung finds nothing and the carried
-      // value is consulted next — as junk.
+      // A selected step OUTSIDE the capped planner ladder: the first rung finds
+      // nothing and the carried value is consulted next — as junk.
+      selectedStepId: '99a',
       planningPowerKw: Number.NaN,
     };
     const ctx = createAppContextMock({ deviceTargetPowerConfigs: { charger: config } });

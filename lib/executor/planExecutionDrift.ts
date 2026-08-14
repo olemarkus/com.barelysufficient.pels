@@ -1,5 +1,6 @@
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 import type {
   ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
@@ -65,8 +66,9 @@ export function hasPlanDeviceExecutionDrift(params: {
     runtime: buildDriftRuntimeState(planDevice, liveDevice),
     // The planned current step is the plan device's producer-resolved effective
     // step; drift compares it against the live observed step. It is read from the
-    // plan device, not from the (desired-only) executable intent.
-    plannedCurrentStepId: planDevice.selectedStepId,
+    // plan device (narrowed — a non-stepped plan device tracks no step), not
+    // from the (desired-only) executable intent.
+    plannedCurrentStepId: isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined,
   });
 }
 

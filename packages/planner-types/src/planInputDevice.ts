@@ -39,6 +39,17 @@ import type {
 type SteppedPlanInputKind = {
   steppedLoadProfile: SteppedLoadProfile;
   /**
+   * Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).
+   * REQUIRED on this variant for the same reason as `planningPowerKw` below:
+   * the producer chain guarantees it for every device that reaches it (usable
+   * ladder ⇒ lowest-active fallback ⇒ the effective step always resolves), so
+   * an absent value would be a producer bug — `resolveSteppedClusterFields`
+   * refuses the whole cluster rather than emitting a stepped device without
+   * its step. The retired raw-evidence trio (actualStepId / assumedStepId /
+   * actualStepSource) collapsed into this plus the typed stepped-state adapter.
+   */
+  selectedStepId: string;
+  /**
    * The draw the currently selected step is expected to pull. Lives HERE, on
    * the stepped variant, because it is a fact about a step ladder: a device
    * with no ladder has no selected step, so there is no number to carry. As a
@@ -152,10 +163,8 @@ export type PlanInputDeviceBase = {
   communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;
   targetStepId?: string;
-  // Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).
-  // The retired raw-evidence trio (actualStepId / assumedStepId /
-  // actualStepSource) collapsed into this plus the typed stepped-state adapter.
-  selectedStepId?: string;
+  // `selectedStepId` is NOT here: it is a fact about a step ladder and lives on
+  // `SteppedPlanInputKind`, reached through `isSteppedLoadDevice`.
   desiredStepId?: string;
   previousStepId?: string;
   lastStepCommandIssuedAt?: number;

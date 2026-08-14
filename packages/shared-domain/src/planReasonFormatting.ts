@@ -553,8 +553,11 @@ function formatTimedReasonUserFacing(reason: TimedReason): string {
 //  - Not `Limited to {maxStep}`: `maxStep` is the invariant's CAP, not where the
 //    device is. Prod 2026-07-05 showed "Limited to Low" while the device ran at
 //    Medium drawing 1.2 kW. The device's own step is `fromStep`, so the line
-//    renders from that and falls back to the step-less form when the observed
-//    step is unknown rather than substituting the cap.
+//    renders from that. The `'unknown'` guard below is CROSS-BUILD snapshot
+//    compatibility only — no current producer can emit it (`selectedStepId` is
+//    a required, resolved step id), but a persisted reason written by an older
+//    build can still carry the literal, and rendering it would print
+//    "Holding at Unknown".
 //
 // The remedy is also named honestly: those other devices resuming lifts this
 // hold, not more available power.

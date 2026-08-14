@@ -69,6 +69,17 @@ export type SteppedLoadKind = {
   // which proves the profile is there, so it is required on the narrowed shape.
   steppedLoadProfile: SteppedLoadProfile;
   /**
+   * Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback) —
+   * a fact about a step ladder, so it belongs on the variant that has one, and
+   * REQUIRED for the same reason `steppedLoadProfile` is: the producer chain
+   * (usable-ladder admission ⇒ lowest-active fallback ⇒ the effective step
+   * always resolves) guarantees it for every stepped device. NOTE: the EV
+   * target-power substitution can leave this naming a rung the CAPPED planner
+   * profile lacks, so `getSteppedLoadStep(profile, selectedStepId)` membership
+   * checks downstream are real domain questions, not presence hedges.
+   */
+  selectedStepId: string;
+  /**
    * The draw the currently selected step is expected to pull — a fact about a
    * step ladder, so it belongs on the variant that has one, and REQUIRED for
    * the same reason `steppedLoadProfile` is. See the twin docblock on
@@ -204,6 +215,7 @@ export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
  */
 export type SteppedDiscriminantProbe = {
   steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
   planningPowerKw?: number;
 };
 
@@ -225,10 +237,10 @@ export type SteppedDiscriminantProbe = {
 export type SteppedClusterFields =
   | SteppedLoadKind
   // NOT `Record<never, never>`: `{}` accepts every object, so the union never
-  // discriminated and a half-cluster type-checked against it. Forbidding both
-  // fields on the empty member is what makes "profile without its power" a
-  // compile error at the producer.
-  | { steppedLoadProfile?: never; planningPowerKw?: never };
+  // discriminated and a half-cluster type-checked against it. Forbidding every
+  // field on the empty member is what makes "profile without its step or its
+  // power" a compile error at the producer.
+  | { steppedLoadProfile?: never; selectedStepId?: never; planningPowerKw?: never };
 
 /**
  * Rebuild a discriminated plan device from a loose bag whose `steppedLoadProfile`
@@ -258,19 +270,28 @@ export function withSteppedDiscriminant<TBase extends object>(
   // instead of failing loudly. Enforcement belongs at the producers, which build
   // the pair through `SteppedClusterFields`.
   if (isSteppedLoadSnapshot(loose)) {
-    const { steppedLoadProfile, planningPowerKw, ...base } = loose;
-    // The one cast in this file, and it is the seam's honest shape: the probe
-    // types both fields as independent optionals, so nothing here PROVES they
-    // co-vary. Making the parameter a co-presence union does prove it, but the
-    // resulting errors at the four call sites are unreadable (`Omit` chains
-    // over intersections resolve to "two different types with this name exist"),
-    // which buys enforcement at the cost of anyone being able to act on it.
-    // Enforcement lives at the producers instead: each builds the pair as a
-    // `SteppedClusterFields` value, where supplying a profile without its
-    // planning power is a plain, local compile error.
-    return { ...base, steppedLoadProfile, planningPowerKw: planningPowerKw as number };
+    const { steppedLoadProfile, selectedStepId, planningPowerKw, ...base } = loose;
+    // The casts here are the seam's honest shape: the probe types the fields as
+    // independent optionals, so nothing here PROVES they co-vary. Making the
+    // parameter a co-presence union does prove it, but the resulting errors at
+    // the call sites are unreadable (`Omit` chains over intersections resolve
+    // to "two different types with this name exist"), which buys enforcement at
+    // the cost of anyone being able to act on it. Enforcement lives at the
+    // producers instead: each builds the trio as a `SteppedClusterFields`
+    // value, where a partial cluster is a plain, local compile error.
+    return {
+      ...base,
+      steppedLoadProfile,
+      selectedStepId: selectedStepId as string,
+      planningPowerKw: planningPowerKw as number,
+    };
   }
-  const { steppedLoadProfile: _stripped, planningPowerKw: _strippedPlanningPower, ...base } = loose;
+  const {
+    steppedLoadProfile: _stripped,
+    selectedStepId: _strippedSelectedStep,
+    planningPowerKw: _strippedPlanningPower,
+    ...base
+  } = loose;
   return { ...base };
 }
 
@@ -470,10 +491,8 @@ type DevicePlanDeviceBase = {
   communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;
   targetStepId?: string;
-  // Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).
-  // The retired raw-evidence trio (actualStepId / assumedStepId /
-  // actualStepSource) collapsed into this plus the typed stepped-state adapter.
-  selectedStepId?: string;
+  // `selectedStepId` is NOT here: it is a fact about a step ladder and lives on
+  // `SteppedLoadKind`, reached through `isSteppedLoadDevice`.
   desiredStepId?: string;
   previousStepId?: string;
   lastDesiredStepId?: string;

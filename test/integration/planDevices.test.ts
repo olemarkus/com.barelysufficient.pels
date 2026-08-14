@@ -1,4 +1,5 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import {
@@ -582,7 +583,7 @@ describe('buildInitialPlanDevices', () => {
 
     expect(planDevice.plannedState).toBe('shed');
     expect(planDevice.shedAction).toBe('set_step');
-    expect(planDevice.selectedStepId).toBe('low');
+    expect(isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined).toBe('low');
     expect(planDevice.desiredStepId).toBe('low');
   });
 
@@ -1132,7 +1133,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     });
 
     expect(planDevice.plannedState).toBe('keep');
-    expect(planDevice.selectedStepId).toBe('low');
+    expect(isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined).toBe('low');
     expect(planDevice.desiredStepId).toBe('max');
     expect(planDevice.targetStepId).toBe('max');
     expect(planDevice.lastDesiredStepId).toBe('max');

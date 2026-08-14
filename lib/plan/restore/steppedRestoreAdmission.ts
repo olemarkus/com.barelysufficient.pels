@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
@@ -29,7 +29,7 @@ import type { RestoreAdmissionMode } from './types';
 import { applySteppedCooldownPreviewAdmission } from './cooldownPreview';
 
 export type SteppedSwapExecutor = (params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   needed: number;
   devPower: number;
   availableHeadroom: number;
@@ -38,7 +38,7 @@ export type SteppedSwapExecutor = (params: {
 }) => { availableHeadroom: number; restoredOneThisCycle: boolean };
 
 export function admitSteppedRestore(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
   phase: 'startup' | 'runtime';
@@ -96,7 +96,7 @@ export function admitSteppedRestore(params: {
           expectedPowerKw: nextStep.planningPowerW / 1000,
           reason: {
             code: PLAN_REASON_CODES.restoreNeed,
-            fromTarget: dev.selectedStepId ?? 'unknown',
+            fromTarget: dev.selectedStepId,
             toTarget: nextStep.id,
             needKw: needed,
           },
@@ -119,7 +119,7 @@ export function admitSteppedRestore(params: {
     expectedPowerKw: nextStep.planningPowerW / 1000,
     reason: {
       code: PLAN_REASON_CODES.restoreNeed,
-      fromTarget: dev.selectedStepId ?? 'unknown',
+      fromTarget: dev.selectedStepId,
       toTarget: nextStep.id,
       needKw: needed,
     },
@@ -132,7 +132,7 @@ export function admitSteppedRestore(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      currentStepId: dev.selectedStepId ?? 'unknown',
+      currentStepId: dev.selectedStepId,
       toStepId: nextStep.id,
       lowestNonZeroStepId: lowestNonZeroStep?.id,
       blockedByShedInvariant: false,
@@ -150,7 +150,7 @@ export function admitSteppedRestore(params: {
 }
 
 export function blockSteppedRestoreForShedInvariant(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
   nextStep: { id: string; planningPowerW: number };
@@ -175,7 +175,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
   if (shedDeviceCount === 0) return false;
   const reason = {
     code: PLAN_REASON_CODES.shedInvariant,
-    fromStep: dev.selectedStepId ?? 'unknown',
+    fromStep: dev.selectedStepId,
     toStep: nextStep.id,
     shedDeviceCount,
     maxStep: lowestNonZeroStep.id,
@@ -196,7 +196,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        currentStepId: dev.selectedStepId ?? 'unknown',
+        currentStepId: dev.selectedStepId,
         requestedStepId: nextStep.id,
         lowestNonZeroStepId: lowestNonZeroStep.id,
         allowedMaxStepId: lowestNonZeroStep.id,
@@ -211,7 +211,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        currentStepId: dev.selectedStepId ?? 'unknown',
+        currentStepId: dev.selectedStepId,
         requestedStepId: nextStep.id,
         lowestNonZeroStepId: lowestNonZeroStep.id,
         allowedMaxStepId: lowestNonZeroStep.id,
@@ -233,7 +233,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
 }
 
 function canUseSwapForSteppedRestore(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   nextStep: { id: string; planningPowerW: number };
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
 }): boolean {
@@ -255,14 +255,14 @@ function canUseSwapForSteppedRestore(params: {
  * Deliberately NOT consulted by the shed-invariant bypass above — boost
  * overrides fairness unconditionally.
  */
-function isBoostEffectiveForEscalation(dev: DevicePlanDevice): boolean {
+function isBoostEffectiveForEscalation(dev: SteppedPlanDevice): boolean {
   if (!isBoostActive(dev)) return false;
   if (dev.hasRecentObservedDraw === false) return false;
   return true;
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
   phase: 'startup' | 'runtime';
@@ -295,7 +295,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      currentStepId: dev.selectedStepId ?? 'unknown',
+      currentStepId: dev.selectedStepId,
       requestedStepId: nextStep.id,
       lowestNonZeroStepId: lowestNonZeroStep?.id,
       blockedByShedInvariant: false,

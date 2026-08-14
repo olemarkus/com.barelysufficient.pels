@@ -9,7 +9,6 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
-  resolveSteppedUnknownCurrentMeasuredShedding,
 } from './planSteppedLoad';
 import {
   getSteppedLoadStep,
@@ -63,7 +62,8 @@ type RemainingSheddableTemperatureFields = {
 // field is what distinguishes the stepped union members below.
 type RemainingSheddableSteppedFields = {
   steppedLoadProfile: SteppedLoadProfile;
-  selectedStepId?: string;
+  // Producer-guaranteed alongside the profile (stepped cluster).
+  selectedStepId: string;
   desiredStepId?: string;
   stepCommandPending: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
@@ -374,12 +374,6 @@ function canStillShedSteppedLoad(params: {
   shedAction: 'turn_off' | 'set_step';
 }): boolean {
   const { device, shedAction } = params;
-  if (!device.selectedStepId) {
-    return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
-      device,
-      shedAction,
-    }));
-  }
   const targetStep = getSteppedLoadShedTargetStep({
     device,
     shedAction,
@@ -398,7 +392,6 @@ function canFinishSteppedTurnOffWithBinary(params: {
   if (
     shedAction !== 'turn_off'
     || !isBinaryPlanDevice(device)
-    || !device.selectedStepId
     || targetStep?.id !== device.selectedStepId
   ) {
     return false;

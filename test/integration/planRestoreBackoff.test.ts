@@ -25,7 +25,8 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
+import type { DevicePlanDevice , SteppedPlanDevice } from '../../lib/plan/planTypes';
 import {
   type BinaryControlDiscriminantProbe,
   withBinaryDiscriminant,
@@ -43,13 +44,20 @@ const buildBinaryPlanDevice = (
   const { binaryControl, ...rest } = overrides;
   return withBinaryDiscriminant({ ...buildPlanDevice(rest), binaryControl }) as DevicePlanDevice;
 };
+
+const steppedDevOf = (deviceMap: Map<string, DevicePlanDevice>): SteppedPlanDevice => {
+  const dev = deviceMap.get('dev-step');
+  if (!dev || !isSteppedLoadDevice(dev)) throw new Error('fixture: dev-step must be a stepped plan device');
+  return dev;
+};
+
 const buildBinarySteppedPlanDevice = (
   overrides: Parameters<typeof steppedPlanDevice>[0]
     & BinaryControlDiscriminantProbe
     & { evChargingState?: string },
-): DevicePlanDevice => {
+): SteppedPlanDevice => {
   const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as DevicePlanDevice;
+  return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as SteppedPlanDevice;
 };
 
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
@@ -1024,7 +1032,7 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toBe('restore medium -> low (need 1.48kW)');
   });
 
-  it('normalizes an unknown-step off restore to the lowest non-zero step and can step up later', () => {
+  it('normalizes an off restore to the lowest non-zero step and can step up later', () => {
     const state = createPlanEngineState();
     const firstRestore = applyRestorePlan({
       planDevices: [
@@ -1033,7 +1041,7 @@ describe('restore cooldown backoff', () => {
           name: 'Tank',
           currentState: 'off',
           plannedState: 'keep',
-          selectedStepId: undefined as unknown as string,
+          selectedStepId: 'off',
           desiredStepId: 'max',
           currentDrawKw: 0,
           expectedPowerKw: 3.0,
@@ -1056,7 +1064,7 @@ describe('restore cooldown backoff', () => {
     const restored = firstRestore.planDevices.find((device) => device.id === 'dev-step');
     expect(restored?.desiredStepId).toBe('low');
     expect(restored?.expectedPowerKw).toBeCloseTo(1.25);
-    expect(reasonText(restored?.reason)).toBe('restore unknown -> low (need 1.48kW)');
+    expect(reasonText(restored?.reason)).toBe('restore off -> low (need 1.48kW)');
 
     const secondRestore = applyRestorePlan({
       planDevices: [
@@ -3416,7 +3424,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     // low step = 1.25kW, buffer≈0.225, needed≈1.475, reserve=0.25, floor=0.25 → min=1.975kW
     // Use 1.974 → postReserveMarginKw = 1.974 - 1.475 - 0.25 = 0.249 < floor
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3454,7 +3462,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3494,7 +3502,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3536,7 +3544,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3580,7 +3588,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3622,7 +3630,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3659,7 +3667,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 
     // needed≈1.475, reserve=0.25, floor=0.25 → exact min = 1.975kW
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3696,7 +3704,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     ]);
 
     const result = planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {
@@ -3756,7 +3764,7 @@ describe('stepped-load shed invariant', () => {
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: makeShedTiming(),
@@ -3788,7 +3796,7 @@ describe('stepped-load shed invariant', () => {
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: makeShedTiming(),
@@ -3834,7 +3842,7 @@ describe('stepped-load shed invariant', () => {
     ]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: makeShedTiming(),
@@ -3860,7 +3868,7 @@ describe('stepped-load shed invariant', () => {
     const deviceMap = new Map([['dev-step', steppedDev]]);
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: makeShedTiming(),
@@ -3890,7 +3898,7 @@ describe('stepped-load shed invariant', () => {
     const debugStructured = vi.fn();
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: makeShedTiming(),
@@ -3922,7 +3930,7 @@ describe('stepped-load shed invariant', () => {
     const debugStructured = vi.fn();
 
     const callArgs = {
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: makeShedTiming(),
@@ -3937,7 +3945,7 @@ describe('stepped-load shed invariant', () => {
     expect(debugStructured).toHaveBeenCalledTimes(1);
 
     // Second call with identical params: suppressed
-    planRestoreForSteppedDevice({ ...callArgs, dev: deviceMap.get('dev-step')! });
+    planRestoreForSteppedDevice({ ...callArgs, dev: steppedDevOf(deviceMap) });
     expect(debugStructured).toHaveBeenCalledTimes(1);
   });
 
@@ -3954,7 +3962,7 @@ describe('stepped-load shed invariant', () => {
     // First call with 1 shed device
     const map1 = new Map([['shed-1', shed1], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
-      dev: map1.get('dev-step')!,
+      dev: steppedDevOf(map1),
       deviceMap: map1,
       state,
       timing: makeShedTiming(),
@@ -3967,7 +3975,7 @@ describe('stepped-load shed invariant', () => {
     // Second call with 2 shed devices: different shed count → re-emits
     const map2 = new Map([['shed-1', shed1], ['shed-2', shed2], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
-      dev: map2.get('dev-step')!,
+      dev: steppedDevOf(map2),
       deviceMap: map2,
       state,
       timing: makeShedTiming(),
@@ -3997,7 +4005,7 @@ describe('stepped-load shed invariant', () => {
     // First: blocked, emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
-      dev: mapShed.get('dev-step')!,
+      dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
       timing: makeShedTiming(),
@@ -4010,7 +4018,7 @@ describe('stepped-load shed invariant', () => {
     // Second: no shed devices → not blocked, tracking cleared (restore_stepped_admitted may fire)
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
-      dev: mapClear.get('dev-step')!,
+      dev: steppedDevOf(mapClear),
       deviceMap: mapClear,
       state,
       timing: makeShedTiming(),
@@ -4021,7 +4029,7 @@ describe('stepped-load shed invariant', () => {
 
     // Third: shed resumes → first rejection again, must re-emit
     planRestoreForSteppedDevice({
-      dev: mapShed.get('dev-step')!,
+      dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
       timing: makeShedTiming(),
@@ -4046,7 +4054,7 @@ describe('stepped-load shed invariant', () => {
     // Round 1: shed active, blocked by invariant → emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
-      dev: mapShed.get('dev-step')!,
+      dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
       timing: makeShedTiming(),
@@ -4060,7 +4068,7 @@ describe('stepped-load shed invariant', () => {
     // admits the step-up to 'max', clearing the invariant tracking as a side effect.
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
-      dev: mapClear.get('dev-step')!,
+      dev: steppedDevOf(mapClear),
       deviceMap: mapClear,
       state,
       timing: activeCooldownTiming,
@@ -4072,7 +4080,7 @@ describe('stepped-load shed invariant', () => {
 
     // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
     planRestoreForSteppedDevice({
-      dev: mapShed.get('dev-step')!,
+      dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
       timing: makeShedTiming(),
@@ -4101,7 +4109,7 @@ describe('stepped-load shed invariant', () => {
     const debugStructured = vi.fn();
 
     planRestoreForSteppedDevice({
-      dev: deviceMap.get('dev-step')!,
+      dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
       timing: {

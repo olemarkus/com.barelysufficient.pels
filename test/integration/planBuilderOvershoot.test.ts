@@ -4,7 +4,7 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { fixtureCurrentDrawKw, resolveFixtureCurrentOn, steppedInputDevice } from '../utils/planTestUtils';
+import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -25,27 +25,6 @@ const buildDevice = (
     ...merged,
     currentDrawKw: fixtureCurrentDrawKw(merged),
     currentOn: resolveFixtureCurrentOn(merged),
-  }) as PlanInputDevice;
-};
-
-// `steppedInputDevice` (shared) does not accept the orthogonal binary cluster;
-// wrap it so the stepped fixtures here can also carry `binaryControl` (the
-// shared builder already sets a control capability, so the binary regrouper
-// re-ties the cluster onto the result).
-const binarySteppedInputDevice = (
-  overrides: Parameters<typeof steppedInputDevice>[0] & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice => {
-  const { binaryControl, ...rest } = overrides;
-  const merged = {
-    ...steppedInputDevice(rest),
-    ...(binaryControl !== undefined ? { binaryControl } : {}),
-  };
-  return withBinaryDiscriminant({
-    ...merged,
-    // Re-resolve from the post-override signals: `resolveFixtureCurrentOn`
-    // short-circuits on an existing boolean, so clear any `currentOn` the shared
-    // builder precomputed before the `binaryControl` override was applied.
-    currentOn: resolveFixtureCurrentOn({ ...merged, currentOn: undefined }),
   }) as PlanInputDevice;
 };
 
@@ -442,64 +421,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }));
   });
 
-  it('sheds live measured stepped load during startup overshoot even when the current step is unknown', async () => {
-    const now = new Date('2026-04-15T11:04:01.000Z').getTime();
-    vi.setSystemTime(now);
-    const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
-    state.lastDeviceControlledMs['step-live'] = now - (10 * 60_000);
-    state.lastPlannedShedIds = new Set(['carryover-off']);
-
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(4.461);
-
-    const builder = new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
-      getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
-      getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: now }),
-      getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: (deviceId: string) => (deviceId === 'step-live' ? 100 : 10),
-      getDynamicSoftLimitOverride: () => 2.0,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-      structuredLog: { info: vi.fn() } as any,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-    }, state);
-
-    const plan = await builder.buildDevicePlanSnapshot([
-      {
-        ...binarySteppedInputDevice({
-          id: 'step-live',
-          name: 'Connected 300',
-          binaryControl: { on: true },
-          currentState: 'on',
-          currentDrawKw: 1.671,
-          expectedPowerKw: 1.25,
-        }),
-        selectedStepId: undefined,
-        desiredStepId: undefined,
-      },
-      buildDevice({
-        id: 'carryover-off',
-        name: 'Carryover Off',
-        binaryControl: { on: false },
-        currentState: 'off',
-        currentDrawKw: 0,
-        expectedPowerKw: 0,
-      }),
-    ]);
-
-    const liveStepped = plan.devices.find((device) => device.id === 'step-live');
-    expect(liveStepped?.plannedState).toBe('shed');
-    expect(liveStepped?.reason.code).toBe('capacity');
-  });
+  // Deleted with the consumer-modeled measured-step fallback: its premise was a
+  // stepped device with NO known step, which the producer no longer emits
+  // (`selectedStepId` is required on the stepped cluster). Live measured shed
+  // for a device at a KNOWN step is covered by the step-ladder cases above.
 
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {
     const state = createPlanEngineState();

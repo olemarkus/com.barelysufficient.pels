@@ -150,7 +150,7 @@ export function findDroppedSteppedShedIntents(
       deviceId: planDevice.id,
       deviceName: planDevice.name,
       shedAction: planDevice.shedAction,
-      selectedStepId: planDevice.selectedStepId ?? null,
+      selectedStepId: isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : null,
       desiredStepId: planDevice.desiredStepId ?? null,
     });
   }

@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 
-export function sortByPriorityAsc(devices: DevicePlanDevice[]): DevicePlanDevice[] {
+export function sortByPriorityAsc<T extends DevicePlanDevice>(devices: T[]): T[] {
   return stableSort(devices, compareByPriorityAsc);
 }
 
@@ -8,10 +8,10 @@ export function sortByPriorityDesc(devices: DevicePlanDevice[]): DevicePlanDevic
   return stableSort(devices, compareByPriorityDesc);
 }
 
-function stableSort(
-  devices: DevicePlanDevice[],
+function stableSort<T extends DevicePlanDevice>(
+  devices: T[],
   compare: (a: DevicePlanDevice, b: DevicePlanDevice) => number,
-): DevicePlanDevice[] {
+): T[] {
   return devices.slice().sort(compare);
 }
 

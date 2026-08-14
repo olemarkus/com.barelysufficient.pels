@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
@@ -171,7 +171,7 @@ export function blockRestoreForRecentActivationSetback(params: {
 }
 
 export function planRestoreForSteppedDevice(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
   timing: RestoreDeviceTiming;
