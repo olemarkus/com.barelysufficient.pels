@@ -59,10 +59,12 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 
 PELS starts polling every 10 seconds. The Overview tab should show live power data within moments.
 
-By default PELS reads the meter marked **Tracks total home energy consumption**
-in Homey Energy. If you'd rather point PELS at a specific meter — or no meter
-carries that marking — pick one in the **Whole-home meter** selector that
-appears below **Power source**. **Automatic** restores the default behaviour.
+By default, **Automatic** starts with the sole readable meter marked **Tracks
+total home energy consumption** in Homey Energy. If more marked meters appear
+later during the current app session, PELS keeps using that established meter.
+If several are already present before one has been established, choose the right one in the **Whole-home
+meter** selector below **Power source**; PELS does not guess between them. You
+can also select a specific meter when none carries the marking.
 
 ### Per-device energy reporting
 
@@ -73,10 +75,12 @@ If a device's energy data looks off, the canonical fix is in Homey's **Energy** 
 ### Requirements
 
 Your power meter must be paired with Homey. With **Whole-home meter** on
-**Automatic**, it must also have **Tracks total home energy consumption**
-enabled in its device settings — the same cumulative reading Homey shows as
-"Total home consumption" in the Energy dashboard. If you select the meter
-directly instead, the marking is not required.
+**Automatic** can establish the source when one readable meter has **Tracks
+total home energy consumption** enabled in its device settings — the same
+cumulative reading Homey shows as "Total home consumption" in the Energy
+dashboard. It retains that meter if more appear later during the current app
+session. If several are present before one has been established, select the
+correct meter directly; the marking is then not required.
 
 Common meters that work: Tibber Pulse, P1/HAN readers, Shelly EM, or any device Homey recognizes as a whole-home energy tracker.
 

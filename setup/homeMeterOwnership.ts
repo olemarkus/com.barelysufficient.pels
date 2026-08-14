@@ -50,9 +50,9 @@ export type MainMeterArrangement = 'unknown' | 'identified' | 'idless_aggregate_
 /**
  * Cross-store meter ownership guard for a freshly composed area list, plus the
  * requirement that once ANY meter area exists the Main home names its own
- * meter. On Automatic a Homey Energy home reads the combined total of every
- * meter as the Main home's, so Main home devices would be limited by an area's
- * usage. The settings UI already nudges (`HOMES_MAIN_METER_NOTICE`); this is
+ * meter. Automatic cannot prove which of several whole-home candidates belongs
+ * to Main, and may have established an area's meter while it was the sole
+ * readable candidate. The settings UI already nudges (`HOMES_MAIN_METER_NOTICE`); this is
  * the config invariant behind the nudge.
  *
  * The Flow source is refused outright before that requirement is even asked:

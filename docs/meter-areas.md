@@ -57,8 +57,9 @@ entirely remotely.
   total. Add the meter to Homey first, then pick it here.
 - **The Main home's own meter picked.** Before you can save your first meter
   area, select the Main home's **Whole-home meter** under **Settings → Limits &
-  safety**. Without it PELS reads the combined total of every meter as the Main
-  home's, and Main-home devices get limited by the area's usage. The
+  safety**. Automatic cannot reliably identify the Main home's meter when
+  several whole-home readings exist, so Main may receive no reading or may have
+  established an area's meter while it was the sole readable candidate. The
   [Giving the Main home its own meter](#giving-the-main-home-its-own-meter)
   section explains why. A few Homey setups read the whole home through an
   aggregate that doesn't report a device id. There the picker has nothing to
@@ -160,11 +161,12 @@ the **Showing** bar to see its live status and its own recorded history.
 ## Giving the Main home its own meter
 
 If you've added meter areas but haven't told PELS which meter belongs to the
-**Main home**, it has no way to know which of your meters to read for it. It
-falls back to whichever whole-home reading your Homey offers first. That can
-happen to be the Main home's own meter, in which case everything is measured
-correctly. But nothing guarantees it, and the first reading can just as easily
-land in one of two problem spots.
+**Main home**, it has no reliable way to choose among them. **Automatic** starts
+only when one whole-home meter is readable and retains that meter if more later
+appear during the current app session. If several are present before one is
+established, PELS cannot read current power for the Main home. If an area's meter
+was temporarily the sole candidate, Automatic may already have established that
+meter instead.
 
 **A combined total that already includes a meter area.** PELS cannot detect
 this one, so it keeps limiting the Main home against a figure that includes your

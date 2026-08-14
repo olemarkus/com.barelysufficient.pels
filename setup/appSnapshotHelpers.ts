@@ -1,5 +1,7 @@
 import type { PowerSource } from '../lib/power/powerSource';
+import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
+import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/device/transport/resolvedHomeMeterDispatch';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
@@ -53,20 +55,6 @@ export type RefreshTargetDevicesSnapshotOptions = {
   targeted?: boolean;
   recordHomeyEnergySample?: boolean;
   emitFlowBackedRefresh?: boolean;
-};
-
-type HomePowerSample = {
-  powerW: number;
-  generationW?: number;
-  /**
-   * Identity of the meter `powerW` was read from (`null` = unknown), produced
-   * by the transport read. It rides the sample into `recordPowerSample`
-   * unchanged; the sample pipeline publishes it to membership atomically with
-   * the ingest, so an unadmitted sample discards its identity claim with it.
-   */
-  resolvedHomeMeterDeviceId?: string | null;
-  /** Rides with the identity; same admitted-ingest contract. */
-  homeMeterArrangement?: 'identified' | 'idless_aggregate_only' | 'unproven';
 };
 
 export class AppSnapshotHelpers {
@@ -130,7 +118,7 @@ export class AppSnapshotHelpers {
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
-    recordPowerSample: (sample: HomePowerSample) => Promise<void>;
+    recordPowerSample: (sample: HomePowerSample) => Promise<PowerSampleAdmission>;
     reconcileTargetPowerReachability?: (snapshot: TargetDeviceSnapshot[], nowMs: number) => void;
     getNextTargetPowerProbe?: () => DueTargetPowerProbe | undefined;
     hasPendingTargetPowerProbe?: () => boolean;
@@ -486,7 +474,7 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
-    await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
+    await this.recordImplicitHomeyEnergySample(deviceManager, options, homePowerSample, meterSelectionAtStart);
   }
 
   /**
@@ -538,9 +526,8 @@ export class AppSnapshotHelpers {
   }
 
   private async recordImplicitHomeyEnergySample(
-    options: RefreshTargetDevicesSnapshotOptions,
-    sample: HomePowerSample | null,
-    meterSelectionAtStart: MainMeterSelection,
+    deviceManager: DeviceTransport, options: RefreshTargetDevicesSnapshotOptions,
+    sample: HomePowerSample | null, meterSelectionAtStart: MainMeterSelection,
   ): Promise<void> {
     const admission = this.classifyImplicitHomeyEnergySample(options, meterSelectionAtStart);
     if (admission === 'stale_meter') {
@@ -554,7 +541,12 @@ export class AppSnapshotHelpers {
     if (admission !== 'admitted') return;
 
     if (sample) {
-      await this.deps.recordPowerSample(sample);
+      const pipelineAdmission = await this.deps.recordPowerSample(sample);
+      deviceManager.noteAdmittedAutomaticHomeMeter(
+        pipelineAdmission.state === 'admitted'
+          && meterSelectionAtStart.state === 'resolved' && meterSelectionAtStart.meterDeviceId === null
+          ? sample.resolvedHomeMeterDeviceId : null,
+      );
     }
   }
 

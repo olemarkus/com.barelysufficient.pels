@@ -511,8 +511,8 @@ What remains open is below.*
 
 - [ ] **A fenced Main home stops protecting its physical hard cap, and the UI can only warn that it
       MIGHT be happening, not that it IS.**
-      *Persona:* multi-meter owner on the DEFAULT Automatic whole-home meter whose area meter happens
-      to sort first among the Homey Energy `cumulative` items. *Hypothesis:* the Main actuation fence
+      *Persona:* multi-meter owner on the DEFAULT Automatic whole-home meter whose area meter is the
+      sole readable `cumulative` item before the Main meter appears. *Hypothesis:* the Main actuation fence
       refuses ALL commands including sheds (`setup/appInit/createPlanEngine.ts:30-33`), so a proven
       sampled-meter collision suspends hard-cap protection. The hard cap is the hourly grid tariff
       step (effekttrinn), and not a tuning knob. It is not breaker protection and cannot be: an
@@ -3312,8 +3312,8 @@ CI failure, so future field-move slices can't silently grow the debt.*
 
 - [ ] **Weather meter-scope fingerprint: resolve the Automatic arm to the sampled meter identity.** With Main on
       Automatic, `readWholeHomeMeterScopeSignature` (`setup/weatherMeterScopeSignature.ts`) composes the constant
-      `main:automatic`, but `extractAutomaticHomePowerReading` samples the FIRST usable cumulative item — a Homey
-      reorder/availability change can silently switch the physically sampled device with no fingerprint change, so
+      `main:automatic`. Automatic now retains a previously proven cumulative meter across report reordering, but a
+      change to the sole usable candidate can still switch the physically sampled device with no fingerprint change, so
       records from two physical scopes mix without an invalidation. The resolved identity already exists: membership
       publishes it through `noteResolvedHomeMeter` into `SampledMeterIdentity` (`setup/homeSampledMeterIdentity.ts`),
       keyed to the sample's own freshness horizon. It cannot simply be consumed by the composer, because it is
@@ -3328,8 +3328,8 @@ CI failure, so future field-move slices can't silently grow the debt.*
       and have the wiring compare the freshly composed signature against
       `weatherCollector.getHistoryStateSnapshot().meterScopeSignature`, driving `reloadWeatherCollector` only on a
       real mismatch (a full restart, not an in-place strip — a mid-run strip races in-flight backfill-chain
-      continuations, which only the stop()-generation bump discards). Needs flap dampening: an Automatic pick that
-      oscillates between two devices must not strip the learned state on every flip. Do NOT re-resolve the
+      continuations, which only the stop()-generation bump discards). The stable Automatic resolver removes pure
+      report-order flapping, but candidate availability can still move the identity. Do NOT re-resolve the
       Automatic pick anywhere else — consume the membership fence's identity. Persona: multi-meter Automatic-mode
       home (e.g. main meter plus a PV/battery cumulative device); hypothesis: a silent sampled-device switch makes
       the energy signature blend two scopes and the advisor's suggestions drift without any visible cause. Source:

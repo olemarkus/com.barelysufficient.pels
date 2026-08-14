@@ -1,6 +1,7 @@
 /**
  * Home-power sample production for the shared live-power producer seam
- * (`fetchLivePowerReport` in `snapshotRefresh.ts`). Split out of that file:
+ * (`fetchLivePowerReport` in `livePowerReport.ts`). Split out of the snapshot
+ * module:
  * main sits at exactly the 500-line `max-lines` ceiling, so this carved out its
  * own module rather than pushing the seam over it.
  *

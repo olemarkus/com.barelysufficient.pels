@@ -383,8 +383,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       this.homey,
       (message, error) => this.error(message, error),
     ),
-    // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
-    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
+    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
     ...this.targetPowerReachabilityWiring.snapshotDeps,
   });
   public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);

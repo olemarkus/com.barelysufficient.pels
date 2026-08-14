@@ -101,6 +101,8 @@ export type TransportContext = {
   readonly observationState: DeviceTransportObservationState;
   readonly recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   readonly recentRealtimeCapabilityEventLogByKey: Map<string, number>;
+  /** Session-sticky identity used to stabilize Automatic cumulative selection. */
+  readonly automaticHomeMeterState: { preferredDeviceId: string | null };
 
   /** The read-only observation producers, built together in `observationProducers.ts`. */
   readonly observationProducers: {

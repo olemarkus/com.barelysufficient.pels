@@ -28,10 +28,13 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   allowed in an id** because `:` is the settings-key suffix separator (below).
 - An explicit meter device id has **exactly one owner across the Main home and
   every meter area**. Main's `null`/Automatic fallback is not an explicit identity
-  and remains allowed. That fallback is NOT a combined total: the reader takes the
-  first `cumulative` item in the Homey Energy payload
-  (`lib/device/managerEnergy.ts`), so it is one unidentified meter which may be a
-  superset of Main or an area's own meter. The sampled identity is resolved with
+  and remains allowed when no meter areas run. That fallback is NOT a combined
+  total: the reader accepts the sole finite `cumulative` item in the Homey Energy
+  payload. If several exist, it retains the candidate proven during the current
+  process while that candidate remains present; otherwise the read is ambiguous and produces
+  no Main sample for that report. Ambiguity persists until a later report has one
+  usable candidate or the owner selects a meter explicitly. A sole candidate may
+  still be a superset of Main or an area's own meter. The sampled identity is resolved with
   the reading, rides the sample into the admitted power ingest
   (`setup/powerSamplePipeline.ts` publishes it atomically with the watts), and
   on a proven collision with an area meter fences Main actuation for exactly the
