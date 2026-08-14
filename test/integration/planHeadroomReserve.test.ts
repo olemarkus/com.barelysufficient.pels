@@ -5,6 +5,7 @@ import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
 import {
   type BinaryControlDiscriminantProbe,
   type PlanInputDevice,
+  type TemperatureDiscriminantProbe,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -19,7 +20,8 @@ import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildInputDevice = (
-  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & { id: string; name: string },
+  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe
+    & { id: string; name: string },
 ): PlanInputDevice => {
   const merged = {
     available: true,
@@ -92,7 +94,7 @@ describe('PlanBuilder startup power reservation', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  type DeviceOverride = Partial<PlanInputDevice> & BinaryControlDiscriminantProbe;
+  type DeviceOverride = Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe;
 
   // Off and waiting to start — the only state a reservation exists for. A device whose binary
   // control is confirmed ON has started, so it never reserves (see the duty-cycle regression in
@@ -251,6 +253,7 @@ describe('PlanBuilder startup power reservation', () => {
       // device and the case would pass vacuously against the binary lane.
       deviceType: 'temperature',
       binaryControl: { on: true },
+      currentTarget: 21,
       targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       currentDrawKw: 0.6,
       expectedPowerKw: 0.6,
@@ -276,6 +279,7 @@ describe('PlanBuilder startup power reservation', () => {
       const settled = [
         params.heater,
         setpointThermostat({
+          currentTarget: settledTargetC,
           targets: [{ id: 'target_temperature', value: settledTargetC, unit: 'C' }],
           currentDrawKw: settledTargetC === SHED_FLOOR_C ? 0 : 0.6,
         }),

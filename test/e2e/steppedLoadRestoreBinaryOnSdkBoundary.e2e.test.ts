@@ -234,7 +234,6 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     binaryControl: { on: false },
     currentState: 'off',
     plannedState: 'keep' as const,
-    currentTarget: null,
     controllable: true,
     available: true,
     steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,

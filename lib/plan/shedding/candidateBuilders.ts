@@ -14,6 +14,7 @@ import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { isCanSetControl } from '../../device/deviceActionProjection';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
@@ -109,6 +110,7 @@ export function buildTemperatureCandidate(params: {
 
 export function isNotAtShedTemperature(device: ShedCandidate): boolean {
   if (device.kind !== 'temperature') return true;
-  const currentTarget = device.targets?.find((t) => t.id === device.targetCapabilityId)?.value;
-  return !(typeof currentTarget === 'number' && currentTarget === device.shedTemperature);
+  // The setpoint truth is the narrowed `currentTarget` (atomic facet), not a
+  // re-derivation from the raw `targets` metadata list.
+  return !(isTemperaturePlanDevice(device) && device.currentTarget === device.shedTemperature);
 }

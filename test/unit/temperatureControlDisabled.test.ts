@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import {
   createDeviceControlRuntimeState,
   decorateSnapshotWithDeviceControl,
@@ -37,12 +37,13 @@ const settingsStore = (params: {
 
 const UNAVAILABLE = { devices: {}, state: 'unavailable' as const };
 
-const thermostat = (): TargetDeviceSnapshot => ({
+const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   available: true,
   id: 'thermostat-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Thermostat',
   deviceType: 'temperature',
+  temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
   binaryControllable: true,

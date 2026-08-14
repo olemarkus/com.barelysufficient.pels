@@ -458,19 +458,28 @@ export class PlanService {
   private tickIdleClassifier(plan: DevicePlan): void {
     if (this.lastTickedPlanRef === plan) return;
     this.lastTickedPlanRef = plan;
-    // Narrow the temperature cluster via the guard so the classifier never reads
-    // `currentTarget`/`currentTemperature` off an un-narrowed plan device — a
-    // non-temperature device contributes `currentTarget: null` (its old base value).
+    // The temperature cluster rides as ONE optional object on the classifier
+    // input (mirroring the observer's atomic facet): stamped together for a
+    // temperature device, omitted otherwise — no nullable fields synthesized.
     // The idle classifier is an observer-side diagnostic tap whose "unresponsive"
     // detection legitimately needs staleness; the plan device no longer carries
     // `observationStale`, so source it from the observer projection here.
-    const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => {
-      const observationStale = this.deps.getObservationStale?.(device.id) ?? false;
-      const narrowed = isTemperaturePlanDevice(device)
-        ? device
-        : { ...device, currentTarget: null };
-      return { ...narrowed, observationStale };
-    });
+    const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => ({
+      id: device.id,
+      name: device.name,
+      currentState: device.currentState,
+      currentDrawKw: device.currentDrawKw,
+      plannedState: device.plannedState,
+      observationStale: this.deps.getObservationStale?.(device.id) ?? false,
+      ...(isTemperaturePlanDevice(device)
+        ? {
+          temperature: {
+            currentTemperature: device.currentTemperature,
+            currentTarget: device.currentTarget,
+          },
+        }
+        : {}),
+    }));
     this.idleClassifier.classifyAll(idleInputs, Date.now());
   }
 

@@ -18,6 +18,7 @@ import type {
   EvObservedProbe,
   MeasuredPowerObservedProbe,
   TargetDeviceSnapshot,
+  TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 
 // A plain binary managed+controllable device that WOULD be stamped
@@ -71,12 +72,13 @@ describe('toPlanDevice — R7b per-home options', () => {
       id: 'temperature-only',
       name: 'Temperature-only thermostat',
       deviceType: 'temperature',
+      temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
       targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       capabilities: ['target_temperature', 'measure_temperature'],
       controlModel: 'binary_power',
       temperatureControlDisabled: true,
       expectedPowerKw: 1, expectedPowerSource: 'default',
-    } satisfies DecoratedDeviceSnapshot;
+    } satisfies DecoratedDeviceSnapshot & TemperatureObservedProbe;
 
     const result = toPlanDevice(ctx, temperatureOnly);
 
@@ -107,6 +109,29 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.residualKw.shed).toBe(0.7);
     expect('currentTemperature' in result).toBe(false);
     expect('currentOn' in result && result.currentOn).toBe(true);
+  });
+
+  it('derives deviceType from facet presence — a snapshot CLAIMING temperature without the facet plans as onoff', () => {
+    // The half-cluster this pins as unrepresentable: a carrier stamped
+    // `deviceType: 'temperature'` (e.g. hand-built, or drifted from an older
+    // decoration) with no atomic facet. Trusting the claim would let
+    // `isTemperaturePlanDevice` narrow to required numbers that are undefined
+    // at runtime; the producer DERIVES the discriminant instead
+    // (`resolveTemperatureInputFields`), so the device honestly plans as onoff.
+    const ctx = createAppContextMock();
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    const claimingSnapshot = {
+      ...buildSurplusWillingSnapshot(),
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+    } as DecoratedDeviceSnapshot;
+
+    const result = toPlanDevice(ctx, claimingSnapshot);
+
+    expect(result.deviceType).toBe('onoff');
+    expect('currentTemperature' in result).toBe(false);
+    expect('currentTarget' in result).toBe(false);
   });
 
   it('falls back to stepped shedding when only the stepped facet survives temperature demotion', () => {

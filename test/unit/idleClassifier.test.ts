@@ -28,8 +28,7 @@ const heaterAt = (
   currentState: 'on',
   observationStale: false,
   currentDrawKw: 0,
-  currentTemperature: 61.5,
-  currentTarget: 65,
+  temperature: { currentTemperature: 61.5, currentTarget: 65 },
   plannedState: 'keep',
   ...overrides,
 });
@@ -85,7 +84,7 @@ describe('createIdleClassifier', () => {
     const debug = createSink();
     const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
-    const cold = heaterAt({ currentTemperature: 55 });
+    const cold = heaterAt({ temperature: { currentTemperature: 55, currentTarget: 65 } });
     classifier.classifyAll([cold], t0);
     classifier.classifyAll([cold], t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS);
     expect(classifier.getClassification('heater-1')).toBe('unresponsive');
@@ -133,7 +132,7 @@ describe('createIdleClassifier', () => {
     const debug = createSink();
     const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
-    const cappedAt58 = heaterAt({ currentTemperature: 58 });
+    const cappedAt58 = heaterAt({ temperature: { currentTemperature: 58, currentTarget: 65 } });
     let cursor = t0;
     let drawing = true;
     while (cursor <= t0 + CAPPED_IDLE_MIN_WINDOW_MS) {
@@ -163,8 +162,8 @@ describe('createIdleClassifier', () => {
       const debug = createSink();
       const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
       const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5, currentTemperature: 59.4 })], t0); // seed: drawing
-      classifier.classifyAll([heaterAt({ currentDrawKw: 0, currentTemperature: 59.4 })], t0 + 10_000); // edge: stopped
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5, temperature: { currentTemperature: 59.4, currentTarget: 65 } })], t0); // seed: drawing
+      classifier.classifyAll([heaterAt({ currentDrawKw: 0, temperature: { currentTemperature: 59.4, currentTarget: 65 } })], t0 + 10_000); // edge: stopped
       expect(debug.events).toContainEqual(expect.objectContaining({
         event: 'device_power_draw_stopped',
         deviceId: 'heater-1',

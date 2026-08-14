@@ -20,7 +20,6 @@ import {
   type IdleDetectorResult,
   type IdleDetectorState,
 } from './idleDetector';
-import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
@@ -29,13 +28,13 @@ import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/i
 /**
  * Subset of DevicePlanDevice used by the classifier — keeps coupling thin.
  *
- * `currentTarget` / `currentTemperature` are the temperature-variant cluster
- * (`TemperatureKind`), now off the `DevicePlanDevice` base. The caller
- * (`planService.tickIdleClassifier`) maps each plan device through the
- * `isTemperaturePlanDevice` guard before passing it here, contributing
- * `currentTarget: null` for a non-temperature device — so this input keeps
- * `currentTarget` required (matching the old always-present base field) and the
- * classifier never reads the cluster off an un-narrowed device.
+ * The temperature cluster rides as ONE optional object, mirroring the
+ * observer's atomic facet: present (both values, finite) IFF the device is a
+ * temperature device, absent otherwise. The caller
+ * (`planService.tickIdleClassifier`) narrows each plan device through
+ * `isTemperaturePlanDevice` and stamps the pair together — there are no
+ * nullable temperature fields for a consumer to hedge on; absence of the
+ * cluster is the one genuine "no setpoint" state.
  */
 export type IdleClassifierDeviceInput = {
   id: string;
@@ -52,8 +51,7 @@ export type IdleClassifierDeviceInput = {
    * downstream now carries the same required field under the same name.
    */
   currentDrawKw: number;
-  currentTemperature?: number;
-  currentTarget: number | null;
+  temperature?: { currentTemperature: number; currentTarget: number };
   plannedState: PlannedDeviceState;
 };
 
@@ -78,12 +76,12 @@ const toDetectorInput = (
   deviceId: device.id,
   now,
   currentDrawKw: device.currentDrawKw,
-  currentTemperature: device.currentTemperature,
-  targetTemperature: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
+  currentTemperature: device.temperature?.currentTemperature,
+  targetTemperature: device.temperature?.currentTarget,
   observedOn: device.currentState === 'on',
   observationStale: device.observationStale,
   pelsCommandedShed: device.plannedState === 'shed',
-  hasTemperatureSetpoint: isFiniteNumber(device.currentTarget),
+  hasTemperatureSetpoint: device.temperature !== undefined,
 });
 
 type ReportableClassification = Exclude<IdleClassification, 'active'>;
@@ -152,8 +150,8 @@ const emitTransitionLog = (params: {
   if (isReportableClassification(classification)) {
     const copy = formatIdleClassificationCopy({
       classification,
-      currentTemperatureC: device.currentTemperature,
-      targetTemperatureC: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
+      currentTemperatureC: device.temperature?.currentTemperature,
+      targetTemperatureC: device.temperature?.currentTarget,
     });
     emitGated({
       logger,
@@ -167,8 +165,8 @@ const emitTransitionLog = (params: {
         idleDurationMs,
         temperatureGapC,
         measuredPowerKw: device.currentDrawKw,
-        currentTemperatureC: device.currentTemperature,
-        targetTemperatureC: device.currentTarget ?? undefined,
+        currentTemperatureC: device.temperature?.currentTemperature,
+        targetTemperatureC: device.temperature?.currentTarget,
         detail: copy.detail,
       },
     });
@@ -201,7 +199,7 @@ const emitPowerEdge = (params: {
     device.observationStale === true
     || device.currentState !== 'on'
     || device.plannedState === 'shed'
-    || !isFiniteNumber(device.currentTemperature)
+    || device.temperature === undefined
   ) {
     // Not a state where a 0 W reading is the device's own coast — drop the streak
     // so the next eligible tick re-seeds instead of firing a spurious edge.
@@ -221,11 +219,9 @@ const emitPowerEdge = (params: {
     deviceId: device.id,
     deviceName: device.name,
     measuredPowerKw: device.currentDrawKw,
-    currentTemperatureC: device.currentTemperature,
-    targetTemperatureC: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
-    temperatureGapC: isFiniteNumber(device.currentTarget)
-      ? device.currentTarget - device.currentTemperature
-      : undefined,
+    currentTemperatureC: device.temperature.currentTemperature,
+    targetTemperatureC: device.temperature.currentTarget,
+    temperatureGapC: device.temperature.currentTarget - device.temperature.currentTemperature,
   });
 };
 

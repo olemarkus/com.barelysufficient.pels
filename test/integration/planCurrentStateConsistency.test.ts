@@ -41,7 +41,6 @@ const buildPlan = (
     binaryControl: { on: false },
     currentState: 'off',
     plannedState: 'keep',
-    currentTarget: null,
     binaryCapabilityId: 'onoff',
     ...overrides,
   })) as DevicePlanDevice],

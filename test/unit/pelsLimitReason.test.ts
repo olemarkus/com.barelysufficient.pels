@@ -130,7 +130,6 @@ describe('pels status limit reason', () => {
           commandableNow: true,
           currentState: 'off',
           plannedState: 'inactive' as const,
-          currentTarget: null,
           controllable: true,
           available: true,
           reason: fixtureDeviceReason('inactive (charger is unplugged)')!,

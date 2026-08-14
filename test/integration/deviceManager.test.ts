@@ -2835,6 +2835,7 @@ describe('DeviceTransport', () => {
                 id: 'dev1',
                 expectedPowerKw: 1,
                 name: 'Hall Thermostat',
+                temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
                 targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',

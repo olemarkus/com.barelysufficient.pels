@@ -1,5 +1,6 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
+import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -135,30 +136,32 @@ export type EvKind = {
  * error (TS2339); consumers must pass through `isTemperaturePlanDevice` (or hold
  * an already-narrowed value) first.
  *
- * `currentTarget` is REQUIRED on the narrowed shape: the producer always
- * resolves it to a value-or-null for a temperature device (the primary target
- * capability's value, or `null` during a transient read failure). It is
- * `number | null`, never absent, once the temperature discriminant holds.
+ * ALL THREE fields are REQUIRED on the narrowed shape. The observer admits the
+ * temperature facet atomically — a finite sensor reading AND a finite exact
+ * target snapshot, or no facet at all (`deviceType` flips to `'onoff'` and the
+ * device leaves the temperature branch entirely) — so once the temperature
+ * discriminant holds:
  *
- * `currentTemperature` is OPTIONAL: the sensor reading is only present when the
- * device reports it, so the guard groups it onto the variant WITHOUT asserting a
- * presence the producer does not guarantee.
+ * - `currentTarget` is a plain `number`: the facet's target value, stamped by
+ *   the producer at `toPlanDevice`. There is no transient-read `null` — a
+ *   failed read removes the whole facet upstream, it never produces a partial
+ *   temperature device.
+ * - `currentTemperature` is a plain `number`: the facet's sensor reading,
+ *   guaranteed alongside the target.
+ * - `plannedTarget` is a plain `number`: the planner ALWAYS resolves a
+ *   commanded setpoint for a temperature device (mode target, else the
+ *   device's own current target as a no-op seed). "No decision this cycle"
+ *   materializes as `plannedTarget === currentTarget`, which the executor's
+ *   no-op fence skips — never as absence.
  *
  * The boost cluster (`temperatureBoost` / `temperatureBoostActive`) is NOT here:
  * it stays on `DevicePlanDeviceBase` (entangled with the cross-kind boost
  * machinery).
- *
- * `plannedTarget` (the planner-output commanded setpoint) IS here: the planner
- * resolves it only for temperature devices (`resolvePlannedTarget` returns
- * `undefined` otherwise), so reading it on a non-temperature plan device is a
- * TS2339 compile error. It is OPTIONAL: the planner may leave it unset (e.g. a
- * temperature device that is kept untouched this cycle), so the guard groups it
- * onto the variant WITHOUT asserting a presence the producer does not guarantee.
  */
 export type TemperatureKind = {
-  currentTarget: number | null;
-  currentTemperature?: number;
-  plannedTarget?: number;
+  currentTarget: number;
+  currentTemperature: number;
+  plannedTarget: number;
 };
 
 /**
@@ -326,43 +329,63 @@ export function withEvDiscriminant<TBase>(
  * temperature" loose shape a construction/merge site carries before the cluster
  * is regrouped onto the orthogonal `TemperatureKind` intersection. Used by
  * `withTemperatureDiscriminant`.
- *
- * `currentTarget` is optional here (the loose-bag input may omit it) even though
- * the regrouped `TemperatureKind` requires it: the regrouper defaults a missing
- * value to `null`, matching the producer's value-or-null contract.
  */
 export type TemperatureDiscriminantProbe = {
-  currentTarget?: number | null;
+  currentTarget?: number;
   currentTemperature?: number;
   plannedTarget?: number;
 };
 
 /**
+ * The temperature cluster as a UNIT: all three fields or none. Same enforcement
+ * shape as `SteppedClusterFields`, for the same reason: the regrouper's result
+ * type is a union whose non-temperature member accepts anything, so without a
+ * co-presence type at the producer, a half-cluster (a target with no reading,
+ * or either with no planned target) would type-check and read `undefined` at
+ * runtime behind a required type. Producers build the trio through a
+ * conditional that returns this or `{}`, so a partial cluster is a compile
+ * error at the producer, where the atomic-facet invariant actually lives.
+ */
+export type TemperatureClusterFields =
+  | TemperatureKind
+  | { currentTarget?: never; currentTemperature?: never; plannedTarget?: never };
+
+/**
  * Regroup the temperature field cluster off a loose bag (whose temperature
  * fields are independent optionals on the base, e.g. the result of a
- * `{ ...current, ...updates }` merge or a `...snapshot` spread) onto a single
- * `TemperatureKind`-shaped intersection.
+ * `{ ...current, ...updates }` merge or a `...snapshot` spread) onto the
+ * orthogonal `TemperatureKind` intersection — or strip it entirely when the
+ * device is not a temperature device.
  *
- * Stripping is essential for the same reason as `withEvDiscriminant`: an object
- * spread can never *remove* a key, so the temperature fields would otherwise
- * survive on the base part of the result and re-pollute the base shape this
- * slice deliberately omits them from. Temperature is orthogonal to the stepped
- * axis, so there is no boolean discriminant to recompute — the cluster is
- * regrouped (every value forwarded unchanged, `currentTarget` defaulting to
- * `null` when absent) and re-attached as `TemperatureKind`. The result's base
- * part is `Omit<TBase, keyof TemperatureDiscriminantProbe>`, matching the
- * temperature-stripped `DevicePlanDeviceBase`.
+ * DISCRIMINATED like `withBinaryDiscriminant`: the runtime predicate is the
+ * browser-safe `isTemperatureControlDevice` (`deviceType === 'temperature'`) —
+ * the exact predicate `isTemperaturePlanDevice` delegates to, so the regrouper
+ * and the guard cannot drift. The transport co-produces `deviceType` with the
+ * atomic temperature facet (both set together, both removed together), so for a
+ * temperature device the full trio is present on the loose bag by producer
+ * invariant; for anything else the fields are stripped so a stale cluster a
+ * spread dragged in cannot survive onto a non-temperature result.
+ *
+ * The cast mirrors `withSteppedDiscriminant`'s: the probe types the fields as
+ * independent optionals, so nothing HERE proves the trio co-varies — that proof
+ * lives at the producers, which build the cluster as a `TemperatureClusterFields`
+ * value where a partial trio is a plain, local compile error.
  */
 export function withTemperatureDiscriminant<TBase extends object>(
   loose: TBase & TemperatureDiscriminantProbe,
-): Omit<TBase, keyof TemperatureDiscriminantProbe> & TemperatureKind {
+):
+  | (Omit<TBase, keyof TemperatureDiscriminantProbe> & TemperatureKind)
+  | Omit<TBase, keyof TemperatureDiscriminantProbe> {
   const { currentTarget, currentTemperature, plannedTarget, ...base } = loose;
-  return {
-    ...base,
-    currentTarget: currentTarget ?? null,
-    ...(currentTemperature !== undefined ? { currentTemperature } : {}),
-    ...(plannedTarget !== undefined ? { plannedTarget } : {}),
-  };
+  if (isTemperatureControlDevice(loose as { deviceType?: string })) {
+    return {
+      ...base,
+      currentTarget: currentTarget as number,
+      currentTemperature: currentTemperature as number,
+      plannedTarget: plannedTarget as number,
+    };
+  }
+  return { ...base };
 }
 
 /**

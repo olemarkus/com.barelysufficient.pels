@@ -298,6 +298,27 @@ function resolveSteppedLadderMissing(
     && steppedCluster.steppedLoadProfile === undefined;
 }
 
+/**
+ * The atomic temperature facet, stamped as a unit (resolution-in-producer): the
+ * observer admits the facet only with BOTH a finite sensor reading and a finite
+ * exact target snapshot, so `isTemperaturePlanDevice` narrows both fields to
+ * required numbers. `deviceType` is DERIVED here from facet presence rather
+ * than trusted off the carrier, so the discriminant and the cluster cannot
+ * diverge on a plan input — a snapshot claiming `'temperature'` without the
+ * facet plans as `'onoff'`, never as a half-cluster. Consumers never reach into
+ * the raw `targets` list for the value.
+ */
+function resolveTemperatureInputFields(
+  device: TemperatureObservedProbe,
+): { deviceType: 'temperature'; currentTemperature: number; currentTarget: number } | { deviceType: 'onoff' } {
+  if (!device.temperature) return { deviceType: 'onoff' };
+  return {
+    deviceType: 'temperature',
+    currentTemperature: device.temperature.currentTemperature,
+    currentTarget: device.temperature.target.value,
+  };
+}
+
 function projectEffectiveControlDevice(
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe {
@@ -585,9 +606,7 @@ export function toPlanDevice(
     // The raw field is stripped from the spread above, so no consumer can reach
     // past this answer to a second one.
     currentDrawKw: getCurrentDrawKw(device),
-    ...(device.temperature ? {
-      currentTemperature: device.temperature.currentTemperature,
-    } : {}),
+    ...resolveTemperatureInputFields(device),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDraw !== undefined
       ? { hasRecentObservedDraw }

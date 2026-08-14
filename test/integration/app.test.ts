@@ -1879,6 +1879,7 @@ describe('MyApp initialization', () => {
       {
         id: 'dev-1',
         name: 'Heater',
+        temperature: { currentTemperature: 19, target: { id: 'target_temperature', value: 19, unit: '°C' } },
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
         binaryControl: { on: true },
         controllable: true,

@@ -220,17 +220,10 @@ function canSwapOutDevice(
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
 ): boolean {
   if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
-  const isTemperature = isTemperaturePlanDevice(dev);
-  const devCurrentTarget = isTemperature ? dev.currentTarget : null;
-  const devPlannedTarget = isTemperature ? dev.plannedTarget : undefined;
-  let currentTarget: number | null = null;
-  if (typeof devCurrentTarget === 'number') {
-    currentTarget = devCurrentTarget;
-  } else if (typeof devPlannedTarget === 'number') {
-    currentTarget = devPlannedTarget;
-  }
-  if (currentTarget === null) return true;
-  return currentTarget > behavior.temperature;
+  // A non-temperature device has no setpoint to compare — swappable. The old
+  // fail-open on a null observed target is gone with the nullable field.
+  if (!isTemperaturePlanDevice(dev)) return true;
+  return dev.currentTarget > behavior.temperature;
 }
 
 /**

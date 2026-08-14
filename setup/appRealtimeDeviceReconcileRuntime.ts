@@ -269,12 +269,11 @@ function enrichRealtimeDeviceReconcileEvent(
   if (!planDevice) return event;
 
   let planExpectation: string | undefined;
-  const plannedTarget = isTemperaturePlanDevice(planDevice) ? planDevice.plannedTarget : undefined;
   if (
     event.capabilityId?.startsWith('target_temperature')
-    && typeof plannedTarget === 'number'
+    && isTemperaturePlanDevice(planDevice)
   ) {
-    planExpectation = `plan target: ${plannedTarget}°C`;
+    planExpectation = `plan target: ${planDevice.plannedTarget}°C`;
   } else if (event.capabilityId === 'onoff' || event.capabilityId === 'evcharger_charging') {
     planExpectation = resolvePlanStateExpectation(planDevice);
   }

@@ -84,22 +84,38 @@ export const resolveFixtureCurrentState = (device: {
  * `null` for fixtures that express temperature intent only through
  * `currentTarget`.
  */
+const FIXTURE_DEFAULT_TEMPERATURE_C = 21;
+
 const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'onoff' }>(
   fields: T & TemperatureDiscriminantProbe,
 ):
 | Omit<T, keyof TemperatureDiscriminantProbe>
 | (Omit<T, keyof TemperatureDiscriminantProbe> & TemperatureKind) => {
-  const hasTemperatureSignal = fields.currentTarget !== undefined
-    || fields.currentTemperature !== undefined;
+  const hasTemperatureSignal = fields.deviceType === 'temperature'
+    || fields.currentTarget !== undefined
+    || fields.currentTemperature !== undefined
+    || fields.plannedTarget !== undefined;
   if (!hasTemperatureSignal) {
     const {
       currentTarget: _ct, currentTemperature: _cte, plannedTarget: _pt, ...rest
     } = fields;
     return rest;
   }
+  // The temperature cluster is COMPLETE by producer invariant (atomic facet +
+  // total planner resolution), so any temperature signal synthesizes the full
+  // trio: a missing sensor reading defaults to "at setpoint" and a missing
+  // planned target to "no decision" (planned === current) — both behavior-
+  // neutral. Fixtures whose subject is one of these values set it explicitly.
+  const currentTarget = fields.currentTarget
+    ?? fields.plannedTarget
+    ?? fields.currentTemperature
+    ?? FIXTURE_DEFAULT_TEMPERATURE_C;
   return withTemperatureDiscriminant({
     deviceType: 'temperature' as const,
     ...fields,
+    currentTarget,
+    currentTemperature: fields.currentTemperature ?? currentTarget,
+    plannedTarget: fields.plannedTarget ?? currentTarget,
   });
 };
 
@@ -341,7 +357,7 @@ export const buildPlanInputDevice = (
   } = {},
 ): PlanInputDevice => {
   const {
-    available, controllable, currentTarget: _currentTarget, currentTemperature,
+    available, controllable, currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
@@ -372,6 +388,7 @@ export const buildPlanInputDevice = (
     currentState,
     ...withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
+      ...(currentTarget !== undefined ? { currentTarget } : {}),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     }),
     ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
