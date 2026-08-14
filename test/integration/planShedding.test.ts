@@ -550,67 +550,9 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('dev-stale')).toBe(false);
   });
 
-  it('treats live measured stepped load as actionable even when the current step is unknown', async () => {
-    const state = createPlanEngineState();
-    const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      setSheddingActive: vi.fn().mockResolvedValue(undefined),
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
-      isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
-    } as unknown as CapacityGuard;
-
-    const result = await buildSheddingPlan(
-      buildContext({
-        devices: [
-          buildDevice({
-            id: 'dev-step-unknown',
-            name: 'Connected 300',
-            controlModel: 'stepped_load',
-            steppedLoadProfile: {
-              steps: [
-                { id: 'off', planningPowerW: 0 },
-                { id: 'low', planningPowerW: 1250 },
-                { id: 'max', planningPowerW: 3000 },
-              ],
-            },
-            selectedStepId: undefined,
-            binaryControl: { on: true },
-            controllable: true,
-            currentDrawKw: 1.671,
-          }),
-        ],
-        total: 4.8,
-        softLimit: 4,
-        capacitySoftLimit: 4,
-        headroomRaw: -0.8,
-        headroom: -0.8,
-        softLimitSource: 'capacity',
-      }),
-      state,
-      {
-        capacityGuard,
-        powerTracker: { lastTimestamp: 1000 } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        getPriorityForDevice: () => 100,
-        log: vi.fn(),
-        debugStructured: vi.fn(),
-      },
-      true,
-    );
-
-    expect(result.shedSet.has('dev-step-unknown')).toBe(true);
-    expect(reasonText(result.shedReasons.get('dev-step-unknown'))).toBe('shed due to capacity');
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
-    const [hasCandidates, deficitKw, capacityStateSummary]
-      = (capacityGuard.checkShortfall as unknown as Mock).mock.calls[0];
-    expect(hasCandidates).toBe(false);
-    expect(deficitKw).toBeCloseTo(0.8, 6);
-    expect(capacityStateSummary).toEqual(expect.objectContaining({
-      remainingReducibleControlledLoadW: 0,
-    }));
-  });
+  // Deleted with the consumer-modeled measured-step fallback — see the note in
+  // planBuilderOvershoot.test.ts: a stepped device with no known step is not a
+  // state the producer can emit anymore.
 
   it('treats stepped loads with temperature shedding like target-based shed devices instead of stepping them down', async () => {
     const state = createPlanEngineState();

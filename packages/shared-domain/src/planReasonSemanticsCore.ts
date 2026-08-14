@@ -123,7 +123,7 @@ export type DeviceReason =
   // A stepped device climbing from one step to another. BOTH targets are always
   // named: the only two producers are the stepped restore admission's admitted
   // and swap-admitted branches (`lib/plan/restore/steppedRestoreAdmission.ts`),
-  // which pass the observed step (or the literal `'unknown'`) and the step being
+  // which pass the producer-resolved observed step and the step being
   // climbed to. The target-less shape existed solely for `buildRestoreNeedReason`,
   // a helper whose one output was formatted straight into the planner-debug
   // `candidateReasons.offStateAnalysis` field and never reached a device; both

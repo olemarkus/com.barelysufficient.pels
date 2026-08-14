@@ -1,3 +1,4 @@
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import {
   resolveRemainingSheddableLoadKw,
   sumRemainingSheddableLoadKw,
@@ -175,21 +176,18 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
   // Edge-case cascade-parity coverage added 2026-05-27. Closes TODO §"Before
   // chunk 6 — expand cascade-parity test in test/planRemainingSheddableLoad.test.ts."
   //
-  // Four edge cases the producer-resolved path and the legacy fallback handle:
+  // Edge cases the producer-resolved path and the legacy fallback handle.
+  // The former cases (b) and (c) — a stepped device with `selectedStepId`
+  // absent — are unrepresentable now that the producer refuses a stepped
+  // cluster without its effective step, so only the representable cases stay:
   //   (a) Stepped, `binaryCapabilityId: undefined`, already at the lowest active
   //       step. With selectedStepId set, both paths see a target step
   //       different from the current step → both report residual = measured
   //       draw. (The binary-finish gate that would zero this out only fires
   //       when the target step ID equals the current step ID.)
-  //   (b) Stepped with `selectedStepId` absent and `hasKnownEffectiveStep`
-  //       false. Both paths take the unknown-current-measured fallback;
-  //       positive measured power and an off step yield residual = measured.
-  //   (c) Stepped with `selectedStepId` absent but `hasKnownEffectiveStep`
-  //       true (via `reportedStepId`). KNOWN DIVERGENCE — see the dedicated
-  //       test below. Not part of the cascade total (would fail watt-equality).
   //   (d) Temperature device with `currentValue == normalized shedTemperature`.
   //       Both paths reject the shed via `canStillShedTemperature` → 0.
-  it('agrees with the legacy fallback across the cascade-parity edge cases (a, b, d)', () => {
+  it('agrees with the legacy fallback across the cascade-parity edge cases (a, d)', () => {
     // The cascade also includes a positive-residual baseline (steppedMax) so
     // the watt-equality assertion has something non-zero to anchor on.
     const baselineSteppedMax = buildPlanInputDevice({
@@ -215,19 +213,6 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       selectedStepId: 'low',
       binaryCapabilityId: undefined,
       measuredPowerKw: 1.2,
-    });
-
-    // (b) Stepped with selectedStepId absent and hasKnownEffectiveStep false.
-    //     Measured-power fallback through `canShedFromUnknownCurrentStep`.
-    const steppedUnknownNoEffective = buildPlanInputDevice({
-      id: 'edge-b-stepped-unknown-no-effective',
-      controllable: true,
-      binaryControl: { on: true },
-      currentState: 'on',
-      controlModel: 'stepped_load',
-      steppedLoadProfile: steppedProfile,
-      binaryCapabilityId: 'onoff',
-      measuredPowerKw: 1.8,
     });
 
     // (d) Temperature device with `currentValue == normalized shedTemperature`.
@@ -257,7 +242,6 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const fixtures = [
       baselineSteppedMax,
       steppedLowestNoBinary,
-      steppedUnknownNoEffective,
       temperatureNoopShed,
     ];
 
@@ -308,7 +292,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
             ? {
               steppedLoad: {
                 profile: steppedDevice.steppedLoadProfile,
-                ...(device.selectedStepId !== undefined ? { selectedStepId: device.selectedStepId } : {}),
+                ...(isSteppedLoadDevice(device) ? { selectedStepId: device.selectedStepId } : {}),
                 hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
                 currentDrawKw: device.currentDrawKw,
                 hasBinaryControl: isBinaryPlanDevice(device),
@@ -330,86 +314,11 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
 
     // Watt-equality across the cascade for the agreeing edge cases (a, b, d).
     expect(producerTotal).toBeCloseTo(legacyTotal, 6);
-    // Pin the absolute total too — baseline 2.9 + (a) 1.2 + (b) 1.8 + (d) 0.
+    // Pin the absolute total too — baseline 2.9 + (a) 1.2 + (d) 0.
     // If a future refactor accidentally collapses a positive case to 0 (or
     // vice versa) but keeps producer/legacy aligned, the cross-path
     // assertion still passes while this one fires.
-    expect(producerTotal).toBeCloseTo(2.9 + 1.2 + 1.8, 6);
-  });
-
-  // Edge case (c) — known divergence between producer-resolved and legacy
-  // fallback paths. Pinned explicitly so chunk 6 (which removes the legacy
-  // fallback) doesn't accidentally regress production behavior.
-  //
-  // Background: `RemainingSheddableSteppedFields` in this module strips
-  // `reportedStepId` (and the device's other step evidence) when projecting a
-  // `PlanInputDevice` into a `RemainingSheddableDevice`. As a result the
-  // legacy `resolveSteppedUnknownCurrentMeasuredShedding` (which gates on
-  // `resolvePlannerEffectiveStepId`) sees an effectively unknown step state
-  // and falls through to the measured-power fallback. The producer-resolved
-  // path is wired upstream of that projection (`residualKwForPlanDevice.ts`
-  // reads the raw `TargetDeviceSnapshot`), sees `reportedStepId`, computes
-  // `hasKnownEffectiveStep === true`, and rejects the measured-power
-  // fallback in `canShedFromUnknownCurrentStep` → residual = 0.
-  //
-  // In production the producer is always wired (chunk 3 onwards), so the
-  // legacy fallback never runs on devices that carry `reportedStepId`. This
-  // test pins the per-path values so the asymmetry is captured in code.
-  it('pins the legacy-vs-producer drift for stepped with reportedStepId-only (case c)', () => {
-    const device = buildPlanInputDevice({
-      id: 'edge-c-stepped-unknown-but-reported',
-      controllable: true,
-      binaryControl: { on: true },
-      currentState: 'on',
-      controlModel: 'stepped_load',
-      steppedLoadProfile: steppedProfile,
-      binaryCapabilityId: 'onoff',
-      reportedStepId: 'medium',
-      measuredPowerKw: 2.05,
-    });
-    const turnOff: RemainingShedBehavior = { action: 'turn_off' };
-
-    // Legacy fallback: reportedStepId is stripped by the
-    // RemainingSheddableSteppedFields projection, so the legacy chain takes
-    // the measured-power fallback.
-    const legacyKw = resolveRemainingSheddableLoadKw({
-      device: toInputRemainingSheddableDevice(device),
-      shedBehavior: turnOff,
-      alreadyShed: false,
-      limitSource: 'capacity',
-      capacityBreached: true,
-    });
-    expect(legacyKw).toBeCloseTo(2.05, 6);
-
-    // Producer-resolved (computed exactly as `residualKwForPlanDevice.ts`):
-    // hasKnownEffectiveStep=true rejects the measured-power fallback → 0.
-    const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
-      fields: device,
-      selectedStepFallbackIsPlanningAssumption: true,
-    });
-    const steppedDevice = device as PlanInputDevice & SteppedDiscriminantProbe;
-    const producerShed = resolveResidualKwShed({
-      device: {
-        currentDrawKw: device.currentDrawKw,
-        steppedLoad: {
-          profile: steppedDevice.steppedLoadProfile!,
-          hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
-          currentDrawKw: device.currentDrawKw,
-          hasBinaryControl: isBinaryPlanDevice(device),
-        },
-      },
-      shedBehavior: { action: 'turn_off' },
-    });
-    expect(producerShed).toBe(0);
-
-    const producerKw = resolveRemainingSheddableLoadKw({
-      device: toInputRemainingSheddableDevice({ ...device, residualKw: { shed: producerShed } }),
-      shedBehavior: turnOff,
-      alreadyShed: false,
-      limitSource: 'capacity',
-      capacityBreached: true,
-    });
-    expect(producerKw).toBe(0);
+    expect(producerTotal).toBeCloseTo(2.9 + 1.2, 6);
   });
 
   // Adversarial guard: explicit per-device residual values so a future
@@ -445,49 +354,10 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       capacityBreached: true,
     })).toBeCloseTo(1.2, 6);
 
-    // (b) Stepped, selectedStepId absent, hasKnownEffectiveStep=false →
-    //     residual = measured.
-    expect(resolveRemainingSheddableLoadKw({
-      device: toInputRemainingSheddableDevice({
-        ...buildPlanInputDevice({
-          id: 'b',
-          controllable: true,
-          binaryControl: { on: true },
-          controlModel: 'stepped_load',
-          steppedLoadProfile: steppedProfile,
-          binaryCapabilityId: 'onoff',
-          measuredPowerKw: 1.8,
-        }),
-        residualKw: { shed: 1.8 },
-      }),
-      shedBehavior: turnOff,
-      alreadyShed: false,
-      limitSource: 'capacity',
-      capacityBreached: true,
-    })).toBeCloseTo(1.8, 6);
-
-    // (c) Stepped, selectedStepId absent, hasKnownEffectiveStep=true (via
-    //     reportedStepId) → unknown-current-measured fallback rejects on the
-    //     flag → residual = 0.
-    expect(resolveRemainingSheddableLoadKw({
-      device: toInputRemainingSheddableDevice({
-        ...buildPlanInputDevice({
-          id: 'c',
-          controllable: true,
-          binaryControl: { on: true },
-          controlModel: 'stepped_load',
-          steppedLoadProfile: steppedProfile,
-          binaryCapabilityId: 'onoff',
-          reportedStepId: 'medium',
-          measuredPowerKw: 2.05,
-        }),
-        residualKw: { shed: 0 },
-      }),
-      shedBehavior: turnOff,
-      alreadyShed: false,
-      limitSource: 'capacity',
-      capacityBreached: true,
-    })).toBe(0);
+    // The former cases (b)/(c) — a stepped device with `selectedStepId`
+    // absent — are unrepresentable: the producer refuses a stepped cluster
+    // without its effective step, so there is no per-device residual left to
+    // document for that shape.
 
     // (d) Temperature at shed setpoint → residual 0.
     expect(resolveRemainingSheddableLoadKw({

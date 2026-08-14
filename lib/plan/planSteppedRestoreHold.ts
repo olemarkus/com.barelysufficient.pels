@@ -1,7 +1,7 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { incPerfCounter } from '../utils/perfCounters';
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeRestoreBufferKw } from './restore/accounting';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
@@ -12,7 +12,7 @@ import {
 } from './planSteppedRestorePending';
 
 export function applySteppedRestoreAttemptHold(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   nextStepId: string;
   nextStepPowerKw: number;
   lastRestoreMs?: number;
@@ -73,7 +73,7 @@ export function applySteppedRestoreAttemptHold(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        currentStepId: dev.selectedStepId ?? 'unknown',
+        currentStepId: dev.selectedStepId,
         requestedStepId: nextStepId,
         decision: 'deferred',
         reasonCode: pendingRestoreHold.reasonCode,
@@ -84,7 +84,7 @@ export function applySteppedRestoreAttemptHold(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        currentStepId: dev.selectedStepId ?? 'unknown',
+        currentStepId: dev.selectedStepId,
         requestedStepId: nextStepId,
         decision: 'deferred',
         reasonCode: pendingRestoreHold.reasonCode,

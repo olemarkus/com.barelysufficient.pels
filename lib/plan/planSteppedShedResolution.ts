@@ -5,7 +5,6 @@ import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedLoadPlanningKw,
-  resolveSteppedUnknownCurrentMeasuredShedding,
 } from './planSteppedLoad';
 import {
   getSteppedLoadLowestActiveStep,
@@ -38,14 +37,12 @@ export function resolveSteppedLoadDirectShedStepId(params: {
     shedAction: 'set_step',
     currentDesiredStepId,
   });
-  return targetStep?.id
-    ?? resolveSteppedUnknownCurrentMeasuredShedding({ device: dev, shedAction: 'set_step' })?.targetStep.id;
+  return targetStep?.id;
 }
 
 export function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): string | undefined {
-  if (!isSteppedLoadDevice(dev) || !dev.stepCommandPending || !dev.desiredStepId || !dev.selectedStepId) {
-    return dev.selectedStepId;
-  }
+  if (!isSteppedLoadDevice(dev)) return undefined;
+  if (!dev.stepCommandPending || !dev.desiredStepId) return dev.selectedStepId;
   const desiredKw = resolveSteppedLoadPlanningKw(dev, dev.desiredStepId);
   const selectedKw = resolveSteppedLoadPlanningKw(dev, dev.selectedStepId);
   return desiredKw < selectedKw ? dev.desiredStepId : dev.selectedStepId;

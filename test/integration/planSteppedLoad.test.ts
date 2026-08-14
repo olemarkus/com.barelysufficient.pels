@@ -11,25 +11,15 @@ import {
 } from '../../lib/plan/planSteppedLoad';
 import { resolveObservedSteppedLoadCurrentState } from '../../lib/plan/planCurrentState';
 import { steppedInputDevice, steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
-import type { BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 // This fixture feeds the OBSERVER resolver `resolveObservedSteppedLoadCurrentState`,
 // which reads the raw observed `binaryControl` + stepped step (NOT the plan-side
 // `currentOn`). So keep `binaryControl` on the fixture — do NOT strip it through
 // `withBinaryDiscriminant` (which would drop it, leaving the resolver to read
 // `undefined`).
-const steppedBinaryInputDevice = (
-  overrides: Parameters<typeof steppedInputDevice>[0] & BinaryControlDiscriminantProbe,
-): PlanInputDevice => {
-  const { binaryControl, ...rest } = overrides;
-  return { ...steppedInputDevice(rest), binaryControl } as unknown as PlanInputDevice;
-};
-
 describe('planSteppedLoad', () => {
   it('resolves initial desired step and next restore step', () => {
     expect(resolveSteppedLoadInitialDesiredStepId(steppedInputDevice({ selectedStepId: 'low' }))).toBe('low');
-    expect(resolveSteppedLoadInitialDesiredStepId(steppedInputDevice({ selectedStepId: undefined }))).toBeUndefined();
     expect(resolveSteppedLoadInitialDesiredStepId(steppedInputDevice({
       controlModel: 'binary_power',
       steppedLoadProfile: undefined,
@@ -42,10 +32,6 @@ describe('planSteppedLoad', () => {
       selectedStepId: 'medium',
       currentState: 'off',
     }))?.id).toBe('low');
-    expect(getSteppedLoadNextRestoreStep(steppedPlanDevice({
-      selectedStepId: undefined as unknown as string,
-      currentState: 'off',
-    }))?.id).toBe('low');
     expect(getSteppedLoadNextRestoreStep(steppedInputDevice({ selectedStepId: 'max' }))).toBeNull();
     expect(getSteppedLoadNextRestoreStep(steppedInputDevice({
       controlModel: 'binary_power',
@@ -53,12 +39,6 @@ describe('planSteppedLoad', () => {
       selectedStepId: 'off',
     }))).toBeNull();
 
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
-      currentState: 'off',
-      plannedState: 'keep',
-      selectedStepId: undefined as unknown as string,
-      desiredStepId: 'max',
-    }))).toBe('low');
     expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
@@ -74,14 +54,6 @@ describe('planSteppedLoad', () => {
       currentState: 'unknown',
       plannedState: 'keep',
       selectedStepId: 'medium',
-      desiredStepId: 'max',
-    }))).toBe('max');
-    // Same behaviour change: 'unknown' is only a label; with no off-evidence the
-    // device resolves to `currentOn: true`, so the on-branch returns the desired step.
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
-      currentState: 'unknown',
-      plannedState: 'keep',
-      selectedStepId: undefined as unknown as string,
       desiredStepId: 'max',
     }))).toBe('max');
 
@@ -365,13 +337,14 @@ describe('planSteppedLoad', () => {
   });
 
   it('resolves current state from binary onoff or stepped profile', () => {
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ selectedStepId: undefined }))).toBe('unknown');
-    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ binaryControl: { on: true }, selectedStepId: 'low' }))).toBe('on');
-    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ binaryControl: { on: false }, selectedStepId: 'low' }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ binaryControl: { on: true }, selectedStepId: 'off' }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
-    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: false } }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
+    // Observer-side resolution vocabulary: a snapshot with no known step is the
+    // observer's own 'unknown' — it never crosses into a plan device.
+    expect(resolveObservedSteppedLoadCurrentState({ steppedLoadProfile: steppedProfile, selectedStepId: undefined })).toBe('unknown');
+    expect(resolveObservedSteppedLoadCurrentState({ steppedLoadProfile: steppedProfile, binaryControl: { on: true }, selectedStepId: 'low' })).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState({ steppedLoadProfile: steppedProfile, binaryControl: { on: false }, selectedStepId: 'low' })).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState({ steppedLoadProfile: steppedProfile, binaryControl: { on: true }, selectedStepId: 'off' })).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState({ binaryControl: { on: true } })).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState({ binaryControl: { on: false } })).toBe('off');
   });
 
   it('uses planning power for restore math and measured power for immediate shed relief', () => {

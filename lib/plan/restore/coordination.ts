@@ -16,7 +16,7 @@ function isTargetRestorePending(device: DevicePlanDevice): boolean {
 function isSteppedRestorePending(device: DevicePlanDevice): boolean {
   if (!isSteppedLoadDevice(device)) return false;
   if (device.stepCommandPending !== true) return false;
-  if (!device.selectedStepId || !device.desiredStepId || device.desiredStepId === device.selectedStepId) {
+  if (!device.desiredStepId || device.desiredStepId === device.selectedStepId) {
     return false;
   }
   const selectedStep = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);

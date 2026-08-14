@@ -1,4 +1,5 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
+import { isSteppedLoadDevice } from '../planSteppedLoad';
 import type { PlanEngineState } from '../planState';
 import type { SwapState } from '../swap';
 import {
@@ -69,7 +70,7 @@ export function applyRestoreCandidates(params: {
 // Funnelling normal restore, restore cooldown, meter-settling, and active stepped-upgrade paths
 // through here keeps both admission wrappers applied uniformly.
 export function planSteppedRestoreThroughSourceHold(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   swapState: SwapState;
   state: PlanEngineState;
@@ -181,7 +182,7 @@ function applyRestoreCandidate(params: {
       admissionMode: params.admissionMode,
     });
   }
-  if (params.candidate.kind === 'stepped' && isOffSteppedRestoreCandidate(dev)) {
+  if (params.candidate.kind === 'stepped' && isSteppedLoadDevice(dev) && isOffSteppedRestoreCandidate(dev)) {
     return planSteppedRestoreThroughSourceHold({
       dev,
       deviceMap: params.deviceMap,

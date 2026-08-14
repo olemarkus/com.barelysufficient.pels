@@ -75,10 +75,30 @@ describe('toPlanDevice step-ladder gap', () => {
     expect(planDevice.steppedLadderMissing).toBe(true);
   });
 
+  it('refuses the whole cluster (and stamps the gap) when a usable ladder arrives without its effective step', () => {
+    // The producer contract behind `SteppedLoadKind.selectedStepId: string`:
+    // the decorator resolves an effective step for every usable ladder, so a
+    // carrier with a ladder but no step is a contract violator — the producer
+    // refuses the whole cluster rather than shipping a stepped device with a
+    // hole where its step should be, and the ladder-gap bit records why the
+    // stepped answer is missing.
+    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+      controlModel: 'stepped_load',
+      steppedLoadProfile: USABLE_LADDER,
+      // No `selectedStepId` — the violating shape under test.
+    }));
+
+    expect(isSteppedLoadDevice(planDevice)).toBe(false);
+    expect(planDevice.steppedLadderMissing).toBe(true);
+  });
+
   it('leaves the bit off when the ladder resolves', () => {
     const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
+      // The decorator resolves the effective step for every usable ladder; a
+      // snapshot without one has its cluster refused (producer contract).
+      selectedStepId: 'low',
     }));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(true);
@@ -150,6 +170,7 @@ describe('step-ladder gap: producer output through the consumers', () => {
     const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
+      selectedStepId: 'low',
       targets: [{ id: 'target_temperature', value: 70, unit: 'C', min: 0, max: 95, step: 0.5 }],
       deviceType: 'temperature',
     }));

@@ -4,6 +4,7 @@ import type {
   SteppedDiscriminantProbe,
   TemperatureDiscriminantProbe,
   TemperatureKind,
+  SteppedPlanDevice,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type {
@@ -259,6 +260,35 @@ export const fixtureExpectedPowerKw = (o: {
   return resolved;
 };
 
+
+// The stepped cluster is COMPLETE by producer invariant: any fixture supplying
+// a ladder gets the missing halves synthesized (the effective step defaults to
+// the lowest active step — the producer's own planning fallback — and the
+// planning power to that step's rating), so the shared builders' casts can
+// never stamp `undefined` behind the required `SteppedLoadKind`. Fixtures whose
+// subject is a specific step set it explicitly.
+const withFixtureSteppedTriple = <T extends object>(fields: T): T => {
+  const probe = fields as {
+    steppedLoadProfile?: SteppedLoadProfile;
+    selectedStepId?: string;
+    planningPowerKw?: number;
+  };
+  if (!probe.steppedLoadProfile) return fields;
+  // Mirror the producer chain exactly: only a USABLE ladder (a rung above zero)
+  // resolves a planning fallback, so a degenerate all-zero ladder — which
+  // `asSteppedLoadProfile` refuses upstream — gets nothing synthesized here
+  // either, and fixtures exercising that degenerate shape keep their meaning.
+  const lowestActiveStepId = probe.steppedLoadProfile.steps.find((step) => step.planningPowerW > 0)?.id;
+  if (lowestActiveStepId === undefined) return fields;
+  const selectedStepId = probe.selectedStepId ?? lowestActiveStepId;
+  const step = probe.steppedLoadProfile.steps.find((candidate) => candidate.id === selectedStepId);
+  return {
+    ...fields,
+    selectedStepId,
+    planningPowerKw: probe.planningPowerKw ?? (step ? step.planningPowerW / 1000 : 0),
+  } as T;
+};
+
 export const buildPlanDevice = (
   // `currentOn`/`binaryControl` live on the orthogonal `BinaryControlKind` cluster
   // (not on the `Partial<DevicePlanDevice>` base), so accept them here: the builder
@@ -306,11 +336,11 @@ DevicePlanDevice => {
     currentState: resolveFixtureCurrentState({ ...o, binaryControllable: !binaryExplicitlyDisabled }),
     plannedState: 'keep',
     reason: fixtureDeviceReason('keep')!,
-    ...withFixtureTemperatureKind({
+    ...withFixtureSteppedTriple(withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
       ...(currentTarget !== undefined ? { currentTarget } : {}),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
-    }),
+    })),
     // Spread (not a direct property) so the `as DevicePlanDevice` cast accepts it:
     // `currentOn` lives on the orthogonal `BinaryControlKind`, reached via the guard.
     ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
@@ -386,11 +416,11 @@ export const buildPlanInputDevice = (
     targets: [],
     ...(!binaryExplicitlyDisabled ? { binaryControl: o.binaryControl ?? { on: true } } : {}),
     currentState,
-    ...withFixtureTemperatureKind({
+    ...withFixtureSteppedTriple(withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
       ...(currentTarget !== undefined ? { currentTarget } : {}),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
-    }),
+    })),
     ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
@@ -413,7 +443,7 @@ export const buildPlanInputDevice = (
 export const steppedPlanDevice = (
   overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe
     & { binaryControl?: { on: boolean }; currentOn?: boolean; binaryCapabilityId?: string } = {},
-): DevicePlanDevice => {
+): SteppedPlanDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
   const step = profile.steps.find((s) => s.id === selectedStepId);
@@ -426,7 +456,7 @@ export const steppedPlanDevice = (
     selectedStepId,
     planningPowerKw: defaultPlanningKw,
     ...overrides,
-  });
+  }) as SteppedPlanDevice;
 };
 
 export const steppedInputDevice = (

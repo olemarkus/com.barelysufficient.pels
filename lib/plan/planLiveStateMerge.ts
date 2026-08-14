@@ -48,14 +48,38 @@ import {
 function resolveMergedSteppedCluster(
   live: PlanInputDevice,
   device: DevicePlan['devices'][number],
-): SteppedClusterFields {
+): { cluster: SteppedClusterFields; reportedStepId: string | undefined } {
   if (isSteppedLoadDevice(live)) {
-    return { steppedLoadProfile: live.steppedLoadProfile, planningPowerKw: live.planningPowerKw };
+    // The live device's step evidence, resolved through the typed stepped-state
+    // adapter: a live reported step wins; otherwise the live producer-resolved
+    // effective step. The whole triple travels from this ONE source.
+    const liveState = normalizeSteppedLoadStepStateFromLegacyFields({
+      fields: live,
+      selectedStepFallbackIsPlanningAssumption: false,
+    });
+    return {
+      cluster: {
+        steppedLoadProfile: live.steppedLoadProfile,
+        selectedStepId: resolveKnownEffectiveStepId(liveState) ?? live.selectedStepId,
+        planningPowerKw: live.planningPowerKw,
+      },
+      reportedStepId: serializeLegacyStepFields(liveState).reportedStepId,
+    };
   }
   if (isSteppedLoadDevice(device)) {
-    return { steppedLoadProfile: device.steppedLoadProfile, planningPowerKw: device.planningPowerKw };
+    return {
+      cluster: {
+        steppedLoadProfile: device.steppedLoadProfile,
+        selectedStepId: device.selectedStepId,
+        planningPowerKw: device.planningPowerKw,
+      },
+      // The reported step is an OBSERVATION, so the live device's answer wins
+      // even when the prior device supplies the cluster: a live snapshot with
+      // no report clears the stale evidence rather than carrying it forward.
+      reportedStepId: live.reportedStepId,
+    };
   }
-  return {};
+  return { cluster: {}, reportedStepId: undefined };
 }
 
 /**
@@ -92,28 +116,26 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
     devices: plan.devices.map((device) => {
       const live = liveById.get(device.id);
       if (!live) return device;
-      const liveStepState = resolveLiveSteppedStepState(device, live);
-      // The live snapshot's profile wins when present; otherwise keep the prior
+      // The live snapshot's cluster wins when present; otherwise keep the prior
       // device's. The merged literal spreads `...device` (a union) wholesale, so
       // `withSteppedDiscriminant` re-ties the discriminant into one variant —
-      // stripping any stale `steppedLoadProfile` the spread carried over.
-      // The cluster travels from ONE source. Previously the profile fell back
-      // live->prior while `planningPowerKw` was read off `live` independently,
-      // so a live device with no profile and a prior device with one produced a
-      // prior profile paired with the live power — two devices' answers in one
-      // stepped state. Taking the pair together makes that unrepresentable
-      // (`SteppedClusterFields`).
-      const steppedCluster = resolveMergedSteppedCluster(live, device);
+      // stripping any stale stepped fields the spread carried over. The whole
+      // TRIPLE (profile / selectedStepId / planningPowerKw) travels from ONE
+      // source — mixing two devices' answers inside one stepped state is
+      // unrepresentable (`SteppedClusterFields`).
+      const mergedStepped = resolveMergedSteppedCluster(live, device);
+      const steppedCluster = mergedStepped.cluster;
       const mergedProfile = steppedCluster.steppedLoadProfile;
+      const mergedSelectedStepId = steppedCluster.selectedStepId;
       const mergedCurrentState = resolveCurrentStateFromPlanInput(
         live,
         mergedProfile,
-        liveStepState.selectedStepId,
+        mergedSelectedStepId,
       );
       const liveBinaryFields = resolveLiveBinaryFields(
         live,
         mergedProfile,
-        liveStepState.selectedStepId,
+        mergedSelectedStepId,
       );
       // The EV cluster (`evBoost` / `evBoostActive` / `stateOfCharge`) is
       // orthogonal to the stepped axis and off the base, so the `...device`
@@ -137,17 +159,16 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         ...steppedCluster,
         currentState: mergedCurrentState,
         ...resolveMergedTemperatureCluster(live, device),
-        selectedStepId: liveStepState.selectedStepId,
         desiredStepId: clampShedDesiredStepId(
           device,
-          liveStepState.selectedStepId,
+          mergedSelectedStepId,
           mergedProfile,
         ),
         lastDesiredStepId: live.desiredStepId ?? device.lastDesiredStepId,
         lastStepCommandIssuedAt: live.lastStepCommandIssuedAt ?? device.lastStepCommandIssuedAt,
         stepCommandRetryCount: live.stepCommandRetryCount ?? device.stepCommandRetryCount,
         nextStepCommandRetryAtMs: live.nextStepCommandRetryAtMs ?? device.nextStepCommandRetryAtMs,
-        reportedStepId: liveStepState.reportedStepId,
+        reportedStepId: mergedStepped.reportedStepId,
         expectedPowerKw: live.expectedPowerKw,
         expectedPowerSource: live.expectedPowerSource,
         currentDrawKw: live.currentDrawKw,
@@ -167,30 +188,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         ...liveBinaryFields,
       })));
     }),
-  };
-}
-
-function resolveLiveSteppedStepState(
-  previous: DevicePlan['devices'][number],
-  live: PlanInputDevice,
-): Pick<
-  DevicePlan['devices'][number],
-  'reportedStepId' | 'selectedStepId'
-> {
-  if (!isSteppedLoadDevice(live) && !isSteppedLoadDevice(previous)) {
-    return {
-      reportedStepId: undefined,
-      selectedStepId: undefined,
-    };
-  }
-  const liveState = normalizeSteppedLoadStepStateFromLegacyFields({
-    fields: live,
-    selectedStepFallbackIsPlanningAssumption: false,
-  });
-  const stepFields = serializeLegacyStepFields(liveState);
-  return {
-    reportedStepId: stepFields.reportedStepId,
-    selectedStepId: resolveKnownEffectiveStepId(liveState) ?? live.selectedStepId ?? previous.selectedStepId,
   };
 }
 

@@ -26,7 +26,7 @@
  */
 import type { SteppedLoadProfile, SteppedLoadStep } from '../../../packages/contracts/src/types';
 import type { PlanEngineState } from '../planState';
-import type { PlanInputDevice, ShedAction } from '../planTypes';
+import type { PlanInputDevice, ShedAction, SteppedPlanInputDevice } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import {
   getSteppedLoadShedTargetStep,
@@ -34,7 +34,6 @@ import {
   resolveSteppedCandidatePower,
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
-  resolveSteppedUnknownCurrentMeasuredShedding,
 } from '../planSteppedLoad';
 import {
   getSteppedLoadLowestActiveStep,
@@ -280,9 +279,10 @@ function isPreemptiveStepReduction(params: {
 }
 
 /**
- * The ladder offered nothing below the current position. Two shapes can still
+ * The ladder offered nothing below the current position. One shape can still
  * shed: a device already parked at the shed target that finishes with a binary
- * off, and one with no known step at all that can be sized from its measurement.
+ * off. (The old measured-fallback for a device with no known step is gone —
+ * the effective step is producer-guaranteed for every stepped device.)
  */
 function buildSteppedNoRungFallbackCandidate(args: {
   params: SteppedCandidateParams;
@@ -302,22 +302,15 @@ function buildSteppedNoRungFallbackCandidate(args: {
     pendingBinaryCommandStore,
   });
   if (preparedBinaryOffCandidate) return preparedBinaryOffCandidate;
-  const unknownStepCandidate = buildUnknownCurrentMeasuredSteppedCandidate({
-    device,
-    priority,
-    recentlyRestored,
-    shedAction,
-  });
-  if (!unknownStepCandidate) recorder?.record({ device, reasonCode: 'no_lower_step_reachable' });
-  return unknownStepCandidate;
+  recorder?.record({ device, reasonCode: 'no_lower_step_reachable' });
+  return null;
 }
 
-function resolveEffectiveCurrentStepIdForSteppedShedding(device: PlanInputDevice): string | undefined {
+function resolveEffectiveCurrentStepIdForSteppedShedding(device: SteppedPlanInputDevice): string | undefined {
   // Advance past a pending step-down rather than re-issuing the same command.
   // Only use the pending step when it is lower (a shed, not a restore).
   const pendingIsLower = device.stepCommandPending
     && device.desiredStepId
-    && device.selectedStepId
     && device.desiredStepId !== device.selectedStepId
     && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
       < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
@@ -325,7 +318,7 @@ function resolveEffectiveCurrentStepIdForSteppedShedding(device: PlanInputDevice
 }
 
 function buildPreparedSteppedBinaryOffCandidate(params: {
-  device: PlanInputDevice;
+  device: SteppedPlanInputDevice;
   steppedProfile: SteppedLoadProfile;
   targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
   priority: number;
@@ -345,7 +338,6 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   if (
     shedAction !== 'turn_off'
     || !isBinaryPlanDevice(device)
-    || !device.selectedStepId
     || targetStep?.id !== device.selectedStepId
   ) {
     return null;
@@ -370,31 +362,6 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
     fromStepId: selectedStep.id,
     toStepId: selectedStep.id,
     preemptiveStepDown: false,
-  };
-}
-
-function buildUnknownCurrentMeasuredSteppedCandidate(params: {
-  device: PlanInputDevice;
-  priority: number;
-  recentlyRestored: boolean;
-  shedAction: 'turn_off' | 'set_step';
-}): ShedCandidate | null {
-  const { device, priority, recentlyRestored, shedAction } = params;
-  const measuredFallback = resolveSteppedUnknownCurrentMeasuredShedding({
-    device,
-    shedAction,
-  });
-  if (!measuredFallback) return null;
-  return {
-    ...device,
-    kind: 'stepped',
-    priority,
-    recentlyRestored,
-    unconfirmedRelief: false,
-    effectivePower: measuredFallback.effectivePowerKw,
-    fromStepId: 'unknown',
-    toStepId: measuredFallback.targetStep.id,
-    preemptiveStepDown: shedAction === 'set_step',
   };
 }
 

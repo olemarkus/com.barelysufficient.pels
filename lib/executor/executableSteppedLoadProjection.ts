@@ -43,9 +43,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     on: resolveEffectiveCurrentOn(dev),
     stepId: dev.selectedStepId,
     stepForShed: resolveCurrentStepForShed(dev),
-    stepIsOffStep: dev.selectedStepId
-      ? isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
-      : false,
+    stepIsOffStep: isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId),
   };
   const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
   const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
@@ -72,7 +70,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     controlAdapter: dev.controlAdapter,
     shedAction: dev.shedAction,
     desired,
-    previousStepId: dev.selectedStepId ?? dev.lastDesiredStepId,
+    previousStepId: dev.selectedStepId,
     transition,
     matchingRestoreAttempt,
     matchingCommandAttempt,
@@ -336,25 +334,15 @@ const resolveCurrentStepForShed = (
   dev: PlanDevice,
 ): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
   if (!isSteppedLoadDevice(dev)) return undefined;
-  if (!dev.selectedStepId) return resolveMeasuredCurrentStepForShed(dev);
+  // A `selectedStepId` outside the (possibly capped) planner profile is a real
+  // domain state, not a presence gap — no measured-draw fallback lane exists
+  // anymore: the producer guarantees the effective step for every stepped
+  // device.
   const currentStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
   return currentStep ? {
     stepId: currentStep.id,
     planningPowerW: currentStep.planningPowerW,
   } : undefined;
-};
-
-const resolveMeasuredCurrentStepForShed = (
-  dev: PlanDevice,
-): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
-  if (dev.plannedState !== 'shed' || dev.shedAction !== 'set_step') return undefined;
-  // The producer's number is finite by construction; only "is it drawing?" is
-  // still a question worth asking.
-  if (dev.currentDrawKw <= 0) return undefined;
-  return {
-    stepId: 'unknown',
-    planningPowerW: Math.round(dev.currentDrawKw * 1000),
-  };
 };
 
 const resolveObservedStepForShed = (

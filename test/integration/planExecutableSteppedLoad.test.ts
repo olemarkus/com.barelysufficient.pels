@@ -35,7 +35,7 @@ const buildObservedState = (
     // so derive it from profile presence to mirror what the transport producer emits.
     controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
     steppedLoadProfile,
-    selectedStepId: device.selectedStepId,
+    selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
     reportedStepId: device.reportedStepId,
     measuredPowerKw: device.currentDrawKw,
     ...overrides,
@@ -183,27 +183,11 @@ describe('planExecutableSteppedLoad', () => {
     });
   });
 
-  it('uses measured power as shed baseline when current stepped position is unknown', () => {
-    const action = buildAction(steppedPlanDevice({
-      plannedState: 'shed',
-      shedAction: 'set_step',
-      selectedStepId: undefined,
-      desiredStepId: 'low',
-      currentDrawKw: 3,
-    }));
-
-    expect(action?.current.stepForShed).toEqual({
-      stepId: 'unknown',
-      planningPowerW: 3000,
-    });
-    expect(action?.desired.stepId).toBe('low');
-  });
-
   it('does not project underspecified set_step shed intent without a requested step', () => {
     const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
       plannedState: 'shed',
       shedAction: 'set_step',
-      selectedStepId: undefined,
+      selectedStepId: 'max',
       desiredStepId: undefined,
     }));
 

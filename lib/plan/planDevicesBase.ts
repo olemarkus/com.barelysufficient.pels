@@ -231,7 +231,6 @@ export function buildBasePlanDevice(params: {
     ...pickSteppedPlanFields(dev),
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,
-    selectedStepId: dev.selectedStepId,
     desiredStepId: effectiveDesiredStepId,
     previousStepId: dev.previousStepId,
     lastDesiredStepId: dev.desiredStepId,
@@ -271,6 +270,7 @@ function pickSteppedPlanFields(
   if (!isSteppedLoadDevice(dev)) return {};
   return {
     steppedLoadProfile: dev.steppedLoadProfile,
+    selectedStepId: dev.selectedStepId,
     planningPowerKw: dev.planningPowerKw,
   };
 }

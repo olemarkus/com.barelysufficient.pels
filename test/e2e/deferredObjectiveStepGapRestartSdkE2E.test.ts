@@ -123,6 +123,9 @@ const buildDeviceReading = (
           { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
         ],
       },
+      // The decorator resolves the effective step for every usable ladder; a
+      // carrier without one has its stepped cluster refused by the producer.
+      selectedStepId: 'off',
     }
     : {}),
 });

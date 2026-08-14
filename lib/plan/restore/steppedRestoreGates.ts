@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
@@ -39,7 +39,7 @@ export type SteppedDeviceGateTiming = Pick<RestoreTiming,
 // Encapsulates meter-settling and capacity-block gate checks, applying global gates only
 // to OFF devices and per-device settling to active devices.
 export function applySteppedDeviceGates(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
   timing: SteppedDeviceGateTiming;
@@ -149,7 +149,7 @@ export function applySteppedDeviceGates(params: {
 }
 
 function emitSteppedRestoreGateRejection(params: {
-  dev: DevicePlanDevice;
+  dev: SteppedPlanDevice;
   state: PlanEngineState;
   restoreDebugKey: string;
   phase: 'startup' | 'runtime';
@@ -178,7 +178,7 @@ function emitSteppedRestoreGateRejection(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      currentStepId: dev.selectedStepId ?? 'unknown',
+      currentStepId: dev.selectedStepId,
       requestedStepId: requestedStepId ?? undefined,
       reason: formatDeviceReason(reason),
       availableKw: availableHeadroom,
@@ -190,7 +190,7 @@ function emitSteppedRestoreGateRejection(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      currentStepId: dev.selectedStepId ?? 'unknown',
+      currentStepId: dev.selectedStepId,
       requestedStepId: requestedStepId ?? undefined,
       reason: buildComparableDeviceReason(reason),
       availableKw: availableHeadroom,

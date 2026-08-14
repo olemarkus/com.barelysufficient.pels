@@ -2376,7 +2376,7 @@ describe('PlanExecutor stepped loads', () => {
     }
   });
 
-  it('retries a stale stepped-load command when current step is unknown but last desired matches', async () => {
+  it('retries a stale stepped-load command when the device sits below the desired step and last desired matches', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
 
@@ -2385,7 +2385,7 @@ describe('PlanExecutor stepped loads', () => {
       const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
       await executor.applyPlanActions(steppedPlan({
-        selectedStepId: undefined,
+        selectedStepId: 'low',
         lastDesiredStepId: 'max',
         stepCommandPending: false,
         stepCommandStatus: 'stale',
@@ -2398,14 +2398,14 @@ describe('PlanExecutor stepped loads', () => {
         step_id: 'max',
         planning_power_w: 3000,
         planning_current_a: 0,
-        previous_step_id: 'max',
+        previous_step_id: 'low',
       }, {
         deviceId: 'dev-1',
       });
       expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
         deviceId: 'dev-1',
         desiredStepId: 'max',
-        previousStepId: 'max',
+        previousStepId: 'low',
         issuedAtMs: expect.any(Number),
         pendingWindowMs: expect.any(Number),
       });
@@ -3768,7 +3768,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       reportedStepId: 'max',
       lastDesiredStepId: 'low',
     });
-    const liveDevices = buildLiveDevices({ binaryControl: { on: true } });
+    // The telemetry gap as the producer emits it: no step evidence resolved this
+    // cycle, so `resolveSteppedClusterFields` refused the stepped cluster and the
+    // live device is non-stepped. The merge preserves the prior plan's cluster.
+    const liveDevices = buildLiveDevices({ binaryControl: { on: true }, steppedLoadProfile: undefined });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(livePlan.devices[0]).toEqual(expect.objectContaining({

@@ -277,22 +277,36 @@ function isBlockedByInvariant(device: DevicePlanDevice): boolean {
   return isShedInvariantBlockedReason(device.reason);
 }
 
+// The kind-cluster slices of the comparable record, split out so the signature
+// mapper stays under the complexity cap.
+function buildComparableKindFields(d: DevicePlan['devices'][number]): {
+  controlKind: 'stepped_load' | undefined;
+  selectedStepId: string | undefined;
+  planningPowerKw: number | undefined;
+  plannedTarget: number | undefined;
+  currentTarget: number | null;
+} {
+  return {
+    controlKind: isSteppedLoadDevice(d) ? 'stepped_load' : undefined,
+    selectedStepId: isSteppedLoadDevice(d) ? d.selectedStepId : undefined,
+    planningPowerKw: isSteppedLoadDevice(d) ? d.planningPowerKw : undefined,
+    plannedTarget: isTemperaturePlanDevice(d) ? d.plannedTarget : undefined,
+    currentTarget: isTemperaturePlanDevice(d) ? d.currentTarget : null,
+  };
+}
+
 export function buildPlanDetailSignature(plan: DevicePlan): string {
   return JSON.stringify(
     plan.devices.map((d) => ({
       id: d.id,
       priority: d.priority,
-      controlKind: isSteppedLoadDevice(d) ? 'stepped_load' : undefined,
+      ...buildComparableKindFields(d),
       plannedState: d.plannedState,
-      plannedTarget: isTemperaturePlanDevice(d) ? d.plannedTarget : undefined,
       surplusAbsorbActive: d.surplusAbsorbActive === true,
-      selectedStepId: d.selectedStepId,
       desiredStepId: d.desiredStepId,
       lastDesiredStepId: d.lastDesiredStepId,
       currentState: d.currentState,
-      currentTarget: isTemperaturePlanDevice(d) ? d.currentTarget : null,
       reason: buildComparableDeviceReason(d.reason),
-      planningPowerKw: isSteppedLoadDevice(d) ? d.planningPowerKw : undefined,
       shedAction: d.shedAction,
       controllable: d.controllable,
       stepCommandPending: d.stepCommandPending ?? null,

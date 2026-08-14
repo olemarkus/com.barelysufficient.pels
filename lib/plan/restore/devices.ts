@@ -5,7 +5,7 @@ import {
 } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
@@ -65,11 +65,11 @@ function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedS
   // them to `set_step`), so they must stay restore-eligible after a cap — read
   // the step primitives directly, not the `currentState` label.
   if (isSteppedLoadDevice(device)) {
-    const { steppedLoadProfile: profile, selectedStepId } = device;
-    if (!profile || selectedStepId === undefined) return 'unknown';
-    const step = getSteppedLoadStep(profile, selectedStepId);
+    // Membership, not presence: the step is producer-guaranteed, but the EV
+    // target-power substitution can cap it out of the planner profile.
+    const step = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
     if (!step) return 'unknown';
-    return isSteppedLoadOffStep(profile, step.id) ? 'off' : 'on';
+    return isSteppedLoadOffStep(device.steppedLoadProfile, step.id) ? 'off' : 'on';
   }
   return device.currentState === 'not_applicable' ? 'target_only' : 'unknown';
 }
@@ -78,17 +78,14 @@ export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {
   return isRestoreLiveEligibleDevice(device) && resolveRestoreObservedState(device) === 'off';
 }
 
-export function isSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
+export function isSteppedRestoreCandidate(device: DevicePlanDevice): device is SteppedPlanDevice {
   if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
   const observedState = resolveRestoreObservedState(device);
   return observedState === 'off'
     || (
       observedState === 'on'
-      && (
-      device.selectedStepId !== undefined
       && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
-      )
     );
 }
 
@@ -119,9 +116,9 @@ export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice
   return sortByPriorityAsc(filtered);
 }
 
-export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
+export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): SteppedPlanDevice[] {
   const filtered = planDevices
-    .filter((device) => isSteppedRestoreCandidate(device));
+    .filter((device): device is SteppedPlanDevice => isSteppedRestoreCandidate(device));
   return sortByPriorityAsc(filtered);
 }
 

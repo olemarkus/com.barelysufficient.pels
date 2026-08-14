@@ -265,7 +265,20 @@ function resolveSteppedClusterFields(
   // stepped-controllable", matching that refusal, rather than shipping a
   // stepped device with a hole where its power should be.
   if (planningPowerKw === undefined) return {};
-  return { steppedLoadProfile: plannerSteppedLoadProfile, planningPowerKw };
+  // The effective step is part of the cluster: the decorator resolves it for
+  // every device with a usable ladder (reported step ?? lowest-active
+  // fallback), so an absent value here is a producer bug — refuse the whole
+  // cluster ("drop contract violators"), the same verdict as the
+  // no-finite-planning-power refusal above; `resolveSteppedLadderMissing` then
+  // stamps the gap. The value is carried VERBATIM even when the EV target-power
+  // substitution capped it out of the planner ladder — membership checks
+  // downstream are real domain questions.
+  if (device.selectedStepId === undefined) return {};
+  return {
+    steppedLoadProfile: plannerSteppedLoadProfile,
+    selectedStepId: device.selectedStepId,
+    planningPowerKw,
+  };
 }
 
 /**
@@ -561,7 +574,9 @@ export function toPlanDevice(
     // explicitly so the laundering into `PlanInputDevice` stays visible and
     // independent of the carrier's shape. Values are byte-identical to the
     // pre-decomposition spread.
-    selectedStepId: device.selectedStepId,
+    // `selectedStepId` is NOT copied flat: it travels inside `steppedCluster`
+    // (or not at all — a refused cluster must not leave a stray step id behind;
+    // `withSteppedDiscriminant` strips whatever the spread carried).
     targetStepId: device.targetStepId,
     desiredStepId: device.desiredStepId,
     previousStepId: device.previousStepId,

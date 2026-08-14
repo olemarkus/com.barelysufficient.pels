@@ -185,37 +185,23 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     binaryCapabilityId: undefined,
     planningPowerKw: 0,
   });
-  // (b) Stepped device with `selectedStepId` absent and
-  //     `hasKnownEffectiveStep === false`. With no reported / actual / assumed
-  //     step set, both paths see no positive planning kW and the legacy chain's
-  //     `dev.currentState !== 'off' && planningPowerKw > 0` branch fails. The
-  //     profile's lowest-active step is still positive, so both legacy and
-  //     producer take path-2 (source `'stepped'`, kw from lowest-active step).
+  // (b) Stepped device parked at its OFF step — the representable "no positive
+  //     live planning power" state now that a stepped device always carries an
+  //     effective step. The legacy chain's `currentState !== 'off' &&
+  //     planningPowerKw > 0` branch fails, so both legacy and producer take
+  //     path-2 (source `'stepped'`, kw from the lowest-active step): the draw a
+  //     restore would ADD, which is the whole question on the restore side.
+  //     (The former case (c) — `selectedStepId` absent while `reportedStepId`
+  //     is set — is unrepresentable: a reported step IS the effective step.)
   const deviceF = buildRestoreFixture({
-    id: 'F-stepped-step-absent-unknown',
-    name: 'Stepped unknown step',
-    binaryControl: { on: true },
-    currentState: 'on',
+    id: 'F-stepped-at-off-step',
+    name: 'Stepped at off step',
+    binaryControl: { on: false },
+    currentState: 'off',
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
-    currentDrawKw: 1.1,
-  });
-  // (c) Stepped device with `selectedStepId` absent but
-  //     `hasKnownEffectiveStep === true` via `reportedStepId`. The legacy
-  //     `resolveSteppedRestorePower` doesn't look at reported/actual/assumed;
-  //     it gates on `planningPowerKw` (live planning kW). Without a positive
-  //     `planningPowerKw`, both paths still take path-2 (source `'stepped'`).
-  //     This pins that the producer's `hasKnownEffectiveStep` flag does not
-  //     accidentally change the restore-side resolution.
-  const deviceG = buildRestoreFixture({
-    id: 'G-stepped-reported',
-    name: 'Stepped reported only',
-    binaryControl: { on: true },
-    currentState: 'on',
-    controlModel: 'stepped_load',
-    steppedLoadProfile: steppedProfile,
-    reportedStepId: 'medium',
-    currentDrawKw: 2.05,
+    selectedStepId: 'off',
+    currentDrawKw: 0,
   });
   // (d) Temperature device with `currentValue == normalized shedTemperature`.
   //     The restore-side code does not consult the temperature target at all
@@ -234,7 +220,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     currentTarget: 18,
   });
 
-  const fixtures = [deviceA, deviceB, deviceC, deviceD, deviceE, deviceF, deviceG, deviceH] as const;
+  const fixtures = [deviceA, deviceB, deviceC, deviceD, deviceE, deviceF, deviceH] as const;
 
   it('estimateRestorePower returns the same number per device across legacy and producer paths', () => {
     for (const dev of fixtures) {
@@ -281,7 +267,6 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     // `expectedPowerKw` being required and always positive makes that unreachable.
     expect(resolveRestorePowerSource(deviceE)).toBe('expected');
     expect(resolveRestorePowerSource(deviceF)).toBe('stepped');
-    expect(resolveRestorePowerSource(deviceG)).toBe('stepped');
     // Path-3 with a measured draw returns source 'measured' — equal to its expected
     // draw here, and ties resolve to the earliest candidate.
     expect(resolveRestorePowerSource(deviceH)).toBe('measured');

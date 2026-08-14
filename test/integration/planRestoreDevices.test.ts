@@ -153,7 +153,7 @@ describe('plan restore device helpers', () => {
             { id: 'max', planningPowerW: 3000 },
           ],
         },
-        selectedStepId: undefined,
+        selectedStepId: 'off',
       }),
       makeDevice({
         id: 'high-step-off',
@@ -167,19 +167,6 @@ describe('plan restore device helpers', () => {
           ],
         },
         selectedStepId: 'max',
-      }),
-      makeDevice({
-        id: 'unknown-step-on',
-        priority: 3,
-        currentState: 'on',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1250 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
-        selectedStepId: undefined,
       }),
       makeDevice({
         id: 'no-binary-step',
@@ -210,7 +197,7 @@ describe('plan restore device helpers', () => {
       .toEqual(['unknown-step-off', 'fresh-step', 'stale-step', 'high-step-off', 'no-binary-step']);
     // Stale-on / stale-step are now trusted-on (last value), so they join the swap-out set.
     expect(getOnDevices(devices, () => ({ action: 'turn_off', temperature: null, stepId: null }))
-      .map((device) => device.id)).toEqual(['stale-on', 'fresh-on', 'stale-step', 'fresh-step', 'unknown-step-on']);
+      .map((device) => device.id)).toEqual(['stale-on', 'fresh-on', 'stale-step', 'fresh-step']);
     expect(getOnDevices(devices, () => ({ action: 'set_step', temperature: null, stepId: 'low' }))
       .map((device) => device.id)).toEqual(['stale-on', 'fresh-on']);
   });

@@ -1,4 +1,5 @@
 import Homey from 'homey';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   DeviceTransport,
@@ -81,7 +82,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       binaryControl: isBinaryPlanDevice(device) ? { on: device.currentOn } : undefined,
       targets: [],
       controlModel: 'stepped_load',
-      selectedStepId: device.selectedStepId,
+      selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
       reportedStepId: device.reportedStepId,
       measuredPowerKw: device.currentDrawKw,
     } as TargetDeviceSnapshot & MeasuredPowerObservedProbe),

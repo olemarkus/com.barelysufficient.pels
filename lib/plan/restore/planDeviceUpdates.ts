@@ -25,7 +25,7 @@ export function setRestorePlanDevice(
 export function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
   const offStepId = isSteppedLoadDevice(dev)
     ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
-    : dev.selectedStepId;
+    : undefined;
   return {
     plannedState: 'shed',
     desiredStepId: offStepId,

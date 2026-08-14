@@ -41,10 +41,11 @@ import {
 // "might be stepped" shape (the profile as a plain optional); the
 // `isSteppedLoadDevice` guard narrows it to the required shape before any
 // profile read.
+// `selectedStepId` arrives via the probe (it moved onto the stepped cluster,
+// so it is no longer a common key of the unions and cannot be `Pick`ed).
 type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice | DevicePlanDevice,
   | 'reportedStepId'
-  | 'selectedStepId'
   | 'desiredStepId'
   | 'currentDrawKw'
   | 'stepPowerCalibration'
@@ -127,6 +128,9 @@ export function isSteppedLoadDevice(
 }
 
 type ObservedOnOffDevice = {
+  // Present so the all-optional shape shares a property with every plan-device
+  // union member (TS weak-type check); not read by the predicate itself.
+  id?: string;
   currentOn?: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
@@ -591,36 +595,6 @@ export function resolveSteppedCandidatePower(
   return measured;
 }
 
-export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
-  device: SteppedDiscriminantProbe & Pick<PlanInputDevice, 'currentDrawKw'> & StepIdentityFields;
-  shedAction: 'turn_off' | 'set_step';
-}): {
-  targetStep: SteppedLoadStep;
-  effectivePowerKw: number;
-} | null => {
-  const { device, shedAction } = params;
-  if (!isSteppedLoadDevice(device) || resolvePlannerEffectiveStepId(device)) return null;
-  const steppedProfile = getSteppedLoadProfileForDevice(device);
-  if (!steppedProfile) return null;
-  const currentDrawKw = device.currentDrawKw;
-  if (currentDrawKw <= 0) return null;
-
-  const targetStep = shedAction === 'set_step'
-    ? getSteppedLoadLowestActiveStep(steppedProfile)
-    : (getSteppedLoadOffStep(steppedProfile) ?? getSteppedLoadLowestStep(steppedProfile));
-  if (!targetStep) return null;
-
-  const targetPlanningKw = targetStep.planningPowerW / 1000;
-  const effectivePowerKw = shedAction === 'set_step'
-    ? Math.max(0, currentDrawKw - targetPlanningKw)
-    : currentDrawKw;
-  if (effectivePowerKw <= 0) return null;
-
-  return {
-    targetStep,
-    effectivePowerKw,
-  };
-};
 
 function normalizePlannerStepState(device: StepIdentityFields) {
   return normalizeSteppedLoadStepStateFromLegacyFields({
