@@ -196,6 +196,7 @@ describe('P1 bug proofs', () => {
           commandableNow: true,
           targets: [],
           binaryControl: { on: true },
+          currentOn: true,
           controllable: true,
           binaryCapabilityId: 'onoff',
           currentDrawKw: 0,
@@ -210,6 +211,7 @@ describe('P1 bug proofs', () => {
           commandableNow: true,
           targets: [],
           binaryControl: { on: true },
+          currentOn: true,
           controllable: true,
           binaryCapabilityId: 'onoff',
         }) as PlanInputDevice,
@@ -279,6 +281,7 @@ describe('P1 bug proofs', () => {
         currentDrawKw: 0,
       }),
       binaryControl: { on: false },
+      currentOn: false,
     }) as PlanInputDevice;
 
     const planState = createPlanEngineState();
@@ -335,6 +338,7 @@ describe('P1 bug proofs', () => {
       canSetControl: true,
       available: true,
       binaryControl: { on: true },
+      currentOn: true,
     }]);
 
     await executor.applyPlanActions({

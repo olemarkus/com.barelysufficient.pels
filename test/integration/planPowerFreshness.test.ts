@@ -23,6 +23,7 @@ const buildDevice = (
   // device resolves a control capability, so model that here.
   binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
+  currentOn: true,
   controllable: true,
   expectedPowerKw: 1.2,
   ...overrides,
