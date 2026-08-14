@@ -31,6 +31,7 @@ describe('planExecutablePlan', () => {
       // binary axis (which would say 'on'). A revert to reading only `binaryControl`
       // would make this assertion fail.
       const folded = buildExecutableObservedDeviceStateFromSnapshot({
+        available: true,
         id: 'dev-1',
         name: 'Tank',
         currentOn: false,
@@ -44,6 +45,7 @@ describe('planExecutablePlan', () => {
       // Raw transport-snapshot input carries `binaryControl` but no `currentOn`, so
       // the projection reads the binary axis directly.
       const rawOn = buildExecutableObservedDeviceStateFromSnapshot({
+        available: true,
         id: 'dev-1',
         name: 'Tank',
         binaryControl: { on: true },
@@ -100,6 +102,7 @@ describe('planExecutablePlan', () => {
     });
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
+      available: true,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
@@ -286,6 +289,7 @@ describe('planExecutablePlan', () => {
     });
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
+      available: true,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },

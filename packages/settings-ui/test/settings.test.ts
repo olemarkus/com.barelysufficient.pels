@@ -241,9 +241,24 @@ const DEFAULT_SETTINGS_DEVICES = [
   {
     id: 'dev-1',
     name: 'Heater',
+    available: true,
     targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   },
 ];
+
+const withResolvedPlanDeviceBooleans = (value: unknown): unknown => {
+  if (!value || typeof value !== 'object') return value;
+  const devices = (value as { devices?: unknown }).devices;
+  if (!Array.isArray(devices)) return value;
+  return {
+    ...value,
+    devices: devices.map((device) => (
+      device && typeof device === 'object'
+        ? { controllable: true, available: true, ...device }
+        : device
+    )),
+  };
+};
 
 const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => {
   const homeySettings = { ...settings };
@@ -272,8 +287,10 @@ const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => {
   return installHomeyMock({
     settings: buildSettingsHomeyState(settings),
     uiState: {
-      devices: Array.isArray(explicitDevices) ? explicitDevices as TargetDeviceSnapshot[] : [],
-      plan: settings.planSnapshot,
+      devices: Array.isArray(explicitDevices)
+        ? explicitDevices.map((device) => ({ available: true, ...device })) as TargetDeviceSnapshot[]
+        : [],
+      plan: withResolvedPlanDeviceBooleans(settings.planSnapshot),
     },
   });
 };
@@ -1163,6 +1180,7 @@ describe('settings script', () => {
     installSettingsHomeyMock({
       target_devices_snapshot: [
         {
+          available: true,
           id: 'socket-2',
           name: 'Hall Socket',
           deviceClass: 'socket',
@@ -2331,6 +2349,8 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
         priority: 1,
         currentState: 'on',
         plannedState: 'shed',
+        controllable: true,
+        available: true,
         budgetExempt: false,
         starvation: { isStarved: true, accumulatedMs: 5 * 60_000, cause: 'budget', startedAtMs: 0 },
         reason: fixtureDeviceReason('shed due to capacity'),

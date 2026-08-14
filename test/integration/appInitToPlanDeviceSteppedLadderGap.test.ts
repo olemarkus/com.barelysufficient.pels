@@ -47,6 +47,7 @@ const buildSnapshot = (overrides: Partial<DecoratedDeviceSnapshot>): DecoratedDe
   targets: [],
   binaryControl: { on: false },
   ...overrides,
+  available: overrides.available ?? true,
 });
 
 describe('toPlanDevice step-ladder gap', () => {

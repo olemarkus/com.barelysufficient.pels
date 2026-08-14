@@ -22,6 +22,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
     });
     const runtimeConfig = { ...baseConfig, reachability };
     const device: DecoratedDeviceSnapshot = {
+      available: true,
       id: 'charger',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Charger',
@@ -60,6 +61,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
   it('falls through a non-finite carried planning power to the ladder rung', () => {
     const config = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
     const device: DecoratedDeviceSnapshot = {
+      available: true,
       id: 'charger',
       expectedPowerKw: 1,
       expectedPowerSource: 'default',

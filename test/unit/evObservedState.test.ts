@@ -11,6 +11,7 @@ const snap = (over: Partial<TargetDeviceSnapshot & EvObservedProbe>): TargetDevi
   name: 'D',
   targets: [],
   ...over,
+  available: over.available ?? true,
 });
 
 describe('isEvObserved', () => {

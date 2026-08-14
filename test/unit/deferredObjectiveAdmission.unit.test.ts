@@ -20,6 +20,8 @@ const buildEvDevice = (
   binaryCapabilityId: 'evcharger_charging',
   binaryControl: { on: true },
   ...overrides,
+  controllable: overrides.controllable ?? true,
+  available: overrides.available ?? true,
 }) as PlanInputDevice;
 
 const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { deviceId: string }): DeferredObjectiveDiagnostic => ({
@@ -174,6 +176,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     // release routing. So their admission decisions must be byte-identical across buckets.
     const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
     const waterHeater: PlanInputDevice = {
+      available: true,
       id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       commandableNow: true, currentDrawKw: 0,

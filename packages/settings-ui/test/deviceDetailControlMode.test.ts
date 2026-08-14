@@ -2,7 +2,7 @@ import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 const buildDevice = (
   overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Device',
   targets: [],

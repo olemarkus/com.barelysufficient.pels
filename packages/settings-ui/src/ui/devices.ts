@@ -46,6 +46,19 @@ const refreshHomeBadgesAndRepaint = (): void => {
   });
 };
 
+const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListItem => (
+  typeof value === 'object'
+  && value !== null
+  && typeof (value as { available?: unknown }).available === 'boolean'
+);
+
+const parseDeviceList = (value: unknown): SettingsUiDeviceListItem[] => {
+  if (!Array.isArray(value) || !value.every(hasResolvedAvailability)) {
+    throw new TypeError('Invalid device list response.');
+  }
+  return value;
+};
+
 // Whole-home only, deliberately: the two `state.*` solar flags are HOME-level
 // gates, so a future scoped read must not funnel through here — a sub-home
 // payload assigning them would retract the whole home's solar surfaces. The
@@ -56,11 +69,12 @@ export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> =>
   // them independently so a slow Homey callback cannot blank Devices, Modes,
   // price-device pickers, and Advanced after /ui_devices already resolved.
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
+  const devices = parseDeviceList(payload?.devices);
   refreshHomeBadgesAndRepaint();
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
   state.hasExhibitedExport = payload?.hasExhibitedExport === true;
   state.surplusPoolReachable = payload?.surplusPoolReachable === true;
-  return Array.isArray(payload?.devices) ? payload.devices : [];
+  return devices;
 };
 
 const getManagedTitle = (
@@ -374,14 +388,16 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
   const shouldRender = options?.render ?? true;
   try {
     const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
-    const hasDevices = Array.isArray(response?.devices);
-    if (hasDevices) {
+    const refreshedDevices = Array.isArray(response?.devices)
+      ? parseDeviceList(response.devices)
+      : null;
+    if (refreshedDevices) {
       // The refresh endpoint answers for the WHOLE home, so it may only re-seed
       // the bare entry; every home-scoped entry it did not refresh is dropped
       // rather than left to serve a pre-refresh device list.
       invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
-        devices: response.devices,
+        devices: refreshedDevices,
         hasManagedSolarDevice: response.hasManagedSolarDevice === true,
         hasExhibitedExport: response.hasExhibitedExport === true,
         surplusPoolReachable: response.surplusPoolReachable === true,
@@ -403,7 +419,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
 
     // When the refresh returns no devices we fall back to the cached read model via
     // getTargetDevices(), which also re-derives state.hasManagedSolarDevice.
-    const devices = hasDevices ? response.devices : await getTargetDevices();
+    const devices = refreshedDevices ?? await getTargetDevices();
     state.latestDevices = devices;
     state.devicesLoaded = true;
     if (shouldRender) {

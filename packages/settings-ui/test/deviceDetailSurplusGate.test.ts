@@ -65,7 +65,7 @@ const buildDom = () => {
   `;
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Hall Heater',
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],

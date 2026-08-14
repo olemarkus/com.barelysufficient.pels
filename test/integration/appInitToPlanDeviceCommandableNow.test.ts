@@ -22,6 +22,7 @@ const buildEvSnapshot = (
 ): TargetDeviceSnapshot & EvObservedProbe => ({
   id: 'ev-1',
   name: 'EV charger',
+  available: true,
   targets: [],
   deviceClass: 'evcharger',
   binaryCapabilityId: 'evcharger_charging',

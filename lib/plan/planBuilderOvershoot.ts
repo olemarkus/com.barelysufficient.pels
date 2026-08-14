@@ -445,7 +445,7 @@ function buildOvershootContributor(
   const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
   const currentDrawKw = device.currentDrawKw;
   let expectedByPreviousPlan: boolean | null = null;
-  if (previous && previous.controllable !== false) {
+  if (previous && previous.controllable) {
     expectedByPreviousPlan = previous.plannedState !== 'shed' && previous.plannedState !== 'inactive';
   }
 
@@ -455,7 +455,7 @@ function buildOvershootContributor(
     deltaKw: roundOvershootKw(deltaKw),
     previousPowerSource: previousPower.source,
     newPowerSource: nextPower.source,
-    controllable: device.controllable !== false,
+    controllable: device.controllable,
     expectedByPreviousPlan,
     changedDuringPendingWindow: hasPendingWindow(previous) || hasPendingWindow(device),
     changedDuringCooldownWindow: isCooldownBlocked(previous) || isCooldownBlocked(device),

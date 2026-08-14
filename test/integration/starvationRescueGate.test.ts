@@ -141,6 +141,7 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 // `binaryControl`/`currentTemperature` are regrouped onto their discriminant
 // clusters; the rest is the base shape.
 const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
+  available: true,
   id: DEVICE_ID,
   name: 'Water Heater',
   commandableNow: true,

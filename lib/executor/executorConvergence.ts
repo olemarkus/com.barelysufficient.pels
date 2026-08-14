@@ -100,7 +100,7 @@ function hasSettledPostActuationState(
 }
 
 function requiresBinaryRestore(device: DevicePlan['devices'][number]): boolean {
-  return device.controllable !== false
+  return device.controllable
     && device.plannedState === 'keep'
     && isBinaryPlanDevice(device) && !device.currentOn;
 }

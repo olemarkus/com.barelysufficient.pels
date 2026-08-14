@@ -122,8 +122,8 @@ export type DeviceOverviewSnapshot = {
   reason: DeviceReason;
   /**
    * Producer-resolved: whether PELS manages this device. REQUIRED — the plan
-   * producer resolves the owner's setting to a boolean once (`planDevices.ts`,
-   * `dev.controllable !== false`) and every plan device carries the answer.
+   * producer resolves the owner's setting to a boolean once (`toPlanDevice`)
+   * and every plan device carries the answer.
    * Optional here meant three states on the wire for a two-state fact, and
    * every consumer re-derived the same `!== false` collapse for itself.
    */

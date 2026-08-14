@@ -176,6 +176,7 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 
 const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscriminant(
   withTemperatureDiscriminant(withBinaryDiscriminant({
+    available: true,
     id: STEP_DEVICE_ID,
     name: 'Priority Tank',
     commandableNow: true,
@@ -195,7 +196,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
   })),
 ) as PlanInputDevice;
 
-const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({ currentDrawKw: 0,
+const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0,
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
   commandableNow: true,

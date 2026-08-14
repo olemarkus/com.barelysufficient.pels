@@ -100,6 +100,7 @@ const buildDeviceReading = (
   nowMs: number,
   opts: { withSteps: boolean },
 ): DecoratedDeviceSnapshot & TemperatureObservedProbe => ({
+  available: true,
   id: DEVICE_ID,
   name: 'Connected 300',
   expectedPowerKw: 1,

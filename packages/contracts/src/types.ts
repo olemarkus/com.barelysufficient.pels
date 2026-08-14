@@ -480,7 +480,12 @@ export type ObservedDeviceState = {
      * on/off/current-draw semantics.
      */
     binaryControlObservation?: BinaryControlObservation;
-    available?: boolean;
+    /**
+     * Producer-resolved Homey reachability. REQUIRED: the transport resolves
+     * SDK availability and control-trust evidence to a boolean before
+     * publishing the snapshot; absence is not an inward domain state.
+     */
+    available: boolean;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
     lastUpdated?: number;

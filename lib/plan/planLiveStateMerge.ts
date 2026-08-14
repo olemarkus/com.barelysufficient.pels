@@ -128,20 +128,9 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         expectedPowerSource: live.expectedPowerSource,
         currentDrawKw: live.currentDrawKw,
         binaryCommandPending: live.binaryCommandPending,
-        // Deliberately NOT the producer's `!== false` collapse — for either
-        // field. This is a MERGE, not a build: the plan device already carries a
-        // resolved boolean, so an absent live value means "the live snapshot
-        // says nothing", and the answer is the one already decided.
-        //
-        // The collapse is destructive in exactly the direction that matters. It
-        // turns `undefined` into `true`, so a device the producer had resolved
-        // as UNAVAILABLE becomes available the moment a live snapshot omits the
-        // field, and one the owner had set unmanaged becomes managed. Absent is
-        // not a report of availability, and a merge must not treat missing data
-        // as a reset (`notes/persisted-settings-state.md`).
-        available: live.available ?? device.available,
+        available: live.available,
         zone: live.zone ?? device.zone,
-        controllable: live.controllable ?? device.controllable,
+        controllable: live.controllable,
         stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
         // Re-fold the on/off truth against the merged step/profile, using the

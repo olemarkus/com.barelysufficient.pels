@@ -87,6 +87,7 @@ const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OU
 const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]! : tomorrowPrices[hod - 24]!);
 
 const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant({
+  available: true,
   currentDrawKw: 0,
   expectedPowerKw: 1,
   expectedPowerSource: 'default' as const,

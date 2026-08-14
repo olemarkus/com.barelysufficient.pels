@@ -71,6 +71,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
   return buildExecutableSteppedLoadDevice(
     buildExecutableSteppedLoadIntent(device),
     buildExecutableObservedDeviceStateFromSnapshot({
+      available: true,
       id: device.id,
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: device.name,
@@ -782,6 +783,7 @@ describe('native stepped-load wiring', () => {
 
   it('uses native stepped-load feedback instead of flow reports when native wiring is enabled', () => {
     const flowSnapshot = {
+      available: true,
       id: 'hoiax-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Connected 300',
@@ -842,6 +844,7 @@ describe('native stepped-load wiring', () => {
       ],
     };
     const nativeSnapshot = {
+      available: true,
       id: 'hoiax-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Connected 300',
@@ -1342,6 +1345,7 @@ describe('native stepped-load wiring', () => {
       { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
     );
     deviceManager.setSnapshotForTests([{
+      available: true,
       id: 'flow-step-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Flow backed charger',
@@ -1449,6 +1453,7 @@ describe('native stepped-load wiring', () => {
       { getFlowTriggerCard: () => ({ trigger: () => Promise.reject(failure) }) },
     );
     deviceManager.setSnapshotForTests([{
+      available: true,
       id: 'flow-step-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Flow backed charger',
@@ -1499,6 +1504,7 @@ describe('native stepped-load wiring', () => {
         { getFlowTriggerCard: () => ({ trigger }) },
       );
       deviceManager.setSnapshotForTests([{
+        available: true,
         id: 'flow-step-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Flow backed charger',

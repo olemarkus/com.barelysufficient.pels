@@ -30,6 +30,7 @@ const nativeSteppedSnapshot = (
   > = {},
 ): TransportDeviceSnapshot & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
+  available: true,
   id: 'dev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',

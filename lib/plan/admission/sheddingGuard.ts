@@ -139,7 +139,7 @@ export function countRemainingCandidates(params: {
   if (headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
-    .filter((d) => d.controllable !== false && !shedSet.has(d.id))
+    .filter((d) => d.controllable && !shedSet.has(d.id))
     // On/off is a binary-only question: a binary device is still a remaining
     // candidate only while on; non-binary (setpoint/step) devices stay eligible
     // regardless. `currentOn` is read only after narrowing to the binary kind.

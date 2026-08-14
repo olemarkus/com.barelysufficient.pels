@@ -2,13 +2,24 @@ import type {
   BinaryControlDiscriminantProbe,
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
+import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
 
 describe('buildPlanInputDevice', () => {
+  it('keeps availability and controllability required at both producer seams', () => {
+    expectTypeOf<ObservedDeviceState>().toMatchTypeOf<{ available: boolean }>();
+    expectTypeOf<PlanInputDevice>().toMatchTypeOf<{
+      available: boolean;
+      controllable: boolean;
+    }>();
+  });
+
   it('applies the documented defaults when only id is provided', () => {
     const device = buildPlanInputDevice({ id: 'dev-1' });
 
     expect(device).toEqual({
+      controllable: true,
+      available: true,
       id: 'dev-1',
       name: 'dev-1',
       targets: [],
@@ -43,6 +54,17 @@ describe('buildPlanInputDevice', () => {
     expect(device.name).toBe('Living room heater');
     expect((device as PlanInputDevice & BinaryControlDiscriminantProbe).binaryControl?.on).toBe(false);
     expect(device.targets).toEqual([]);
+  });
+
+  it('preserves explicit unavailable and uncontrollable states', () => {
+    const device = buildPlanInputDevice({
+      id: 'dev-unreachable',
+      available: false,
+      controllable: false,
+    });
+
+    expect(device.available).toBe(false);
+    expect(device.controllable).toBe(false);
   });
 
   it('passes through optional fields unchanged and leaves unspecified ones undefined', () => {

@@ -189,6 +189,7 @@ describe('P1 bug proofs', () => {
       planningTotalKw: 6,
       devices: [
         withBinaryDiscriminant({
+          available: true,
           id: 'shed',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Shed',
@@ -201,6 +202,7 @@ describe('P1 bug proofs', () => {
           binaryCommandPending: true,
         }) as PlanInputDevice,
         withBinaryDiscriminant({
+          available: true,
           currentDrawKw: 1,
           id: 'stale',
           expectedPowerKw: 1, expectedPowerSource: 'default',

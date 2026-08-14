@@ -5,6 +5,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 const chargerSnapshot = (observedCapabilityIds: string[]): TransportDeviceSnapshot => ({
   id: 'charger-1',
   name: 'Elbillader',
+  available: true,
   targets: [],
   expectedPowerKw: 1.38,
   expectedPowerSource: 'default',

@@ -39,6 +39,7 @@ const buildObservedState = (
     reportedStepId: device.reportedStepId,
     measuredPowerKw: device.currentDrawKw,
     ...overrides,
+    available: overrides.available ?? true,
   });
 };
 

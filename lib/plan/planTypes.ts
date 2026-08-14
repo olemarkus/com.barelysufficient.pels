@@ -500,14 +500,13 @@ type DevicePlanDeviceBase = {
   zone?: string;
   /**
    * Producer-resolved: whether PELS manages this device this cycle. REQUIRED —
-   * `planDevices.ts` collapses the owner's optional setting with
-   * `dev.controllable !== false` and hands every plan device the boolean, and
-   * the deferred-objective rescue lane's override lands before that. Optional
+   * `toPlanDevice` resolves the owner's setting before the planner receives the
+   * device, and the deferred-objective rescue lane's override lands before
+   * materialization. Optional
    * bought nothing here: absence never reached this type, and typing it as if
    * it might left `undefined` meaning "managed" — a third state for a two-state
-   * fact. The many `!== false` reads on plan devices are now redundant rather
-   * than load-bearing; simplify them as they are touched (a `PlanInputDevice`
-   * read is NOT redundant — the collapse there is still real).
+   * fact. Consumers read the required boolean directly; absence is not a plan
+   * state on either the input or output contract.
    */
   controllable: boolean;
   budgetExempt?: boolean;

@@ -37,7 +37,7 @@ export type RestoreCandidate = {
 };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
-  return device.controllable !== false
+  return device.controllable
     && device.plannedState !== 'shed'
     && device.plannedState !== 'inactive'
     // "Leave off until turned on again": the single gate every restore-candidate

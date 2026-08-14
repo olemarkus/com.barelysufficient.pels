@@ -205,7 +205,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
 
-const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
   id: 'heater-sub',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
@@ -423,6 +423,7 @@ describe('smart-task membership and authority predicates', () => {
         getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       } as unknown as AppContext['homeMembership'],
       latestTargetSnapshot: [{
+        available: true,
         id: 'd1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Hall heater',
@@ -449,6 +450,7 @@ describe('smart-task membership and authority predicates', () => {
   it('omits an active meter source from held-back rescue rows', () => {
     const ctx = ctxWithHomeId('main', false, new Set(['meter-1']));
     ctx.latestTargetSnapshot.push({
+      available: true,
       id: 'meter-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Whole-home meter',

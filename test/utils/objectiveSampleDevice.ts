@@ -12,9 +12,10 @@ import type { MeasuredPowerObservedProbe } from '../../packages/contracts/src/ty
  * absent / rejected reading to `0` — the behaviour
  * `resolveCredibleDevicePower`'s credibility threshold depends on.
  */
-export const withResolvedCurrentDraw = <T extends MeasuredPowerObservedProbe>(
+export const withResolvedCurrentDraw = <T extends MeasuredPowerObservedProbe & { available?: boolean }>(
   device: T,
-): T & { currentDrawKw: number } => ({
+): T & { available: boolean; currentDrawKw: number } => ({
   ...device,
+  available: device.available ?? true,
   currentDrawKw: getCurrentDrawKw(device),
 });

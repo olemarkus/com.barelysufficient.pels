@@ -98,7 +98,7 @@ function resolvePlanCommandability(
     deviceId: device.id,
     base,
     observedOn: resolveCurrentOn(device),
-    available: device.available !== false,
+    available: device.available,
   }) ?? { commandableNow: base, reason: 'none' };
 }
 
@@ -534,6 +534,7 @@ export function toPlanDevice(
     // else re-resolve.
     managed,
     controllable,
+    available: device.available,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
     ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
     // Flat producer-resolved step-ladder gap — see `steppedLadderMissing` above.

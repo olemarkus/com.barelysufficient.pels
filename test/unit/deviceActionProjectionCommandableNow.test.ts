@@ -24,6 +24,7 @@ describe('resolveCommandableNow — EV plug state', () => {
     const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         evChargingState: 'plugged_out',
+        available: true,
     });
     expect(commandableNow).toBe(false);
   });
@@ -32,6 +33,7 @@ describe('resolveCommandableNow — EV plug state', () => {
     const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         evChargingState: 'plugged_in_charging',
+        available: true,
     });
     expect(commandableNow).toBe(true);
   });
@@ -40,6 +42,7 @@ describe('resolveCommandableNow — EV plug state', () => {
     const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         evChargingState: 'plugged_in_paused',
+        available: true,
     });
     expect(commandableNow).toBe(true);
   });
@@ -48,6 +51,7 @@ describe('resolveCommandableNow — EV plug state', () => {
     const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         evChargingState: 'plugged_in_discharging',
+        available: true,
     });
     expect(commandableNow).toBe(false);
   });
@@ -68,6 +72,7 @@ describe('resolveCommandableNow — no trusted plug state', () => {
     const commandableNow = resolveCommandableNow({
         deviceClass: 'evcharger',
         evChargingState: undefined,
+        available: true,
     });
     // Fails OPEN: an unclassifiable vendor value is permanent, shed does not
     // consult commandability, and blocking would leave the charger off with no

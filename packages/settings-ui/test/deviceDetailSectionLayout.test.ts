@@ -38,6 +38,7 @@ const buildDom = () => {
 const buildDevice = (
   overrides: Partial<TargetDeviceSnapshot> = {},
 ): TargetDeviceSnapshot => ({
+  available: true,
   id: 'device-1',
   name: 'Device',
   targets: [],

@@ -22,7 +22,7 @@ export { isEvDevice } from './evPlugState';
  */
 export type CommandableNowInput = {
   deviceClass?: string;
-  available?: boolean;
+  available: boolean;
 } & EvObservedProbe;
 
 /**
@@ -42,7 +42,7 @@ export type CommandableNowInput = {
  */
 export function resolveCommandableNow(dev: CommandableNowInput): boolean {
   if (isEvObserved(dev) && !isEvPlugStateCommandable(dev.evChargingState)) return false;
-  return dev.available !== false;
+  return dev.available;
 }
 
 /**

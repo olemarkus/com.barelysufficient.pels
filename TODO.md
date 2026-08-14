@@ -1375,22 +1375,6 @@ program) remain deferred.*
       plannedTarget, currentTemperature }` cluster mirroring `steppedLoad`. Do NOT collapse the OR
       to `plannedTarget` alone in the meantime.
 
-- [ ] **Tighten `controllable` / `available` at the seam that actually makes the guarantee.**
-      Both are now required on `DevicePlanDevice` and `DeviceOverviewSnapshot`, but they stay
-      optional on `PlanInputDevice` (`packages/planner-types/src/planInputDevice.ts`) and on the
-      device snapshot contract (`packages/contracts/src/types.ts`) — even though the transport
-      already resolves an unreadable `available` to a `boolean` (`managerHelpers.getIsAvailable`,
-      `managerParsedAvailability.resolveAvailable`) and `planDevices.ts` resolves `controllable`.
-      So the collapse is applied a second time downstream of where it is guaranteed, at
-      `planDevicesBase` — the BUILD. Tighten those two contracts and that `!== false` becomes a
-      plain copy; the many `!== false` reads on plan devices can then be simplified too (a
-      `PlanInputDevice` read is a different question until this lands).
-      `planLiveStateMerge` is deliberately NOT such a site and must stay a `??`: it is a MERGE, so
-      an absent live value means "the live snapshot says nothing" and the answer is the one already
-      decided. Collapsing there turned `undefined` into `true` and made an explicitly-unavailable
-      device available (and an unmanaged one managed) on any cycle whose live snapshot omitted the
-      field — pinned by `planLiveStateMerge.test.ts`.
-
 - [ ] **The overview log seam and the settings read model still disagree about temperature.**
       The read model overlays the OBSERVER's temperature onto the overview shape
       (`resolveOverviewTemperatureState` → `deps.getObservedTemperature`); the log seam
