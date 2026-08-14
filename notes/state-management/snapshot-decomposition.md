@@ -44,11 +44,14 @@ helpers. The observer was created but never handed the observation contract.
    `hasObservedStateOfCharge` — presence proves the SoC bag object, NOT
    `status === 'fresh'`; the bag keeps its own `status`, so consumers retain their
    freshness gates after narrowing; owner seams carry it through the
-   `StateOfChargeObservedProbe` widening), `currentTemperature` (now type-gated off
-   the base onto `TemperatureObservedFields`, narrowed via the presence-only
-   `hasObservedTemperature` — no kind gate, because a non-temperature device can
-   carry a `measure_temperature` reading; owner seams carry it through the
-   `TemperatureObservedProbe` widening),
+   `StateOfChargeObservedProbe` widening), `temperature` (type-gated off the base
+   as an atomic `{ currentTemperature, target }` facet on
+   `TemperatureObservedFields`, narrowed via the presence-only
+   `hasObservedTemperature`. Presence proves both the exact `target_temperature`
+   and `measure_temperature` observations are finite; malformed or incomplete
+   input omits the whole facet while independent binary/stepped facets remain.
+   Owner seams carry the complete pair through the `TemperatureObservedProbe`
+   widening),
    `measuredPowerKw`/`measuredPowerObservedAtMs` (now type-gated off the base onto
    `MeasuredPowerObservedFields`, narrowed via the presence-only
    `hasObservedMeasuredPower` — absence is the common case ON THE SNAPSHOT, so the

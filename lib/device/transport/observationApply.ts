@@ -14,6 +14,12 @@ import {
 } from './observationState';
 import { resolveEvTargetPowerExactStep } from '../targetPowerReachability';
 import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
+import {
+    removeTemperatureObservation,
+    TARGET_TEMPERATURE_CAPABILITY_ID,
+    updateTemperatureMeasurement,
+    updateTemperatureTarget,
+} from './temperatureObservation';
 
 export function applyCapabilityObservation(
     nextSnapshot: TransportDeviceSnapshot,
@@ -127,14 +133,10 @@ function applyMeasuredTemperatureObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    if (
-        typeof observation.value !== 'number'
-        || !Number.isFinite(observation.value)
-        || Object.is(snapshot.currentTemperature, observation.value)
-    ) {
-        return false;
+    if (typeof observation.value !== 'number' || !Number.isFinite(observation.value)) {
+        return removeTemperatureObservation(snapshot);
     }
-    snapshot.currentTemperature = observation.value;
+    if (!updateTemperatureMeasurement(snapshot, observation.value)) return false;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
@@ -162,6 +164,9 @@ function applyTargetCapabilityObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
+    if (capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID) {
+        return applyTemperatureTargetObservation(snapshot, observation);
+    }
     const target = snapshot.targets.find((entry) => entry.id === capabilityId);
     if (!target) {
         return false;
@@ -193,6 +198,25 @@ function applyTargetCapabilityObservation(
     }
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    return true;
+}
+
+function applyTemperatureTargetObservation(
+    snapshot: TransportDeviceSnapshot,
+    observation: CapabilityObservation,
+): boolean {
+    if (typeof observation.value !== 'number' || !Number.isFinite(observation.value)) {
+        return observation.source === 'local_write' ? false : removeTemperatureObservation(snapshot);
+    }
+    const result = updateTemperatureTarget(snapshot, observation.value);
+    if (!result.changed) return false;
+    const mutableSnapshot = snapshot;
+    if (observation.source === 'local_write') {
+        mutableSnapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
+    } else {
+        mutableSnapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
+        mutableSnapshot.lastUpdated = mutableSnapshot.lastFreshDataMs;
+    }
     return true;
 }
 
@@ -258,10 +282,17 @@ function doesCapabilityObservationMatchSnapshot(
         return snapshot.measuredPowerKw === observationValue;
     }
     if (capabilityId === 'measure_temperature') {
-        return snapshot.currentTemperature === observationValue;
+        return typeof observationValue === 'number'
+            && Number.isFinite(observationValue)
+            && snapshot.temperature?.currentTemperature === observationValue;
     }
     if (capabilityId === 'evcharger_charging_state') {
         return snapshot.evChargingState === observationValue;
+    }
+    if (capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID) {
+        return typeof observationValue === 'number'
+            && Number.isFinite(observationValue)
+            && snapshot.temperature?.target.value === observationValue;
     }
     const target = snapshot.targets.find((entry) => entry.id === capabilityId);
     return target ? Object.is(target.value, observationValue) : false;

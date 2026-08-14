@@ -67,7 +67,15 @@ const buildAppWithRecorders = (options: {
   const app = createApp();
   if (options.history) {
     Object.defineProperty(app, 'latestTargetSnapshot', {
-      value: [{ id: DEVICE_ID, name: 'Connected 300', deviceType: 'temperature' }],
+      value: [{
+        id: DEVICE_ID,
+        name: 'Connected 300',
+        deviceType: 'temperature',
+        temperature: {
+          currentTemperature: 50,
+          target: { id: 'target_temperature', value: 65 },
+        },
+      }],
     });
   }
   app.deferredObjectiveActivePlanRecorder = {

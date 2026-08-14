@@ -50,14 +50,7 @@ var handleWidgetClientLog = (widgetId, { homey, body }) => {
 };
 
 // packages/shared-domain/src/temperatureObservedState.ts
-var hasObservedTemperature = (snapshot) => (
-  // `!= null` (not just `!== undefined`) so this single narrowing chokepoint
-  // also rejects a `null` that could slip in across the Homey SDK / JSON wire
-  // boundary despite the `number | undefined` type — establishing the
-  // finite-`number` guarantee once, here, is the whole point of the guard.
-  // Matches the house idiom for this field (e.g. `deviceTransport` metrics).
-  snapshot.currentTemperature != null
-);
+var hasObservedTemperature = (snapshot) => snapshot.temperature !== void 0;
 
 // packages/shared-domain/src/stateOfChargeObservedState.ts
 var hasObservedStateOfCharge = (snapshot) => snapshot.stateOfCharge != null;
@@ -1243,7 +1236,7 @@ var toWidgetChart = (chart) => chart.mode === "trajectory" ? chart : null;
 var resolveCurrentValue = (device, kind) => {
   if (!device) return null;
   if (kind === "temperature") {
-    return hasObservedTemperature(device) ? device.currentTemperature : null;
+    return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
   }
   return hasObservedStateOfCharge(device) ? device.stateOfCharge.percent : null;
 };

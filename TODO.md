@@ -1003,23 +1003,27 @@ program) remain deferred.*
       `stateOfCharge` (independent presence semantics — SoC without plug-state is real, ~30 UI/widget/flowCard
       readers; needs its own slice with its own cluster shape) and `evCharging` (transport-internal only, zero
       outside readers).
-      **Temperature-observed field-move landed (2026-06-13): `currentTemperature` is OFF the base
-      `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.currentTemperature` read is now a
-      hard TS2339; consumers narrow through `hasObservedTemperature` (`packages/shared-domain/src/temperatureObservedState.ts`,
-      browser-safe, generic over the carrier). New contracts types: `TemperatureObservedFields` (required
-      `currentTemperature`) + `TemperatureObservedProbe` (optional owner-side widening); `TransportDeviceSnapshot`
-      now intersects both EV and temperature probes. Consumers migrated: `lib/objectives/samples.ts`
+      **Atomic temperature-observed facet landed (2026-08-14): temperature support is OFF the base
+      `ObservedDeviceState`/`TargetDeviceSnapshot`.** Consumers narrow through `hasObservedTemperature`
+      (`packages/shared-domain/src/temperatureObservedState.ts`, browser-safe, generic over the carrier). The
+      narrowed `TemperatureObservedFields` carries one required `temperature` object containing BOTH a finite
+      `currentTemperature` and the exact finite `target_temperature` snapshot; `TemperatureObservedProbe` makes
+      only that complete facet optional at owner seams. There is no parallel flat/optional temperature reading
+      on `TransportDeviceSnapshot`; fresher-wins merging updates or removes the complete facet. Consumers migrated:
+      `lib/objectives/samples.ts`
       (`isFreshTemperatureDevice` composes `isTemperatureControlDevice && hasObservedTemperature`), the
       settings-UI deadline progress readers (`deadlinesList.ts`, `deadlinePlanResolvers.ts`), the smart-tasks
-      widget payload, and the `appDebugHelpers` dump. **Deliberate divergence from `isEvObserved`: the guard is
-      PRESENCE-ONLY, not kind+presence.** `currentTemperature` comes from the `measure_temperature` capability,
-      which a non-temperature `deviceType` device can carry (deviceType is keyed on target caps), so a kind gate
-      would reject a *present* reading (a present-but-rejected gap EV does not have). Callers wanting the kind
-      compose it explicitly. **Fallbacks removed at source:** present implies finite (all three producer seams —
-      `getCurrentTemperature` at parse, `applyMeasuredTemperatureObservation` at snapshot-refresh, and the
-      `measure_temperature` branch of `applyFreshnessOnlyCapabilityUpdate` at realtime — write only finite
-      values), so the scattered `Number.isFinite`/`isFiniteNumber` re-checks at consumers are gone. Type-level
-      only — zero runtime behavior change.
+      widget payload, and the `appDebugHelpers` dump. **The guard is presence-only:** the facet itself is the
+      capability proof; there is no unavailable/unsupported kind state. Admission requires exact structural
+      support for `measure_temperature` + `target_temperature` and finite values for both. Missing or malformed
+      input removes the whole temperature facet immediately while leaving valid binary and stepped-load facets
+      intact; a temperature-only device is omitted. A later valid realtime observation triggers a targeted pull
+      and restores the pair atomically. Suffixed target capabilities do not qualify. Downstream consumers trust
+      the pair directly and do not re-check finiteness or reconstruct a target fallback. The observer-to-plan
+      seam is strict now: `readObservedTemperatureState` returns the complete pair or `null` (never `undefined`),
+      and `TemperaturePlanInputKind.currentTemperature` is required after narrowing. **Remaining follow-up:**
+      propagate the same guarantee through planner-internal/output `TemperatureKind` and its regrouping helpers,
+      removing nullable `currentTarget` and optional `currentTemperature` there without broadening this boundary PR.
       **State-of-charge-observed field-move landed (2026-06-13): `stateOfCharge` is OFF the base
       `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.stateOfCharge` read is now a hard
       TS2339; consumers narrow through `hasObservedStateOfCharge`

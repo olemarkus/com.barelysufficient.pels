@@ -75,7 +75,7 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
 };
 
 const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [
-  { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false }, currentTemperature: 18.4 },
+  { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false }, temperature: { currentTemperature: 18.4, target: { id: 'target_temperature', unit: 'C', value: 20 } } },
   { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
     id: 'dev_b',
     name: 'EV charger',

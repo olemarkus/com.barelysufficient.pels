@@ -88,6 +88,12 @@ export function cloneTransportDeviceSnapshotForDebug(
     return {
         ...snapshot,
         targets: snapshot.targets.map((target) => ({ ...target })),
+        ...(snapshot.temperature ? {
+            temperature: {
+                ...snapshot.temperature,
+                target: { ...snapshot.temperature.target },
+            },
+        } : {}),
         capabilities: Array.isArray(snapshot.capabilities) ? [...snapshot.capabilities] : snapshot.capabilities,
     };
 }

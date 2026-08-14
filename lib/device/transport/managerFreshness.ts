@@ -10,11 +10,17 @@ import {
 } from './stateOfCharge';
 import type { RealtimeDeviceReconcileChange } from '../managerRuntime';
 import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
+import {
+  removeTemperatureObservation,
+  updateTemperatureMeasurement,
+} from './temperatureObservation';
 
 export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
   normalizedValue: unknown;
   reconcileChange?: RealtimeDeviceReconcileChange;
+  temperatureRecoveryRequested?: boolean;
+  temperatureFacetRemoved?: boolean;
 };
 
 export function applyFreshnessOnlyCapabilityUpdate(params: {
@@ -43,18 +49,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     snapshot.measuredPowerKw = measuredKw;
     return { changed: true, normalizedValue: measuredKw };
   }
-  // Same `Number.isFinite` boundary gate as `measure_power` above and the other
-  // two `currentTemperature` write seams (`getCurrentTemperature` at parse,
-  // `applyMeasuredTemperatureObservation` at snapshot-refresh) so "present
-  // implies finite" holds at EVERY producer seam — the invariant the
-  // `TemperatureObservedFields` consumers rely on when they read the narrowed
-  // field without a finiteness re-check. A non-finite realtime `measure_temperature`
-  // event is not a usable reading: skip the write (and the freshness bump).
-  if (capabilityId === 'measure_temperature' && typeof value === 'number' && Number.isFinite(value)) {
-    if (Object.is(snapshot.currentTemperature, value)) return { changed: false, normalizedValue: value };
-    snapshot.currentTemperature = value;
-    return { changed: true, normalizedValue: value };
-  }
+  if (capabilityId === 'measure_temperature') return applyTemperatureUpdate(snapshot, value);
   if (isStateOfChargeCapabilityId(capabilityId)) {
     const observedAtMs = Date.now();
     const changed = updateStateOfChargeFromRealtimeCapability({
@@ -76,6 +71,31 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     return applyEvChargingStateUpdate(snapshot, isEvChargingState(value) ? value : undefined);
   }
   return { changed: false, normalizedValue: undefined };
+}
+
+function applyTemperatureUpdate(
+  snapshot: TransportDeviceSnapshot,
+  value: unknown,
+): FreshnessOnlyCapabilityUpdateResult {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    const removed = removeTemperatureObservation(snapshot);
+    return {
+      changed: removed,
+      normalizedValue: undefined,
+      temperatureFacetRemoved: removed,
+    };
+  }
+  if (!snapshot.temperature) {
+    return {
+      changed: false,
+      normalizedValue: value,
+      temperatureRecoveryRequested: true,
+    };
+  }
+  return {
+    changed: updateTemperatureMeasurement(snapshot, value),
+    normalizedValue: value,
+  };
 }
 
 function applyEvChargingStateUpdate(

@@ -26,10 +26,9 @@ import type {
  * identity compose it explicitly. Presence proves the bag is present, NOT that
  * its `status` is `fresh`.
  *
- * NB it proves the *bag* object, not the finiteness of `percent` inside it
- * (unlike the scalar `hasObservedTemperature`, whose `currentTemperature != null`
- * directly rejects a JSON-wire `null`). "Present bag ⇒ finite, in-range `percent`"
- * is a SEPARATE producer invariant owned upstream by `normalizeStateOfChargePercent`
+ * NB it proves the *bag* object, not the finiteness of `percent` inside it.
+ * "Present bag ⇒ finite, in-range `percent`" is a separate producer invariant
+ * owned upstream by `normalizeStateOfChargePercent`
  * (`lib/device/transport/stateOfCharge.ts`), which refuses to build a bag for a
  * non-finite/out-of-range reading. Consumers that read `percent` after this guard
  * lean on that invariant; the safety-critical objectives feeder

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readObservedTemperatureState } from '../../lib/observer/observedDeviceStateProjection';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 
@@ -16,33 +17,47 @@ const snap = (
   available: over.available ?? true,
 });
 
+const temperature = (currentTemperature: number, targetValue = 20) => ({
+  currentTemperature,
+  target: { id: 'target_temperature' as const, value: targetValue, unit: '°C' },
+});
+
 describe('hasObservedTemperature', () => {
-  it('is true when a temperature reading is present', () => {
-    expect(hasObservedTemperature(snap({ currentTemperature: 21 }))).toBe(true);
+  it('is true when the complete temperature facet is present', () => {
+    expect(hasObservedTemperature(snap({ temperature: temperature(21) }))).toBe(true);
   });
 
-  it('is true regardless of device kind (presence-only, unlike isEvObserved)', () => {
-    // A non-temperature `deviceType` device can carry a `measure_temperature`
-    // reading; the guard must NOT reject a present reading on kind grounds.
-    expect(hasObservedTemperature(snap({ deviceType: 'onoff', currentTemperature: 19.5 }))).toBe(true);
+  it('does not reinterpret the legacy deviceType tag', () => {
+    expect(hasObservedTemperature(snap({ deviceType: 'onoff', temperature: temperature(19.5) }))).toBe(true);
   });
 
-  it('is false when there is no reading', () => {
+  it('is false when there is no temperature facet', () => {
     expect(hasObservedTemperature(snap({ deviceType: 'temperature' }))).toBe(false);
-    expect(hasObservedTemperature(snap({ currentTemperature: undefined }))).toBe(false);
-    // The type forbids `null`, but the guard also rejects one that crosses the
-    // Homey SDK / JSON boundary at runtime — cast to reach that path.
-    expect(hasObservedTemperature(snap({ currentTemperature: null as unknown as number }))).toBe(false);
+    expect(hasObservedTemperature(snap({ temperature: undefined }))).toBe(false);
   });
 
-  it('narrows currentTemperature to a non-undefined number', () => {
-    const s = snap({ currentTemperature: 18.5 });
+  it('narrows both values to required finite-number contracts', () => {
+    const s = snap({ temperature: temperature(18.5, 22) });
     if (hasObservedTemperature(s)) {
-      // Compile-time: `s.currentTemperature` is `number` (not `number | undefined`).
-      const known: number = s.currentTemperature;
-      expect(known).toBe(18.5);
+      const current: number = s.temperature.currentTemperature;
+      const target: number = s.temperature.target.value;
+      expect({ current, target }).toEqual({ current: 18.5, target: 22 });
     } else {
       throw new Error('expected hasObservedTemperature to narrow');
     }
+  });
+});
+
+describe('readObservedTemperatureState', () => {
+  it('represents both a missing device and a non-temperature device as null', () => {
+    expect(readObservedTemperatureState(undefined)).toBeNull();
+    expect(readObservedTemperatureState(snap({}))).toBeNull();
+  });
+
+  it('returns both required values from an admitted temperature facet', () => {
+    expect(readObservedTemperatureState(snap({ temperature: temperature(18.5, 22) }))).toEqual({
+      currentTemperature: 18.5,
+      currentTarget: 22,
+    });
   });
 });

@@ -94,8 +94,8 @@ type NonSteppedPlanInputKind = Record<never, never>;
  * the `isTemperaturePlanDevice` type-guard (`lib/plan/planTemperatureDevice.ts`)
  * adds onto whichever stepped variant the device is. The field is OMITTED from
  * `PlanInputDeviceBase`, so an un-narrowed `device.currentTemperature` read is a
- * hard compile error; it is optional because the producer does not guarantee
- * the sensor reads.
+ * hard compile error. It is required after narrowing because the producer only
+ * stamps the temperature discriminant from an observer-admitted atomic facet.
  *
  * The plan-input side carries NO `currentTarget`: the target is resolved from
  * the device's `targets` capability list at plan-build time
@@ -103,7 +103,7 @@ type NonSteppedPlanInputKind = Record<never, never>;
  * `DevicePlanDevice`'s `TemperatureKind`.
  */
 export type TemperaturePlanInputKind = {
-  currentTemperature?: number;
+  currentTemperature: number;
 };
 
 /**

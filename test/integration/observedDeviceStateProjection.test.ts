@@ -18,6 +18,7 @@ import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { ObservedDeviceState, ReportedStepObservedProbe } from '../../packages/contracts/src/types';
+import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 
 // Stub the live feed so the transport never opens a real socket.io connection.
 // This is an OUTWARD Homey SDK seam, not a PELS internal — the merge, the
@@ -101,6 +102,18 @@ function onoffDevice(id: string, value: boolean, lastUpdated: string) {
     });
 }
 
+function temperatureDevice(id: string) {
+    return device(id, {
+        capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature'],
+        capabilitiesObj: {
+            measure_power: { value: 1000, id: 'measure_power' },
+            onoff: { value: true, id: 'onoff' },
+            measure_temperature: { value: 19, id: 'measure_temperature', units: '°C' },
+            target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+        },
+    });
+}
+
 function assertShadowEquality(harness: Harness): void {
     for (const snapshot of harness.transport.getSnapshot()) {
         expect(harness.projection.getObservedState(snapshot.id)).toEqual(
@@ -151,6 +164,29 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(seeded).toBeDefined();
         expect(seeded?.binaryControl?.on).toBe(true);
         assertShadowEquality(h);
+        h.transport.destroy();
+    });
+
+    it('publishes temperature only as a complete pair and removes only that facet on malformed input', async () => {
+        const h = await buildHarness();
+        mockApiGet.mockResolvedValue({ dev1: temperatureDevice('dev1') });
+        await h.transport.refreshSnapshot();
+
+        const admitted = h.projection.getObservedState('dev1');
+        if (!admitted || !hasObservedTemperature(admitted)) {
+            throw new Error('expected complete temperature observation');
+        }
+        expect(admitted.temperature).toEqual({
+            currentTemperature: 19,
+            target: expect.objectContaining({ id: 'target_temperature', value: 21 }),
+        });
+
+        h.transport.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
+
+        const demoted = h.projection.getObservedState('dev1');
+        expect(demoted).toBeDefined();
+        expect(demoted?.binaryControl).toEqual({ on: true });
+        expect(hasObservedTemperature(demoted!)).toBe(false);
         h.transport.destroy();
     });
 

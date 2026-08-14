@@ -16,6 +16,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type {
   DecoratedDeviceSnapshot,
   EvObservedProbe,
+  MeasuredPowerObservedProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 
@@ -82,6 +83,67 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.targets).toEqual([]);
     expect('binaryCapabilityId' in result).toBe(false);
     expect(result.canSetControlResolved).toBe(false);
+    expect('currentOn' in result).toBe(false);
+  });
+
+  it('falls back to binary turn-off shedding when the atomic temperature facet is absent', () => {
+    const ctx = createAppContextMock();
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    ctx.getShedBehavior = vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({
+      action: 'set_temperature',
+      temperature: 16,
+      stepId: null,
+    }));
+    const binarySurvivor = {
+      ...buildSurplusWillingSnapshot(),
+      measuredPowerKw: 0.7,
+    } as DecoratedDeviceSnapshot;
+
+    const result = toPlanDevice(ctx, binarySurvivor);
+
+    expect(ctx.getShedBehavior).toHaveBeenCalledWith(SURPLUS_DEVICE_ID);
+    if (!result.residualKw) throw new Error('Expected the binary survivor to expose residual power');
+    expect(result.residualKw.shed).toBe(0.7);
+    expect('currentTemperature' in result).toBe(false);
+    expect('currentOn' in result && result.currentOn).toBe(true);
+  });
+
+  it('falls back to stepped shedding when only the stepped facet survives temperature demotion', () => {
+    const ctx = createAppContextMock();
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    ctx.getShedBehavior = vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({
+      action: 'set_temperature',
+      temperature: 16,
+      stepId: null,
+    }));
+    const steppedSurvivor = {
+      available: true,
+      id: 'stepped-survivor',
+      name: 'Stepped survivor',
+      targets: [],
+      deviceClass: 'heater',
+      expectedPowerKw: 2,
+      expectedPowerSource: 'default',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1_000 },
+          { id: 'high', planningPowerW: 2_000 },
+        ],
+      },
+      selectedStepId: 'high',
+      planningPowerKw: 2,
+      measuredPowerKw: 2,
+    } satisfies DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
+
+    const result = toPlanDevice(ctx, steppedSurvivor);
+
+    if (!result.residualKw) throw new Error('Expected the stepped survivor to expose residual power');
+    expect(result.residualKw.shed).toBeGreaterThan(0);
+    expect('currentTemperature' in result).toBe(false);
     expect('currentOn' in result).toBe(false);
   });
 

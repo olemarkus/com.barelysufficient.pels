@@ -44,19 +44,66 @@ export function mergeFresherCapabilityObservations(params: {
     // is alive: Homey serves cached capability values even when the device has
     // been silent for hours. The 40-minute `STALE_DEVICE_OBSERVATION_MS` window
     // (in `lib/observer/observationFreshness.ts`) is the backstop.
-    for (const snapshot of nextSnapshot) {
+    for (let index = nextSnapshot.length - 1; index >= 0; index -= 1) {
+        const snapshot = nextSnapshot[index];
         const previous = previousById.get(snapshot.id);
         const sourceDevice = devicesById.get(snapshot.id);
-        if (!previous || !sourceDevice) continue;
-        mergeSnapshotObservationsForDevice({
+        if (!sourceDevice) continue;
+        const hadTemperature = snapshot.temperature !== undefined;
+        if (previous) {
+            mergeSnapshotObservationsForDevice({
+                state,
+                nextSnapshot: snapshot,
+                previous,
+                sourceDevice,
+                logger,
+                debugStructured,
+            });
+        } else {
+            mergeTemperatureRejectionObservations({
+                state,
+                snapshot,
+                sourceDevice,
+                logger,
+            });
+        }
+        if (
+            hadTemperature
+            && snapshot.temperature === undefined
+            && !snapshot.binaryCapabilityId
+            && !snapshot.steppedLoadProfile
+        ) {
+            nextSnapshot.splice(index, 1);
+        }
+    }
+}
+
+function mergeTemperatureRejectionObservations(params: {
+    state: DeviceTransportObservationState;
+    snapshot: TransportDeviceSnapshot;
+    sourceDevice: HomeyDeviceLike;
+    logger: { debug: (...args: unknown[]) => void };
+}): void {
+    const { state, snapshot, sourceDevice, logger } = params;
+    for (const capabilityId of ['target_temperature', 'measure_temperature'] as const) {
+        const observation = state.capabilityObservations.get(
+            buildCapabilityObservationKey(snapshot.id, capabilityId),
+        );
+        if (!observation || isFiniteNumber(observation.value)) continue;
+        mergeCapabilityObservation({
             state,
-            nextSnapshot: snapshot,
-            previous,
+            deviceId: snapshot.id,
+            deviceName: snapshot.name,
+            capabilityId,
             sourceDevice,
+            nextSnapshot: snapshot,
             logger,
-            debugStructured,
         });
     }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
 }
 
 function mergeSnapshotObservationsForDevice(params: {
@@ -222,7 +269,7 @@ function getMaxRetainedObservationTimeMs(
         const observation = state.capabilityObservations.get(
             buildCapabilityObservationKey(snapshot.id, capabilityId),
         );
-        if (observation && observation.source !== 'local_write') {
+        if (observation?.countsTowardDeviceFreshness) {
             max = Math.max(max, observation.observedAt);
         }
     }
@@ -249,7 +296,8 @@ function mergeCapabilityObservation(params: {
         logger,
         debugStructured,
     } = params;
-    const observation = state.capabilityObservations.get(buildCapabilityObservationKey(deviceId, capabilityId));
+    const observationKey = buildCapabilityObservationKey(deviceId, capabilityId);
+    const observation = state.capabilityObservations.get(observationKey);
     if (!observation) return;
     if (
         capabilityId === 'evcharger_charging_state'
@@ -277,8 +325,16 @@ function mergeCapabilityObservation(params: {
         observation,
     };
     if (fetchedIsFreshEnough) {
-        emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'pull_fresher_or_equal');
-        clearCapabilityObservationIfMatched(state, deviceId, capabilityId, nextSnapshot);
+        acceptFreshCapabilityPull({
+            state,
+            observationKey,
+            capabilityId,
+            fetchedValue,
+            deviceId,
+            nextSnapshot,
+            observation,
+            consolidationCtx,
+        });
         return;
     }
     const shouldPreserveObservation = shouldPreserveRetainedObservation({
@@ -286,6 +342,7 @@ function mergeCapabilityObservation(params: {
         fetchedHasKnownFreshness,
         fetchedLastUpdatedMs,
         observedAt: observation.observedAt,
+        preserveWithoutFetchedFreshness: isRejectedTemperatureObservation(capabilityId, observation),
     });
     if (!shouldPreserveObservation) {
         emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'retained_not_preserved');
@@ -309,13 +366,49 @@ function mergeCapabilityObservation(params: {
     });
 }
 
+function acceptFreshCapabilityPull(params: {
+    state: DeviceTransportObservationState;
+    observationKey: string;
+    capabilityId: string;
+    fetchedValue: unknown;
+    deviceId: string;
+    nextSnapshot: TransportDeviceSnapshot;
+    observation: CapabilityObservation;
+    consolidationCtx: ConsolidationContext;
+}): void {
+    const {
+        state, observationKey, capabilityId, fetchedValue, deviceId,
+        nextSnapshot, observation, consolidationCtx,
+    } = params;
+    emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'pull_fresher_or_equal');
+    if (isRejectedTemperatureObservation(capabilityId, observation) && isFiniteNumber(fetchedValue)) {
+        state.capabilityObservations.delete(observationKey);
+        return;
+    }
+    clearCapabilityObservationIfMatched(state, deviceId, capabilityId, nextSnapshot);
+}
+
+function isRejectedTemperatureObservation(
+    capabilityId: string,
+    observation: CapabilityObservation,
+): boolean {
+    const isTemperatureCapability = capabilityId === 'measure_temperature'
+        || capabilityId === 'target_temperature';
+    return isTemperatureCapability && !isFiniteNumber(observation.value);
+}
+
 function shouldPreserveRetainedObservation(params: {
     source: CapabilityObservationSource;
     fetchedHasKnownFreshness: boolean;
     fetchedLastUpdatedMs?: number;
     observedAt: number;
+    preserveWithoutFetchedFreshness: boolean;
 }): boolean {
-    const { source, fetchedHasKnownFreshness, fetchedLastUpdatedMs, observedAt } = params;
+    const {
+        source, fetchedHasKnownFreshness, fetchedLastUpdatedMs, observedAt,
+        preserveWithoutFetchedFreshness,
+    } = params;
+    if (preserveWithoutFetchedFreshness && !fetchedHasKnownFreshness) return true;
     const fetchedIsOlder = fetchedLastUpdatedMs !== undefined && fetchedLastUpdatedMs < observedAt;
     if (source === 'device_update') {
         return !fetchedHasKnownFreshness || fetchedIsOlder;

@@ -27,9 +27,9 @@ export type SettingsOverviewReadModelDeps = {
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
   getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
   getObservedTemperature?: (deviceId: string) => {
-    currentTarget: number | null;
-    currentTemperature?: number;
-  } | undefined;
+    currentTarget: number;
+    currentTemperature: number;
+  } | null;
   // Observation staleness is observer-owned freshness state — the plan device no
   // longer carries it (the plan has no right to distrust observer data). The
   // gray-state UI label is a display concern, so the read model sources staleness
@@ -74,6 +74,9 @@ function resolveOverviewTemperatureState(
 ): { currentTarget: number | null; plannedTarget?: number; currentTemperature?: number } {
   const observed = deps.getObservedTemperature?.(device.id);
   const planned = isTemperaturePlanDevice(device) ? device : null;
+  if (observed === null) {
+    return { currentTarget: null, plannedTarget: planned?.plannedTarget };
+  }
   if (observed !== undefined) {
     return {
       currentTarget: observed.currentTarget,

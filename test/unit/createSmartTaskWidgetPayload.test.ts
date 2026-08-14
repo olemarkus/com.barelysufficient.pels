@@ -46,8 +46,11 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
         id: 'heater',
         name: 'Hot water',
         deviceType: 'temperature',
-        currentTemperature: 48,
         targets: [{ id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 }],
+        temperature: {
+          currentTemperature: 48,
+          target: { id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 },
+        },
       })],
     });
     if (payload.state !== 'ready') throw new Error('expected ready');
@@ -100,6 +103,10 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
         name: 'Radiator',
         deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: 20, unit: 'C' }],
+        temperature: {
+          currentTemperature: 18,
+          target: { id: 'target_temperature', value: 20, unit: 'C' },
+        },
       })],
     });
     if (payload.state !== 'ready') throw new Error('expected ready');
@@ -112,9 +119,9 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
         buildDevice({ id: 'ev-z', name: 'Zoe', deviceClass: 'evcharger' }),
         buildDevice({ id: 'plug', name: 'Lamp', deviceType: 'onoff' }),
         buildDevice({ id: 'ev-a', name: 'Audi', deviceClass: 'evcharger' }),
-        buildDevice({ id: 'tank', name: 'Tank', deviceClass: 'waterheater', deviceType: 'temperature', targets: [{ id: 't', value: 60, unit: 'C' }] }),
-        buildDevice({ id: 'attic', name: 'Attic', deviceType: 'temperature', targets: [{ id: 't', value: 20, unit: 'C' }] }),
-        buildDevice({ id: 'boiler', name: 'Cellar', deviceClass: 'boiler', deviceType: 'temperature', targets: [{ id: 't', value: 60, unit: 'C' }] }),
+        buildDevice({ id: 'tank', name: 'Tank', deviceClass: 'waterheater', deviceType: 'temperature', temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 60, unit: 'C' } } }),
+        buildDevice({ id: 'attic', name: 'Attic', deviceType: 'temperature', temperature: { currentTemperature: 18, target: { id: 'target_temperature', value: 20, unit: 'C' } } }),
+        buildDevice({ id: 'boiler', name: 'Cellar', deviceClass: 'boiler', deviceType: 'temperature', temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 60, unit: 'C' } } }),
       ],
     });
     if (payload.state !== 'ready') throw new Error('expected ready');
@@ -149,8 +156,11 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       id: 'heater',
       name: 'Hot water',
       deviceType: 'temperature',
-      currentTemperature: 48,
       targets: [{ id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 }],
+      temperature: {
+        currentTemperature: 48,
+        target: { id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 },
+      },
       controlModel: 'stepped_load',
       steppedLoadProfile: {} as SteppedLoadProfile,
       ...overrides,

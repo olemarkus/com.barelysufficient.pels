@@ -94,7 +94,9 @@ const serializePlanForUi = (
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
     getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
     getAssociatedCarChargingState: (deviceId) => deps.getAssociatedCarChargingState?.(deviceId),
-    getObservedTemperature: (deviceId) => deps.getObservedTemperature?.(deviceId),
+    ...(deps.getObservedTemperature
+      ? { getObservedTemperature: deps.getObservedTemperature }
+      : {}),
     getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
     getDeviceTypeById: deps.getDeviceTypeById,
     getSteppedLoadProfileById: deps.getSteppedLoadProfileById,

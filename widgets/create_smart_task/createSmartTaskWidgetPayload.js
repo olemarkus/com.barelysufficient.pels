@@ -506,7 +506,7 @@ var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
 // packages/shared-domain/src/smartTaskDeviceKind.ts
 var isEvCharger = (device) => device.deviceClass === "evcharger";
-var supportsTemperatureGoal = (device) => device.deviceType === "temperature" || (device.targets?.length ?? 0) > 0;
+var supportsTemperatureGoal = (device) => device.temperature !== void 0;
 var resolveSmartTaskDeviceKind = (device) => {
   if (isEvCharger(device)) return "ev_soc";
   if (device.temperatureControlDisabled === true) return null;
@@ -522,7 +522,7 @@ var resolveSmartTaskGoalBounds = (device, kind) => {
   if (kind === "ev_soc") {
     return { unit, min: 1, max: 100, step: 1 };
   }
-  const target = device.targets?.[0];
+  const target = device.temperature?.target;
   const min = isFiniteNumber(target?.min) ? target.min : TEMPERATURE_FALLBACK_MIN;
   const max = isFiniteNumber(target?.max) ? target.max : TEMPERATURE_FALLBACK_MAX;
   const step = isFiniteNumber(target?.step) && target.step > 0 ? target.step : TEMPERATURE_FALLBACK_STEP;
@@ -530,7 +530,7 @@ var resolveSmartTaskGoalBounds = (device, kind) => {
 };
 var resolveSmartTaskCurrentValue = (device, kind) => {
   if (kind === "temperature") {
-    return isFiniteNumber(device.currentTemperature) ? device.currentTemperature : null;
+    return device.temperature?.currentTemperature ?? null;
   }
   const percent = device.stateOfCharge?.percent;
   return isFiniteNumber(percent) ? percent : null;

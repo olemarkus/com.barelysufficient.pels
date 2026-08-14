@@ -231,7 +231,17 @@ describe('DeviceTransport', () => {
                     observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                     source: 'snapshot_refresh',
                 },
-                currentTemperature: 19.5,
+                temperature: {
+                    currentTemperature: 19.5,
+                    target: {
+                        id: 'target_temperature',
+                        value: 21,
+                        unit: '°C',
+                        min: 5,
+                        max: 30,
+                        step: 0.5,
+                    },
+                },
                 canSetControl: true,
                 available: false,
                 powerCapable: true,
@@ -380,7 +390,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('keeps temperature devices when target capability values are malformed and preserves an unknown current target', () => {
+        it('drops only the temperature facet when a binary device reports a malformed target', () => {
             const [parsed] = deviceManager.parseDeviceListForTests([{
                 id: 'thermo-invalid-target',
                 name: 'Broken Thermostat',
@@ -395,14 +405,11 @@ describe('DeviceTransport', () => {
 
             expect(parsed).toEqual(expect.objectContaining({
                 id: 'thermo-invalid-target',
-                deviceType: 'temperature',
-                targets: [expect.objectContaining({
-                    id: 'target_temperature',
-                    min: 5,
-                    max: 35,
-                    step: 0.5,
-                })],
+                deviceType: 'onoff',
+                targets: [],
+                binaryControl: { on: true },
             }));
+            expect(hasObservedTemperature(parsed)).toBe(false);
             expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'target_capability_value_malformed',
                 deviceId: 'thermo-invalid-target',
@@ -412,8 +419,8 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('skips partial temperature devices that are missing measure_temperature', () => {
-            const parsed = deviceManager.parseDeviceListForTests([{
+        it('keeps the binary facet when exact temperature measurement support is missing', () => {
+            const [parsed] = deviceManager.parseDeviceListForTests([{
                 id: 'bad-thermo',
                 name: 'Broken Thermostat',
                 class: 'thermostat',
@@ -421,6 +428,27 @@ describe('DeviceTransport', () => {
                 capabilitiesObj: {
                     onoff: { value: true, id: 'onoff' },
                     target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                },
+            }]);
+
+            expect(parsed).toEqual(expect.objectContaining({
+                id: 'bad-thermo',
+                deviceType: 'onoff',
+                targets: [],
+                binaryControl: { on: true },
+            }));
+            expect(hasObservedTemperature(parsed)).toBe(false);
+        });
+
+        it('drops a temperature-only device when either member of the pair is malformed', () => {
+            const parsed = deviceManager.parseDeviceListForTests([{
+                id: 'temp-only-broken',
+                name: 'Broken Tank',
+                class: 'thermostat',
+                capabilities: ['measure_temperature', 'target_temperature'],
+                capabilitiesObj: {
+                    measure_temperature: { value: Number.NaN, id: 'measure_temperature' },
+                    target_temperature: { value: 60, id: 'target_temperature', units: '°C' },
                 },
             }]);
 
@@ -1842,6 +1870,50 @@ describe('DeviceTransport', () => {
             managedDeviceManager.destroy();
         });
 
+        it('does not retain malformed temperature evidence from an unmanaged device.update', async () => {
+            const managedState: Record<string, boolean> = { dev1: true };
+            const managedDeviceManager = new DeviceTransport(
+                homeyMock,
+                loggerMock,
+                { getManaged: (deviceId) => managedState[deviceId] === true },
+            );
+            await managedDeviceManager.init();
+            const validDevice = {
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_temperature', 'target_temperature', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_temperature: { value: 20, id: 'measure_temperature' },
+                        target_temperature: { value: 21, id: 'target_temperature' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            };
+            mockApiGet.mockResolvedValue(validDevice);
+            await managedDeviceManager.refreshSnapshot();
+            expect(hasObservedTemperature(
+                managedDeviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+            )).toBe(true);
+
+            managedState.dev1 = false;
+            managedDeviceManager.injectDeviceUpdateForTest({
+                ...validDevice.dev1,
+                capabilitiesObj: {
+                    ...validDevice.dev1.capabilitiesObj,
+                    measure_temperature: { value: Number.NaN, id: 'measure_temperature' },
+                },
+            });
+
+            managedState.dev1 = true;
+            await managedDeviceManager.refreshSnapshot();
+            expect(hasObservedTemperature(
+                managedDeviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+            )).toBe(true);
+            managedDeviceManager.destroy();
+        });
+
         it('updates local state on power change via device.update', async () => {
             await deviceManager.refreshSnapshot();
 
@@ -1981,6 +2053,10 @@ describe('DeviceTransport', () => {
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
                 targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+                temperature: {
+                    currentTemperature: 20,
+                    target: { id: 'target_temperature', value: 20, unit: '°C' },
+                },
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
                 binaryCapabilityId: 'onoff',
@@ -2041,6 +2117,10 @@ describe('DeviceTransport', () => {
                 expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
                 targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+                temperature: {
+                    currentTemperature: 20,
+                    target: { id: 'target_temperature', value: 20, unit: '°C' },
+                },
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
                 binaryCapabilityId: 'onoff',
@@ -4327,7 +4407,7 @@ describe('DeviceTransport', () => {
             );
         });
 
-        it('keeps the correct target pending when a device has multiple target capabilities', async () => {
+        it('admits only the exact target_temperature capability', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -4346,17 +4426,10 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
 
-            const snap = deviceManager.getSnapshot()[0];
-            expect(snap?.targets).toHaveLength(2);
+            const snap = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot | undefined;
+            expect(snap?.targets).toHaveLength(1);
             expect(snap?.targets[0]).toEqual(expect.objectContaining({ id: 'target_temperature', value: 22 }));
-            expect(snap?.targets[1]).toEqual(expect.objectContaining({ id: 'target_temperature.zone1', value: 20 }));
-
-            await deviceManager.setCapability('dev1', 'target_temperature.zone1', 18);
-
-            const updated = deviceManager.getSnapshot()[0];
-            expect(updated?.targets[0]).toEqual(expect.objectContaining({ id: 'target_temperature', value: 22 }));
-            expect(updated?.targets[1]).toEqual(expect.objectContaining({ id: 'target_temperature.zone1', value: 20 }));
-            expect(updated?.lastLocalWriteMs).toBeDefined();
+            expect(snap?.temperature?.target.id).toBe('target_temperature');
         });
 
         it('does not change observed onoff state after an accepted binary write', async () => {
@@ -7267,7 +7340,8 @@ describe('DeviceTransport', () => {
 
                     const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
                     if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
-                    expect(snapshot.currentTemperature).toBe(21);
+                    expect(snapshot.temperature.currentTemperature).toBe(21);
+                    expect(snapshot.temperature.target.value).toBe(20);
                     expect(snapshot.lastFreshDataMs).toBeGreaterThan(freshnessAtRefresh!);
                     expect(liveStateListener).toHaveBeenCalledOnce();
                     expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
@@ -7281,7 +7355,7 @@ describe('DeviceTransport', () => {
                 }
             });
 
-            it('realtime measure_temperature ignores a non-finite reading (present implies finite)', async () => {
+            it('realtime measure_temperature removes the complete temperature facet on a non-finite reading', async () => {
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -7290,20 +7364,271 @@ describe('DeviceTransport', () => {
                     await deviceManager.refreshSnapshot();
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
                     const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
+                    const liveStateListener = vi.fn();
+                    const reconcileListener = vi.fn();
+                    deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
 
-                    // NaN is a `number` in JS; the freshness-only seam must reject it
-                    // (no write, no freshness bump) so consumers reading the narrowed
-                    // `currentTemperature` never see a non-finite value.
+                    // Keep the targeted recovery pull malformed too, so this assertion
+                    // observes the boundary state rather than immediately recovering.
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            ...buildThermostatDevice().dev1,
+                            capabilitiesObj: {
+                                ...buildThermostatDevice().dev1.capabilitiesObj,
+                                measure_temperature: { value: Number.NaN, id: 'measure_temperature' },
+                            },
+                        },
+                    });
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
 
                     const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
-                    if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
-                    expect(snapshot.currentTemperature).toBe(21);
+                    expect(hasObservedTemperature(snapshot)).toBe(false);
+                    expect(snapshot.targets).not.toContainEqual(expect.objectContaining({ id: 'target_temperature' }));
+                    expect(snapshot.deviceType).toBe('onoff');
+                    expect(snapshot.binaryControl).toEqual({ on: true });
                     expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
+                    expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                        deviceId: 'dev1',
+                        capabilityId: 'measure_temperature',
+                    }));
+                    expect(reconcileListener).toHaveBeenCalledWith(expect.objectContaining({
+                        deviceId: 'dev1',
+                        changes: [expect.objectContaining({
+                            capabilityId: 'target_temperature',
+                            nextValue: 'absent',
+                        })],
+                    }));
+
+                    await deviceManager.refreshSnapshot();
+                    const refreshed = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot;
+                    expect(hasObservedTemperature(refreshed)).toBe(false);
+                    expect(refreshed.lastFreshDataMs).toBe(freshnessBefore);
                 } finally {
                     vi.useRealTimers();
                 }
+            });
+
+            it.each([
+                { capabilityId: 'measure_temperature', validValue: 21 },
+                { capabilityId: 'target_temperature', validValue: 22 },
+            ] as const)(
+                'recovers the atomic temperature facet after $capabilityId becomes valid again',
+                async ({ capabilityId, validValue }) => {
+                    await deviceManager.init();
+                    mockApiGet.mockResolvedValue(buildThermostatDevice());
+                    await deviceManager.refreshSnapshot();
+                    const reconcileListener = vi.fn();
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+                    deviceManager.injectCapabilityUpdateForTest('dev1', capabilityId, Number.NaN);
+                    expect(hasObservedTemperature(
+                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                    )).toBe(false);
+
+                    deviceManager.injectCapabilityUpdateForTest('dev1', capabilityId, validValue);
+
+                    await vi.waitFor(() => {
+                        const recovered = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot;
+                        expect(hasObservedTemperature(recovered)).toBe(true);
+                    });
+                    const recovered = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot;
+                    if (!hasObservedTemperature(recovered)) throw new Error('expected recovered temperature facet');
+                    expect(Number.isFinite(recovered.temperature.currentTemperature)).toBe(true);
+                    expect(Number.isFinite(recovered.temperature.target.value)).toBe(true);
+                    expect(reconcileListener).toHaveBeenCalledTimes(2);
+                },
+            );
+
+            it('keeps recovery pending across two stale pulls until a later coherent refresh', async () => {
+                await deviceManager.init();
+                const validDevices = buildThermostatDevice();
+                const staleDevices = {
+                    dev1: {
+                        ...validDevices.dev1,
+                        capabilitiesObj: {
+                            ...validDevices.dev1.capabilitiesObj,
+                            measure_temperature: { value: Number.NaN, id: 'measure_temperature' },
+                        },
+                    },
+                };
+                mockApiGet.mockResolvedValue(staleDevices);
+                await deviceManager.refreshSnapshot();
+                expect(hasObservedTemperature(
+                    deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                )).toBe(false);
+
+                mockApiGet.mockClear();
+                let targetedReadCount = 0;
+                mockApiGet.mockImplementation(async (path: string) => {
+                    if (path === 'manager/devices/device/dev1') {
+                        targetedReadCount += 1;
+                        return staleDevices.dev1;
+                    }
+                    return validDevices;
+                });
+                const reconcileListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                const refreshSpy = vi.spyOn(deviceManager, 'refreshSnapshot');
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
+
+                await vi.waitFor(() => {
+                    expect(refreshSpy).toHaveBeenCalledWith({ targetedRefresh: true });
+                });
+                const firstRefresh = refreshSpy.mock.results[0];
+                if (!firstRefresh) throw new Error('Expected an opportunistic recovery refresh');
+                await firstRefresh.value;
+                expect(hasObservedTemperature(
+                    deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                )).toBe(false);
+                await deviceManager.refreshSnapshot({ targetedRefresh: true });
+                expect(targetedReadCount).toBe(2);
+                expect(hasObservedTemperature(
+                    deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                )).toBe(false);
+
+                await deviceManager.refreshSnapshot();
+
+                expect(hasObservedTemperature(
+                    deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                )).toBe(true);
+                expect(reconcileListener).toHaveBeenCalledOnce();
+            });
+
+            it('retires malformed rejection evidence only when a known newer finite pull arrives', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    const validDevices = buildThermostatDevice();
+                    mockApiGet.mockResolvedValue(validDevices);
+                    await deviceManager.refreshSnapshot();
+
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
+                    expect(hasObservedTemperature(
+                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                    )).toBe(false);
+
+                    const newerDevices = {
+                        dev1: {
+                            ...validDevices.dev1,
+                            capabilitiesObj: {
+                                ...validDevices.dev1.capabilitiesObj,
+                                measure_temperature: {
+                                    ...validDevices.dev1.capabilitiesObj.measure_temperature,
+                                    value: 20,
+                                    lastUpdated: '2026-04-01T12:02:00.000Z',
+                                },
+                            },
+                        },
+                    };
+                    vi.setSystemTime(new Date('2026-04-01T12:03:00.000Z'));
+                    mockApiGet.mockResolvedValue(newerDevices);
+                    await deviceManager.refreshSnapshot();
+                    expect(hasObservedTemperature(
+                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                    )).toBe(true);
+
+                    mockApiGet.mockResolvedValue(validDevices);
+                    await deviceManager.refreshSnapshot();
+                    expect(hasObservedTemperature(
+                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                    )).toBe(true);
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('drops a temperature-only device on malformed realtime data and recovers it when valid again', async () => {
+                await deviceManager.init();
+                const thermostat = buildThermostatDevice().dev1;
+                const { onoff: _onoff, ...temperatureCapabilities } = thermostat.capabilitiesObj;
+                const temperatureOnlyDevice = {
+                    dev1: {
+                        ...thermostat,
+                        capabilities: thermostat.capabilities.filter((capabilityId) => capabilityId !== 'onoff'),
+                        capabilitiesObj: temperatureCapabilities,
+                    },
+                };
+                mockApiGet.mockResolvedValue(temperatureOnlyDevice);
+                await deviceManager.refreshSnapshot();
+                expect(hasObservedTemperature(
+                    deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                )).toBe(true);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
+                expect(deviceManager.getSnapshot()).toEqual([]);
+
+                // Homey may serve a cached finite pair after the newer malformed
+                // realtime observation. The retained rejection must win even
+                // though removing this temperature-only device also removed its
+                // previous snapshot entry.
+                await deviceManager.refreshSnapshot();
+                expect(deviceManager.getSnapshot()).toEqual([]);
+
+                const { lastUpdated: _lastUpdated, ...measurementWithoutFreshness } = temperatureCapabilities.measure_temperature;
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        ...temperatureOnlyDevice.dev1,
+                        capabilitiesObj: {
+                            ...temperatureCapabilities,
+                            measure_temperature: measurementWithoutFreshness,
+                        },
+                    },
+                });
+                await deviceManager.refreshSnapshot();
+                expect(deviceManager.getSnapshot()).toEqual([]);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
+                await vi.waitFor(() => {
+                    expect(hasObservedTemperature(
+                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
+                    )).toBe(true);
+                });
+            });
+
+            it('includes an evicted temperature-only device in its targeted recovery fetch', async () => {
+                await deviceManager.init();
+                const thermostat = buildThermostatDevice().dev1;
+                const { onoff: _onoff, ...temperatureCapabilities } = thermostat.capabilitiesObj;
+                const temperatureOnlyDevice = {
+                    ...thermostat,
+                    capabilities: thermostat.capabilities.filter((capabilityId) => capabilityId !== 'onoff'),
+                    capabilitiesObj: temperatureCapabilities,
+                };
+                const binarySurvivor = {
+                    id: 'dev2',
+                    name: 'Binary survivor',
+                    class: 'socket',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 500, id: 'measure_power' },
+                    },
+                };
+                mockApiGet.mockResolvedValue({ dev1: temperatureOnlyDevice, dev2: binarySurvivor });
+                await deviceManager.refreshSnapshot();
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
+                expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev2']);
+
+                mockApiGet.mockImplementation(async (path: string) => {
+                    if (path === 'manager/devices/device/dev1') return temperatureOnlyDevice;
+                    if (path === 'manager/devices/device/dev2') return binarySurvivor;
+                    throw new Error(`Unexpected recovery path: ${path}`);
+                });
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
+
+                await vi.waitFor(() => {
+                    const recovered = findSnapshotDevice(
+                        deviceManager.getSnapshot(),
+                        'dev1',
+                    ) as TransportDeviceSnapshot | undefined;
+                    expect(recovered === undefined ? false : hasObservedTemperature(recovered)).toBe(true);
+                });
+                expect(mockApiGet).toHaveBeenCalledWith('manager/devices/device/dev1');
             });
 
             it('local writes do not advance freshness', async () => {
@@ -7653,7 +7978,10 @@ describe('DeviceTransport', () => {
                             class: 'heater',
                             capabilities: ['onoff', 'measure_power'],
                             capabilitiesObj: {
-                                onoff: { id: 'onoff' },
+                                onoff: {
+                                    id: 'onoff',
+                                    lastUpdated: '2026-04-01T12:10:00.000Z',
+                                },
                             },
                         },
                     });

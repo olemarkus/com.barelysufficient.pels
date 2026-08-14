@@ -190,11 +190,9 @@ export const filterRelevantSettings = (settings: unknown): Record<string, unknow
 };
 
 export const compactPelsTargetSnapshot = (
-  // Probe-widened: this debug seam dumps the raw observed temperature for EVERY
-  // device (incl. non-temperature `deviceType` devices that carry a
-  // `measure_temperature` reading), so it reads through the owner probe rather
-  // than `hasObservedTemperature` — a plain `TargetDeviceSnapshot` (from
-  // `getSnapshot()`) stays assignable because the probe field is optional.
+  // Probe-widened: this debug seam dumps the producer-admitted atomic
+  // temperature facet when present. A plain `TargetDeviceSnapshot` (from
+  // `getSnapshot()`) stays assignable because the facet is optional.
   snapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe) | null,
 ): PelsTargetSnapshotSummary | null => {
@@ -211,7 +209,7 @@ export const compactPelsTargetSnapshot = (
     suggestedSteppedLoadProfile: snapshot.suggestedSteppedLoadProfile,
     targetPowerConfig: snapshot.targetPowerConfig,
     binaryControl: snapshot.binaryControl,
-    currentTemperature: snapshot.currentTemperature,
+    currentTemperature: snapshot.temperature?.currentTemperature,
     targets: snapshot.targets,
     expectedPowerKw: snapshot.expectedPowerKw,
     measuredPowerKw: snapshot.measuredPowerKw,

@@ -147,7 +147,7 @@ export function summarizeSnapshotRefreshMetrics(snapshot: TransportDeviceSnapsho
             continue;
         }
         availableDevices++;
-        if (device.currentTemperature != null) temperatureKnownDevices++;
+        if (device.temperature !== undefined) temperatureKnownDevices++;
     }
     return {
         availableDevices,

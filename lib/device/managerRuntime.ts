@@ -19,6 +19,7 @@ import {
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
+import { preserveTemperatureAcrossPartialDeviceUpdate } from './transport/temperatureObservation';
 
 const moduleLogger = getLogger('device/manager-runtime');
 
@@ -170,24 +171,27 @@ export function reconcileRealtimeDeviceUpdate(params: {
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
   if (previous) preserveNewerReportedStepObservation(previous, parsed);
+  const resolvedParsed = previous
+    ? preserveTemperatureAcrossPartialDeviceUpdate({ device, previous, parsed })
+    : parsed;
 
   if (snapshotIndex >= 0) {
-    latestSnapshot[snapshotIndex] = parsed;
+    latestSnapshot[snapshotIndex] = resolvedParsed;
   } else {
-    latestSnapshot.push(parsed);
+    latestSnapshot.push(resolvedParsed);
   }
 
-  const changes = getPlanReconcileRealtimeChanges(previous, parsed, {
+  const changes = getPlanReconcileRealtimeChanges(previous, resolvedParsed, {
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
-  const observedCapabilityIds = getObservedCapabilityIds(previous, parsed, {
+  const observedCapabilityIds = getObservedCapabilityIds(previous, resolvedParsed, {
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
   return {
     observedControlStateChanged: changes.length > 0,
     changes,
     observedCapabilityIds,
-    currentSnapshot: parsed,
+    currentSnapshot: resolvedParsed,
   };
 }
 
@@ -435,8 +439,22 @@ function getPlanReconcileRealtimeChanges(
     if (binaryChange.previousValue !== binaryChange.nextValue) changes.push(binaryChange);
   }
 
+  const temperaturePresenceChanged = (previous.temperature === undefined) !== (next.temperature === undefined);
+  if (temperaturePresenceChanged) {
+    changes.push({
+      capabilityId: 'target_temperature',
+      previousValue: previous.temperature
+        ? formatTargetValue(previous.temperature.target.value, previous.temperature.target.unit)
+        : 'absent',
+      nextValue: next.temperature
+        ? formatTargetValue(next.temperature.target.value, next.temperature.target.unit)
+        : 'absent',
+    });
+  }
+
   const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
   for (const nextTarget of next.targets) {
+    if (temperaturePresenceChanged && nextTarget.id === 'target_temperature') continue;
     const previousTarget = previousTargetsById.get(nextTarget.id);
     if (!previousTarget || previousTarget.value === nextTarget.value) continue;
     changes.push({
@@ -466,6 +484,13 @@ function getObservedCapabilityIds(
   if (previous.evChargingState !== next.evChargingState) {
     capabilityIds.add('evcharger_charging_state');
   }
+  if ((previous.temperature === undefined) !== (next.temperature === undefined)) {
+    capabilityIds.add('measure_temperature');
+    capabilityIds.add('target_temperature');
+  }
+  if (hasTemperatureMeasurementChanged(previous, next)) {
+    capabilityIds.add('measure_temperature');
+  }
   if (hasStateOfChargeObservationChanged(previous, next)) {
     capabilityIds.add(next.stateOfCharge.capabilityId ?? EV_SOC_CAPABILITY_ID);
   }
@@ -478,6 +503,14 @@ function getObservedCapabilityIds(
   }
 
   return [...capabilityIds];
+}
+
+function hasTemperatureMeasurementChanged(
+  previous: TransportDeviceSnapshot,
+  next: TransportDeviceSnapshot,
+): boolean {
+  if (!previous.temperature || !next.temperature) return false;
+  return previous.temperature.currentTemperature !== next.temperature.currentTemperature;
 }
 
 function hasStateOfChargeObservationChanged(

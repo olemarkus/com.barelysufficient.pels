@@ -39,13 +39,11 @@ import {
 } from '../../lib/plan/planSteppedLoadState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
-import type { ShedAction } from '../../lib/plan/planTypes';
 
-export type ResidualKwForPlanDeviceShedBehavior = {
-  action: ShedAction;
-  temperature: number | null;
-  stepId: string | null;
-};
+export type ResidualKwForPlanDeviceShedBehavior =
+  | { action: 'turn_off' }
+  | { action: 'set_temperature'; temperature: number }
+  | { action: 'set_step'; stepId: string };
 
 export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
@@ -98,7 +96,7 @@ function toRestoreSteppedLoad(
 function toResidualShedBehavior(
   shedBehavior: ResidualKwForPlanDeviceShedBehavior,
 ): ResidualKwShedBehavior {
-  if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+  if (shedBehavior.action === 'set_temperature') {
     return { action: 'set_temperature', temperature: shedBehavior.temperature };
   }
   if (shedBehavior.action === 'set_step') {

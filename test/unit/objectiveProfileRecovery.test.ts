@@ -20,19 +20,26 @@ import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDevi
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;
 
-const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
+type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
+  & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> & { currentTemperature?: number };
+
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => {
+  const { currentTemperature = 50, ...rest } = overrides;
+  const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
+  return withResolvedCurrentDraw({
   available: true,
   id: 'heater-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
-  targets: [],
+  targets: [target],
   deviceType: 'temperature',
   binaryControl: { on: true },
-  currentTemperature: 50,
+  temperature: { currentTemperature, target },
   lastFreshDataMs: startMs,
   measuredPowerKw: 2,
-  ...overrides,
-});
+  ...rest,
+  });
+};
 
 const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
   available: true,

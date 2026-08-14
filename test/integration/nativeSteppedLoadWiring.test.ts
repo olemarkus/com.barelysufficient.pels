@@ -467,6 +467,36 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('target_power');
   });
 
+  it('keeps an independent stepped-load facet when the temperature pair is malformed', () => {
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      { getDeviceTargetPowerConfig: () => ({ min: 0, max: 3_000, step: 1_000 }) },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([{
+      id: 'stepped-heater',
+      name: 'Stepped heater',
+      class: 'heater',
+      capabilities: ['measure_power', 'target_power', 'measure_temperature', 'target_temperature'],
+      capabilitiesObj: {
+        measure_power: { value: 1_000 },
+        target_power: { value: 1_000, setable: true },
+        measure_temperature: { value: Number.NaN },
+        target_temperature: { value: 50 },
+      },
+    }]);
+
+    expect(parsed).toEqual(expect.objectContaining({
+      id: 'stepped-heater',
+      deviceType: 'onoff',
+      controlModel: 'stepped_load',
+      targets: [],
+      temperature: undefined,
+      steppedLoadProfile: expect.objectContaining({ steps: expect.any(Array) }),
+    }));
+  });
+
   it('publishes changed exact target power even when its derived step id is unchanged', () => {
     const baseConfig = {
       enabled: true,
@@ -1245,17 +1275,21 @@ describe('native stepped-load wiring', () => {
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'max',
       }));
+      const observedCursor = liveStateObserved.mock.calls[0]?.[0] as {
+        observationSeq: number;
+        observedAtMs: number;
+      };
       expect(liveStateObserved).toHaveBeenCalledWith(expect.objectContaining({
         source: 'realtime_capability',
         deviceId: 'hoiax-1',
-        observationSeq: 2,
+        observationSeq: expect.any(Number),
         observedAtMs: expect.any(Number),
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       }));
       expect(realtimeReconcile).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: 'hoiax-1',
-        observationSeq: 2,
-        observedAtMs: expect.any(Number),
+        observationSeq: observedCursor.observationSeq,
+        observedAtMs: observedCursor.observedAtMs,
         name: 'Connected 300',
         changes: [{
           capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,

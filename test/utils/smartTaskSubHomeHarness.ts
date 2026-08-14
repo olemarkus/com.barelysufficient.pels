@@ -20,13 +20,17 @@ export const SUB_HOME = { homeId: 'h_cabin', name: 'Cabin', rootZoneId: 'z2', me
 
 // Managed temperature devices in the runtime-planned snapshot with an explicit
 // 30..75 °C settable range (same fixture family as createDeferredObjectiveApp).
-export const buildPlannedHeater = (id: string, name: string, zoneId: string): TargetDeviceSnapshot => ({
-  id,
-  name,
-  zoneId,
-  capabilities: ['target_temperature', 'measure_power'],
-  targets: [{ id: 'target_temperature', value: 50, min: 30, max: 75, step: 0.5 }],
-} as unknown as TargetDeviceSnapshot);
+export const buildPlannedHeater = (id: string, name: string, zoneId: string): TargetDeviceSnapshot => {
+  const target = { id: 'target_temperature' as const, value: 50, min: 30, max: 75, step: 0.5 };
+  return {
+    id,
+    name,
+    zoneId,
+    capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+    targets: [target],
+    temperature: { currentTemperature: 45, target },
+  } as unknown as TargetDeviceSnapshot;
+};
 
 export const tempCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreviewCandidate => ({
   kind: 'temperature',

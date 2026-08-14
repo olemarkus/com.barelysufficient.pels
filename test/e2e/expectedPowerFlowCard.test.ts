@@ -282,7 +282,10 @@ describe('Expected power flow card', () => {
       {
         id: 'dev-3',
         capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-        capabilitiesObj: {},
+        capabilitiesObj: {
+          measure_temperature: { value: 20 },
+          target_temperature: { value: 21 },
+        },
         name: 'Heater',
         class: 'heater',
         settings: {},

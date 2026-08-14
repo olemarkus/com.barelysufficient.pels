@@ -276,10 +276,10 @@ function emitDeviceObservationEvents(params: {
     emitObservedState,
     emitPlanReconcile,
   } = params;
-  const observedStateOfCharge = observedCapabilityIds.some((capabilityId) => (
-    isStateOfChargeCapabilityId(capabilityId)
+  const observedNonControlFacet = observedCapabilityIds.some((capabilityId) => (
+    capabilityId === 'measure_temperature' || isStateOfChargeCapabilityId(capabilityId)
   ));
-  if (!hadChanges && !observedStateOfCharge) return;
+  if (!hadChanges && !observedNonControlFacet) return;
   const eventCursor = cursor ?? createObservationCursor?.(deviceId) ?? {};
   emitObservedState({
     source: 'device_update',

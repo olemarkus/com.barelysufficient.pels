@@ -75,9 +75,9 @@ export type PlanServiceDeps = {
   // device is projected to the planner as binary but still shows the external
   // target and measured temperature through this observer-owned seam.
   getObservedTemperature?: (deviceId: string) => {
-    currentTarget: number | null;
-    currentTemperature?: number;
-  } | undefined;
+    currentTarget: number;
+    currentTemperature: number;
+  } | null;
   // Observation staleness for the settings-UI gray-state label AND the idle
   // classifier's "unresponsive" detection, sourced from the observer (its
   // canonical owner — `ObservedDeviceState` freshness), not the plan device. The

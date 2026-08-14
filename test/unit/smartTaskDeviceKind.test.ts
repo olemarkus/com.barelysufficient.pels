@@ -9,25 +9,27 @@ import { formatSmartTaskDeadlineLong } from '../../packages/shared-domain/src/sm
 
 describe('resolveSmartTaskDeviceKind', () => {
   it('classifies an EV charger as ev_soc even when it also has a target', () => {
-    expect(resolveSmartTaskDeviceKind({ deviceClass: 'evcharger', targets: [{ value: 1 }] })).toBe('ev_soc');
+    expect(resolveSmartTaskDeviceKind({
+      deviceClass: 'evcharger',
+      temperature: { currentTemperature: 1, target: { value: 1 } },
+    })).toBe('ev_soc');
   });
 
-  it('classifies a temperature device type as temperature', () => {
-    expect(resolveSmartTaskDeviceKind({ deviceType: 'temperature', targets: [] })).toBe('temperature');
-  });
-
-  it('classifies any device with a settable target as temperature', () => {
-    expect(resolveSmartTaskDeviceKind({ targets: [{ value: 20, min: 5, max: 30 }] })).toBe('temperature');
+  it('classifies only a device with a complete temperature observation as temperature', () => {
+    expect(resolveSmartTaskDeviceKind({
+      temperature: { currentTemperature: 18, target: { value: 20, min: 5, max: 30 } },
+    })).toBe('temperature');
+    expect(resolveSmartTaskDeviceKind({ deviceType: 'temperature' })).toBeNull();
   });
 
   it('returns null for an ineligible on/off device', () => {
-    expect(resolveSmartTaskDeviceKind({ deviceType: 'onoff', targets: [] })).toBeNull();
+    expect(resolveSmartTaskDeviceKind({ deviceType: 'onoff' })).toBeNull();
   });
 
   it('rejects temperature tasks when PELS temperature control is disabled', () => {
     expect(resolveSmartTaskDeviceKind({
       deviceType: 'temperature',
-      targets: [{ value: 20 }],
+      temperature: { currentTemperature: 18, target: { value: 20 } },
       temperatureControlDisabled: true,
     })).toBeNull();
   });
@@ -48,13 +50,17 @@ describe('resolveSmartTaskGoalBounds', () => {
   });
 
   it('pulls temperature bounds from the device target', () => {
-    expect(resolveSmartTaskGoalBounds({ targets: [{ value: 20, min: 10, max: 80, step: 0.5 }] }, 'temperature')).toEqual({
+    expect(resolveSmartTaskGoalBounds({
+      temperature: { currentTemperature: 18, target: { value: 20, min: 10, max: 80, step: 0.5 } },
+    }, 'temperature')).toEqual({
       unit: '°C', min: 10, max: 80, step: 0.5,
     });
   });
 
   it('falls back to a thermostat range when the target has no bounds', () => {
-    expect(resolveSmartTaskGoalBounds({ targets: [{ value: 20 }] }, 'temperature')).toEqual({
+    expect(resolveSmartTaskGoalBounds({
+      temperature: { currentTemperature: 18, target: { value: 20 } },
+    }, 'temperature')).toEqual({
       unit: '°C', min: 5, max: 95, step: 0.5,
     });
   });
@@ -84,7 +90,9 @@ describe('resolveSmartTaskDefaultGoal', () => {
 
 describe('resolveSmartTaskCurrentValue', () => {
   it('reads currentTemperature for temperature', () => {
-    expect(resolveSmartTaskCurrentValue({ currentTemperature: 48 }, 'temperature')).toBe(48);
+    expect(resolveSmartTaskCurrentValue({
+      temperature: { currentTemperature: 48, target: { value: 50 } },
+    }, 'temperature')).toBe(48);
   });
 
   it('reads stateOfCharge.percent for ev_soc', () => {

@@ -168,7 +168,13 @@ describe('buildSmartTasksWidgetPayload', () => {
   test('joins live current value from device snapshot', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput(
       { dev: buildPlan({ deviceId: 'dev', targetTemperatureC: 55 }) },
-      [buildDevice({ id: 'dev', currentTemperature: 42 })],
+      [buildDevice({
+        id: 'dev',
+        temperature: {
+          currentTemperature: 42,
+          target: { id: 'target_temperature', value: 55, unit: '°C' },
+        },
+      })],
     ));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;

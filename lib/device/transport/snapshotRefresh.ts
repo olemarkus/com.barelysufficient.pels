@@ -67,6 +67,10 @@ import {
 } from './transportTypes';
 import { reconcileBinarySettleEvidenceAfterSnapshotRefresh } from './binarySettleEvidence';
 import { fireSnapshotMutatedForRefresh } from './deviceUpdateHandling';
+import {
+    completePendingTemperatureRecoveriesAfterRefresh,
+    getPendingTemperatureRecoveryDeviceIds,
+} from './temperatureRecovery';
 
 const moduleLogger = getLogger('device/transport');
 
@@ -220,6 +224,7 @@ function resolveCommittedRefreshSnapshot(
         missByDeviceId: ctx.targetedMissByDeviceId,
         nowMs,
     });
+    appendRecoveredTemperatureDevices(ctx, presentSnapshot, snapshot);
     for (const deviceId of graceExceededIds) {
         (ctx.logger.structuredLog ?? moduleLogger).warn({
             component: 'devices',
@@ -228,6 +233,19 @@ function resolveCommittedRefreshSnapshot(
         });
     }
     return snapshot;
+}
+
+function appendRecoveredTemperatureDevices(
+    ctx: TransportContext,
+    presentSnapshot: readonly TransportDeviceSnapshot[],
+    committedSnapshot: TransportDeviceSnapshot[],
+): void {
+    const pendingIds = new Set(getPendingTemperatureRecoveryDeviceIds(ctx));
+    const committedIds = new Set(committedSnapshot.map((device) => device.id));
+    for (const device of presentSnapshot) {
+        if (!pendingIds.has(device.id) || committedIds.has(device.id)) continue;
+        committedSnapshot.push(device);
+    }
 }
 
 /**
@@ -248,6 +266,7 @@ function commitRefreshedSnapshot(ctx: TransportContext, params: {
     // path returns above (before setSnapshot), so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
     ctx.dispatchObservedStateRefresh(snapshot);
+    completePendingTemperatureRecoveriesAfterRefresh(ctx);
     // Managed devices PLUS the cars the EV car-link probe tracks. Per-device
     // capability subscriptions (`homey:device:<id>`) are the ONLY realtime source
     // of capability VALUE changes; the manager-level `device.update` stream does
@@ -378,6 +397,7 @@ export async function fetchDevicesByKnownIds(ctx: TransportContext): Promise<Dev
         const deviceIds = [...new Set([
             ...ctx.latestSnapshot.map((d) => d.id),
             ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+            ...getPendingTemperatureRecoveryDeviceIds(ctx),
         ])];
         return await fetchDevicesByIds({
             deviceIds,
