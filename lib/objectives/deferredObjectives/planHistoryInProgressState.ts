@@ -13,7 +13,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanMetReason,
-  DeferredObjectivePlanOutcome,
+  DeferredObjectivePlanTerminalOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import {
@@ -701,11 +701,11 @@ const wasTargetReached = (record: InProgressRecord): boolean => {
 const classifyOutcome = (
   record: InProgressRecord,
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
-): DeferredObjectivePlanOutcome => {
+): DeferredObjectivePlanTerminalOutcome => {
   if (record.satisfied || wasTargetReached(record)) return 'met';
   if (reason === 'abandoned') return 'abandoned';
   if (reason === 'replaced') return 'replaced';
-  if (record.finalProgressC === null && record.finalProgressPercent === null) return 'unknown';
+  if (record.finalProgressC === null && record.finalProgressPercent === null) return 'abandoned';
   return 'missed';
 };
 
@@ -738,8 +738,8 @@ export const finalizeRecord = (
     metAtMs: record.metAtMs,
     // Only persist `metReason` on `met` outcomes. The contract forbids it on
     // any other outcome (see `hasValidOutcome` in `planHistorySettings.ts`),
-    // and a stalled record that finalizes as `replaced` / `abandoned` /
-    // `unknown` should not carry a `met`-only field into history.
+    // and a stalled record that finalizes as `replaced` / `abandoned` should
+    // not carry a `met`-only field into history.
     ...(outcome === 'met' && record.metReason !== null ? { metReason: record.metReason } : {}),
     usedDeadlineReserve: record.usedDeadlineReserve,
     observedIntervals: record.observedIntervals.slice(),

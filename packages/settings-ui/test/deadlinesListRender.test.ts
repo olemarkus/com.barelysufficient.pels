@@ -3,7 +3,7 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory.ts';
-import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../../shared-domain/src/homeScopeCopy.ts';
 import {
   renderDeadlinesList,
@@ -675,7 +675,7 @@ describe('DeadlinesHistoryList device-filter chip row', () => {
     deviceId: string,
     deviceName: string,
     offsetHours: number,
-  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
     id: `${deviceId}-${offsetHours}`,
     deviceId,
     deviceName,
@@ -898,7 +898,7 @@ describe('DeadlinesHistoryList miss-streak badges follow the device filter', () 
     deviceName: string,
     offsetHours: number,
     outcome: 'met' | 'missed',
-  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
     id: `${deviceId}-${offsetHours}`,
     deviceId,
     deviceName,
@@ -970,7 +970,7 @@ describe('DeadlinesHistoryList 7-day hit-rate strip', () => {
 
   const buildHistoryEntry = (
     overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
     id: 'entry-1',
     deviceId: 'dev_a',
     deviceName: 'Boiler',

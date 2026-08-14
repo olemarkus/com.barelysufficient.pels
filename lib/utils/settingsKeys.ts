@@ -119,7 +119,9 @@ export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
 // `lib/objectives/deferredObjectives/objectiveStore.ts`); the plural blob above is a
 // frozen fallback read only by that migration.
 export const DEFERRED_OBJECTIVES_PERKEY_MIGRATED = 'deferred_objectives_perkey_migrated';
-export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history';
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING = 'deferred_objective_plan_history';
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history_v5';
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED = 'deferred_objective_plan_history_v5_initialized';
 export const DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK = 'deferred_objective_observation_watermark';
 export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_active_plans';
 export const DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH = 'deferred_objective_hours_remaining_latch';

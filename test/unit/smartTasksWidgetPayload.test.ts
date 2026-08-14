@@ -10,7 +10,7 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
-import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedLegacyPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import { SMART_TASK_WIDGET_EMPTY_HINT } from '../../packages/shared-domain/src/deadlineLabels';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
@@ -634,7 +634,7 @@ describe('buildSmartTasksWidgetPayload', () => {
 
 const buildHistoryEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: `entry-${Math.random()}`,
   deviceId: 'dev',
   deviceName: 'Device',

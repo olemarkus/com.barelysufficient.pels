@@ -45,7 +45,7 @@ import type {
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { toResolvedPlanHistoryEntry } from '../../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 import type {
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../contracts/src/deviceDiagnosticsTypes.ts';
@@ -356,7 +356,7 @@ const buildSampleHistoryEntry = (
   deviceId: string,
   finalizedAtMs: number,
   outcome: 'met' | 'missed' | 'abandoned' = 'met',
-): SettingsUiDeferredObjectivePlanHistoryPayload['entriesByDeviceId'][string][number] => toResolvedPlanHistoryEntry({
+): SettingsUiDeferredObjectivePlanHistoryPayload['entriesByDeviceId'][string][number] => toResolvedLegacyPlanHistoryEntry({
   id: `sample-${deviceId}-${finalizedAtMs}`,
   deviceId,
   deviceName: 'Connected 300',

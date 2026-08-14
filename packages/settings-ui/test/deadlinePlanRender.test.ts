@@ -15,7 +15,7 @@ import {
   SMART_TASK_EXTRA_PERMISSION_LABELS,
 } from '../../shared-domain/src/deadlineLabels.ts';
 import type { SmartTaskEditSnapshot } from '../src/ui/smartTaskEdit.ts';
-import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   kind: 'temperature',
@@ -37,7 +37,7 @@ const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
 
 const buildHistoryEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: 'entry-prior-1',
   originalPlan: null,
   finalPlan: null,

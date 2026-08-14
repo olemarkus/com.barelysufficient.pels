@@ -19,7 +19,7 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
-import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedLegacyPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { SmartTaskHistoryHostApi } from '../../packages/contracts/src/widgetHostApi';
 
@@ -60,7 +60,7 @@ const device = (o: Partial<TargetDeviceSnapshot & TemperatureObservedProbe> = {}
 
 const historyEntry = (
   o: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: `e${Math.random()}`,
   deviceId: 'wh',
   deviceName: 'Water heater',

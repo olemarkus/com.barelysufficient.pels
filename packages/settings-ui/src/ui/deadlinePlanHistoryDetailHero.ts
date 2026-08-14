@@ -261,22 +261,12 @@ export const buildHistoryDetailHero = (
       coverageLine,
     };
   }
-  // Abandoned / replaced / unknown → quiet log shape (v2.7.3). The page
+  // Abandoned / replaced → quiet log shape (v2.7.3). The page
   // collapses to eyebrow + outcome sentence + Material `<details>`. No
   // chart card by default, no recourse — the temptation to "make it
   // useful" is exactly what makes archives feel like audits.
   //
-  // Exception (v2.9.x — TODO from PR #887 copilot reviewer): `unknown`
-  // outcomes that carry a recorded plan (originalPlan / finalPlan) flip
-  // `quietAbandoned: false` so the view re-renders the chart card as
-  // evidence ("a plan WAS made, we just don't know if it ran"). The card
-  // stays collapsed by default so the muted "we don't know what happened"
-  // semantics survive — the user opts in via the same "View details"
-  // toggle Succeeded uses. `abandoned` / `replaced` keep the quiet shape:
-  // the user-initiated swap is the answer, not a plan diagnosis.
   const abandonedDetails = formatPlanHistoryAbandonedDetails(entry, timeZone);
-  const hasRecordedPlan = entry.originalPlan !== null || entry.finalPlan !== null;
-  const showChartForUnknown = entry.outcome === 'unknown' && hasRecordedPlan;
   return {
     tone: 'muted',
     chip: { text: chipLabel, tone: 'muted' },
@@ -293,7 +283,7 @@ export const buildHistoryDetailHero = (
     whyLine: null,
     recourse: null,
     chartCollapsedByDefault: true,
-    quietAbandoned: !showChartForUnknown,
+    quietAbandoned: true,
     receiptTimeline: null,
     shortfallChip: null,
     costNarrative: null,
@@ -302,10 +292,7 @@ export const buildHistoryDetailHero = (
     // legacy paragraphs would re-shout details the disclosure already
     // contains. coverageLine stays suppressed on every variant of this
     // shape: `abandoned` / `replaced` are intentionally quiet, and the
-    // `unknown`-with-plan branch already renders the chart card whose
-    // green observed-scatter dots above each planned bucket visually
-    // encode the same N-of-M shape. Surfacing the text on top of the
-    // chart would double-shout the same signal.
+    // Surfacing coverage text here would double-shout the disclosure.
     progressLine: null,
     reachedAtLine: null,
     overshootLine: null,

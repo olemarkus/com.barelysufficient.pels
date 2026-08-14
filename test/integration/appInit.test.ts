@@ -72,10 +72,15 @@ import {
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from '../../setup/appInit';
-import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives';
+import {
+  DeferredObjectivePlanHistoryRecorder,
+  normalizeDeferredObjectivePlanHistory,
+} from '../../lib/objectives/deferredObjectives';
 import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
+  DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
+  DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
@@ -83,6 +88,7 @@ import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ConfiguredMeterSources } from '../../lib/home/membership';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
 describe('app init plan service wiring', () => {
   it('fails fast when device manager wiring is missing', () => {
@@ -403,6 +409,136 @@ describe('app init plan service wiring', () => {
     expect(watermarkCalls[0]![1] as number).toBeGreaterThan(0);
   });
 
+  it('treats a malformed SDK key list as unavailable history instead of throwing', () => {
+    const ctx = createAppContextMock();
+    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+    const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
+
+    expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
+  });
+
+  it('trusts a valid history value without consulting the unrelated key-list read', () => {
+    const ctx = createAppContextMock();
+    const getSpy = ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>;
+    getSpy.mockImplementation((key: string) => (
+      key === DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING ? { version: 5, entries: [] } : undefined
+    ));
+    const getKeysSpy = ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>;
+    getKeysSpy.mockImplementation(() => { throw new Error('transient key-list failure'); });
+
+    const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
+
+    expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
+    expect(getKeysSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy v4 history untouched and imports rollback-era rows into v5', () => {
+    const ctx = createAppContextMock();
+    const store = new Map<string, unknown>();
+    (ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementation((key: string) => store.get(key));
+    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementation(() => [...store.keys()]);
+    (ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementation((key: string, value: unknown) => { store.set(key, value); });
+    const legacyEntry: DeferredObjectivePlanHistoryEntry = {
+      id: 'legacy-v4',
+      deviceId: 'dev',
+      deviceName: 'Water Heater',
+      objectiveKind: 'temperature',
+      targetTemperatureC: 65,
+      targetPercent: null,
+      deadlineAtMs: 3_600_000,
+      startedAtMs: 0,
+      finalizedAtMs: 3_600_000,
+      startProgressC: 50,
+      startProgressPercent: null,
+      finalProgressC: 65,
+      finalProgressPercent: null,
+      initialEnergyNeededKWh: 22.5,
+      outcome: 'met',
+      metAtMs: 3_599_999,
+      usedDeadlineReserve: false,
+      observedIntervals: [{ fromMs: 0, toMs: 3_600_000 }],
+      discoveredFrom: 'observation',
+      originalPlan: null,
+      finalPlan: null,
+    };
+    const legacySnapshot = { version: 4 as const, entries: [legacyEntry] };
+    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING, legacySnapshot);
+
+    const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
+    expect(recorder.getHistorySnapshot().entries[0]).toMatchObject({
+      id: 'legacy-v4',
+      targetValue: 65,
+    });
+    recorder.backfillFromConfig([{
+      deviceId: 'dev',
+      objectiveKind: 'temperature',
+      deadlineAtMs: 7_200_000,
+      targetTemperatureC: 70,
+      targetPercent: null,
+    }], 3_600_000, 7_200_001);
+    expect(recorder.flushIfDirty()).toBe(true);
+    expect(store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING)).toEqual(legacySnapshot);
+
+    const rollbackEntry: DeferredObjectivePlanHistoryEntry = {
+      ...legacyEntry,
+      id: 'rollback-v4',
+      deadlineAtMs: 10_800_000,
+      finalizedAtMs: 10_800_000,
+      metAtMs: 10_799_999,
+    };
+    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING, {
+      version: 4,
+      entries: [legacyEntry, rollbackEntry],
+    });
+    const reupgraded = createDeferredObjectivePlanHistoryRecorder(ctx);
+    expect(reupgraded.getHistorySnapshot().entries.map((entry) => entry.id))
+      .toEqual(['legacy-v4', expect.any(String), 'rollback-v4']);
+  });
+
+  it('does not re-import v2 rows with fresh ids after the initial v5 migration', () => {
+    const ctx = createAppContextMock();
+    const store = new Map<string, unknown>();
+    (ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementation((key: string) => store.get(key));
+    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementation(() => [...store.keys()]);
+    (ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementation((key: string, value: unknown) => { store.set(key, value); });
+    const v2Entry = {
+      deviceId: 'dev',
+      deviceName: 'Water Heater',
+      objectiveKind: 'temperature',
+      targetTemperatureC: 65,
+      targetPercent: null,
+      deadlineAtMs: 3_600_000,
+      startedAtMs: 0,
+      finalizedAtMs: 3_600_000,
+      startProgressC: 50,
+      startProgressPercent: null,
+      finalProgressC: 65,
+      finalProgressPercent: null,
+      initialEnergyNeededKWh: 22.5,
+      outcome: 'met',
+      metAtMs: 3_599_999,
+      usedDeadlineReserve: false,
+      observedIntervals: [{ fromMs: 0, toMs: 3_600_000 }],
+      discoveredFrom: 'observation',
+    };
+    const migrated = normalizeDeferredObjectivePlanHistory({ version: 2, entries: [v2Entry] });
+    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, migrated);
+    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING, { version: 2, entries: [v2Entry] });
+
+    const first = createDeferredObjectivePlanHistoryRecorder(ctx).getHistorySnapshot();
+    const second = createDeferredObjectivePlanHistoryRecorder(ctx).getHistorySnapshot();
+    expect(first.entries).toHaveLength(1);
+    expect(second.entries).toHaveLength(1);
+    expect(second.entries[0]!.id).toBe(first.entries[0]!.id);
+  });
+
   it('advances the watermark to now after a successful startup back-fill scan', () => {
     // Watermark exists but the scan window contains no enabled objectives — the watermark
     // should still advance so the next restart doesn't redundantly re-scan the same window.
@@ -465,7 +601,7 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => null,
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
       save: () => false,
     });
     // Drive the recorder into a dirty-and-couldn't-flush state.
@@ -515,7 +651,7 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => null,
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
       save: () => true,
     });
     expect(recorder.isDirty()).toBe(false);
@@ -586,7 +722,7 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     // Save callback that always reports failure — drives the recorder into permanent dirty.
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => null,
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
       save: () => false,
     });
     // Force a dirty record using a directly-pushed entry via observe.
@@ -665,7 +801,7 @@ describe('app init plan service wiring', () => {
     (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
       .mockReturnValue(['deferred_objective.dev_a']);
     setSpy.mockImplementation((key: string) => {
-      if (key === 'deferred_objective_plan_history') {
+      if (key === DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING) {
         throw new Error('disk full');
       }
     });

@@ -11,6 +11,10 @@ export type DeferredObjectivePlanOutcome =
   | 'replaced'
   | 'unknown';
 
+/** Terminal outcomes written by the current recorder. `unknown` remains only
+ * as a legacy-read value and normalizes to `abandoned`. */
+export type DeferredObjectivePlanTerminalOutcome = Exclude<DeferredObjectivePlanOutcome, 'unknown'>;
+
 // Why a 'met' run was marked done. Absent on the default "reached target"
 // path so legacy entries (and the overwhelming majority of clean met runs)
 // persist byte-stable.
@@ -357,32 +361,47 @@ export type ResolvedDeferredObjectivePlanHistoryProgressSample = {
   value: number | null;
 };
 
-// Consumer-facing view of a finalized plan-history entry. The raw kind-split
-// value columns (`targetTemperatureC`/`targetPercent`, `startProgress*`,
-// `finalProgress*`, and sample `valueC`/`valuePercent`) are RESOLVED to single
-// unit-agnostic numbers (`targetValue` / `startProgressValue` /
-// `finalProgressValue`, sample `value`) by `toResolvedPlanHistoryEntry` before
-// the entry reaches any consumer. The raw columns are intentionally ABSENT from
-// this type, so reading one is a compile error: consumers branch on
-// `objectiveKind` only to pick a display unit, never to pick a value.
-// Persistence keeps the raw columns (see `DeferredObjectivePlanHistoryEntry`);
-// resolution happens once, at the producer boundary.
-export type ResolvedDeferredObjectivePlanHistoryEntry = Omit<
+/** Compact persisted row. Device name and objective kind are enriched from the
+ * current device snapshot at the API boundary. */
+export type DeferredObjectivePlanHistoryRecord = Omit<
   DeferredObjectivePlanHistoryEntry,
-  'targetTemperatureC' | 'targetPercent'
+  'deviceName' | 'objectiveKind'
+  | 'targetTemperatureC' | 'targetPercent'
   | 'startProgressC' | 'startProgressPercent'
   | 'finalProgressC' | 'finalProgressPercent'
-  | 'progressSamples'
+  | 'progressSamples' | 'outcome'
 > & {
   targetValue: number | null;
   startProgressValue: number | null;
   finalProgressValue: number | null;
   progressSamples?: ResolvedDeferredObjectivePlanHistoryProgressSample[];
+  outcome: DeferredObjectivePlanTerminalOutcome;
+};
+
+// Consumer-facing view of a finalized plan-history entry. The raw kind-split
+// value columns (`targetTemperatureC`/`targetPercent`, `startProgress*`,
+// `finalProgress*`, and sample `valueC`/`valuePercent`) are RESOLVED to single
+// unit-agnostic numbers (`targetValue` / `startProgressValue` /
+// `finalProgressValue`, sample `value`) by `toResolvedLegacyPlanHistoryEntry` before
+// the entry reaches any consumer. The raw columns are intentionally ABSENT from
+// this type, so reading one is a compile error: consumers branch on
+// `objectiveKind` only to pick a display unit, never to pick a value.
+// Legacy persistence keeps the raw columns (`DeferredObjectivePlanHistoryEntry`);
+// current persistence uses `DeferredObjectivePlanHistoryRecord`, and the API
+// enriches device identity once at its producer boundary.
+export type ResolvedDeferredObjectivePlanHistoryEntry = DeferredObjectivePlanHistoryRecord & {
+  deviceName: string;
+  objectiveKind: 'temperature' | 'ev_soc';
 };
 
 export type DeferredObjectivePlanHistoryV4 = {
   version: 4;
   entries: DeferredObjectivePlanHistoryEntry[];
+};
+
+export type DeferredObjectivePlanHistoryV5 = {
+  version: 5;
+  entries: DeferredObjectivePlanHistoryRecord[];
 };
 
 // Legacy v2 entry shape kept only so the v2→v3 migration can read pre-v3

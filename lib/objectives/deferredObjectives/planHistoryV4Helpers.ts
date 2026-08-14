@@ -20,7 +20,7 @@ import type {
 import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
-import { toResolvedPlanHistoryEntry } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
@@ -207,7 +207,7 @@ export const buildFinalizedAttributionEvent = (
   entry: DeferredObjectivePlanHistoryEntry,
 ): Record<string, unknown> => {
   const attribution = resolveDeferredPlanHistoryMissAttribution(
-    toResolvedPlanHistoryEntry(entry),
+    toResolvedLegacyPlanHistoryEntry(entry),
   );
   return {
     event: 'deferred_objective_history_finalized',

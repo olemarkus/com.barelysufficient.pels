@@ -79,17 +79,6 @@ tracked as P1/P2/P3 follow-up below.
       restore-settling window matched to the observed step-apply latency. Needs the activation
       attribution fix (shipped alongside this entry) first, so the backoff ladder can learn.
       Found 2026-08-13. [P1]
-- [ ] **The plan-history recorder has no abandon-grace or plausibility gate.**
-      `DeferredObjectivePlanHistoryRecorder`'s constructor (`planHistory.ts`) takes whatever
-      `deps.load()` returns. A transient corrupt/empty SDK read normalizes to an empty envelope,
-      the recorder starts from `[]`, and the first `flushIfDirty()` persists that over the real
-      history. The root `AGENTS.md` requires an abandon-grace window for exactly this
-      ("Transient external failures get an abandon-grace window, never a destructive reset of
-      persisted state"), and `feedback_homey_sdk_unreliable` says Homey SDK reads do fail
-      transiently. `devicePowerCalibrationStore.ts` has the protection; this does not.
-      `notes/persisted-settings-state.md` predicted it: "The deferred-objective recorders almost
-      certainly have the same bugs in some form." Found 2026-08-12. [P1]
-
 *v2.9.0 closeout and v2.8.x release-review follow-ups. These are safe for
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
@@ -3555,15 +3544,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       fact applied. Source: adversarial correctness lens, 2026-06-10.
 
 *Chart-overhaul train review follow-ups (2026-06-11, PRs #1677–#1681). Non-blocking.*
-
-- [ ] **Grace the plan-history recorder's boot load against transient-empty reads.** The
-      `DeferredObjectivePlanHistoryRecorder` constructor does a single un-graced `deps.load()`
-      (`lib/objectives/deferredObjectives/planHistory.ts:196`); per
-      `feedback_homey_sdk_unreliable`, a transient-empty boot read followed by a finalization
-      flush silently drops up to 30 persisted history entries. Give it the trustworthy-read
-      grace the backfill key-list path already has (`objectiveStore.ts` treats an empty
-      `getKeys()` as untrusted and retries instead of committing). Source: pels-runtime-reality
-      on PR #1678, 2026-06-11.
 
 - [ ] **Compose a real cause for the plain-miss history hero's "Why" line.** The fallback branch
       renders "Why: Didn't reach the target before the deadline." — circular (it restates the

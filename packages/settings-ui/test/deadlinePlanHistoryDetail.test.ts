@@ -6,7 +6,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 // Mock the ECharts registry to avoid mounting real ECharts in JSDOM. The
 // `useEchartsMount` stub mirrors the production hook's shape — it still runs
@@ -57,7 +57,7 @@ const buildRevision = (
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: 'entry-test-1',
   deviceId: 'dev_water_heater',
   deviceName: 'Connected 300',
@@ -618,12 +618,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
     });
 
-    // v2.9.x — copilot reviewer follow-up on PR #887. Discriminator for the
-    // `unknown` outcome is plan presence, not outcome value: an `unknown`
-    // run that recorded a plan flips out of the quiet shape so the chart
-    // renders as evidence (collapsed by default, same as Succeeded). An
-    // `unknown` run with no plan stays quiet — nothing to draw.
-    it('Unknown shape with recorded plan: tone=muted, chart card renders collapsed with "View details" toggle (v2.9.x)', async () => {
+    it('Legacy unknown with a recorded plan normalizes to the quiet abandoned shape', async () => {
       const root = await mount(buildEntry({
         outcome: 'unknown',
         // Unknown outcomes have no final progress recorded — that's what
@@ -636,19 +631,15 @@ describe('DeadlinePlanHistoryDetail', () => {
       }));
       const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
       expect(hero?.dataset.tone).toBe('muted');
-      // No recourse / Why on Unknown — those belong to Missed.
+      // No recourse / Why on abandoned — those belong to Missed.
       expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
       expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
-      // Chart card IS rendered (the plan provides evidence), and the toggle
-      // is present because `chartCollapsedByDefault: true`. The chart body
-      // itself starts collapsed.
       const toggle = root.querySelector<HTMLButtonElement>('.plan-history-detail__chart-toggle');
-      expect(toggle).not.toBeNull();
-      expect(toggle!.textContent).toBe('View details');
+      expect(toggle).toBeNull();
       expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
     });
 
-    it('Unknown shape with no recorded plan: stays quiet — no chart card, no toggle (v2.9.x)', async () => {
+    it('Legacy unknown with no recorded plan normalizes to the quiet abandoned shape', async () => {
       const root = await mount(buildEntry({
         outcome: 'unknown',
         finalProgressC: null,

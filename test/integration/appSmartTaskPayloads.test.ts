@@ -5,8 +5,8 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
-  DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanHistoryRecord,
+  DeferredObjectivePlanHistoryV5,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -46,21 +46,16 @@ const buildActivePlan = (
 });
 
 const buildHistoryEntry = (
-  overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): DeferredObjectivePlanHistoryEntry => ({
+  overrides: Partial<DeferredObjectivePlanHistoryRecord> = {},
+): DeferredObjectivePlanHistoryRecord => ({
   id: 'entry-1',
   deviceId: 'dev-1',
-  deviceName: 'Connected 300',
-  objectiveKind: 'temperature',
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: 5_000,
   startedAtMs: 1_000,
   finalizedAtMs: 4_000,
-  startProgressC: 40,
-  startProgressPercent: null,
-  finalProgressC: 65,
-  finalProgressPercent: null,
+  startProgressValue: 40,
+  finalProgressValue: 65,
   initialEnergyNeededKWh: 2,
   outcome: 'met',
   metAtMs: 3_900,
@@ -74,12 +69,27 @@ const buildHistoryEntry = (
 
 type Recorders = {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  history?: DeferredObjectivePlanHistoryV4;
+  history?: DeferredObjectivePlanHistoryV5;
   trajectoryByDeviceId?: Record<string, ReturnType<DeferredObjectivePlanHistoryRecorder['getInProgressTrajectory']>>;
   wireHistoryRecorder?: boolean;
 };
 
-const buildPayloads = (options: Recorders = {}): AppSmartTaskPayloads => {
+type HistoryDevice = {
+  id: string;
+  name: string;
+  deviceClass?: string;
+  deviceType?: 'temperature' | 'onoff';
+};
+
+const DEFAULT_HISTORY_DEVICES: readonly HistoryDevice[] = [
+  { id: 'dev-1', name: 'Connected 300', deviceType: 'temperature' },
+  { id: 'dev-2', name: 'Connected 300', deviceType: 'temperature' },
+];
+
+const buildPayloads = (
+  options: Recorders = {},
+  devices: ReadonlyArray<HistoryDevice> = DEFAULT_HISTORY_DEVICES,
+): AppSmartTaskPayloads => {
   const activePlanRecorder = {
     getActivePlansSnapshot: () => options.activePlans ?? null,
   } as unknown as DeferredObjectiveActivePlanRecorder;
@@ -90,6 +100,7 @@ const buildPayloads = (options: Recorders = {}): AppSmartTaskPayloads => {
   const ctx: SmartTaskPayloadsContext = {
     deferredObjectiveActivePlanRecorder: activePlanRecorder,
     deferredObjectivePlanHistoryRecorder: options.wireHistoryRecorder === false ? undefined : historyRecorder,
+    latestTargetSnapshot: devices,
   };
   return new AppSmartTaskPayloads(ctx);
 };
@@ -143,7 +154,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
   it('partitions entries per device', () => {
     const payload = buildPayloads({
       history: {
-        version: 4,
+        version: 5,
         entries: [
           buildHistoryEntry({ id: 'mine' }),
           buildHistoryEntry({ id: 'other-device', deviceId: 'dev-2', finalizedAtMs: 2_000 }),
@@ -156,12 +167,30 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
 
   it('resolves each entry to the unit-agnostic view', () => {
     const payload = buildPayloads({
-      history: { version: 4, entries: [buildHistoryEntry()] },
+      history: { version: 5, entries: [buildHistoryEntry()] },
     }).getDeferredObjectivePlanHistoryUiPayload();
     const entry = payload.entriesByDeviceId['dev-1']?.[0];
     expect(entry?.targetValue).toBe(65);
     expect(entry?.startProgressValue).toBe(40);
     expect(entry).not.toHaveProperty('targetTemperatureC');
+  });
+
+  it('uses the current device name and inferred objective kind', () => {
+    const payload = buildPayloads({
+      history: { version: 5, entries: [buildHistoryEntry()] },
+    }, [{ id: 'dev-1', name: 'Renamed charger', deviceClass: 'evcharger' }])
+      .getDeferredObjectivePlanHistoryUiPayload();
+    expect(payload.entriesByDeviceId['dev-1']?.[0]).toMatchObject({
+      deviceName: 'Renamed charger',
+      objectiveKind: 'ev_soc',
+    });
+  });
+
+  it('hides retained history while its device cannot be resolved', () => {
+    const payload = buildPayloads({
+      history: { version: 5, entries: [buildHistoryEntry()] },
+    }, []).getDeferredObjectivePlanHistoryUiPayload();
+    expect(payload.entriesByDeviceId).toEqual({});
   });
 });
 
@@ -169,7 +198,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload', 
   it('keeps only entries finalized at or after the cutoff', () => {
     const payload = buildPayloads({
       history: {
-        version: 4,
+        version: 5,
         entries: [
           buildHistoryEntry({ id: 'stale', finalizedAtMs: 1_000 }),
           buildHistoryEntry({ id: 'boundary', finalizedAtMs: 5_000 }),
@@ -183,7 +212,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload', 
   it('drops an entry with a non-finite finalizedAtMs rather than ordering it arbitrarily', () => {
     const payload = buildPayloads({
       history: {
-        version: 4,
+        version: 5,
         entries: [buildHistoryEntry({ id: 'junk', finalizedAtMs: Number.NaN })],
       },
     }).getDeferredObjectivePlanHistoryRecentUiPayload(0);

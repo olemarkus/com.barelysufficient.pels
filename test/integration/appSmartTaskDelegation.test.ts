@@ -17,8 +17,8 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
-  DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanHistoryRecord,
+  DeferredObjectivePlanHistoryV5,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 
@@ -39,21 +39,16 @@ const buildActivePlan = (): DeferredObjectiveActivePlanV1 => ({
 });
 
 const buildHistoryEntry = (
-  overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): DeferredObjectivePlanHistoryEntry => ({
+  overrides: Partial<DeferredObjectivePlanHistoryRecord> = {},
+): DeferredObjectivePlanHistoryRecord => ({
   id: 'entry-1',
   deviceId: DEVICE_ID,
-  deviceName: 'Connected 300',
-  objectiveKind: 'temperature',
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: 5_000,
   startedAtMs: 1_000,
   finalizedAtMs: 4_000,
-  startProgressC: 40,
-  startProgressPercent: null,
-  finalProgressC: 65,
-  finalProgressPercent: null,
+  startProgressValue: 40,
+  finalProgressValue: 65,
   initialEnergyNeededKWh: 2,
   outcome: 'met',
   metAtMs: 3_900,
@@ -67,9 +62,14 @@ const buildHistoryEntry = (
 
 const buildAppWithRecorders = (options: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  history?: DeferredObjectivePlanHistoryV4;
+  history?: DeferredObjectivePlanHistoryV5;
 } = {}) => {
   const app = createApp();
+  if (options.history) {
+    Object.defineProperty(app, 'latestTargetSnapshot', {
+      value: [{ id: DEVICE_ID, name: 'Connected 300', deviceType: 'temperature' }],
+    });
+  }
   app.deferredObjectiveActivePlanRecorder = {
     getActivePlansSnapshot: () => options.activePlans ?? null,
   };
@@ -101,7 +101,7 @@ describe('PelsApp smart-task delegation stubs', () => {
   it('routes getDeferredObjectivePlanHistoryUiPayload to the unbounded history payload', () => {
     const app = buildAppWithRecorders({
       history: {
-        version: 4,
+        version: 5,
         entries: [buildHistoryEntry({ id: 'old', finalizedAtMs: 1_000 }), buildHistoryEntry({ id: 'new' })],
       },
     });
@@ -115,7 +115,7 @@ describe('PelsApp smart-task delegation stubs', () => {
     // proves the `sinceMs` cutoff was actually applied.
     const app = buildAppWithRecorders({
       history: {
-        version: 4,
+        version: 5,
         entries: [buildHistoryEntry({ id: 'stale', finalizedAtMs: 1_000 }), buildHistoryEntry({ id: 'recent' })],
       },
     });

@@ -5,11 +5,11 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: 'entry-test-1',
   originalPlan: null,
   finalPlan: null,
@@ -116,7 +116,7 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
   });
 
-  it('renders a backfilled entry with a "reconstructed from settings" note', () => {
+  it('renders a legacy-unknown backfill as abandoned with a reconstruction note', () => {
     const entry = buildEntry({
       outcome: 'unknown',
       discoveredFrom: 'backfill',
@@ -126,7 +126,7 @@ describe('DeadlinePlanHistory', () => {
       metAtMs: null,
     });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
-    expect(mount.querySelector('.plan-chip--muted')?.textContent).toBe('Unknown');
+    expect(mount.querySelector('.plan-chip--muted')?.textContent).toBe('Abandoned');
     expect(mount.textContent).toContain('reconstructed from settings');
   });
 

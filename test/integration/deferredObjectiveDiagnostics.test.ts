@@ -34,7 +34,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryV4 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import { buildPriorityReservations } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { buildHoursFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
@@ -176,12 +176,12 @@ const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTra
 
 const buildHistoryRecorder = (): {
   recorder: DeferredObjectivePlanHistoryRecorder;
-  saved: () => DeferredObjectivePlanHistoryV4 | null;
+  saved: () => DeferredObjectivePlanHistoryV5 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV4 | null = null;
+  let saved: DeferredObjectivePlanHistoryV5 | null = null;
   return {
     recorder: new DeferredObjectivePlanHistoryRecorder({
-      load: () => null,
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
       save: (next) => { saved = next; return true; },
     }),
     saved: () => saved,
@@ -2716,7 +2716,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     expect(entry.outcome).toBe('met');
     expect(entry.metAtMs).toBe(NOW_MS);
-    expect(entry.finalProgressPercent).toBe(70);
+    expect(entry.finalProgressValue).toBe(70);
   });
 
   it('marks a met EV objective as satisfied even when price planning is disabled', () => {

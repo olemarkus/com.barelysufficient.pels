@@ -6,8 +6,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type {
-  DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanHistoryV5,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../contracts/src/deferredObjectivePlanHistory';
 
 const require = createRequire(import.meta.url);
@@ -51,8 +51,8 @@ type PlanHistoryRecorderLike = {
 
 type PlanHistoryRuntimeModule = {
   DeferredObjectivePlanHistoryRecorder: new (deps: {
-    load: () => DeferredObjectivePlanHistoryV4 | null;
-    save: (history: DeferredObjectivePlanHistoryV4) => boolean;
+    load: () => { snapshot: DeferredObjectivePlanHistoryV5; persistenceSafe: boolean };
+    save: (history: DeferredObjectivePlanHistoryV5) => boolean;
   }) => PlanHistoryRecorderLike;
 };
 
@@ -128,11 +128,11 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   expectedStepId: null,
 });
 
-const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV4> => {
+const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV5> => {
   const { DeferredObjectivePlanHistoryRecorder } = await loadPlanHistoryRuntime();
-  let saved: DeferredObjectivePlanHistoryV4 | null = null;
+  let saved: DeferredObjectivePlanHistoryV5 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
-    load: () => null,
+    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
     save: (history) => { saved = history; return true; },
   });
 
@@ -186,12 +186,16 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV4> => {
 };
 
 const groupByDevice = (
-  history: DeferredObjectivePlanHistoryV4,
-): Record<string, DeferredObjectivePlanHistoryEntry[]> => {
-  const grouped: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
+  history: DeferredObjectivePlanHistoryV5,
+): Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> => {
+  const grouped: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> = {};
   for (const entry of history.entries) {
     const bucket = grouped[entry.deviceId] ?? [];
-    bucket.push(entry);
+    bucket.push({
+      ...entry,
+      deviceName: entry.deviceId === 'dev_connected300' ? 'Connected 300' : 'Pool pump',
+      objectiveKind: 'temperature',
+    });
     grouped[entry.deviceId] = bucket;
   }
   for (const deviceId of Object.keys(grouped)) {
@@ -200,7 +204,7 @@ const groupByDevice = (
   return grouped;
 };
 
-const stubHistory = (entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]>) => {
+const stubHistory = (entriesByDeviceId: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]>) => {
   (window as typeof window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
     apiHandlers: {
       'GET /ui_deferred_objective_history': () => ({
@@ -227,8 +231,8 @@ test.describe('Deadline recorder → history UI round-trip', () => {
 
     expect(entriesByDeviceId['dev_connected300']).toHaveLength(1);
     expect(entriesByDeviceId['dev_connected300'][0].outcome).toBe('met');
-    expect(entriesByDeviceId['dev_connected300'][0].startProgressC).toBe(50);
-    expect(entriesByDeviceId['dev_connected300'][0].finalProgressC).toBe(65);
+    expect(entriesByDeviceId['dev_connected300'][0].startProgressValue).toBe(50);
+    expect(entriesByDeviceId['dev_connected300'][0].finalProgressValue).toBe(65);
 
     // Only stub the entries for this device — the Smart tasks tab renders
     // history across every device, so leaving sibling devices in the stub
@@ -249,7 +253,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
 
     expect(entriesByDeviceId['dev_pool_pump']).toHaveLength(1);
     expect(entriesByDeviceId['dev_pool_pump'][0].outcome).toBe('missed');
-    expect(entriesByDeviceId['dev_pool_pump'][0].finalProgressC).toBe(58);
+    expect(entriesByDeviceId['dev_pool_pump'][0].finalProgressValue).toBe(58);
 
     await page.addInitScript(stubHistory, { dev_pool_pump: entriesByDeviceId['dev_pool_pump'] });
     await openHistory(page);
@@ -280,15 +284,12 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         deviceId: 'dev_connected300',
         deviceName: 'Connected 300',
         objectiveKind: 'temperature' as const,
-        targetTemperatureC: 65,
-        targetPercent: null,
+        targetValue: 65,
         deadlineAtMs: T0 + 6 * HOUR,
         startedAtMs: T0,
         finalizedAtMs: T0 + 6 * HOUR + HOUR,
-        startProgressC: 50,
-        startProgressPercent: null,
-        finalProgressC: 65,
-        finalProgressPercent: null,
+        startProgressValue: 50,
+        finalProgressValue: 65,
         initialEnergyNeededKWh: 4.0,
         outcome: 'met' as const,
         metAtMs: T0 + 5 * HOUR,
@@ -382,15 +383,12 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         deviceId: 'dev_connected300',
         deviceName: 'Connected 300',
         objectiveKind: 'temperature' as const,
-        targetTemperatureC: 65,
-        targetPercent: null,
+        targetValue: 65,
         deadlineAtMs: T0 + 6 * HOUR,
         startedAtMs: T0,
         finalizedAtMs: T0 + 6 * HOUR,
-        startProgressC: 50,
-        startProgressPercent: null,
-        finalProgressC: 65,
-        finalProgressPercent: null,
+        startProgressValue: 50,
+        finalProgressValue: 65,
         initialEnergyNeededKWh: 4.0,
         outcome: 'met' as const,
         metAtMs: T0 + 5 * HOUR,
@@ -427,8 +425,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         revisionCount: 2,
         progressSamples: Array.from({ length: 6 }, (_, hour) => ({
           atMs: T0 + hour * HOUR,
-          valueC: 50 + hour * 3,
-          valuePercent: null,
+          value: 50 + hour * 3,
         })),
         // Raw øre prices; the readout scales by the recorded ÷100 divisor.
         hourlyContributions: [
