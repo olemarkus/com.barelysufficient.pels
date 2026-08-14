@@ -1313,6 +1313,43 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **A single transient temperature-facet miss discards the pending `set_temperature` record.**
+      `prunePendingTargetCommandsForPlan` (`lib/plan/planTargetControl.ts`) keys retention on
+      `isTemperaturePlanDevice(device)`, so the one cycle in which a device plans as `onoff`
+      (facet dropped upstream by a failed/malformed SDK read, before the transport's targeted
+      recovery refresh lands) deletes the in-memory pending record. Bounded and fail-safe —
+      worst case one duplicate idempotent write after recovery, and a flapping facet loses
+      re-issue suppression so the write can repeat once per plan cycle — and unchanged from
+      before the atomic-facet propagation (the old predicate evaluated false in the same
+      situations). A pending-window-scoped retention (the `planHistory.ts` pattern) would close
+      it. Found 2026-08-14 in the atomic-facet review. [P2]
+- [ ] **A temperature device shed during a facet-miss cycle is turned off instead of set back.**
+      `buildInitialPlanDevices` (`lib/plan/planDevices.ts`) only consults `deps.getShedBehavior`
+      for stepped or temperature devices, so in the one cycle a device plans as `onoff` its shed
+      behavior falls to the default `{ action: 'turn_off' }`. If the shed decision lands in
+      exactly that cycle, a device configured for setpoint-lowering is switched off instead:
+      capacity-safe (over-shed), comfort-affecting, self-correcting on the next refresh.
+      Pre-existing since the observer-side atomic facet landed (#2103) — the capability list is
+      stripped with the facet, so `supportsTemperatureBoostDevice` already answered false. Fix
+      is to resolve the configured behavior from the device's stored configuration rather than
+      its live modality. Found 2026-08-14. [P2]
+- [ ] **`SettingsUiPlanDeviceSnapshot`'s `[key: string]: unknown` index signature defeats
+      contract-removal enforcement.** `packages/contracts/src/settingsUiApi.ts` lets a consumer
+      keep reading a field the DTO no longer declares — which is exactly how a dead
+      `typeof dev.plannedTarget === 'number'` arm survived the atomic-facet migration in
+      `PlanOverview.tsx` through a passing typecheck (caught in review, fixed there). Narrowing
+      or deleting the index signature would make every future field move onto an atomic cluster
+      fail loudly at compile time. Found 2026-08-14. [P2]
+- [ ] **The temperature facet's shape is spelled four times.** `TemperatureKind`
+      (`lib/plan/planTypes.ts`) and `DeviceOverviewTemperature`
+      (`packages/shared-domain/src/deviceOverview.ts`) are byte-identical trios, and the observed
+      PAIR is re-declared inline in `readObservedTemperatureState`
+      (`lib/observer/observedDeviceStateProjection.ts`), `planServiceDeps.ts`,
+      `settingsOverviewReadModel.ts`, and `IdleClassifierDeviceInput`
+      (`lib/observer/idleClassifier.ts`). One exported named type per shape (facet + observed
+      pair) removes the drift surface at no layering cost — `planTypes` already imports
+      shared-domain. Found 2026-08-14. [P2]
+
 - [ ] **An activation attempt's inactive close and its attribution-window expiry disagree about penalty.**
       `syncActivationPenaltyState` (`lib/plan/admission/activationBackoff.ts`) tests
       `shouldCloseAttemptAsInactive` before `hasAttributionWindowExpired`, so an inactive
@@ -1374,26 +1411,18 @@ program) remain deferred.*
       a second definition of "what kind of control is this" living next to the producer's own.
       Worth settling once the device-page work next touches it.
 
-- [ ] **The overview shape has no temperature cluster.**
-      Stepped-ness is now a cluster (`steppedLoad`, present iff stepped); the temperature side
-      still leans on `deviceType === 'temperature' || typeof plannedTarget === 'number'`. That OR
-      is correct today — a temperature device with PELS target control disabled keeps
-      `deviceType: 'temperature'`, and one in skip / abandon-grace has no `plannedTarget`, so
-      neither arm alone suffices — but the honest shape is a `temperature?: { currentTarget,
-      plannedTarget, currentTemperature }` cluster mirroring `steppedLoad`. Do NOT collapse the OR
-      to `plannedTarget` alone in the meantime.
-
-- [ ] **The overview log seam and the settings read model still disagree about temperature.**
-      The read model overlays the OBSERVER's temperature onto the overview shape
-      (`resolveOverviewTemperatureState` → `deps.getObservedTemperature`); the log seam
-      (`planOverviewEmit`) does not, and uses the plan device's own `currentTarget` /
-      `currentTemperature`. `isSatisfiedTargetOnlyDevice` reads exactly those two fields and feeds
-      `stateKind`, which lands in both the transition signature and the device-log entry. So a
-      temperature device can be logged `active` while its card reads `idle` whenever the observer
-      is fresher than the plan device (a realtime event between build and serialize, or an
-      idle-tick re-serialize). Same bug class as the control-model divergence fixed in the
-      required-fields change, in the same function — the fix is to give both carriers one overview
-      shape rather than two nearly-identical ones.
+- [ ] **The overview log seam and the settings read model still build their own overview shape.**
+      Both carriers now emit the same ATOMIC temperature facet
+      (`temperature: { currentTarget, currentTemperature, plannedTarget }`), so the shape itself
+      no longer differs — but they still build it independently: the read model overlays the
+      OBSERVER's pair (`resolveOverviewTemperatureFacet` → `deps.getObservedTemperature`), while
+      the log seam (`planOverviewEmit`) builds it from the plan device's own narrowed cluster.
+      `isSatisfiedTargetOnlyDevice` reads that facet and feeds `stateKind`, which lands in both
+      the transition signature and the device-log entry, so a temperature device can still be
+      logged `active` while its card reads `idle` whenever the observer is fresher than the plan
+      device (a realtime event between build and serialize, or an idle-tick re-serialize). The
+      fix is to give both carriers ONE overview shape — one builder, one observer overlay —
+      rather than two nearly-identical ones.
 
 - [ ] **`planningPowerKw` is stepped-only in the planner but still flat on the wire.**
       It now lives on `SteppedPlanInputKind` / `SteppedLoadKind`, so a non-stepped

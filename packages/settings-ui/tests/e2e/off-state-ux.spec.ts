@@ -43,9 +43,7 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
       plannedState: 'inactive',
       stateKind: 'idle',
       stateTone: 'idle',
-      currentTarget: 5,
-      plannedTarget: 5,
-      currentTemperature: 18.7,
+      temperature: { currentTarget: 5, currentTemperature: 18.7, plannedTarget: 5 },
       currentDrawKw: 0,
       reason,
     });

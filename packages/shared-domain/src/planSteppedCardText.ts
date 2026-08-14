@@ -38,7 +38,7 @@ const isOffLikeId = (id: string | undefined): boolean => {
 
 // Broader than the shared `isOffLikeState` in `deviceStatePredicates.ts`:
 // also treats empty / `'disappeared'` as off-for-display so the stepped card
-// renders "Off now" when the device has no fresh observation. Intentionally
+// renders the shared `Off` state word when the device has no fresh observation. Intentionally
 // not unified — the shared predicate is the strict off-or-unknown semantic
 // used elsewhere; this one is display-only.
 const isSteppedCardOffLikeState = (state: string | undefined): boolean => {
@@ -289,12 +289,12 @@ export const resolveSteppedStatusLine = (
 };
 
 export const resolveSteppedTemperatureText = (device: {
-  currentTemperature?: number;
-  plannedTarget?: number;
+  temperature?: { currentTemperature: number; plannedTarget: number };
 }): string | null => {
-  const { currentTemperature, plannedTarget } = device;
-  if (typeof currentTemperature !== 'number') return null;
-  if (typeof plannedTarget !== 'number') return null;
+  // The atomic facet: present iff the stepped device is also
+  // temperature-observed, complete when present.
+  if (!device.temperature) return null;
+  const { currentTemperature, plannedTarget } = device.temperature;
   // Same `· target` grammar as the temperature card's fact line — the arrow
   // is reserved for a target CHANGE (e.g. a solar/boost lift), never the
   // routine current-vs-target pair (notes/ui-terminology.md § device cards).

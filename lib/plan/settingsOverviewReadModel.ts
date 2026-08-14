@@ -13,6 +13,7 @@ import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
 import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import type { DeviceOverviewTemperature } from '../../packages/shared-domain/src/deviceOverview';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
@@ -68,27 +69,38 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
   };
 }
 
-function resolveOverviewTemperatureState(
+/**
+ * The overview's temperature facet, atomic like everything upstream of it:
+ * the complete trio or nothing. The OBSERVED pair wins when the observer
+ * answers (it is fresher than the plan snapshot, and it still answers when
+ * temperature CONTROL is disabled — the card keeps showing what the device
+ * reports); `plannedTarget` is the planner's decision, defaulting to the
+ * observed target ("no commanded change") when the device is not
+ * temperature-planned this cycle. An observer `null` (the device is no longer
+ * temperature-observed) drops the facet wholly — there are no partial or
+ * nullable temperature fields on this DTO.
+ */
+function resolveOverviewTemperatureFacet(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
-): { currentTarget: number | null; plannedTarget?: number; currentTemperature?: number } {
+): DeviceOverviewTemperature | undefined {
   const observed = deps.getObservedTemperature?.(device.id);
   const planned = isTemperaturePlanDevice(device) ? device : null;
-  if (observed === null) {
-    return { currentTarget: null, plannedTarget: planned?.plannedTarget };
-  }
+  if (observed === null) return undefined;
   if (observed !== undefined) {
     return {
       currentTarget: observed.currentTarget,
-      plannedTarget: planned?.plannedTarget,
       currentTemperature: observed.currentTemperature,
+      plannedTarget: planned?.plannedTarget ?? observed.currentTarget,
     };
   }
-  return {
-    currentTarget: planned?.currentTarget ?? null,
-    plannedTarget: planned?.plannedTarget,
-    currentTemperature: planned?.currentTemperature,
-  };
+  return planned
+    ? {
+      currentTarget: planned.currentTarget,
+      currentTemperature: planned.currentTemperature,
+      plannedTarget: planned.plannedTarget,
+    }
+    : undefined;
 }
 
 export function buildSettingsOverviewDeviceReadModel(
@@ -101,7 +113,8 @@ export function buildSettingsOverviewDeviceReadModel(
   // narrow once so the snapshot can surface them. Non-EV devices have them
   // undefined. The raw `evChargingState` comes from the observer (its canonical
   // owner), NOT the plan device — see `getObservedEvChargingState`.
-  const temperature = resolveOverviewTemperatureState(device, deps);
+  const temperature = resolveOverviewTemperatureFacet(device, deps);
+  const temperatureFields = temperature !== undefined ? { temperature } : {};
   // The stepped discriminant, from the device's own ladder. This site used to
   // reconstruct a `controlModel` setting producer-map-first, which made its
   // stepped rung unreachable — the map is built from the RAW snapshot and cannot
@@ -114,7 +127,7 @@ export function buildSettingsOverviewDeviceReadModel(
   // and temperature overlays applied.
   const overviewShape = {
     ...device,
-    ...temperature,
+    ...temperatureFields,
     steppedLoad,
     deviceType: producerDeviceType,
   };
@@ -133,9 +146,7 @@ export function buildSettingsOverviewDeviceReadModel(
     deviceRole: deps.getObservedEvChargingState?.(device.id) !== undefined ? 'ev_charger' : undefined,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
     carChargingState: deps.getAssociatedCarChargingState?.(device.id),
-    currentTarget: temperature.currentTarget,
-    plannedTarget: temperature.plannedTarget,
-    currentTemperature: temperature.currentTemperature,
+    ...temperatureFields,
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: isSteppedLoadDevice(device) ? device.planningPowerKw : undefined,

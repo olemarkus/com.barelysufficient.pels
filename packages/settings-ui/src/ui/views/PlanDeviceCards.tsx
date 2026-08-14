@@ -290,8 +290,8 @@ const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
   }
   return formatIdleClassificationCopy({
     classification: dev.idleClassification,
-    currentTemperatureC: typeof dev.currentTemperature === 'number' ? dev.currentTemperature : undefined,
-    targetTemperatureC: typeof dev.currentTarget === 'number' ? dev.currentTarget : undefined,
+    currentTemperatureC: dev.temperature?.currentTemperature,
+    targetTemperatureC: dev.temperature?.currentTarget,
   });
 };
 

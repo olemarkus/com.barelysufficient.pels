@@ -64,6 +64,17 @@ export type DeviceOverviewSteppedLoad = {
   commandPending: boolean;
 };
 
+/**
+ * The atomic temperature trio a temperature device's card renders from.
+ * Post-validation strict: every value is a finite number by the time this
+ * shape exists (runtime producer or the WebView adapter).
+ */
+export type DeviceOverviewTemperature = {
+  currentTarget: number;
+  currentTemperature: number;
+  plannedTarget: number;
+};
+
 export type DeviceOverviewSnapshot = {
   currentState?: string;
   plannedState?: string;
@@ -138,16 +149,15 @@ export type DeviceOverviewSnapshot = {
   available: boolean;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   shedTemperature?: number | null;
-  currentTarget?: unknown;
-  // Observed room/tank temperature for temperature-controlled devices. Loosely
-  // typed like `currentTarget` (snapshot-boundary value). Read by
-  // `resolvePlanStateKind` to resolve a satisfied target-only device to `idle`
-  // instead of inferring "Running" from `not_applicable`.
-  currentTemperature?: unknown;
-  // The planner's intended target. The satisfied-idle predicate judges against
-  // max(currentTarget, plannedTarget): the live setpoint can still be the shed
-  // floor during keep-state restore windows.
-  plannedTarget?: unknown;
+  /**
+   * The temperature facet, as ONE atomic optional object: present iff the
+   * device is temperature-observed, and complete when present (the producer's
+   * atomic facet + total planner resolution; the WebView adapter validates the
+   * trio once at `parsePlanSnapshot` and drops a junk facet wholly). There are
+   * no flat nullable temperature fields left on this shape — absence of the
+   * facet is the one genuine "not a temperature device" state.
+   */
+  temperature?: DeviceOverviewTemperature;
   // Truthy while a target write is in flight — a satisfied verdict against the
   // pre-command setpoint would be premature.
   pendingTargetCommand?: unknown;
@@ -240,7 +250,7 @@ const resolvePlannedPowerState = (
 
   const isMinTempActive = device.shedAction === 'set_temperature'
     && typeof device.shedTemperature === 'number'
-    && device.currentTarget === device.shedTemperature;
+    && device.temperature?.currentTarget === device.shedTemperature;
 
   switch (device.plannedState) {
     case 'shed':
@@ -429,7 +439,7 @@ const normalizeSignatureNumber = (value: number | undefined): number | null => (
 const isMinTemperatureRestoreActive = (device: DeviceOverviewSnapshot): boolean => (
   device.shedAction === 'set_temperature'
   && typeof device.shedTemperature === 'number'
-  && device.currentTarget === device.shedTemperature
+  && device.temperature?.currentTarget === device.shedTemperature
 );
 
 export const buildDeviceOverviewTransitionSignature = (

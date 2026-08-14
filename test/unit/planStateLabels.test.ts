@@ -60,8 +60,7 @@ describe('planStateLabels', () => {
     it('resolves idle when at/above target and drawing nothing', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        currentTemperature: 20.8,
-        currentTarget: 16,
+        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16 },
         currentDrawKw: 0,
       })).toBe('idle');
     });
@@ -69,8 +68,7 @@ describe('planStateLabels', () => {
     it('treats an unmetered thermostat (producer-resolved 0 kW) as not drawing', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        currentTemperature: 21.5,
-        currentTarget: 21,
+        temperature: { currentTemperature: 21.5, currentTarget: 21, plannedTarget: 21 },
         currentDrawKw: 0,
       })).toBe('idle');
     });
@@ -78,8 +76,7 @@ describe('planStateLabels', () => {
     it('stays active while below target (calling for heat)', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        currentTemperature: 18.4,
-        currentTarget: 21,
+        temperature: { currentTemperature: 18.4, currentTarget: 21, plannedTarget: 21 },
         currentDrawKw: 0,
       })).toBe('active');
     });
@@ -87,27 +84,23 @@ describe('planStateLabels', () => {
     it('stays active while drawing power even at target (still heating)', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        currentTemperature: 21.0,
-        currentTarget: 21,
+        temperature: { currentTemperature: 21.0, currentTarget: 21, plannedTarget: 21 },
         currentDrawKw: 0.8,
       })).toBe('active');
     });
 
-    it('keeps the active inference when temperatures are unknown', () => {
+    it('keeps the active inference when the temperature facet is absent', () => {
+      // A junk facet never reaches this resolver: the WebView adapter
+      // (`parsePlanSnapshot`) drops an incomplete/non-finite facet wholly, so
+      // "no facet" is the only unknown-temperature state left to model.
       expect(resolvePlanStateKind(targetOnly)).toBe('active');
-      expect(resolvePlanStateKind({
-        ...targetOnly,
-        currentTemperature: 'n/a',
-        currentTarget: 21,
-      })).toBe('active');
     });
 
     it('never outranks an explicit shed hold', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
         plannedState: 'shed',
-        currentTemperature: 22,
-        currentTarget: 16,
+        temperature: { currentTemperature: 22, currentTarget: 16, plannedTarget: 16 },
         currentDrawKw: 0,
       })).toBe('held');
     });
@@ -121,8 +114,7 @@ describe('planStateLabels', () => {
         ...targetOnly,
         shedAction: 'set_temperature',
         shedTemperature: 16,
-        currentTemperature: 20.8,
-        currentTarget: 16,
+        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16 },
         currentDrawKw: 0,
       })).toBe('active');
     });
@@ -130,22 +122,25 @@ describe('planStateLabels', () => {
     it('judges satisfaction against the planned target when it is higher than the live setpoint', () => {
       const base = {
         ...targetOnly,
-        currentTarget: 16,
-        plannedTarget: 21,
         currentDrawKw: 0,
       };
       // Room above the lowered live setpoint but below the planned comfort
       // target: still work to do once the raise lands.
-      expect(resolvePlanStateKind({ ...base, currentTemperature: 20.8 })).toBe('active');
+      expect(resolvePlanStateKind({
+        ...base,
+        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 21 },
+      })).toBe('active');
       // Room above the planned target too: genuinely satisfied.
-      expect(resolvePlanStateKind({ ...base, currentTemperature: 21.4 })).toBe('idle');
+      expect(resolvePlanStateKind({
+        ...base,
+        temperature: { currentTemperature: 21.4, currentTarget: 16, plannedTarget: 21 },
+      })).toBe('idle');
     });
 
     it('does not classify while a target command is in flight', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        currentTemperature: 21.5,
-        currentTarget: 21,
+        temperature: { currentTemperature: 21.5, currentTarget: 21, plannedTarget: 21 },
         currentDrawKw: 0,
         pendingTargetCommand: { targetC: 22 },
       })).toBe('active');

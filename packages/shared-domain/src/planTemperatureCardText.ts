@@ -14,9 +14,6 @@ import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
-  currentTemperature?: number;
-  currentTarget?: unknown;
-  plannedTarget?: number;
   starvation?: SettingsUiPlanDeviceStarvation;
 };
 
@@ -49,28 +46,22 @@ export const resolveBinarySurplusReasonLine = (
 
 // ─── Temperature line ─────────────────────────────────────────────────────────
 
-const resolveTemperatureTargetText = (device: TemperatureDevice): string | null => {
-  const { currentTarget, plannedTarget } = device;
-  const hasCurrentTarget = typeof currentTarget === 'number' && Number.isFinite(currentTarget);
-  const hasPlannedTarget = typeof plannedTarget === 'number' && Number.isFinite(plannedTarget);
-  if (!hasPlannedTarget) {
-    return hasCurrentTarget ? `${currentTarget.toFixed(0)} °C` : null;
-  }
-  return hasCurrentTarget && currentTarget !== plannedTarget
-    ? `${currentTarget.toFixed(0)} °C → ${plannedTarget.toFixed(0)} °C`
-    : `${plannedTarget.toFixed(0)} °C`;
-};
+const resolveTemperatureTargetText = (temperature: NonNullable<TemperatureDevice['temperature']>): string => (
+  temperature.currentTarget !== temperature.plannedTarget
+    ? `${temperature.currentTarget.toFixed(0)} °C → ${temperature.plannedTarget.toFixed(0)} °C`
+    : `${temperature.plannedTarget.toFixed(0)} °C`
+);
 
 export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
-  const { currentTemperature } = device;
-  const targetText = resolveTemperatureTargetText(device);
-  if (targetText === null) return null;
+  // The atomic facet is complete when present, so the line either renders in
+  // full or not at all — the old "sensor unavailable" partial state is
+  // unrepresentable (a device without a sensor reading has no facet and is not
+  // a temperature card).
+  if (!device.temperature) return null;
+  const targetText = resolveTemperatureTargetText(device.temperature);
   // Middle-dot separator for the data line — em-dash is reserved for status
   // copy (see notes/ui-terminology.md:9). Source: TODO #8.
-  if (typeof currentTemperature !== 'number' || !Number.isFinite(currentTemperature)) {
-    return `target ${targetText} · sensor unavailable`;
-  }
-  return `${currentTemperature.toFixed(1)} °C · target ${targetText}`;
+  return `${device.temperature.currentTemperature.toFixed(1)} °C · target ${targetText}`;
 };
 
 // ─── Reason line ─────────────────────────────────────────────────────────────
@@ -120,8 +111,7 @@ const resolveTemperaturePlanReasonLine = (device: TemperatureDevice): string | n
   // before the temperature-evidence gate below.
   if (kind === 'held' && device.shedAction === 'turn_off') return resolveHeldLine(device);
 
-  const { currentTemperature, plannedTarget } = device;
-  if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
+  if (!device.temperature) return null;
 
   const surplusReason = resolveSurplusAbsorbReason(device, kind);
   if (surplusReason !== null) return surplusReason;

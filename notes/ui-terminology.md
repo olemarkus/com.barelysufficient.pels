@@ -207,7 +207,13 @@ in one of two plain sentences). **Retired 2026-08-08: `N % - stale`,
 `Invalid report`, and `EV battery: N %, stale`.** A qualified number invited the
 reader to use it anyway, and PELS itself does not — the producer either stands
 behind a level or reports none. Device detail now reads `Not reported` or
-`No car connected`. Quiet states render no chip and no reason. `Off` is now
+`No car connected`. Quiet states render no chip and no reason.
+**Retired 2026-08-14: `target N °C · sensor unavailable`.** The temperature
+facet is atomic end to end (observer → planner → UI adapter): a device either
+carries a complete reading+target pair or is not a temperature card at all, so
+there is no partial state left for that line to describe. A malformed facet in
+a payload (e.g. from an older build) is dropped wholly by the WebView adapter
+and the card renders its non-temperature variant. `Off` is now
 one of the shared state words; the older modality-specific bare `On`/`Off`
 output slot and the stepped card's `Off now` / `Level: Max` bold slots remain
 retired.

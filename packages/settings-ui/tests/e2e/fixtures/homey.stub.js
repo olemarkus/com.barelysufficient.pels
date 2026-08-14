@@ -221,9 +221,7 @@
           // equal hides that state, and one that diverges them with NO arrow
           // (the old 22/22 against a 21 mode row) reads as numbers that
           // don't reconcile.
-          currentTarget: 22,
-          plannedTarget: 21,
-          currentTemperature: 20.3,
+          temperature: { currentTarget: 22, currentTemperature: 20.3, plannedTarget: 21 },
           priority: 1,
           controllable: true,
           available: true,
@@ -279,9 +277,7 @@
           deviceClass: 'thermostat',
           // Observed device target 16 (see target_devices_snapshot), planner
           // moving it to the Home mode's 20 — same split as dev_heatpump.
-          currentTarget: 16,
-          plannedTarget: 20,
-          currentTemperature: 22.8,
+          temperature: { currentTarget: 16, currentTemperature: 22.8, plannedTarget: 20 },
           priority: 3,
           controllable: true,
           available: true,
@@ -300,9 +296,7 @@
           // this, not on a resolved control model.
           deviceType: 'temperature',
           deviceClass: 'thermostat',
-          currentTarget: 20,
-          plannedTarget: 20,
-          currentTemperature: 19.1,
+          temperature: { currentTarget: 20, currentTemperature: 19.1, plannedTarget: 20 },
           priority: 3,
           controllable: true,
           available: true,
@@ -380,8 +374,7 @@
           expectedPowerKw: 0.0,
           currentDrawKw: 0.0,
           planningPowerKw: 0.0,
-          currentTemperature: 51.1,
-          plannedTarget: 65,
+          temperature: { currentTarget: 65, currentTemperature: 51.1, plannedTarget: 65 },
           actualStepId: 'low',
           reportedStepId: 'low',
           targetStepId: 'low',
@@ -2010,9 +2003,7 @@
         plannedState: 'keep',
         controlModel: 'temperature_target',
         deviceClass: 'thermostat',
-        currentTarget: 21,
-        plannedTarget: 21,
-        currentTemperature: 19 + (i % 5),
+        temperature: { currentTarget: 21, currentTemperature: 19 + (i % 5), plannedTarget: 21 },
         priority: 1 + (i % 5),
         controllable: true,
         available: true,

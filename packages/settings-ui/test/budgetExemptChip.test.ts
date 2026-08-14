@@ -373,8 +373,7 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
     controlModel: 'temperature_target',
     plannedState: 'shed',
     currentState: 'on',
-    currentTemperature: 19.4,
-    plannedTarget: 22,
+    temperature: { currentTemperature: 19.4, currentTarget: 22, plannedTarget: 22 },
     // Production-shaped: `postReserveMargin = available − need − 0.25`, so the
     // gap the card states is `minimumRequired − postReserveMargin` = 2.5 kW.
     reason: {
@@ -417,9 +416,7 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
   it('keeps a benign near-target idle classification out of the exception line', () => {
     const card = renderTemperatureCard(buildTemperatureDevice({
       plannedState: 'keep',
-      currentTemperature: 18,
-      currentTarget: 10,
-      plannedTarget: 10,
+      temperature: { currentTemperature: 18, currentTarget: 10, plannedTarget: 10 },
       currentDrawKw: 0,
       idleClassification: 'near_target_idle',
       reason: { code: PLAN_REASON_CODES.keep, detail: null },

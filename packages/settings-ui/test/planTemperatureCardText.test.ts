@@ -27,9 +27,7 @@ describe('resolveTemperatureLine', () => {
   it('shows the planned target when the target is stable', () => {
     expect(resolveTemperatureLine({
       ...baseDevice,
-      currentTemperature: 20.2,
-      currentTarget: 21,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason: { code: 'keep', detail: null },
     })).toBe('20.2 °C · target 21 °C');
   });
@@ -37,52 +35,18 @@ describe('resolveTemperatureLine', () => {
   it('shows the current target to planned target transition when PELS is changing it', () => {
     expect(resolveTemperatureLine({
       ...baseDevice,
-      currentTemperature: 20.2,
-      currentTarget: 18,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 18, plannedTarget: 21 },
       reason: { code: 'keep', detail: null },
     })).toBe('20.2 °C · target 18 °C → 21 °C');
   });
 
-  it('reports sensor offline when the planned target is known but currentTemperature is missing', () => {
+  it('renders nothing without the temperature facet — the adapter drops a junk facet wholly', () => {
+    // Partial or non-finite trios never reach this resolver: `parsePlanSnapshot`
+    // validates the facet once at the WebView boundary and strips it, so the
+    // card renders as a non-temperature card instead of inventing copy
+    // (the old "sensor unavailable" line is retired with the partial state).
     expect(resolveTemperatureLine({
       ...baseDevice,
-      currentTarget: 21,
-      plannedTarget: 21,
-      reason: { code: 'keep', detail: null },
-    })).toBe('target 21 °C · sensor unavailable');
-  });
-
-  it('shows the external target when PELS has no planned temperature', () => {
-    expect(resolveTemperatureLine({
-      ...baseDevice,
-      currentTemperature: 20.3,
-      currentTarget: 22,
-      reason: { code: 'keep', detail: null },
-    })).toBe('20.3 °C · target 22 °C');
-  });
-
-  it('reports the sensor unavailable when only the external target is known', () => {
-    expect(resolveTemperatureLine({
-      ...baseDevice,
-      currentTarget: 22,
-      reason: { code: 'keep', detail: null },
-    })).toBe('target 22 °C · sensor unavailable');
-  });
-
-  it('does not format non-finite temperature observations or targets', () => {
-    expect(resolveTemperatureLine({
-      ...baseDevice,
-      currentTemperature: Number.NaN,
-      currentTarget: 22,
-      plannedTarget: undefined,
-      reason: { code: 'keep', detail: null },
-    })).toBe('target 22 °C · sensor unavailable');
-    expect(resolveTemperatureLine({
-      ...baseDevice,
-      currentTemperature: 20,
-      currentTarget: Number.POSITIVE_INFINITY,
-      plannedTarget: Number.NaN,
       reason: { code: 'keep', detail: null },
     })).toBeNull();
   });
@@ -98,8 +62,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason: {
         code: 'insufficient_headroom',
         needKw: 1.25,
@@ -118,8 +81,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'inactive',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason: { code: 'keep', detail: null },
     })).toBeNull();
   });
@@ -152,8 +114,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason: { code: 'daily_budget', shortfallKw: 0.8 },
     })).toBe('Waiting to resume — 0.8 kW more needed');
   });
@@ -163,8 +124,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason: { code: 'daily_budget' },
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
   });
@@ -186,8 +146,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason,
     }));
 
@@ -208,8 +167,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      currentTemperature: 20.2,
-      plannedTarget: 21,
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
       reason: { code: 'deferred_objective_avoid' },
     })).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
   });
@@ -223,8 +181,7 @@ describe('resolveTemperatureReasonLine', () => {
     const unattributed = {
       currentState: 'on',
       plannedState: 'shed' as const,
-      currentTemperature: 22.8,
-      plannedTarget: 20,
+      temperature: { currentTemperature: 22.8, currentTarget: 20, plannedTarget: 20 },
       ...baseDevice,
       reason: { code: 'keep' as const, detail: null },
     };
@@ -240,8 +197,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'on',
       plannedState: 'shed',
-      currentTemperature: 20.3,
-      currentTarget: 22,
+      temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22 },
       shedAction: 'turn_off',
       reason: { code: 'daily_budget', shortfallKw: 1.2 },
     })).toBe('Waiting to resume — 1.2 kW more needed');
@@ -252,8 +208,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'on',
       plannedState: 'shed',
-      currentTemperature: 20.3,
-      currentTarget: 22,
+      temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22 },
       shedAction: 'turn_off',
       reason: { code: 'capacity' },
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);

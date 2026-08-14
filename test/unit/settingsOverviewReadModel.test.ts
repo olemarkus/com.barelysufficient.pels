@@ -276,11 +276,12 @@ describe('settingsOverviewReadModel', () => {
 
     expect(readModel?.devices?.[0]).toMatchObject({
       deviceType: 'temperature',
-      currentTarget: 22,
-      currentTemperature: 20.3,
+      // The facet is complete even for a binary-commanded temperature device:
+      // "no commanded setpoint" materializes as planned === current, never as
+      // a partial facet.
+      temperature: { currentTarget: 22, currentTemperature: 20.3, plannedTarget: 22 },
       shedAction: 'turn_off',
     });
-    expect(readModel?.devices?.[0]?.plannedTarget).toBeUndefined();
   });
 
   it('keeps planner cooldown reasons available as structured read-model data', () => {

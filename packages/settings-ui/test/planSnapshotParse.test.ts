@@ -76,3 +76,39 @@ describe('parsePlanSnapshot resolved boolean guard', () => {
     })).not.toBeNull();
   });
 });
+
+describe('parsePlanSnapshot temperature facet guard', () => {
+  const device = (temperature?: unknown) => ({
+    id: 'dev-1',
+    name: 'Water heater',
+    controllable: true,
+    available: true,
+    reason: { code: 'capacity' },
+    ...(temperature !== undefined ? { temperature } : {}),
+  });
+
+  it('passes a clean payload through identity-preserving (byte-identical reads rely on it)', () => {
+    const payload = { devices: [device({ currentTarget: 21, currentTemperature: 20.4, plannedTarget: 22 })] };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+
+  it('drops a partial or non-finite facet WHOLLY - never a nullable field inward', () => {
+    for (const junk of [
+      { currentTarget: 21 },
+      { currentTarget: 21, currentTemperature: 20.4 },
+      { currentTarget: Number.NaN, currentTemperature: 20.4, plannedTarget: 22 },
+      { currentTarget: 21, currentTemperature: Number.POSITIVE_INFINITY, plannedTarget: 22 },
+      { currentTarget: 21, currentTemperature: 20.4, plannedTarget: null },
+      'junk',
+    ]) {
+      const parsed = parsePlanSnapshot({ devices: [device(junk)] });
+      expect(parsed).not.toBeNull();
+      expect((parsed?.devices?.[0] as { temperature?: unknown }).temperature).toBeUndefined();
+    }
+  });
+
+  it('keeps facet-less devices untouched', () => {
+    const parsed = parsePlanSnapshot({ devices: [device()] });
+    expect((parsed?.devices?.[0] as { temperature?: unknown }).temperature).toBeUndefined();
+  });
+});
