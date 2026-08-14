@@ -1,6 +1,7 @@
 import {
   DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   normalizeDeferredObjectivePlanHistory,
+  parseDeferredObjectivePlanHistory,
 } from '../../lib/objectives/deferredObjectives/planHistorySettings';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -113,7 +114,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     // Schema is upgraded to v4 in-place; entry shape is preserved.
     expect(result.version).toBe(DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION);
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result.entries).toHaveLength(1);
     const migrated = result.entries[0]!;
     expect(migrated.id).toBe('v3-entry-1');
@@ -124,7 +125,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(migrated.revisions).toBeUndefined();
   });
 
-  it('accepts well-formed v4 entries unchanged (round-trip)', () => {
+  it('compacts well-formed legacy v4 entries on read', () => {
     const v4Entry = {
       ...v3Entry,
       id: 'v4-entry-1',
@@ -145,14 +146,17 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     expect(result.entries).toHaveLength(1);
     const round = result.entries[0]!;
-    expect(round.progressSamples).toEqual(v4Entry.progressSamples);
+    expect(round.progressSamples).toEqual([
+      { atMs: 0, value: 50 },
+      { atMs: HOUR_MS, value: 60 },
+    ]);
     expect(round.deliveredKWh).toBeCloseTo(4.2);
     expect(round.totalCost).toBeCloseTo(5.1);
     expect(round.costDisplay).toEqual({ unit: 'kr', divisor: 100 });
     expect(round.revisions).toEqual(v4Entry.revisions);
   });
 
-  it('loads mixed-cadence progressSamples unchanged (hourly legacy + 15-minute current)', () => {
+  it('loads mixed-cadence progressSamples without changing their cadence', () => {
     // Entries finalized before the 15-minute sampling change carry hourly
     // samples; entries finalized mid-upgrade can even mix both cadences in
     // one array. The validator is cadence-agnostic (it checks shape, not
@@ -175,7 +179,9 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       entries: [mixedEntry],
     });
     expect(result.entries).toHaveLength(1);
-    expect(result.entries[0]!.progressSamples).toEqual(mixedEntry.progressSamples);
+    expect(result.entries[0]!.progressSamples).toEqual(
+      mixedEntry.progressSamples.map((sample) => ({ atMs: sample.atMs, value: sample.valueC })),
+    );
   });
 
   it('loads a legacy v4 entry that has totalCost but no costDisplay (absent → fallback on read)', () => {
@@ -190,6 +196,33 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(result.entries[0]!.totalCost).toBeCloseTo(150);
     // No costDisplay persisted — the archive formatter falls back to øre/kr.
     expect(result.entries[0]!.costDisplay).toBeUndefined();
+  });
+
+  it('normalizes legacy unknown outcomes and identity fields into the compact record', () => {
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, outcome: 'unknown' }],
+    });
+    expect(result.entries[0]).toMatchObject({
+      deviceId: 'dev',
+      targetValue: 65,
+      outcome: 'abandoned',
+    });
+    expect(result.entries[0]).not.toHaveProperty('deviceName');
+    expect(result.entries[0]).not.toHaveProperty('objectiveKind');
+  });
+
+  it('does not mistake a legacy row with a targetValue extension for a compact record', () => {
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, targetValue: 999 }],
+    });
+    expect(result.entries[0]).toMatchObject({
+      targetValue: 65,
+      startProgressValue: 50,
+      finalProgressValue: 65,
+    });
+    expect(result.entries[0]).not.toHaveProperty('objectiveKind');
   });
 
   it('drops an entry whose costDisplay is malformed (non-string unit / zero divisor)', () => {
@@ -219,6 +252,13 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       entries: [goodDisplay, zeroDivisor, nonStringUnit],
     });
     expect(result.entries.map((e) => e.id)).toEqual(['v4-good-display']);
+  });
+
+  it('rejects a partially valid persistence snapshot instead of exposing the valid subset', () => {
+    expect(parseDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [v3Entry, { ...v3Entry, id: 'bad', finalizedAtMs: Number.NaN }],
+    })).toEqual({ state: 'unavailable' });
   });
 
   it('drops entries with malformed v4 extensions but keeps siblings', () => {

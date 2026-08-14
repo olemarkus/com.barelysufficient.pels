@@ -10,7 +10,7 @@ import type {
   DeferredObjectiveSettingsEntry,
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
-import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
 const { resolveDeadlinesListCards, resolveDeadlinesHistoryEntries } = testExports;
@@ -529,7 +529,7 @@ describe('resolveDeadlinesListCards', () => {
 });
 
 describe('resolveDeadlinesHistoryEntries', () => {
-  const buildEntry = (deviceId: string, finalizedAtMs: number) => toResolvedPlanHistoryEntry({
+  const buildEntry = (deviceId: string, finalizedAtMs: number) => toResolvedLegacyPlanHistoryEntry({
     deviceId,
     deviceName: deviceId,
     objectiveKind: 'temperature' as const,
@@ -586,7 +586,7 @@ describe('history device-filter persistence', () => {
     renderHistorySurface,
   } = testExports;
 
-  const buildHistoryPayloadEntry = (deviceId: string, finalizedAtMs: number, deviceName: string) => toResolvedPlanHistoryEntry({
+  const buildHistoryPayloadEntry = (deviceId: string, finalizedAtMs: number, deviceName: string) => toResolvedLegacyPlanHistoryEntry({
     id: `${deviceId}-${finalizedAtMs}`,
     deviceId,
     deviceName,
@@ -705,7 +705,7 @@ describe('history cost meta line (real state path)', () => {
   // `totalCost` is the RAW persisted total in the scheme's minor unit (øre for
   // the default kr/100 scheme), exactly as the runtime accumulates it from
   // combined-price totals.
-  const buildCostEntry = (totalCost: number, deliveredKWh: number) => toResolvedPlanHistoryEntry({
+  const buildCostEntry = (totalCost: number, deliveredKWh: number) => toResolvedLegacyPlanHistoryEntry({
     id: `dev_cost-${totalCost}`,
     deviceId: 'dev_cost',
     deviceName: 'Connected 300',

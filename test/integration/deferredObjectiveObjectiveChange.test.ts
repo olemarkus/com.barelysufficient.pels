@@ -9,7 +9,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const buildHistoryRecorder = (): DeferredObjectivePlanHistoryRecorder => (
   new DeferredObjectivePlanHistoryRecorder({
-    load: () => null,
+    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
     save: () => true,
   })
 );

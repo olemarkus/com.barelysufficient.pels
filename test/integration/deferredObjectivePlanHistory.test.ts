@@ -16,10 +16,10 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
-  DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanHistoryV5,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import {
   resolveDeferredPlanHistoryMissAttribution,
@@ -99,14 +99,17 @@ const makeDiag = (
   };
 };
 
-const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV4): {
+const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV5): {
   deps: PlanHistoryPersistDeps;
-  saved: () => DeferredObjectivePlanHistoryV4 | null;
+  saved: () => DeferredObjectivePlanHistoryV5 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV4 | null = null;
+  let saved: DeferredObjectivePlanHistoryV5 | null = null;
   return {
     deps: {
-      load: () => initial ?? null,
+      load: () => ({
+        snapshot: initial === undefined ? { version: 5, entries: [] } : initial,
+        persistenceSafe: true,
+      }),
       save: (next) => { saved = next; return true; },
     },
     saved: () => saved,
@@ -157,8 +160,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = persisted!.entries[0]!;
     expect(entry.outcome).toBe('met');
     expect(entry.metAtMs).toBe(4 * HOUR_MS);
-    expect(entry.startProgressC).toBe(50);
-    expect(entry.finalProgressC).toBe(65);
+    expect(entry.startProgressValue).toBe(50);
+    expect(entry.finalProgressValue).toBe(65);
     expect(entry.finalizedAtMs).toBe(6 * HOUR_MS);
   });
 
@@ -188,7 +191,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = saved()!.entries[0]!;
     expect(entry.outcome).toBe('missed');
     expect(entry.metAtMs).toBeNull();
-    expect(entry.finalProgressC).toBe(60);
+    expect(entry.finalProgressValue).toBe(60);
   });
 
   it('clears a met run when fresh progress drops below target during an unknown cycle', () => {
@@ -217,7 +220,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = saved()!.entries[0]!;
     expect(entry.outcome).toBe('missed');
     expect(entry.metAtMs).toBeNull();
-    expect(entry.finalProgressC).toBe(60);
+    expect(entry.finalProgressValue).toBe(60);
   });
 
   it('clears a met run when fresh progress drops below target while price planning is disabled', () => {
@@ -246,7 +249,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = saved()!.entries[0]!;
     expect(entry.outcome).toBe('missed');
     expect(entry.metAtMs).toBeNull();
-    expect(entry.finalProgressC).toBe(60);
+    expect(entry.finalProgressValue).toBe(60);
   });
 
   it('keeps the last met marker when an unknown cycle only has stale progress', () => {
@@ -275,7 +278,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = saved()!.entries[0]!;
     expect(entry.outcome).toBe('met');
     expect(entry.metAtMs).toBe(0);
-    expect(entry.finalProgressC).toBe(65);
+    expect(entry.finalProgressValue).toBe(65);
   });
 
   it('records the later met time when progress recovers before the deadline', () => {
@@ -311,7 +314,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = saved()!.entries[0]!;
     expect(entry.outcome).toBe('met');
     expect(entry.metAtMs).toBe(5 * HOUR_MS);
-    expect(entry.finalProgressC).toBe(66);
+    expect(entry.finalProgressValue).toBe(66);
   });
 
   it('finalizes as `missed` when the deadline passes with progress below target', () => {
@@ -327,7 +330,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entry = saved()!.entries[0]!;
     expect(entry.outcome).toBe('missed');
     expect(entry.metAtMs).toBeNull();
-    expect(entry.finalProgressC).toBe(55);
+    expect(entry.finalProgressValue).toBe(55);
   });
 
   it('publishes ended events to the bus on finalization for met / missed / abandoned only', () => {
@@ -371,7 +374,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     // them — they must never reach the bus retroactively.
     recorder.backfillFromConfig([{
       deviceId: 'backfill-dev',
-      deviceName: 'Back-filled',
       objectiveKind: 'temperature',
       deadlineAtMs: 5 * HOUR_MS,
       targetTemperatureC: 65,
@@ -501,8 +503,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entries = saved()!.entries;
     expect(entries).toHaveLength(1);
     expect(entries[0]!.outcome).toBe('missed');
-    expect(entries[0]!.startProgressC).toBe(19);
-    expect(entries[0]!.finalProgressC).toBe(19); // unknown diagnostics don't roll forward progress
+    expect(entries[0]!.startProgressValue).toBe(19);
+    expect(entries[0]!.finalProgressValue).toBe(19); // unknown diagnostics don't roll forward progress
     expect(entries[0]!.discoveredFrom).toBe('observation');
     expect(entries[0]!.observedIntervals.length).toBeGreaterThan(0);
   });
@@ -528,8 +530,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
-    expect(entry.startProgressC).toBe(18);
-    expect(entry.startProgressC).not.toBe(50);
+    expect(entry.startProgressValue).toBe(18);
+    expect(entry.startProgressValue).not.toBe(50);
   });
 
   it('leaves startProgress null when no cycle is ever trustworthy (no false anchor)', () => {
@@ -553,7 +555,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.observe([], 6 * HOUR_MS);
     recorder.flushIfDirty();
 
-    expect(saved()!.entries[0]!.startProgressC).toBeNull();
+    expect(saved()!.entries[0]!.startProgressValue).toBeNull();
   });
 
   it('records a `met` entry when the device is already at target across an unknown-throughout window', () => {
@@ -578,14 +580,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   const deadlineB = 101 * dayMs;
   const deadlineC = 102 * dayMs;
 
-  it('backfillFromConfig synthesizes one unknown entry per missed one-shot deadline', () => {
+  it('backfillFromConfig synthesizes one abandoned entry per missed one-shot deadline', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     recorder.backfillFromConfig(
       [
         {
           deviceId: 'dev_a',
-          deviceName: 'Connected 300',
           objectiveKind: 'temperature',
           deadlineAtMs: deadlineA,
           targetTemperatureC: 65,
@@ -593,7 +594,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         },
         {
           deviceId: 'dev_b',
-          deviceName: 'Pool pump',
           objectiveKind: 'temperature',
           deadlineAtMs: deadlineC,
           targetTemperatureC: 28,
@@ -608,7 +608,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const entries = saved()!.entries;
     expect(entries.map((e) => e.deadlineAtMs).sort((a, b) => a - b)).toEqual([deadlineA, deadlineC]);
     for (const entry of entries) {
-      expect(entry.outcome).toBe('unknown');
+      expect(entry.outcome).toBe('abandoned');
       expect(entry.discoveredFrom).toBe('backfill');
       expect(entry.observedIntervals).toEqual([]);
     }
@@ -622,7 +622,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         // Inside window — included.
         {
           deviceId: 'in_window',
-          deviceName: null,
           objectiveKind: 'temperature',
           deadlineAtMs: deadlineB,
           targetTemperatureC: 65,
@@ -631,7 +630,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         // At fromMs (strict >) — excluded.
         {
           deviceId: 'on_lower_boundary',
-          deviceName: null,
           objectiveKind: 'temperature',
           deadlineAtMs: deadlineA,
           targetTemperatureC: 65,
@@ -640,7 +638,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         // Past toMs — excluded.
         {
           deviceId: 'future',
-          deviceName: null,
           objectiveKind: 'temperature',
           deadlineAtMs: deadlineC + HOUR_MS,
           targetTemperatureC: 65,
@@ -660,7 +657,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const configs = [{
       deviceId: 'dev',
-      deviceName: 'Connected 300',
       objectiveKind: 'temperature' as const,
       deadlineAtMs: deadlineA,
       targetTemperatureC: 65,
@@ -685,7 +681,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.backfillFromConfig(
       [{
         deviceId: 'dev',
-        deviceName: 'Connected 300',
         objectiveKind: 'temperature',
         deadlineAtMs: deadlineA,
         targetTemperatureC: 65,
@@ -706,7 +701,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     // in appInit would advance past entries that never landed on disk.
     let saveCalls = 0;
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => null,
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
       save: () => {
         saveCalls += 1;
         return false;
@@ -723,24 +718,167 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(saveCalls).toBe(2);
   });
 
+  it('hydrates recovered durable history on a clean lifecycle flush without writing', () => {
+    const durable: DeferredObjectivePlanHistoryRecord = {
+      id: 'durable-after-recovery',
+      deviceId: 'dev',
+      targetValue: 65,
+      deadlineAtMs: 2 * HOUR_MS,
+      startedAtMs: HOUR_MS,
+      finalizedAtMs: 2 * HOUR_MS,
+      startProgressValue: 50,
+      finalProgressValue: 65,
+      initialEnergyNeededKWh: 22.5,
+      outcome: 'met',
+      metAtMs: 2 * HOUR_MS - 1,
+      usedDeadlineReserve: false,
+      observedIntervals: [{ fromMs: HOUR_MS, toMs: 2 * HOUR_MS }],
+      discoveredFrom: 'observation',
+      originalPlan: null,
+      finalPlan: null,
+    };
+    let recovered = false;
+    let saveCalls = 0;
+    const recorder = new DeferredObjectivePlanHistoryRecorder({
+      load: () => recovered
+        ? { snapshot: { version: 5, entries: [durable] }, persistenceSafe: true }
+        : { snapshot: { version: 5, entries: [] }, persistenceSafe: false },
+      save: () => { saveCalls += 1; return true; },
+    });
+
+    expect(recorder.flushIfDirty()).toBe(false);
+    expect(recorder.getHistorySnapshot().entries).toEqual([]);
+    recovered = true;
+    expect(recorder.flushIfDirty()).toBe(false);
+    expect(recorder.getHistorySnapshot().entries).toEqual([durable]);
+    expect(saveCalls).toBe(0);
+  });
+
+  it('does not overwrite durable history after a transient-empty load and merges on recovery', () => {
+    const durableDeadline = 2 * HOUR_MS;
+    const localDeadline = 3 * HOUR_MS;
+    const durable: DeferredObjectivePlanHistoryRecord = {
+      id: 'durable-observed',
+      deviceId: 'dev',
+      targetValue: 65,
+      deadlineAtMs: durableDeadline,
+      startedAtMs: HOUR_MS,
+      finalizedAtMs: durableDeadline,
+      startProgressValue: 50,
+      finalProgressValue: 65,
+      initialEnergyNeededKWh: 22.5,
+      outcome: 'met',
+      metAtMs: durableDeadline - 1,
+      usedDeadlineReserve: false,
+      observedIntervals: [{ fromMs: HOUR_MS, toMs: durableDeadline }],
+      discoveredFrom: 'observation',
+      originalPlan: null,
+      finalPlan: null,
+    };
+    const durableReplacement: DeferredObjectivePlanHistoryRecord = {
+      ...durable,
+      id: 'durable-replacement',
+      targetValue: 70,
+      outcome: 'replaced',
+      metAtMs: null,
+    };
+    let recovered = false;
+    let saved: DeferredObjectivePlanHistoryV5 | null = null;
+    const recorder = new DeferredObjectivePlanHistoryRecorder({
+      load: () => recovered
+        ? {
+          snapshot: { version: 5, entries: [durableReplacement, durable] },
+          persistenceSafe: true,
+        }
+        : { snapshot: { version: 5, entries: [] }, persistenceSafe: false },
+      save: (next) => { saved = next; return true; },
+    });
+    const config = (deadlineAtMs: number) => ({
+      deviceId: 'dev',
+      deviceName: 'Water Heater',
+      objectiveKind: 'temperature' as const,
+      deadlineAtMs,
+      targetTemperatureC: 65,
+      targetPercent: null,
+    });
+    recorder.backfillFromConfig(
+      [config(durableDeadline), config(localDeadline)],
+      HOUR_MS,
+      4 * HOUR_MS,
+    );
+
+    expect(recorder.flushIfDirty()).toBe(false);
+    expect(saved).toBeNull();
+    expect(recorder.isDirty()).toBe(true);
+
+    recovered = true;
+    expect(recorder.flushIfDirty()).toBe(true);
+    expect(saved!.entries).toHaveLength(3);
+    expect(saved!.entries.filter((entry) => entry.deadlineAtMs === durableDeadline).map((entry) => entry.id))
+      .toEqual(['durable-replacement', 'durable-observed']);
+    expect(saved!.entries.find((entry) => entry.deadlineAtMs === localDeadline)?.outcome)
+      .toBe('abandoned');
+  });
+
+  it('keeps a local observed replacement run beside a durable same-deadline run', () => {
+    const deadlineAtMs = 3 * HOUR_MS;
+    const durable: DeferredObjectivePlanHistoryRecord = {
+      id: 'durable-replaced',
+      deviceId: 'dev',
+      targetValue: 60,
+      deadlineAtMs,
+      startedAtMs: 0,
+      finalizedAtMs: HOUR_MS,
+      startProgressValue: 50,
+      finalProgressValue: 52,
+      initialEnergyNeededKWh: 10,
+      outcome: 'replaced',
+      metAtMs: null,
+      usedDeadlineReserve: false,
+      observedIntervals: [{ fromMs: 0, toMs: HOUR_MS }],
+      discoveredFrom: 'observation',
+      originalPlan: null,
+      finalPlan: null,
+    };
+    let recovered = false;
+    let saved: DeferredObjectivePlanHistoryV5 | null = null;
+    const recorder = new DeferredObjectivePlanHistoryRecorder({
+      load: () => recovered
+        ? { snapshot: { version: 5, entries: [durable] }, persistenceSafe: true }
+        : { snapshot: { version: 5, entries: [] }, persistenceSafe: false },
+      save: (next) => { saved = next; return true; },
+    });
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      targetTemperatureC: 70,
+      currentTemperatureC: 70,
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 2 * HOUR_MS);
+    recorder.observe([], deadlineAtMs);
+
+    expect(recorder.flushIfDirty()).toBe(false);
+    recovered = true;
+    expect(recorder.flushIfDirty()).toBe(true);
+    expect(saved!.entries).toHaveLength(2);
+    expect(saved!.entries.map((entry) => entry.outcome)).toEqual(['replaced', 'met']);
+    expect(saved!.entries.map((entry) => entry.targetValue)).toEqual([60, 70]);
+  });
+
   it('hydrates from persisted history on construction', () => {
-    const initial: DeferredObjectivePlanHistoryV4 = {
-      version: 4,
+    const initial: DeferredObjectivePlanHistoryV5 = {
+      version: 5,
       entries: [
         {
           id: 'hydration-entry-1',
           deviceId: 'dev',
-          deviceName: 'Water Heater',
-          objectiveKind: 'temperature',
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: HOUR_MS,
           startedAtMs: 0,
           finalizedAtMs: HOUR_MS,
-          startProgressC: 50,
-          startProgressPercent: null,
-          finalProgressC: 65,
-          finalProgressPercent: null,
+          startProgressValue: 50,
+          finalProgressValue: 65,
           initialEnergyNeededKWh: 22.5,
           outcome: 'met',
           metAtMs: HOUR_MS - 1,
@@ -749,11 +887,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           discoveredFrom: 'observation',
           originalPlan: null,
           finalPlan: null,
-        } satisfies DeferredObjectivePlanHistoryEntry,
+        },
       ],
     };
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => initial,
+      load: () => ({ snapshot: initial, persistenceSafe: true }),
       save: () => true,
     });
     expect(recorder.getHistorySnapshot().entries).toHaveLength(1);
@@ -774,7 +912,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.deadlineAtMs).toBe(originalDeadline);
       expect(entry.finalizedAtMs).toBe(2 * HOUR_MS);
       // Same target as the original run; the new deadline starts a separate entry once observed.
-      expect(entry.targetTemperatureC).toBe(65);
+      expect(entry.targetValue).toBe(65);
     });
 
     it('finalizes as `replaced` when the user keeps the deadline but bumps the target', () => {
@@ -803,9 +941,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entries).toHaveLength(2);
       const [first, second] = entries;
       expect(first!.outcome).toBe('replaced');
-      expect(first!.targetTemperatureC).toBe(60);
+      expect(first!.targetValue).toBe(60);
       expect(second!.outcome).toBe('missed');
-      expect(second!.targetTemperatureC).toBe(70);
+      expect(second!.targetValue).toBe(70);
     });
 
     it('finalizes as `abandoned` when the user clears the objective', () => {
@@ -1217,8 +1355,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.startProgressC).toBe(52); // first real reading wins
-      expect(entry.finalProgressC).toBe(60);
+      expect(entry.startProgressValue).toBe(52); // first real reading wins
+      expect(entry.finalProgressValue).toBe(60);
       expect(entry.observedIntervals.length).toBeGreaterThan(0);
     });
 
@@ -1239,7 +1377,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
-      expect(saved()!.entries[0]!.startProgressC).toBe(50);
+      expect(saved()!.entries[0]!.startProgressValue).toBe(50);
     });
 
     it('EV path: stamps `startProgressPercent` once a real percent arrives', () => {
@@ -1290,8 +1428,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.startProgressPercent).toBe(35); // first real reading wins
-      expect(entry.finalProgressPercent).toBe(70);
+      expect(entry.startProgressValue).toBe(35); // first real reading wins
+      expect(entry.finalProgressValue).toBe(70);
       expect(entry.observedIntervals.length).toBeGreaterThan(0);
     });
 
@@ -1316,7 +1454,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
-      expect(saved()!.entries[0]!.startProgressC).toBe(48);
+      expect(saved()!.entries[0]!.startProgressValue).toBe(48);
     });
   });
 
@@ -1422,12 +1560,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const sampleAtMs = entry.progressSamples!.map((s) => s.atMs);
       expect(sampleAtMs).toEqual([5 * MIN_MS, 30 * MIN_MS, HOUR_MS, 2 * HOUR_MS]);
       // Within the 0:00 bucket: latest reading wins (51 °C, not the initial 50).
-      expect(entry.progressSamples!.map((s) => s.valueC)).toEqual([51, 52, 55, 60]);
-      // The temperature objective stamps `valuePercent: null` so the UI
-      // never has to branch on objectiveKind to pick a field.
-      for (const sample of entry.progressSamples!) {
-        expect(sample.valuePercent).toBeNull();
-      }
+      expect(entry.progressSamples!.map((s) => s.value)).toEqual([51, 52, 55, 60]);
     });
 
     it('caps progressSamples at 200 by re-bucketing to a coarser grid, preserving the run start', () => {
@@ -1461,7 +1594,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // keeps the trajectory monotone for this monotone input).
       for (let i = 1; i < samples.length; i += 1) {
         expect(samples[i]!.atMs).toBeGreaterThan(samples[i - 1]!.atMs);
-        expect(samples[i]!.valueC!).toBeGreaterThan(samples[i - 1]!.valueC!);
+        expect(samples[i]!.value!).toBeGreaterThan(samples[i - 1]!.value!);
       }
     });
 
@@ -1480,7 +1613,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // The samples observed before the diagnostic stream stopped are still
       // drained into the entry so the history chart can show the partial run.
       expect(entry.progressSamples).toHaveLength(1);
-      expect(entry.progressSamples![0]!.valueC).toBe(50);
+      expect(entry.progressSamples![0]!.value).toBe(50);
     });
 
     it('ignores stale diagnostics so untrusted telemetry never lands in progressSamples', () => {
@@ -1521,10 +1654,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // readings never landed in the ring at all (neither the 0:30 nor the
       // 1:00 bucket exists).
       expect(entry.progressSamples![0]!.atMs).toBe(0);
-      expect(entry.progressSamples![0]!.valueC).toBe(50);
+      expect(entry.progressSamples![0]!.value).toBe(50);
       // The 2:00 bucket has the next trusted reading.
       expect(entry.progressSamples![1]!.atMs).toBe(2 * HOUR_MS);
-      expect(entry.progressSamples![1]!.valueC).toBe(55);
+      expect(entry.progressSamples![1]!.value).toBe(55);
     });
 
     it('records `deliveredKWh` and `totalCost` from hourly delivery contributions', () => {
@@ -2444,7 +2577,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled');
       expect(entry.metAtMs).toBe(3 * HOUR_MS);
-      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(61.8, 1);
     });
 
     it('keeps recording 15-minute post-stall samples while the plateau freeze holds', () => {
@@ -2489,10 +2622,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled');
       expect(entry.metAtMs).toBe(3 * HOUR_MS);
-      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(61.8, 1);
       // Un-frozen ring: each post-stall quarter-hour reading landed as its
       // own sample (start, plateau, then the four coast readings).
-      expect(entry.progressSamples!.map((s) => s.valueC)).toEqual(
+      expect(entry.progressSamples!.map((s) => s.value)).toEqual(
         [60.9, 61.8, ...coast],
       );
       expect(entry.progressSamples!.map((s) => s.atMs)).toEqual([
@@ -2617,7 +2750,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled_device_capped');
       expect(entry.metAtMs).toBe(3 * HOUR_MS);
-      expect(entry.finalProgressC).toBeCloseTo(58, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(58, 1);
     });
 
     it('keeps the capped-idle promotion sticky across later non-plannable ticks', () => {
@@ -2658,7 +2791,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const entry = saved()!.entries[0]!;
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled_device_capped');
-      expect(entry.finalProgressC).toBeCloseTo(58, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(58, 1);
     });
 
     it('keeps the stall promotion sticky across subsequent plannable ticks reporting below-target progress', () => {
@@ -2700,7 +2833,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const entry = saved()!.entries[0]!;
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled');
-      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(61.8, 1);
     });
 
     it('skips stall promotion on the first tick of a new record — stale classification carryover guard', () => {
@@ -2793,7 +2926,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBe('stalled');
       // The promotion captured the live plateau reading, not the prior
       // plannable tick's 50 °C value.
-      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(61.8, 1);
     });
 
     it('does not promote when only the first tick fires near_target_idle (no subsequent ticks)', () => {
@@ -2915,7 +3048,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // the postmortem can route to the correct recourse copy.
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled_device_capped');
-      expect(entry.finalProgressC).toBeCloseTo(58, 1);
+      expect(entry.finalProgressValue).toBeCloseTo(58, 1);
     });
   });
 
@@ -3144,7 +3277,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalPlan?.energyExpectedKWh).toBeCloseTo(3.0);
 
       // 2. UI render path (reads the persisted entry only — no live hint).
-      const uiAttribution = resolveDeferredPlanHistoryMissAttribution(toResolvedPlanHistoryEntry(entry));
+      const uiAttribution = resolveDeferredPlanHistoryMissAttribution(toResolvedPlanHistoryEntry(entry, {
+        name: 'Water Heater',
+        objectiveKind: 'temperature',
+      }));
       expect(uiAttribution.cause).toBe('energy_underestimate');
       expect(uiAttribution.deliveredAtOrAbovePlan).toBe(true);
 

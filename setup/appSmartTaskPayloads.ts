@@ -1,19 +1,23 @@
 import type { AppContext } from '../lib/app/appContext';
-import type { DeferredObjectivePlanHistoryEntry } from '../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectivePlanHistoryRecord } from '../packages/contracts/src/deferredObjectivePlanHistory';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../packages/contracts/src/settingsUiApi';
 import { toResolvedPlanHistoryEntry } from '../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { assembleActivePlansWithTrajectory } from './deferredObjectiveActivePlansUiAssembler';
+import { resolveSmartTaskDeviceKind } from '../packages/shared-domain/src/smartTaskDeviceKind';
+import type { SmartTaskDeviceLike } from '../packages/shared-domain/src/smartTaskDeviceKind';
 
 /**
- * The two `AppContext` members this projection reads. Narrowed on purpose: the
+ * The `AppContext` members this projection reads. Narrowed on purpose: the
  * class needs nothing else, and the narrow type lets a test build a real
  * (non-cast) context.
  */
 export type SmartTaskPayloadsContext = Pick<
   AppContext,
   'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'
->;
+> & {
+  latestTargetSnapshot: ReadonlyArray<SmartTaskDeviceLike & { id: string; name: string }>;
+};
 
 /**
  * Read-only smart-task payload assembly for the settings UI and the widgets:
@@ -34,13 +38,13 @@ export class AppSmartTaskPayloads {
   }
 
   private buildPlanHistoryUiPayload(
-    accept?: (entry: DeferredObjectivePlanHistoryEntry) => boolean,
+    accept?: (entry: DeferredObjectivePlanHistoryRecord) => boolean,
   ): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.ctx.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();
     const entriesByDeviceId: SettingsUiDeferredObjectivePlanHistoryPayload['entriesByDeviceId'] = {};
     if (snapshot) {
       // Sort newest finalizedAtMs first within each device to match the UI expectation.
-      const byDevice = new Map<string, DeferredObjectivePlanHistoryEntry[]>();
+      const byDevice = new Map<string, DeferredObjectivePlanHistoryRecord[]>();
       for (const entry of snapshot.entries) {
         if (accept && !accept(entry)) continue;
         const list = byDevice.get(entry.deviceId) ?? [];
@@ -48,10 +52,17 @@ export class AppSmartTaskPayloads {
         byDevice.set(entry.deviceId, list);
       }
       for (const [deviceId, list] of byDevice) {
+        const device = this.ctx.latestTargetSnapshot.find((candidate) => candidate.id === deviceId);
+        if (!device) continue;
+        const objectiveKind = resolveSmartTaskDeviceKind({
+          ...device,
+          temperatureControlDisabled: undefined,
+        });
+        if (objectiveKind === null) continue;
         // Resolve kind-split °C/% pairs to unit-agnostic numbers at this producer boundary.
         entriesByDeviceId[deviceId] = list
           .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs)
-          .map(toResolvedPlanHistoryEntry);
+          .map((entry) => toResolvedPlanHistoryEntry(entry, { name: device.name, objectiveKind }));
       }
     }
     return { version: 1, entriesByDeviceId };

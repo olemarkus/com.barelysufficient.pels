@@ -32,7 +32,10 @@ export {
   DeferredObjectivePlanHistoryRecorder,
   type DeferredObjectiveBackfillConfig,
 } from './planHistory';
-export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';
+export {
+  normalizeDeferredObjectivePlanHistory,
+  parseDeferredObjectivePlanHistory,
+} from './planHistorySettings';
 export { DeferredObjectiveActivePlanRecorder } from './activePlanRecorder';
 export {
   applyDeferredObjectiveChange,

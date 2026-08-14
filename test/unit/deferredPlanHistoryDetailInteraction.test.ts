@@ -21,7 +21,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedLegacyPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 // 2026-05-15: start 19:00 UTC, deadline 01:00 UTC next day (the mock's window).
@@ -45,7 +45,7 @@ const buildSnapshot = (
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: 'entry-1',
   deviceId: 'dev-1',
   deviceName: 'Connected 300',

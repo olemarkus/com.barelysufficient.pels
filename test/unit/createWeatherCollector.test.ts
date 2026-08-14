@@ -19,7 +19,7 @@ type Entry = {
 };
 
 const recorderWith = (entries: Entry[]): DeferredObjectivePlanHistoryRecorder => ({
-  getHistorySnapshot: () => ({ version: 4, entries }),
+  getHistorySnapshot: () => ({ version: 5, entries }),
 } as unknown as DeferredObjectivePlanHistoryRecorder);
 
 const missed = (overrides: Partial<Entry> = {}): Entry => ({

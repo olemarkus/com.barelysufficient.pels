@@ -1,6 +1,6 @@
 // Unit tests for the smart-task history-detail postmortem resolver (v2.7.2 PR 3).
-// Six outcome-shaped variants split across `met` / `missed` / `abandoned`
-// + `unknown` fallback. Each test constructs a minimal entry and asserts
+// Outcome-shaped variants split across `met` / `missed` / `abandoned`.
+// Each test constructs a minimal entry and asserts
 // the resolved variant slug + sentence shape so the asymmetric history hero
 // can rely on `lead.sentence` without re-checking outcome.
 //
@@ -26,7 +26,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedLegacyPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 16, 0, 0); // Sat 16 May 16:00 UTC
@@ -43,7 +43,7 @@ const buildSnapshot = (
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
   id: 'entry-1',
   deviceId: 'dev-1',
   deviceName: 'Connected 300',
@@ -330,60 +330,16 @@ describe('formatPlanHistoryPostmortem', () => {
     });
   });
 
-  describe('unknown outcome', () => {
-    it('resolves unknown variant for backfill-discovered entries', () => {
+  describe('legacy unknown outcome', () => {
+    it('normalizes it to abandoned before consumers receive it', () => {
       const entry = buildEntry({
         outcome: 'unknown',
         discoveredFrom: 'backfill',
         finalProgressC: null,
       });
       const result = formatPlanHistoryPostmortem(entry, 'UTC');
-      expect(result.variant).toBe('unknown');
-      expect(result.sentence).toContain('reconstructed from settings');
-    });
-
-    it('returns a non-null sentence for unknown outcomes that are not backfill-derived', () => {
-      const entry = buildEntry({
-        outcome: 'unknown',
-        discoveredFrom: 'observation',
-        finalProgressC: null,
-      });
-      const result = formatPlanHistoryPostmortem(entry, 'UTC');
-      expect(result.variant).toBe('unknown');
-      expect(result.sentence.length).toBeGreaterThan(0);
-    });
-
-    // PR #1074 follow-up: hero re-shows the collapsed chart card when a plan
-    // was recorded, so the postmortem sentence must bridge to the "View
-    // details" affordance rather than stop at the bare "could not determine"
-    // fallback. The no-plan branch keeps the original wording so the
-    // single-sentence hero shape stays byte-identical.
-    it('keeps the bare "could not determine" sentence when no plan was recorded', () => {
-      const entry = buildEntry({
-        outcome: 'unknown',
-        discoveredFrom: 'observation',
-        finalProgressC: null,
-        originalPlan: null,
-        finalPlan: null,
-      });
-      const result = formatPlanHistoryPostmortem(entry, 'UTC');
-      expect(result.variant).toBe('unknown');
-      expect(result.sentence).toBe('PELS could not determine how this smart task finished.');
-    });
-
-    it('previews the recorded plan in the sentence when originalPlan or finalPlan is present', () => {
-      const entry = buildEntry({
-        outcome: 'unknown',
-        discoveredFrom: 'observation',
-        finalProgressC: null,
-        originalPlan: buildSnapshot(),
-        finalPlan: null,
-      });
-      const result = formatPlanHistoryPostmortem(entry, 'UTC');
-      expect(result.variant).toBe('unknown');
-      expect(result.sentence).toBe(
-        "PELS made a plan for this smart task but couldn't observe how it finished.",
-      );
+      expect(entry.outcome).toBe('abandoned');
+      expect(result.variant).toBe('abandoned-by-unplug');
     });
   });
 });
@@ -931,7 +887,7 @@ describe('list-row cost ↔ week-divider roll-up agreement (recorded display on 
   const buildCostEntry = (
     totalCost: number,
     costDisplay?: DeferredObjectivePlanHistoryEntry['costDisplay'],
-  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedLegacyPlanHistoryEntry({
     id: `entry-${totalCost}`,
     originalPlan: null,
     finalPlan: null,

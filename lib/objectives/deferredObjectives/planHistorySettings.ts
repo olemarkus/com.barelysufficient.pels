@@ -12,32 +12,37 @@ import type {
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryObservedInterval,
   DeferredObjectivePlanHistoryProgressSample,
+  DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanHistoryV5,
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import { randomUUID } from 'node:crypto';
 
-// Bumped to 4 in v2.7.2 alongside the smart-task history-detail trio:
+// Bumped to 5 when persistence switched to compact, device-independent rows.
+// v4 remains on its original settings key so a rollback can still read the
+// old archive; the v5 adapter migrates that archive without overwriting it.
+// v4 was introduced in v2.7.2 alongside the smart-task history-detail trio:
 // `progressSamples`, `kwhPerUnitMean` (on revision snapshots), `deliveredKWh`
 // + `totalCost`, `revisions[]`, and (extension, no version bump) the
 // `costDisplay` price-display provenance. v4 is already released (shipped
 // v2.7.2, live in v2.11.x), but no bump is needed for an additive OPTIONAL
-// field: the normalizer keeps each entry whole (filter, not reconstruct), so an
-// older client that predates a field preserves it on a load→save round-trip,
-// and a newer client treats its absence as a graceful fallback. All new fields
+// field: the normalizer validates every known field and compacts legacy rows,
+// while preserving optional extensions on the record. A newer client treats
+// an absent optional field as a graceful fallback. All new fields
 // are optional so v3 entries continue to load with the field absent (graceful
 // degrade); a `costDisplay`-less entry falls back to the recording-era øre/kr
 // default. New entries are
-// written at v4; v3 reads are upgraded in-place by `normalizeV3` without
+// written at v5; v3/v4 reads are upgraded in-memory without
 // dropping any persisted state — see `feedback_homey_sdk_unreliable` for the
 // "never delete persisted state on a single empty/missing read" invariant.
-export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 4 as const;
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 5 as const;
 
-const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV4 => ({
+const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV5 => ({
   version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   entries: [],
 });
@@ -169,6 +174,12 @@ const isProgressSample = (
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return isFiniteNumber(v.atMs) && isFiniteOrNull(v.valueC) && isFiniteOrNull(v.valuePercent);
+};
+
+const isResolvedProgressSample = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.atMs) && isFiniteOrNull(v.value);
 };
 
 const isRevisionLogEntry = (
@@ -333,6 +344,49 @@ const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHisto
     && hasValidV4Extensions(v);
 };
 
+const isTerminalOutcome = (value: unknown): boolean => (
+  value === 'met' || value === 'missed' || value === 'abandoned' || value === 'replaced'
+);
+
+const hasValidRecordValues = (v: Record<string, unknown>): boolean => (
+  typeof v.id === 'string'
+    && v.id.length > 0
+    && typeof v.deviceId === 'string'
+    && isFiniteOrNull(v.targetValue)
+    && isFiniteOrNull(v.startProgressValue)
+    && isFiniteOrNull(v.finalProgressValue)
+);
+
+const hasValidRecordProgress = (v: Record<string, unknown>): boolean => (
+  hasValidProgress({
+    ...v,
+    startProgressC: v.startProgressValue,
+    startProgressPercent: null,
+    finalProgressC: v.finalProgressValue,
+    finalProgressPercent: null,
+  })
+    && (v.progressSamples === undefined
+      || (Array.isArray(v.progressSamples) && v.progressSamples.every(isResolvedProgressSample)))
+);
+
+const hasValidRecordExtensions = (v: Record<string, unknown>): boolean => (
+  hasValidCostFields(v)
+    && (v.revisions === undefined
+      || (Array.isArray(v.revisions) && v.revisions.every(isRevisionLogEntry)))
+    && (v.hourlyContributions === undefined
+      || (Array.isArray(v.hourlyContributions) && v.hourlyContributions.every(isHourlyContribution)))
+);
+
+const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHistoryRecord => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  if (!hasValidRecordValues(v)) return false;
+  if (!hasValidTimestamps(v) || !hasValidRecordProgress(v)) return false;
+  if (!isTerminalOutcome(v.outcome) || !hasValidOutcome(v)) return false;
+  if (!hasValidCoverage(v) || !hasValidPlanSnapshots(v)) return false;
+  return hasValidRecordExtensions(v);
+};
+
 const upgradeV1Entry = (
   entry: DeferredObjectivePlanHistoryEntryV1,
 ): DeferredObjectivePlanHistoryEntry => ({
@@ -364,21 +418,29 @@ const normalizeV2 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] =>
 // v3 and v4 entries share the same validation function: the v4-only fields
 // (`progressSamples`, `deliveredKWh`, `totalCost`, `revisions[]`,
 // `revisionSnapshot.kwhPerUnitMean`) are all optional, so v3 entries
-// satisfy the v4 entry validator. v3 → v4 is therefore a pure envelope
-// rewrite — the per-entry payload is unchanged and never reset on read.
-const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
-  entries.filter(isPlanHistoryEntry)
-);
+// satisfy the legacy validator. v3/v4 → v5 also compacts the kind-split values
+// while retaining every validated optional extension.
+const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord[] => {
+  const normalized: DeferredObjectivePlanHistoryRecord[] = [];
+  for (const entry of entries) {
+    if (isPlanHistoryRecord(entry)) {
+      normalized.push(toPlanHistoryRecord(entry));
+      continue;
+    }
+    if (isPlanHistoryEntry(entry)) normalized.push(toPlanHistoryRecord(entry));
+  }
+  return normalized;
+};
 
 export const normalizeDeferredObjectivePlanHistory = (
   raw: unknown,
-): DeferredObjectivePlanHistoryV4 => {
+): DeferredObjectivePlanHistoryV5 => {
   if (!raw || typeof raw !== 'object') return createEmptyDeferredObjectivePlanHistory();
   const r = raw as Record<string, unknown>;
   if (!Array.isArray(r.entries)) return createEmptyDeferredObjectivePlanHistory();
-  // v4 reads + v3 reads upgrade to v4 in-place. New fields stay absent on
+  // v3/v4 reads upgrade to compact v5 in-place. New fields stay absent on
   // legacy entries (graceful degrade per `feedback_homey_sdk_unreliable`).
-  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION || r.version === 3) {
+  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION || r.version === 4 || r.version === 3) {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: normalizeV3OrV4(r.entries),
@@ -387,14 +449,34 @@ export const normalizeDeferredObjectivePlanHistory = (
   if (r.version === 2) {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-      entries: normalizeV2(r.entries),
+      entries: normalizeV2(r.entries).map(toPlanHistoryRecord),
     };
   }
   if (r.version === 1) {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-      entries: normalizeV1(r.entries),
+      entries: normalizeV1(r.entries).map(toPlanHistoryRecord),
     };
   }
   return createEmptyDeferredObjectivePlanHistory();
+};
+
+/** Strict persistence parser. One malformed row makes the SDK read
+ * unavailable so a partial snapshot can never be written over full history. */
+export type DeferredObjectivePlanHistoryParseResult =
+  | { state: 'resolved'; snapshot: DeferredObjectivePlanHistoryV5 }
+  | { state: 'unavailable' };
+
+export const parseDeferredObjectivePlanHistory = (
+  raw: unknown,
+): DeferredObjectivePlanHistoryParseResult => {
+  if (!raw || typeof raw !== 'object') return { state: 'unavailable' };
+  const candidate = raw as Record<string, unknown>;
+  if (!Array.isArray(candidate.entries)) return { state: 'unavailable' };
+  if (![1, 2, 3, 4, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
+    return { state: 'unavailable' };
+  }
+  const normalized = normalizeDeferredObjectivePlanHistory(raw);
+  if (normalized.entries.length !== candidate.entries.length) return { state: 'unavailable' };
+  return { state: 'resolved', snapshot: normalized };
 };

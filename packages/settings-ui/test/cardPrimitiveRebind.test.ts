@@ -5,7 +5,7 @@ import { h, render } from 'preact';
 import { renderDeadlinesList } from '../src/ui/views/DeadlinesList.tsx';
 import { DeadlinePlanHistory } from '../src/ui/views/DeadlinePlanHistory.tsx';
 import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 /* -------------------------------------------------------------------------- *
  * Card primitive rebind regression tests (batch 11 / phase 3 of the broader
@@ -302,7 +302,7 @@ describe('card primitive: every surface walks the canonical `.pels-surface-card`
     };
     const mount = document.createElement('div');
     render(
-      h(DeadlinePlanHistory, { entries: [toResolvedPlanHistoryEntry(entry)], timeZone: 'UTC' }),
+      h(DeadlinePlanHistory, { entries: [toResolvedLegacyPlanHistoryEntry(entry)], timeZone: 'UTC' }),
       mount,
     );
     const card = mount.querySelector('a.plan-history-card');

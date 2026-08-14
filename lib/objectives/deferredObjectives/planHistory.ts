@@ -5,7 +5,8 @@ import type {
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryProgressSample,
-  DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanHistoryRecord,
+  DeferredObjectivePlanHistoryV5,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
@@ -43,6 +44,7 @@ import {
   startRecord,
 } from './planHistoryInProgressState';
 import { randomUUID } from 'node:crypto';
+import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const logger = getLogger('plan/deferred-history');
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
@@ -69,7 +71,6 @@ export type DeferredObjectiveStallClassificationReader = (
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
-  deviceName: string | null;
   objectiveKind: 'temperature' | 'ev_soc';
   deadlineAtMs: number;
   targetTemperatureC: number | null;
@@ -78,22 +79,19 @@ export type DeferredObjectiveBackfillConfig = {
 
 const synthesizeBackfillEntry = (
   config: DeferredObjectiveBackfillConfig,
-): DeferredObjectivePlanHistoryEntry => ({
+): DeferredObjectivePlanHistoryRecord => ({
   id: randomUUID(),
   deviceId: config.deviceId,
-  deviceName: config.deviceName,
-  objectiveKind: config.objectiveKind,
-  targetTemperatureC: config.targetTemperatureC,
-  targetPercent: config.targetPercent,
+  targetValue: config.objectiveKind === 'temperature'
+    ? config.targetTemperatureC
+    : config.targetPercent,
   deadlineAtMs: config.deadlineAtMs,
   startedAtMs: config.deadlineAtMs,
   finalizedAtMs: config.deadlineAtMs,
-  startProgressC: null,
-  startProgressPercent: null,
-  finalProgressC: null,
-  finalProgressPercent: null,
+  startProgressValue: null,
+  finalProgressValue: null,
   initialEnergyNeededKWh: 0,
-  outcome: 'unknown',
+  outcome: 'abandoned',
   metAtMs: null,
   usedDeadlineReserve: false,
   observedIntervals: [],
@@ -106,17 +104,17 @@ export type PlanHistoryPersistDeps = {
   // Persisted history reader. Returns null when no payload exists yet
   // (first install / settings purge). Migration from older schemas is done
   // upstream by `normalizeDeferredObjectivePlanHistory`, so the recorder
-  // accepts the v4 envelope it was bumped to in v2.7.2.
-  load: () => DeferredObjectivePlanHistoryV4 | null;
+  // accepts only the current compact v5 envelope.
+  load: () => PlanHistoryLoadResult;
   // Persist the snapshot. Return `true` on success, `false` on failure (e.g. the underlying
   // settings.set threw and the host swallowed it). A `false` return keeps the recorder dirty
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
-  save: (history: DeferredObjectivePlanHistoryV4) => boolean;
+  save: (history: DeferredObjectivePlanHistoryV5) => boolean;
   // Optional bus the recorder publishes ended events to as runs finalize. The
   // recorder filters by `discoveredFrom === 'observation'` and public outcome
-  // (`met`/`missed`/`abandoned`) before publishing — backfill entries and
-  // `replaced`/`unknown` outcomes never reach the bus.
+  // (`met`/`missed`/`abandoned`) before publishing — backfill and replaced
+  // entries never reach the bus.
   endedBus?: DeferredObjectiveEndedBus;
   // Resolve the spot price and price tone (cheap/normal/expensive) for an
   // hour-aligned timestamp. The internal hour-rollover detector calls this
@@ -151,6 +149,11 @@ export type PlanHistoryPersistDeps = {
     hourOpening: { hourMs: number; value: number } | null;
     kWhPerUnit: number | null;
   }) => void;
+};
+
+export type PlanHistoryLoadResult = {
+  snapshot: DeferredObjectivePlanHistoryV5;
+  persistenceSafe: boolean;
 };
 
 // Per-hour delivery contribution fed into the recorder by the runtime
@@ -188,13 +191,16 @@ export type DeferredObjectivePlanHistoryHourlyDelivery = {
 export class DeferredObjectivePlanHistoryRecorder {
   private inProgress = new Map<InProgressKey, InProgressRecord>();
 
-  private entries: DeferredObjectivePlanHistoryEntry[];
+  private entries: DeferredObjectivePlanHistoryRecord[];
 
   private dirty = false;
 
+  private persistenceSafe: boolean;
+
   constructor(private readonly deps: PlanHistoryPersistDeps) {
     const loaded = deps.load();
-    this.entries = loaded?.entries.slice() ?? [];
+    this.entries = loaded.snapshot.entries.slice();
+    this.persistenceSafe = loaded.persistenceSafe;
     this.trimEntries();
   }
 
@@ -571,14 +577,16 @@ export class DeferredObjectivePlanHistoryRecorder {
     }
   }
 
-  private pushEntry(entry: DeferredObjectivePlanHistoryEntry): void {
-    this.entries.push(entry);
+  private pushEntry(entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord): void {
+    this.entries.push(toPlanHistoryRecord(entry));
     this.trimEntries();
     this.dirty = true;
-    this.emitFinalizedAttribution(entry);
-    const endedEvent = buildEndedEventFromEntry(entry);
-    if (endedEvent !== null) {
-      this.deps.endedBus?.publish(endedEvent);
+    if ('objectiveKind' in entry) {
+      this.emitFinalizedAttribution(entry);
+      const endedEvent = buildEndedEventFromEntry(entry);
+      if (endedEvent !== null) {
+        this.deps.endedBus?.publish(endedEvent);
+      }
     }
   }
 
@@ -607,7 +615,8 @@ export class DeferredObjectivePlanHistoryRecorder {
   }
 
   flushIfDirty(): boolean {
-    if (!this.dirty) return false;
+    this.recoverHistoryIfAvailable();
+    if (!this.dirty || !this.persistenceSafe) return false;
     const persisted = this.deps.save({
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
@@ -621,11 +630,20 @@ export class DeferredObjectivePlanHistoryRecorder {
     return this.dirty;
   }
 
-  getHistorySnapshot(): DeferredObjectivePlanHistoryV4 {
+  getHistorySnapshot(): DeferredObjectivePlanHistoryV5 {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
     };
+  }
+
+  private recoverHistoryIfAvailable(): void {
+    if (this.persistenceSafe) return;
+    const recovered = this.deps.load();
+    if (!recovered.persistenceSafe) return;
+    this.entries = mergeRecoveredEntries(recovered.snapshot.entries, this.entries);
+    this.trimEntries();
+    this.persistenceSafe = true;
   }
 
   // Test-only seam: clear in-progress state without touching persisted entries.
@@ -633,3 +651,29 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.inProgress.clear();
   }
 }
+
+const mergeRecoveredEntries = (
+  durable: readonly DeferredObjectivePlanHistoryRecord[],
+  local: readonly DeferredObjectivePlanHistoryRecord[],
+): DeferredObjectivePlanHistoryRecord[] => {
+  const merged = durable.slice();
+  const durableIds = new Set(durable.map((entry) => entry.id));
+  for (const entry of local) {
+    if (durableIds.has(entry.id)) continue;
+    const key = buildKey(entry.deviceId, entry.deadlineAtMs);
+    const existingIndex = merged.findIndex(
+      (candidate) => buildKey(candidate.deviceId, candidate.deadlineAtMs) === key,
+    );
+    if (existingIndex < 0) {
+      merged.push(entry);
+      continue;
+    }
+    const existing = merged[existingIndex]!;
+    if (existing.discoveredFrom === 'backfill' && entry.discoveredFrom === 'observation') {
+      merged[existingIndex] = entry;
+      continue;
+    }
+    if (entry.discoveredFrom === 'observation') merged.push(entry);
+  }
+  return merged;
+};

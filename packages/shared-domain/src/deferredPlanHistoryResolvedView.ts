@@ -7,6 +7,7 @@
 
 import type {
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRecord,
   ResolvedDeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryProgressSample,
 } from '../../contracts/src/deferredObjectivePlanHistory';
@@ -17,10 +18,29 @@ import {
   resolveTargetValue,
 } from './deferredObjectiveValues';
 
-export const toResolvedPlanHistoryEntry = (
-  entry: DeferredObjectivePlanHistoryEntry,
-): ResolvedDeferredObjectivePlanHistoryEntry => {
+const isCompactHistoryRecord = (
+  entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord,
+): entry is DeferredObjectivePlanHistoryRecord => (
+  'targetValue' in entry
+    && 'startProgressValue' in entry
+    && 'finalProgressValue' in entry
+    && !('objectiveKind' in entry)
+);
+
+export const toPlanHistoryRecord = (
+  entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord,
+): DeferredObjectivePlanHistoryRecord => {
+  if (isCompactHistoryRecord(entry)) {
+    return {
+      ...entry,
+      progressSamples: Array.isArray(entry.progressSamples)
+        ? entry.progressSamples.map((sample) => ({ ...sample }))
+        : undefined,
+    };
+  }
   const {
+    deviceName: _deviceName,
+    objectiveKind: _objectiveKind,
     targetTemperatureC: _targetTemperatureC,
     targetPercent: _targetPercent,
     startProgressC: _startProgressC,
@@ -30,15 +50,13 @@ export const toResolvedPlanHistoryEntry = (
     progressSamples,
     ...rest
   } = entry;
-  const resolved: ResolvedDeferredObjectivePlanHistoryEntry = {
+  const resolved: DeferredObjectivePlanHistoryRecord = {
     ...rest,
+    outcome: entry.outcome === 'unknown' ? 'abandoned' : entry.outcome,
     targetValue: resolveTargetValue(entry),
     startProgressValue: resolveStartProgressValue(entry),
     finalProgressValue: resolveFinalProgressValue(entry),
   };
-  // `Array.isArray` (not `!== undefined`): a persisted entry can carry
-  // `progressSamples: null` (Homey settings round-trip unset keys as null), and
-  // `.map()` on null would throw. Absent/null both degrade to "no samples".
   if (Array.isArray(progressSamples)) {
     resolved.progressSamples = progressSamples.map(
       (sample): ResolvedDeferredObjectivePlanHistoryProgressSample => ({
@@ -49,3 +67,24 @@ export const toResolvedPlanHistoryEntry = (
   }
   return resolved;
 };
+
+export const toResolvedPlanHistoryEntry = (
+  entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord,
+  device: { name: string; objectiveKind: 'temperature' | 'ev_soc' },
+): ResolvedDeferredObjectivePlanHistoryEntry => {
+  const record = toPlanHistoryRecord(entry);
+  return {
+    ...record,
+    deviceName: device.name,
+    objectiveKind: device.objectiveKind,
+  };
+};
+
+/** Compatibility projection for already-validated legacy rows. Runtime API
+ * producers must use `toResolvedPlanHistoryEntry` with current device data. */
+export const toResolvedLegacyPlanHistoryEntry = (
+  entry: DeferredObjectivePlanHistoryEntry,
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry(entry, {
+  name: entry.deviceName === null ? entry.deviceId : entry.deviceName,
+  objectiveKind: entry.objectiveKind,
+});
