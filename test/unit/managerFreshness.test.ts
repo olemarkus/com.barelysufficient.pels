@@ -1,5 +1,10 @@
 import { applyFreshnessOnlyCapabilityUpdate } from '../../lib/device/transport/managerFreshness';
-import type { EvObservedProbe, MeasuredPowerObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type {
+  EvObservedProbe,
+  MeasuredPowerObservedProbe,
+  TargetDeviceSnapshot,
+  TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
 
 // Minimal EV snapshot — the freshness handler only touches the EV fields below.
 const evSnapshot = (
@@ -21,9 +26,18 @@ const numericSnapshot = (
 ): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe => ({
   id: 'dev1',
   name: 'Device',
-  targets: [],
-  ...fields,
-} as unknown as TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe);
+  targets: fields.currentTemperature === undefined
+    ? []
+    : [{ id: 'target_temperature', value: 20, unit: '°C' }],
+  ...(fields.currentTemperature === undefined ? {} : {
+    temperature: {
+      currentTemperature: fields.currentTemperature,
+      target: { id: 'target_temperature', value: 20, unit: '°C' },
+    },
+  }),
+  ...(fields.measuredPowerKw === undefined ? {} : { measuredPowerKw: fields.measuredPowerKw }),
+} as unknown as TargetDeviceSnapshot & TemperatureObservedProbe
+  & MeasuredPowerObservedProbe);
 
 const NON_FINITE: ReadonlyArray<[string, unknown]> = [
   ['NaN', Number.NaN],
@@ -111,13 +125,15 @@ describe('applyFreshnessOnlyCapabilityUpdate — numeric boundary (present impli
     const snapshot = numericSnapshot({ currentTemperature: 18 });
     const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_temperature', value: 21 });
     expect(result.changed).toBe(true);
-    expect(snapshot.currentTemperature).toBe(21);
+    expect(snapshot.temperature?.currentTemperature).toBe(21);
   });
 
-  it.each(NON_FINITE)('drops a non-finite measure_temperature value (%s) — no write, no change', (_label, value) => {
+  it.each(NON_FINITE)('removes the temperature facet for malformed measure_temperature (%s)', (_label, value) => {
     const snapshot = numericSnapshot({ currentTemperature: 18 });
     const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_temperature', value });
-    expect(result.changed).toBe(false);
-    expect(snapshot.currentTemperature).toBe(18);
+    expect(result.changed).toBe(true);
+    expect(result.temperatureFacetRemoved).toBe(true);
+    expect(snapshot.temperature).toBeUndefined();
+    expect(snapshot.targets).toEqual([]);
   });
 });

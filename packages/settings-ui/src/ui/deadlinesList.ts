@@ -63,7 +63,7 @@ const resolveCurrentValue = (
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
-    return hasObservedTemperature(device) ? device.currentTemperature : null;
+    return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
   }
   return hasObservedStateOfCharge(device) ? device.stateOfCharge.percent : null;
 };

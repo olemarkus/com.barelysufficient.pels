@@ -53,6 +53,7 @@ export function recordLocalWriteObservation(params: {
         value,
         source: 'local_write',
         observedAt,
+        countsTowardDeviceFreshness: false,
     });
 }
 
@@ -79,11 +80,21 @@ export function recordSnapshotCapabilityObservations(params: {
         recordSnapshotTargetObservations({ state, deviceId, snapshot, source, observedAt, capabilityIdSet }),
         recordSnapshotScalarObservation(state, snapshot, {
             deviceId,
+            capabilityId: 'measure_temperature',
+            value: snapshot.temperature?.currentTemperature,
+            source,
+            observedAt,
+            capabilityIdSet,
+            countsTowardDeviceFreshness: true,
+        }),
+        recordSnapshotScalarObservation(state, snapshot, {
+            deviceId,
             capabilityId: 'measure_power',
             value: snapshot.measuredPowerKw,
             source,
             observedAt,
             capabilityIdSet,
+            countsTowardDeviceFreshness: true,
         }),
         recordSnapshotScalarObservation(state, snapshot, {
             deviceId,
@@ -92,6 +103,7 @@ export function recordSnapshotCapabilityObservations(params: {
             source,
             observedAt,
             capabilityIdSet,
+            countsTowardDeviceFreshness: true,
         }),
     ].some(Boolean);
     const stateOfChargeCapabilityId = snapshot.stateOfCharge?.capabilityId;
@@ -123,7 +135,7 @@ export function recordCapabilityObservation(params: {
     source: CapabilityObservationSource;
     observedAt?: number;
     snapshot?: TransportDeviceSnapshot;
-    countsTowardDeviceFreshness?: boolean;
+    countsTowardDeviceFreshness: boolean;
 }): void {
     const {
         state,
@@ -134,12 +146,13 @@ export function recordCapabilityObservation(params: {
         source,
         observedAt = Date.now(),
         snapshot,
-        countsTowardDeviceFreshness = !isStateOfChargeCapabilityId(capabilityId),
+        countsTowardDeviceFreshness,
     } = params;
     state.capabilityObservations.set(buildCapabilityObservationKey(deviceId, capabilityId), {
         value,
         observedAt,
         source,
+        countsTowardDeviceFreshness,
     });
     const resolvedSnapshot = snapshot ?? latestSnapshot.find((entry) => entry.id === deviceId);
     if (!resolvedSnapshot) return;
@@ -189,6 +202,7 @@ function recordSnapshotControlObservation(options: RecordSnapshotObservationOpti
         source,
         observedAt,
         snapshot,
+        countsTowardDeviceFreshness: true,
     });
     return true;
 }
@@ -214,6 +228,7 @@ function recordSnapshotTargetObservations(options: RecordSnapshotObservationOpti
             source,
             observedAt,
             snapshot,
+            countsTowardDeviceFreshness: true,
         });
         recorded = true;
     }
@@ -225,12 +240,13 @@ function recordSnapshotScalarObservation(
     snapshot: TransportDeviceSnapshot,
     params: {
         deviceId: string;
-        capabilityId: 'measure_power' | 'evcharger_charging_state' | (typeof EV_SOC_NATIVE_CAPABILITY_IDS)[number];
+        capabilityId: 'measure_temperature' | 'measure_power' | 'evcharger_charging_state'
+            | (typeof EV_SOC_NATIVE_CAPABILITY_IDS)[number];
         value: number | string | undefined;
         source: CapabilityObservationSource;
         observedAt: number;
         capabilityIdSet: Set<string> | null;
-        countsTowardDeviceFreshness?: boolean;
+        countsTowardDeviceFreshness: boolean;
     },
 ): boolean {
     const {
@@ -240,7 +256,7 @@ function recordSnapshotScalarObservation(
         source,
         observedAt,
         capabilityIdSet,
-        countsTowardDeviceFreshness = true,
+        countsTowardDeviceFreshness,
     } = params;
     if (typeof value !== 'number' && typeof value !== 'string') return false;
     if (capabilityIdSet && !capabilityIdSet.has(capabilityId)) return false;

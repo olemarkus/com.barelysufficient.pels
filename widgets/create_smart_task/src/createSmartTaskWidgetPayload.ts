@@ -1,6 +1,7 @@
 import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
+  TemperatureObservedProbe,
 } from '../../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../../packages/shared-domain/src/steppedLoadObservedState';
 import {
@@ -27,7 +28,9 @@ import type {
 export const EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices;
 export const EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
 
-const buildDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): CreateSmartTaskDevice | null => {
+const buildDevice = (
+  device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe,
+): CreateSmartTaskDevice | null => {
   const kind = resolveSmartTaskDeviceKind(device);
   if (kind === null) return null;
   const bounds = resolveSmartTaskGoalBounds(device, kind);
@@ -58,7 +61,7 @@ const buildDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe):
 };
 
 export type CreateSmartTaskWidgetInput = {
-  devices: ReadonlyArray<TargetDeviceSnapshot & SteppedLoadDescriptorProbe>;
+  devices: ReadonlyArray<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe>;
 };
 
 export const buildCreateSmartTaskDevicesPayload = (

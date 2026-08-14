@@ -2465,21 +2465,22 @@ describe('recordPowerSampleForApp', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let currentTemperature = 50;
     let observedAtMs = start;
-    const getLatestTargetSnapshot = () => ([
-      {
+    const getLatestTargetSnapshot = () => {
+      const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
+      return [{
         available: true,
         id: 'heater-objective',
         expectedPowerKw: 1,
         expectedPowerSource: 'default' as const,
         name: 'Objective heater',
-        targets: [],
+        targets: [target],
         deviceType: 'temperature' as const,
         binaryControl: { on: true },
-        currentTemperature,
+        temperature: { currentTemperature, target },
         lastFreshDataMs: observedAtMs,
         measuredPowerKw: 2,
-      },
-    ]);
+      }];
+    };
 
     // Mirrors the production wiring (`setup/powerSamplePipeline.ts`): the raw
     // snapshots go through the producer boundary so the profile sees a resolved

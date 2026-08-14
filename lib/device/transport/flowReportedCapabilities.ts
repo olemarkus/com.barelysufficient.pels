@@ -207,7 +207,9 @@ export function getFlowRefreshRequestedDeviceIds(params: {
     if (!deviceClassKey) return false;
 
     const capabilities = getCapabilities(device);
-    const targetCapabilityIds = capabilities.filter((capabilityId) => capabilityId.startsWith('target_temperature'));
+    const targetCapabilityIds = capabilities.includes('target_temperature')
+      ? ['target_temperature']
+      : [];
     const deviceType = resolveFlowAugmentedDeviceType({
       deviceClassKey,
       targetCapabilityIds,

@@ -16,6 +16,7 @@ import type {
   ReportedStepObservedProbe,
   StateOfChargeObservedProbe,
   SteppedLoadDescriptorProbe,
+  TemperatureObservedFields,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 
@@ -68,7 +69,7 @@ export function buildObjectiveProfileSample(
   if (isFreshTemperatureDevice(device, nowMs)) {
     return {
       observedAtMs: device.lastFreshDataMs,
-      value: Math.round(device.currentTemperature * 10) / 10,
+      value: Math.round(device.temperature.currentTemperature * 10) / 10,
       unit: 'degree_c',
       ...resolveCredibleDevicePower(device),
     };
@@ -107,8 +108,8 @@ export function buildObjectiveProfileSample(
 function isFreshTemperatureDevice(
   device: ObjectiveSampleDevice,
   nowMs: number,
-): device is ObjectiveSampleDevice & { currentTemperature: number; lastFreshDataMs: number } {
-  // `hasObservedTemperature` proves `currentTemperature` is a finite `number`
+): device is ObjectiveSampleDevice & TemperatureObservedFields & { lastFreshDataMs: number } {
+  // `hasObservedTemperature` proves both exact temperature values are finite
   // (producer invariant), so no `typeof`/`Number.isFinite` re-check here — the
   // kind question is asked separately via `isTemperatureControlDevice`.
   return isTemperatureControlDevice(device)

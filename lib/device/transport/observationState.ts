@@ -7,6 +7,7 @@ export type CapabilityObservation = {
     value: unknown;
     observedAt: number;
     source: CapabilityObservationSource;
+    countsTowardDeviceFreshness: boolean;
 };
 
 export type DeviceDebugObservedSource = {

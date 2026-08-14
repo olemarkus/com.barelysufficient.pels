@@ -1645,7 +1645,10 @@ describe('MyApp initialization', () => {
       (call: unknown[]) => call[0] === 'device_observation_changed',
     )).toEqual([]);
     expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
-      currentTemperature: 23,
+      temperature: {
+        currentTemperature: 23,
+        target: { id: 'target_temperature', value: 20 },
+      },
       binaryControl: { on: true },
     });
   });

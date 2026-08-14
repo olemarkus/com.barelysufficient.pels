@@ -13,6 +13,7 @@ import { getRecentLocalCapabilityWrite } from './managerRealtimeSupport';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
 import { REALTIME_CAPABILITY_EVENT_WINDOW_MS } from './transportTypes';
 import type { TransportContext } from './transportContext';
+import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
 
 export function normalizeRealtimeCapabilityEventValue(capabilityId: string, value: unknown): unknown {
     if (typeof value === 'boolean') return value;
@@ -38,7 +39,12 @@ function isReconcileCapability(snapshot: TransportDeviceSnapshot, capabilityId: 
 }
 
 function isTrackedCapability(snapshot: TransportDeviceSnapshot, capabilityId: string): boolean {
-    return isReconcileCapability(snapshot, capabilityId) || isFreshnessOnlyCapability(capabilityId);
+    return isReconcileCapability(snapshot, capabilityId)
+        || isFreshnessOnlyCapability(capabilityId)
+        || (
+            capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID
+            && snapshot.capabilities?.includes(TARGET_TEMPERATURE_CAPABILITY_ID) === true
+        );
 }
 
 export function resolveRealtimeCapabilityEvent(

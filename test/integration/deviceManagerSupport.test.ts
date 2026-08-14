@@ -141,13 +141,7 @@ describe('device manager support helpers', () => {
       deviceId: 'broken-device',
       deviceLabel: 'Broken Device',
       debugStructured,
-    })).toEqual([{
-      id: 'target_temperature',
-      unit: 'C',
-      min: 35,
-      max: 75,
-      step: 5,
-    }]);
+    })).toEqual([]);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'target_capability_value_malformed',
       deviceId: 'broken-device',

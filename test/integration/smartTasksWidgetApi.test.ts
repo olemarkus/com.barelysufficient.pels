@@ -130,7 +130,12 @@ describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
         ],
       })),
       getDeferredObjectivePlanHistoryRecentUiPayload: () => emptyHistory,
-      getUiPickerDevices: () => [device({ currentTemperature: 48 })],
+      getUiPickerDevices: () => [device({
+        temperature: {
+          currentTemperature: 48,
+          target: { id: 'target_temperature', value: 65, unit: '°C' },
+        },
+      })],
     });
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
@@ -146,7 +151,12 @@ describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
     const payload = await run({
       getDeferredObjectiveActivePlansUiPayload: () => plansOf(activePlan()),
       getDeferredObjectivePlanHistoryRecentUiPayload: () => emptyHistory,
-      getUiPickerDevices: () => [device({ currentTemperature: 30 })],
+      getUiPickerDevices: () => [device({
+        temperature: {
+          currentTemperature: 30,
+          target: { id: 'target_temperature', value: 65, unit: '°C' },
+        },
+      })],
     });
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;

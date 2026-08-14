@@ -165,7 +165,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -301,7 +301,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -358,7 +358,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -421,7 +421,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -468,7 +468,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -532,7 +532,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -602,7 +602,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -659,7 +659,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       // Stepped profile; the lowest non-zero step is 1.5 kW. resolveUsefulPowerKw
       // (used elsewhere) would return the highest step — we deliberately want the lowest.
       steppedLoadProfile: {
@@ -723,7 +723,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 1.3,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -780,7 +780,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -847,7 +847,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -912,7 +912,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 40, // far from target 65 with only 2 h horizon
+      temperature: { currentTemperature: 40, target: { id: 'target_temperature', unit: 'C', value: 20 } }, // far from target 65 with only 2 h horizon
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -1020,7 +1020,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -1103,7 +1103,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -1184,7 +1184,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -1260,7 +1260,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -1345,7 +1345,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -1425,7 +1425,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 21,
+      temperature: { currentTemperature: 21, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -1614,7 +1614,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
     const prices: SettingsUiPricesPayload = {
@@ -1671,7 +1671,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -1726,7 +1726,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -1784,7 +1784,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 23, // > target 22
+      temperature: { currentTemperature: 23, target: { id: 'target_temperature', unit: 'C', value: 20 } }, // > target 22
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -2680,7 +2680,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 21,
+      temperature: { currentTemperature: 21, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -2759,7 +2759,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -2816,7 +2816,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -2873,7 +2873,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -2934,7 +2934,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -2996,7 +2996,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3061,7 +3061,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 21.999,
+      temperature: { currentTemperature: 21.999, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3123,7 +3123,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3268,7 +3268,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Bathroom heater',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3327,7 +3327,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3386,7 +3386,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3451,7 +3451,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3545,7 +3545,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3620,7 +3620,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -3975,7 +3975,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -4040,7 +4040,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -4112,7 +4112,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -4175,7 +4175,7 @@ describe('deadline plan page payload', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -4386,7 +4386,7 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }];
@@ -5120,7 +5120,7 @@ describe('cost + delivered-so-far hero lines', () => {
     id: 'heater',
     name: 'Connected 300',
     binaryControl: { on: false },
-    currentTemperature,
+    temperature: { currentTemperature, target: { id: 'target_temperature', unit: 'C', value: 20 } },
     planningPowerKw: 2,
     targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
   }]);
@@ -5731,7 +5731,7 @@ describe('pending hero producer wiring', () => {
       id: 'heater',
       name: 'Connected 300',
       binaryControl: { on: false },
-      currentTemperature: 18,
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];

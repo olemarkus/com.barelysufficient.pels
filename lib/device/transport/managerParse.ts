@@ -3,7 +3,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeviceCapabilityMap } from '../managerControl';
 import { isObserveOnlyRoleClassKey } from './managerHelpers';
 
-const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
+const TARGET_TEMPERATURE_CAPABILITY_ID = 'target_temperature';
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
 const POWER_CAPABILITY_SET = new Set(POWER_CAPABILITY_PREFIXES);
 export type PowerCapabilityId = (typeof POWER_CAPABILITY_PREFIXES)[number];
@@ -23,7 +23,9 @@ export function resolveDeviceCapabilities(params: {
     debugStructured,
   } = params;
   const hasPower = hasPowerCapability(capabilities);
-  const targetCaps = getTargetCaps(capabilities);
+  const targetCaps = capabilities.includes('measure_temperature')
+    ? getTargetCaps(capabilities)
+    : [];
   const hasOnOff = capabilities.includes('onoff');
   // A home battery or solar device has neither a temperature target nor `onoff` (PELS
   // never controls it), so it would otherwise be dropped by the no-control gate below.
@@ -50,9 +52,9 @@ export function resolveDeviceCapabilities(params: {
     // that bypass this function entirely on the control axis.
     return { targetCaps: [], hasPower };
   }
-  if (targetCaps.length > 0 && !capabilities.includes('measure_temperature')) {
-    return null;
-  }
+  // Temperature is an additive facet, not the device's exclusive kind. An
+  // exact target without its measurement therefore does not evict an otherwise
+  // valid binary device; it simply does not establish temperature support.
   if (targetCaps.length === 0 && !hasOnOff) {
     return null;
   }
@@ -151,7 +153,7 @@ export function buildTargets(
     deviceLabel,
     debugStructured,
   } = params;
-  return targetCaps.map((capId) => {
+  return targetCaps.flatMap((capId) => {
     const capability = capabilityObj[capId];
     const value = capability?.value;
     const resolvedValue = resolveTargetCapabilityValue({
@@ -161,16 +163,17 @@ export function buildTargets(
       deviceLabel,
       debugStructured,
     });
-    return {
+    if (resolvedValue === undefined) return [];
+    return [{
       id: capId,
-      ...(resolvedValue !== undefined ? { value: resolvedValue } : {}),
+      value: resolvedValue,
       unit: capability?.units || '°C',
       ...finiteCapabilityNumber('min', capability?.min),
       ...finiteCapabilityNumber('max', capability?.max),
       ...finiteCapabilityNumber('step', capability?.step),
       ...finiteCapabilityNumber('excludeMin', capability?.excludeMin),
       ...finiteCapabilityNumber('excludeMax', capability?.excludeMax),
-    };
+    }];
   });
 }
 
@@ -215,5 +218,7 @@ export function hasPowerCapability(capabilities: string[]): boolean {
 }
 
 function getTargetCaps(capabilities: string[]): string[] {
-  return capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
+  return capabilities.includes(TARGET_TEMPERATURE_CAPABILITY_ID)
+    ? [TARGET_TEMPERATURE_CAPABILITY_ID]
+    : [];
 }

@@ -116,7 +116,7 @@ export function resolveFlowCapabilityOverlay(params: {
     providers,
   });
   const targetCapabilityIds = targetPowerOverlay.capabilities.filter(
-    (capabilityId) => capabilityId.startsWith('target_temperature'),
+    (capabilityId) => capabilityId === 'target_temperature',
   );
   const flowAugmentedDeviceType = resolveFlowAugmentedDeviceType({
     deviceClassKey,
@@ -494,13 +494,24 @@ export function resolveCandidateCapabilities(params: {
       hasPower: hasAnyPowerCapability(capabilities),
     };
   }
-  return resolveDeviceCapabilities({
+  const resolved = resolveDeviceCapabilities({
     deviceClassKey,
     deviceId,
     deviceLabel,
     capabilities,
     debugStructured,
   });
+  if (resolved) return resolved;
+  // A stepped-load profile is an independent control facet. Missing or invalid
+  // temperature capabilities must not evict a device whose usable ladder was
+  // already admitted by the stepped producer.
+  if (steppedLoadProfile !== undefined) {
+    return {
+      targetCaps: [],
+      hasPower: hasAnyPowerCapability(capabilities),
+    };
+  }
+  return null;
 }
 
 function isCapabilityAdapterEvCandidate(

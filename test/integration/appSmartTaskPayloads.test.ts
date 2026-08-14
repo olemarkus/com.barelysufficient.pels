@@ -79,11 +79,19 @@ type HistoryDevice = {
   name: string;
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
+  temperature?: {
+    currentTemperature: number;
+    target: { id: 'target_temperature'; value: number };
+  };
 };
 
+const TEMPERATURE = {
+  currentTemperature: 50,
+  target: { id: 'target_temperature' as const, value: 65 },
+};
 const DEFAULT_HISTORY_DEVICES: readonly HistoryDevice[] = [
-  { id: 'dev-1', name: 'Connected 300', deviceType: 'temperature' },
-  { id: 'dev-2', name: 'Connected 300', deviceType: 'temperature' },
+  { id: 'dev-1', name: 'Connected 300', deviceType: 'temperature', temperature: TEMPERATURE },
+  { id: 'dev-2', name: 'Connected 300', deviceType: 'temperature', temperature: TEMPERATURE },
 ];
 
 const buildPayloads = (

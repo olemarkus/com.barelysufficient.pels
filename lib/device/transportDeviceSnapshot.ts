@@ -31,7 +31,7 @@ export type TransportBinaryControlObservation = BinaryControlObservation;
  * carriers widen the consumer-facing `TargetDeviceSnapshot` (which omits those
  * fields) with the matching optional probes:
  * - `EvObservedProbe` for `evChargingState` (see `EvObservedFields`).
- * - `TemperatureObservedProbe` for `currentTemperature` (see
+ * - `TemperatureObservedProbe` for the atomic current/target temperature facet (see
  *   `TemperatureObservedFields`).
  * - `StateOfChargeObservedProbe` for `stateOfCharge` (see
  *   `StateOfChargeObservedFields`).

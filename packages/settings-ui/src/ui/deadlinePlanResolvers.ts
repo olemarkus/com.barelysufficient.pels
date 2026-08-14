@@ -77,17 +77,15 @@ export const resolveProgress = (params: {
 }): DeadlineProgress | null => {
   const { device, objective, profile } = params;
   if (objective.kind === 'temperature') {
-    const currentTemperature = hasObservedTemperature(device)
-      ? device.currentTemperature
-      : resolveProfileSampleValue(profile, 'degree_c');
+    if (hasObservedTemperature(device)) {
+      return buildTemperatureProgress(
+        device.temperature.currentTemperature,
+        objective.targetTemperatureC,
+      );
+    }
+    const currentTemperature = resolveProfileSampleValue(profile, 'degree_c');
     if (!isFiniteNumber(currentTemperature)) return null;
-    const remainingUnits = Math.max(0, objective.targetTemperatureC - currentTemperature);
-    return {
-      currentValue: currentTemperature,
-      remainingUnits,
-      targetValue: objective.targetTemperatureC,
-      unit: '°C',
-    };
+    return buildTemperatureProgress(currentTemperature, objective.targetTemperatureC);
   }
 
   // A present SoC bag carries a producer-guaranteed finite, in-range `percent`
@@ -106,6 +104,18 @@ export const resolveProgress = (params: {
     unit: '%',
   };
 };
+
+function buildTemperatureProgress(
+  currentTemperature: number,
+  targetTemperature: number,
+): DeadlineProgress {
+  return {
+    currentValue: currentTemperature,
+    remainingUnits: Math.max(0, targetTemperature - currentTemperature),
+    targetValue: targetTemperature,
+    unit: '°C',
+  };
+}
 
 export const resolveProfile = (
   powerTracker: PowerTrackerState | null,

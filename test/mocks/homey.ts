@@ -102,6 +102,8 @@ export class MockDevice {
     if (capabilities.includes('target_temperature')) {
       this.capabilityValues.set('target_temperature', 21);
       this.actualCapabilityValues.set('target_temperature', 21);
+      this.capabilityValues.set('measure_temperature', 20);
+      this.actualCapabilityValues.set('measure_temperature', 20);
     }
   }
 

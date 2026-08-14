@@ -207,6 +207,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
             capabilityId,
             value: normalizedValue,
             source: 'realtime_capability',
+            countsTowardDeviceFreshness: true,
         });
     }
 
@@ -287,6 +288,7 @@ export function handleTargetPowerSourceCapabilityUpdate(ctx: TransportContext, p
         capabilityId,
         value,
         source: 'realtime_capability',
+        countsTowardDeviceFreshness: true,
     });
     applyNativeSteppedLoadSnapshotUpdate(ctx, {
         snapshotIndex,

@@ -5,7 +5,10 @@ import { resolveCommandableNow } from '../../packages/shared-domain/src/commanda
 import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
+import {
+  buildResidualKwForPlanDevice,
+  type ResidualKwForPlanDeviceShedBehavior,
+} from './residualKwForPlanDevice';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlModel,
@@ -14,6 +17,7 @@ import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
+  TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
@@ -80,7 +84,7 @@ export type ToPlanDeviceOptions = {
 // to read its OWN engine (see `buildSubHomeScope.getPlanDevices`).
 function resolvePendingBinaryCommand(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
   opts: ToPlanDeviceOptions | undefined,
 ): { desired: boolean } | null | undefined {
   if (opts?.getPendingBinaryCommand) {
@@ -295,12 +299,13 @@ function resolveSteppedLadderMissing(
 }
 
 function projectEffectiveControlDevice(
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
-): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe {
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
+): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe {
   if (device.temperatureControlDisabled !== true) return device;
   return {
     ...device,
     targets: [],
+    temperature: undefined,
     deviceType: 'onoff',
     controlModel: 'binary_power',
     steppedLoadProfile: undefined,
@@ -322,17 +327,42 @@ function projectEffectiveControlDevice(
 
 function resolveEffectiveShedBehavior(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
-) {
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
+): ResidualKwForPlanDeviceShedBehavior {
   if (device.temperatureControlDisabled === true) {
-    return { action: 'turn_off' as const, temperature: null, stepId: null };
+    return { action: 'turn_off' };
   }
-  return ctx.getShedBehavior(device.id);
+  const configured = ctx.getShedBehavior(device.id);
+  if (configured.action === 'set_temperature') {
+    if (device.temperature === undefined) return resolveShedBehaviorWithoutTemperature(device);
+    return typeof configured.temperature === 'number' && Number.isFinite(configured.temperature)
+      ? { action: 'set_temperature', temperature: configured.temperature }
+      : { action: 'turn_off' };
+  }
+  if (configured.action === 'set_step') {
+    const stepId = configured.stepId
+      ?? (isSteppedLoadSnapshot(device)
+        ? getSteppedLoadLowestActiveStep(device.steppedLoadProfile)?.id
+        : undefined);
+    return stepId ? { action: 'set_step', stepId } : { action: 'turn_off' };
+  }
+  return { action: 'turn_off' };
+}
+
+function resolveShedBehaviorWithoutTemperature(
+  device: DecoratedDeviceSnapshot,
+): ResidualKwForPlanDeviceShedBehavior {
+  if (device.binaryControl !== undefined) return { action: 'turn_off' };
+  if (!isSteppedLoadSnapshot(device)) return { action: 'turn_off' };
+  const lowestActiveStep = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
+  return lowestActiveStep
+    ? { action: 'set_step', stepId: lowestActiveStep.id }
+    : { action: 'turn_off' };
 }
 
 function resolveEffectiveTemperatureBoost(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ) {
   if (device.temperatureControlDisabled === true) return undefined;
   return ctx.getTemperatureBoostConfig?.(device.id);
@@ -388,7 +418,7 @@ function resolveManagedControlPosture(
 // (transport writes it); the base type omits it for consumers.
 export function toPlanDevice(
   ctx: AppContext,
-  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
+  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
   opts?: ToPlanDeviceOptions,
 ): PlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -497,8 +527,9 @@ export function toPlanDevice(
     binaryControl: _binaryControl,
     binaryControlObservation: _binaryControlObservation,
     evChargingState: _evChargingState,
+    temperature: _temperature,
     ...deviceFields
-  } = device as typeof device & TransportControlBindingProbe & EvObservedProbe;
+  } = device as typeof device & TransportControlBindingProbe & EvObservedProbe & TemperatureObservedProbe;
   return withSteppedDiscriminant({
     ...deviceFields,
     ...steppedCluster,
@@ -554,6 +585,9 @@ export function toPlanDevice(
     // The raw field is stripped from the spread above, so no consumer can reach
     // past this answer to a second one.
     currentDrawKw: getCurrentDrawKw(device),
+    ...(device.temperature ? {
+      currentTemperature: device.temperature.currentTemperature,
+    } : {}),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDraw !== undefined
       ? { hasRecentObservedDraw }

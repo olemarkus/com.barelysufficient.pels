@@ -10,22 +10,24 @@ import { deadlineLabels } from './deadlineLabels.js';
 // without importing the full contract: callers pass the device snapshot
 // directly (extra fields are ignored). The eligibility rule matches the
 // deadline Flow cards' `isEvCharger` / `supportsTemperatureObjective`
-// predicates: an EV charger takes an EV-SoC goal; any device that reports a
-// temperature device type or a settable target takes a temperature goal.
+// predicates: an EV charger takes an EV-SoC goal; a device with the complete
+// observer-admitted temperature facet takes a temperature goal.
 
 export type SmartTaskDeviceLike = {
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
   temperatureControlDisabled?: true;
-  targets?: ReadonlyArray<{ value?: number; min?: number; max?: number; step?: number }>;
-  currentTemperature?: number;
+  temperature?: {
+    currentTemperature: number;
+    target: { value: number; min?: number; max?: number; step?: number };
+  };
   stateOfCharge?: { percent?: number };
 };
 
 const isEvCharger = (device: SmartTaskDeviceLike): boolean => device.deviceClass === 'evcharger';
 
 const supportsTemperatureGoal = (device: SmartTaskDeviceLike): boolean => (
-  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
+  device.temperature !== undefined
 );
 
 // Resolve the goal kind for a device. EV chargers win over the temperature
@@ -68,7 +70,7 @@ export const resolveSmartTaskGoalBounds = (
   if (kind === 'ev_soc') {
     return { unit, min: 1, max: 100, step: 1 };
   }
-  const target = device.targets?.[0];
+  const target = device.temperature?.target;
   const min = isFiniteNumber(target?.min) ? target.min : TEMPERATURE_FALLBACK_MIN;
   const max = isFiniteNumber(target?.max) ? target.max : TEMPERATURE_FALLBACK_MAX;
   const step = isFiniteNumber(target?.step) && target.step > 0 ? target.step : TEMPERATURE_FALLBACK_STEP;
@@ -82,7 +84,7 @@ export const resolveSmartTaskCurrentValue = (
   kind: DeferredObjectiveSettingsKind,
 ): number | null => {
   if (kind === 'temperature') {
-    return isFiniteNumber(device.currentTemperature) ? device.currentTemperature : null;
+    return device.temperature?.currentTemperature ?? null;
   }
   const percent = device.stateOfCharge?.percent;
   return isFiniteNumber(percent) ? percent : null;

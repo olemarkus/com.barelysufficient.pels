@@ -37,6 +37,12 @@ import {
   handleTargetPowerSourceCapabilityUpdate,
 } from './nativeSteppedRealtime';
 import type { TransportContext } from './transportContext';
+import {
+  removeTemperatureObservation,
+  TARGET_TEMPERATURE_CAPABILITY_ID,
+  updateTemperatureTarget,
+} from './temperatureObservation';
+import { requestTemperatureRecovery } from './temperatureRecovery';
 
 const moduleLogger = getLogger('device/transport');
 
@@ -102,6 +108,13 @@ function handleFreshnessOnlyCapabilityUpdate(
         capabilityId,
         value,
     });
+    if (handleTemperatureFreshnessOutcome(ctx, {
+        snapshotIndex,
+        deviceId,
+        capabilityId,
+        snapshot,
+        result,
+    })) return;
     const reconcileChange = result.reconcileChange;
     if (!result.changed) return;
     recordCapabilityObservation({
@@ -111,6 +124,7 @@ function handleFreshnessOnlyCapabilityUpdate(
         capabilityId,
         value: result.normalizedValue,
         source: 'realtime_capability',
+        countsTowardDeviceFreshness: true,
     });
     if (capabilityId === 'measure_power' && snapshot) {
         ctx.onSnapshotMutated?.(snapshot, Date.now());
@@ -129,7 +143,7 @@ function handleFreshnessOnlyCapabilityUpdate(
             ),
     });
     if (reconcileChange && snapshot) {
-        (ctx.logger.structuredLog ?? moduleLogger).info({
+        moduleLogger.info({
             event: 'realtime_capability_drift',
             deviceId,
             capabilityId: reconcileChange.capabilityId,
@@ -142,6 +156,167 @@ function handleFreshnessOnlyCapabilityUpdate(
             changes: [reconcileChange],
         });
     }
+}
+
+function handleTemperatureFreshnessOutcome(
+    ctx: TransportContext,
+    params: {
+        snapshotIndex: number;
+        deviceId: string;
+        capabilityId: string;
+        snapshot: TransportDeviceSnapshot;
+        result: ReturnType<typeof applyFreshnessOnlyCapabilityUpdate>;
+    },
+): boolean {
+    const {
+        snapshotIndex, deviceId, capabilityId, snapshot, result,
+    } = params;
+    if (!result.temperatureRecoveryRequested && !result.temperatureFacetRemoved) return false;
+    recordCapabilityObservation({
+        state: ctx.observationState,
+        latestSnapshot: ctx.latestSnapshot,
+        deviceId,
+        capabilityId,
+        value: result.normalizedValue,
+        source: 'realtime_capability',
+        countsTowardDeviceFreshness: false,
+    });
+    if (result.temperatureRecoveryRequested) {
+        requestTemperatureRecovery(ctx, deviceId);
+        return true;
+    }
+    dropDeviceWithoutRemainingControlFacet(ctx, snapshotIndex, snapshot);
+    const cursor = ctx.nextObservationCursor(deviceId);
+    ctx.dispatchObservedStateChanged({
+        source: 'realtime_capability',
+        deviceId,
+        ...cursor,
+        capabilityId,
+    });
+    dispatchTemperatureFacetRemoval(ctx, deviceId, snapshot, cursor);
+    return true;
+}
+
+function dispatchTemperatureFacetRemoval(
+    ctx: TransportContext,
+    deviceId: string,
+    snapshot: TransportDeviceSnapshot,
+    cursor: ReturnType<TransportContext['nextObservationCursor']>,
+): void {
+    const changes = [{
+        capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+        previousValue: 'present',
+        nextValue: 'absent',
+    }];
+    moduleLogger.info({
+        event: 'realtime_capability_drift',
+        deviceId,
+        capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+        changes,
+    });
+    ctx.dispatchPlanReconcile({ deviceId, ...cursor, name: snapshot.name, changes });
+}
+
+function dropDeviceWithoutRemainingControlFacet(
+    ctx: TransportContext,
+    snapshotIndex: number,
+    snapshot: TransportDeviceSnapshot,
+): void {
+    if (snapshot.binaryCapabilityId || snapshot.steppedLoadProfile) return;
+    ctx.latestSnapshot.splice(snapshotIndex, 1);
+    ctx.latestSnapshotById.delete(snapshot.id);
+}
+
+function handleTemperatureCapabilityUpdate(ctx: TransportContext, params: {
+    snapshotIndex: number;
+    deviceId: string;
+    value: unknown;
+    snapshot: TransportDeviceSnapshot;
+    changes: NonNullable<PlanRealtimeUpdateEvent['changes']>;
+}): boolean {
+    const {
+        snapshotIndex, deviceId, value, snapshot, changes,
+    } = params;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        recordCapabilityObservation({
+            state: ctx.observationState,
+            latestSnapshot: ctx.latestSnapshot,
+            deviceId,
+            capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+            value,
+            source: 'realtime_capability',
+            countsTowardDeviceFreshness: false,
+        });
+        if (!removeTemperatureObservation(snapshot)) return true;
+        dropDeviceWithoutRemainingControlFacet(ctx, snapshotIndex, snapshot);
+        const cursor = ctx.nextObservationCursor(deviceId);
+        ctx.dispatchObservedStateChanged({
+            source: 'realtime_capability',
+            deviceId,
+            ...cursor,
+            capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+        });
+        dispatchTemperatureFacetRemoval(ctx, deviceId, snapshot, cursor);
+        return true;
+    }
+    if (!snapshot.temperature) {
+        recordCapabilityObservation({
+            state: ctx.observationState,
+            latestSnapshot: ctx.latestSnapshot,
+            deviceId,
+            capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+            value,
+            source: 'realtime_capability',
+            countsTowardDeviceFreshness: false,
+        });
+        requestTemperatureRecovery(ctx, deviceId);
+        return true;
+    }
+    const result = updateTemperatureTarget(snapshot, value);
+    if (!result.changed || result.previousValue === undefined) return true;
+    changes.push({
+        capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+        previousValue: formatTargetValue(result.previousValue, snapshot.temperature.target.unit),
+        nextValue: formatTargetValue(value, snapshot.temperature.target.unit),
+    });
+    return false;
+}
+
+function handleBinaryCapabilityEvent(ctx: TransportContext, params: {
+    snapshotIndex: number;
+    deviceId: string;
+    capabilityId: string;
+    value: unknown;
+    snapshot: TransportDeviceSnapshot;
+    changes: NonNullable<PlanRealtimeUpdateEvent['changes']>;
+}): boolean {
+    const {
+        snapshotIndex, deviceId, capabilityId, value, snapshot, changes,
+    } = params;
+    if (capabilityId !== snapshot.binaryCapabilityId) return false;
+    if (typeof value === 'boolean') {
+        const settled = applyBinaryCapabilityUpdate(ctx, {
+            snapshotIndex, deviceId, capabilityId, value, changes,
+        });
+        if (settled) {
+            emitCapabilityEventReceived(
+                ctx,
+                deviceId,
+                capabilityId,
+                normalizeRealtimeCapabilityEventValue(capabilityId, value),
+            );
+        }
+        return settled;
+    }
+    if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return false;
+    clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
+        deviceId,
+        deviceName: snapshot.name,
+        capabilityId,
+        source: 'realtime_capability',
+        value,
+    });
+    return true;
 }
 
 function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
@@ -160,34 +335,19 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
     } = params;
     const changes: PlanRealtimeUpdateEvent['changes'] = [];
 
-    if (capabilityId === snapshot.binaryCapabilityId && typeof value === 'boolean') {
-        const settled = applyBinaryCapabilityUpdate(ctx, { snapshotIndex, deviceId, capabilityId, value, changes });
-        if (settled) {
-            emitCapabilityEventReceived(
-                ctx,
-                deviceId,
-                capabilityId,
-                normalizeRealtimeCapabilityEventValue(capabilityId, value),
-            );
-            return;
-        }
-    }
     if (
-        capabilityId === snapshot.binaryCapabilityId
-        && (capabilityId === 'onoff' || capabilityId === 'evcharger_charging')
-        && typeof value !== 'boolean'
-    ) {
-        clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
-            deviceId,
-            deviceName: snapshot.name,
-            capabilityId,
-            source: 'realtime_capability',
-            value,
-        });
-        return;
-    }
+        capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID
+        && handleTemperatureCapabilityUpdate(ctx, {
+            snapshotIndex, deviceId, value, snapshot, changes,
+        })
+    ) return;
+
+    if (handleBinaryCapabilityEvent(ctx, {
+        snapshotIndex, deviceId, capabilityId, value, snapshot, changes,
+    })) return;
 
     for (const target of snapshot.targets) {
+        if (target.id === TARGET_TEMPERATURE_CAPABILITY_ID) continue;
         if (
             target.id === capabilityId
             && typeof value === 'number'
@@ -213,7 +373,7 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
         capabilityId,
         normalizeRealtimeCapabilityEventValue(capabilityId, value),
     );
-    (ctx.logger.structuredLog ?? moduleLogger).info({
+    moduleLogger.info({
         event: 'realtime_capability_drift',
         deviceId,
         capabilityId,
@@ -247,7 +407,10 @@ export function handleRealtimeCapabilityUpdate(
 ): void {
     if (!ctx.shouldTrackRealtimeDevice(deviceId)) return;
     const snapshotIndex = ctx.latestSnapshot.findIndex((entry) => entry.id === deviceId);
-    if (snapshotIndex < 0) return;
+    if (snapshotIndex < 0) {
+        recoverMissingTemperatureSnapshot(ctx, deviceId, capabilityId, value);
+        return;
+    }
 
     const snapshot = ctx.latestSnapshot[snapshotIndex];
     const normalizedEvents = normalizeNativeEvCapabilityUpdate({
@@ -317,6 +480,27 @@ export function handleRealtimeCapabilityUpdate(
             snapshot,
         });
     }
+}
+
+function recoverMissingTemperatureSnapshot(
+    ctx: TransportContext,
+    deviceId: string,
+    capabilityId: string,
+    value: unknown,
+): void {
+    const isTemperatureCapability = capabilityId === 'measure_temperature'
+        || capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID;
+    if (!isTemperatureCapability || typeof value !== 'number' || !Number.isFinite(value)) return;
+    recordCapabilityObservation({
+        state: ctx.observationState,
+        latestSnapshot: ctx.latestSnapshot,
+        deviceId,
+        capabilityId,
+        value,
+        source: 'realtime_capability',
+        countsTowardDeviceFreshness: false,
+    });
+    requestTemperatureRecovery(ctx, deviceId);
 }
 
 /**

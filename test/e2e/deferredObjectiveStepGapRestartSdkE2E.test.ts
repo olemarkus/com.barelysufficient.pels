@@ -90,8 +90,8 @@ const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OU
 // Note what is NOT here: `steppedLadderMissing`. The reading supplies only the
 // gap's inputs; the producer below derives the conclusion.
 //
-// Widened with `TemperatureObservedProbe` rather than reading `currentTemperature`
-// off the base: the field lives on `TemperatureObservedFields`, narrowed through
+// Widened with `TemperatureObservedProbe` rather than reading temperature data
+// off the base: the facet lives on `TemperatureObservedFields`, narrowed through
 // `hasObservedTemperature`, and producer-side surfaces that physically carry it
 // before consumers narrow take the probe intersection — which is exactly what a
 // transport-shaped reading feeding `toPlanDevice` is.
@@ -109,7 +109,10 @@ const buildDeviceReading = (
   binaryControl: { on: false },
   deviceType: 'temperature',
   controlModel: 'stepped_load',
-  currentTemperature: tempC,
+  temperature: {
+    currentTemperature: tempC,
+    target: { id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 },
+  },
   lastFreshDataMs: nowMs,
   ...(opts.withSteps
     ? {

@@ -14,6 +14,7 @@ import { getDeviceId } from './managerHelpers';
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import {
+  recordCapabilityObservation,
   recordDeviceUpdateObservation,
   recordSnapshotCapabilityObservations,
 } from './managerObservation';
@@ -141,6 +142,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
         : { device: effectiveDevice, hadInvalidBinaryControlPayload: false };
     const { device: binarySafeDevice, hadInvalidBinaryControlPayload } = binarySafeUpdate;
     if (deviceId && ctx.shouldTrackRealtimeDevice(deviceId)) {
+        recordMalformedTemperatureEntries(ctx, deviceId, binarySafeDevice);
         ctx.setTrackedDevice(deviceId, binarySafeDevice);
         ctx.syncTrackedNativeSteppedLoadAdapters();
     }
@@ -228,4 +230,28 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // the committed snapshot, so running it earlier would diff against the
     // PRE-update state and lag every charger edge by one device update.
     ctx.observationProducers.evCarLink.noteDeviceUpdate(effectiveDevice, Date.now());
+}
+
+function recordMalformedTemperatureEntries(
+    ctx: TransportContext,
+    deviceId: string,
+    device: HomeyDeviceLike,
+): void {
+    for (const capabilityId of ['measure_temperature', 'target_temperature'] as const) {
+        const entry = device.capabilitiesObj?.[capabilityId];
+        if (!entry || isFiniteNumber(entry.value)) continue;
+        recordCapabilityObservation({
+            state: ctx.observationState,
+            latestSnapshot: ctx.latestSnapshot,
+            deviceId,
+            capabilityId,
+            value: entry.value,
+            source: 'device_update',
+            countsTowardDeviceFreshness: false,
+        });
+    }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
 }

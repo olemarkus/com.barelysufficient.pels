@@ -28,7 +28,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
  */
 export function projectObservedState(snapshot: TransportDeviceSnapshot): ProjectedObservedDeviceState {
     // Probe-widened locally so the projection can copy the observed cluster
-    // fields the base type omits (`evChargingState` / `currentTemperature` /
+    // fields the base type omits (`evChargingState` / atomic `temperature` /
     // `stateOfCharge` / `measuredPowerKw`); the observer's stored values must
     // physically carry them for `isEvObserved` / `hasObservedTemperature` /
     // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` narrowing and the
@@ -47,7 +47,12 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
     }
     if (snapshot.evChargingState !== undefined) projected.evChargingState = snapshot.evChargingState;
     if (snapshot.stateOfCharge !== undefined) projected.stateOfCharge = { ...snapshot.stateOfCharge };
-    if (snapshot.currentTemperature !== undefined) projected.currentTemperature = snapshot.currentTemperature;
+    if (snapshot.temperature !== undefined) {
+        projected.temperature = {
+            currentTemperature: snapshot.temperature.currentTemperature,
+            target: { ...snapshot.temperature.target },
+        };
+    }
     if (snapshot.measuredPowerKw !== undefined) projected.measuredPowerKw = snapshot.measuredPowerKw;
     if (snapshot.measuredPowerObservedAtMs !== undefined) {
         projected.measuredPowerObservedAtMs = snapshot.measuredPowerObservedAtMs;

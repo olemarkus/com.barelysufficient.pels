@@ -6,7 +6,7 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { HomeyDeviceLike, Logger } from '../../utils/types';
+import type { HomeyDeviceLike } from '../../utils/types';
 import {
     getCapabilities,
     resolveZoneId,
@@ -21,13 +21,11 @@ import {
   getControlCapabilityId,
   getEvCharging,
   getEvChargingState,
-  resolveEvChargingStateBinaryEvidence,
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
 } from '../managerControl';
 import {
     buildTargets,
-    getCurrentTemperature,
     resolveDeviceCapabilities,
     shouldDropForEvPlugStateContract,
 } from './managerParse';
@@ -35,7 +33,6 @@ import {
     isObserveOnlyRoleDevice,
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
-import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
 import {
     resolveCandidateCapabilities,
@@ -43,7 +40,6 @@ import {
 } from '../managerNativeEv';
 import { shouldSkipFlowBackedCandidate } from '../managerFlowSupport';
 import {
-    resolveLastFreshDataMs,
     resolveBinaryControlObservation,
 } from './managerParseSnapshot';
 import {
@@ -61,7 +57,12 @@ import type {
     DeviceTransportParseProviders,
     ParseDevicePurpose,
 } from './managerParseDevice';
-import type { ResolvedTransportPowerState } from './transportTypes';
+import { resolveDevicePowerState } from './managerParsePowerState';
+import { resolveParsedLastFreshDataMs } from './managerParseFreshness';
+import {
+    resolveTargetDeviceType,
+    resolveTemperatureObservation,
+} from './temperatureObservation';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -75,13 +76,13 @@ type DeviceCapabilityProfile = {
 
 type DeviceControlBundle = {
     binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
+    hasObservedBinaryControl: boolean;
     evCharging: TargetDeviceSnapshot['evCharging'];
     evChargingState: EvChargingState | undefined;
     binaryControl: TargetDeviceSnapshot['binaryControl'];
     canSetControl: boolean | undefined;
     available: boolean;
     powerCapable: boolean;
-    lastFreshDataMs?: number;
 };
 
 export function resolveDeviceCapabilityProfile(params: {
@@ -146,7 +147,9 @@ function resolveDeviceControlBundle(params: {
         retainedEvChargingState: previousSnapshot?.evChargingState,
         debugStructured,
     })) return null;
-    const { resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState }
+    const {
+        resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState,
+    }
         = resolveDeviceParsedControlState({
         logger,
         debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
@@ -179,15 +182,9 @@ function resolveDeviceControlBundle(params: {
     })) {
         return null;
     }
-    const lastFreshDataMs = resolveParsedLastFreshDataMs({
-        capabilityObj: overlay.capabilityObj, binaryCapabilityId, observedCurrentOn, evChargingState,
-        targetCaps: capsStatus.targetCaps,
-        reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
-        measuredPowerObservedAtMs: measuredPower.observedAtMs,
-    });
     return {
         binaryCapabilityId, evCharging, evChargingState, binaryControl, canSetControl,
-        available, powerCapable, lastFreshDataMs,
+        hasObservedBinaryControl: observedCurrentOn !== undefined, available, powerCapable,
     };
 }
 
@@ -230,23 +227,39 @@ export function assembleDeviceSnapshot(params: {
         powerState: deps.powerState,
         logger: deps.logger,
     });
-    const targetCaps = capsStatus.targetCaps;
-    const targets = buildTargets({
-        targetCaps, capabilityObj: overlay.capabilityObj, deviceId, deviceLabel,
+    const candidateTargets = buildTargets({
+        targetCaps: capsStatus.targetCaps, capabilityObj: overlay.capabilityObj, deviceId, deviceLabel,
         debugStructured,
     });
+    const temperature = resolveTemperatureObservation({ currentTemperature, targets: candidateTargets });
+    const targets = temperature ? [temperature.target] : [];
     const control = resolveDeviceControlBundle({
         identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate, measuredPower,
         previousSnapshot, purpose, managedDecision,
     });
     if (!control) return null;
+    if (
+        capsStatus.targetCaps.length > 0
+        && !temperature
+        && !control.binaryCapabilityId
+        && !overlay.steppedLoadProfile
+    ) return null;
+    const lastFreshDataMs = resolveParsedLastFreshDataMs({
+        capabilityObj: overlay.capabilityObj,
+        binaryCapabilityId: control.binaryCapabilityId,
+        hasObservedBinaryControl: control.hasObservedBinaryControl,
+        evChargingState: control.evChargingState,
+        hasTemperature: temperature !== undefined,
+        reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
+        measuredPowerObservedAtMs: measuredPower.observedAtMs,
+    });
     return buildParsedDeviceSnapshot({
         device: effectiveDevice,
         deviceId,
         deviceClassKey,
         providers,
         targets,
-        targetCaps,
+        temperature,
         binaryCapabilityId: control.binaryCapabilityId,
         powerEstimate,
         measuredPowerKw: measuredPower.measuredPowerKw,
@@ -268,7 +281,6 @@ export function assembleDeviceSnapshot(params: {
             retainedStateOfCharge: previousSnapshot?.stateOfCharge,
             eligibleCarIds: providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
         }),
-        currentTemperature,
         capabilities: overlay.capabilities,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
         controlAdapter: overlay.controlAdapter,
@@ -289,37 +301,9 @@ export function assembleDeviceSnapshot(params: {
         reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
         suggestedSteppedLoadProfile: overlay.suggestedSteppedLoadProfile,
         measuredPowerObservedAtMs: measuredPower.observedAtMs,
-        lastFreshDataMs: control.lastFreshDataMs,
+        lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
-}
-
-function resolveParsedLastFreshDataMs(params: {
-    capabilityObj: DeviceCapabilityMap;
-    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-    observedCurrentOn?: boolean;
-    evChargingState: EvChargingState | undefined;
-    targetCaps: readonly string[];
-    reportedStepObservedAtMs?: number;
-    measuredPowerObservedAtMs?: number;
-}): number | undefined {
-    const {
-        capabilityObj, binaryCapabilityId, observedCurrentOn, evChargingState,
-        targetCaps, reportedStepObservedAtMs, measuredPowerObservedAtMs,
-    } = params;
-    return resolveLastFreshDataMs({
-        capabilityObj,
-        binaryCapabilityId: observedCurrentOn !== undefined ? binaryCapabilityId : undefined,
-        includeEvChargingState: evChargingState === undefined
-            || resolveEvChargingStateBinaryEvidence(evChargingState) !== undefined,
-        targetCaps,
-        observedCapabilityAtMs: reportedStepObservedAtMs,
-        measuredPowerObservedAtMs,
-    });
-}
-
-function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
-    return targetCaps.length > 0 ? 'temperature' : 'onoff';
 }
 
 // `retainedSession` carries the session anchor the transport already holds for
@@ -348,7 +332,7 @@ function buildParsedDeviceSnapshot(params: {
     deviceClassKey: string;
     providers: DeviceTransportParseProviders;
     targets: TargetDeviceSnapshot['targets'];
-    targetCaps: readonly string[];
+    temperature: TransportDeviceSnapshot['temperature'];
     binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     powerEstimate: ReturnType<typeof estimatePower>;
     powerCapable: boolean;
@@ -358,7 +342,6 @@ function buildParsedDeviceSnapshot(params: {
     evChargingState: EvChargingState | undefined;
     evChargingStateObservedAtMs?: number;
     stateOfCharge: DeviceStateOfChargeSnapshot | undefined;
-    currentTemperature: number | undefined;
     capabilities: string[];
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
     controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
@@ -384,7 +367,7 @@ function buildParsedDeviceSnapshot(params: {
         deviceClassKey,
         providers,
         targets,
-        targetCaps,
+        temperature,
         binaryCapabilityId,
         powerEstimate,
         powerCapable,
@@ -394,7 +377,6 @@ function buildParsedDeviceSnapshot(params: {
         evChargingState,
         evChargingStateObservedAtMs,
         stateOfCharge,
-        currentTemperature,
         capabilities,
         flowBackedCapabilityIds,
         controlAdapter,
@@ -414,13 +396,12 @@ function buildParsedDeviceSnapshot(params: {
         lastFreshDataMs,
         lastLocalWriteMs,
     } = params;
-
     return {
         id: deviceId,
         name: device.name,
         targets,
         deviceClass: deviceClassKey,
-        deviceType: resolveTargetDeviceType(targetCaps),
+        deviceType: resolveTargetDeviceType(temperature),
         ...resolveParsedDeviceSettings(device, deviceId, providers),
         controlModel,
         binaryControllable: binaryControl !== undefined,
@@ -440,7 +421,7 @@ function buildParsedDeviceSnapshot(params: {
         evChargingState,
         evChargingStateObservedAtMs,
         stateOfCharge,
-        currentTemperature,
+        temperature,
         measuredPowerKw,
         measuredPowerObservedAtMs,
         zone: resolveZoneLabel(device),
@@ -461,49 +442,6 @@ function buildParsedDeviceSnapshot(params: {
         lastFreshDataMs,
         lastLocalWriteMs,
         lastUpdated: lastFreshDataMs,
-    };
-}
-
-function resolveDevicePowerState(params: {
-    device: HomeyDeviceLike;
-    deviceId: string;
-    deviceLabel: string;
-    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-    capabilities: string[];
-    capabilityObj: DeviceCapabilityMap;
-    livePowerWByDeviceId: LiveDevicePowerWatts;
-    now: number;
-    measuredPowerResolver: DeviceMeasuredPowerResolver;
-    powerState: ResolvedTransportPowerState;
-    logger: Logger;
-}): {
-    currentTemperature: number | undefined;
-    measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
-    powerEstimate: ReturnType<typeof estimatePower>;
-} {
-    const {
-        device, deviceId, deviceLabel, binaryCapabilityId, capabilities, capabilityObj,
-        livePowerWByDeviceId, now, measuredPowerResolver, powerState, logger,
-    } = params;
-    const currentTemperature = getCurrentTemperature(capabilityObj);
-    const measuredPower = resolveMeasuredPowerKw({
-        deviceId, deviceLabel, capabilities, capabilityObj, livePowerWByDeviceId, now,
-        measuredPowerResolver, powerState, logger,
-    });
-    const powerEstimate = estimatePower({
-        device,
-        deviceId,
-        deviceLabel,
-        binaryCapabilityId,
-        measuredPowerKw: measuredPower.measuredPowerKw,
-        now,
-        state: powerState,
-        logger,
-    });
-    return {
-        currentTemperature,
-        measuredPower,
-        powerEstimate,
     };
 }
 

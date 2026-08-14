@@ -5,7 +5,6 @@ import type {
   ProjectedObservedDeviceState,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
@@ -31,18 +30,18 @@ export function readObservedEvChargingState(
 
 /**
  * Owner projection of the observed temperature cluster for producer wiring.
- * The plan-facing device may intentionally omit target capabilities when PELS
- * temperature control is disabled; this read keeps the settings overview tied
- * to observer truth instead of re-introducing command data into the planner.
+ * The observer facet is atomic: if this returns a value, both numbers were
+ * admitted together by the transport boundary.
  */
 export function readObservedTemperatureState(
     state: (ObservedDeviceState & TemperatureObservedProbe) | undefined,
-): { currentTarget: number | null; currentTemperature?: number } | undefined {
-    if (state === undefined) return undefined;
-    const currentTemperature = state.currentTemperature;
+): { currentTarget: number; currentTemperature: number } | null {
+    if (state === undefined) return null;
+    const temperature = state.temperature;
+    if (!temperature) return null;
     return {
-        currentTarget: getPrimaryTargetCapability(state.targets)?.value ?? null,
-        ...(currentTemperature !== undefined ? { currentTemperature } : {}),
+        currentTarget: temperature.target.value,
+        currentTemperature: temperature.currentTemperature,
     };
 }
 
@@ -67,6 +66,10 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
     for (const target of value.targets) Object.freeze(target);
     Object.freeze(value.targets);
     if (value.binaryControl) Object.freeze(value.binaryControl);
+    if (value.temperature) {
+        Object.freeze(value.temperature.target);
+        Object.freeze(value.temperature);
+    }
     if (value.stateOfCharge) Object.freeze(value.stateOfCharge);
     if (value.binaryControlObservation) {
         Object.freeze(value.binaryControlObservation.observedCapabilityIds);

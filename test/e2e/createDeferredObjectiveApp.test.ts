@@ -14,12 +14,16 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // A managed temperature device in the runtime-planned snapshot, with a 30..75 °C
 // settable target so device-specific bounds validation has a real range.
-const buildPlannedHeater = (): TargetDeviceSnapshot => ({
-  id: 'heater-1',
-  name: 'Boiler',
-  capabilities: ['target_temperature', 'measure_power'],
-  targets: [{ id: 'target_temperature', value: 50, min: 30, max: 75, step: 0.5 }],
-} as unknown as TargetDeviceSnapshot);
+const buildPlannedHeater = (): TargetDeviceSnapshot => {
+  const target = { id: 'target_temperature' as const, value: 50, min: 30, max: 75, step: 0.5 };
+  return {
+    id: 'heater-1',
+    name: 'Boiler',
+    capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+    targets: [target],
+    temperature: { currentTemperature: 45, target },
+  } as unknown as TargetDeviceSnapshot;
+};
 
 const tempCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreviewCandidate => ({
   kind: 'temperature',
