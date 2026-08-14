@@ -73,6 +73,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
     name: 'Panel heater',
     deviceType: 'temperature',
     currentTemperature: 19,
+    currentTarget: targetValue,
     targets: [{ id: 'target_temperature', value: targetValue, unit: '°C', min: 5, max: 35 }],
   });
   const build = (params: {
@@ -136,37 +137,6 @@ describe('unknown power holds a load-adding mode-target change', () => {
     expect(plannedTargetOf(planDevice)).toBe(22);
   });
 
-  it('fails closed when the current setpoint observation is unavailable', () => {
-    // `buildTargets` omits `value` entirely on a malformed/transient SDK read.
-    // The clamp cannot anchor to a setpoint it cannot see, and any emitted
-    // target reaches the executor with `observedValue` undefined — where the
-    // `Object.is` no-op fence cannot trip, so the write would actuate blind.
-    // No plannedTarget = no executable target intent = no write.
-    const [planDevice] = buildInitialPlanDevices({
-      context: {
-        ...buildContext([inputDevice({
-          id: 'tank',
-          name: 'Panel heater',
-          deviceType: 'temperature',
-          currentTemperature: 19,
-          targets: [{ id: 'target_temperature', unit: '°C', min: 5, max: 35 }],
-        })]),
-        desiredForMode: { tank: 22 },
-        planningTotalKw: null,
-        total: null,
-        powerFreshnessState: 'stale_hold',
-      },
-      state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      guardInShortfall: false,
-      deps: { ...defaultDeps, holdsModeTargetRaisesWhilePowerUnknown: () => true },
-    });
-
-    expect(plannedTargetOf(planDevice)).toBeUndefined();
-    expect(buildExecutableTargetIntent(planDevice)).toBeNull();
-  });
-
   it('holds at the EXACT observed value, not its step-normalized round-up', () => {
     // A driver reporting an off-step 18.6 with a 1° step would normalize to
     // 19 — a load-adding write the executor could not recognize as a no-op
@@ -178,6 +148,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           name: 'Panel heater',
           deviceType: 'temperature',
           currentTemperature: 18,
+          currentTarget: 18.6,
           targets: [{ id: 'target_temperature', value: 18.6, unit: '°C', min: 5, max: 35, step: 1 }],
         })]),
         desiredForMode: { tank: 22 },
@@ -209,6 +180,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           deviceType: 'temperature',
           deviceClass: 'airconditioning',
           currentTemperature: 25,
+          currentTarget: 24,
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
         desiredForMode: { tank: 20 },
@@ -247,6 +219,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           deviceType: 'temperature',
           deviceClass,
           currentTemperature: 23,
+          currentTarget: 24,
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
         desiredForMode: { tank: 20 },

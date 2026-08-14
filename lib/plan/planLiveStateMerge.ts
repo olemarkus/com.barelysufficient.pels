@@ -1,4 +1,4 @@
-import type { DevicePlan, PlanInputDevice, SteppedClusterFields } from './planTypes';
+import type { DevicePlan, PlanInputDevice, SteppedClusterFields, TemperatureClusterFields } from './planTypes';
 import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
@@ -7,7 +7,6 @@ import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { resolveCurrentOn } from '../observer/observedState';
 import { resolveObservedCurrentState } from './planCurrentState';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
@@ -59,6 +58,32 @@ function resolveMergedSteppedCluster(
   return {};
 }
 
+/**
+ * The temperature cluster for a merged device, from ONE source: the LIVE device.
+ *
+ * Observations (`currentTarget` / `currentTemperature`) are re-sourced from the
+ * live atomic facet; the DECISION (`plannedTarget`) is carried from the prior
+ * plan device, because this is a projection, not a re-plan. A device that
+ * became temperature since the plan was built has no decision yet — planned ===
+ * current is the no-op materialization of "no decision" (the executor's fence
+ * skips it). A device whose live snapshot LOST the facet leaves the temperature
+ * branch entirely (the merged `deviceType` is re-sourced from live, so the
+ * regrouper strips the cluster) — there is no partial temperature state to
+ * carry, matching the observer's atomicity invariant.
+ */
+function resolveMergedTemperatureCluster(
+  live: PlanInputDevice,
+  device: DevicePlan['devices'][number],
+): TemperatureClusterFields {
+  if (!isTemperaturePlanDevice(live)) return {};
+  const priorPlannedTarget = isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
+  return {
+    currentTarget: live.currentTarget,
+    currentTemperature: live.currentTemperature,
+    plannedTarget: priorPlannedTarget ?? live.currentTarget,
+  };
+}
+
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   return {
@@ -97,21 +122,21 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // then regroup through `withEvDiscriminant`. The observed `evChargingState`
       // is re-sourced from the LIVE device (it is an observation, so the freshest
       // one wins), and `commandableNow` with it.
-      // The temperature cluster (`currentTarget` / `currentTemperature`) is
-      // orthogonal to the stepped axis and off the base, so the `...device`
-      // spread does not carry it at the type level. Re-source `currentTarget`
-      // from the live targets and `currentTemperature` from the live device
-      // (narrowed), then regroup through `withTemperatureDiscriminant`.
-      const liveTemperature = isTemperaturePlanDevice(live) ? live : null;
+      // The temperature cluster is orthogonal to the stepped axis and off the
+      // base, so the `...device` spread does not carry it at the type level.
+      // Re-source it as a unit from the live device (`resolveMergedTemperatureCluster`)
+      // and re-source `deviceType` from live alongside it, so the discriminant
+      // and the cluster cannot drift apart in the merged snapshot.
       return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
         ...device,
         commandableNow: live.commandableNow,
+        deviceType: live.deviceType,
         evBoost: device.evBoost,
         evBoostActive: device.evBoostActive,
         stateOfCharge: device.stateOfCharge,
         ...steppedCluster,
         currentState: mergedCurrentState,
-        currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
+        ...resolveMergedTemperatureCluster(live, device),
         selectedStepId: liveStepState.selectedStepId,
         desiredStepId: clampShedDesiredStepId(
           device,
@@ -123,7 +148,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         stepCommandRetryCount: live.stepCommandRetryCount ?? device.stepCommandRetryCount,
         nextStepCommandRetryAtMs: live.nextStepCommandRetryAtMs ?? device.nextStepCommandRetryAtMs,
         reportedStepId: liveStepState.reportedStepId,
-        currentTemperature: liveTemperature?.currentTemperature,
         expectedPowerKw: live.expectedPowerKw,
         expectedPowerSource: live.expectedPowerSource,
         currentDrawKw: live.currentDrawKw,

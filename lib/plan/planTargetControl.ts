@@ -138,14 +138,10 @@ export function prunePendingTargetCommandsForPlan(params: {
   let changed = false;
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
     const device = planById.get(deviceId);
-    const deviceCurrentTarget = device && isTemperaturePlanDevice(device) ? device.currentTarget : null;
-    const devicePlannedTarget = device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
-    const shouldKeep = Boolean(
-      device
-      && typeof devicePlannedTarget === 'number'
-      && devicePlannedTarget !== deviceCurrentTarget
-      && devicePlannedTarget === pending.desired,
-    );
+    const shouldKeep = device !== undefined
+      && isTemperaturePlanDevice(device)
+      && device.plannedTarget !== device.currentTarget
+      && device.plannedTarget === pending.desired;
     if (shouldKeep) continue;
     delete state.pendingTargetCommands[deviceId];
     changed = true;
@@ -255,13 +251,10 @@ export function decoratePlanWithPendingTargetCommands(
 ): DevicePlan {
   const devices = plan.devices.map((device) => {
     const pending = state.pendingTargetCommands[device.id];
-    const isTemperature = isTemperaturePlanDevice(device);
-    const deviceCurrentTarget = isTemperature ? device.currentTarget : null;
-    const devicePlannedTarget = isTemperature ? device.plannedTarget : undefined;
     const shouldExpose = pending
-      && typeof devicePlannedTarget === 'number'
-      && devicePlannedTarget !== deviceCurrentTarget
-      && devicePlannedTarget === pending.desired;
+      && isTemperaturePlanDevice(device)
+      && device.plannedTarget !== device.currentTarget
+      && device.plannedTarget === pending.desired;
     if (!shouldExpose) {
       if (!device.pendingTargetCommand) return device;
       return {

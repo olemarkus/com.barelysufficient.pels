@@ -69,7 +69,6 @@ function isObservedAtShedFloor(
   behavior: { temperature: number | null },
 ): boolean {
   return isTemperaturePlanDevice(dev)
-    && typeof dev.currentTarget === 'number'
     && dev.currentTarget === behavior.temperature;
 }
 
@@ -258,11 +257,10 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   };
 }
 
+// A temperature device always carries both targets (atomic facet + total
+// planner resolution), so kind membership IS the answer.
 function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
-  if (!isTemperaturePlanDevice(dev)) return false;
-  const { currentTarget, plannedTarget } = dev;
-  return (typeof currentTarget === 'number' && Number.isFinite(currentTarget))
-    || (typeof plannedTarget === 'number' && Number.isFinite(plannedTarget));
+  return isTemperaturePlanDevice(dev);
 }
 
 function resolveHoldGating(params: {
@@ -275,10 +273,8 @@ function resolveHoldGating(params: {
 }): { shouldAbortRestoreForShortfall: boolean; shouldHold: boolean; wasShedLastPlan: boolean } {
   const { dev, behavior, state, inShedWindow, holdDuringRestoreCooldown, guardInShortfall } = params;
   const isTemperature = isTemperaturePlanDevice(dev);
-  const currentTarget = isTemperature ? dev.currentTarget : null;
-  const plannedTarget = isTemperature ? dev.plannedTarget : undefined;
-  const atMinTemp = Number(currentTarget) === behavior.temperature
-    || Number(plannedTarget) === behavior.temperature;
+  const atMinTemp = isTemperature
+    && (dev.currentTarget === behavior.temperature || dev.plannedTarget === behavior.temperature);
   const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
   const eligible = dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan;
@@ -549,9 +545,8 @@ function getPendingRestoreDelay(
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature' || behavior.temperature === null) continue;
     if (!isTemperaturePlanDevice(dev)) continue;
-    const { currentTarget, plannedTarget } = dev;
-    if (typeof currentTarget !== 'number' || currentTarget !== behavior.temperature) continue;
-    if (typeof plannedTarget !== 'number' || plannedTarget <= behavior.temperature) continue;
+    if (dev.currentTarget !== behavior.temperature) continue;
+    if (dev.plannedTarget <= behavior.temperature) continue;
 
     const lastRestoreMs = state.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;

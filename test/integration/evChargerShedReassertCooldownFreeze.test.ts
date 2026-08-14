@@ -167,7 +167,6 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     currentState: snapshot.binaryControl?.on === false ? 'off' : 'on',
     plannedState: 'shed' as const,
     shedAction: 'turn_off' as const,
-    currentTarget: null,
     controllable: true,
     available: true,
     steppedLoadProfile: snapshot.steppedLoadProfile,

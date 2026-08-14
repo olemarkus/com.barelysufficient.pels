@@ -5,7 +5,9 @@ import type { PlanContext } from '../../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import type { BinaryControlDiscriminantProbe, PlanInputDevice } from '../../lib/plan/planTypes';
+import type {
+  BinaryControlDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
@@ -20,6 +22,7 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe
+    & TemperatureDiscriminantProbe
     & { binaryCapabilityId?: string } = {},
 ): PlanInputDevice => {
   const merged = {
@@ -329,6 +332,9 @@ describe('buildSheddingPlan', () => {
         currentDrawKw: 1, expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
+        deviceType: 'temperature',
+        currentTemperature: 15,
+        currentTarget: 15,
         targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
       }),
     ];
@@ -2451,6 +2457,9 @@ describe('buildSheddingPlan', () => {
             name: 'AtTemp',
             binaryControl: { on: true },
             controllable: true,
+            deviceType: 'temperature',
+            currentTemperature: 15,
+            currentTarget: 15,
             currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
           }),
@@ -3976,6 +3985,8 @@ describe('buildSheddingPlan', () => {
             id: 'temp',
             name: 'Temperature',
             deviceType: 'temperature',
+            currentTemperature: 22,
+            currentTarget: 22,
             targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
             binaryControl: { on: true },
             controllable: true,
@@ -4090,6 +4101,9 @@ describe('buildSheddingPlan', () => {
             name: 'AtTemp',
             binaryControl: { on: true },
             controllable: true,
+            deviceType: 'temperature',
+            currentTemperature: 15,
+            currentTarget: 15,
             currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
           }),

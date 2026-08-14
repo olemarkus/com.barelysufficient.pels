@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import {
   supportsSmartTaskObjective,
   supportsTemperatureObjective,
 } from '../../flowCards/smartTaskDeviceCapability';
 
 const buildDevice = (
-  overrides: Partial<DecoratedDeviceSnapshot> = {},
-): DecoratedDeviceSnapshot => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+  overrides: Partial<DecoratedDeviceSnapshot & TemperatureObservedProbe> = {},
+): DecoratedDeviceSnapshot & TemperatureObservedProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Heater',
   deviceType: 'temperature',
+  temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
   targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
   ...overrides,
   available: overrides.available ?? true,

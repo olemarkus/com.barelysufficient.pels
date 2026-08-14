@@ -3015,8 +3015,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           name: 'Connected 300',
           currentState: 'on',
           currentDrawKw: drawing ? 1.2 : 0,
-          currentTemperature: 58,
-          currentTarget: 65,
+          temperature: { currentTemperature: 58, currentTarget: 65 },
           plannedState: 'keep',
         }], cursor);
         cursor += tickMs;

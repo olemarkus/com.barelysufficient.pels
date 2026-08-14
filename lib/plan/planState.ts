@@ -351,28 +351,17 @@ export class PlanEngineState {
   restoreDecisionLogByKey: Record<string, string> = {};
 
   /**
-   * Per-device transient state for the mode-target capability read in
-   * `resolveTemperatureSeed`. Used by the abandon-grace window so a single
-   * transient SDK miss on `getPrimaryTargetCapability(dev.targets)?.value`
-   * does not drop the device from the plan, and by the per-device emit
-   * throttle on `missing_mode_target` / `missing_mode_target_and_current_target`
-   * so a stuck misconfigured device does not flood the log buffer when the
-   * `plan` debug topic is enabled. In-memory only per
-   * `feedback_homey_sdk_unreliable` — on restart the first cycle re-emits as
-   * expected.
+   * Per-device emit throttle for the `missing_mode_target` debug event in
+   * `resolveTemperatureSeed`, so a stuck misconfigured device does not flood
+   * the log buffer when the `plan` debug topic is enabled. The old abandon-
+   * grace cache (missed-cycle counter + cached capability value) is gone: the
+   * observer's atomic temperature facet guarantees a finite current target for
+   * every temperature device, so a transient capability-read miss is no longer
+   * a planner state. In-memory only per `feedback_homey_sdk_unreliable` — on
+   * restart the first cycle re-emits as expected.
    */
   modeTargetMissingByDevice: Record<string, {
-    missingCycles: number;
-    cachedTargetValue?: number;
-    /**
-     * Capability ID the `cachedTargetValue` was read from. Compared against
-     * the current primary target capability when the grace path considers
-     * reusing the cache so a device re-pair (or driver swap) during the
-     * grace window can't reuse a value against a different capability.
-     */
-    cachedTargetCapabilityId?: string;
-    lastEmitAtMs?: number;
-    lastEmitEvent?: 'missing_mode_target' | 'missing_mode_target_and_current_target';
+    lastEmitAtMs: number;
   }> = {};
 
   constructor(nowTs = Date.now(), isExternalOffHeld?: (deviceId: string) => boolean) {

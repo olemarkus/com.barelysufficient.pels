@@ -934,7 +934,6 @@ describe('native stepped-load wiring', () => {
       binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'shed',
-      currentTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'max',
@@ -992,7 +991,6 @@ describe('native stepped-load wiring', () => {
       binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'keep',
-      currentTarget: null,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'max',
@@ -1045,7 +1043,6 @@ describe('native stepped-load wiring', () => {
       binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'shed',
-      currentTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         steps: [
@@ -1129,7 +1126,6 @@ describe('native stepped-load wiring', () => {
       binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'shed',
-      currentTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         // EV preset profiles now carry the producer-resolved per-step

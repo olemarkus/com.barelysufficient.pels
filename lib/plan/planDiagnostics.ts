@@ -88,16 +88,11 @@ const isTemperatureInputDevice = (inputDevice?: PlanInputDevice): boolean => (
 
 const resolveCurrentTemperatureC = (
   device: DevicePlanDevice,
-  inputDevice?: PlanInputDevice,
-): number | null => {
-  const deviceTemperature = isTemperaturePlanDevice(device) ? device.currentTemperature : undefined;
-  if (isFiniteNumber(deviceTemperature)) return deviceTemperature;
-  const inputTemperature = inputDevice && isTemperaturePlanDevice(inputDevice)
-    ? inputDevice.currentTemperature
-    : undefined;
-  if (isFiniteNumber(inputTemperature)) return inputTemperature;
-  return null;
-};
+): number | null => (
+  // The temperature cluster is complete on a narrowed device (atomic facet):
+  // one read, no input-device fallback, no finiteness re-check.
+  isTemperaturePlanDevice(device) ? device.currentTemperature : null
+);
 
 const resolveIntendedNormalTemperatureTarget = (params: {
   desiredForMode: Record<string, number>;
@@ -116,9 +111,7 @@ const resolveIntendedNormalTemperatureTarget = (params: {
 // a device PELS commands in full (`keep`) is not starved, however cold it is.
 const resolveCommandedTargetC = (device: DevicePlanDevice): number | null => {
   if (!isTemperaturePlanDevice(device)) return null;
-  if (isFiniteNumber(device.plannedTarget)) return device.plannedTarget;
-  if (isFiniteNumber(device.currentTarget)) return device.currentTarget;
-  return null;
+  return device.plannedTarget;
 };
 
 // True when PELS is shedding this temperature device by commanding it OFF: the
@@ -359,14 +352,12 @@ const buildDiagnosticsObservation = (params: {
     priceOptimizationSettings,
     currentHourPriceLevel,
   });
-  const currentTarget = isTemperaturePlanDevice(device) && typeof device.currentTarget === 'number'
-    ? device.currentTarget
-    : null;
+  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
   const intendedNormalTargetC = resolveIntendedNormalTemperatureTarget({
     desiredForMode,
     inputDevice,
   });
-  const currentTemperatureC = resolveCurrentTemperatureC(device, inputDevice);
+  const currentTemperatureC = resolveCurrentTemperatureC(device);
   const commandedTargetC = resolveCommandedTargetC(device);
   const pelsCommandsTurnOffShed = resolvePelsCommandsTurnOffShed(
     device,
@@ -509,9 +500,7 @@ const resolveTemperatureBlockCause = (
   targetDeficitActive: boolean,
   restoreResult: RestorePlanResult,
 ): DeviceDiagnosticsBlockCause => {
-  const plannedTarget = isTemperaturePlanDevice(device) && typeof device.plannedTarget === 'number'
-    ? device.plannedTarget
-    : null;
+  const plannedTarget = isTemperaturePlanDevice(device) ? device.plannedTarget : null;
   const plannedToRecover = targetDeficitActive
     && plannedTarget !== null
     && plannedTarget >= desiredTarget - TARGET_DEFICIT_EPSILON_C;

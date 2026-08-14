@@ -5,14 +5,88 @@ import {
   hasPlanExecutionDrift,
 } from '../../lib/executor/executorConvergence';
 import {
+  asOutputDevice,
   buildBinaryDevice,
   buildPlan,
   buildSteppedDevice,
   inputDevice,
   steppedProfile,
 } from '../utils/planConvergenceFixtures';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 
 describe('planLiveStateMerge', () => {
+  // The temperature cluster moves as ONE unit, from the LIVE device: the
+  // discriminant (`deviceType`) is re-sourced from live alongside it, so the
+  // merged snapshot can never pair a stale cluster with a fresh discriminant.
+  describe('buildLiveStatePlan — temperature cluster', () => {
+    const priorTemperature = () => asOutputDevice({
+      id: 'dev-t', name: 'Thermostat', commandableNow: true,
+      deviceType: 'temperature' as const,
+      currentState: 'on', plannedState: 'keep' as const,
+      currentTarget: 21, currentTemperature: 20, plannedTarget: 22,
+      currentDrawKw: 0.4, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+      controllable: true, available: true,
+      reason: { code: 'keep', detail: null },
+    });
+    const liveTemperature = (fields: { currentTarget: number; currentTemperature: number }) => inputDevice({
+      id: 'dev-t', name: 'Thermostat',
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: fields.currentTarget, unit: '°C' }],
+      ...fields,
+    });
+
+    it('re-sources observations from live and carries the prior decision', () => {
+      const plan = buildPlan([priorTemperature()]);
+      const merged = buildLiveStatePlan(plan, [liveTemperature({ currentTarget: 19, currentTemperature: 18.5 })])
+        .devices[0];
+
+      if (!isTemperaturePlanDevice(merged)) throw new Error('expected a temperature plan device');
+      expect(merged.currentTarget).toBe(19);
+      expect(merged.currentTemperature).toBe(18.5);
+      // The DECISION is carried — this is a projection, not a re-plan.
+      expect(merged.plannedTarget).toBe(22);
+    });
+
+    it('drops the whole cluster (and the discriminant) when the live device lost the facet', () => {
+      const plan = buildPlan([priorTemperature()]);
+      const liveDemoted = inputDevice({
+        id: 'dev-t', name: 'Thermostat',
+        deviceType: 'onoff',
+        targets: [],
+        binaryControl: { on: true },
+        binaryCapabilityId: 'onoff',
+      });
+      const merged = buildLiveStatePlan(plan, [liveDemoted]).devices[0];
+
+      expect(isTemperaturePlanDevice(merged)).toBe(false);
+      expect(merged.deviceType).toBe('onoff');
+      expect('currentTarget' in merged).toBe(false);
+      // Losing the tracked setpoint IS execution drift, and the pending target
+      // cannot settle against a facet-less live device.
+      expect(hasPlanExecutionDrift(plan, buildLiveStatePlan(plan, [liveDemoted]))).toBe(true);
+      expect(canRefreshPlanSnapshotFromLiveState(plan, buildLiveStatePlan(plan, [liveDemoted]))).toBe(false);
+    });
+
+    it('seeds planned === current for a device that BECAME temperature since the plan was built', () => {
+      const priorBinary = asOutputDevice({
+        id: 'dev-t', name: 'Thermostat', commandableNow: true,
+        currentState: 'on', plannedState: 'keep' as const,
+        currentOn: true, binaryCapabilityId: 'onoff' as const,
+        currentDrawKw: 0.4, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+        controllable: true, available: true,
+        reason: { code: 'keep', detail: null },
+      });
+      const merged = buildLiveStatePlan(
+        buildPlan([priorBinary]),
+        [liveTemperature({ currentTarget: 21, currentTemperature: 20 })],
+      ).devices[0];
+
+      if (!isTemperaturePlanDevice(merged)) throw new Error('expected a temperature plan device');
+      // "No decision yet" materializes as planned === current (executor no-op).
+      expect(merged.plannedTarget).toBe(21);
+    });
+  });
+
   describe('buildLiveStatePlan', () => {
     it('takes live availability and controllability over prior values', () => {
       const plan = buildPlan([buildBinaryDevice({ available: false, controllable: false })]);

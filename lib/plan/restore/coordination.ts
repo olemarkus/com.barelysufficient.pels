@@ -8,7 +8,6 @@ function isTargetRestorePending(device: DevicePlanDevice): boolean {
   if (!isTemperaturePlanDevice(device)) return false;
   const { currentTarget, plannedTarget } = device;
   return device.shedAction === 'set_temperature'
-    && typeof plannedTarget === 'number'
     && currentTarget !== plannedTarget
     && device.pendingTargetCommand?.status === 'waiting_confirmation'
     && device.pendingTargetCommand?.desired === plannedTarget;

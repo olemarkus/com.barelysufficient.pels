@@ -28,17 +28,17 @@ import {
 import {
   emitTemperatureBoostStateChange,
   resolveTemperatureBoostActive,
-  supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { addPerfDuration } from '../utils/perfCounters';
 import { getLogger } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   clearMissingModeEmitState,
-  rememberModeTargetCapability,
   resolveMissingModeTargetSeed,
   type ResolvedModeTargetSeed,
 } from './planModeTargetGuard';
+import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 
 const logger = getLogger('plan/devices');
 
@@ -65,11 +65,11 @@ export type PlanDevicesDeps = {
   debugStructured?: StructuredDebugEmitter;
 };
 
-const SKIP_PLANNED_TARGET = Symbol('skip-planned-target');
-type ResolvedPlannedTarget = number | undefined | typeof SKIP_PLANNED_TARGET;
-const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
-  return supportsTemperatureBoostDevice(device);
-};
+// `undefined` ⟺ the device is not a temperature device (no setpoint to plan).
+// For a temperature device the resolution is TOTAL: the observer's atomic facet
+// guarantees a finite current target, so every seed lane produces a number and
+// there is no skip/grace state left to model.
+type ResolvedPlannedTarget = number | undefined;
 export function buildInitialPlanDevices(params: {
   context: PlanContext;
   state: PlanEngineState;
@@ -109,23 +109,17 @@ export function buildInitialPlanDevices(params: {
   // `planBuilder.buildPlanSnapshotWithTimings` (hoisted so the standing dump-load
   // hold can read it when the shed set is assembled). This module only READS
   // `state.surplusEligibilityByDevice` — it never advances the allocator.
-  const result = context.devices.flatMap((dev) => {
+  const result = context.devices.map((dev) => {
     const t0 = Date.now();
-    const supportsTemperature = supportsTemperatureDevice(dev);
     const priority = deps.getPriorityForDevice(dev.id);
     const plannedTarget = resolvePlannedTarget({
       dev,
       desiredForMode: context.desiredForMode,
-      supportsTemperature,
       planningTotalKw: context.planningTotalKw,
       currentHourPriceLevel: context.currentHourPriceLevel,
       state,
       deps,
     });
-    if (plannedTarget === SKIP_PLANNED_TARGET) {
-      setupMs += Date.now() - t0;
-      return [];
-    }
     // Binary dump-load surplus flag: "PELS is running this device on solar
     // surplus right now" — eligible per the allocator, not held this cycle, and
     // actually observed on. `resolvePlannedTarget` above reset the per-cycle
@@ -136,11 +130,10 @@ export function buildInitialPlanDevices(params: {
         && !shedSet.has(dev.id)
         && dev.currentOn;
     }
-    const currentTarget = getPrimaryTargetCapability(dev.targets)?.value ?? null;
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable;
     const shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null } = (
-      isSteppedLoadDevice(dev) || supportsTemperature
+      isSteppedLoadDevice(dev) || isTemperaturePlanDevice(dev)
     )
       ? deps.getShedBehavior(dev.id)
       : { action: 'turn_off', temperature: null, stepId: null };
@@ -166,7 +159,6 @@ export function buildInitialPlanDevices(params: {
         pending: deps.pendingBinaryCommandStore.peek(dev.id),
       }) && deps.pendingBinaryCommandStore.peek(dev.id)?.desired === true,
       currentState,
-      currentTarget,
       plannedTarget,
       controllable,
       shedBehavior,
@@ -191,7 +183,7 @@ export function buildInitialPlanDevices(params: {
       guardInShortfall,
     });
     offStateMs += Date.now() - t2;
-    return [withOffStateReason];
+    return withOffStateReason;
   });
   addPerfDuration('plan_devices_setup_ms', setupMs);
   addPerfDuration('plan_devices_base_ms', baseMs);
@@ -201,7 +193,6 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
-  supportsTemperature: boolean;
   /** `context.planningTotalKw`: the usable meter total, or `null` when none is trustworthy. */
   planningTotalKw: number | null;
   /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
@@ -212,7 +203,6 @@ function resolvePlannedTarget(params: {
   const {
     dev,
     desiredForMode,
-    supportsTemperature,
     planningTotalKw,
     currentHourPriceLevel,
     state,
@@ -221,48 +211,30 @@ function resolvePlannedTarget(params: {
   // Default: surplus is not the binding cause unless the mode branch below proves it is.
   // Reset every cycle for every device so a stale true never lingers.
   state.surplusAbsorbActiveByDevice[dev.id] = false;
-  if (!supportsTemperature) return undefined;
+  if (!isTemperaturePlanDevice(dev)) return undefined;
+  // Capability METADATA (min/max/step) for normalization; the target VALUE truth
+  // is the narrowed `dev.currentTarget` (the observer's atomic facet — always a
+  // finite number for a temperature device).
   const target = getPrimaryTargetCapability(dev.targets);
   const deferredC = dev.deadlineFloorTargetC;
   const hasDeferred = typeof deferredC === 'number';
-  const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], target, state, deps);
-  if (seed.kind === 'skip') {
-    // An active deadline objective is itself a strong signal that PELS should plan for the
-    // device. When the mode target and current capability value are both missing, use the
-    // deferred target as the rescue seed instead of dropping the device. Price-opt is not
-    // applied to the deadline target; see comment below.
-    if (!hasDeferred) return SKIP_PLANNED_TARGET;
-    return normalizeTargetCapabilityValue({ target, value: deferredC });
-  }
-  if (seed.kind === 'grace_fallback') {
-    // During the abandon-grace window the capability read is transiently
-    // failing, so `currentTarget` is null. Emitting any `plannedTarget` (cached
-    // value or deferred floor) would mismatch `currentTarget` and queue a
-    // spurious `set_temperature` actuation each cycle (the executor's
-    // `Object.is(observedValue, desired)` skip can't trip when `observedValue`
-    // is undefined). Hold off on planning a target value until the SDK comes
-    // back — the device stays in the plan with measured power intact so the
-    // cascade math still accounts for it; we just don't actuate. When grace
-    // exhausts, the seed becomes `skip` and the existing path applies the
-    // deferred floor if any.
-    return undefined;
-  }
+  const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], state, deps);
   // Price-opt and surplus-absorb only modulate a configured mode setpoint; for a
-  // current-reading fallback or deadline rescue seed, leaving it unmodulated keeps PELS
-  // a no-op against whatever the user / deadline already chose.
+  // current-reading fallback seed, leaving it unmodulated keeps PELS a no-op
+  // against whatever the user already chose.
   const modulated = seed.kind === 'mode'
     ? applyModeSeedModulation({
       seedValue: seed.value,
       dev,
       config: deps.getPriceOptimizationSettings()[dev.id],
-      observedTarget: target?.value,
+      observedTarget: dev.currentTarget,
       planningTotalKw,
       currentHourPriceLevel,
       state,
       deps,
     })
     : { kind: 'value' as const, plannedTarget: seed.value, nonSurplusTarget: seed.value };
-  const resolved = resolveModulatedSeedTargets(modulated, { deferredC, target });
+  const resolved = resolveModulatedSeedTargets(modulated, { deferredC });
   if (resolved.done) return resolved.value;
   let plannedTarget = resolved.plannedTarget;
   // Track the same target with NO surplus lift in parallel, so surplus's "binding cause" can
@@ -289,21 +261,12 @@ function resolvePlannedTarget(params: {
 type ModeSeedModulation =
   | { kind: 'value'; plannedTarget: number; nonSurplusTarget: number }
   /** Held at the device's exact observed setpoint — the caller must emit it unnormalized. */
-  | { kind: 'held_at_observed'; observedTarget: number }
-  /** Power unknown AND no usable observation — the caller must plan no target. */
-  | { kind: 'hold_no_observation' };
+  | { kind: 'held_at_observed'; observedTarget: number };
 
 /**
  * Fold a `ModeSeedModulation` into either a FINAL planned target (`done`) or
  * the planned/non-surplus pair the deferred-floor + normalization tail runs on.
  *
- * - `hold_no_observation` → fail closed: any target emitted here reaches the
- *   executor with `observedValue` undefined (`buildTargets` omits `value` on a
- *   malformed read), where the `Object.is` no-op fence cannot trip — the write
- *   would actuate blind. Plan no target; the device stays in the plan with
- *   measured power intact. The deadline floor keeps its promise-not-load
- *   exemption (mirrors the `skip`-path rescue); unreachable today for holding
- *   homes, since R8 blocks smart tasks on sub-home devices.
  * - `held_at_observed` without a deadline floor → the EXACT observed value,
  *   bypassing capability normalization: an off-step reading (18.6 with a 1°
  *   step) would otherwise round UP to 19 and defeat the executor's no-op fence
@@ -315,18 +278,9 @@ function resolveModulatedSeedTargets(
   modulated: ModeSeedModulation,
   params: {
     deferredC: number | undefined;
-    target: ReturnType<typeof getPrimaryTargetCapability>;
   },
-): { done: true; value: ResolvedPlannedTarget } | { done: false; plannedTarget: number; nonSurplusTarget: number } {
+): { done: true; value: number } | { done: false; plannedTarget: number; nonSurplusTarget: number } {
   const hasDeferred = typeof params.deferredC === 'number';
-  if (modulated.kind === 'hold_no_observation') {
-    return {
-      done: true,
-      value: typeof params.deferredC === 'number'
-        ? normalizeTargetCapabilityValue({ target: params.target, value: params.deferredC })
-        : undefined,
-    };
-  }
   if (modulated.kind === 'held_at_observed') {
     return hasDeferred
       ? { done: false, plannedTarget: modulated.observedTarget, nonSurplusTarget: modulated.observedTarget }
@@ -355,10 +309,6 @@ function resolveModulatedSeedTargets(
  *   pump, air conditioning, air treatment): BOTH directions are held, because
  *   lowering adds compressor load in cooling mode and PELS cannot observe which
  *   mode a reversible unit is in.
- * - No usable observation at all: fail closed (`hold_no_observation`) — with
- *   the current setpoint unreadable the executor's no-op fence cannot trip, so
- *   emitting any value would actuate blind.
- *
  * The deadline floor is applied by the caller AFTER this and is intentionally
  * exempt — a smart task's floor is a promise to the user, not opportunistic load.
  *
@@ -375,11 +325,11 @@ function applyModeSeedModulation(params: {
   dev: PlanInputDevice;
   config: PriceOptDeviceConfig | undefined;
   /**
-   * The device's live primary-target reading, producer-resolved: the transport's
-   * `resolveTargetCapabilityValue` already finiteness-gated the SDK value, so
-   * absence is the only unusable state and this seam must not re-narrow.
+   * The device's live target setpoint (`dev.currentTarget`), guaranteed finite
+   * by the observer's atomic temperature facet — never absent for a temperature
+   * device, so the unknown-power hold always has a value to hold at.
    */
-  observedTarget: number | undefined;
+  observedTarget: number;
   planningTotalKw: number | null;
   currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
@@ -398,9 +348,6 @@ function applyModeSeedModulation(params: {
   });
   const holds = planningTotalKw === null && deps.holdsModeTargetRaisesWhilePowerUnknown?.() === true;
   if (!holds) return { kind: 'value', plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
-  if (observedTarget === undefined) {
-    return { kind: 'hold_no_observation' };
-  }
   const holdBothDirections = isCoolingCapableTemperatureDeviceClass(dev.deviceClass);
   if (holdBothDirections || surplusTarget > observedTarget) {
     return { kind: 'held_at_observed', observedTarget };
@@ -409,35 +356,25 @@ function applyModeSeedModulation(params: {
 }
 
 function resolveTemperatureSeed(
-  dev: PlanInputDevice,
+  dev: PlanInputDevice & TemperaturePlanInputKind,
   desired: number | undefined,
-  target: ReturnType<typeof getPrimaryTargetCapability>,
   state: PlanEngineState,
   deps: PlanDevicesDeps,
 ): ResolvedModeTargetSeed {
-  const fallback = target?.value;
-  const targetCapabilityId = target?.id;
-  // Always refresh the cached capability value when a fresh read is available
-  // (even if the mode target is also present) so a future double-miss can ride
-  // out the grace window. Cache is keyed by capability ID so a re-pair during
-  // grace can't reuse a value against a different capability.
-  if (typeof fallback === 'number' && Number.isFinite(fallback)) {
-    rememberModeTargetCapability(state, dev.id, fallback, targetCapabilityId);
-  }
   if (Number.isFinite(desired)) {
     // Mode target is set — clear any missing-mode emit throttling so the next
-    // transition back into missing emits immediately. Cache (if any) is
-    // preserved separately above.
+    // transition back into missing emits immediately.
     clearMissingModeEmitState(state, dev.id);
     return { kind: 'mode', value: Number(desired) };
   }
-  // Mode target missing — delegate fallback / grace / skip + throttled emit
-  // to the shared mode-target guard (see `planModeTargetGuard.ts`).
+  // Mode target missing (user config absence, the only remaining miss) — fall
+  // back to the device's own current setpoint, a no-op seed guaranteed finite
+  // by the atomic facet, and emit the throttled diagnostic (see
+  // `planModeTargetGuard.ts`).
   return resolveMissingModeTargetSeed({
     state,
     deviceId: dev.id,
-    capabilityValue: fallback,
-    capabilityId: targetCapabilityId,
+    capabilityValue: dev.currentTarget,
     payload: { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null },
     debugStructured: deps.debugStructured,
     logger,

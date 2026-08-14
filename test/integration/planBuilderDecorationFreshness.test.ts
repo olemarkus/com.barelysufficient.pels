@@ -28,7 +28,6 @@ const evDevice = (): PlanDevice => ({
   binaryCapabilityId: 'evcharger_charging',
   deviceClass: 'evcharger',
   currentOn: false,
-  currentTarget: null,
 } as unknown as PlanDevice);
 
 const contextWithFreshness = (powerFreshnessState: PowerFreshnessState): PlanContext =>

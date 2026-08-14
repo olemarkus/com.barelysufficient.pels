@@ -92,18 +92,23 @@ type NonSteppedPlanInputKind = Record<never, never>;
  * slice). Temperature is ORTHOGONAL to the stepped axis (an air-treatment unit
  * can also be stepped), so this is NOT a union member; it is the intersection
  * the `isTemperaturePlanDevice` type-guard (`lib/plan/planTemperatureDevice.ts`)
- * adds onto whichever stepped variant the device is. The field is OMITTED from
- * `PlanInputDeviceBase`, so an un-narrowed `device.currentTemperature` read is a
- * hard compile error. It is required after narrowing because the producer only
- * stamps the temperature discriminant from an observer-admitted atomic facet.
+ * adds onto whichever stepped variant the device is. The fields are OMITTED from
+ * `PlanInputDeviceBase`, so an un-narrowed `device.currentTemperature` /
+ * `device.currentTarget` read is a hard compile error. Both are REQUIRED after
+ * narrowing because the producer only stamps the temperature discriminant from
+ * an observer-admitted atomic facet, and that facet carries BOTH a finite
+ * sensor reading and a finite exact target snapshot — neither can be absent
+ * for an admitted temperature device.
  *
- * The plan-input side carries NO `currentTarget`: the target is resolved from
- * the device's `targets` capability list at plan-build time
- * (`lib/plan/planDevices.ts`); `currentTarget` only exists on the OUTPUT
- * `DevicePlanDevice`'s `TemperatureKind`.
+ * `currentTarget` is stamped from the facet's `target.value` at `toPlanDevice`
+ * (resolution-in-producer): consumers read it narrowed and never reach into the
+ * raw `targets` capability list for the value. The `targets` list itself stays
+ * on the base for capability METADATA (min/max/step for normalization, id for
+ * write routing) — the value truth lives here.
  */
 export type TemperaturePlanInputKind = {
   currentTemperature: number;
+  currentTarget: number;
 };
 
 /**

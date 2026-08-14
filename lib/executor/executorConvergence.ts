@@ -93,9 +93,15 @@ function hasSettledPostActuationState(
     return false;
   }
   if (!hasSettledBinaryActuation(baseDevice, liveDevice)) return false;
-  const liveCurrentTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
-  const basePlannedTarget = isTemperaturePlanDevice(baseDevice) ? baseDevice.plannedTarget : undefined;
-  if (requiresTargetUpdate(baseDevice) && liveCurrentTarget !== basePlannedTarget) return false;
+  if (requiresTargetUpdate(baseDevice)) {
+    // A pending target update settles only when the LIVE device still carries
+    // the temperature facet and its setpoint reads at the planned value. A live
+    // device that lost the facet has no setpoint to confirm — not settled.
+    const settled = isTemperaturePlanDevice(baseDevice)
+      && isTemperaturePlanDevice(liveDevice)
+      && liveDevice.currentTarget === baseDevice.plannedTarget;
+    if (!settled) return false;
+  }
   return true;
 }
 
@@ -119,8 +125,7 @@ function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
     return false;
   }
   if (!isTemperaturePlanDevice(device)) return false;
-  const { currentTarget, plannedTarget } = device;
-  return typeof plannedTarget === 'number' && plannedTarget !== currentTarget;
+  return device.plannedTarget !== device.currentTarget;
 }
 
 function hasRelevantBinaryExecutionDrift(
@@ -146,15 +151,15 @@ function hasRelevantTargetExecutionDrift(
   previousDevice: DevicePlan['devices'][number],
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
-  if (!tracksTargetForExecution(previousDevice)) return false;
-  const previousTarget = isTemperaturePlanDevice(previousDevice) ? previousDevice.currentTarget : null;
-  const liveTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
-  return previousTarget !== liveTarget;
+  if (!tracksTargetForExecution(previousDevice) || !isTemperaturePlanDevice(previousDevice)) return false;
+  // A live device that lost the temperature facet counts as drift: the tracked
+  // setpoint can no longer be read at its previous value.
+  return !isTemperaturePlanDevice(liveDevice) || liveDevice.currentTarget !== previousDevice.currentTarget;
 }
 
 function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {
   if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
     return false;
   }
-  return isTemperaturePlanDevice(device) && typeof device.plannedTarget === 'number';
+  return isTemperaturePlanDevice(device);
 }

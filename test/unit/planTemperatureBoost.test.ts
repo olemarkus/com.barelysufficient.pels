@@ -13,10 +13,14 @@ const steppedTemperatureInputDevice = (
   overrides: Parameters<typeof steppedInputDevice>[0] & TemperatureDiscriminantProbe,
 ): PlanInputDevice => {
   const { currentTemperature, currentTarget, plannedTarget, ...rest } = overrides;
+  // The regrouper is discriminated on `deviceType === 'temperature'` and the
+  // input cluster is complete (atomic facet), so the helper stamps the type and
+  // synthesizes the target when the fixture only specified a reading.
   return withTemperatureDiscriminant({
     ...steppedInputDevice(rest),
+    deviceType: 'temperature' as const,
     ...(currentTemperature !== undefined ? { currentTemperature } : {}),
-    ...(currentTarget !== undefined ? { currentTarget } : {}),
+    currentTarget: currentTarget ?? currentTemperature ?? 21,
     ...(plannedTarget !== undefined ? { plannedTarget } : {}),
   }) as PlanInputDevice;
 };

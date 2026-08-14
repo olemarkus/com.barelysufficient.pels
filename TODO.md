@@ -1021,9 +1021,13 @@ program) remain deferred.*
       and restores the pair atomically. Suffixed target capabilities do not qualify. Downstream consumers trust
       the pair directly and do not re-check finiteness or reconstruct a target fallback. The observer-to-plan
       seam is strict now: `readObservedTemperatureState` returns the complete pair or `null` (never `undefined`),
-      and `TemperaturePlanInputKind.currentTemperature` is required after narrowing. **Remaining follow-up:**
-      propagate the same guarantee through planner-internal/output `TemperatureKind` and its regrouping helpers,
-      removing nullable `currentTarget` and optional `currentTemperature` there without broadening this boundary PR.
+      and `TemperaturePlanInputKind` requires both `currentTemperature` and `currentTarget` after narrowing.
+      The planner-internal/output propagation landed too: `TemperatureKind` is fully required
+      (`currentTarget` / `currentTemperature` / `plannedTarget` all plain numbers), `withTemperatureDiscriminant`
+      is discriminated on `deviceType === 'temperature'` with producer-side `TemperatureClusterFields`
+      co-presence enforcement, `toPlanDevice` DERIVES `deviceType` from facet presence, and the
+      mode-target abandon-grace / skip lanes are deleted (the capability value can no longer be
+      transiently missing; only the missing-mode-target fallback + emit throttle survive).
       **State-of-charge-observed field-move landed (2026-06-13): `stateOfCharge` is OFF the base
       `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.stateOfCharge` read is now a hard
       TS2339; consumers narrow through `hasObservedStateOfCharge`

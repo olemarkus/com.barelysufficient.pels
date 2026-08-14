@@ -1,4 +1,6 @@
-import type { DevicePlanDevice, PlanInputDevice, ShedAction, SteppedClusterFields } from './planTypes';
+import type {
+  DevicePlanDevice, PlanInputDevice, ShedAction, SteppedClusterFields, TemperatureClusterFields,
+} from './planTypes';
 import {
   withBinaryDiscriminant, withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
 } from './planTypes';
@@ -80,11 +82,26 @@ function resolveSteppedExpectedPowerKw(params: {
   }
   return null;
 }
-// Source the temperature sensor reading from the input device through the
-// temperature narrowing (the plan-input base omits `currentTemperature`). Kept
-// as a standalone helper so `buildBasePlanDevice` stays under the complexity cap.
-function resolveInputCurrentTemperature(dev: PlanInputDevice): number | undefined {
-  return isTemperaturePlanDevice(dev) ? dev.currentTemperature : undefined;
+// The temperature cluster, taken as a unit through the guard (twin of
+// `pickSteppedPlanFields`). The input kind guarantees `currentTarget` and
+// `currentTemperature` after narrowing (the observer's atomic facet); the
+// planner's own `plannedTarget` is resolved for every temperature device
+// (`resolvePlannedTarget` is total on the temperature branch), so the trio is
+// complete by construction. `withTemperatureDiscriminant` re-ties the cluster
+// onto the temperature variant.
+function pickTemperatureClusterFields(
+  dev: PlanInputDevice,
+  resolvedPlannedTarget: number | undefined,
+): TemperatureClusterFields {
+  if (!isTemperaturePlanDevice(dev)) return {};
+  return {
+    currentTarget: dev.currentTarget,
+    currentTemperature: dev.currentTemperature,
+    // `?? dev.currentTarget` is the type-level seam for the totality invariant
+    // above, not a runtime state: "no commanded setpoint" materializes as
+    // planned === current, which the executor's no-op fence skips.
+    plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
+  };
 }
 
 // Source the binary on/off truth only when the input device is binary this cycle;
@@ -131,7 +148,6 @@ export function buildBasePlanDevice(params: {
   recentlyRestored: boolean;
   binaryCommandPending: boolean;
   currentState: string;
-  currentTarget: number | null;
   plannedTarget: number | undefined;
   controllable: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
@@ -150,7 +166,6 @@ export function buildBasePlanDevice(params: {
     recentlyRestored,
     binaryCommandPending,
     currentState,
-    currentTarget,
     plannedTarget,
     controllable,
     shedBehavior,
@@ -201,8 +216,8 @@ export function buildBasePlanDevice(params: {
   // the loose literal, then re-tied: `withEvDiscriminant`/`withTemperatureDiscriminant`/
   // `withBinaryDiscriminant` regroup their orthogonal clusters (binary keyed on
   // `binaryCapabilityId` presence) and `withSteppedDiscriminant` lands the result
-  // in one stepped union member. The temperature sensor reading is sourced from the
-  // input device through the temperature narrowing (the base omits `currentTemperature`).
+  // in one stepped union member. The temperature cluster is sourced as a unit
+  // from the input device through `pickTemperatureClusterFields`.
   return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant(withBinaryDiscriminant({
     id: dev.id,
     name: dev.name,
@@ -211,9 +226,7 @@ export function buildBasePlanDevice(params: {
     ...resolveInputBinaryControlField(dev),
     currentState,
     plannedState,
-    currentTarget,
-    currentTemperature: resolveInputCurrentTemperature(dev),
-    ...(resolvedPlannedTarget !== undefined ? { plannedTarget: resolvedPlannedTarget } : {}),
+    ...pickTemperatureClusterFields(dev, resolvedPlannedTarget),
     communicationModel: dev.communicationModel,
     ...pickSteppedPlanFields(dev),
     reportedStepId: dev.reportedStepId,

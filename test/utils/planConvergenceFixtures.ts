@@ -88,7 +88,6 @@ export const buildSteppedDevice = (
     name: 'Tank',
     currentState: 'on',
     plannedState: 'keep' as const,
-    currentTarget: null,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     steppedLoadProfile: steppedProfile,
@@ -121,7 +120,6 @@ export const buildEvDevice = (
 ): DevicePlan['devices'][number] => buildBinaryDevice({
   id: 'ev-1',
   name: 'EV Charger',
-  currentTarget: null,
   plannedTarget: undefined,
   deviceClass: 'evcharger',
   binaryCapabilityId: 'evcharger_charging',

@@ -216,11 +216,8 @@ function toPlanResidualTemperatureTarget(
   device: DevicePlanDevice,
 ): ResidualKwShedTemperatureTarget | undefined {
   if (device.shedAction !== 'set_temperature') return undefined;
-  const temperature = isTemperaturePlanDevice(device) ? device : null;
   return {
-    ...(typeof temperature?.currentTarget === 'number' && Number.isFinite(temperature.currentTarget)
-      ? { currentValue: temperature.currentTarget }
-      : {}),
+    ...(isTemperaturePlanDevice(device) ? { currentValue: device.currentTarget } : {}),
   };
 }
 
@@ -345,12 +342,9 @@ function toRemainingTemperatureTarget(target: {
 }
 
 function toPlanRemainingTemperatureTarget(device: DevicePlanDevice): RemainingSheddableTemperatureTarget {
-  const temperature = isTemperaturePlanDevice(device) ? device : null;
   return {
     id: 'target_temperature',
-    ...(typeof temperature?.currentTarget === 'number' && Number.isFinite(temperature.currentTarget)
-      ? { currentValue: temperature.currentTarget }
-      : {}),
+    ...(isTemperaturePlanDevice(device) ? { currentValue: device.currentTarget } : {}),
   };
 }
 

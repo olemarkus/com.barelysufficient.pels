@@ -74,7 +74,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
 };
 
 const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice =>
-  baseBuildPlanDevice({ currentState: 'off', currentTarget: null, ...overrides });
+  baseBuildPlanDevice({ currentState: 'off', ...overrides });
 
 const buildTrackedDevice = (overrides: Record<string, unknown> = {}) => ({
   id: 'dev-1',
