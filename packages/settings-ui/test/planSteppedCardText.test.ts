@@ -62,6 +62,8 @@ const steppedLoad = (
   profile,
   reportedStepId: null,
   targetStepId: null,
+  selectedStepId: 'low',
+  planningPowerKw: 1,
   commandPending: false,
   ...overrides,
 });
@@ -663,7 +665,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'medium',
+          steppedLoad: steppedLoad({ reportedStepId: 'medium' }),
           reason: { code: 'shed_invariant', fromStep: 'medium', toStep: 'high', shedDeviceCount: 1, maxStep: 'low' },
         },
         profile,
@@ -676,7 +678,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 3, maxStep: 'low' },
         },
         profile,

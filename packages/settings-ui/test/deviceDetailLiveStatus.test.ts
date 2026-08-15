@@ -41,14 +41,16 @@ const planWithReason = (reason: { code: 'cooldown_restore'; remainingSec: number
       currentState: 'on',
       plannedState: 'keep',
       currentDrawKw: 1.2,
-      reportedStepId: 'low',
-      selectedStepId: 'medium',
+      // Every stepped fact on the cluster — there are no flat copies to keep in
+      // step with it any more.
       steppedLoad: {
         profile: {
           steps: [{ id: 'step_0', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }],
         },
         reportedStepId: 'low',
         targetStepId: 'medium',
+        selectedStepId: 'medium',
+        planningPowerKw: 1,
         commandPending: false,
       },
       reason,

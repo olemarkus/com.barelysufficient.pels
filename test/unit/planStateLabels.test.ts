@@ -159,24 +159,21 @@ describe('planStateLabels', () => {
         profile: steppedProfile,
         reportedStepId: 'eco',
         targetStepId: 'comfort',
+        selectedStepId: 'eco',
+        planningPowerKw: 1,
         commandPending: false,
       },
       currentState: 'off',
-      selectedStepId: 'eco',
-      desiredStepId: 'comfort',
     })).toBe('resuming');
   });
 
-  it('detects stepped restore-pending from the step ids alone (plan devices carry no stepped cluster)', () => {
-    // Plan devices carry no `steppedLoad` cluster; the distinct selected→desired
-    // step pair only exists on a stepped device, so it must still read as resuming.
-    expect(resolvePlanStateKind({
-      ...baseDevice,
-      currentState: 'off',
-      selectedStepId: 'eco',
-      desiredStepId: 'comfort',
-    })).toBe('resuming');
-    // A non-stepped off device (no step ids) is not resuming.
+  it('is not resuming without a stepped cluster — absence IS non-stepped', () => {
+    // This replaces a test premised on "plan devices carry no `steppedLoad`
+    // cluster", which was true when the log seam did not build one. It does:
+    // `planOverviewEmit` sets `steppedLoad: buildOverviewSteppedLoad(device)`
+    // for every device it logs, and the read model does the same, so all four
+    // callers pass the cluster. A stepped device arriving without it is a
+    // producer bug, not a state to detect step ids for.
     expect(resolvePlanStateKind({ ...baseDevice, currentState: 'off' })).not.toBe('resuming');
   });
 });

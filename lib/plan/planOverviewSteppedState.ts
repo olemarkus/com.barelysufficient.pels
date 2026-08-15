@@ -57,6 +57,12 @@ export function buildOverviewSteppedLoad(
     targetStepId: plannerOnlyTarget
       ? resolveObservedStepId(profile, reportedStepId)
       : plannedTargetStepId,
+    // Read straight off the narrowed stepped device: both are REQUIRED on
+    // `SteppedLoadKind`, so there is nothing to resolve here. They used to
+    // travel as flat copies beside this cluster, which is how the corrected
+    // `targetStepId` above ended up with an uncorrected twin.
+    selectedStepId: device.selectedStepId,
+    planningPowerKw: device.planningPowerKw,
     commandPending: !plannerOnlyTarget && hasPendingStepCommand(device),
   };
 }

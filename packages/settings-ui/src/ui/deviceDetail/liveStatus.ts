@@ -74,7 +74,9 @@ const resolvePowerText = (dev: PlanDeviceSnapshot, intentHeld: boolean): string 
       : formatKw(dev.currentDrawKw as number);
   }
   if (!isMeasuredOnlyCard(dev)) {
-    for (const value of [dev.planningPowerKw, dev.expectedPowerKw]) {
+    // Off the stepped cluster: a non-stepped device has no selected step and
+    // therefore no planning power, which `undefined` says exactly.
+    for (const value of [dev.steppedLoad?.planningPowerKw, dev.expectedPowerKw]) {
       if (isFiniteKw(value) && value > 0.05) return `≈ ${value.toFixed(1)} kW when active`;
     }
   }

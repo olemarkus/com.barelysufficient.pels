@@ -43,25 +43,41 @@ import {
 } from './deviceOverviewStrings';
 
 /**
- * The stepped-control cluster, present IFF the device is stepped-controlled.
+ * The stepped-control cluster, present IFF the device is stepped-controlled —
+ * the overview shape's stepped discriminant, and the ONLY place a stepped fact
+ * lives on this shape.
  *
- * This is the overview shape's stepped discriminant. It replaced a
- * `controlModel: 'temperature_target' | 'binary_power' | 'stepped_load'`
- * setting that every consumer here only ever asked one question of
- * (`=== 'stepped_load'`), and that both carriers had to RECONSTRUCT because the
- * planner does not carry it — with different ladders, which is how the same
+ * It replaced a `controlModel: 'temperature_target' | 'binary_power' |
+ * 'stepped_load'` setting that every consumer here only ever asked one question
+ * of (`=== 'stepped_load'`), and that both carriers had to RECONSTRUCT because
+ * the planner does not carry it — with different ladders, which is how the same
  * device came to render as a binary card on one surface and sign as stepped on
- * the other.
+ * the other. `scripts/check-control-model-vocab.mjs` stated the rule: "stepped
+ * load" is a yes/no CAPABILITY = presence of a valid ladder; `controlModel` is
+ * a producer-only SETTING.
  *
- * `scripts/check-control-model-vocab.mjs` already stated the rule for
- * `lib/plan` and `lib/executor`: "stepped load" is a yes/no CAPABILITY =
- * presence of a valid ladder; `controlModel` is a producer-only SETTING.
- * `packages/shared-domain` kept the field by geography, not by argument.
+ * The snapshot used to carry flat `reportedStepId` / `targetStepId` /
+ * `selectedStepId` / `desiredStepId` / `steppedLoadProfile` BESIDE this,
+ * copied raw off the plan device. That was not merely duplication: the two
+ * disagreed. `buildOverviewSteppedLoad` corrects `targetStepId` when the
+ * planner aims at a rung the confirmed ladder lacks (`plannerOnlyTarget`),
+ * while the flat copy kept the uncorrected id — so the stepped card, which
+ * reads this cluster, and `getSteppedModeTransitionText`, which read the flat
+ * pair, answered differently for the same device.
+ *
+ * `selectedStepId` and `planningPowerKw` are REQUIRED here for the same reason
+ * they are required on the planner's `SteppedLoadKind`: the producer chain
+ * guarantees both for every stepped device (usable-ladder admission ⇒ a lowest
+ * active step ⇒ an effective step and a planning power always resolve).
  */
 export type DeviceOverviewSteppedLoad = {
   profile: SteppedLoadProfile;
   reportedStepId: string | null;
   targetStepId: string | null;
+  /** Producer-resolved effective step. Required — see the docblock above. */
+  selectedStepId: string;
+  /** The draw the selected step is expected to pull. Required, as above. */
+  planningPowerKw: number;
   commandPending: boolean;
 };
 
@@ -116,16 +132,6 @@ export type DeviceOverviewSnapshot = {
    * on the seam furthest from the producer.
    */
   expectedPowerKw: number;
-  /**
-   * Live stepped-load planning power — the draw the currently selected step is
-   * expected to pull. Genuinely OPTIONAL, unlike its neighbour: it belongs to
-   * the stepped command axis, and the producers clear that whole cluster to
-   * `undefined` for any device that is not stepped
-   * (`setup/appInit/toPlanDevice.ts`, `setup/appDeviceControlHelpers.ts`).
-   * A binary or temperature device has no selected step, so there is no honest
-   * number to put here — `expectedPowerKw` is the answer for those.
-   */
-  planningPowerKw?: number;
   reason: DeviceReason;
   /**
    * Producer-resolved: whether PELS manages this device. REQUIRED — the plan
@@ -157,11 +163,10 @@ export type DeviceOverviewSnapshot = {
   // Truthy while a target write is in flight — a satisfied verdict against the
   // pre-command setpoint would be premature.
   pendingTargetCommand?: unknown;
-  reportedStepId?: string;
-  targetStepId?: string;
-  selectedStepId?: string;
-  steppedLoadProfile?: SteppedLoadProfile;
-  desiredStepId?: string;
+  // No flat step ids and no flat profile: they live on `steppedLoad` above,
+  // which is the discriminant AND the single source for every stepped fact.
+  // `steppedLoadProfile` in particular was a ghost here — the producer never
+  // wrote it, yet `planCardReasonLine` read it with a fallback.
   binaryCommandPending?: boolean;
   observationStale?: boolean;
   // Drives the "Raised to use your solar power" reason line; included in the overview
@@ -181,25 +186,39 @@ export type DeviceOverviewStrings = {
 };
 
 // Presence, not a setting comparison. See `DeviceOverviewSteppedLoad`.
-const isSteppedLoadDevice = (device: DeviceOverviewSnapshot): boolean => (
+//
+// A type predicate, so a caller that has asked the question can then read the
+// cluster's required members without re-checking. It returned a plain `boolean`
+// while every stepped fact also had a flat optional copy, so narrowing bought
+// nothing; now the cluster is the only source, and narrowing is what lets
+// `planningPowerKw` be read straight rather than through a fallback.
+const isSteppedLoadDevice = (
+  device: DeviceOverviewSnapshot,
+): device is DeviceOverviewSnapshot & { steppedLoad: DeviceOverviewSteppedLoad } => (
   device.steppedLoad !== undefined
 );
 const isEvChargerDevice = (device: DeviceOverviewSnapshot): boolean => (
   device.deviceRole === 'ev_charger'
 );
 
-// Takes only the field it reads, so callers holding a plain plan device (which
-// carries no `controlModel`) need not manufacture a full overview shape just to
-// read a step id.
+// Both step ids come off the CLUSTER, which is the corrected source. They used
+// to read flat copies carried beside it, and the target one differed: the
+// cluster applies `buildOverviewSteppedLoad`'s `plannerOnlyTarget` correction
+// (show where the device actually is when the planner aims at a rung the
+// confirmed ladder lacks) while the flat copy kept the raw planner id. So the
+// stepped card and the transition label below disagreed about the same device.
+//
+// `null` on the cluster is a real state — nothing reported yet, or no target —
+// and both readers already treat a falsy id as "no transition to describe", so
+// it maps onto their existing `undefined` contract.
 export const getDeviceOverviewReportedStepId = (
-  device: Pick<DeviceOverviewSnapshot, 'reportedStepId'>,
+  device: Pick<DeviceOverviewSnapshot, 'steppedLoad'>,
 ): string | undefined => (
-  device.reportedStepId
+  device.steppedLoad?.reportedStepId ?? undefined
 );
 
-
 const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => (
-  device.targetStepId ?? device.desiredStepId
+  device.steppedLoad?.targetStepId ?? undefined
 );
 
 const getSteppedModeTransitionText = (device: DeviceOverviewSnapshot): string | null => {
@@ -381,11 +400,15 @@ const formatUsageText = (params: {
   return DEVICE_OVERVIEW_UNKNOWN;
 };
 
-// Always an answer: `planningPowerKw` is the live step's draw when there is a
-// step, and `expectedPowerKw` — required — is the fallback and the whole answer
-// for everything else.
+// Always an answer: the live step's draw for a stepped device, and
+// `expectedPowerKw` — required — for everything else.
+//
+// The `?? device.expectedPowerKw` this used to carry inside the stepped branch
+// is gone. `planningPowerKw` is required on the cluster, so a stepped device
+// always has one; the fallback was covering for the field being optional on the
+// snapshot, not for a device that genuinely lacked a figure.
 export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot): number => (
-  isSteppedLoadDevice(device) ? (device.planningPowerKw ?? device.expectedPowerKw) : device.expectedPowerKw
+  isSteppedLoadDevice(device) ? device.steppedLoad.planningPowerKw : device.expectedPowerKw
 );
 
 const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): string => {

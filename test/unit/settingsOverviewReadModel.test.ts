@@ -141,6 +141,10 @@ describe('settingsOverviewReadModel', () => {
       profile: isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined,
       reportedStepId: 'low',
       targetStepId: 'max',
+      // Both now ride the cluster rather than travelling as flat copies beside
+      // it. The fixture's ladder prices `low` at 1 kW.
+      selectedStepId: 'low',
+      planningPowerKw: isSteppedLoadDevice(device) ? device.planningPowerKw : undefined,
       commandPending: true,
     });
   });
@@ -166,6 +170,41 @@ describe('settingsOverviewReadModel', () => {
       targetStepId: confirmedProfile.steps.at(-1)?.id,
       commandPending: false,
     }));
+  });
+
+  it('carries ONE target step id, so the card and the label cannot disagree', () => {
+    // Regression pin for a live divergence. `buildOverviewSteppedLoad` corrects
+    // the target when the planner aims at a rung the CONFIRMED ladder lacks
+    // (`plannerOnlyTarget`) — it shows where the device actually is, because a
+    // pending move to a rung the owner cannot see would never appear to land.
+    //
+    // The read model used to emit that corrected id on the `steppedLoad`
+    // cluster AND the raw planner id as a flat `targetStepId` beside it. The
+    // stepped card reads the cluster; `getSteppedModeTransitionText` reads the
+    // flat pair. On a trimmed ladder the two answered differently, so the card
+    // showed no transition while the overview label rendered "medium → max"
+    // for a step that is not on the ladder.
+    //
+    // One field now, on the cluster. This test fails if a flat copy comes back.
+    const device = steppedPlanDevice({
+      reportedStepId: 'medium',
+      targetStepId: 'max',
+      stepCommandPending: true,
+    });
+    if (!isSteppedLoadDevice(device)) throw new Error('expected stepped test device');
+    const confirmedProfile = {
+      steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max'),
+    };
+    const corrected = confirmedProfile.steps.at(-1)?.id;
+
+    const readModel = buildSettingsOverviewDeviceReadModel(device, {}, confirmedProfile);
+
+    expect(readModel.steppedLoad?.targetStepId).toBe(corrected);
+    expect(readModel.steppedLoad?.targetStepId).not.toBe('max');
+    // No second, uncorrected source for the same fact.
+    expect(readModel).not.toHaveProperty('targetStepId');
+    expect(readModel).not.toHaveProperty('desiredStepId');
+    expect(readModel).not.toHaveProperty('reportedStepId');
   });
 
   it('treats stepped-load step commands as pending overview commands', () => {

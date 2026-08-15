@@ -906,10 +906,12 @@ program) remain deferred.*
       from `softLimitSource` plus shed state and headroom sign. Preserve the two `headroom = -1`
       overrides at `lib/plan/planContext.ts:79-92` (stale fail-closed, exhausted-hour), which the
       deficit identity does not cover. Does **not** subsume the P3 hysteresis item on
-      `resolveSoftLimitSource` further down: adding a `'both'` band keeps the resolver stateless,
+      `resolveSoftLimitSource` further down: a `'both'` band would keep the resolver stateless,
       so a pace difference oscillating across the epsilon boundary still alternates
       `capacity`/`both`/`daily` between rebuilds and every source-dependent surface still
-      flickers. That item stays open and needs retained state or enter/exit thresholds. Fix the
+      flickers. That item stays open and needs retained state or enter/exit thresholds. Note the
+      `'both'` member itself was deleted on 2026-08-15 (no producer at any layer), so proposing
+      it here now costs re-adding user-facing copy — see that item for the full note. Fix the
       `?? 0` P1 above first. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md`.
 
@@ -1400,21 +1402,27 @@ program) remain deferred.*
       device (a realtime event between build and serialize, or an idle-tick re-serialize). The
       fix is to give both carriers ONE overview shape — one builder, one observer overlay —
       rather than two nearly-identical ones.
+      **The STEPPED half of this converged on 2026-08-15** and is a worked example of the shape
+      the fix should take: both carriers already called `buildOverviewSteppedLoad`, but each also
+      carried flat step ids copied raw off the plan device, and the log seam had its own
+      `resolveOverviewTargetStepId` reading them — so the corrected target id had two uncorrected
+      twins. Deleting the flat copies left one builder and one answer. Temperature is the same
+      problem with the observer overlay as the extra input.
 
-- [ ] **`planningPowerKw` is stepped-only in the planner but still flat on the wire.**
-      It now lives on `SteppedPlanInputKind` / `SteppedLoadKind`, so a non-stepped
-      `PlanInputDevice` / `DevicePlanDevice` cannot carry it — a read is a compile error, not a
-      silent `undefined`. The wire shapes still carry it flat: `DeviceOverviewSnapshot`,
-      `SettingsUiPlanDeviceSnapshot`, and the decorated device snapshot
-      (`packages/contracts/src/types.ts`).
-      The blocker is now GONE: retiring `controlModel` gave `DeviceOverviewSnapshot` a real
-      stepped cluster (`steppedLoad`, present iff stepped), which is exactly where this belongs —
-      `getDeviceOverviewExpectedPowerKw` can read it off there. Until it moves, `toPlanDevice` and
-      `decorateSnapshotWithDeviceControl` still spend a line each explicitly clearing it on the
-      snapshot carrier, which is the tell that it is on the wrong type. Move `selectedStepId` in
-      the same pass: it became REQUIRED on the planner-side stepped cluster (2026-08-14) but is
-      still flat and optional on these same wire shapes, so it is the identical bug one field over
-      and splitting the two moves would touch every carrier twice.
+- [ ] **`planningPowerKw` / `selectedStepId` are still flat on the DECORATED device snapshot.**
+      The overview half landed 2026-08-15: `DeviceOverviewSnapshot` carries every stepped fact on
+      the `steppedLoad` cluster (`planningPowerKw` and `selectedStepId` REQUIRED there), the flat
+      `reportedStepId` / `targetStepId` / `desiredStepId` / `steppedLoadProfile` copies are gone,
+      and `getDeviceOverviewExpectedPowerKw` reads the cluster with no fallback. That also fixed a
+      live divergence — the flat target id skipped `buildOverviewSteppedLoad`'s trimmed-ladder
+      correction, so the card, the transition label and the device log disagreed.
+      **What remains is `SteppedLoadDecoration` on `DecoratedDeviceSnapshot`
+      (`packages/contracts/src/types.ts`)** — a different carrier, and the only one that still
+      makes `toPlanDevice` and `decorateSnapshotWithDeviceControl` spend a line each explicitly
+      clearing `planningPowerKw`, which is the tell it is on the wrong type. Bigger than the
+      overview move: 12 optional fields cleared field-by-field at two sites, with consumers across
+      `setup/**` and `packages/settings-ui/src/ui/{deviceControlProfiles,deadlinePlanResolvers,
+      deviceDetail/steppedLoadDraft}.ts`.
 
 - [ ] **`isValidPlanDevice` vouches for more than it checks.**
       `setup/settingsUiAppRuntime.ts` narrows `unknown` to `SettingsUiPlanDevice` while inspecting
@@ -3504,13 +3512,21 @@ CI failure, so future field-move slices can't silently grow the debt.*
       a held device's overview bucket — and thus the "Let it run now" rescue button — can flicker budget↔capacity
       at that boundary. Persona: Optimiser running a tight daily budget near their capacity pace; hypothesis: a
       rescue button that appears and vanishes every few seconds reads as a bug and erodes trust. Candidate fix:
-      add hysteresis (or a `both`-leaning-to-budget tiebreak) to `resolveSoftLimitSource`. Out of scope for the
+      add hysteresis to `resolveSoftLimitSource`. Out of scope for the
       cause-classification fix (#1735) because it also moves the hero "Safe pace now" source label. Source:
       pels-runtime-reality on #1735, 2026-06-16. **Not** solved by the P1 targeted refactor
-      "Express the soft limit as two predicates instead of one rebased `min()`": that gives
+      "Express the soft limit as two predicates instead of one rebased `min()`": that would give
       `softLimitSource` a real `both` band, but the resolver stays stateless, so values
       oscillating across the epsilon boundary still alternate `capacity`/`both`/`daily`. This
       item needs retained state or separate enter/exit thresholds either way.
+      **A `both`-leaning tiebreak is no longer a cheap option (2026-08-15).** `'both'` was
+      declared on `DevicePlan['meta']`, the settings-UI wire type and `HeroSoftLimitSource` with
+      NOTHING able to produce it — `resolveSoftLimitSource` answers `'capacity'` when the paces
+      coincide — so it was deleted along with its two copy tables, a switch arm, three
+      conditionals, two `pelsStatus` predicates, and the `notes/ui-terminology.md` rows that
+      specified its wording. Reintroducing it now means re-adding user-facing copy and an
+      exhaustiveness arm everywhere, not flipping a union member. Prefer retained state or
+      enter/exit thresholds, which this item says it needs anyway.
 
 - [ ] **A starved episode keeps its ORIGINAL cause, so a now-capacity-blocked device stays badged
       "budget limited" — and keeps being offered the budget remedy.** A starved episode carries its

@@ -169,13 +169,21 @@ const isGray = (device: DeviceOverviewSnapshot): boolean => {
   return normalized === 'unknown' || normalized === 'disappeared';
 };
 
+// Both ids come off the stepped cluster, which gates stepped-ness by its own
+// presence — no setting to consult.
+//
+// The target id is the CORRECTED one, and that is a deliberate behaviour fix.
+// This used to compare `selectedStepId` against the raw planner `desiredStepId`,
+// so an off-like device whose planner aimed at a rung the confirmed ladder lacks
+// read as "resuming" — while the cluster beside it had already decided the
+// opposite (`commandPending: !plannerOnlyTarget && …`), because a move the owner
+// cannot see land must not be presented as pending. The two now answer the same
+// question from the same field.
 const hasSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
-  // A distinct selected→desired step id pair only ever exists on a stepped device,
-  // so the step-id check below already gates stepped-ness — no need to also read the
-  // `controlModel` setting (which a plan device no longer carries; only stepped
-  // devices populate `selectedStepId`/`desiredStepId`).
   isOffLike(device.currentState)
-  && Boolean(device.selectedStepId && device.desiredStepId && device.selectedStepId !== device.desiredStepId)
+  && device.steppedLoad !== undefined
+  && device.steppedLoad.targetStepId !== null
+  && device.steppedLoad.selectedStepId !== device.steppedLoad.targetStepId
 );
 
 const isActiveState = (device: DeviceOverviewSnapshot): boolean => (

@@ -129,6 +129,8 @@ describe('parsePlanSnapshot stepped cluster guard', () => {
     profile: { steps: [{ id: 'low' }, { id: 'high' }] },
     reportedStepId: 'low',
     targetStepId: 'high',
+    selectedStepId: 'low',
+    planningPowerKw: 1,
     commandPending: false,
   };
 
@@ -154,6 +156,15 @@ describe('parsePlanSnapshot stepped cluster guard', () => {
       // calls `.trim()` on it.
       { ...validCluster, reportedStepId: 7 },
       { ...validCluster, targetStepId: {} },
+      // The two REQUIRED members. Missing `selectedStepId` would make an off
+      // device read "Resuming" (`undefined !== targetStepId`); a non-finite
+      // `planningPowerKw` reaches the power text, which now reads it with no
+      // fallback.
+      { ...validCluster, selectedStepId: undefined },
+      { ...validCluster, selectedStepId: 7 },
+      { ...validCluster, planningPowerKw: undefined },
+      { ...validCluster, planningPowerKw: Number.NaN },
+      { ...validCluster, planningPowerKw: '1' },
       // Structural gaps.
       { ...validCluster, profile: undefined },
       { ...validCluster, profile: { steps: 'low,high' } },

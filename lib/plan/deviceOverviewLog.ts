@@ -56,10 +56,6 @@ export type OverviewLogDevice = DevicePlanDevice & {
   observationStale?: boolean;
 };
 
-function resolveOverviewTargetStepId(device: OverviewLogDevice): string | null {
-  return device.targetStepId ?? device.desiredStepId ?? null;
-}
-
 // The overview-transition signature: a change in this value is the boundary
 // that drives both the device-log capture and the structured overview debug
 // log, so the two surfaces report identical wording.
@@ -102,7 +98,15 @@ export function buildOverviewEventForDevice(
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device),
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
-    targetStepId: resolveOverviewTargetStepId(device),
+    // The step id the CARD shows — off the cluster, so it carries
+    // `buildOverviewSteppedLoad`'s correction for a planner target the confirmed
+    // ladder lacks. It used to read the raw plan-device ids, which meant this
+    // log could name a rung the owner was never shown; the surrounding docblock
+    // is explicit that the log and the card must report the same thing.
+    targetStepId: device.steppedLoad?.targetStepId ?? null,
+    // The planner's RAW intent, deliberately uncorrected and kept beside the
+    // shown value: when the two differ, the device is aiming at a rung its
+    // confirmed ladder does not have, and seeing both is how you diagnose that.
     desiredStepId: device.desiredStepId ?? null,
   };
 }
