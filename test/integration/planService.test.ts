@@ -804,10 +804,12 @@ describe('PlanService', () => {
         softLimitKw: 5,
         headroomKw: -1.2000000000000002,
         hardCapLimitKw: 7,
-        hardCapHeadroomKw: 0.8,
         usedKWh: 1.23,
-        budgetKWh: 2.35,
-        dailyBudgetHourKWh: 1.99,
+        // Proves BOTH hour-budget inputs were rounded and the tighter one won:
+        // capacity 2.345 -> 2.35, daily 1.987 -> 1.99, min = 1.99. The inputs
+        // themselves are local to the read model and no longer on the wire, so
+        // this is where their normalization is observable.
+        hourBudgetKWh: 1.99,
         minutesRemaining: 8,
       }),
       devices: [

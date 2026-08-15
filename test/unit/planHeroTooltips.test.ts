@@ -18,7 +18,7 @@ describe('planHeroTooltips', () => {
 
   describe('SAFE_PACE_TOOLTIP_BY_SOURCE', () => {
     it('covers every soft-limit source', () => {
-      expect(Object.keys(SAFE_PACE_TOOLTIP_BY_SOURCE).sort()).toEqual(['both', 'capacity', 'daily']);
+      expect(Object.keys(SAFE_PACE_TOOLTIP_BY_SOURCE).sort()).toEqual(['capacity', 'daily']);
     });
 
     it('starts each phrase lowercase so it reads after the "Safe pace now N kW — " stem', () => {
@@ -58,21 +58,13 @@ describe('planHeroTooltips', () => {
       );
     });
 
-    it('names both binding sources when detailed composition is available', () => {
-      expect(formatSafePaceTooltip(12, 'both', {
-        budgetPaceKw: 5,
-        projectedExemptKw: 7,
-      })).toBe(
-        'Safe pace now 12.0 kW — the hourly pace and today\'s budget meet here; today\'s budget '
-        + 'paces counted usage at 5.0 kW, plus 7.0 kW reserved for devices allowed beyond it; '
-        + 'PELS starts reacting here.',
-      );
-    });
-
-    it('uses honest generic wording for daily and both sources without composition', () => {
+    // The 'both' cases that used to live here are gone with the variant. There
+    // was never a producer for it — `resolveSoftLimitSource` answers 'capacity'
+    // when the two paces coincide — so those tests asserted copy for a state the
+    // app cannot reach.
+    it('uses honest generic wording for a daily source without composition', () => {
       expect(formatSafePaceTooltip(5, 'daily')).toContain('may include power allowed beyond');
-      expect(formatSafePaceTooltip(5, 'both')).toContain('meet at this marker');
-      expect(formatSafePaceTooltip(5, 'both')).not.toContain('constraining');
+      expect(formatSafePaceTooltip(5, 'daily')).not.toContain('constraining');
     });
   });
 

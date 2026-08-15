@@ -450,10 +450,10 @@ currentPowerKw          meta.totalKw
 managedPowerKw          meta.controlledKw
 backgroundPowerKw       meta.uncontrolledKw
 safePaceKw              meta.softLimitKw
-softLimitSource         meta.softLimitSource  (capacity | daily | both)
+softLimitSource         meta.softLimitSource  (capacity | daily)
 hardCapKw               meta.hardCapLimitKw
 hourUsedKWh             meta.usedKWh
-hourBudgetKWh           meta.budgetKWh
+hourBudgetKWh           meta.hourBudgetKWh
 minutesRemaining        meta.minutesRemaining
 projectedHourKWh        computed: usedKWh + (currentKw × minutesRemaining / 60)
 freshnessState          powerStatus.powerFreshnessState

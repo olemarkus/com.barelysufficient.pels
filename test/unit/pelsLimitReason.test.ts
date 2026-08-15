@@ -22,7 +22,7 @@ describe('pels status limit reason', () => {
   } as const;
 
   const buildPlan = (params: {
-    softLimitSource: 'capacity' | 'daily' | 'both';
+    softLimitSource: 'capacity' | 'daily';
     reason: string | DeviceReason;
     headroomKw?: number;
     /** The producer-resolved measured draw; `null` means this cycle had none. */

@@ -29,20 +29,51 @@ describe('settingsOverviewReadModel', () => {
       devices: [device],
     });
 
+    // Only what the wire still carries. The inputs above are planner-meta
+    // fields; most of them stopped crossing to the settings UI once the wire
+    // shape dropped everything no consumer read.
     expect(readModel?.meta).toMatchObject({
       softLimitKw: 4.5,
-      dailySoftLimitKw: 4.5,
       budgetPaceKw: 1.4,
       projectedExemptKw: 3.1,
-      budgetKWh: 9.5,
-      capacityHourBudgetKWh: 9.5,
-      capacityLimitKw: 5,
-      dailyBudgetHourKWh: 12,
+      // The subject of this test: the effective hour budget is the tighter of
+      // the capacity budget (9.5) and the daily allocation (12). Its two inputs
+      // stay local to the read model and are deliberately not on the wire.
       hourBudgetKWh: 9.5,
     });
-    expect(
-      (readModel?.meta?.budgetPaceKw ?? 0) + (readModel?.meta?.projectedExemptKw ?? 0),
-    ).toBe(readModel?.meta?.dailySoftLimitKw);
+  });
+
+  it('does not ship meta fields nothing renders', () => {
+    // Pins the wire shape itself. The read model used to `...spread` the whole
+    // planner meta, so half the payload was fields no consumer read — and
+    // deleting one from the DTO did not stop it being emitted, because a spread
+    // bypasses excess-property checking. The producer lists fields explicitly
+    // now; this is the runtime half of that guarantee.
+    const readModel = buildSettingsOverviewReadModel({
+      meta: {
+        totalKw: 0.6,
+        softLimitKw: 4.54,
+        dailySoftLimitKw: 4.54,
+        headroomKw: 3.94,
+        usedKWh: 0.02,
+        budgetKWh: 9.5,
+        capacityLimitKw: 5,
+        dailyBudgetHourKWh: 12,
+        hasLivePowerSample: true,
+        capacityShortfall: false,
+        dailyBudgetExceeded: false,
+      },
+      devices: [buildPlanDevice({ reason: { code: PLAN_REASON_CODES.keep, detail: null } })],
+    } as never);
+
+    for (const dead of [
+      'dailySoftLimitKw', 'powerNowKw', 'hasLivePowerSample', 'powerSampleAgeMs',
+      'capacityShortfall', 'shortfallBudgetThresholdKw', 'shortfallBudgetHeadroomKw',
+      'hardCapHeadroomKw', 'hourlyBudgetExhausted', 'budgetKWh', 'capacityHourBudgetKWh',
+      'capacityLimitKw', 'dailyBudgetRemainingKWh', 'dailyBudgetExceeded', 'dailyBudgetHourKWh',
+    ]) {
+      expect(readModel?.meta).not.toHaveProperty(dead);
+    }
   });
 
   it('excludes auto-tracked observe-only role devices (battery / solar) from the overview devices', () => {
@@ -89,11 +120,10 @@ describe('settingsOverviewReadModel', () => {
       devices: [device],
     });
 
-    expect(readModel?.meta).toMatchObject({
-      capacityHourBudgetKWh: 9.5,
-      dailyBudgetHourKWh: 4.25,
-      hourBudgetKWh: 4.25,
-    });
+    // The daily allocation (4.25) is tighter than the capacity budget (9.5), so
+    // it wins. Both inputs stay local to the read model — only the resolved
+    // effective budget crosses to the settings UI.
+    expect(readModel?.meta?.hourBudgetKWh).toBe(4.25);
   });
 
   it('projects stepped-load overview state from reported evidence and target intent', () => {

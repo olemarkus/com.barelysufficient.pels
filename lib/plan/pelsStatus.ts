@@ -177,12 +177,16 @@ type PlanStatusSummary = {
   hasDailyReason: boolean;
 };
 
+// The `|| limitSource === 'both'` arms these used to carry were dead: the
+// producer (`resolveSoftLimitSource`) answers `'capacity'` when the two paces
+// coincide, never a third "both" state. Not to be confused with `limitReason`
+// below, whose four-member union DOES include a real `'both'`.
 function isDailySourceActive(limitSource: LimitSource): boolean {
-  return limitSource === 'daily' || limitSource === 'both';
+  return limitSource === 'daily';
 }
 
 function isCapacitySourceActive(limitSource: LimitSource): boolean {
-  return limitSource === 'capacity' || limitSource === 'both';
+  return limitSource === 'capacity';
 }
 
 function isRestoreHoldShedReason(reason: DeviceReason): boolean {

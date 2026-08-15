@@ -55,7 +55,14 @@ Power-now subline, not only in the marker tooltip:
 |---|---|
 | `capacity` | set by this hour's pace |
 | `daily` | set by today's budget |
-| `both` | this hour's pace and today's budget meet here |
+
+**Exactly two, never a third.** There is no "both" source: the producer
+(`resolveSoftLimitSource`, `lib/plan/planBuilder.ts`) answers `capacity` when the
+two paces coincide within `SOFT_LIMIT_EPSILON`, so "they meet here" is not a
+state the app can be in. A `both` member and its copy lived on the wire type and
+in this document until 2026-08-15 with nothing able to produce either. Do not
+reintroduce it. (Unrelated to `limitReason` in the home-limits payload, which
+does have a real four-member union including `both`.)
 
 So the on-track subline reads `Safe pace now 1.9 kW · set by today's budget`,
 and the over-pace subline folds the same clause into its existing parenthetical:
@@ -76,17 +83,15 @@ The marker tooltip below keeps the longer explanation for pointer devices.
 |---|---|
 | `capacity` | the hourly pace sets this marker; PELS starts reacting here |
 | `daily` | today's budget sets this marker, which may include power allowed beyond today's budget; PELS starts reacting here |
-| `both` | the hourly and daily paces meet at this marker; PELS starts reacting here |
 
-When `daily` or `both` is active and the plan supplies a non-zero allowance for
-devices outside today's budget, expose the composition below the power bar:
+When `daily` is active and the plan supplies a non-zero allowance for devices
+outside today's budget, expose the composition below the power bar:
 `Safe pace reserves 7.0 kW for devices allowed beyond today's budget; usage
 counted toward today's budget is paced at 5.0 kW.` The marker tooltip uses the
 corresponding detailed form:
 `Safe pace now 12.0 kW — today's budget paces counted usage at 5.0 kW, plus
 7.0 kW reserved for devices allowed beyond it; PELS starts reacting here.`
-When both constraints meet at the marker, the detailed tooltip must also name
-the hourly pace. Do not call those devices "exempt" in user-facing copy.
+Do not call those devices "exempt" in user-facing copy.
 
 The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always renders — including when the dynamic safe pace sits at or above it — and reads **Hard cap** with tooltip body: `your grid tariff step; PELS keeps each hour's average power under this`. Never "breaker trips": an hourly-average ceiling cannot prevent them (see § "Hard cap is an hourly ceiling"). When the hour's projection pushes the energy bar's scale up to the cap, the energy bar also renders a cap tick labelled `Hard cap this hour N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made.
 

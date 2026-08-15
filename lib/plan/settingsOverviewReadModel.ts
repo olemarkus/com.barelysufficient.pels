@@ -55,14 +55,43 @@ function resolveHourBudgetKWh(params: {
   return Math.min(...budgets);
 }
 
+/**
+ * Projects the planner's meta onto the settings-UI wire shape.
+ *
+ * FIELD-BY-FIELD, deliberately — this used to `...spread` the normalized planner
+ * meta, which is why half the wire payload was fields no consumer read. A spread
+ * bypasses excess-property checking, so every field the planner grew arrived on
+ * the wire whether or not anything wanted it, and removing one from the DTO did
+ * not stop it being emitted. Listing them makes the wire an actual decision:
+ * adding a field here is deliberate, and a planner-side addition stays off the
+ * wire until someone puts it here.
+ *
+ * `capacityHourBudgetKWh` and `dailyBudgetHourKWh` stay local. They are the two
+ * inputs to the effective hour budget and nothing renders them; only the
+ * resolved `hourBudgetKWh` crosses.
+ */
 function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsUiPlanMetaSnapshot {
   const normalizedMeta = normalizePlanMeta(meta);
   const capacityHourBudgetKWh = resolveFiniteKWh(normalizedMeta.budgetKWh);
   const dailyBudgetHourKWh = resolveFiniteKWh(normalizedMeta.dailyBudgetHourKWh);
   return {
-    ...normalizedMeta,
-    capacityHourBudgetKWh,
+    totalKw: normalizedMeta.totalKw,
+    softLimitKw: normalizedMeta.softLimitKw,
+    capacitySoftLimitKw: normalizedMeta.capacitySoftLimitKw,
+    budgetPaceKw: normalizedMeta.budgetPaceKw,
+    projectedExemptKw: normalizedMeta.projectedExemptKw,
+    softLimitSource: normalizedMeta.softLimitSource,
+    headroomKw: normalizedMeta.headroomKw,
+    powerFreshnessState: normalizedMeta.powerFreshnessState,
+    hardCapLimitKw: normalizedMeta.hardCapLimitKw,
+    usedKWh: normalizedMeta.usedKWh,
     hourBudgetKWh: resolveHourBudgetKWh({ capacityHourBudgetKWh, dailyBudgetHourKWh }),
+    minutesRemaining: normalizedMeta.minutesRemaining,
+    controlledKw: normalizedMeta.controlledKw,
+    uncontrolledKw: normalizedMeta.uncontrolledKw,
+    hourControlledKWh: normalizedMeta.hourControlledKWh,
+    hourUncontrolledKWh: normalizedMeta.hourUncontrolledKWh,
+    lastPowerUpdateMs: normalizedMeta.lastPowerUpdateMs,
   };
 }
 
