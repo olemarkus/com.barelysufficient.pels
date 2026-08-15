@@ -9,8 +9,10 @@ import type {
 import type { HomeScope } from '../homeRuntime/homeScope';
 import {
   readObservedEvChargingState,
+  readObservedStateOfCharge,
   readObservedTemperatureState,
 } from '../../lib/observer/observedDeviceStateProjection';
+import { resolveTemperatureBoostConfigForDevice } from './toPlanDevice';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
@@ -48,6 +50,12 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
+    // The card's battery level and boost thresholds. Same seam and same reason as
+    // the plug-state above: the plan device carries the boost DECISION, not the
+    // reading or the configuration it was made from.
+    getObservedStateOfCharge: (deviceId) => readObservedStateOfCharge(ctx.getObservedState(deviceId)),
+    getEvBoostConfig: (deviceId) => ctx.getEvBoostConfig?.(deviceId),
+    getTemperatureBoostConfig: (deviceId) => resolveTemperatureBoostConfigForDevice(ctx, deviceId),
     getObservedTemperature: (deviceId) => readObservedTemperatureState(ctx.getObservedState(deviceId)),
     // Observation staleness for the settings-UI gray-state label and the idle
     // classifier, sourced from the observer projection — the same seam as

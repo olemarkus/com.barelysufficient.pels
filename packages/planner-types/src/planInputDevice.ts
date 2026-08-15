@@ -1,15 +1,12 @@
 import type {
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
-  DeviceStateOfChargeSnapshot,
-  EvBoostConfig,
   ExpectedPowerSource,
   RestorePowerSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TargetPowerSteppedLoadConfig,
-  TemperatureBoostConfig,
 } from '../../contracts/src/types.js';
 
 
@@ -26,8 +23,8 @@ import type {
 /**
  * Stepped-control discriminant for the plan-input union. "Stepped load" is a
  * yes/no capability = presence of a valid `steppedLoadProfile`; `controlModel`
- * is a producer-only setting carried as a plain base optional (consumed by the
- * lib/device boost resolvers), NOT the discriminant. The stepped variant
+ * is a producer-only setting carried as a plain base optional, NOT the
+ * discriminant. The stepped variant
  * requires the profile; the non-stepped variant omits it. Moving
  * `steppedLoadProfile` off the base makes the compiler reject un-narrowed
  * `device.steppedLoadProfile` reads — consumers must pass through
@@ -82,23 +79,6 @@ type SteppedPlanInputKind = {
 type NonSteppedPlanInputKind = Record<never, never>;
 
 /**
- * EV field cluster for the plan-input contract (EV-variant slice). EV is
- * ORTHOGONAL to the stepped axis (an EV charger can also be stepped), so this
- * is NOT a union member; it is the intersection the `isEvPlanDevice` type-guard
- * (`lib/plan/planEvDevice.ts`) adds onto whichever stepped variant the device
- * is. The fields are OMITTED from `PlanInputDeviceBase`, so an un-narrowed read
- * is a hard compile error; every field is optional because the producer does
- * not guarantee any of them (`evBoost`/`stateOfCharge` only when
- * configured/reported). The plan-input side has no `evBoostActive` (resolved
- * only on the output `DevicePlanDevice`).
- *
- * The EV plug-state sub-classification (`evBlockReason` / `evSessionInactive` /
- * `evChargerNotResumable`) is gone; it was materialized flat on the base
- * alongside `commandableNow` (see `PlanInputDeviceBase`). The raw observed
- * `evChargingState` is not carried at all — the observer owns it
- * (`ObservedDeviceState`).
- */
-/**
  * Temperature field cluster for the plan-input contract (temperature-variant
  * slice). Temperature is ORTHOGONAL to the stepped axis (an air-treatment unit
  * can also be stepped), so this is NOT a union member; it is the intersection
@@ -124,7 +104,7 @@ export type TemperaturePlanInputKind = {
 
 /**
  * Binary-control field cluster for the plan-input contract. Like
- * `EvPlanInputKind`/`TemperaturePlanInputKind`, binary control is ORTHOGONAL to
+ * `TemperaturePlanInputKind`, binary control is ORTHOGONAL to
  * the stepped axis (a stepped device also has an onoff control), so this is NOT a
  * union member; it is the intersection the `isBinaryPlanDevice` type-guard
  * (`lib/plan/planBinaryDevice.ts`) adds onto whichever stepped variant the device
@@ -218,8 +198,10 @@ export type PlanInputDeviceBase = {
   objectiveKind?: 'ev_soc' | 'temperature';
   /** Observer-resolved EV session fact used by the objective layer. */
   objectiveSessionInactive?: boolean;
-  evBoost?: EvBoostConfig;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  // No `evBoost` / `stateOfCharge` / `temperatureBoost`: a boost threshold is
+  // configuration and a battery level is an observation. The producer reads both
+  // at their own seams and hands the planner `boostSupported`/`boostRequested`
+  // above; the settings UI reads them from those same seams for display.
   /**
    * Producer-resolved boost facts, kind-free by construction. The producer
    * (`resolveBoostSupported` / `resolveBoostRequested` in
@@ -295,9 +277,6 @@ export type PlanInputDeviceBase = {
   // longer carried — it stays transport/observer-internal. `currentState` (the
   // four-valued reason/UI label) is producer-resolved at `toPlanDevice`.
   currentState?: string;
-  // EV fields (`evBoost`, `stateOfCharge`) are split off onto
-  // the orthogonal `EvPlanInputKind` cluster; reach them through the
-  // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
   /**
    * What the device draws while running, as the producer resolved it. REQUIRED —
    * never null, never undefined, never absent. The twin of `currentDrawKw` below:
@@ -344,7 +323,6 @@ export type PlanInputDeviceBase = {
   // `currentTemperature` is split off onto the orthogonal `TemperaturePlanInputKind`
   // cluster; reach it through the `isTemperaturePlanDevice` guard
   // (`lib/plan/planTemperatureDevice.ts`). `temperatureBoost` stays on the base.
-  temperatureBoost?: TemperatureBoostConfig;
   // Set by the deferred limit-lower-priority rescue lane (admission) to force boost on while
   // the smart task is in its planned hours; the boost resolvers honour it independent of the
   // device's own boost config/threshold, so the escalation/shedding machinery claims capacity

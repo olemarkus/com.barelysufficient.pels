@@ -11,7 +11,13 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
-import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  DeviceStateOfChargeSnapshot,
+  EvBoostConfig,
+  EvChargingState,
+  SteppedLoadProfile,
+  TemperatureBoostConfig,
+} from '../../packages/contracts/src/types';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
 import type { ObservedTemperatureState } from '../observer/observedDeviceStateProjection';
@@ -27,6 +33,15 @@ export type SettingsOverviewReadModelDeps = {
   // observer here rather than off the plan device (which no longer carries it).
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
   getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
+  // The device's battery level, for the charger card. Observer-owned like the
+  // plug-state above: the plan device carries the boost DECISION, never the
+  // reading it was made from.
+  getObservedStateOfCharge?: (deviceId: string) => DeviceStateOfChargeSnapshot | undefined;
+  // The owner's configured boost thresholds, for the card's boost panel. These
+  // are settings, so they come from the producer that owns the settings seam —
+  // the planner is not a courier for configuration it does not read.
+  getEvBoostConfig?: (deviceId: string) => EvBoostConfig | undefined;
+  getTemperatureBoostConfig?: (deviceId: string) => TemperatureBoostConfig | undefined;
   getObservedTemperature?: (deviceId: string) => ObservedTemperatureState | null;
   // Observation staleness is observer-owned freshness state — the plan device no
   // longer carries it (the plan has no right to distrust observer data). The
@@ -157,13 +172,27 @@ function resolveOverviewTemperatureFacet(
  * matters most: a smart-task rescue forces boost on a device whose owner
  * configured no threshold, and that card must still say what it is doing.
  */
+/**
+ * The card's battery level, projected to the one property the wire type declares
+ * rather than passed whole: the observation layer's session/invalidation
+ * bookkeeping is its own business, and `level` is the producer's complete answer
+ * to whether this charger has a battery level (`notes/ev-soc-layering.md`).
+ */
+function resolveOverviewStateOfCharge(
+  deviceId: string,
+  deps: SettingsOverviewReadModelDeps,
+): { level: DeviceStateOfChargeSnapshot['level'] } | undefined {
+  const stateOfCharge = deps.getObservedStateOfCharge?.(deviceId);
+  return stateOfCharge ? { level: stateOfCharge.level } : undefined;
+}
+
 function resolveBoostAxis(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
 ): { evBoostActive: boolean; temperatureBoostActive: boolean } {
   if (!device.boostActive) return { evBoostActive: false, temperatureBoostActive: false };
   const onStateOfCharge = deps.getObservedEvChargingState?.(device.id) !== undefined
-    || device.evBoost !== undefined;
+    || deps.getEvBoostConfig?.(device.id) !== undefined;
   return { evBoostActive: onStateOfCharge, temperatureBoostActive: !onStateOfCharge };
 }
 
@@ -212,15 +241,15 @@ export function buildSettingsOverviewDeviceReadModel(
     expectedPowerKw: device.expectedPowerKw,
 
     budgetExempt: device.budgetExempt,
-    temperatureBoost: device.temperatureBoost,
+    temperatureBoost: deps.getTemperatureBoostConfig?.(device.id),
     surplusAbsorbActive: device.surplusAbsorbActive,
-    evBoost: device.evBoost,
+    evBoost: deps.getEvBoostConfig?.(device.id),
     ...resolveBoostAxis(device, deps),
     // Projected to the one property the wire type declares rather than passed
     // whole: the observation layer's session/invalidation bookkeeping is its own
     // business, and `level` is the producer's complete answer to whether this
     // charger has a battery level (`notes/ev-soc-layering.md`).
-    stateOfCharge: device.stateOfCharge ? { level: device.stateOfCharge.level } : undefined,
+    stateOfCharge: resolveOverviewStateOfCharge(device.id, deps),
     // Display-only staleness, sourced from the observer (not the plan device).
     observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,

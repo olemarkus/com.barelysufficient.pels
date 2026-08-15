@@ -4,9 +4,9 @@ import type {
 } from '../../contracts/src/types';
 
 /**
- * Type guard: the device has an observed state-of-charge bag. The
- * observer-snapshot twin of the plan layer's `isEvPlanDevice.stateOfCharge`
- * read — a consumer must test/narrow through this before reading
+ * Type guard: the device has an observed state-of-charge bag. The observer owns
+ * this reading outright — the plan device does not carry it at all — so this
+ * guard is how every consumer reaches it. Test/narrow through it before reading
  * `stateOfCharge`; the field is omitted from the base snapshot types, so this
  * guard (or an already-narrowed value) is the only typed way to reach it. On
  * the narrowed shape `stateOfCharge` is a guaranteed

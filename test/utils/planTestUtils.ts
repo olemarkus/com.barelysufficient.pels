@@ -395,18 +395,29 @@ DevicePlanDevice => {
   } as DevicePlanDevice;
 };
 
+/**
+ * The boost EVIDENCE a fixture may spell — a configured threshold, a battery
+ * level. None of these are plan-device fields any more (a threshold is
+ * configuration, a level is an observation); a fixture spells them so the
+ * builder can resolve the producer's two boost bits from them, exactly as
+ * `toPlanDevice` does from the settings seam and the observer. They are consumed
+ * by the builder and never land on the device.
+ */
+export type FixtureBoostFields = {
+  evBoost?: EvBoostConfig;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  temperatureBoost?: TemperatureBoostConfig;
+};
+
 // The producer's boost input, gathered from whatever the fixture spelled. Kept
 // structural (not a `PlanInputDevice`) for the same reason the producer's own
 // input is: the boost question is asked of a device's kind evidence, before any
 // plan shape exists.
-const fixtureBoostInput = (overrides: {
+const fixtureBoostInput = (overrides: FixtureBoostFields & {
   deviceClass?: string;
   targets?: TargetCapabilitySnapshot[];
   steppedLoadProfile?: SteppedLoadProfile;
   evChargingState?: string;
-  evBoost?: EvBoostConfig;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
-  temperatureBoost?: TemperatureBoostConfig;
   currentTemperature?: number;
 }): BoostResolveInput => ({
   deviceClass: overrides.deviceClass,
@@ -424,7 +435,7 @@ export const buildPlanInputDevice = (
   // (not on the `Partial<PlanInputDevice>` base), so accept them here: the builder
   // resolves the producer-owned `currentOn`/`currentState` from whichever the
   // fixture supplies (mirroring `toPlanDevice`).
-  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & {
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & FixtureBoostFields & {
     evChargingState?: string;
     deviceType?: 'temperature' | 'onoff';
     currentOn?: boolean;
@@ -440,6 +451,10 @@ export const buildPlanInputDevice = (
     available, controllable, currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
+    // Consumed by the boost resolution below and stripped here, the way the
+    // producer strips them: a plan device carries the boost DECISION, never the
+    // configuration or the reading behind it.
+    evBoost: _evBoost, stateOfCharge: _stateOfCharge, temperatureBoost: _temperatureBoost,
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
   } = overrides;
   const o = overrides as {
@@ -517,7 +532,7 @@ export const steppedPlanDevice = (
 };
 
 export const steppedInputDevice = (
-  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe
+  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe & FixtureBoostFields
     & {
       evChargingState?: string;
       binaryControl?: { on: boolean };

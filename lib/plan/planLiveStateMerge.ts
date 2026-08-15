@@ -1,5 +1,5 @@
 import type { DevicePlan, PlanInputDevice, SteppedClusterFields, TemperatureClusterFields } from './planTypes';
-import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
+import { withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
@@ -137,23 +137,19 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         mergedProfile,
         mergedSelectedStepId,
       );
-      // The EV display carriers (`evBoost` / `stateOfCharge`) are re-sourced
-      // explicitly from the prior plan device and regrouped through
-      // `withEvDiscriminant`. `commandableNow` comes from the LIVE device (it is
-      // an observation, so the freshest one wins). The boost DECISION is not
-      // re-sourced here and must not be: it rides `...device` like every other
-      // decision this merge carries through untouched.
+      // `commandableNow` comes from the LIVE device (it is an observation, so
+      // the freshest one wins). The boost DECISION is not re-sourced here and
+      // must not be: it rides `...device` like every other decision this merge
+      // carries through untouched.
       // The temperature cluster is orthogonal to the stepped axis and off the
       // base, so the `...device` spread does not carry it at the type level.
       // Re-source it as a unit from the live device (`resolveMergedTemperatureCluster`)
       // and re-source `deviceType` from live alongside it, so the discriminant
       // and the cluster cannot drift apart in the merged snapshot.
-      return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
+      return withSteppedDiscriminant(withTemperatureDiscriminant({
         ...device,
         commandableNow: live.commandableNow,
         deviceType: live.deviceType,
-        evBoost: device.evBoost,
-        stateOfCharge: device.stateOfCharge,
         ...steppedCluster,
         currentState: mergedCurrentState,
         ...resolveMergedTemperatureCluster(live, device),
@@ -184,7 +180,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         // so recombining it with the preserved profile keeps `currentState`/
         // `currentOn` consistent with the merged device.
         ...liveBinaryFields,
-      })));
+      }));
     }),
   };
 }

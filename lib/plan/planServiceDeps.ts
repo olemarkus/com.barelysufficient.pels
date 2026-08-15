@@ -8,8 +8,11 @@ import type { buildPelsStatus } from './pelsStatus';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
 import type {
+  DeviceStateOfChargeSnapshot,
+  EvBoostConfig,
   EvChargingState,
   SteppedLoadProfile,
+  TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
 import type { HomeId } from '../../packages/contracts/src/settingsKeys';
@@ -71,6 +74,20 @@ export type PlanServiceDeps = {
    * card copy depends on the distinction (`notes/ev-charger-state-copy.md`).
    */
   getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
+  /**
+   * The charger's battery level for the settings-UI card, from the observer that
+   * owns it. The plan device carries the boost DECISION (`boostActive`), never
+   * the reading behind it — a planner that held a percentage would sooner or
+   * later be asked to compare one.
+   */
+  getObservedStateOfCharge?: (deviceId: string) => DeviceStateOfChargeSnapshot | undefined;
+  /**
+   * The owner's configured boost thresholds, for the card's boost panel. Settings,
+   * so they come from the producer that owns the settings seam rather than riding
+   * the plan device the whole way just to be displayed.
+   */
+  getEvBoostConfig?: (deviceId: string) => EvBoostConfig | undefined;
+  getTemperatureBoostConfig?: (deviceId: string) => TemperatureBoostConfig | undefined;
   // Temperature readings for the settings-UI overview are observational truth,
   // not planner command state. In particular, a temperature-control-disabled
   // device is projected to the planner as binary but still shows the external

@@ -24,8 +24,13 @@ type TrustedTemperatureInput = {
   currentTemperature?: number;
 };
 
+// REQUIRED, not an optional bag: a caller holding a device whose state of charge
+// might be absent must narrow through `hasObservedStateOfCharge` first. As an
+// optional field this signature accepted any object at all, so removing
+// `stateOfCharge` from a device type would not have broken a single call site —
+// it would have made them all read `undefined` and answer "no level" forever.
 type TrustedStateOfChargeInput = {
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  stateOfCharge: DeviceStateOfChargeSnapshot;
 };
 
 export function getTrustedCurrentTemperatureC(
@@ -42,6 +47,6 @@ export function getTrustedStateOfCharge(
   // No `Number.isFinite` re-check: `normalizeStateOfChargePercent` guarantees a
   // finite percentage at the producer, and `level` already answers whether there
   // is one at all (producer invariant).
-  const level = device.stateOfCharge?.level;
+  const level = device.stateOfCharge.level;
   return level?.kind === 'known' ? level.percent : undefined;
 }

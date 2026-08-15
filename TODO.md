@@ -929,15 +929,20 @@ program) remain deferred.*
       were moved off the base types** — the flat types keep every field optional; narrowing happens
       only at the guard. **The plan-device half of this item is DONE as of the strict-contracts
       train (2026-08-14).** Field-level variant discrimination now forbids cross-kind field reads
-      on all four clusters: temperature (`isTemperaturePlanDevice` + `TemperatureClusterFields`,
-      the trio all required), stepped (`isSteppedLoadDevice` + `SteppedClusterFields`, including a
-      required `selectedStepId`), binary (`isBinaryPlanDevice`), and EV (`isEvPlanDevice`). The
-      superseded note that "temperature/EV kind guards were NOT added in slice 1 … a guard would
-      be dead code" no longer describes the tree — those guards exist and have many consumers.
-      **What is left is exactly one thing: `TargetDeviceSnapshot` discrimination (~119
-      importers)** — the observer/transport-side snapshot still carries its clusters as one
-      optional bag, so an un-narrowed cross-kind read there is still legal. That is the remaining
-      slice; do not re-scope this entry to the plan device.
+      on the three clusters the planner has: temperature (`isTemperaturePlanDevice` +
+      `TemperatureClusterFields`, the trio all required), stepped (`isSteppedLoadDevice` +
+      `SteppedClusterFields`, including a required `selectedStepId`), and binary
+      (`isBinaryPlanDevice`).
+      **There is no EV cluster on the plan device, and there is not going to be one (2026-08-15,
+      owner ruling).** `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
+      `isEvPlanDevice` guard that half a dozen docblocks in this repo cited never existed — a boost
+      threshold is configuration and a battery level is an observation, so the planner carries
+      neither. It carries one kind-free `boostActive` decision (`lib/plan/planBoost.ts`) resolved
+      from the producer's `boostSupported`/`boostRequested`; the settings UI reads the config and
+      the level from the seams that own them (`getEvBoostConfig` / `getObservedStateOfCharge` in
+      `createPlanService`). Do not re-add an EV cluster to either plan type.
+      Snapshot-side discrimination (`TargetDeviceSnapshot`) is complete — see the summary bullet
+      at the end of this entry, which supersedes any earlier "what is left" prose here.
       **EV-observed guard landed (slice 1 of the observer-snapshot EV discrimination):** added
       `isEvObserved(snapshot): snapshot is EvObservedSnapshot` + `EvObservedSnapshot` (=
       `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) — the observer-snapshot twin of
@@ -1188,10 +1193,12 @@ program) remain deferred.*
         measured-power) AND the stepped clusters (descriptor `steppedLoadProfile`/`targetPowerConfig` off
         `DeviceDescriptor`; observed `reportedStepId` off `ObservedDeviceState`) have moved off the base
         snapshot types onto orthogonal `*Fields` clusters with `*Probe` owner-widening and shared-domain guards.
-        An un-narrowed read of any of these on a base-typed value is a hard TS2339. What is left is the
-        plan-layer discrimination still tracked under "Slice 1" above — converting the flat `DevicePlanDevice` /
-        `PlanInputDevice` bags to discriminated unions (`SteppedLoadKind`/temperature/EV kinds) — a separate
-        partition from the now-finished `TargetDeviceSnapshot`/`ObservedDeviceState`/`DeviceDescriptor` move.
+        An un-narrowed read of any of these on a base-typed value is a hard TS2339.
+      - **type discrimination (plan side): COMPLETE (2026-08-15).** Stepped, temperature and binary are
+        discriminated on both plan types; the EV cluster was not discriminated but REMOVED, along with the
+        boost config and the battery level it existed to carry (see the owner ruling under "Slice 1" above).
+        What remains under this item is only the truthiness-form question above, plus the open P2/P3
+        follow-ups below.
       - **binary on/off discrimination (plan side): `currentOn` slice landed (2026-06-14).** The on/off truth
         is now a strict-boolean `currentOn` on the binary plan kinds (`BinaryPlanInputKind`/`BinaryControlKind`),
         resolved once by the producer (`resolveCurrentOn` — binary axis AND stepped-off fold, no staleness gate)

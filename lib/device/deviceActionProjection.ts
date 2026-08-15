@@ -35,6 +35,7 @@ import {
   isEvSessionInactive,
 } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 // Commandability resolution lives in shared-domain so the executor can import it
 // without crossing the no-executor-to-device-internals boundary. Re-exported
@@ -148,6 +149,7 @@ const isEvBoostRequested = (dev: EvBoostResolveInput): boolean => {
   if (!isEvBoostSupported(dev)) return false;
   const config = dev.evBoost;
   if (config?.enabled !== true) return false;
+  if (!hasObservedStateOfCharge(dev)) return false;
   const percent = getTrustedStateOfCharge(dev);
   if (percent === undefined) return false;
   const boostBelowPercent = config.boostBelowPercent;
