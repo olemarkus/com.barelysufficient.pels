@@ -10,15 +10,14 @@ import {
 } from '../../lib/executor/executableTargetProjection';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
-  meta: {
+  meta: buildPlanMeta({
     totalKw: 1,
     softLimitKw: 5,
-    headroomKw: 4,
-  },
+    headroomKw: 4}),
   devices,
 });
 
@@ -166,12 +165,11 @@ describe('planExecutablePlan', () => {
     });
 
     const executablePlan = buildExecutablePlan({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
         headroomKw: 4,
-        powerFreshnessState: 'fresh',
-      },
+        powerFreshnessState: 'fresh'}),
       devices: [evCharger],
     });
 

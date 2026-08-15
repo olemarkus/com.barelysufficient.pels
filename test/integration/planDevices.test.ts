@@ -81,6 +81,8 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   softLimit: 2,
   capacitySoftLimit: 2,
   dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,

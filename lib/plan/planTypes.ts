@@ -624,42 +624,67 @@ type DevicePlanDeviceBase = {
 
 export type DevicePlan = {
   generatedAtMs?: number;
+  /**
+   * REQUIRED means the producer always writes it. `buildPlanMeta` copies most of
+   * this straight off `PlanContext`, where these are already non-optional — so
+   * an optional here was the guarantee being discarded one layer below the wire,
+   * and the wire then discarded it again. A consumer that hedges on one of these
+   * is defending against a state the planner cannot produce.
+   *
+   * OPTIONAL is reserved for genuine absence, and each one below says why.
+   */
   meta: {
+    // `null` = no meter reading this cycle: the capacity guard holds `null`
+    // until its meter's first sample, and again after an in-place meter swap
+    // (`resetLastTotalPower`). Required-but-nullable, never absent.
     totalKw: number | null;
     softLimitKw: number;
-    capacitySoftLimitKw?: number;
-    dailySoftLimitKw?: number | null;
-    budgetPaceKw?: number | null;
-    projectedExemptKw?: number | null;
+    capacitySoftLimitKw: number;
+    // `null` = no daily budget configured. Always written (`?? null`).
+    dailySoftLimitKw: number | null;
+    budgetPaceKw: number | null;
+    projectedExemptKw: number | null;
     // No `'both'`. `resolveSoftLimitSource` (`planBuilder.ts`) is total over
     // these two — when the paces coincide within `SOFT_LIMIT_EPSILON` it answers
     // `'capacity'`, not a third "they meet here" state — and `PlanContext`
     // already types it `SoftLimitSource = 'capacity' | 'daily'`. The third
     // member was declared here and on the wire with nothing able to produce it,
     // which bought a dead branch in every consumer that switched on it.
-    softLimitSource?: 'capacity' | 'daily';
+    softLimitSource: 'capacity' | 'daily';
     headroomKw: number;
-    powerNowKw?: number | null;
-    hasLivePowerSample?: boolean;
-    powerSampleAgeMs?: number | null;
-    powerFreshnessState?: PowerFreshnessState;
-    capacityShortfall?: boolean;
+    powerNowKw: number | null;
+    hasLivePowerSample: boolean;
+    powerSampleAgeMs: number | null;
+    powerFreshnessState: PowerFreshnessState;
+    capacityShortfall: boolean;
+    // Genuinely absent when there is no capacity guard: the threshold is the
+    // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.
     shortfallBudgetThresholdKw?: number;
-    shortfallBudgetHeadroomKw?: number | null;
-    hardCapLimitKw?: number | null;
-    hardCapHeadroomKw?: number | null;
-    hourlyBudgetExhausted?: boolean;
-    usedKWh?: number;
-    budgetKWh?: number;
-    capacityLimitKw?: number;
-    minutesRemaining?: number;
-    controlledKw?: number;
-    uncontrolledKw?: number;
+    shortfallBudgetHeadroomKw: number | null;
+    // From `capacitySettings.limitKw`, a plain required `number` passed straight
+    // through — so neither `?` nor `| null` was ever right here.
+    hardCapLimitKw: number;
+    hardCapHeadroomKw: number | null;
+    hourlyBudgetExhausted: boolean;
+    usedKWh: number;
+    budgetKWh: number;
+    capacityLimitKw: number;
+    minutesRemaining: number;
+    // `splitControlledUsageKw` states the asymmetry outright: the managed side
+    // always resolves; the whole-home total is a separate reading that can
+    // genuinely be missing, so only the background side is nullable.
+    controlledKw: number;
+    uncontrolledKw: number | null;
+    // Genuinely absent when the hour has no bucket data yet
+    // (`resolveHourlyUsageSplit` returns `{}`).
     hourControlledKWh?: number;
     hourUncontrolledKWh?: number;
-    dailyBudgetRemainingKWh?: number;
-    dailyBudgetExceeded?: boolean;
+    dailyBudgetRemainingKWh: number;
+    dailyBudgetExceeded: boolean;
+    // Genuinely absent when the daily budget is disabled or the bucket index is
+    // out of range (`extractDailyBudgetHourKWh`).
     dailyBudgetHourKWh?: number;
+    // Genuinely absent before the power tracker's first timestamp.
     lastPowerUpdateMs?: number;
   };
   devices: DevicePlanDevice[];

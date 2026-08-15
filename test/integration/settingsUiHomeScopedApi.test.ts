@@ -21,6 +21,7 @@ import {
 } from '../../setup/settingsUiApi';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../../lib/home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../../lib/home/membership';
+import { buildSettingsUiPlanMeta } from '../utils/planTestUtils';
 
 const AREA_ID = 'h_area1';
 
@@ -43,7 +44,7 @@ const failOnlyPowerSource = (readRealSetting: (key: string) => unknown) => (key:
   return readRealSetting(key);
 };
 
-const AREA_PLAN = { generatedAtMs: 42, meta: { totalKw: 1.5 }, devices: [] };
+const AREA_PLAN = { generatedAtMs: 42, meta: buildSettingsUiPlanMeta({ totalKw: 1.5 }), devices: [] };
 const AREA_TRACKER = { buckets: { '2026-07-26T10:00:00.000Z': 0.4 } };
 
 const areaReading = (): HomeRuntimeReading => ({

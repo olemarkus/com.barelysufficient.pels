@@ -6,6 +6,7 @@ import {
 import type { OverviewDeferredObjectiveActivePlans } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsV1 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
+import { buildPlanMeta } from './helpers/planMetaFixture.ts';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Overview (multi-home 6b): the scope-following plan reader and the
@@ -39,18 +40,16 @@ const ROSTER_PAYLOAD = {
 };
 
 const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: string; plannedState?: string }) => ({
-  meta: {
+  meta: buildPlanMeta({
     totalKw: params.totalKw,
     softLimitKw: 3,
     headroomKw: 3 - params.totalKw,
     controlledKw: 0.5,
     uncontrolledKw: Math.max(0, params.totalKw - 0.5),
     usedKWh: 0.2,
-    budgetKWh: 3,
     hourBudgetKWh: 3,
     minutesRemaining: 30,
-    powerFreshnessState: 'fresh',
-  },
+    powerFreshnessState: 'fresh'}),
   devices: [{
     id: params.deviceId,
     name: params.deviceName,

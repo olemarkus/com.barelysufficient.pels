@@ -45,8 +45,26 @@ export function isPlanUnactionable(summary: PlanCapacityStateSummary): boolean {
     && summary.remainingReducibleControlledLoad === false;
 }
 
+/**
+ * The summary's input is narrowed to exactly what it reads: the device list, and
+ * the managed/background split off `meta`. It used to take a whole `DevicePlan`,
+ * which let a caller satisfy the type while omitting the only two meta fields
+ * this function touches — and one did. `planBuilderOvershoot` synthesised
+ * `{ totalKw, softLimitKw, headroomKw }`, none of which is read here, so every
+ * `overshoot_entered` log recorded a null `controlledPowerW` /
+ * `uncontrolledPowerW`. Asking for what is used makes that a compile error
+ * instead of a silently empty diagnostic.
+ */
+export type PlanCapacityStateSummaryInput = Pick<DevicePlan, 'devices'> & {
+  meta: Pick<
+    DevicePlan['meta'],
+    'controlledKw' | 'uncontrolledKw' | 'totalKw' | 'softLimitKw'
+    | 'capacitySoftLimitKw' | 'softLimitSource'
+  >;
+};
+
 export function buildPlanCapacityStateSummary(
-  plan: DevicePlan | null | undefined,
+  plan: PlanCapacityStateSummaryInput | null | undefined,
   metadata: CapacityStateSummaryMetadata = {},
 ): PlanCapacityStateSummary {
   if (!plan) {
@@ -188,11 +206,16 @@ type RemainingSheddableContext = {
   capacityBreached: boolean;
 };
 
-function resolvePlanRemainingSheddableContext(plan: DevicePlan): RemainingSheddableContext {
-  const capacitySoftLimitKw = plan.meta.capacitySoftLimitKw ?? plan.meta.softLimitKw;
+function resolvePlanRemainingSheddableContext(
+  plan: PlanCapacityStateSummaryInput,
+): RemainingSheddableContext {
+  // No `?? plan.meta.softLimitKw` and no `?? 'capacity'`: both are required on
+  // the plan meta, so the fallbacks defended against a state the planner cannot
+  // produce — and the `softLimitSource` one silently answered "capacity" for a
+  // budget-bound cycle if it ever had fired.
   return {
-    limitSource: plan.meta.softLimitSource ?? 'capacity',
-    capacityBreached: isCapacityBreached(plan.meta.totalKw, capacitySoftLimitKw),
+    limitSource: plan.meta.softLimitSource,
+    capacityBreached: isCapacityBreached(plan.meta.totalKw, plan.meta.capacitySoftLimitKw),
   };
 }
 

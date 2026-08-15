@@ -11,39 +11,41 @@ export type PlanStatusInputChanges = {
   metaSignature?: string;
 };
 
-const roundNullable = (value: number | null, step: number): number | null => {
+/**
+ * ONE rounding helper, overloaded to preserve its input's nullish-ness.
+ *
+ * There were four — `roundRequired`, `roundNullable`, `roundOptional`,
+ * `roundOptionalNullable` — doing identical arithmetic and differing only in
+ * which absent-ness they threaded through. That fan-out was a symptom of the
+ * meta type, where the same quantity was required in one place, optional in
+ * another and both in a third. With `DevicePlan['meta']` saying what it means,
+ * the callers no longer have to pick a variant and the compiler picks for them.
+ *
+ * The `typeof value !== 'number'` guard is load-bearing for the nullish
+ * overloads and not merely an early return: `Math.round(null / 0.1) * 0.1` is
+ * `0`, so without it a "no reading" `null` would round into a real-looking
+ * zero. For a finite number the guard changes nothing (rounding `NaN` is `NaN`
+ * either way), so the required overload behaves exactly as `roundRequired` did.
+ */
+function roundTo(value: number, step: number): number;
+function roundTo(value: number | null, step: number): number | null;
+function roundTo(value: number | undefined, step: number): number | undefined;
+function roundTo(value: number | null | undefined, step: number): number | null | undefined;
+function roundTo(value: number | null | undefined, step: number): number | null | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return value;
   return Math.round(value / step) * step;
-};
+}
 
-const roundOptional = (value: number | undefined, step: number): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-  return Math.round(value / step) * step;
-};
-
-const roundOptionalNullable = (
-  value: number | null | undefined,
-  step: number,
-): number | null | undefined => {
-  if (value === null || value === undefined) return value;
-  return roundNullable(value, step);
-};
-
-const normalizeMinutesRemaining = (value: number | undefined): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-  return Math.max(0, Math.round(value));
-};
-
-const roundRequired = (value: number, step: number): number => {
+const normalizeMinutesRemaining = (value: number): number => {
   if (!Number.isFinite(value)) return value;
-  return Math.round(value / step) * step;
+  return Math.max(0, Math.round(value));
 };
 
 const normalizeDailyPaceComposition = (
   meta: DevicePlan['meta'],
 ): Pick<DevicePlan['meta'], 'dailySoftLimitKw' | 'budgetPaceKw' | 'projectedExemptKw'> => {
-  const dailySoftLimitKw = roundOptionalNullable(meta.dailySoftLimitKw, PLAN_META_KW_STEP);
-  const projectedExemptKw = roundOptionalNullable(meta.projectedExemptKw, PLAN_META_KW_STEP);
+  const dailySoftLimitKw = roundTo(meta.dailySoftLimitKw, PLAN_META_KW_STEP);
+  const projectedExemptKw = roundTo(meta.projectedExemptKw, PLAN_META_KW_STEP);
   const hasCompleteComposition = typeof dailySoftLimitKw === 'number'
     && Number.isFinite(dailySoftLimitKw)
     && typeof projectedExemptKw === 'number'
@@ -55,7 +57,7 @@ const normalizeDailyPaceComposition = (
     dailySoftLimitKw,
     budgetPaceKw: hasCompleteComposition
       ? Number((dailySoftLimitKw - projectedExemptKw).toFixed(1))
-      : roundOptionalNullable(meta.budgetPaceKw, PLAN_META_KW_STEP),
+      : roundTo(meta.budgetPaceKw, PLAN_META_KW_STEP),
     projectedExemptKw,
   };
 };
@@ -64,25 +66,28 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
   const dailyPaceComposition = normalizeDailyPaceComposition(meta);
   return {
     ...meta,
-    totalKw: roundNullable(meta.totalKw, PLAN_META_KW_STEP),
-    softLimitKw: roundOptional(meta.softLimitKw, PLAN_META_KW_STEP) ?? meta.softLimitKw,
-    capacitySoftLimitKw: roundOptional(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
+    totalKw: roundTo(meta.totalKw, PLAN_META_KW_STEP),
+    // The `?? meta.softLimitKw` tail this used to carry existed only to restore
+    // required-ness after `roundOptional` widened it to `| undefined`. The
+    // overload keeps a required number required, so the tail is gone.
+    softLimitKw: roundTo(meta.softLimitKw, PLAN_META_KW_STEP),
+    capacitySoftLimitKw: roundTo(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
     ...dailyPaceComposition,
-    headroomKw: roundRequired(meta.headroomKw, PLAN_META_KW_STEP),
-    shortfallBudgetThresholdKw: roundOptional(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
-    shortfallBudgetHeadroomKw: roundOptionalNullable(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
-    hardCapLimitKw: roundOptionalNullable(meta.hardCapLimitKw, PLAN_META_KW_STEP),
-    hardCapHeadroomKw: roundOptionalNullable(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
-    usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
-    budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),
-    capacityLimitKw: roundOptional(meta.capacityLimitKw, PLAN_META_KW_STEP),
+    headroomKw: roundTo(meta.headroomKw, PLAN_META_KW_STEP),
+    shortfallBudgetThresholdKw: roundTo(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
+    shortfallBudgetHeadroomKw: roundTo(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
+    hardCapLimitKw: roundTo(meta.hardCapLimitKw, PLAN_META_KW_STEP),
+    hardCapHeadroomKw: roundTo(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
+    usedKWh: roundTo(meta.usedKWh, PLAN_META_KWH_STEP),
+    budgetKWh: roundTo(meta.budgetKWh, PLAN_META_KWH_STEP),
+    capacityLimitKw: roundTo(meta.capacityLimitKw, PLAN_META_KW_STEP),
     minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
-    controlledKw: roundOptional(meta.controlledKw, PLAN_META_KW_STEP),
-    uncontrolledKw: roundOptional(meta.uncontrolledKw, PLAN_META_KW_STEP),
-    hourControlledKWh: roundOptional(meta.hourControlledKWh, PLAN_META_KWH_STEP),
-    hourUncontrolledKWh: roundOptional(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
-    dailyBudgetRemainingKWh: roundOptional(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
-    dailyBudgetHourKWh: roundOptional(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
+    controlledKw: roundTo(meta.controlledKw, PLAN_META_KW_STEP),
+    uncontrolledKw: roundTo(meta.uncontrolledKw, PLAN_META_KW_STEP),
+    hourControlledKWh: roundTo(meta.hourControlledKWh, PLAN_META_KWH_STEP),
+    hourUncontrolledKWh: roundTo(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
+    dailyBudgetRemainingKWh: roundTo(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
+    dailyBudgetHourKWh: roundTo(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
   };
 };
 
@@ -97,16 +102,16 @@ export const normalizePelsStatus = (
 
   return {
     ...status,
-    headroomKw: roundRequired(status.headroomKw, PLAN_META_KW_STEP),
-    hourlyLimitKw: roundOptional(status.hourlyLimitKw, PLAN_META_KW_STEP),
-    hourlyUsageKwh: roundOptional(status.hourlyUsageKwh, PLAN_META_KWH_STEP) ?? status.hourlyUsageKwh,
-    dailyBudgetRemainingKwh: roundOptional(status.dailyBudgetRemainingKwh, PLAN_META_KWH_STEP),
-    shortfallBudgetThresholdKw: roundOptional(status.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
-    shortfallBudgetHeadroomKw: roundOptionalNullable(status.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
-    hardCapHeadroomKw: roundOptionalNullable(status.hardCapHeadroomKw, PLAN_META_KW_STEP),
-    totalKw: roundOptional(status.totalKw, PLAN_META_KW_STEP),
-    controlledKw: roundOptional(status.controlledKw, PLAN_META_KW_STEP),
-    uncontrolledKw: roundOptional(status.uncontrolledKw, PLAN_META_KW_STEP),
+    headroomKw: roundTo(status.headroomKw, PLAN_META_KW_STEP),
+    hourlyLimitKw: roundTo(status.hourlyLimitKw, PLAN_META_KW_STEP),
+    hourlyUsageKwh: roundTo(status.hourlyUsageKwh, PLAN_META_KWH_STEP) ?? status.hourlyUsageKwh,
+    dailyBudgetRemainingKwh: roundTo(status.dailyBudgetRemainingKwh, PLAN_META_KWH_STEP),
+    shortfallBudgetThresholdKw: roundTo(status.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
+    shortfallBudgetHeadroomKw: roundTo(status.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
+    hardCapHeadroomKw: roundTo(status.hardCapHeadroomKw, PLAN_META_KW_STEP),
+    totalKw: roundTo(status.totalKw, PLAN_META_KW_STEP),
+    controlledKw: roundTo(status.controlledKw, PLAN_META_KW_STEP),
+    uncontrolledKw: roundTo(status.uncontrolledKw, PLAN_META_KW_STEP),
     lastPowerUpdate,
   };
 };

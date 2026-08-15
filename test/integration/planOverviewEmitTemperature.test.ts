@@ -1,6 +1,6 @@
 import { emitDeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
 import type { DevicePlan } from '../../lib/plan/planTypes';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 
 // The overview LOG seam builds its own overview shape from the plan device
 // (`planOverviewEmit.recordOverviewChange`), separately from the settings read
@@ -12,7 +12,7 @@ import { buildPlanDevice } from '../utils/planTestUtils';
 // which is why it is pinned at the seam and not only in shared-domain.
 describe('planOverviewEmit — temperature facet at the log seam', () => {
   const satisfiedTargetOnlyPlan = (): DevicePlan => ({
-    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [
       buildPlanDevice({
         id: 'thermostat',

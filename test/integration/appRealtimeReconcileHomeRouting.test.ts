@@ -23,7 +23,7 @@ import {
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import type { DevicePlan } from '../../lib/plan/planTypes';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 
 // The reconcile debounce is 250 ms; advance past it to fire the flush.
 const RECONCILE_ADVANCE_MS = 300;
@@ -251,7 +251,7 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
       ]);
       const rebuild = vi.fn(async () => undefined);
       const plan: DevicePlan = {
-        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
         devices: [buildPlanDevice({
           id: 'heater-1',
           name: 'Water heater',

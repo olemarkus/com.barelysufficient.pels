@@ -4,6 +4,7 @@ import { setHomeyClient } from '../src/ui/homey.ts';
 import { initRealtimeListeners } from '../src/ui/realtime.ts';
 import { refreshPlan } from '../src/ui/planRedesign.ts';
 import { refreshOverviewPlanWithRescueGate } from '../src/ui/overviewRescueGate.ts';
+import { buildPlanMeta } from './helpers/planMetaFixture.ts';
 
 // Regression pin for the status-only `power_updated` stomp: every runtime
 // power push is status-only (`emitSettingsUiPowerUpdatedForApp` sends
@@ -24,14 +25,13 @@ const SOLAR_TRACKER = {
 
 // Minimal but numerically consistent hero meta (net export → negative total).
 const PLAN_SNAPSHOT = {
-  meta: {
+  meta: buildPlanMeta({
     totalKw: -2.1,
     softLimitKw: 2.3,
     capacitySoftLimitKw: 2.3,
     headroomKw: 4.4,
     hardCapLimitKw: 8,
-    hardCapHeadroomKw: 10.1,
-  },
+  }),
   devices: [],
 };
 

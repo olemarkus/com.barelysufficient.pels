@@ -42,6 +42,7 @@ import {
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -222,7 +223,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 // A deferred objective wants this kept-on device restored to step 'low' from
 // off. Plain DevicePlan — the real executable projection derives the intent.
 const buildRestoreToLowPlan = (): DevicePlan => ({
-  meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
+  meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
     id: DEVICE_ID,

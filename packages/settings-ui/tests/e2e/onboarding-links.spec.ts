@@ -72,7 +72,25 @@ test.describe('Onboarding links', () => {
         Homey: { __stub: { emitHomeyEvent: (event: string, payload: unknown) => void } };
       }).Homey;
       homey.__stub.emitHomeyEvent('plan_updated', {
-        meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
+        // A complete meta: the plan-snapshot seam validates it and drops the
+        // whole push if anything required is missing, so a three-field meta
+        // would never reach the empty state this test is about.
+        meta: {
+          totalKw: 0,
+          softLimitKw: 5,
+          capacitySoftLimitKw: 5,
+          budgetPaceKw: null,
+          projectedExemptKw: null,
+          softLimitSource: 'capacity',
+          powerFreshnessState: 'fresh',
+          headroomKw: 5,
+          hardCapLimitKw: 10,
+          usedKWh: 0,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+          controlledKw: 0,
+          uncontrolledKw: 0,
+        },
         devices: [],
       });
     });

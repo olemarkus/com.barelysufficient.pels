@@ -52,7 +52,7 @@ import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
@@ -152,7 +152,7 @@ const buildRestoreTo6aPlan = (
   decorated: DecoratedDeviceSnapshot,
   profile: SteppedLoadProfile = EV_PROFILE,
 ): DevicePlan => ({
-  meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
+  meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
   devices: [
     withBinaryDiscriminant({
       ...steppedPlanDevice({
@@ -180,7 +180,7 @@ const buildRestoreTo6aPlan = (
 });
 
 const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan => ({
-  meta: { totalKw: 1.38, softLimitKw: 5, headroomKw: 3.62 },
+  meta: buildPlanMeta({ totalKw: 1.38, softLimitKw: 5, headroomKw: 3.62}),
   devices: [
     withBinaryDiscriminant({
       ...steppedPlanDevice({

@@ -12,6 +12,7 @@ import {
   formatPowerMeterMarkerLabels,
   formatProjectedEnergySubline,
   formatSafePaceSubline,
+  type HeroHeadline,
   type HeroMeterMarkerLabels,
   type PlanHeroMetaInput,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
@@ -78,7 +79,7 @@ const resolveFreshnessState = (
 };
 
 const resolveHeroStatus = (
-  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  headline: HeroHeadline,
   devices: PlanDeviceSnapshot[],
   freshnessState: FreshnessState | undefined,
   dryRun: boolean,
@@ -208,13 +209,8 @@ type BarScale = {
   total: number;
   controlled: number;
   uncontrolled: number;
-  // Whether the runtime actually resolved a managed/background split this
-  // cycle. A known 0 (all managed devices idle) still renders the legend;
-  // only a genuinely unknown split hides it — printing "Managed 0.0 kW"
-  // when no managed draw could be resolved would present a guess as a fact.
-  splitKnown: boolean;
   safePaceKw: number;
-  hardCapKw: number | null;
+  hardCapKw: number;
   scaleKw: number;
   softLimitSource: PlanMetaSnapshot['softLimitSource'];
   budgetPaceKw: number | null;
@@ -239,13 +235,17 @@ type ProjectionTone = 'good' | 'warning' | 'critical';
 const clampPct = (value: number): number => Math.max(0, Math.min(100, value));
 
 const computePowerBarScale = (
-  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  headline: HeroHeadline,
   meta: PlanMetaSnapshot,
 ): BarScale | null => {
-  const safePaceKw = meta.softLimitKw ?? meta.capacitySoftLimitKw ?? 0;
+  // `meta.softLimitKw` alone: it is required on the wire, and the
+  // `?? capacitySoftLimitKw ?? 0` chain this used to carry was two fallbacks
+  // deep on a value the planner writes every cycle. The `<= 0` guard stays —
+  // a zero safe pace is a real configuration, not an absent one.
+  const safePaceKw = meta.softLimitKw;
   if (safePaceKw <= 0) return null;
-  const total = Math.max(0, headline.totalKw ?? 0);
-  const controlled = Math.max(0, Math.min(total, headline.controlledKw ?? 0));
+  const total = Math.max(0, headline.totalKw);
+  const controlled = Math.max(0, Math.min(total, headline.controlledKw));
   // Derive background as the residual after the managed segment. `totalKw`,
   // `controlledKw`, and `uncontrolledKw` are each rounded independently in the
   // plan meta, so using `headline.uncontrolledKw` directly can make the rendered
@@ -253,19 +253,18 @@ const computePowerBarScale = (
   // the residual keeps the segmented gauge consistent with the number above it
   // and ensures over-threshold tones reflect the full draw.
   const uncontrolled = Math.max(0, total - controlled);
-  const hardCapKw = headline.hardLimitKw ?? null;
-  const scaleKw = Math.max(safePaceKw * 1.2, hardCapKw ?? 0, total * 1.05);
+  const hardCapKw = headline.hardLimitKw;
+  const scaleKw = Math.max(safePaceKw * 1.2, hardCapKw, total * 1.05);
   return {
     total,
     controlled,
     uncontrolled,
-    splitKnown: headline.controlledKw !== null,
     safePaceKw,
     hardCapKw,
     scaleKw,
     softLimitSource: meta.softLimitSource,
-    budgetPaceKw: typeof meta.budgetPaceKw === 'number' ? meta.budgetPaceKw : null,
-    projectedExemptKw: typeof meta.projectedExemptKw === 'number' ? meta.projectedExemptKw : null,
+    budgetPaceKw: meta.budgetPaceKw,
+    projectedExemptKw: meta.projectedExemptKw,
   };
 };
 
@@ -285,9 +284,12 @@ type EnergyBarScale = {
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
   const { usedKWh, hourControlledKWh, hourUncontrolledKWh } = meta;
   const budgetKWh = meta.hourBudgetKWh;
-  if (typeof usedKWh !== 'number' || typeof budgetKWh !== 'number' || budgetKWh <= 0) return null;
-  const totalKw = typeof meta.totalKw === 'number' ? meta.totalKw : null;
-  const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
+  // Only the real question survives: a zero allocation means there is no energy
+  // bar to draw. `usedKWh` and `budgetKWh` are both required on the wire, so
+  // the two `typeof` checks that used to sit here asked whether the planner had
+  // done its job.
+  if (budgetKWh <= 0) return null;
+  const { totalKw, minutesRemaining } = meta;
   // The zero floor for net-export hours lives in the shared helper (also used
   // by the `pels_status` producer for the "Above hard cap" trajectory flag).
   // Keep `null` (no power/time signal) distinct from a clamped 0.
@@ -297,7 +299,7 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   return {
     usedKWh,
     budgetKWh,
-    hardCapKWh: typeof meta.hardCapLimitKw === 'number' ? meta.hardCapLimitKw : null,
+    hardCapKWh: meta.hardCapLimitKw,
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
     projectedKWh,
@@ -495,7 +497,7 @@ const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
 };
 
 const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolean }) => {
-  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource ?? null, {
+  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource, {
     budgetPaceKw: scale.budgetPaceKw,
     projectedExemptKw: scale.projectedExemptKw,
   });
@@ -507,18 +509,18 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
       labels: formatPowerMeterMarkerLabels('target', scale.safePaceKw),
     },
   ];
-  // The cap tick renders whenever a cap is configured — including when the
-  // dynamic safe pace sits at or above it (legitimate late in an under-used
-  // hour). Hiding it in that state left the bar without its reference line
-  // exactly when users wondered where the cap was.
-  if (scale.hardCapKw !== null) {
-    markers.push({
-      kind: 'cap',
-      positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
-      tooltip: formatHardCapTooltip(scale.hardCapKw),
-      labels: formatPowerMeterMarkerLabels('cap', scale.hardCapKw),
-    });
-  }
+  // The cap tick ALWAYS renders — including when the dynamic safe pace sits at
+  // or above it (legitimate late in an under-used hour). Hiding it in that
+  // state left the bar without its reference line exactly when users wondered
+  // where the cap was. The `!== null` gate this replaces could never fire:
+  // the cap comes from `capacitySettings.limitKw`, which is always configured,
+  // and `notes/ui-terminology.md` says the tick always renders.
+  markers.push({
+    kind: 'cap',
+    positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
+    tooltip: formatHardCapTooltip(scale.hardCapKw),
+    labels: formatPowerMeterMarkerLabels('cap', scale.hardCapKw),
+  });
   return (
     <>
       <PelsMeterTrack fill={<PowerMeterSegments scale={scale} isLimiting={isLimiting} />} markers={markers} />
@@ -541,7 +543,7 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
 // it is visible text, not the hover tooltip it used to be (nothing hovers in the
 // Homey WebView).
 const resolvePowerSubline = (
-  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  headline: HeroHeadline,
   softLimitSource: PlanMetaSnapshot['softLimitSource'],
 ): string => {
   const sourceText = resolveSafePaceSourceText(softLimitSource);
@@ -557,7 +559,7 @@ const PowerSection = ({
   solarNowText,
   hasControllableDevice,
 }: {
-  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>;
+  headline: HeroHeadline;
   meta: PlanMetaSnapshot;
   isLimiting: boolean;
   solarNowText: string | null;
@@ -594,8 +596,13 @@ const PowerSection = ({
           {/* A known-zero split renders ("managed is idle"), but only when the
               house actually has a device PELS can control — for background-only
               households `sumControlledUsageKw` answers a known 0 forever, and a
-              permanent "Managed 0.0 kW" line is noise, not reassurance. */}
-          {scale.splitKnown && hasControllableDevice && (
+              permanent "Managed 0.0 kW" line is noise, not reassurance.
+
+              There is no `splitKnown` term any more. It tested
+              `controlledKw !== null` — the half that ALWAYS resolves — and the
+              headline only exists once the view has established there is a
+              meter reading, so both halves are known by construction here. */}
+          {hasControllableDevice && (
             <div class="plan-hero__energy-support">
               Managed {scale.controlled.toFixed(1)} kW · Background {scale.uncontrolled.toFixed(1)} kW
             </div>
@@ -797,20 +804,22 @@ export const PlanHero = ({
     ? resolveDisplayPlanDevices(plan, plan.devices ?? [], renderedAtMs, nowMs) as PlanDeviceSnapshot[]
     : [];
 
-  // The wire and shared-domain spell absence differently, and translating
-  // between them is this boundary's job, not the formatter's. `totalKw` is the
-  // one meta field with a genuine "no reading this cycle" state — the capacity
-  // guard holds `null` until its meter's first sample, and again after an
-  // in-place meter swap (`resetLastTotalPower`) — and the wire spells that
-  // `null`. `shared-domain` must not carry the nullable: it sits after
-  // validation, so absence there is `undefined` and nothing else. Resolve once,
-  // here. (PR 4 of this train makes the meta DTO strict, at which point
-  // `PlanHeroMetaInput` collapses to required fields and this adapter goes.)
-  const heroMeta: PlanHeroMetaInput | undefined = meta === undefined
-    ? undefined
-    : { ...meta, totalKw: meta.totalKw ?? undefined };
-  const headline = formatHeroHeadline(heroMeta, nowMs);
-  if (!headline || !meta) {
+  // The one question the hero has to ask before it can render numbers: is there
+  // a meter reading this cycle? The capacity guard holds `null` until its
+  // meter's first sample, and again after an in-place meter swap
+  // (`resetLastTotalPower`). `uncontrolledKw` is the whole-home total minus the
+  // managed side, so it is absent exactly when the total is — the pair is one
+  // fact, checked once, and both checks are needed only because the compiler
+  // cannot see that they move together.
+  //
+  // Answering it HERE is what lets `formatHeroHeadline` be total and
+  // `PlanHeroMetaInput` be strict. shared-domain sits inward of this decision
+  // and carries no "maybe there is no power" case.
+  const heroMeta: PlanHeroMetaInput | null
+    = meta !== undefined && meta.totalKw !== null && meta.uncontrolledKw !== null
+      ? { ...meta, totalKw: meta.totalKw, uncontrolledKw: meta.uncontrolledKw }
+      : null;
+  if (heroMeta === null || meta === undefined) {
     return (
       <div class="plan-hero pels-hero" aria-live="polite" aria-busy="true">
         <div class="plan-hero__placeholder pels-skeleton-stack" aria-hidden="true">
@@ -823,6 +832,7 @@ export const PlanHero = ({
     );
   }
 
+  const headline = formatHeroHeadline(heroMeta, nowMs);
   const freshnessState = resolveFreshnessState(power, meta);
   const energyScale = computeEnergyBarScale(meta);
   const projectionTone = energyScale ? resolveProjectionTone(energyScale) : null;
@@ -831,17 +841,19 @@ export const PlanHero = ({
   // on the energy bar existing (`hourBudgetKWh > 0`). A zero-allocation
   // daily-budget hour hides the energy section but can still be on pace past
   // the cap; the chip and the widget must agree on that verdict.
-  const projectedOverHardCap = typeof meta.usedKWh === 'number'
-    && typeof meta.totalKw === 'number'
-    && typeof meta.minutesRemaining === 'number'
-    && isProjectedOverHardCap({
-      projectedKWh: computeProjectedHourEnergyKWh({
-        usedKWh: meta.usedKWh,
-        totalKw: meta.totalKw,
-        minutesRemainingInHour: meta.minutesRemaining,
-      }),
-      hardCapKWh: headline.hardLimitKw,
-    });
+  // Reads the RESOLVED input, not the raw wire meta: `heroMeta.totalKw` is a
+  // number by construction (the view established there is a reading before
+  // building it), and `usedKWh` / `minutesRemaining` are required. The three
+  // `typeof` guards this replaces were the last place the hero re-asked whether
+  // the planner had produced its own required fields.
+  const projectedOverHardCap = isProjectedOverHardCap({
+    projectedKWh: computeProjectedHourEnergyKWh({
+      usedKWh: meta.usedKWh,
+      totalKw: heroMeta.totalKw,
+      minutesRemainingInHour: meta.minutesRemaining,
+    }),
+    hardCapKWh: headline.hardLimitKw,
+  });
   const heroStatus = resolveHeroStatus(
     headline,
     devices,
@@ -850,7 +862,7 @@ export const PlanHero = ({
     projectionTone,
     projectedOverHardCap,
   );
-  const safePaceKw = meta.softLimitKw ?? meta.capacitySoftLimitKw ?? null;
+  const safePaceKw = meta.softLimitKw;
   const decision = buildDecisionSentence({
     devices,
     freshnessState,

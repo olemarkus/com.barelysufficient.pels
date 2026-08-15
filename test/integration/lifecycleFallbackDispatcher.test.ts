@@ -37,6 +37,7 @@ import { projectLifecycleFallbackDevice } from '../../setup/lifecycleFallbackDev
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { DeviceCommand } from '../../lib/actuator/deviceCommand';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 type ExecutorDispatcherDeps = ConstructorParameters<typeof ExecutorLifecycleFallbackDispatcher>[0];
 type LegacyLifecycleFallbackDevice = Omit<
@@ -517,7 +518,7 @@ describe('LifecycleFallbackDispatcher', () => {
     // Ordinary planning owns and prunes a different target-pending map.
     prunePendingTargetCommandsForPlan({
       state: planState,
-      plan: { devices: [], meta: { totalKw: 0, softLimitKw: 10, headroomKw: 10 } },
+      plan: { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}) },
     });
     dispatcher.converge({ deviceId: device.id, objectiveKind: 'temperature' });
     await flush();
@@ -1453,7 +1454,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
     prunePendingTargetCommandsForPlan({
       state: planState,
-      plan: { devices: [], meta: { totalKw: 0, softLimitKw: 10, headroomKw: 10 } },
+      plan: { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}) },
     });
     vi.advanceTimersByTime(30_000);
     dispatcher.converge({ deviceId: 'heater-1', objectiveKind: 'temperature' });

@@ -232,3 +232,67 @@ describe('parsePlanSnapshot facet independence', () => {
     expect(dev.carChargingState).toBeUndefined();
   });
 });
+
+describe('parsePlanSnapshot meta guard', () => {
+  const validMeta = {
+    totalKw: 4.2,
+    softLimitKw: 9.5,
+    capacitySoftLimitKw: 9.5,
+    budgetPaceKw: null,
+    projectedExemptKw: null,
+    softLimitSource: 'capacity',
+    headroomKw: 5.3,
+    powerFreshnessState: 'fresh',
+    hardCapLimitKw: 12,
+    usedKWh: 1.2,
+    hourBudgetKWh: 9.5,
+    minutesRemaining: 30,
+    controlledKw: 2,
+    uncontrolledKw: 2.2,
+  };
+
+  it('passes a complete meta through identity-preserving', () => {
+    const payload = { meta: validMeta, devices: [] };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+
+  it('keeps the nullable four as null — real states, not absence', () => {
+    // `totalKw`/`uncontrolledKw` null = no meter reading this cycle;
+    // the pace pair null = no daily-budget axis.
+    const payload = {
+      meta: { ...validMeta, totalKw: null, uncontrolledKw: null },
+      devices: [],
+    };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+
+  it.each([
+    ['a missing required number', { hardCapLimitKw: undefined }],
+    ['a null where null is not a value', { softLimitKw: null }],
+    ['NaN', { headroomKw: Number.NaN }],
+    ['Infinity', { usedKWh: Number.POSITIVE_INFINITY }],
+    ['a non-number', { minutesRemaining: '30' }],
+    ['a non-member softLimitSource', { softLimitSource: 'both' }],
+    ['a non-member freshness state', { powerFreshnessState: 'stale' }],
+  ])('rejects the whole payload for %s', (_label, patch) => {
+    // Rejecting rather than repairing: there is no useful hero to draw from a
+    // partial meta, and the hero reads these numbers without hedging — before
+    // this guard, a missing `hardCapLimitKw` reached `.toFixed()` and threw.
+    expect(parsePlanSnapshot({ meta: { ...validMeta, ...patch }, devices: [] })).toBeNull();
+  });
+
+  it.each([
+    ['a reading but no background split', { totalKw: 4.2, uncontrolledKw: null }],
+    ['a background split but no reading', { totalKw: null, uncontrolledKw: 2.2 }],
+  ])('rejects %s — the meter pair is one fact', (_label, patch) => {
+    // Accepting a mismatched pair is worse than a wrong number: the hero needs
+    // both to build its input, so it would fall to the loading skeleton while
+    // the accepted payload had already replaced the last good plan.
+    expect(parsePlanSnapshot({ meta: { ...validMeta, ...patch }, devices: [] })).toBeNull();
+  });
+
+  it('leaves a payload with no meta alone', () => {
+    const payload = { devices: [] };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+});

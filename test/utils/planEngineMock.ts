@@ -5,6 +5,7 @@ import {
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
 } from '../../lib/executor/executorConvergence';
+import { buildPlanMeta } from './planTestUtils';
 
 /**
  * Default-stubbed shape of `PlanEngine` for tests. PlanService calls these
@@ -17,11 +18,10 @@ import {
 export const createMockPlanEngine = () => ({
   state: createPlanEngineState(),
   buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-    meta: {
+    meta: buildPlanMeta({
       totalKw: null,
       softLimitKw: 0,
-      headroomKw: 0,
-    },
+      headroomKw: 0}),
     devices: [],
   } satisfies DevicePlan),
   computeDynamicSoftLimit: vi.fn(() => 0),

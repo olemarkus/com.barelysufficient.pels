@@ -150,8 +150,65 @@ const needsFacetSanitizing = (device: PlanDeviceSnapshot): boolean => (
   resolveDropKeys(device).length > 0
 );
 
+// The meta is now REQUIRED almost throughout, and the hero reads it without
+// hedging — `formatKw(meta.hardCapLimitKw)` calls `.toFixed()` straight on it.
+// That is the point of requiring it, but it only holds if something upstream
+// guarantees the shape, and this seam is the only thing between the API
+// transport and those reads. Before this check, a meta missing one number
+// crashed the hero instead of degrading it.
+//
+// Rejecting the WHOLE payload, not repairing the meta: unlike a device facet,
+// there is no useful hero to draw from a partial meta, and `parsePlanSnapshot`
+// already answers `null` for a malformed device list. Callers handle it — the
+// realtime handler drops the push and logs, the scoped reader reports
+// `unavailable`.
+const REQUIRED_META_NUMBERS = [
+  'softLimitKw', 'capacitySoftLimitKw', 'headroomKw', 'hardCapLimitKw',
+  'usedKWh', 'hourBudgetKWh', 'minutesRemaining', 'controlledKw',
+] as const;
+
+// Required, but `null` is a real value: no meter reading this cycle
+// (`totalKw`/`uncontrolledKw`) and no daily-budget axis (the pace pair).
+const REQUIRED_META_NULLABLE_NUMBERS = [
+  'totalKw', 'uncontrolledKw', 'budgetPaceKw', 'projectedExemptKw',
+] as const;
+
+const SOFT_LIMIT_SOURCES: ReadonlySet<unknown> = new Set(['capacity', 'daily']);
+const POWER_FRESHNESS_STATES: ReadonlySet<unknown> = new Set([
+  'fresh', 'stale_hold', 'stale_fail_closed',
+]);
+
+// `totalKw` and `uncontrolledKw` are ONE fact and must be null together.
+// `splitControlledUsageKw` derives the background side as the whole-home total
+// minus the managed side, so it is absent exactly when the total is — which is
+// why the hero can resolve the pair once and then read both as plain numbers.
+//
+// Checking them independently would let a mismatched pair through, and the
+// consequence is worse than a wrong number: `PlanHero` needs BOTH to build its
+// input, so it would fall to the loading skeleton, while the accepted payload
+// had already replaced the last good plan. The Overview would sit on a spinner
+// with nothing to recover to. Validating the pair as a pair is the same
+// atomicity rule the temperature and stepped facets get.
+const hasConsistentMeterNullness = (meta: Record<string, unknown>): boolean => (
+  (meta.totalKw === null) === (meta.uncontrolledKw === null)
+);
+
+const isValidPlanMeta = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  const meta = value as Record<string, unknown>;
+  return REQUIRED_META_NUMBERS.every((key) => isFiniteNumber(meta[key]))
+    && REQUIRED_META_NULLABLE_NUMBERS.every(
+      (key) => meta[key] === null || isFiniteNumber(meta[key]),
+    )
+    && hasConsistentMeterNullness(meta)
+    && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
+    && POWER_FRESHNESS_STATES.has(meta.powerFreshnessState);
+};
+
 export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
   if (!value || typeof value !== 'object') return null;
+  const meta = (value as { meta?: unknown }).meta;
+  if (meta !== undefined && !isValidPlanMeta(meta)) return null;
   const devices = (value as { devices?: unknown }).devices;
   if (devices === undefined) return value as PlanSnapshot;
   if (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot)) {

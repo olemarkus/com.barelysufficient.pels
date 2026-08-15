@@ -1,12 +1,25 @@
 import { formatRelativeTime } from './planFormatUtils.ts';
 
+/**
+ * The hero's input, resolved. Every power figure is a plain number: the caller
+ * has already established that this cycle HAS a meter reading, which is the one
+ * thing that can be missing.
+ *
+ * `totalKw` and `uncontrolledKw` are nullable on the wire and they are nullable
+ * TOGETHER — the background side is the whole-home total minus the managed
+ * side, so it is absent exactly when the total is. Resolving that pair is the
+ * view's job (no reading ⇒ it renders the loading state); inward of that
+ * decision there is no "maybe there is no power" case for a formatter to carry,
+ * and shared-domain sits inward of it.
+ */
 export type PlanHeroMetaInput = {
-  totalKw?: number;
-  softLimitKw?: number;
-  headroomKw?: number;
-  hardCapLimitKw?: number | null;
-  controlledKw?: number;
-  uncontrolledKw?: number;
+  totalKw: number;
+  softLimitKw: number;
+  headroomKw: number;
+  hardCapLimitKw: number;
+  controlledKw: number;
+  uncontrolledKw: number;
+  /** Genuinely absent before the power tracker's first timestamp. */
   lastPowerUpdateMs?: number;
 };
 
@@ -23,11 +36,12 @@ export type HeroTone = 'ok' | 'warn' | 'alert';
 export type HeroHeadline = {
   totalKw: number;
   softLimitKw: number;
-  hardLimitKw: number | null;
-  controlledKw: number | null;
-  uncontrolledKw: number | null;
+  hardLimitKw: number;
+  controlledKw: number;
+  uncontrolledKw: number;
   headroomKw: number;
   overSoftLimit: boolean;
+  /** `null` until the power tracker has a timestamp to be relative to. */
   ageText: string | null;
 };
 
@@ -37,33 +51,32 @@ export type FreshnessChipView = {
   tone: HeroTone;
 };
 
+/**
+ * TOTAL — a resolved input always yields a headline, so there is no "no
+ * headline" branch for the caller to render around.
+ *
+ * It used to take `PlanHeroMetaInput | undefined`, re-check three fields for
+ * `typeof === 'number'`, and return `null` if any failed. All three checks were
+ * re-asking a question the producer had already answered — the planner writes
+ * every one of them on every cycle — and the one genuine question underneath
+ * ("is there a meter reading?") now gets asked once, by the view, before it
+ * builds the input.
+ */
 export const formatHeroHeadline = (
-  meta: PlanHeroMetaInput | undefined,
+  meta: PlanHeroMetaInput,
   nowMs: number,
-): HeroHeadline | null => {
-  if (!meta) return null;
-  const { totalKw, softLimitKw, headroomKw } = meta;
-  if (typeof totalKw !== 'number' || typeof softLimitKw !== 'number' || typeof headroomKw !== 'number') {
-    return null;
-  }
-
-  const hardLimitKw = typeof meta.hardCapLimitKw === 'number' ? meta.hardCapLimitKw : null;
-  const overSoftLimit = headroomKw < 0;
-  const ageText = typeof meta.lastPowerUpdateMs === 'number'
+): HeroHeadline => ({
+  totalKw: meta.totalKw,
+  softLimitKw: meta.softLimitKw,
+  hardLimitKw: meta.hardCapLimitKw,
+  controlledKw: meta.controlledKw,
+  uncontrolledKw: meta.uncontrolledKw,
+  headroomKw: meta.headroomKw,
+  overSoftLimit: meta.headroomKw < 0,
+  ageText: typeof meta.lastPowerUpdateMs === 'number'
     ? formatRelativeTime(meta.lastPowerUpdateMs, nowMs)
-    : null;
-
-  return {
-    totalKw,
-    softLimitKw,
-    hardLimitKw,
-    controlledKw: typeof meta.controlledKw === 'number' ? meta.controlledKw : null,
-    uncontrolledKw: typeof meta.uncontrolledKw === 'number' ? meta.uncontrolledKw : null,
-    headroomKw,
-    overSoftLimit,
-    ageText,
-  };
-};
+    : null,
+});
 
 export const formatFreshnessChip = (
   state: PowerFreshnessState | undefined,

@@ -1,4 +1,5 @@
 import type {
+  DevicePlan,
   DevicePlanDevice,
   PlanInputDevice,
   SteppedDiscriminantProbe,
@@ -9,6 +10,7 @@ import type {
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type {
   DeviceStateOfChargeSnapshot, EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SettingsUiPlanMetaSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
@@ -483,3 +485,91 @@ export const steppedInputDevice = (
     ...overrides,
   });
 };
+
+/**
+ * A complete `DevicePlan['meta']`, so a fixture spells only what its assertion
+ * is about.
+ *
+ * The plan meta is REQUIRED almost throughout — the planner writes every one of
+ * these on every cycle, and saying so is what lets consumers stop hedging. That
+ * is a good property for production and a bad one for fixtures, which had been
+ * writing `{ totalKw, softLimitKw, headroomKw }` and relying on the other 20-odd
+ * fields being optional. Rather than have ~33 specs each spell a full meta,
+ * defaults live here and a spec overrides the two or three it cares about.
+ *
+ * The defaults describe an unremarkable on-track hour: 5 kW drawn against a
+ * 6 kW pace under a 10 kW cap, capacity-bound, fresh sample, no daily budget.
+ * A spec asserting on any of that should pass it explicitly rather than lean on
+ * these numbers.
+ */
+export const buildPlanMeta = (
+  overrides: Partial<DevicePlan['meta']> = {},
+): DevicePlan['meta'] => {
+  const meta = buildPlanMetaFields(overrides);
+  // Mirror the producer's invariant so a fixture cannot encode a plan the
+  // planner could never build: `splitControlledUsageKw` derives the background
+  // side from the whole-home total, so it is absent exactly when the total is.
+  // A spec that sets `totalKw: null` gets a null background side unless it
+  // deliberately says otherwise.
+  return meta.totalKw === null && overrides.uncontrolledKw === undefined
+    ? { ...meta, uncontrolledKw: null }
+    : meta;
+};
+
+const buildPlanMetaFields = (
+  overrides: Partial<DevicePlan['meta']>,
+): DevicePlan['meta'] => ({
+  totalKw: 5,
+  softLimitKw: 6,
+  capacitySoftLimitKw: 6,
+  dailySoftLimitKw: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
+  softLimitSource: 'capacity',
+  headroomKw: 1,
+  powerNowKw: 5,
+  hasLivePowerSample: true,
+  powerSampleAgeMs: 0,
+  powerFreshnessState: 'fresh',
+  capacityShortfall: false,
+  shortfallBudgetHeadroomKw: null,
+  hardCapLimitKw: 10,
+  hardCapHeadroomKw: 5,
+  hourlyBudgetExhausted: false,
+  usedKWh: 1,
+  budgetKWh: 6,
+  capacityLimitKw: 10,
+  minutesRemaining: 30,
+  controlledKw: 2,
+  uncontrolledKw: 3,
+  dailyBudgetRemainingKWh: 0,
+  dailyBudgetExceeded: false,
+  ...overrides,
+});
+
+/**
+ * The WIRE meta, complete. Distinct from {@link buildPlanMeta}: the settings-UI
+ * snapshot is a PROJECTION of the planner's meta, not the same shape — it drops
+ * the fields no consumer reads and adds `hourBudgetKWh`, which the read model
+ * computes. A planner meta is therefore not assignable to it, and a fixture for
+ * one is not a fixture for the other.
+ */
+export const buildSettingsUiPlanMeta = (
+  overrides: Partial<SettingsUiPlanMetaSnapshot> = {},
+): SettingsUiPlanMetaSnapshot => ({
+  totalKw: 5,
+  softLimitKw: 6,
+  capacitySoftLimitKw: 6,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
+  softLimitSource: 'capacity',
+  headroomKw: 1,
+  powerFreshnessState: 'fresh',
+  hardCapLimitKw: 10,
+  usedKWh: 1,
+  hourBudgetKWh: 6,
+  minutesRemaining: 30,
+  controlledKw: 2,
+  uncontrolledKw: 3,
+  ...overrides,
+});

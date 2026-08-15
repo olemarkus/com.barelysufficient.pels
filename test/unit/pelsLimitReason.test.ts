@@ -5,6 +5,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
@@ -28,13 +29,12 @@ describe('pels status limit reason', () => {
     /** The producer-resolved measured draw; `null` means this cycle had none. */
     powerNowKw?: number | null;
   }): DevicePlan => ({
-    meta: {
+    meta: buildPlanMeta({
       totalKw: 4.2,
       softLimitKw: 6,
       softLimitSource: params.softLimitSource,
       headroomKw: params.headroomKw ?? 1.8,
-      powerNowKw: params.powerNowKw === undefined ? 4.2 : params.powerNowKw,
-    },
+      powerNowKw: params.powerNowKw === undefined ? 4.2 : params.powerNowKw}),
     devices: [
       { expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
         ...baseDevice,
@@ -117,12 +117,11 @@ describe('pels status limit reason', () => {
 
   it('does not count inactive EV devices as shed or active', () => {
     const plan: DevicePlan = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 0.4,
         softLimitKw: 6,
         softLimitSource: 'capacity',
-        headroomKw: 5.6,
-      },
+        headroomKw: 5.6}),
       devices: [
         withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           id: 'ev-1',
@@ -152,7 +151,7 @@ describe('pels status limit reason', () => {
 
   it('copies hard-cap shortfall fields into status', () => {
     const plan: DevicePlan = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 7.2,
         softLimitKw: 4.8,
         softLimitSource: 'capacity',
@@ -160,8 +159,7 @@ describe('pels status limit reason', () => {
         capacityShortfall: true,
         shortfallBudgetThresholdKw: 6,
         shortfallBudgetHeadroomKw: -1.2,
-        hardCapHeadroomKw: -1.2,
-      },
+        hardCapHeadroomKw: -1.2}),
       devices: [],
     };
 
@@ -220,8 +218,11 @@ describe('pels status projected-over-hard-cap flag', () => {
     devices: [],
   });
 
-  const statusFor = (meta: DevicePlan['meta']) => buildPelsStatus({
-    plan: buildPlanWithMeta(meta),
+  // Takes a PARTIAL meta and completes it via the shared fixture: the plan meta
+  // is required almost throughout now, and each case here is about two or three
+  // numbers, not about spelling a full meta.
+  const statusFor = (meta: Partial<DevicePlan['meta']>) => buildPelsStatus({
+    plan: buildPlanWithMeta(buildPlanMeta(meta)),
     isCheap: false,
     isExpensive: false,
     combinedPrices: null,
@@ -281,7 +282,7 @@ describe('pels status projected-over-hard-cap flag', () => {
 
 describe('pels status effective dry-run posture (R7b, per-home Limits card)', () => {
   const emptyPlan: DevicePlan = {
-    meta: { totalKw: 0, softLimitKw: 6, headroomKw: 1, powerNowKw: 0 },
+    meta: buildPlanMeta({ totalKw: 0, softLimitKw: 6, headroomKw: 1, powerNowKw: 0}),
     devices: [],
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
@@ -308,7 +309,7 @@ describe('pels status effective dry-run posture (R7b, per-home Limits card)', ()
 
 describe('pels status whole-area total (per-home Limits "Power now")', () => {
   const drawPlan: DevicePlan = {
-    meta: { totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8, powerNowKw: 5.2 },
+    meta: buildPlanMeta({ totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8, powerNowKw: 5.2}),
     devices: [],
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({

@@ -9,6 +9,7 @@ import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice =>
   // `planTargetControl` reads only `targets`; the device has no control
@@ -373,11 +374,10 @@ describe('prunePendingTargetCommandsForPlan', () => {
     const changed = prunePendingTargetCommandsForPlan({
       state,
       plan: {
-        meta: {
+        meta: buildPlanMeta({
           totalKw: 1,
           softLimitKw: 5,
-          headroomKw: 4,
-        },
+          headroomKw: 4}),
         devices: [buildPlanDevice('dev-1', 'Heater', 25, 18)],
       },
       debugStructured,

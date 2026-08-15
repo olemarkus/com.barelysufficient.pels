@@ -45,14 +45,28 @@ function resolveFiniteKWh(value: number | undefined): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * TOTAL — it always has an answer, so the hero never has to render "no budget".
+ *
+ * The capacity budget is required on the plan meta (`resolveUsableCapacityKw`
+ * of the configured limit, computed every cycle), so the only genuinely
+ * optional input is the daily allocation, which is absent when the daily budget
+ * is off or the bucket index is out of range. "No daily budget" means the
+ * capacity budget binds — not that there is no budget.
+ *
+ * This used to collect both into an array, filter the numbers out and return
+ * `undefined` for an empty list. That empty case was unreachable, and modelling
+ * it forced the wire type to declare the field optional, which pushed a
+ * `typeof budgetKWh !== 'number'` guard into the hero.
+ */
 function resolveHourBudgetKWh(params: {
-  capacityHourBudgetKWh: number | undefined;
+  capacityHourBudgetKWh: number;
   dailyBudgetHourKWh: number | undefined;
-}): number | undefined {
-  const budgets = [params.capacityHourBudgetKWh, params.dailyBudgetHourKWh]
-    .filter((value): value is number => typeof value === 'number');
-  if (!budgets.length) return undefined;
-  return Math.min(...budgets);
+}): number {
+  const { capacityHourBudgetKWh, dailyBudgetHourKWh } = params;
+  return dailyBudgetHourKWh === undefined
+    ? capacityHourBudgetKWh
+    : Math.min(capacityHourBudgetKWh, dailyBudgetHourKWh);
 }
 
 /**
@@ -72,7 +86,9 @@ function resolveHourBudgetKWh(params: {
  */
 function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsUiPlanMetaSnapshot {
   const normalizedMeta = normalizePlanMeta(meta);
-  const capacityHourBudgetKWh = resolveFiniteKWh(normalizedMeta.budgetKWh);
+  // Read directly: `budgetKWh` is required on the plan meta. The daily
+  // allocation keeps its finiteness gate because it is genuinely optional.
+  const capacityHourBudgetKWh = normalizedMeta.budgetKWh;
   const dailyBudgetHourKWh = resolveFiniteKWh(normalizedMeta.dailyBudgetHourKWh);
   return {
     totalKw: normalizedMeta.totalKw,

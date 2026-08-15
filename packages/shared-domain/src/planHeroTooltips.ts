@@ -50,30 +50,26 @@ export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
   daily: 'set by today\'s budget',
 };
 
-// `null` (rather than the capacity phrase) when the source is unknown: an
-// unattributed marker is honest, a guessed attribution is not — and naming the
-// hard cap when it is not binding is the specific error
-// `feedback_hard_cap_is_physical` warns about.
-export const resolveSafePaceSourceText = (
-  source: HeroSoftLimitSource | null | undefined,
-): string | null => (
-  source === 'capacity' || source === 'daily'
-    ? SAFE_PACE_SOURCE_BY_SOURCE[source]
-    : null
+// Total over the union. This used to accept `null | undefined` and answer
+// `null` for them — an unattributed marker being honest where a guessed
+// attribution would not be (`feedback_hard_cap_is_physical`). That reasoning
+// still holds; there is simply no longer an unknown source to apply it to,
+// because `softLimitSource` is required on the wire and its two members are
+// the only ones a producer can emit.
+export const resolveSafePaceSourceText = (source: HeroSoftLimitSource): string => (
+  SAFE_PACE_SOURCE_BY_SOURCE[source]
 );
 
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 const roundKw = (kw: number): number => Math.round(kw * 10) / 10;
 
 const resolveSafePaceTooltipBySource = (
-  source: HeroSoftLimitSource | null | undefined,
+  source: HeroSoftLimitSource,
 ): string => {
   switch (source) {
     case 'daily':
       return SAFE_PACE_TOOLTIP_BY_SOURCE.daily;
     case 'capacity':
-    case null:
-    case undefined:
       return SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
     default: {
       // Exhaustiveness guard: a new HeroSoftLimitSource member must pick its
@@ -87,7 +83,7 @@ const resolveSafePaceTooltipBySource = (
 
 export const formatSafePaceTooltip = (
   safePaceKw: number,
-  source: HeroSoftLimitSource | null | undefined,
+  source: HeroSoftLimitSource,
   composition?: SafePaceComposition,
 ): string => {
   const detail = resolveSafePaceComposition(safePaceKw, composition);
@@ -132,7 +128,7 @@ const resolveSafePaceComposition = (
 
 export const formatSafePaceComposition = (
   safePaceKw: number,
-  source: HeroSoftLimitSource | null | undefined,
+  source: HeroSoftLimitSource,
   composition: SafePaceComposition,
 ): string | null => {
   if (source !== 'daily') return null;

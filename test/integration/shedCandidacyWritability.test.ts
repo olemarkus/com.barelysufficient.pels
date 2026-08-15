@@ -28,6 +28,8 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext
   softLimit: 4,
   capacitySoftLimit: 4,
   dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,

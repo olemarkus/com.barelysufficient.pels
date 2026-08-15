@@ -73,8 +73,13 @@ export function buildPlanMeta(params: {
     budgetKWh: context.budgetKWh,
     capacityLimitKw,
     minutesRemaining: context.minutesRemaining,
-    controlledKw: controlledKw ?? undefined,
-    uncontrolledKw: uncontrolledKw ?? undefined,
+    // Straight through, no `?? undefined`. `splitControlledUsageKw` returns
+    // `controlledKw: number` — the managed side always resolves — so the
+    // coalesce on it was unreachable. And collapsing the background side's
+    // `null` to `undefined` erased the one thing it says: there was no
+    // whole-home reading this cycle, which is different from "no value here".
+    controlledKw,
+    uncontrolledKw,
     hourControlledKWh: currentHourUsageSplit.controlledKWh,
     hourUncontrolledKWh: currentHourUsageSplit.uncontrolledKWh,
     dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
