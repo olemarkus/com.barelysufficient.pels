@@ -180,6 +180,8 @@ describe('applyDeferredObjectiveAdmission', () => {
       id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       commandableNow: true, currentDrawKw: 0,
+      boostSupported: false,
+      boostRequested: false,
     };
     const idleHorizon = {
       currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },

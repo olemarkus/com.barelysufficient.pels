@@ -137,13 +137,12 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         mergedProfile,
         mergedSelectedStepId,
       );
-      // The EV cluster (`evBoost` / `evBoostActive` / `stateOfCharge`) is
-      // orthogonal to the stepped axis and off the base, so the `...device`
-      // spread does not carry it at the type level. Re-source it explicitly from
-      // the prior plan device (which `...device` previously carried wholesale),
-      // then regroup through `withEvDiscriminant`. The observed `evChargingState`
-      // is re-sourced from the LIVE device (it is an observation, so the freshest
-      // one wins), and `commandableNow` with it.
+      // The EV display carriers (`evBoost` / `stateOfCharge`) are re-sourced
+      // explicitly from the prior plan device and regrouped through
+      // `withEvDiscriminant`. `commandableNow` comes from the LIVE device (it is
+      // an observation, so the freshest one wins). The boost DECISION is not
+      // re-sourced here and must not be: it rides `...device` like every other
+      // decision this merge carries through untouched.
       // The temperature cluster is orthogonal to the stepped axis and off the
       // base, so the `...device` spread does not carry it at the type level.
       // Re-source it as a unit from the live device (`resolveMergedTemperatureCluster`)
@@ -154,7 +153,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         commandableNow: live.commandableNow,
         deviceType: live.deviceType,
         evBoost: device.evBoost,
-        evBoostActive: device.evBoostActive,
         stateOfCharge: device.stateOfCharge,
         ...steppedCluster,
         currentState: mergedCurrentState,

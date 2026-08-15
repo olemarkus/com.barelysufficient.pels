@@ -326,9 +326,10 @@ export class PlanEngineState {
 
   lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice> = {};
 
-  temperatureBoostActiveByDevice: Record<string, boolean> = {};
-
-  evBoostActiveByDevice: Record<string, boolean> = {};
+  // Per-device: last cycle's boost decision, kept only so the transition can be
+  // logged once when it flips. One map for one boost truth — the per-kind pair
+  // it replaced tracked two flags the planner could not tell apart anyway.
+  boostActiveByDevice: Record<string, boolean> = {};
 
   // Per-device: true when a surplus-absorb lift is the binding cause of this cycle's
   // planned target (it raised the setpoint above the price/base target and no deadline

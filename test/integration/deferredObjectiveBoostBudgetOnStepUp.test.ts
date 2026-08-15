@@ -180,6 +180,11 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     id: STEP_DEVICE_ID,
     name: 'Priority Tank',
     commandableNow: true,
+    // Stepped, with a target temperature to raise: the producer would resolve
+    // this device as boost-SUPPORTED, which is what lets the smart task's
+    // `forceBoostActive` engage boost even though the owner configured none.
+    boostSupported: true,
+    boostRequested: false,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
@@ -202,6 +207,8 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
   commandableNow: true,
+  boostSupported: false,
+  boostRequested: false,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: false },
@@ -307,7 +314,6 @@ describe('smart-task boost — daily budget ON, per-hour budget slice is the bin
 
     // The smart task engaged boost for this planned hour.
     expect(tank.boostActive).toBe(true);
-    expect(tank.temperatureBoostActive).toBe(true);
 
     // Boost bypassed the shed invariant: the tank steps up to `medium`.
     expect(tank.desiredStepId).toBe('medium');
@@ -322,8 +328,7 @@ describe('smart-task boost — daily budget ON, per-hour budget slice is the bin
     expect(softLimitSource).toBe('daily'); // budget still binding
     expect(lowerPriorityShed).toBe(true);
 
-    expect(tank.boostActive ?? false).toBe(false);
-    expect(tank.temperatureBoostActive ?? false).toBe(false);
+    expect(tank.boostActive).toBe(false);
 
     expect(tank.desiredStepId).not.toBe('medium');
     expect(tank.reason.code).toBe(PLAN_REASON_CODES.shedInvariant);

@@ -1,9 +1,15 @@
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
-import { resolveCanSetControl } from '../../lib/device/deviceActionProjection';
+import {
+  type BoostResolveInput,
+  resolveBoostRequested,
+  resolveBoostSupported,
+  resolveCanSetControl,
+} from '../../lib/device/deviceActionProjection';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
   buildResidualKwForPlanDevice,
@@ -12,11 +18,14 @@ import {
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlModel,
+  EvBoostConfig,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
+  StateOfChargeObservedProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
+  TemperatureBoostConfig,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
@@ -335,8 +344,10 @@ function resolveTemperatureInputFields(
 }
 
 function projectEffectiveControlDevice(
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
-): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe {
+  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
+    & TemperatureObservedProbe & StateOfChargeObservedProbe,
+): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
+  & TemperatureObservedProbe & StateOfChargeObservedProbe {
   if (device.temperatureControlDisabled !== true) return device;
   return {
     ...device,
@@ -404,6 +415,46 @@ function resolveEffectiveTemperatureBoost(
   return ctx.getTemperatureBoostConfig?.(device.id);
 }
 
+/**
+ * The two kind-free boost bits the planner plans on. This is the only place the
+ * boost question is asked in device-kind terms: the charger's plug state, the
+ * thermostat's target capability, the configured floors and the measured value
+ * against them all resolve HERE, and the planner receives two booleans.
+ *
+ * The plug-state gate matters here in a way it could not on the old plan-side
+ * call: `evChargingState` is stripped from `PlanInputDevice`, so the planner's
+ * `isEvObserved` check could never see one and an unplugged charger below its
+ * SoC floor boosted anyway. Resolved at the producer the field is present, so
+ * the gate the resolver has always documented finally binds.
+ */
+function resolvePlanBoostFields(params: {
+  device: DecoratedDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe
+    & StateOfChargeObservedProbe;
+  steppedCluster: SteppedClusterFields;
+  evBoost: EvBoostConfig | undefined;
+  temperatureBoost: TemperatureBoostConfig | undefined;
+}): Pick<PlanInputDevice, 'boostSupported' | 'boostRequested'> {
+  const {
+    device, steppedCluster, evBoost, temperatureBoost,
+  } = params;
+  const boostInput: BoostResolveInput = {
+    deviceClass: device.deviceClass,
+    targets: device.targets,
+    steppedLoadProfile: steppedCluster.steppedLoadProfile,
+    ...(isEvObserved(device) ? { evChargingState: device.evChargingState } : {}),
+    ...(hasObservedStateOfCharge(device) ? { stateOfCharge: device.stateOfCharge } : {}),
+    ...(device.temperature
+      ? { currentTemperature: device.temperature.currentTemperature }
+      : {}),
+    ...(evBoost ? { evBoost } : {}),
+    ...(temperatureBoost ? { temperatureBoost } : {}),
+  };
+  return {
+    boostSupported: resolveBoostSupported(boostInput),
+    boostRequested: resolveBoostRequested(boostInput),
+  };
+}
+
 type PlanCommandabilityReason = PlanInputDevice['commandabilityReason'];
 
 function resolvePlanCommandabilityReason(
@@ -454,7 +505,8 @@ function resolveManagedControlPosture(
 // (transport writes it); the base type omits it for consumers.
 export function toPlanDevice(
   ctx: AppContext,
-  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
+  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
+    & TemperatureObservedProbe & StateOfChargeObservedProbe,
   opts?: ToPlanDeviceOptions,
 ): PlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -497,6 +549,8 @@ export function toPlanDevice(
     canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
   });
   const shedBehavior = resolveEffectiveShedBehavior(ctx, device);
+  const temperatureBoost = resolveEffectiveTemperatureBoost(ctx, device);
+  const evBoost = ctx.getEvBoostConfig?.(device.id);
   // A home battery or solar device is managed observe-only. Read its
   // `managed`/`controllable` from the STRUCTURAL snapshot stamp
   // (`resolveParsedDeviceSettings` set them from the device object at parse, on every
@@ -610,8 +664,11 @@ export function toPlanDevice(
     // Stamped only when true, so the absent case has one spelling.
     ...(steppedLadderMissing ? { steppedLadderMissing: true as const } : {}),
     budgetExempt: ctx.isBudgetExempt(device.id),
-    temperatureBoost: resolveEffectiveTemperatureBoost(ctx, device),
-    evBoost: ctx.getEvBoostConfig?.(device.id),
+    temperatureBoost,
+    evBoost,
+    ...resolvePlanBoostFields({
+      device, steppedCluster, evBoost, temperatureBoost,
+    }),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow,

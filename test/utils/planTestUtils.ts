@@ -9,9 +9,20 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type {
-  DeviceStateOfChargeSnapshot, EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
+  DeviceStateOfChargeSnapshot,
+  EvBoostConfig,
+  EvChargingState,
+  SteppedLoadProfile,
+  TargetCapabilitySnapshot,
+  TemperatureBoostConfig,
+} from '../../packages/contracts/src/types';
 import type { SettingsUiPlanMetaSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import {
+  type BoostResolveInput,
+  resolveBoostRequested,
+  resolveBoostSupported,
+} from '../../lib/device/deviceActionProjection';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
@@ -135,7 +146,10 @@ const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'on
  * `commandableNow` is materialized for EVERY fixture, EV or not, because it is a
  * required base field — a fixture without it would let a consumer read
  * `undefined` as "not commandable", the exact absence-as-answer bug the field's
- * requiredness exists to prevent.
+ * requiredness exists to prevent. The two boost bits are materialized here for
+ * the same reason and from the same producer resolvers the app calls, so a
+ * fixture that spells a boost config and a reading gets the boost decision the
+ * producer would have given it.
  */
 export const withMaterializedEvPlugState = <T extends {
   deviceClass?: string; deviceRole?: 'ev_charger'; binaryCapabilityId?: string;
@@ -144,6 +158,8 @@ export const withMaterializedEvPlugState = <T extends {
   overrides: T & { evChargingState?: string },
 ): T & {
   commandableNow: boolean;
+  boostSupported: boolean;
+  boostRequested: boolean;
   objectiveKind?: 'ev_soc';
   objectiveSessionInactive?: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
@@ -163,9 +179,13 @@ export const withMaterializedEvPlugState = <T extends {
   } else if (overrides.evChargingState === 'plugged_in_discharging') {
     commandabilityReason = 'charger_discharging';
   }
+  const boostInput = fixtureBoostInput(overrides as Parameters<typeof fixtureBoostInput>[0]);
+  const explicitBoost = overrides as { boostSupported?: boolean; boostRequested?: boolean };
   return {
     ...overrides,
     commandableNow: explicitCommandableNow ?? resolveCommandableNow(dev),
+    boostSupported: explicitBoost.boostSupported ?? resolveBoostSupported(boostInput),
+    boostRequested: explicitBoost.boostRequested ?? resolveBoostRequested(boostInput),
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
     ...(isEv ? {
       objectiveSessionInactive: overrides.evChargingState === 'plugged_out'
@@ -365,11 +385,39 @@ DevicePlanDevice => {
     // an explicit `false` still lands.
     controllable: overrides.controllable ?? true,
     available: overrides.available ?? true,
+    // The plan device's one boost truth, REQUIRED for the same reason: the
+    // planner resolves it for every device, so a fixture that omits it would let
+    // a consumer read absence as "not boosting" — which is a decision, not a gap.
+    boostActive: overrides.boostActive ?? false,
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
   } as DevicePlanDevice;
 };
+
+// The producer's boost input, gathered from whatever the fixture spelled. Kept
+// structural (not a `PlanInputDevice`) for the same reason the producer's own
+// input is: the boost question is asked of a device's kind evidence, before any
+// plan shape exists.
+const fixtureBoostInput = (overrides: {
+  deviceClass?: string;
+  targets?: TargetCapabilitySnapshot[];
+  steppedLoadProfile?: SteppedLoadProfile;
+  evChargingState?: string;
+  evBoost?: EvBoostConfig;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  temperatureBoost?: TemperatureBoostConfig;
+  currentTemperature?: number;
+}): BoostResolveInput => ({
+  deviceClass: overrides.deviceClass,
+  targets: overrides.targets ?? [],
+  steppedLoadProfile: overrides.steppedLoadProfile,
+  evChargingState: overrides.evChargingState as EvChargingState | undefined,
+  evBoost: overrides.evBoost,
+  stateOfCharge: overrides.stateOfCharge,
+  temperatureBoost: overrides.temperatureBoost,
+  currentTemperature: overrides.currentTemperature,
+});
 
 export const buildPlanInputDevice = (
   // `currentOn`/`binaryControl` live on the orthogonal `BinaryPlanInputKind` cluster
@@ -439,6 +487,13 @@ export const buildPlanInputDevice = (
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
     controllable: controllable ?? true,
     available: available ?? true,
+    // The two producer-resolved boost bits, materialized from the fixture's own
+    // config and readings by the SAME resolvers `toPlanDevice` calls, so a
+    // fixture cannot express a boost state the producer would never emit. An
+    // explicit override still wins — that is how a fixture pins the planner's
+    // behaviour for a given pair without restating a charger's whole plug state.
+    boostSupported: overrides.boostSupported ?? resolveBoostSupported(fixtureBoostInput(overrides)),
+    boostRequested: overrides.boostRequested ?? resolveBoostRequested(fixtureBoostInput(overrides)),
   }) as PlanInputDevice;
 };
 

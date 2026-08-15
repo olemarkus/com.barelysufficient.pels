@@ -6,14 +6,16 @@
  *    consolidated observed truth — no abandon-grace window (transport's
  *    push+pull consolidation already maintains plug-state across a transient
  *    missing pull; see resolveCommandableNow docstring).
- *  - `resolveBoostActive` is a pure OR over the two domain booleans.
+ *
+ * The boost resolvers moved out of this suite when the two per-kind flags
+ * collapsed into one decision — see `boostResolution.test.ts` (producer) and
+ * `planBoost.test.ts` (planner).
  */
 import { describe, expect, it } from 'vitest';
 import {
   isCanSetControl,
   isCommandableNow,
   isEvPhysicallyUnplugged,
-  resolveBoostActive,
   resolveCanSetControl,
 } from '../../lib/device/deviceActionProjection';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
@@ -95,6 +97,8 @@ describe('isCommandableNow — producer-resolved bit only', () => {
     // snapshot now call `resolveCommandableNow` explicitly instead.
     const withRawFieldsThatUsedToWin = {
       commandableNow: true,
+      boostSupported: false,
+      boostRequested: false,
       available: false,
       evChargingState: 'plugged_out',
     } as unknown as Parameters<typeof isCommandableNow>[0];
@@ -188,24 +192,6 @@ describe('isCanSetControl — dual-read fallback', () => {
       binaryControl: { on: true },
       canSetControl: true,
     })).toBe(true);
-  });
-});
-
-describe('resolveBoostActive — aggregate', () => {
-  it('returns true if temperature-boost is active', () => {
-    expect(resolveBoostActive({ temperatureBoostActive: true, evBoostActive: false })).toBe(true);
-  });
-
-  it('returns true if EV-boost is active', () => {
-    expect(resolveBoostActive({ temperatureBoostActive: false, evBoostActive: true })).toBe(true);
-  });
-
-  it('returns true if both are active', () => {
-    expect(resolveBoostActive({ temperatureBoostActive: true, evBoostActive: true })).toBe(true);
-  });
-
-  it('returns false if neither is active', () => {
-    expect(resolveBoostActive({ temperatureBoostActive: false, evBoostActive: false })).toBe(false);
   });
 });
 

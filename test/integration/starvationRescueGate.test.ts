@@ -145,6 +145,8 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   id: DEVICE_ID,
   name: 'Water Heater',
   commandableNow: true,
+  boostSupported: false,
+  boostRequested: false,
   controllable: true, // capacity-based control is ON — the budget-starvation scenario
   controlModel: 'stepped_load',
   binaryCapabilityId: 'onoff',

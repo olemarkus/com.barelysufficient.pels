@@ -106,9 +106,12 @@ const buildPlan = (): DevicePlan => ({
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
+      boostSupported: false,
+      boostRequested: false,
       deviceType: 'temperature' as const,
       currentState: 'off',
       plannedState: 'keep' as const,
+      boostActive: false,
       currentTarget: 21,
       currentTemperature: 21,
       plannedTarget: 21,
@@ -130,9 +133,12 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
+      boostSupported: false,
+      boostRequested: false,
       deviceType: 'temperature' as const,
       currentState: 'on',
       plannedState: 'keep' as const,
+      boostActive: false,
       currentTarget,
       currentTemperature: currentTarget,
       plannedTarget,
@@ -411,6 +417,7 @@ describe('PlanExecutor declined actuator requests', () => {
         name: 'Heater',
         currentState: 'on',
         plannedState: 'shed',
+        boostActive: false,
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
@@ -508,6 +515,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Bad stepped load',
           currentState: 'on',
           plannedState: 'keep',
+          boostActive: false,
           controllable: true,
           reason: KEEP_REASON,
           steppedLoadProfile: {} as never,
@@ -517,6 +525,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Heater',
           currentState: 'on',
           plannedState: 'shed',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -566,6 +575,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'shed',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -601,6 +611,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'shed',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -638,6 +649,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Heater',
           currentState: 'on',
           plannedState: 'shed',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 16,
           controllable: true,
@@ -664,6 +676,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -698,6 +711,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'EV Charger',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -735,6 +749,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'EV Charger',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: false,
@@ -775,6 +790,7 @@ describe('PlanExecutor restore logging', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -811,6 +827,7 @@ describe('PlanExecutor restore logging', () => {
         name: 'Heater',
         currentState: 'on',
         plannedState: 'shed',
+        boostActive: false,
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
@@ -947,6 +964,7 @@ describe('PlanExecutor restore logging', () => {
         name: 'Heater',
         currentState: 'on',
         plannedState: 'shed',
+        boostActive: false,
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
@@ -1057,6 +1075,7 @@ describe('PlanExecutor restore logging', () => {
         name: 'Heater',
         currentState: 'on',
         plannedState: 'shed',
+        boostActive: false,
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
@@ -1408,6 +1427,7 @@ describe('PlanExecutor pending target commands', () => {
           deviceType: 'temperature',
           currentState: 'on',
           plannedState: 'shed',
+          boostActive: false,
           currentTarget: 22,
           plannedTarget: 15,
           controllable: true,
@@ -1601,6 +1621,7 @@ describe('PlanExecutor stepped loads', () => {
       name: 'Tank',
       deviceType: 'temperature' as const,
       plannedState: 'keep' as const,
+      boostActive: false,
       currentTarget: 68,
       plannedTarget: 68,
       controllable: true,
@@ -1608,6 +1629,8 @@ describe('PlanExecutor stepped loads', () => {
       binaryCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
       commandableNow: true,
+      boostSupported: false,
+      boostRequested: false,
       steppedLoadProfile: steppedProfile,
       reportedStepId: 'low',
       selectedStepId: 'low',
@@ -2076,6 +2099,7 @@ describe('PlanExecutor stepped loads', () => {
   const preparedRestoreFromOffPlan = (overrides: Record<string, unknown> = {}): DevicePlan => steppedPlan({
     currentState: 'off',
     plannedState: 'keep',
+    boostActive: false,
     selectedStepId: 'low',
     reportedStepId: 'low',
     desiredStepId: 'low',
@@ -2148,6 +2172,8 @@ describe('PlanExecutor stepped loads', () => {
       deviceClass: 'evcharger',
       objectiveKind: 'ev_soc',
       commandableNow: true,
+      boostSupported: false,
+      boostRequested: false,
     });
     const evPlan: DevicePlan = {
       ...plan,
@@ -2192,6 +2218,7 @@ describe('PlanExecutor stepped loads', () => {
       // charging override = on); a hardcoded `currentState: 'on'` would contradict
       // the paused default's off-state now that consumers read `currentOn`.
       plannedState: 'keep',
+      boostActive: false,
       controllable: true,
       reason: KEEP_REASON,
       deviceClass: 'evcharger',
@@ -2409,6 +2436,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
       desiredStepId: 'low', // no step change needed
@@ -2437,6 +2465,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
     }));
@@ -2465,6 +2494,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low', // intentionally illegal: shed + upward step target
     }));
@@ -2494,6 +2524,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'off',
       shedAction: 'turn_off',
@@ -2524,6 +2555,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'off',
       shedAction: 'turn_off',
@@ -2554,6 +2586,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'off',
       shedAction: 'turn_off',
@@ -2591,6 +2624,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'off',
       shedAction: 'turn_off',
@@ -2623,6 +2657,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low', // restore-related field; must not trigger invariant restore
     }));
@@ -2650,6 +2685,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'low',
     }));
@@ -2697,6 +2733,7 @@ describe('PlanExecutor stepped loads', () => {
     await noTargets.executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
     }));
@@ -2725,6 +2762,7 @@ describe('PlanExecutor stepped loads', () => {
     await missingCapability.executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
     }));
@@ -2755,6 +2793,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low', // step change will be issued
     }));
@@ -2786,6 +2825,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'max',
     }));
@@ -2814,6 +2854,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'max',
     }));
@@ -2844,6 +2885,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'max',
       lastDesiredStepId: 'low',
@@ -2875,6 +2917,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'max',
       lastDesiredStepId: 'low',
@@ -2910,6 +2953,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
     }));
@@ -2935,6 +2979,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
+      boostActive: false,
       shedAction: 'turn_off',
       selectedStepId: 'max',
       desiredStepId: 'off',
@@ -2981,6 +3026,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
+      boostActive: false,
       shedAction: 'set_step',
       reportedStepId: 'max',
       selectedStepId: 'max',
@@ -3022,6 +3068,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'max',
     }));
@@ -3071,6 +3118,7 @@ describe('PlanExecutor stepped loads', () => {
           name: 'Restore Heater',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -3080,6 +3128,7 @@ describe('PlanExecutor stepped loads', () => {
           name: 'Shed Heater',
           currentState: 'on',
           plannedState: 'shed',
+          boostActive: false,
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
@@ -3114,6 +3163,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'low',
     }));
@@ -3137,6 +3187,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
     }));
@@ -3163,6 +3214,7 @@ describe('PlanExecutor stepped loads', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
     }));
@@ -3195,6 +3247,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       name: 'Tank',
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       controllable: true,
       binaryCapabilityId: 'onoff',
       reason: KEEP_REASON,
@@ -3339,6 +3392,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
     });
@@ -3372,6 +3426,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
       reason: {
@@ -3411,6 +3466,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
     });
@@ -3439,6 +3495,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'max',
     });
@@ -3466,6 +3523,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'max',
       lastDesiredStepId: 'max',
@@ -3508,6 +3566,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'max',
       lastDesiredStepId: 'max',
@@ -3543,6 +3602,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
     });
@@ -3570,6 +3630,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
     });
@@ -3597,6 +3658,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'low',
     });
@@ -3620,6 +3682,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'low',
     });
@@ -3644,6 +3707,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
       desiredStepId: 'low',
@@ -3665,6 +3729,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'max',
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
@@ -3691,6 +3756,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'max',
       currentTarget: 18,
@@ -3706,6 +3772,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const appliedPlan = steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       shedAction: 'set_step',
       releaseShedStepId: 'low',
       selectedStepId: 'low',
@@ -3744,6 +3811,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const appliedPlan = steppedPlan({
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       shedAction: 'set_step',
       releaseShedStepId: 'low',
       selectedStepId: 'max',
@@ -3792,6 +3860,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'shed',
+          boostActive: false,
           controllable: true,
           binaryCapabilityId: 'onoff',
           reason: CAPACITY_REASON,
@@ -3801,6 +3870,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           name: 'Tank',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           controllable: true,
           binaryCapabilityId: 'onoff',
           reason: KEEP_REASON,
@@ -3838,6 +3908,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'shed',
+          boostActive: false,
           controllable: true,
           reason: CAPACITY_REASON,
         }),
@@ -3846,6 +3917,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           name: 'Tank',
           currentState: 'off',
           plannedState: 'keep',
+          boostActive: false,
           controllable: true,
           reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
@@ -3927,13 +3999,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
-      controllable: true, available: true, reason: CAPACITY_REASON,
+      controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
       binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
+      boostActive: false,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
       binaryCapabilityId: 'onoff' as const, currentOn: false,
@@ -4050,6 +4123,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           name: 'Heater',
           currentState: 'off',
           plannedState: 'shed',
+          boostActive: false,
           controllable: true,
           reason: CAPACITY_REASON,
           steppedLoadProfile: steppedProfile,
@@ -4067,6 +4141,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           name: 'Tank',
           currentState: 'on',
           plannedState: 'keep',
+          boostActive: false,
           controllable: true,
           reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
@@ -4117,6 +4192,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        boostActive: false,
         selectedStepId: 'low',
         reportedStepId: 'low',
         desiredStepId: 'low', // non-zero, matches selected — no step change
@@ -4145,6 +4221,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        boostActive: false,
         selectedStepId: 'off',
         desiredStepId: 'low', // pre-normalized to lowest non-zero
       }));
@@ -4167,6 +4244,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        boostActive: false,
         selectedStepId: undefined as unknown as string, // unknown
         desiredStepId: 'max', // non-zero intended step
       }));
@@ -4190,6 +4268,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        boostActive: false,
         selectedStepId: 'low',
         reportedStepId: 'low',
         desiredStepId: 'low',
@@ -4218,6 +4297,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        boostActive: false,
         selectedStepId: undefined as unknown as string,
         desiredStepId: 'max',
       }));
@@ -4252,6 +4332,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        boostActive: false,
         selectedStepId: 'off',
         desiredStepId: 'off', // un-normalized: should still trigger step command to 'low'
       }));
@@ -4294,6 +4375,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
             name: 'Tank',
             currentState: 'off',
             plannedState: 'shed',
+            boostActive: false,
             currentTarget: 21,
             plannedTarget: 21,
             controllable: true,
@@ -4324,6 +4406,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',  // off because binary is false
         plannedState: 'shed',
+        boostActive: false,
         shedAction: 'turn_off',
         selectedStepId: 'low', // not at off-step yet
         desiredStepId: 'off',  // intended lowest
@@ -4355,6 +4438,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'on',
         plannedState: 'shed',
+        boostActive: false,
         shedAction: 'turn_off',
         selectedStepId: 'low', // NOT at off-step
         desiredStepId: 'off',  // intended lowest step (per contract)
@@ -4395,6 +4479,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       name: 'Elbillader',
       currentState: 'off',
       plannedState: 'shed',
+      boostActive: false,
       shedAction: 'turn_off',
       binaryCapabilityId: 'evcharger_charging',
       selectedStepId: 'low',

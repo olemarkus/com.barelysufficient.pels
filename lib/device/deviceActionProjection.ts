@@ -61,25 +61,32 @@ type SteppedLoadIdentity = {
   steppedLoadProfile?: SteppedLoadProfile;
 };
 
-type ControllableFlags = {
-  controllable?: boolean;
-  managed?: boolean;
-  available?: boolean;
-};
-
-export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & EvObservedProbe & {
+type EvBoostResolveInput = SteppedLoadIdentity & EvObservedProbe & {
   deviceClass?: string;
-  forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
-export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFlags & {
+type TemperatureBoostResolveInput = SteppedLoadIdentity & {
   targets: readonly TargetCapabilitySnapshot[];
-  forceBoostActive?: boolean;
   temperatureBoost?: TemperatureBoostConfig;
   currentTemperature?: number;
 };
+
+/**
+ * Everything the producer needs to answer the two kind-free boost questions for
+ * one device. The axes are unioned rather than discriminated because a device is
+ * eligible for at most one of them in practice and the per-axis helpers below
+ * each gate on their own kind evidence — a charger has no temperature reading, a
+ * thermostat has no state of charge.
+ *
+ * The runnable flags (`controllable` / `managed` / `available`) are deliberately
+ * NOT here. They are the planner's own gating vocabulary, they are read AFTER
+ * deferred-objective admission may have flipped `controllable` for a rescued
+ * device, and this producer runs before that. See `resolveBoostActive`
+ * (`lib/plan/planBoost.ts`), which applies them.
+ */
+export type BoostResolveInput = EvBoostResolveInput & TemperatureBoostResolveInput;
 
 // "Stepped load" is a yes/no capability = presence of a valid
 // `steppedLoadProfile`. `controlModel` is a producer-only SETTING and never rode
@@ -112,22 +119,21 @@ type MeasuredBoostState = {
  * without a band, and each device's own thermostat/charger deadband supplies the
  * physical hysteresis.
  *
- * Only the final comparison is shared. The kind-specific eligibility and gate
- * ORDERING stay in the two resolvers below — in particular EV's plug-state block
- * must precede `forceBoostActive` (a not-resumable charger must never force-boost),
- * which a flattened skeleton would lose.
+ * Only the final comparison is shared. The kind-specific support gates stay in
+ * the per-axis helpers below, and each device's own request is gated by its own
+ * axis — in particular a charger PELS cannot resume is not boost-supported, so
+ * a forced boost cannot engage on it either.
  */
 const isBelowBoostFloor = (state: MeasuredBoostState): boolean => (
   state.current < state.boostFloor
 );
 
-export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
+const isEvBoostSupported = (dev: EvBoostResolveInput): boolean => {
   // Identity gate, NOT the plug-state guard: an `evcharger` driven through
   // `target_power` or a stepped-load profile exposes no EV capabilities and has
   // no plug state, but it still boosts on SoC like any other charger.
   if (!isEvDevice(dev)) return false;
   if (!hasSteppedLoadProfile(dev)) return false;
-  if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   // Block boost only where PELS genuinely cannot drive the charger: unplugged or
   // discharging. Boost is "command it on now", so this asks the same question of
   // the same plug-state the restore path does, through the one shared classifier
@@ -135,10 +141,11 @@ export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
   // boost panel renders its wording off that same classification
   // (`resolveEvBoostBlockReason`), so the runtime can never force a boost the UI
   // says won't activate.
-  if (isEvObserved(dev) && isEvPlugStateBlocked(dev.evChargingState)) return false;
-  // The deferred limit-lower-priority rescue lane forces boost while the task is in its
-  // planned hours, independent of the device's own boost config/threshold.
-  if (dev.forceBoostActive === true) return true;
+  return !(isEvObserved(dev) && isEvPlugStateBlocked(dev.evChargingState));
+};
+
+const isEvBoostRequested = (dev: EvBoostResolveInput): boolean => {
+  if (!isEvBoostSupported(dev)) return false;
   const config = dev.evBoost;
   if (config?.enabled !== true) return false;
   const percent = getTrustedStateOfCharge(dev);
@@ -146,15 +153,14 @@ export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
   const boostBelowPercent = config.boostBelowPercent;
   if (!Number.isFinite(boostBelowPercent)) return false;
   return isBelowBoostFloor({ current: percent, boostFloor: boostBelowPercent });
-}
+};
 
-export function resolveTemperatureBoostActive(dev: TemperatureBoostResolveInput): boolean {
-  if (!hasSteppedLoadProfile(dev)) return false;
-  if (!hasTemperatureBoostTarget(dev.targets)) return false;
-  if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  // The deferred limit-lower-priority rescue lane forces boost while the task is in its
-  // planned hours, independent of the device's own boost config/threshold.
-  if (dev.forceBoostActive === true) return true;
+const isTemperatureBoostSupported = (dev: TemperatureBoostResolveInput): boolean => (
+  hasSteppedLoadProfile(dev) && hasTemperatureBoostTarget(dev.targets)
+);
+
+const isTemperatureBoostRequested = (dev: TemperatureBoostResolveInput): boolean => {
+  if (!isTemperatureBoostSupported(dev)) return false;
   const config = dev.temperatureBoost;
   if (config?.enabled !== true) return false;
   const currentTemperature = getTrustedCurrentTemperatureC(dev);
@@ -162,6 +168,30 @@ export function resolveTemperatureBoostActive(dev: TemperatureBoostResolveInput)
   const boostBelowC = config.boostBelowC;
   if (typeof boostBelowC !== 'number' || !Number.isFinite(boostBelowC)) return false;
   return isBelowBoostFloor({ current: currentTemperature, boostFloor: boostBelowC });
+};
+
+/**
+ * Producer-resolved: this device has a boost axis PELS can drive right now —
+ * a stepped charger that is plugged in and not discharging, or a stepped device
+ * with a temperature target. It says nothing about whether boost is wanted.
+ *
+ * This is the bit a forced boost needs: the deferred limit-lower-priority rescue
+ * lane engages boost independently of the device's own threshold, but it must
+ * never engage it on a device whose kind gates say boost cannot work.
+ */
+export function resolveBoostSupported(dev: BoostResolveInput): boolean {
+  return isEvBoostSupported(dev) || isTemperatureBoostSupported(dev);
+}
+
+/**
+ * Producer-resolved: the device's OWN boost policy asks for boost this cycle —
+ * supported, configured, enabled, and its measured value below its configured
+ * floor. Unit-agnostic by construction: each axis resolves its own measurement
+ * against its own floor and hands over a boolean, so no consumer ever sees a
+ * percentage or a temperature.
+ */
+export function resolveBoostRequested(dev: BoostResolveInput): boolean {
+  return isEvBoostRequested(dev) || isTemperatureBoostRequested(dev);
 }
 
 /**
@@ -219,39 +249,11 @@ const hasBinaryAxis = (snapshot: BinaryCapabilityResolveInput): boolean => (
 // explicitly. No closure over runtime singletons.
 // =============================================================================
 
-/**
- * Resolve aggregate boost activation: true if either temperature-boost or
- * EV-boost policies fire. Producer-side aggregator over the two
- * domain-specific resolvers added in chunk 1.
- *
- * Two-arg form (preferred at the planner call site, which already computed
- * both booleans for state tracking + transition emission): pass the
- * resolved temperature/EV booleans directly. Stays pure.
- */
-export function resolveBoostActive(params: {
-  temperatureBoostActive: boolean;
-  evBoostActive: boolean;
-}): boolean {
-  return params.temperatureBoostActive === true || params.evBoostActive === true;
-}
-
-
-/**
- * Dual-read consumer helper for the aggregate boost flag. Prefers the
- * producer-resolved `boostActive` bit (populated by
- * `buildBoostPlanDeviceFields`) and falls back to the OR over the two
- * per-axis flags so manually-built `DevicePlanDevice` fixtures and any
- * legacy upstream shapes that haven't yet propagated `boostActive`
- * continue to behave identically.
- */
-export function isBoostActive(dev: {
-  boostActive?: boolean;
-  temperatureBoostActive?: boolean;
-  evBoostActive?: boolean;
-}): boolean {
-  if (dev.boostActive !== undefined) return dev.boostActive;
-  return dev.temperatureBoostActive === true || dev.evBoostActive === true;
-}
+// The two per-axis boost flags are gone from the plan device, and with them the
+// aggregate `resolveBoostActive({ temperatureBoostActive, evBoostActive })` and
+// its dual-read consumer `isBoostActive`. There is one boost truth now:
+// `boostActive`, resolved once by `lib/plan/planBoost.ts` from the two bits
+// above plus the planner's own runnable gate, and read directly off the device.
 
 // -----------------------------------------------------------------------------
 // canSetControl — sibling producer-resolved bit (chunk 6 of the planner-detype

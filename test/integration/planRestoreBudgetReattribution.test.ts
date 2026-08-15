@@ -96,6 +96,8 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
   name: 'Heater',
   targets: [],
   commandableNow: true,
+  boostSupported: false,
+  boostRequested: false,
   controllable: true,
   binaryCapabilityId: 'onoff',
   binaryControl: { on },

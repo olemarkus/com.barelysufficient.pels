@@ -119,17 +119,15 @@ export type NonSteppedLoadKind = Record<never, never>;
  * (TS2339); consumers must pass through `isEvPlanDevice` (or hold an
  * already-narrowed value) first.
  *
- * Every field is OPTIONAL: `evBoost` / `evBoostActive` / `stateOfCharge` are
- * only present when boost is configured / the charger reports SoC. So the guard
- * groups the cluster onto the variant WITHOUT asserting presence the producer
- * does not guarantee.
+ * Every field is OPTIONAL: `evBoost` / `stateOfCharge` are only present when
+ * boost is configured / the charger reports SoC. So the guard groups the cluster
+ * onto the variant WITHOUT asserting presence the producer does not guarantee.
  *
  * Raw plug-state stays in observer/transport. Planning carries only the
  * producer-resolved objective and commandability facts on its base type.
  */
 export type EvKind = {
   evBoost?: EvBoostConfig;
-  evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
@@ -307,7 +305,6 @@ export function withSteppedDiscriminant<TBase extends object>(
  */
 export type EvDiscriminantProbe = {
   evBoost?: EvBoostConfig;
-  evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
@@ -331,7 +328,7 @@ export function withEvDiscriminant<TBase>(
 ):
   Omit<TBase, keyof EvDiscriminantProbe> & EvKind {
   const {
-    evBoost, evBoostActive, stateOfCharge, ...base
+    evBoost, stateOfCharge, ...base
   } = loose;
   // Discriminated like `withBinaryDiscriminant`: the cluster is attached only to
   // an actual EV device, so a non-EV device cannot carry a stale plug-state a
@@ -342,7 +339,6 @@ export function withEvDiscriminant<TBase>(
   return {
     ...base,
     ...(evBoost !== undefined ? { evBoost } : {}),
-    ...(evBoostActive !== undefined ? { evBoostActive } : {}),
     ...(stateOfCharge !== undefined ? { stateOfCharge } : {}),
   } as Omit<TBase, keyof EvDiscriminantProbe> & EvKind;
 }
@@ -492,14 +488,13 @@ type DevicePlanDeviceBase = {
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
   controlAdapter?: DeviceControlAdapterSnapshot;
+  // Display carriers, read only by the settings-UI overview read model to pick
+  // the boost card's variant and render the charger's battery level. No planner
+  // decision reads them — the boost decision is the single `boostActive` below.
+  // They are the last EV-shaped fields on this type and leave with the overview
+  // re-source; do NOT grow a decision path against them.
   evBoost?: EvBoostConfig;
-  evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
-  // EV cluster fields (`evBoost`, `evBoostActive`, `stateOfCharge`) are split off
-  // onto the orthogonal `EvKind`; reach them through the `isEvPlanDevice` guard
-  // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields below are on
-  // the base, materialized once by the producer from the observed
-  // `evChargingState` (the observer owns the raw plug-state).
   /**
    * Producer-resolved commandability, REQUIRED so no consumer can read absence
    * as an answer. It was optional through the dual-read transition, and the
@@ -545,14 +540,20 @@ type DevicePlanDeviceBase = {
   controllable: boolean;
   budgetExempt?: boolean;
   temperatureBoost?: TemperatureBoostConfig;
-  temperatureBoostActive?: boolean;
   /**
-   * Producer-resolved aggregate boost flag: `true` when either
-   * `temperatureBoostActive` or `evBoostActive` fires this cycle. Resolved
-   * once in `buildBoostPlanDeviceFields` so restore-side consumers read a
-   * single bit instead of recomputing the OR per call.
+   * The device's boost decision this cycle, and the planner's whole boost
+   * vocabulary. REQUIRED: `resolveBoostActive` (`lib/plan/planBoost.ts`) answers
+   * it for every device from the producer's two kind-free bits plus the runnable
+   * gate, so absence is never a state — it would only ever be a fixture that
+   * forgot, read by a consumer as "not boosting".
+   *
+   * There are no per-axis twins any more. `temperatureBoostActive` and
+   * `evBoostActive` used to ride here beside it; nothing in the planner could
+   * tell them apart (every decision site read the OR), and the settings UI reads
+   * which VARIANT to render off the device's boost config, not off which axis
+   * fired.
    */
-  boostActive?: boolean;
+  boostActive: boolean;
   // Producer-resolved: `true` when a surplus-absorb lift is the binding cause of this
   // cycle's planned target (raised the setpoint to self-consume solar, not overridden by a
   // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
