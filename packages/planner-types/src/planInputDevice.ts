@@ -226,6 +226,19 @@ export type PlanInputDeviceBase = {
   boostSupported: boolean;
   boostRequested: boolean;
   /**
+   * Producer-resolved: being off means this device is going without something it
+   * needs. True for a thermostat or a water heater — it always wants heat when
+   * it is below target — and false where demand depends on a session the device
+   * may not have, which today means a charger with no car plugged in.
+   *
+   * Consumers ask this instead of asking what KIND of device it is. The
+   * diagnostics unmet-demand and starvation lanes used to read
+   * `objectiveKind === 'ev_soc'` and the surplus dump-load gate the same, which
+   * put the one question the planner must never ask — "is this an EV?" — in
+   * three places, each free to answer it differently.
+   */
+  hasStandingDemand: boolean;
+  /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
    * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback

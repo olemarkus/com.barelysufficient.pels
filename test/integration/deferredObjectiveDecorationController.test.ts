@@ -9,6 +9,7 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ available: t
   commandableNow: true,
   boostSupported: false,
   boostRequested: false,
+  hasStandingDemand: true,
   targets: [],
   binaryCapabilityId: 'onoff',
   binaryControl: { on: false },

@@ -93,7 +93,11 @@ const willingWithLift = (config: SurplusConfig | undefined): boolean => (
 export function resolveSurplusOnlyPosture(params: {
   surplusWilling: boolean | undefined;
   hasBinaryControl: boolean;
-  objectiveKind?: 'ev_soc' | 'temperature';
+  // Producer-resolved: being off means going without. A dump load qualifies; a
+  // charger does not, because its demand arrives with a car. Asked as this bit
+  // rather than as the device's kind — the planner does not get to know which
+  // kinds exist (`PlanInputDevice.hasStandingDemand`).
+  hasStandingDemand: boolean;
   targets: readonly TargetCapabilitySnapshot[] | undefined;
   steppedLoadProfile: SteppedLoadProfile | undefined;
   // Producer-resolved: true only for a plain binary-power control device — i.e.
@@ -111,7 +115,7 @@ export function resolveSurplusOnlyPosture(params: {
   return params.surplusWilling === true
     && params.surplusPoolReachable
     && params.hasBinaryControl
-    && params.objectiveKind !== 'ev_soc'
+    && params.hasStandingDemand
     && !isSteppedLoadSnapshot(params)
     && params.plainBinaryControlModel
     && params.targets?.some((target) => target.id === 'target_temperature') !== true

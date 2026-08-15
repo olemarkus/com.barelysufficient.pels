@@ -37,6 +37,7 @@ const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnlyPosture>[0]> = {}) => ({
   surplusWilling: true,
   hasBinaryControl: true,
+  hasStandingDemand: true,
   deviceClass: 'socket',
   targets: [],
   steppedLoadProfile: undefined,
@@ -56,7 +57,9 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
     ['not willing', { surplusWilling: false }],
     ['willing absent', { surplusWilling: undefined }],
     ['no binary control capability', { hasBinaryControl: false }],
-    ['EV charging capability', { objectiveKind: 'ev_soc' as const }],
+    // A charger: its demand arrives with a car, so being off is not going
+    // without, and it is not a dump load.
+    ['no standing demand', { hasStandingDemand: false }],
     ['stepped-load profile', { steppedLoadProfile: steppedProfile }],
     ['temperature target', { targets: [{ id: 'target_temperature', value: 20, unit: 'C' }] }],
     // Continuous / target-power / non-binary control is pre-resolved at the

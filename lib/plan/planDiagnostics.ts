@@ -74,10 +74,6 @@ export const buildDeviceDiagnosticsObservations = (
   }));
 };
 
-const isEvLikeDevice = (device: DevicePlanDevice, inputDevice?: PlanInputDevice): boolean => (
-  device.objectiveKind === 'ev_soc' || inputDevice?.objectiveKind === 'ev_soc'
-);
-
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
@@ -208,10 +204,10 @@ const resolveTargetStepC = (
 const resolveEligibleForStarvation = (params: {
   device: DevicePlanDevice;
   inputDevice?: PlanInputDevice;
-  isEv: boolean;
+  hasStandingDemand: boolean;
 }): boolean => {
-  const { device, inputDevice, isEv } = params;
-  if (isEv || !inputDevice) return false;
+  const { device, inputDevice, hasStandingDemand } = params;
+  if (!hasStandingDemand || !inputDevice) return false;
   if (!isTemperatureInputDevice(inputDevice)) return false;
   if (!isStarvationSupportedDeviceClass(device.deviceClass ?? inputDevice.deviceClass)) return false;
   // A device the user turned off outside PELS is not starved — PELS is not
@@ -270,11 +266,11 @@ const resolveSuppressionFromReason = (
 const resolveStarvationSuppression = (params: {
   device: DevicePlanDevice;
   inputDevice?: PlanInputDevice;
-  isEv: boolean;
+  hasStandingDemand: boolean;
   budgetReleasableHeadroomHold: boolean;
 }): StarvationSuppressionNormalization => {
-  const { device, inputDevice, isEv, budgetReleasableHeadroomHold } = params;
-  if (isEv || !inputDevice || !device.controllable || !inputDevice.controllable) {
+  const { device, inputDevice, hasStandingDemand, budgetReleasableHeadroomHold } = params;
+  if (!hasStandingDemand || !inputDevice || !device.controllable || !inputDevice.controllable) {
     return noStarvationSuppression();
   }
   const reason = device.reason;
@@ -343,8 +339,12 @@ const buildDiagnosticsObservation = (params: {
     currentHourPriceLevel,
     observationFresh,
   } = params;
-  const isEv = isEvLikeDevice(device, inputDevice);
-  const includeDemandMetrics = !isEv && device.controllable && device.available;
+  // Demand metrics and the starvation lanes both ask the same question — does
+  // being off mean this device is going without? — and the producer answered it
+  // (`hasStandingDemand`). A charger with no car is not starved, and neither
+  // this file nor its callers need to know that is what makes it different.
+  const { hasStandingDemand } = device;
+  const includeDemandMetrics = hasStandingDemand && device.controllable && device.available;
   const desiredTarget = resolveDesiredTemperatureTarget({
     desiredForMode,
     inputDevice,
@@ -367,12 +367,12 @@ const buildDiagnosticsObservation = (params: {
   const eligibleForStarvation = resolveEligibleForStarvation({
     device,
     inputDevice,
-    isEv,
+    hasStandingDemand,
   });
   const starvationSuppression = resolveStarvationSuppression({
     device,
     inputDevice,
-    isEv,
+    hasStandingDemand,
     budgetReleasableHeadroomHold,
   });
   const targetDeficitActive = includeDemandMetrics
