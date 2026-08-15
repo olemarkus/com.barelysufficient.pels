@@ -44,8 +44,10 @@ type EChartsType = {
     finder: { gridIndex?: number; seriesIndex?: number },
     value: number[],
   ) => boolean;
-  // Imperative highlight/downplay for the selected-hour emphasis state.
-  dispatchAction: (payload: Record<string, unknown>) => void;
+  // Imperative highlight/downplay for the selected-hour emphasis state. ECharts dispatches on
+  // `payload.type`, so it is required — a payload without one names no action and silently
+  // no-ops.
+  dispatchAction: (payload: { type: string } & Record<string, unknown>) => void;
   getZr: () => ZRenderLike;
 };
 type SeriesOption = Record<string, unknown>;

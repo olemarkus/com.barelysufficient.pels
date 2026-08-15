@@ -162,6 +162,21 @@ const handlePowerUpdated = (power: unknown) => {
   });
 };
 
+// The Homey bridge hands event arguments in as `unknown[]`. Both settings events carry the
+// changed settings key as their first argument; anything else is not a key we can route, so
+// it is dropped here at the seam rather than defended against inside the router — which keeps
+// its `(key: string)` signature and stays free of provenance checks. Logged rather than
+// swallowed, like the malformed-payload drop in `handlePlanUpdated`: a settings event without
+// a key means the bridge broke its contract, and nothing downstream would ever say so.
+const withSettingsKey = (event: string, route: (key: string) => void) => (...args: unknown[]): void => {
+  const [key] = args;
+  if (typeof key !== 'string') {
+    void logSettingsWarn('Ignoring a settings event with no settings key', undefined, event);
+    return;
+  }
+  route(key);
+};
+
 export const initRealtimeListeners = () => {
   const homey = getHomeyClient();
   if (!homey || typeof homey.on !== 'function') return;
@@ -170,8 +185,8 @@ export const initRealtimeListeners = () => {
   homey.on('prices_updated', handlePricesUpdated);
   homey.on('devices_updated', handleDevicesUpdated);
   homey.on('power_updated', handlePowerUpdated);
-  homey.on('settings.set', createSettingsSetHandler());
-  homey.on('settings.unset', createSettingsUnsetHandler());
+  homey.on('settings.set', withSettingsKey('settings.set', createSettingsSetHandler()));
+  homey.on('settings.unset', withSettingsKey('settings.unset', createSettingsUnsetHandler()));
 
   document.addEventListener('request-load-devices', () => {
     if (!state.devicesLoaded && !state.devicesLoading) {

@@ -1,6 +1,6 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
-import { buildHomeyApiMock, emitHomeyEvent, installHomeyMock } from './helpers/homeyApiMock';
+import { buildHomeyApiMock, emitHomeyEvent, installedHomeyMock, installHomeyMock } from './helpers/homeyApiMock';
 import { buildPlanMeta } from './helpers/planMetaFixture.ts';
 
 vi.mock('../src/ui/toast.ts', () => ({
@@ -1116,8 +1116,7 @@ describe('settings script', () => {
 
   it('shows empty state when no devices support target temperature', async () => {
     installSettingsHomeyMock({ target_devices_snapshot: [] });
-    // @ts-ignore mutate mock
-    global.Homey.set = vi.fn((key, val, cb) => cb && cb(null));
+    installedHomeyMock().set = vi.fn((key, val, cb) => cb && cb(null));
     await loadSettingsScript();
 
     expect(document.querySelectorAll('#device-card-list .pels-device-card__row').length).toBe(0);
@@ -1139,8 +1138,7 @@ describe('settings script', () => {
         },
       ],
     });
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
+    installedHomeyMock().set = setSpy;
 
     await loadSettingsScript();
 
@@ -1194,8 +1192,7 @@ describe('settings script', () => {
         },
       ],
     });
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
+    installedHomeyMock().set = setSpy;
 
     await loadSettingsScript();
 
@@ -1233,10 +1230,8 @@ describe('settings script', () => {
     // Persisted payload has duplicate priorities (dev-1/dev-2 both 5) and a gap.
     // The UI must resolve to the same strict order the planner uses so the list
     // and the runtime agree on which device wins.
-    // @ts-ignore mutate mock
-    global.Homey.set = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = vi.fn((key, val, cb) => cb && cb(null));
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') {
         return cb(null, { Home: { 'dev-2': 5, 'dev-1': 5, 'dev-3': 9 } });
       }
@@ -1298,10 +1293,8 @@ describe('settings script', () => {
 
   it('renames a mode and updates settings', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1336,10 +1329,8 @@ describe('settings script', () => {
 
   it('repoints retained aliases when the same mode is renamed twice', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1362,10 +1353,8 @@ describe('settings script', () => {
 
   it('publishes a rename additively before removing the old mode record', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1403,10 +1392,8 @@ describe('settings script', () => {
 
   it('keeps active mode separate from editing mode when saving priorities', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1457,10 +1444,8 @@ describe('settings script', () => {
       store[key] = val;
       if (cb) cb(null);
     });
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1, 'dev-2': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1503,10 +1488,8 @@ describe('settings script', () => {
   it('reveals the shared mode-name editor only on demand (hidden at rest)', async () => {
     const store: Record<string, any> = {};
     const setSpy = vi.fn((key, val, cb) => { store[key] = val; if (cb) cb(null); });
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1532,10 +1515,8 @@ describe('settings script', () => {
 
   it('changes active mode when selection changes (auto-save)', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1570,10 +1551,8 @@ describe('settings script', () => {
 
   it('shows different selected values in editing vs active mode dropdowns', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1603,10 +1582,8 @@ describe('settings script', () => {
 
   it('updates active mode dropdown when renaming the active mode', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
+    installedHomeyMock().set = setSpy;
+    installedHomeyMock().get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -1649,7 +1626,7 @@ describe('settings script', () => {
 
 
   it('loads device diagnostics through the Homey API when opening device detail', async () => {
-    global.Homey.__uiState.deviceDiagnostics = {
+    installedHomeyMock().__uiState.deviceDiagnostics = {
       generatedAt: Date.now(),
       windowDays: 21,
       diagnosticsByDeviceId: {
@@ -1720,13 +1697,13 @@ describe('settings script', () => {
     };
 
     await loadSettingsScript();
-    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
+    (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
 
     await waitFor(() => document.querySelector('[data-device-id="dev-1"] .pels-device-card__detail-button') !== null);
     const detailButton = document.querySelector('[data-device-id="dev-1"] .pels-device-card__detail-button') as HTMLElement | null;
     detailButton?.click();
 
-    expect((global.Homey.api as ReturnType<typeof vi.fn>).mock.calls.some(
+    expect((installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls.some(
       (call) => call[0] === 'GET' && call[1] === '/ui_device_diagnostics',
     )).toBe(false);
 
@@ -1739,7 +1716,7 @@ describe('settings script', () => {
         === true
     ));
 
-    expect((global.Homey.api as ReturnType<typeof vi.fn>).mock.calls).toEqual(expect.arrayContaining([
+    expect((installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls).toEqual(expect.arrayContaining([
       expect.arrayContaining(['GET', '/ui_device_diagnostics']),
     ]));
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
@@ -1749,8 +1726,8 @@ describe('settings script', () => {
   });
 
   it('shows a diagnostics unavailable state when the Homey API route fails', async () => {
-    const baseApi = buildHomeyApiMock(global.Homey);
-    global.Homey.api = vi.fn((method, uri, bodyOrCallback, cb) => {
+    const baseApi = buildHomeyApiMock(installedHomeyMock());
+    installedHomeyMock().api = vi.fn((method, uri, bodyOrCallback, cb) => {
       const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
       if (method === 'GET' && uri === '/ui_device_diagnostics') {
         callback?.(new Error('Cannot GET /api/app/com.barelysufficient.pels/ui_device_diagnostics'));
@@ -2045,8 +2022,8 @@ describe('Plan sorting', () => {
       capacity_priorities: { Home: {} },
       mode_device_targets: { Home: {} },
     });
-    global.Homey.get = getSpy;
-    global.Homey.on = vi.fn((event, cb) => {
+    installedHomeyMock().get = getSpy;
+    installedHomeyMock().on = vi.fn((event, cb) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     });
@@ -2068,7 +2045,7 @@ describe('Plan sorting', () => {
 
   it('keeps the stale-data banner hidden when tracker data is fresh even if status is stale', async () => {
     const now = Date.now();
-    global.Homey.__uiState.power = {
+    installedHomeyMock().__uiState.power = {
       tracker: { lastTimestamp: now - 5_000 },
       status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
       heartbeat: now,
@@ -2082,7 +2059,7 @@ describe('Plan sorting', () => {
 
   it('ignores stale heartbeat values when tracker data is fresh', async () => {
     const now = Date.now();
-    global.Homey.__uiState.power = {
+    installedHomeyMock().__uiState.power = {
       tracker: { lastTimestamp: now - 5_000 },
       status: { lastPowerUpdate: now - 5_000, priceLevel: 'cheap' },
       heartbeat: now - 2 * 60_000,
@@ -2102,19 +2079,19 @@ describe('Plan sorting', () => {
       heartbeat: Date.now(),
     };
 
-    global.Homey.__uiState = { power: stalePower };
-    global.Homey.on = vi.fn((event, cb) => {
+    installedHomeyMock().__uiState = { power: stalePower };
+    installedHomeyMock().on = vi.fn((event, cb) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     });
-    global.Homey.api = buildHomeyApiMock(global.Homey);
+    installedHomeyMock().api = buildHomeyApiMock(installedHomeyMock());
 
     await loadSettingsScript();
 
     const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
     expect(banner.hidden).toBe(false);
 
-    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
+    (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
       tracker: null,
       status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' },
@@ -2125,18 +2102,18 @@ describe('Plan sorting', () => {
     await flushPromises();
 
     expect(banner.hidden).toBe(true);
-    const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+    const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
     expect(powerGetCalls).toHaveLength(0);
   });
 
   it('keeps slim power_updated cache entries shaped like /ui_power payloads', async () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
-    global.Homey.on = vi.fn((event, cb) => {
+    installedHomeyMock().on = vi.fn((event, cb) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     });
-    global.Homey.api = buildHomeyApiMock(global.Homey);
+    installedHomeyMock().api = buildHomeyApiMock(installedHomeyMock());
 
     await loadSettingsScript();
 
@@ -2152,32 +2129,32 @@ describe('Plan sorting', () => {
     await flushPromises();
 
     await expect(getApiReadModel('/ui_power')).resolves.toEqual(freshPower);
-    const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+    const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
     expect(powerGetCalls).toHaveLength(0);
   });
 
   it('does not turn rapid slim power_updated events into repeated /ui_power fetches while Usage is visible', async () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
-    global.Homey.__uiState = {
+    installedHomeyMock().__uiState = {
       power: {
         tracker: { hourly: {}, daily: {}, lastTimestamp: Date.now() },
         status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' },
         heartbeat: null,
       },
     };
-    global.Homey.on = vi.fn((event, cb) => {
+    installedHomeyMock().on = vi.fn((event, cb) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     });
-    global.Homey.api = buildHomeyApiMock(global.Homey);
+    installedHomeyMock().api = buildHomeyApiMock(installedHomeyMock());
 
     await loadSettingsScript();
     const { showTab } = await import('../src/ui/realtime.ts');
     showTab('usage');
     await flushPromises();
 
-    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
+    (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
       tracker: null,
       status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' },
@@ -2194,21 +2171,24 @@ describe('Plan sorting', () => {
     }));
     await flushPromises();
 
-    const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+    const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
     expect(powerGetCalls).toHaveLength(0);
   });
 
   it('invalidates /ui_power cache before periodic stale-data checks', async () => {
     const intervalCallbacks = new Map<number, () => void>();
-    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((callback, ms) => {
-      intervalCallbacks.set(ms as number, callback as () => void);
+    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => void,
+      ms: number,
+    ) => {
+      intervalCallbacks.set(ms, callback);
       return 1 as unknown as ReturnType<typeof setInterval>;
     }) as typeof setInterval);
 
     try {
       const now = Date.now();
-      global.Homey.__uiState.power = {
+      installedHomeyMock().__uiState.power = {
         tracker: { lastTimestamp: now - 5_000 },
         status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
         heartbeat: now,
@@ -2219,20 +2199,20 @@ describe('Plan sorting', () => {
       const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
       expect(banner.hidden).toBe(true);
 
-      global.Homey.__uiState.power = {
+      installedHomeyMock().__uiState.power = {
         tracker: { lastTimestamp: now - 2 * 60_000 },
         status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
         heartbeat: now,
       };
 
-      (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
+      (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
       const staleInterval = intervalCallbacks.get(30 * 1000);
       expect(typeof staleInterval).toBe('function');
       staleInterval?.();
       await flushPromises();
 
       expect(banner.hidden).toBe(false);
-      const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+      const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
         .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
       expect(powerGetCalls.length).toBeGreaterThan(0);
     } finally {
@@ -2243,7 +2223,7 @@ describe('Plan sorting', () => {
   it('invalidates /ui_plan cache when reopening overview', async () => {
     await loadSettingsScript();
 
-    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
+    (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
 
     const budgetTab = document.querySelector('[data-tab="budget"]') as HTMLButtonElement;
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
@@ -2252,16 +2232,16 @@ describe('Plan sorting', () => {
     overviewTab.click();
     await flushPromises();
 
-    const planGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+    const planGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_plan');
     expect(planGetCalls).toHaveLength(1);
   });
 
   it('returns a Homey-style 404 for API paths not declared in app.json', async () => {
-    const api = buildHomeyApiMock(global.Homey);
+    const api = buildHomeyApiMock(installedHomeyMock());
 
     const result = await new Promise<{ err: Error | null; value?: unknown }>((resolve) => {
-      api('GET', '/definitely_missing_route', {}, (err, value) => resolve({ err, value }));
+      api('GET', '/definitely_missing_route', {}, (err: Error | null, value?: unknown) => resolve({ err, value }));
     });
 
     expect(result.value).toBeUndefined();
@@ -2301,8 +2281,7 @@ describe('Plan sorting', () => {
       managed_devices: { 'dev-1': true },
       controllable_devices: { 'dev-1': true },
     });
-    // @ts-ignore mutate mock
-    global.Homey.set = setSpy;
+    installedHomeyMock().set = setSpy;
 
     await loadSettingsScript();
 

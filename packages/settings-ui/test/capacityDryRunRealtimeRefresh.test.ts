@@ -128,6 +128,18 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
     expect(renders).toBe(0);
   });
 
+  // The Homey bridge types event arguments as `unknown[]`, so a settings event can arrive
+  // carrying anything at all. The WebView seam drops a non-string key instead of letting it
+  // reach the router, where every downstream comparison would silently miss.
+  it('ignores a settings event whose key is not a string', async () => {
+    setup(false, true); // the setting is off; this UI still thinks it is on
+    emitHomeyEvent(homey, 'settings.set', undefined);
+    emitHomeyEvent(homey, 'settings.set', { key: CAPACITY_DRY_RUN });
+    await flushAsync();
+    expect(state.dryRun).toBe(true);
+    expect(renders).toBe(0);
+  });
+
   it('keeps the runtime last-good posture when the setting is cleared externally', async () => {
     setup(false, false);
     emitHomeyEvent(homey, 'settings.set', CAPACITY_DRY_RUN);

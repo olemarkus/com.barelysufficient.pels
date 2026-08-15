@@ -1,4 +1,4 @@
-import { h, render } from 'preact';
+import { h, render, type ComponentChild } from 'preact';
 import { describe, expect, it } from 'vitest';
 import { DeadlinePlanHistory } from '../src/ui/views/DeadlinePlanHistory.tsx';
 import type {
@@ -37,7 +37,7 @@ const buildEntry = (
   ...overrides,
 });
 
-const mountIntoBody = (vnode: ReturnType<typeof h>): HTMLElement => {
+const mountIntoBody = (vnode: ComponentChild): HTMLElement => {
   const mount = document.createElement('div');
   document.body.appendChild(mount);
   render(vnode, mount);
