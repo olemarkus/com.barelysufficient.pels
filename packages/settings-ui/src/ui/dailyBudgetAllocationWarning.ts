@@ -13,7 +13,11 @@ export type AllocationWarning = {
 export const resolveAllocationWarning = (
   payload: DailyBudgetDayPayload | null,
 ): AllocationWarning | null => {
-  const pressure = payload?.state.allocationPressure;
+  // Narrow `payload` in its own step. Reaching a constrained `pressure` does
+  // imply a payload, but that is an inference the compiler cannot make through
+  // the optional chain — and every read below is on `payload`, not `pressure`.
+  if (!payload) return null;
+  const pressure = payload.state.allocationPressure;
   if (!pressure?.constrained) return null;
   // `constrained` reflects remaining-day saturation, so it can fire even when the
   // configured daily budget is already at or below the full-day ceiling. In that

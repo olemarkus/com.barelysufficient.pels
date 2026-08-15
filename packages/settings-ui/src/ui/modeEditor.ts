@@ -100,7 +100,14 @@ export const initModeEditor = (handlers: ModeEditorHandlers) => {
       void confirmModeNameEditor();
     }
   });
-  modeDeleteDialog?.addEventListener('close', () => {
-    if (modeDeleteDialog.returnValue === 'delete') void handlers.deleteMode();
-  });
+  if (modeDeleteDialog) {
+    // Captured rather than re-read inside the handler: `?.` narrows the CALL,
+    // not the binding, so the closure body was reading a possibly-null module
+    // binding. Binding it here also guarantees the handler reads the same
+    // dialog it was attached to.
+    const deleteDialog = modeDeleteDialog;
+    deleteDialog.addEventListener('close', () => {
+      if (deleteDialog.returnValue === 'delete') void handlers.deleteMode();
+    });
+  }
 };

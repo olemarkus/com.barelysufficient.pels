@@ -67,7 +67,11 @@ export const resolveViewPayload = (
   view: BudgetDayView,
 ): DailyBudgetDayPayload | null => {
   if (!payload) return null;
-  let key = payload.todayKey;
+  // Annotated rather than inferred from `todayKey`: yesterday and tomorrow are
+  // genuinely absent at the edges of the retained window (no yesterday on the
+  // first day, no tomorrow before prices land), so the widest of the three is
+  // the honest type. The `key ?` gate below is what already handles it.
+  let key: string | null | undefined = payload.todayKey;
   if (view === 'yesterday') key = payload.yesterdayKey;
   if (view === 'tomorrow') key = payload.tomorrowKey;
   return key ? (payload.days[key] ?? null) : null;

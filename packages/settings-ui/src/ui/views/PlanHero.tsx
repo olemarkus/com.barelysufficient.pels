@@ -13,6 +13,7 @@ import {
   formatProjectedEnergySubline,
   formatSafePaceSubline,
   type HeroMeterMarkerLabels,
+  type PlanHeroMetaInput,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
 import {
   HERO_INFO_TOOLTIP_TEXT,
@@ -796,7 +797,19 @@ export const PlanHero = ({
     ? resolveDisplayPlanDevices(plan, plan.devices ?? [], renderedAtMs, nowMs) as PlanDeviceSnapshot[]
     : [];
 
-  const headline = formatHeroHeadline(meta, nowMs);
+  // The wire and shared-domain spell absence differently, and translating
+  // between them is this boundary's job, not the formatter's. `totalKw` is the
+  // one meta field with a genuine "no reading this cycle" state — the capacity
+  // guard holds `null` until its meter's first sample, and again after an
+  // in-place meter swap (`resetLastTotalPower`) — and the wire spells that
+  // `null`. `shared-domain` must not carry the nullable: it sits after
+  // validation, so absence there is `undefined` and nothing else. Resolve once,
+  // here. (PR 4 of this train makes the meta DTO strict, at which point
+  // `PlanHeroMetaInput` collapses to required fields and this adapter goes.)
+  const heroMeta: PlanHeroMetaInput | undefined = meta === undefined
+    ? undefined
+    : { ...meta, totalKw: meta.totalKw ?? undefined };
+  const headline = formatHeroHeadline(heroMeta, nowMs);
   if (!headline || !meta) {
     return (
       <div class="plan-hero pels-hero" aria-live="polite" aria-busy="true">

@@ -5,7 +5,11 @@ import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
-  delete (document as Document & { hidden?: boolean }).hidden;
+  // `Document.hidden` is non-optional in lib.dom, so intersecting an optional
+  // `hidden?` still yields a required property and `delete` rejects it. Go
+  // through `unknown` to the shape this teardown actually manipulates: a bag
+  // carrying an optional override the tests stamp on and clear.
+  delete (document as unknown as { hidden?: boolean }).hidden;
 });
 
 describe('Redesign plan UI', () => {
@@ -67,7 +71,7 @@ describe('Redesign plan UI', () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
-    delete (document as Document & { hidden?: boolean }).hidden;
+    delete (document as unknown as { hidden?: boolean }).hidden;
   });
   
   describe('Overview plan UI', () => {
