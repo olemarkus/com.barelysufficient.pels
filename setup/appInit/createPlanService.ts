@@ -64,19 +64,6 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
       const observed = ctx.getObservedState(deviceId);
       return observed !== undefined && isDeviceObservationStale(observed);
     },
-    // Producer `deviceType` for the settings-UI control-mode card. Sourced from
-    // the RAW, undecorated device snapshot (`deviceManager.getSnapshot()`) — NOT
-    // `latestTargetSnapshot` — so building this map triggers no re-decoration
-    // side effects, and it is built once per serialize (O(n)). `deviceType` is a
-    // producer setting the planner no longer evaluates; the read model only uses
-    // it to pick the temperature-vs-binary card for non-stepped devices.
-    getDeviceTypeById: () => {
-      const map = new Map<string, 'temperature' | 'onoff'>();
-      for (const device of deviceManager.getSnapshot()) {
-        if (device.deviceType) map.set(device.id, device.deviceType);
-      }
-      return map;
-    },
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();
       for (const device of deviceManager.getSnapshot()) {

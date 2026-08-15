@@ -1,6 +1,7 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
+import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -168,11 +169,13 @@ export type EvKind = {
  * it stays on `DevicePlanDeviceBase` (entangled with the cross-kind boost
  * machinery).
  */
-export type TemperatureKind = {
-  currentTarget: number;
-  currentTemperature: number;
-  plannedTarget: number;
-};
+// One definition, aliased rather than restated: the trio is the same fact the
+// overview card renders, so a rename must not be able to drift between the two
+// ends of the seam. It is defined under a consumer-neutral name in shared-domain
+// (the lowest layer both sides may import) precisely so the planner's control
+// cluster is not defined by a type named for the UI — read the ownership rules
+// on `PlannedTemperatureState` before adding a field to either side.
+export type TemperatureKind = PlannedTemperatureState;
 
 /**
  * Binary-control field cluster (binary-variant slice of the discriminated-types

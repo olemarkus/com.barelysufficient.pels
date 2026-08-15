@@ -61,7 +61,6 @@ describe('overview transition signature', () => {
   // temperature wobble must not change the signature).
   it('changes when the satisfied-idle classification flips, not on sub-epsilon wobble', () => {
     const base = buildOverviewDevice({
-      deviceType: 'temperature',
       currentState: 'not_applicable',
       plannedState: 'keep',
       reason: r('keep'),
@@ -102,7 +101,6 @@ describe('device overview formatter', () => {
   // reading "Active (temperature-managed)" would contradict the card.
   it('formats a satisfied target-only keep device as Idle, unsatisfied as Active (temperature-managed)', () => {
     const base = buildOverviewDevice({
-      deviceType: 'temperature',
       currentState: 'not_applicable',
       plannedState: 'keep',
       reason: r('keep'),

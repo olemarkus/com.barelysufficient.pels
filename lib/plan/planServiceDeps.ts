@@ -3,6 +3,7 @@ import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
+import type { ObservedTemperatureState } from '../observer/observedDeviceStateProjection';
 import type { buildPelsStatus } from './pelsStatus';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
@@ -74,10 +75,7 @@ export type PlanServiceDeps = {
   // not planner command state. In particular, a temperature-control-disabled
   // device is projected to the planner as binary but still shows the external
   // target and measured temperature through this observer-owned seam.
-  getObservedTemperature?: (deviceId: string) => {
-    currentTarget: number;
-    currentTemperature: number;
-  } | null;
+  getObservedTemperature?: (deviceId: string) => ObservedTemperatureState | null;
   // Observation staleness for the settings-UI gray-state label AND the idle
   // classifier's "unresponsive" detection, sourced from the observer (its
   // canonical owner — `ObservedDeviceState` freshness), not the plan device. The
@@ -86,8 +84,6 @@ export type PlanServiceDeps = {
   getObservationStale?: (deviceId: string) => boolean;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
-  // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.
-  getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */
   getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
   getCapacityDryRun: () => boolean;

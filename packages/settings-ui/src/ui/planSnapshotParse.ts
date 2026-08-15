@@ -64,15 +64,14 @@ const hasValidTemperatureFacet = (value: unknown): boolean => (
 
 // Junk in ⇒ the whole facet is dropped (never a partial or nullable field):
 // a snapshot from an older build (or a malformed push) renders as a
-// non-temperature card rather than a card with invented numbers. `deviceType`
-// is demoted with it, exactly as the runtime producer co-produces the two —
-// otherwise this seam would emit the one shape the whole refactor forbids: a
-// device branded `'temperature'` with no facet behind it.
+// non-temperature card rather than a card with invented numbers. Dropping the
+// facet is the entire demotion — presence of the facet IS the temperature
+// discriminant on this shape, so there is no second field to keep in step.
 const withValidatedTemperatureFacet = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => {
   const facet = (device as { temperature?: unknown }).temperature;
   if (facet === undefined || hasValidTemperatureFacet(facet)) return device;
   const { temperature: _dropped, ...rest } = device as PlanDeviceSnapshot & { temperature?: unknown };
-  return { ...rest, deviceType: 'onoff' } as PlanDeviceSnapshot;
+  return rest as PlanDeviceSnapshot;
 };
 
 const needsTemperatureFacetSanitizing = (device: PlanDeviceSnapshot): boolean => {

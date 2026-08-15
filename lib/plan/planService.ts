@@ -98,7 +98,6 @@ const serializePlanForUi = (
       ? { getObservedTemperature: deps.getObservedTemperature }
       : {}),
     getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
-    getDeviceTypeById: deps.getDeviceTypeById,
     getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
   });
 };
