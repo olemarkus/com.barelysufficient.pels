@@ -14,6 +14,7 @@ import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
+import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
 
 const toastMocks = vi.hoisted(() => ({
   showToast: vi.fn<(
@@ -37,26 +38,28 @@ const setupDom = () => {
 
 const installHomey = async (settings: Record<string, unknown>, apiHandler: ApiHandler) => {
   const homeyModule = await import('../src/ui/homey.ts');
-  homeyModule.setHomeyClient({
+  const client: HomeySettingsClient = {
     ready: async () => {},
     get: (key, cb) => cb(null, settings[key] ?? null),
     set: (_key, _value, cb) => cb(null),
     api: (method, uri, bodyOrCallback, cbMaybe) => {
-      let callback = cbMaybe;
-      let body: unknown;
-      if (typeof bodyOrCallback === 'function') {
-        callback = bodyOrCallback;
-      } else {
-        body = bodyOrCallback;
-      }
+      // Homey's `api` is positionally overloaded: with no body the callback arrives in the
+      // third slot. The cast is the unpack of that overload — the only thing `typeof ===
+      // 'function'` can tell us is that it is callable.
+      const isCallbackInBodySlot = typeof bodyOrCallback === 'function';
+      const callback = isCallbackInBodySlot
+        ? (bodyOrCallback as HomeyCallback<unknown>)
+        : cbMaybe;
+      const body = isCallbackInBodySlot ? undefined : bodyOrCallback;
       if (typeof callback !== 'function') return;
       try {
         callback(null, apiHandler(method, uri, body));
       } catch (err) {
-        callback(err);
+        callback(err instanceof Error ? err : new Error(String(err)));
       }
     },
-  } as unknown as Parameters<typeof homeyModule.setHomeyClient>[0]);
+  };
+  homeyModule.setHomeyClient(client);
 };
 
 describe('budgetAdjustController', () => {

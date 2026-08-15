@@ -20,8 +20,11 @@ const originalConsoleError = console.error;
 
 const installElementInternalsPolyfill = () => {
   if (typeof window === 'undefined') return;
-  const proto = window.HTMLElement.prototype as typeof window.HTMLElement.prototype & {
-    attachInternals?: () => Record<string, unknown>;
+  // Not an intersection with the real prototype: lib.dom already declares
+  // `attachInternals(): ElementInternals`, and intersecting produces an overload no polyfill
+  // can satisfy. The explicit `this` keeps the replacement's receiver typed.
+  const proto = window.HTMLElement.prototype as unknown as {
+    attachInternals?: (this: HTMLElement) => Record<string, unknown>;
   };
   const originalAttachInternals = proto.attachInternals;
   proto.attachInternals = function attachInternals() {

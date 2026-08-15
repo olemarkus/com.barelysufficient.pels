@@ -524,6 +524,21 @@ export const installHomeyMock = (options: CreateHomeyMockOptions = {}): MockHome
   return homey;
 };
 
+/**
+ * Typed view of the mock `installHomeyMock` parked on `globalThis`, for suites that drive the
+ * WebView through the global rather than the returned handle.
+ *
+ * An accessor rather than a `declare global`, because the global is not always this mock:
+ * `homey.test.ts` parks arbitrary values there to exercise client discovery, and the Playwright
+ * fixtures install a different browser-side stub. Declaring it repo-wide would type those as a
+ * `MockHomeyClient` they are not.
+ */
+export const installedHomeyMock = (): MockHomeyClient => {
+  const homey = (globalThis as { Homey?: MockHomeyClient }).Homey;
+  if (!homey) throw new Error('installedHomeyMock() called before installHomeyMock()');
+  return homey;
+};
+
 export const emitHomeyEvent = (homey: MockHomeyClient, event: string, ...args: unknown[]) => {
   const listeners = homey.__listeners[event] || [];
   listeners.forEach((listener) => {
