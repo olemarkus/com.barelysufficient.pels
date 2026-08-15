@@ -631,7 +631,13 @@ export type DevicePlan = {
     dailySoftLimitKw?: number | null;
     budgetPaceKw?: number | null;
     projectedExemptKw?: number | null;
-    softLimitSource?: 'capacity' | 'daily' | 'both';
+    // No `'both'`. `resolveSoftLimitSource` (`planBuilder.ts`) is total over
+    // these two — when the paces coincide within `SOFT_LIMIT_EPSILON` it answers
+    // `'capacity'`, not a third "they meet here" state — and `PlanContext`
+    // already types it `SoftLimitSource = 'capacity' | 'daily'`. The third
+    // member was declared here and on the wire with nothing able to produce it,
+    // which bought a dead branch in every consumer that switched on it.
+    softLimitSource?: 'capacity' | 'daily';
     headroomKw: number;
     powerNowKw?: number | null;
     hasLivePowerSample?: boolean;

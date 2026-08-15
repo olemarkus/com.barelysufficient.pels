@@ -7,7 +7,14 @@
 // Mirrors `softLimitSource` in `packages/contracts/src/settingsUiApi.ts` and
 // `lib/plan/planTypes.ts`. Declared locally so shared-domain stays free of
 // cross-package type pulls — the union is short and stable.
-export type HeroSoftLimitSource = 'capacity' | 'daily' | 'both';
+//
+// There is no `'both'`. The producer is `resolveSoftLimitSource`
+// (`lib/plan/planBuilder.ts`), which is total over exactly these two: when the
+// two paces coincide within `SOFT_LIMIT_EPSILON` it answers `'capacity'`, not a
+// third "they meet here" state. The member and its copy existed on the wire
+// with nothing able to emit them. (Not to be confused with `limitReason` in
+// `homeLimitsStatus.ts`, which has a real four-member union including `'both'`.)
+export type HeroSoftLimitSource = 'capacity' | 'daily';
 
 export const HERO_INFO_TOOLTIP_TEXT = [
   'Power now is measured in kW — how fast electricity is being used right now.',
@@ -26,7 +33,6 @@ export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = 
   capacity: 'the hourly pace sets this marker; PELS starts reacting here.',
   daily: 'today\'s budget sets this marker, which may include power allowed beyond today\'s budget; '
     + 'PELS starts reacting here.',
-  both: 'the hourly and daily paces meet at this marker; PELS starts reacting here.',
 };
 
 export const HARD_CAP_TOOLTIP
@@ -42,7 +48,6 @@ export const HARD_CAP_TOOLTIP
 export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
   capacity: 'set by this hour\'s pace',
   daily: 'set by today\'s budget',
-  both: 'this hour\'s pace and today\'s budget meet here',
 };
 
 // `null` (rather than the capacity phrase) when the source is unknown: an
@@ -52,7 +57,7 @@ export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
 export const resolveSafePaceSourceText = (
   source: HeroSoftLimitSource | null | undefined,
 ): string | null => (
-  source === 'capacity' || source === 'daily' || source === 'both'
+  source === 'capacity' || source === 'daily'
     ? SAFE_PACE_SOURCE_BY_SOURCE[source]
     : null
 );
@@ -66,8 +71,6 @@ const resolveSafePaceTooltipBySource = (
   switch (source) {
     case 'daily':
       return SAFE_PACE_TOOLTIP_BY_SOURCE.daily;
-    case 'both':
-      return SAFE_PACE_TOOLTIP_BY_SOURCE.both;
     case 'capacity':
     case null:
     case undefined:
@@ -88,13 +91,10 @@ export const formatSafePaceTooltip = (
   composition?: SafePaceComposition,
 ): string => {
   const detail = resolveSafePaceComposition(safePaceKw, composition);
-  if ((source === 'daily' || source === 'both') && detail !== null) {
+  if (source === 'daily' && detail !== null) {
     const compositionDetail = `today's budget paces counted usage at ${formatKw(detail.budgetPaceKw)}, `
       + `plus ${formatKw(detail.projectedExemptKw)} reserved for devices allowed beyond it; `;
-    const sourceDetail = source === 'both'
-      ? `the hourly pace and today's budget meet here; ${compositionDetail}`
-      : compositionDetail;
-    return `Safe pace now ${formatKw(safePaceKw)} — ${sourceDetail}PELS starts reacting here.`;
+    return `Safe pace now ${formatKw(safePaceKw)} — ${compositionDetail}PELS starts reacting here.`;
   }
   return `Safe pace now ${formatKw(safePaceKw)} — ${resolveSafePaceTooltipBySource(source)}`;
 };
@@ -135,7 +135,7 @@ export const formatSafePaceComposition = (
   source: HeroSoftLimitSource | null | undefined,
   composition: SafePaceComposition,
 ): string | null => {
-  if (source !== 'daily' && source !== 'both') return null;
+  if (source !== 'daily') return null;
   const detail = resolveSafePaceComposition(safePaceKw, composition);
   if (detail === null) return null;
   return `Safe pace reserves ${formatKw(detail.projectedExemptKw)} for devices allowed beyond today's budget; `
