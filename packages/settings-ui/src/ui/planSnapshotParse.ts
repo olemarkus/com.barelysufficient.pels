@@ -94,6 +94,14 @@ const hasValidSteppedLoad = (value: unknown): boolean => (
   && Array.isArray((value as { profile: { steps?: unknown } }).profile.steps)
   && isStepIdOrNull((value as { reportedStepId?: unknown }).reportedStepId)
   && isStepIdOrNull((value as { targetStepId?: unknown }).targetStepId)
+  // REQUIRED on the cluster, so required here — the two move together. A
+  // missing `selectedStepId` is not a harmless gap: `hasSteppedRestorePending`
+  // compares it against the target, so `undefined !== targetStepId` makes an
+  // off device read "Resuming". And `getDeviceOverviewExpectedPowerKw` returns
+  // `planningPowerKw` directly now, with no fallback, so a non-finite one would
+  // reach the power text.
+  && typeof (value as { selectedStepId?: unknown }).selectedStepId === 'string'
+  && isFiniteNumber((value as { planningPowerKw?: unknown }).planningPowerKw)
   && typeof (value as { commandPending?: unknown }).commandPending === 'boolean'
 );
 

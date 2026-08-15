@@ -426,7 +426,9 @@ const isDrawing = (dev: PlanDeviceSnapshot): boolean => (
 );
 
 const resolveExpectedKw = (dev: PlanDeviceSnapshot): number | null => {
-  for (const value of [dev.planningPowerKw, dev.expectedPowerKw]) {
+  // Off the stepped cluster: a non-stepped device has no selected step and
+  // therefore no planning power, which `undefined` says exactly.
+  for (const value of [dev.steppedLoad?.planningPowerKw, dev.expectedPowerKw]) {
     if (typeof value === 'number' && value > 0.05) return value;
   }
   return null;

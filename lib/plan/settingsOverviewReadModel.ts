@@ -16,7 +16,6 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
 import type { ObservedTemperatureState } from '../observer/observedDeviceStateProjection';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
-import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 
 export type SettingsOverviewReadModelDeps = {
@@ -188,7 +187,7 @@ export function buildSettingsOverviewDeviceReadModel(
     ...temperatureFields,
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
-    planningPowerKw: isSteppedLoadDevice(device) ? device.planningPowerKw : undefined,
+
     budgetExempt: device.budgetExempt,
     temperatureBoost: device.temperatureBoost,
     temperatureBoostActive: device.temperatureBoostActive,
@@ -204,10 +203,9 @@ export function buildSettingsOverviewDeviceReadModel(
     observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,
     shedTemperature: device.shedTemperature,
-    selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
-    desiredStepId: device.desiredStepId,
-    reportedStepId: device.reportedStepId,
-    targetStepId: device.targetStepId,
+    // No flat step ids or planning power: every stepped fact rides the
+    // `steppedLoad` cluster, built once by `buildOverviewSteppedLoad`. Emitting
+    // both was how the corrected target id ended up with an uncorrected twin.
     binaryCommandPending: device.binaryCommandPending,
     pendingTargetCommand: device.pendingTargetCommand,
     // These read the draw off a `DeviceOverviewSnapshot`, where `currentDrawKw`

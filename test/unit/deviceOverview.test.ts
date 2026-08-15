@@ -8,7 +8,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { PLAN_STATE_CAPACITY_STATUS } from '../../packages/shared-domain/src/planStateLabels';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { steppedProfile } from '../utils/planTestUtils';
-import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSnapshot, DeviceOverviewSteppedLoad } from '../../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
 const r = (reason: string): DeviceReason => fixtureDeviceReason(reason)!;
@@ -35,23 +35,28 @@ const buildOverviewDevice = (
 
 // Stepped-ness is the PRESENCE of the `steppedLoad` cluster, so a stepped
 // fixture carries a real ladder (the shared `steppedProfile`) rather than a
-// marker string. Mirrors the producer, `buildOverviewSteppedLoad`: the cluster
-// repeats the step ids the formatter reads off the top level, so the fixture
-// stays one coherent snapshot rather than two disagreeing halves.
+// marker string.
+//
+// The step ids are set on the cluster, in the second argument. This helper used
+// to MIRROR flat top-level ids into the cluster so a fixture stayed "one
+// coherent snapshot rather than two disagreeing halves" — which was the right
+// instinct about a shape that genuinely had two halves. There is one now, so
+// there is nothing to keep in sync.
 const buildSteppedOverviewDevice = (
   overrides: Partial<DeviceOverviewSnapshot> & Pick<DeviceOverviewSnapshot, 'reason'>,
-): DeviceOverviewSnapshot => {
-  const device = buildOverviewDevice(overrides);
-  return {
-    ...device,
-    steppedLoad: {
-      profile: steppedProfile,
-      reportedStepId: device.reportedStepId ?? null,
-      targetStepId: device.targetStepId ?? device.desiredStepId ?? null,
-      commandPending: device.binaryCommandPending === true,
-    },
-  };
-};
+  stepped: Partial<DeviceOverviewSteppedLoad> = {},
+): DeviceOverviewSnapshot => ({
+  ...buildOverviewDevice(overrides),
+  steppedLoad: {
+    profile: steppedProfile,
+    reportedStepId: null,
+    targetStepId: null,
+    selectedStepId: 'low',
+    planningPowerKw: 1,
+    commandPending: false,
+    ...stepped,
+  },
+});
 
 describe('overview transition signature', () => {
   // Regression (PR #1955 review, Copilot + Codex): a satisfied target-only
@@ -231,10 +236,11 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'set_step',
-      targetStepId: 'max',
-      planningPowerKw: 3,
       currentDrawKw: 0,
       reason: r('shed due to capacity'),
+    }, {
+      targetStepId: 'max',
+      planningPowerKw: 3,
     }))).toEqual({
       powerMsg: null,
       stateMsg: 'Limited to Max',
@@ -247,11 +253,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
+      currentDrawKw: 0,
+      reason: r('keep'),
+    }, {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      currentDrawKw: 0,
-      reason: r('keep'),
     })).usageMsg).toBe('Measured: 0.00 kW / Planned: 3.00 kW (reported: Low / target: Max)');
   });
 
@@ -259,11 +266,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
+      currentDrawKw: 0.6,
+      reason: r('cooldown (restore, 10s remaining)'),
+    }, {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      currentDrawKw: 0.6,
-      reason: r('cooldown (restore, 10s remaining)'),
     }))).toEqual({
       powerMsg: null,
       stateMsg: 'Active (low → max)',
@@ -282,12 +290,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'off',
       plannedState: 'keep',
-      selectedStepId: 'off',
-      desiredStepId: 'low',
-      targetStepId: 'low',
-      planningPowerKw: 1.25,
       currentDrawKw: 0,
       reason: r('restore off -> low (need 1.25kW)'),
+    }, {
+      targetStepId: 'low',
+      selectedStepId: 'off',
+      planningPowerKw: 1.25,
     })).stateMsg).toBe('Resuming');
   });
 
@@ -295,11 +303,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
+      currentDrawKw: 0.4,
+      reason: r('keep'),
+    }, {
       reportedStepId: 'low',
       targetStepId: 'low',
       planningPowerKw: 1.25,
-      currentDrawKw: 0.4,
-      reason: r('keep'),
     }))).toEqual({
       powerMsg: null,
       stateMsg: 'Active',
@@ -312,11 +321,12 @@ describe('device overview formatter', () => {
     const device = buildSteppedOverviewDevice({
       currentState: 'disappeared',
       plannedState: 'keep',
+      currentDrawKw: 0.6,
+      reason: r('cooldown (restore, 10s remaining)'),
+    }, {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      currentDrawKw: 0.6,
-      reason: r('cooldown (restore, 10s remaining)'),
     });
 
     expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
@@ -333,11 +343,12 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'keep',
       available: false,
+      currentDrawKw: 0.6,
+      reason: r('cooldown (restore, 10s remaining)'),
+    }, {
       reportedStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
-      currentDrawKw: 0.6,
-      reason: r('cooldown (restore, 10s remaining)'),
     });
 
     expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
@@ -354,10 +365,11 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'keep',
       observationStale: true,
-      reportedStepId: 'low',
-      targetStepId: 'max',
       currentDrawKw: 0,
       reason: r('keep'),
+    }, {
+      reportedStepId: 'low',
+      targetStepId: 'max',
     }))).toBe(false);
   });
 
@@ -365,11 +377,12 @@ describe('device overview formatter', () => {
     const device = buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
+      currentDrawKw: 0,
+      reason: r('keep'),
+    }, {
       reportedStepId: 'max',
       targetStepId: 'max',
       planningPowerKw: 3,
-      currentDrawKw: 0,
-      reason: r('keep'),
     });
 
     expect(getDeviceOverviewReportedStepId(device)).toBe('max');
@@ -581,19 +594,21 @@ describe('device overview transition signatures', () => {
     const base = buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
-      reportedStepId: 'low',
-      targetStepId: 'low',
       currentDrawKw: 0,
       reason: r('keep'),
+    }, {
+      reportedStepId: 'low',
+      targetStepId: 'low',
     });
 
     expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(buildDeviceOverviewTransitionSignature(buildSteppedOverviewDevice({
         currentState: 'on',
         plannedState: 'keep',
-        reportedStepId: 'low',
-        targetStepId: 'max',
         currentDrawKw: 0,
         reason: r('keep'),
+    }, {
+      reportedStepId: 'low',
+      targetStepId: 'max',
     })));
   });
 
