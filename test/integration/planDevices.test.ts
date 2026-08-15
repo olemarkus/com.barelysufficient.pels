@@ -65,9 +65,8 @@ const plannedTargetOf = (device: DevicePlanDevice): number | undefined =>
   (isTemperaturePlanDevice(device) ? device.plannedTarget : undefined);
 
 
-/** Narrow a plan device to read its EV boost-active flag in assertions. */
-const evBoostActiveOf = (device: DevicePlanDevice): boolean | undefined =>
-  (device.objectiveKind === 'ev_soc' ? device.evBoostActive : undefined);
+/** The plan device's one boost flag, whatever axis produced it. */
+const boostActiveOf = (device: DevicePlanDevice): boolean => device.boostActive;
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
@@ -138,9 +137,9 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     })[0];
 
-    expect(build(54.9).temperatureBoostActive).toBe(true);
-    expect(build(56.5).temperatureBoostActive).toBe(false);
-    expect(build(57).temperatureBoostActive).toBe(false);
+    expect(build(54.9).boostActive).toBe(true);
+    expect(build(56.5).boostActive).toBe(false);
+    expect(build(57).boostActive).toBe(false);
   });
 
   it('enables temperature boost from the producer-resolved temperature (plan does not distrust the observer)', () => {
@@ -176,7 +175,7 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(planDevice.temperatureBoostActive).toBe(true);
+    expect(planDevice.boostActive).toBe(true);
   });
 
   it('does not enable temperature boost without a target temperature capability', () => {
@@ -196,10 +195,10 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(planDevice.temperatureBoostActive).toBe(false);
+    expect(planDevice.boostActive).toBe(false);
   });
 
-  it('emits a structured debug event when temperature boost becomes active', () => {
+  it('emits one generic boost transition event when boost becomes active', () => {
     const state = createPlanEngineState();
 
     buildInitialPlanDevices({
@@ -217,13 +216,15 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(logCapture.findEvent('temperature_boost_state_changed')).toMatchObject({
+    // One generic event, whatever the device boosts on. The unit-bearing detail
+    // (°C / %) belongs to the producer that compared the value with the floor.
+    expect(logCapture.findEvent('boost_state_changed')).toMatchObject({
       deviceId: 'tank',
       deviceName: 'Water tank',
       active: true,
       previousActive: false,
-      currentTemperatureC: 54.9,
-      boostBelowC: 55,
+      boostRequested: true,
+      forced: false,
     });
   });
 
@@ -233,7 +234,7 @@ describe('buildInitialPlanDevices', () => {
     // so even though boost was active last cycle it ends now. Previously the +2 °C margin
     // kept it active until 57 °C, manufacturing overshoot.
     const state = createPlanEngineState();
-    state.temperatureBoostActiveByDevice.tank = true;
+    state.boostActiveByDevice.tank = true;
 
     buildInitialPlanDevices({
       context: buildContext([steppedInput({
@@ -250,11 +251,11 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(logCapture.findEvent('temperature_boost_state_changed')).toMatchObject({
+    expect(logCapture.findEvent('boost_state_changed')).toMatchObject({
       deviceId: 'tank',
       active: false,
       previousActive: true,
-      currentTemperatureC: 56,
+      boostRequested: false,
     });
   });
 
@@ -304,9 +305,9 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(evBoostActiveOf(planDevice)).toBe(true);
+    expect(boostActiveOf(planDevice)).toBe(true);
     expect(planDevice.budgetExempt).toBe(false);
-    expect(state.evBoostActiveByDevice.charger).toBe(true);
+    expect(state.boostActiveByDevice.charger).toBe(true);
   });
 
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {

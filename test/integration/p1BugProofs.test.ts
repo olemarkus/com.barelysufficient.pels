@@ -108,6 +108,7 @@ describe('P1 bug proofs', () => {
     const device = buildPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
+      boostActive: false,
       currentDrawKw: 0,
       expectedPowerKw: 2,
       planningPowerKw: 4,
@@ -192,6 +193,8 @@ describe('P1 bug proofs', () => {
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Shed',
           commandableNow: true,
+          boostSupported: false,
+          boostRequested: false,
           targets: [],
           binaryControl: { on: true },
           currentOn: true,
@@ -207,6 +210,8 @@ describe('P1 bug proofs', () => {
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Stale',
           commandableNow: true,
+          boostSupported: false,
+          boostRequested: false,
           targets: [],
           binaryControl: { on: true },
           currentOn: true,
@@ -244,12 +249,14 @@ describe('P1 bug proofs', () => {
         name: 'Binary heater',
         currentState: 'unknown',
         plannedState: 'keep',
+        boostActive: false,
       }),
       steppedPlanDevice({
         id: 'stepped',
         name: 'Tank',
         currentState: 'unknown',
         plannedState: 'keep',
+        boostActive: false,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -349,6 +356,7 @@ describe('P1 bug proofs', () => {
         name: 'Heater',
         currentState: 'off',
         plannedState: 'shed',
+        boostActive: false,
         currentTarget: 21,
         plannedTarget: 21,
         binaryCapabilityId: 'onoff',

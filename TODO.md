@@ -265,9 +265,9 @@ patch releases, not release blockers; each item carries its own source/date.
 
 - [ ] **Limit/pause-lower-priority rescue is silently ineffective during a step-ladder gap.**
       While a committed task is served frozen through a missing step ladder, the decoration still
-      grants `forceBoostActive`/`reservesStartupPower`, but `resolveTemperatureBoostActive` /
-      `resolveEvBoostActive` reject a device without a stepped profile BEFORE consulting
-      `forceBoostActive` — so
+      grants `forceBoostActive`/`reservesStartupPower`, but a device without a stepped profile
+      resolves `boostSupported: false` at the producer (`resolveBoostSupported`), and
+      `resolveBoostActive` gates the forced request on that bit — so
       under cap contention the task cannot actually claim power from lower-priority devices while
       the structured log's `limitLowerPriorityApplied`/`pauseLowerPriorityApplied` read true
       (those flags were config echoes before the gap-serve too). Strictly better than pre-fix

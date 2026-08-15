@@ -136,6 +136,8 @@ const buildDevice = (params: {
   id: DEVICE_ID,
   name: 'Water Heater',
   commandableNow: true,
+  boostSupported: false,
+  boostRequested: false,
   controllable: false, // capacity-based control toggle is OFF for this scenario
   controlModel: 'stepped_load',
   binaryCapabilityId: 'onoff',
@@ -238,6 +240,8 @@ const buildContender = (params: {
   id: CONTENDER_ID,
   name: 'Contender',
   commandableNow: true,
+  boostSupported: false,
+  boostRequested: false,
   controllable: params.controllable ?? true,
   binaryCapabilityId: 'onoff',
   binaryControl: { on: params.currentOn },

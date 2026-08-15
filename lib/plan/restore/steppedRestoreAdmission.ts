@@ -10,7 +10,6 @@ import { isOffSteppedRestoreCandidate } from './devices';
 import { computeRestoreBufferKw } from './accounting';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import { isBoostActive } from '../../device/deviceActionProjection';
 import { countShedDevices } from './coordination';
 import {
   buildReservedForStartReason,
@@ -169,7 +168,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
   // before the next), and per-device restore timing. The evidence gate
   // remains only on the swap path (`canUseSwapForSteppedRestore`), where
   // phantom boost demand would pause a running lower-priority device.
-  if (isBoostActive(dev)) return false;
+  if (dev.boostActive) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -256,7 +255,7 @@ function canUseSwapForSteppedRestore(params: {
  * overrides fairness unconditionally.
  */
 function isBoostEffectiveForEscalation(dev: SteppedPlanDevice): boolean {
-  if (!isBoostActive(dev)) return false;
+  if (!dev.boostActive) return false;
   if (dev.hasRecentObservedDraw === false) return false;
   return true;
 }

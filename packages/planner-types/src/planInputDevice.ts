@@ -221,6 +221,29 @@ export type PlanInputDeviceBase = {
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   /**
+   * Producer-resolved boost facts, kind-free by construction. The producer
+   * (`resolveBoostSupported` / `resolveBoostRequested` in
+   * `lib/device/deviceActionProjection.ts`) asks the device-kind questions once
+   * — is this a plugged-in stepped charger, is this a stepped device with a
+   * temperature target, is its measured value below its configured floor — and
+   * hands the planner two booleans. The planner never sees a state of charge, a
+   * temperature, or a boost config.
+   *
+   * - `boostSupported`: the device has a boost axis PELS can drive right now.
+   *   This is what a FORCED boost needs (the deferred limit-lower-priority
+   *   rescue lane sets `forceBoostActive` independently of the device's own
+   *   threshold, and must not engage it on a charger PELS cannot resume).
+   * - `boostRequested`: the device's own policy asks for boost this cycle.
+   *   Implies `boostSupported`.
+   *
+   * Neither includes the runnable gate (`controllable` / `managed` /
+   * `available`): `controllable` can still be flipped by deferred-objective
+   * admission after this producer has run, so `resolveBoostActive`
+   * (`lib/plan/planBoost.ts`) applies those flags at plan time.
+   */
+  boostSupported: boolean;
+  boostRequested: boolean;
+  /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
    * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback

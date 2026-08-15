@@ -21,14 +21,7 @@ import {
 import { applyOffStateReason } from './planOffStateReason';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
-import {
-  emitEvBoostStateChange,
-  resolveEvBoostActive,
-} from './planEvBoost';
-import {
-  emitTemperatureBoostStateChange,
-  resolveTemperatureBoostActive,
-} from './planTemperatureBoost';
+import { emitBoostStateChange, resolveBoostActive } from './planBoost';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { addPerfDuration } from '../utils/perfCounters';
 import { getLogger } from '../logging/logger';
@@ -137,16 +130,9 @@ export function buildInitialPlanDevices(params: {
     )
       ? deps.getShedBehavior(dev.id)
       : { action: 'turn_off', temperature: null, stepId: null };
-    const previousActive = state.temperatureBoostActiveByDevice[dev.id] === true;
-    const active = resolveTemperatureBoostActive(dev);
-    emitTemperatureBoostStateChange({ dev, previousActive, active });
-    const previousEvBoostActive = state.evBoostActiveByDevice[dev.id] === true;
-    const evBoostActive = resolveEvBoostActive(dev);
-    emitEvBoostStateChange({
-      dev,
-      previousActive: previousEvBoostActive,
-      active: evBoostActive,
-    });
+    const previousBoostActive = state.boostActiveByDevice[dev.id] === true;
+    const boostActive = resolveBoostActive(dev);
+    emitBoostStateChange({ dev, previousActive: previousBoostActive, active: boostActive });
     setupMs += Date.now() - t0;
     const t1 = Date.now();
     const base = buildBasePlanDevice({
@@ -165,17 +151,12 @@ export function buildInitialPlanDevices(params: {
       shedSet,
       anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
       shedReasons,
-      temperatureBoostActive: active,
-      evBoostActive,
+      boostActive,
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
     });
     baseMs += Date.now() - t1;
-    state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
-    // `evBoostActive` lives on the orthogonal `EvKind` cluster; narrow before
-    // reading. Non-EV devices never have boost active, so the `false` fallback
-    // matches the prior behaviour.
-    state.evBoostActiveByDevice[dev.id] = base.evBoostActive === true;
+    state.boostActiveByDevice[dev.id] = base.boostActive;
     const t2 = Date.now();
     const withOffStateReason = applyOffStateReason({
       planDevice: base,

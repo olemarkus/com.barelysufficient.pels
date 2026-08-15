@@ -13,7 +13,15 @@ import {
   SURPLUS_ABSORB_RESERVE_KW,
   syncSurplusEligibilityState,
 } from './admission';
-import { supportsTemperatureBoostDevice } from './planTemperatureBoost';
+import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
+
+// A surplus LIFT is a setpoint raise, so it only means anything on a device with
+// a temperature target to raise. This is the one place the question is asked;
+// it moved here from the retired `planTemperatureBoost.ts` when the two per-kind
+// boost modules collapsed into the generic `planBoost.ts`.
+const supportsTemperatureLift = (device: PlanInputDevice): boolean => (
+  hasTemperatureBoostTarget(device.targets)
+);
 
 // Per-device price-opt blob, extended with the surplus-absorb opt-in fields it
 // rides. By convention the planner keeps a local structural copy of this blob
@@ -217,7 +225,7 @@ export function resolveSurplusEligibility(params: {
   const willing = params.devices.filter(
     (dev) => (excludeIds === undefined || !excludeIds.has(dev.id))
       && (dev.surplusOnly === true
-        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureBoostDevice(dev))),
+        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
   );
 
   // Drop stale eligibility for any tracked device that is no longer a willing

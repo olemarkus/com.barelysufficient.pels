@@ -75,9 +75,9 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
           priority: 1,
           currentState: 'on',
           plannedState: 'keep',
+          boostActive: true,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
-          temperatureBoostActive: true,
           ...(hasRecentObservedDraw !== undefined
             ? { hasRecentObservedDraw: hasRecentObservedDraw }
             : {}),
@@ -88,6 +88,7 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
           priority: 5,
           currentState: 'on',
           plannedState: 'keep',
+          boostActive: false,
           controllable: true,
           // `estimatePower` sets both for a declared load; only its
           // knows-nothing `default` arm leaves `expectedPowerKw` unset.

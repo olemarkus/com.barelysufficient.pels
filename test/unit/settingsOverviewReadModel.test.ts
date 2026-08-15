@@ -376,4 +376,46 @@ describe('settingsOverviewReadModel', () => {
     });
     expect(buildSettingsOverviewDeviceReadModel(settled).stateKind).toBe('idle');
   });
+  describe('boost axis on the wire', () => {
+    // The planner holds one boost decision; the two wire flags exist only to
+    // pick the card's boost wording, so the read model resolves WHICH axis from
+    // the device's own identity. The forced case is the one a config-presence
+    // rule gets wrong: a smart-task rescue boosts a device whose owner
+    // configured no threshold at all, and that card must still say so.
+    const boosting = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) => buildPlanDevice({
+      id: 'dev',
+      boostActive: true,
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      ...overrides,
+    });
+
+    it('reads a charger as boosting on state of charge, configured or forced', () => {
+      const deps = { getObservedEvChargingState: () => 'plugged_in_charging' as const };
+      const forced = buildSettingsOverviewDeviceReadModel(boosting(), deps);
+      expect(forced.evBoostActive).toBe(true);
+      expect(forced.temperatureBoostActive).toBe(false);
+
+      // A `target_power` charger exposes no plug state; its configured SoC
+      // threshold is what identifies the axis.
+      const configured = buildSettingsOverviewDeviceReadModel(
+        boosting({ evBoost: { enabled: true, boostBelowPercent: 40 } }),
+      );
+      expect(configured.evBoostActive).toBe(true);
+    });
+
+    it('reads anything else as boosting on temperature', () => {
+      const device = buildSettingsOverviewDeviceReadModel(boosting({ deviceType: 'temperature' }));
+      expect(device.temperatureBoostActive).toBe(true);
+      expect(device.evBoostActive).toBe(false);
+    });
+
+    it('reports neither axis when the device is not boosting', () => {
+      const device = buildSettingsOverviewDeviceReadModel(buildPlanDevice({
+        id: 'dev',
+        reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      }));
+      expect(device.temperatureBoostActive).toBe(false);
+      expect(device.evBoostActive).toBe(false);
+    });
+  });
 });

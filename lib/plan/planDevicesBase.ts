@@ -29,7 +29,6 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
-import { buildBoostPlanDeviceFields } from './planEvBoost';
 
 // For shed stepped-load devices at the off step, expectedPowerKw should reflect the lowest
 // positive step so that restore planning uses a realistic power estimate rather than zero.
@@ -154,8 +153,7 @@ export function buildBasePlanDevice(params: {
   shedSet: Set<string>;
   anyOtherDeviceLimited: boolean;
   shedReasons: Map<string, DeviceReason>;
-  temperatureBoostActive: boolean;
-  evBoostActive: boolean;
+  boostActive: boolean;
   surplusAbsorbActive: boolean;
 }): DevicePlanDevice {
   const {
@@ -171,8 +169,7 @@ export function buildBasePlanDevice(params: {
     shedBehavior,
     shedSet,
     shedReasons,
-    temperatureBoostActive,
-    evBoostActive,
+    boostActive,
     surplusAbsorbActive,
   } = params;
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
@@ -198,7 +195,7 @@ export function buildBasePlanDevice(params: {
     desiredStepId,
   }, {
     anyOtherDeviceLimited: params.anyOtherDeviceLimited,
-    boostActive: [temperatureBoostActive, evBoostActive].includes(true),
+    boostActive,
   });
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
@@ -248,7 +245,15 @@ export function buildBasePlanDevice(params: {
     controllable,
     budgetExempt: dev.budgetExempt,
     available: dev.available,
-    ...buildBoostPlanDeviceFields({ dev, temperatureBoostActive, evBoostActive, surplusAbsorbActive }),
+    boostActive,
+    surplusAbsorbActive,
+    // Display carriers only: the overview read model renders the boost card
+    // variant from which config the device has, and the SoC bag from the
+    // charger's reading. The planner itself reads none of them — its whole
+    // boost vocabulary is `boostActive` above.
+    temperatureBoost: dev.temperatureBoost,
+    evBoost: dev.evBoost,
+    stateOfCharge: dev.stateOfCharge,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
     binaryCommandPending: binaryCommandPending || undefined,
