@@ -256,9 +256,12 @@ patch releases, not release blockers; each item carries its own source/date.
       incident, and why it found nothing while the overview lane showed `expectedPowerKw: 1` was
       never determined. What remains open is the FIRST hypothesis: why the stepped ladder itself
       (`steppedLoadProfile` / `planningPowerKw`) never re-resolved after the restart, which is
-      what still degrades actuation to binary+setpoint. Source: 2026-08-02 task-6 regrounding of
-      the 2026-08-01 per-axis-admission investigation; narrowed by the expected-power producer
-      collapse, 2026-08-09. [P1]
+      what still degrades actuation to binary+setpoint. Narrowing note (2026-08-14): the producer
+      now refuses a stepped cluster on THREE arms, not two — no live profile, no priced rung, or a
+      profile that named no `selectedStepId` — so when re-investigating, read
+      `resolveSteppedClusterFields` for which arm fired rather than assuming the profile was
+      absent. Source: 2026-08-02 task-6 regrounding of the 2026-08-01 per-axis-admission
+      investigation; narrowed by the expected-power producer collapse, 2026-08-09. [P1]
 
 - [ ] **Limit/pause-lower-priority rescue is silently ineffective during a step-ladder gap.**
       While a committed task is served frozen through a missing step ladder, the decoration still
@@ -658,18 +661,6 @@ What remains open is below.*
       users mid-day, so it wants its own change with a migration thought through.
       Source: adversarial review of the measured-draw collapse, 2026-08-08. [P1]
 
-- [ ] **The executor's observed draw is unnamed and undocumented at its seam.**
-      `lib/executor/executablePlanProjection.ts:234` puts `snapshot.measuredPowerKw`
-      on `ExecutableObservedSteppedLoadState`. It IS consumed —
-      `resolveObservedStepForShed`
-      (`lib/executor/executableSteppedLoadProjection.ts:367-378`) prices an
-      unknown-step `set_step` shed from it — but nothing says so at either end, and
-      an earlier draft of this entry wrongly proposed deleting it. The seam also
-      takes both real snapshots and (via `planExecutionDrift`) plan devices, so it
-      carries the snapshot's field name while one caller adapts. Document the
-      consumer at the field, or give the state a name that says what it is for.
-      Source: adversarial review of the measured-draw collapse, 2026-08-08. [P3]
-
 - [ ] **The stepped shed-relief fallback gate is inverted.**
       `resolveSteppedCandidatePower` (`lib/plan/planSteppedLoad.ts`) used to take
       the calibrated/nameplate delta when the reading was ABSENT; it now takes it
@@ -737,16 +728,6 @@ What remains open is below.*
       still reaches diagnostics/starvation classification.) Source: prod investigation + test
       suite, 2026-07-25. [P2]
 
-- [ ] **Stepped devices never say how much power a resume is waiting for.**
-      `steppedRestoreAdmission.ts` hardcodes `headroomKw: null` on both `restoreNeed` reasons, so
-      `formatRestoreNeedUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts` ~388-389)
-      falls through to the bare "Waiting for available power", while binary/temperature devices —
-      which go through `planReasonStrings.ts` with real admission margins — get
-      "Waiting to resume — X kW more needed" (the admission-accurate shortfall from
-      `resolveRestoreShortfallKw`; do NOT reintroduce the retired "needs X kW, Y kW available"
-      pair). `availableHeadroom` is already in scope at
-      both sites, so this is a two-line fix. Persona: owner watching a paused EV charger and unable
-      to tell how far off a resume is. Source: prod investigation 2026-07-25. [P2]
 
 - [ ] **"Raising target 6a to 6a".** `formatRestoreNeedUserFacing`
       (`packages/shared-domain/src/planReasonFormatting.ts` ~385-387) renders
@@ -944,12 +925,17 @@ program) remain deferred.*
       overload for `Pick`-typed callers). Migrated the ~11 plan/executor sites that already branch on
       the stepped discriminant so they read `steppedLoadProfile` without `?.`/null-assert. **No fields
       were moved off the base types** — the flat types keep every field optional; narrowing happens
-      only at the guard. The field-level variant discrimination that actually forbids cross-kind
-      field reads (temperature ~21 files, stepped ~34, EV ~26) and the `TargetDeviceSnapshot`
-      discrimination (~119 importers) remain as follow-up slices. Temperature/EV kind guards were NOT
-      added in slice 1 — no plan/executor site branches on `controlModel === 'temperature_target'`
-      (or the EV capability) and then reads kind-specific fields un-narrowed, so a guard would be
-      dead code; add those alongside the field-move slices that create real consumers.
+      only at the guard. **The plan-device half of this item is DONE as of the strict-contracts
+      train (2026-08-14).** Field-level variant discrimination now forbids cross-kind field reads
+      on all four clusters: temperature (`isTemperaturePlanDevice` + `TemperatureClusterFields`,
+      the trio all required), stepped (`isSteppedLoadDevice` + `SteppedClusterFields`, including a
+      required `selectedStepId`), binary (`isBinaryPlanDevice`), and EV (`isEvPlanDevice`). The
+      superseded note that "temperature/EV kind guards were NOT added in slice 1 … a guard would
+      be dead code" no longer describes the tree — those guards exist and have many consumers.
+      **What is left is exactly one thing: `TargetDeviceSnapshot` discrimination (~119
+      importers)** — the observer/transport-side snapshot still carries its clusters as one
+      optional bag, so an un-narrowed cross-kind read there is still legal. That is the remaining
+      slice; do not re-scope this entry to the plan device.
       **EV-observed guard landed (slice 1 of the observer-snapshot EV discrimination):** added
       `isEvObserved(snapshot): snapshot is EvObservedSnapshot` + `EvObservedSnapshot` (=
       `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) — the observer-snapshot twin of
@@ -1333,22 +1319,6 @@ program) remain deferred.*
       stripped with the facet, so `supportsTemperatureBoostDevice` already answered false. Fix
       is to resolve the configured behavior from the device's stored configuration rather than
       its live modality. Found 2026-08-14. [P2]
-- [ ] **`SettingsUiPlanDeviceSnapshot`'s `[key: string]: unknown` index signature defeats
-      contract-removal enforcement.** `packages/contracts/src/settingsUiApi.ts` lets a consumer
-      keep reading a field the DTO no longer declares — which is exactly how a dead
-      `typeof dev.plannedTarget === 'number'` arm survived the atomic-facet migration in
-      `PlanOverview.tsx` through a passing typecheck (caught in review, fixed there). Narrowing
-      or deleting the index signature would make every future field move onto an atomic cluster
-      fail loudly at compile time. Found 2026-08-14. [P2]
-- [ ] **The temperature facet's shape is spelled four times.** `TemperatureKind`
-      (`lib/plan/planTypes.ts`) and `DeviceOverviewTemperature`
-      (`packages/shared-domain/src/deviceOverview.ts`) are byte-identical trios, and the observed
-      PAIR is re-declared inline in `readObservedTemperatureState`
-      (`lib/observer/observedDeviceStateProjection.ts`), `planServiceDeps.ts`,
-      `settingsOverviewReadModel.ts`, and `IdleClassifierDeviceInput`
-      (`lib/observer/idleClassifier.ts`). One exported named type per shape (facet + observed
-      pair) removes the drift surface at no layering cost — `planTypes` already imports
-      shared-domain. Found 2026-08-14. [P2]
 
 - [ ] **An activation attempt's inactive close and its attribution-window expiry disagree about penalty.**
       `syncActivationPenaltyState` (`lib/plan/admission/activationBackoff.ts`) tests
@@ -1396,9 +1366,23 @@ program) remain deferred.*
       field is always resolvable. Found while removing the neighbouring energy fallbacks,
       2026-08-12. [P2]
 
+- [ ] **The WebView adapter validates the temperature facet but not the EV pair.**
+      *Persona:* owner on an older app build after a partial upgrade, reading an EV card.
+      *Hypothesis:* `parsePlanSnapshot` (`packages/settings-ui/src/ui/planSnapshotParse.ts`)
+      casts the payload and validates only `id`/`name`/`controllable`/`available`/`reason` plus
+      the temperature facet, so `evChargingState` and `carChargingState` — both now declared as
+      the closed `EvChargingState` union (2026-08-14, when the index signature came off
+      `SettingsUiPlanDeviceSnapshot`) — enter shared-domain typed as that union while carrying an
+      arbitrary string. Consequence today is benign: `resolveEvCarExceptionLabel` compares against
+      literals and falls through to `null`. It is a hole in this seam's own doctrine rather than a
+      live bug — the fix is to extend the existing drop-whole treatment to the EV pair, so the
+      declared type and the validated type are the same set. Source: 2026-08-14 adversarial review
+      of the strict-contracts train. [P3]
 - [ ] **Extend the control-model vocab guard to `packages/shared-domain/**`.**
       `controlModel` is gone from the overview wire — the stepped discriminant is now presence of
-      the `steppedLoad` cluster, and the temperature card keys on `deviceType`. But
+      the `steppedLoad` cluster, and the temperature card keys on presence of the atomic
+      `temperature` facet (2026-08-14; `deviceType` is a producer-derived label now, no longer a
+      consumer discriminant). But
       `scripts/check-control-model-vocab.mjs` still scopes only `lib/plan/**` and
       `lib/executor/**`, which is exactly how the field survived in shared-domain in the first
       place: by geography, not by argument. Widen the guard so it cannot come back.
@@ -1434,7 +1418,10 @@ program) remain deferred.*
       stepped cluster (`steppedLoad`, present iff stepped), which is exactly where this belongs —
       `getDeviceOverviewExpectedPowerKw` can read it off there. Until it moves, `toPlanDevice` and
       `decorateSnapshotWithDeviceControl` still spend a line each explicitly clearing it on the
-      snapshot carrier, which is the tell that it is on the wrong type.
+      snapshot carrier, which is the tell that it is on the wrong type. Move `selectedStepId` in
+      the same pass: it became REQUIRED on the planner-side stepped cluster (2026-08-14) but is
+      still flat and optional on these same wire shapes, so it is the identical bug one field over
+      and splitting the two moves would touch every carrier twice.
 
 - [ ] **`isValidPlanDevice` vouches for more than it checks.**
       `setup/settingsUiAppRuntime.ts` narrows `unknown` to `SettingsUiPlanDevice` while inspecting
@@ -1978,11 +1965,11 @@ program) remain deferred.*
 - [ ] **Consolidate the two device-modality resolutions the device-page train left behind.**
       *Persona:* next engineer touching device-detail predicates.
       *Hypothesis:* the draft-over-persisted `targetPowerConfig` merge lives in three sites
-      (`deviceKind.ts` ×2, `deviceControlProfiles.ts`) and the temperature-modality disjunction
-      (`controlModel === 'temperature_target' || typeof plannedTarget === 'number'`) in two
-      (`liveStatus.ts`); one `resolveEffectiveTargetPowerConfig` + one named modality predicate
-      also retires the `controlMode.ts` re-export shim. Source: 2026-08-08 stack review,
-      pels-layering-guardian. [P2]
+      (`deviceKind.ts` ×2, `deviceControlProfiles.ts`); one `resolveEffectiveTargetPowerConfig`
+      retires the duplication and the `controlMode.ts` re-export shim with it. (The
+      temperature-modality half of this item closed 2026-08-14 with the atomic temperature facet:
+      both `liveStatus.ts` sites now key on `dev.temperature !== undefined`.) Source: 2026-08-08
+      stack review, pels-layering-guardian. [P2]
 - [ ] **Device page: first-run and prerequisite gaps the redesign exposed.**
       *Persona:* new user setting up their first devices.
       *Hypothesis:* four related holes — (a) an unmanaged EV buries Setup below two inert cards

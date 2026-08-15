@@ -295,9 +295,11 @@ function resolveSteppedClusterFields(
  * ladder has no rate to plan against and must be served its frozen committed
  * plan, while a device that was never stepped may have a rate synthesised for it.
  *
- * Both ways the cluster comes up empty are the same gap and answer alike: no live
+ * Every way the cluster comes up empty is the same gap and answers alike: no live
  * profile reached the snapshot (a restart before the Flow re-fires, a transient
- * SDK read), or the ladder in hand priced no rung.
+ * SDK read), the ladder in hand priced no rung, or the ladder resolved but named
+ * no selected step (the third arm — a half cluster is refused whole rather than
+ * shipped with a hole).
  *
  * Reads the EFFECTIVE device: a temperature-disabled device has already been
  * re-projected to `binary_power`, so it is honestly not in a gap — it is not

@@ -134,7 +134,6 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(
       device,
       {},
-      undefined,
       confirmedProfile,
     ).steppedLoad).toEqual(expect.objectContaining({
       profile: confirmedProfile,
@@ -208,28 +207,20 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge).toBeUndefined();
   });
 
-  it('emits the producer deviceType and the stepped cluster the card selects on', () => {
-    // The card used to be picked from a reconstructed `controlModel`. It is now
-    // picked from these two: `steppedLoad` presence for the stepped card, and
-    // `deviceType` for the temperature card — including a temperature device
-    // with NO `plannedTarget` (skip / abandon-grace), which is exactly the case
-    // `plannedTarget` alone cannot carry.
-    const temp = buildPlanDevice({ id: 'temp-1' }); // non-stepped, no plannedTarget
-    const tempRead = buildSettingsOverviewDeviceReadModel(temp, {}, 'temperature');
-    expect(tempRead.deviceType).toBe('temperature');
-    expect(tempRead.steppedLoad).toBeUndefined();
-
+  it('emits the two clusters the card selects on, and nothing else to select on', () => {
+    // The card used to be picked from a reconstructed `controlModel`, then from
+    // a producer `deviceType` label. Both are gone: the discriminants are now
+    // the two clusters that actually carry what the card renders — `steppedLoad`
+    // presence for the stepped card, `temperature` presence for the temperature
+    // card. A device carrying neither gets the generic card.
     const binary = buildPlanDevice({ id: 'bin-1' });
-    const binaryRead = buildSettingsOverviewDeviceReadModel(binary, {}, 'onoff');
-    expect(binaryRead.deviceType).toBe('onoff');
+    const binaryRead = buildSettingsOverviewDeviceReadModel(binary, {});
     expect(binaryRead.steppedLoad).toBeUndefined();
-    // No producer deviceType at all: still no stepped cluster, so the generic
-    // card. Absence is the marker for "neither stepped nor temperature".
-    expect(buildSettingsOverviewDeviceReadModel(binary, {}).steppedLoad).toBeUndefined();
+    expect(binaryRead.temperature).toBeUndefined();
 
-    // Stepped wins regardless of producer deviceType (a stepped thermostat stays stepped).
+    // Stepped-ness comes from the device's own ladder, not from any label.
     const stepped = steppedPlanDevice({ id: 'step-1' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'temperature').steppedLoad).toBeDefined();
+    expect(buildSettingsOverviewDeviceReadModel(stepped, {}).steppedLoad).toBeDefined();
   });
 
   it('keeps a stored-profile stepped device stepped', () => {
@@ -246,17 +237,7 @@ describe('settingsOverviewReadModel', () => {
     // same device as stepped. The device's own ladder is now the discriminant,
     // so there is no producer setting left to disagree with it.
     const stepped = steppedPlanDevice({ id: 'stored-profile-step' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'onoff').steppedLoad).toBeDefined();
-    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'temperature').steppedLoad).toBeDefined();
-  });
-
-  it('threads the producer deviceType map through the top-level read model', () => {
-    const temp = buildPlanDevice({ id: 'temp-2' });
-    const readModel = buildSettingsOverviewReadModel(
-      { generatedAtMs: 0, meta: {}, devices: [temp] } as never,
-      { getDeviceTypeById: () => new Map([['temp-2', 'temperature']]) },
-    );
-    expect(readModel?.devices?.[0]?.deviceType).toBe('temperature');
+    expect(buildSettingsOverviewDeviceReadModel(stepped, {}).steppedLoad).toBeDefined();
   });
 
   it('keeps observed temperature presentation when effective control is binary', () => {
@@ -268,17 +249,15 @@ describe('settingsOverviewReadModel', () => {
     });
     const readModel = buildSettingsOverviewReadModel(
       { generatedAtMs: 0, meta: {}, devices: [device] } as never,
-      {
-        getDeviceTypeById: () => new Map([['externally-controlled-thermostat', 'temperature']]),
-        getObservedTemperature: () => ({ currentTarget: 22, currentTemperature: 20.3 }),
-      },
+      { getObservedTemperature: () => ({ currentTarget: 22, currentTemperature: 20.3 }) },
     );
 
     expect(readModel?.devices?.[0]).toMatchObject({
-      deviceType: 'temperature',
       // The facet is complete even for a binary-commanded temperature device:
       // "no commanded setpoint" materializes as planned === current, never as
-      // a partial facet.
+      // a partial facet. Its presence is also what gives this device the
+      // temperature card — the observed pair is the whole reason the owner
+      // still sees a temperature for a thermostat PELS only switches on and off.
       temperature: { currentTarget: 22, currentTemperature: 20.3, plannedTarget: 22 },
       shedAction: 'turn_off',
     });

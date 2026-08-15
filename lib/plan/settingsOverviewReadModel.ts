@@ -13,7 +13,8 @@ import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
 import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import type { DeviceOverviewTemperature } from '../../packages/shared-domain/src/deviceOverview';
+import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
+import type { ObservedTemperatureState } from '../observer/observedDeviceStateProjection';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
@@ -27,10 +28,7 @@ export type SettingsOverviewReadModelDeps = {
   // observer here rather than off the plan device (which no longer carries it).
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
   getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
-  getObservedTemperature?: (deviceId: string) => {
-    currentTarget: number;
-    currentTemperature: number;
-  } | null;
+  getObservedTemperature?: (deviceId: string) => ObservedTemperatureState | null;
   // Observation staleness is observer-owned freshness state — the plan device no
   // longer carries it (the plan has no right to distrust observer data). The
   // gray-state UI label is a display concern, so the read model sources staleness
@@ -40,7 +38,6 @@ export type SettingsOverviewReadModelDeps = {
   // built-once map sourced from the raw, undecorated snapshot so there is no
   // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is
   // the plan device's own ladder (`buildOverviewSteppedLoad`).
-  getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
   getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
 };
 
@@ -83,7 +80,7 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
 function resolveOverviewTemperatureFacet(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
-): DeviceOverviewTemperature | undefined {
+): PlannedTemperatureState | undefined {
   const observed = deps.getObservedTemperature?.(device.id);
   const planned = isTemperaturePlanDevice(device) ? device : null;
   if (observed === null) return undefined;
@@ -106,7 +103,6 @@ function resolveOverviewTemperatureFacet(
 export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps = {},
-  producerDeviceType?: 'temperature' | 'onoff',
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
   // EV boost fields live on the orthogonal `EvKind` cluster (off the base);
@@ -129,7 +125,6 @@ export function buildSettingsOverviewDeviceReadModel(
     ...device,
     ...temperatureFields,
     steppedLoad,
-    deviceType: producerDeviceType,
   };
   return {
     id: device.id,
@@ -141,7 +136,6 @@ export function buildSettingsOverviewDeviceReadModel(
     available: device.available,
     currentState: device.currentState,
     plannedState: device.plannedState,
-    deviceType: producerDeviceType,
     binaryControllable: isBinaryPlanDevice(device),
     deviceRole: deps.getObservedEvChargingState?.(device.id) !== undefined ? 'ev_charger' : undefined,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
@@ -193,7 +187,6 @@ export function buildSettingsOverviewReadModel(
 ): SettingsUiPlanSnapshot | null {
   if (!plan) return null;
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).
-  const deviceTypeById = deps.getDeviceTypeById?.() ?? new Map<string, 'temperature' | 'onoff'>();
   const steppedLoadProfileById = deps.getSteppedLoadProfileById?.() ?? new Map<string, SteppedLoadProfile>();
   return {
     generatedAtMs: plan.generatedAtMs,
@@ -209,7 +202,6 @@ export function buildSettingsOverviewReadModel(
       .map((device) => buildSettingsOverviewDeviceReadModel(
         device,
         deps,
-        deviceTypeById.get(device.id),
         steppedLoadProfileById.get(device.id),
       )),
   };

@@ -6,6 +6,7 @@ import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type {
   DecoratedDeviceSnapshot,
   EvBoostConfig,
+  EvChargingState,
   SettingsUiLogEntry,
   TemperatureBoostConfig,
 } from './types.js';
@@ -190,8 +191,14 @@ export type SettingsUiPlanDeviceStarvation = {
 // shared-domain, so the dependency only runs one way.
 export type SettingsUiPlanSteppedLoadState = DeviceOverviewSteppedLoad;
 
+/**
+ * NO `[key: string]: unknown` index signature — same reasoning as
+ * `SettingsUiPlanDeviceSnapshot` below, which carries the full rationale. This
+ * shape lost several fixture-only fields (`hardLimitKw`, a duplicate of
+ * `hardCapLimitKw`; `powerKnown`) that only compiled because the signature
+ * accepted anything.
+ */
 export type SettingsUiPlanMetaSnapshot = {
-  [key: string]: unknown;
   totalKw?: number | null;
   softLimitKw?: number;
   capacitySoftLimitKw?: number;
@@ -226,8 +233,17 @@ export type SettingsUiPlanMetaSnapshot = {
   lastPowerUpdateMs?: number;
 };
 
+/**
+ * NO `[key: string]: unknown` index signature, deliberately. It used to carry
+ * one, and that made every field removal on this wire type unenforceable: a
+ * consumer kept compiling against a field the producer no longer emits, so a
+ * dead read survived a passing typecheck (the atomic-temperature-facet
+ * migration left exactly such a read behind in `PlanOverview.tsx`). It also hid
+ * the reverse — `carChargingState` travelled on the wire and was READ by the
+ * EV card text while this contract never declared it. Every field the producer
+ * emits is declared here; a new one is a deliberate edit, not an accident.
+ */
 export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
-  [key: string]: unknown;
   id: string;
   name: string;
   deviceClass?: string;
@@ -241,6 +257,13 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   surplusAbsorbActive?: boolean;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
+  /**
+   * The charging state of the CAR associated with this charger (distinct from
+   * the charger's own `evChargingState` on `DeviceOverviewSnapshot`). Read by
+   * the stepped/EV card text to say what the car is doing rather than only what
+   * PELS commanded.
+   */
+  carChargingState?: EvChargingState;
   stateKind?: string;
   stateTone?: string;
   starvation?: SettingsUiPlanDeviceStarvation;

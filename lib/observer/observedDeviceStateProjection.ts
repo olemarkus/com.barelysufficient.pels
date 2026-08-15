@@ -29,13 +29,28 @@ export function readObservedEvChargingState(
 }
 
 /**
+ * The observed temperature PAIR, as the observer hands it to producer wiring.
+ * Named (not spelled inline at each consumer) so a rename cannot drift between
+ * the projection, the plan-service dep, the read-model dep, and the idle
+ * classifier's input — all four carry this same fact.
+ *
+ * Distinct from the plan/overview trio (`TemperatureKind` /
+ * `PlannedTemperatureState`): that one adds the planner's `plannedTarget`,
+ * which the observer has no opinion about.
+ */
+export type ObservedTemperatureState = {
+    currentTarget: number;
+    currentTemperature: number;
+};
+
+/**
  * Owner projection of the observed temperature cluster for producer wiring.
  * The observer facet is atomic: if this returns a value, both numbers were
  * admitted together by the transport boundary.
  */
 export function readObservedTemperatureState(
     state: (ObservedDeviceState & TemperatureObservedProbe) | undefined,
-): { currentTarget: number; currentTemperature: number } | null {
+): ObservedTemperatureState | null {
     if (state === undefined) return null;
     const temperature = state.temperature;
     if (!temperature) return null;

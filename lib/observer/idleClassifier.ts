@@ -24,6 +24,7 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/lo
 import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
+import type { ObservedTemperatureState } from './observedDeviceStateProjection';
 
 /**
  * Subset of DevicePlanDevice used by the classifier — keeps coupling thin.
@@ -51,7 +52,7 @@ export type IdleClassifierDeviceInput = {
    * downstream now carries the same required field under the same name.
    */
   currentDrawKw: number;
-  temperature?: { currentTemperature: number; currentTarget: number };
+  temperature?: ObservedTemperatureState;
   plannedState: PlannedDeviceState;
 };
 

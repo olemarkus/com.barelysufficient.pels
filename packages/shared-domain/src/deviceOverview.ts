@@ -15,6 +15,7 @@ import {
 } from './deviceStatePredicates';
 import { isSatisfiedTargetOnlyDevice, resolvePlanStateKind } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
+import type { PlannedTemperatureState } from './plannedTemperatureState';
 import { formatDeviceReasonUserFacingForDevice } from './planCardReasonLine';
 import {
   DEVICE_OVERVIEW_ACTIVE,
@@ -64,17 +65,6 @@ export type DeviceOverviewSteppedLoad = {
   commandPending: boolean;
 };
 
-/**
- * The atomic temperature trio a temperature device's card renders from.
- * Post-validation strict: every value is a finite number by the time this
- * shape exists (runtime producer or the WebView adapter).
- */
-export type DeviceOverviewTemperature = {
-  currentTarget: number;
-  currentTemperature: number;
-  plannedTarget: number;
-};
-
 export type DeviceOverviewSnapshot = {
   currentState?: string;
   plannedState?: string;
@@ -86,13 +76,19 @@ export type DeviceOverviewSnapshot = {
    */
   steppedLoad?: DeviceOverviewSteppedLoad;
   /**
-   * Observational device kind, from the producer. Stays `temperature` when PELS
-   * target control is disabled and the device is effectively binary-commanded,
-   * which is exactly why the temperature card must key on THIS and not on a
-   * resolved control model: the owner should still see the temperature the
-   * device reports.
+   * NO `deviceType` here, deliberately. It used to ride this shape as the
+   * temperature discriminant; the atomic `temperature` facet below replaced it,
+   * because the facet is what actually carries the numbers a card renders. The
+   * field then survived as a producer-only write with no reader on this shape —
+   * a ghost the index-signature removal on `SettingsUiPlanDeviceSnapshot`
+   * surfaced. Dropped rather than documented.
+   *
+   * `deviceType` is alive and correct on the *device-list* shape
+   * (`SettingsUiDeviceListItem`, read by `deviceUtils.supportsTemperatureDevice`),
+   * where the question is what the device IS — a capability — rather than which
+   * numbers to display. Do not re-add it here to answer that question; the two
+   * surfaces ask different ones.
    */
-  deviceType?: 'temperature' | 'onoff';
   binaryControllable?: boolean;
   deviceRole?: 'ev_charger';
   evChargingState?: EvChargingState;
@@ -157,7 +153,7 @@ export type DeviceOverviewSnapshot = {
    * no flat nullable temperature fields left on this shape — absence of the
    * facet is the one genuine "not a temperature device" state.
    */
-  temperature?: DeviceOverviewTemperature;
+  temperature?: PlannedTemperatureState;
   // Truthy while a target write is in flight — a satisfied verdict against the
   // pre-command setpoint would be premature.
   pendingTargetCommand?: unknown;
