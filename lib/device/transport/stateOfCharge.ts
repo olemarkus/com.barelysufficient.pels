@@ -1,5 +1,5 @@
-import { isEvChargingState, type DeviceCapabilityMap } from '../managerControl';
-import { isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
+import type { DeviceCapabilityMap } from '../managerControl';
+import { isEvChargingState, isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
 import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityEntry,

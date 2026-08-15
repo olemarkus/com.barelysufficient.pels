@@ -4610,6 +4610,17 @@ var getLogger = (module2) => {
   return proxy;
 };
 
+// packages/shared-domain/src/evPlugState.ts
+var EV_CHARGING_STATES = new Set(
+  Object.keys({
+    plugged_in_charging: 0,
+    plugged_in: 0,
+    plugged_in_paused: 0,
+    plugged_out: 0,
+    plugged_in_discharging: 0
+  })
+);
+
 // lib/objectives/deferredObjectives/trajectoryMilestone.ts
 var ONE_HOUR_MS = 60 * 60 * 1e3;
 

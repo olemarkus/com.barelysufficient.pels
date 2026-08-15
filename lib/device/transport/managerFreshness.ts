@@ -1,8 +1,6 @@
 import type { EvChargingState } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import {
-  isEvChargingState,
-} from '../managerControl';
+import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
 import {
   isStateOfChargeCapabilityId,
   updateStateOfChargeFromRealtimeCapability,
