@@ -197,7 +197,7 @@ function resolveSurplusPostureForDevice(params: {
   return resolveSurplusOnlyPosture({
     surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
     hasBinaryControl: device.binaryControl !== undefined,
-    objectiveKind: isEvObserved(device) ? 'ev_soc' : undefined,
+    hasStandingDemand: !isEvObserved(device),
     targets: device.targets,
     steppedLoadProfile: device.steppedLoadProfile,
     plainBinaryControlModel,
@@ -699,6 +699,11 @@ export function toPlanDevice(
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow,
+    // Being off means going without — true for anything with a thermal demand
+    // model, false for a charger, whose demand arrives with a car rather than
+    // with the setpoint. The one place this is decided; downstream lanes read
+    // the bit and never ask what kind of device it is.
+    hasStandingDemand: !isEvObserved(device),
     ...(commandabilityReason ? { commandabilityReason } : {}),
     ...objective,
     canSetControlResolved,

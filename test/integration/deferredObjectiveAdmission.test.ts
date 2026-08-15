@@ -138,6 +138,7 @@ const buildDevice = (params: {
   commandableNow: true,
   boostSupported: false,
   boostRequested: false,
+  hasStandingDemand: true,
   controllable: false, // capacity-based control toggle is OFF for this scenario
   controlModel: 'stepped_load',
   binaryCapabilityId: 'onoff',
@@ -242,6 +243,7 @@ const buildContender = (params: {
   commandableNow: true,
   boostSupported: false,
   boostRequested: false,
+  hasStandingDemand: true,
   controllable: params.controllable ?? true,
   binaryCapabilityId: 'onoff',
   binaryControl: { on: params.currentOn },

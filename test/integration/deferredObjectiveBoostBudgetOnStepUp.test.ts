@@ -185,6 +185,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     // `forceBoostActive` engage boost even though the owner configured none.
     boostSupported: true,
     boostRequested: false,
+    hasStandingDemand: true,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
@@ -209,6 +210,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   commandableNow: true,
   boostSupported: false,
   boostRequested: false,
+  hasStandingDemand: true,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: false },

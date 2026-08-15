@@ -231,6 +231,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     commandableNow: true,
     boostSupported: false,
     boostRequested: false,
+    hasStandingDemand: true,
     deviceClass: 'water_heater',
     // Mirrors the honestly-parsed snapshot for the missing-onoff anomaly:
     // currentOn:false with no trusted binary observation.

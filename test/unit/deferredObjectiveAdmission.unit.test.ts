@@ -182,6 +182,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       commandableNow: true, currentDrawKw: 0,
       boostSupported: false,
       boostRequested: false,
+      hasStandingDemand: true,
     };
     const idleHorizon = {
       currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },

@@ -160,6 +160,7 @@ export const withMaterializedEvPlugState = <T extends {
   commandableNow: boolean;
   boostSupported: boolean;
   boostRequested: boolean;
+  hasStandingDemand: boolean;
   objectiveKind?: 'ev_soc';
   objectiveSessionInactive?: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
@@ -186,6 +187,9 @@ export const withMaterializedEvPlugState = <T extends {
     commandableNow: explicitCommandableNow ?? resolveCommandableNow(dev),
     boostSupported: explicitBoost.boostSupported ?? resolveBoostSupported(boostInput),
     boostRequested: explicitBoost.boostRequested ?? resolveBoostRequested(boostInput),
+    // Mirrors the producer: everything but a charger is going without when it is
+    // off. A fixture may still say otherwise explicitly.
+    hasStandingDemand: (overrides as { hasStandingDemand?: boolean }).hasStandingDemand ?? !isEv,
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
     ...(isEv ? {
       objectiveSessionInactive: overrides.evChargingState === 'plugged_out'
@@ -389,6 +393,7 @@ DevicePlanDevice => {
     // planner resolves it for every device, so a fixture that omits it would let
     // a consumer read absence as "not boosting" — which is a decision, not a gap.
     boostActive: overrides.boostActive ?? false,
+    hasStandingDemand: fixtureHasStandingDemand(overrides),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
@@ -403,6 +408,23 @@ DevicePlanDevice => {
  * `toPlanDevice` does from the settings seam and the observer. They are consumed
  * by the builder and never land on the device.
  */
+/**
+ * Mirror the producer's standing-demand resolution from whatever identity the
+ * fixture spelled. Stamped by the builders from the FULL override bag, because
+ * they strip `binaryCapabilityId` before materializing and a charger identified
+ * only by its control capability would otherwise read as a thermostat.
+ */
+export const fixtureHasStandingDemand = (overrides: {
+  hasStandingDemand?: boolean;
+  deviceClass?: string;
+  deviceRole?: 'ev_charger';
+  binaryCapabilityId?: string;
+}): boolean => overrides.hasStandingDemand ?? !(
+  overrides.deviceClass === 'evcharger'
+  || overrides.deviceRole === 'ev_charger'
+  || overrides.binaryCapabilityId === 'evcharger_charging'
+);
+
 export type FixtureBoostFields = {
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -509,6 +531,7 @@ export const buildPlanInputDevice = (
     // behaviour for a given pair without restating a charger's whole plug state.
     boostSupported: overrides.boostSupported ?? resolveBoostSupported(fixtureBoostInput(overrides)),
     boostRequested: overrides.boostRequested ?? resolveBoostRequested(fixtureBoostInput(overrides)),
+    hasStandingDemand: fixtureHasStandingDemand(overrides),
   }) as PlanInputDevice;
 };
 

@@ -19,6 +19,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   commandableNow: true,
   boostSupported: false,
   boostRequested: false,
+  hasStandingDemand: true,
   targets: [],
   controllable: true,
   // Real parse output resolves a binary control capability for a sheddable
@@ -58,6 +59,7 @@ const buildRestoreDevice = (id: string): DevicePlanDevice => ({
   commandableNow: true,
   boostSupported: false,
   boostRequested: false,
+  hasStandingDemand: true,
   expectedPowerKw: 1.5,
   expectedPowerSource: 'default',
   reason: { code: 'keep', detail: null },

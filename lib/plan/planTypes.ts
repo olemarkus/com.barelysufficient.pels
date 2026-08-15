@@ -429,6 +429,8 @@ type DevicePlanDeviceBase = {
   commandableNow: boolean;
   commandabilityReason?: PlanInputDevice['commandabilityReason'];
   objectiveKind?: PlanInputDevice['objectiveKind'];
+  /** Producer-resolved standing demand — see the twin docblock on `PlanInputDevice`. */
+  hasStandingDemand: boolean;
   objectiveSessionInactive?: boolean;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled

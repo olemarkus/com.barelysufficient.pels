@@ -107,6 +107,7 @@ const buildPlan = (): DevicePlan => ({
       commandableNow: true,
       boostSupported: false,
       boostRequested: false,
+      hasStandingDemand: true,
       deviceType: 'temperature' as const,
       currentState: 'off',
       plannedState: 'keep' as const,
@@ -134,6 +135,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       commandableNow: true,
       boostSupported: false,
       boostRequested: false,
+      hasStandingDemand: true,
       deviceType: 'temperature' as const,
       currentState: 'on',
       plannedState: 'keep' as const,
@@ -1630,6 +1632,7 @@ describe('PlanExecutor stepped loads', () => {
       commandableNow: true,
       boostSupported: false,
       boostRequested: false,
+      hasStandingDemand: true,
       steppedLoadProfile: steppedProfile,
       reportedStepId: 'low',
       selectedStepId: 'low',
@@ -2172,6 +2175,7 @@ describe('PlanExecutor stepped loads', () => {
       commandableNow: true,
       boostSupported: false,
       boostRequested: false,
+      hasStandingDemand: true,
     });
     const evPlan: DevicePlan = { ...plan, devices: [plan.devices[0]!] };
 
@@ -3995,13 +3999,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
+      hasStandingDemand: true,
       binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
-      boostActive: false,
+      boostActive: false, hasStandingDemand: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
       binaryCapabilityId: 'onoff' as const, currentOn: false,

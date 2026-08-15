@@ -943,6 +943,11 @@ program) remain deferred.*
       `createPlanService`). Do not re-add an EV cluster to either plan type.
       Snapshot-side discrimination (`TargetDeviceSnapshot`) is complete — see the summary bullet
       at the end of this entry, which supersedes any earlier "what is left" prose here.
+      The diagnostics and surplus lanes that asked `objectiveKind === 'ev_soc'` now read the
+      producer-resolved `hasStandingDemand` instead: being off means going without (a thermostat)
+      or it does not (a charger whose demand arrives with a car). `objectiveKind` itself stays —
+      it is the smart-task layer's discriminator, not a planner branch — but no `lib/plan` module
+      reads its `'ev_soc'` member any more.
       **EV-observed guard landed (slice 1 of the observer-snapshot EV discrimination):** added
       `isEvObserved(snapshot): snapshot is EvObservedSnapshot` + `EvObservedSnapshot` (=
       `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) — the observer-snapshot twin of
