@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlanStatusWriter } from '../../lib/plan/planStatusWriter';
 import type { DevicePlan, StatusPlanChanges } from '../../lib/plan/planTypes';
 import type { FlowPort, FlowToken, FlowTriggerCard } from '../../lib/ports/homeyRuntime';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 /* -------------------------------------------------------------------------- *
  * PlanStatusWriter persist cadence. Pins the per-home posture-flip guarantee:
@@ -23,7 +24,7 @@ const stubFlow = (): FlowPort => ({
 });
 
 const plan = (totalKw: number): DevicePlan => ({
-  meta: { totalKw, softLimitKw: 6, headroomKw: 6 - totalKw, powerNowKw: totalKw },
+  meta: buildPlanMeta({ totalKw, softLimitKw: 6, headroomKw: 6 - totalKw, powerNowKw: totalKw}),
   devices: [],
 });
 

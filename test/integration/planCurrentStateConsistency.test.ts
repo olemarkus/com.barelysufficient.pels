@@ -13,6 +13,7 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 const buildLiveDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
@@ -31,11 +32,10 @@ const buildLiveDevice = (
 const buildPlan = (
   overrides: Partial<DevicePlanDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe = {},
 ): DevicePlan => ({
-  meta: {
+  meta: buildPlanMeta({
     totalKw: 5,
     softLimitKw: 4,
-    headroomKw: -1,
-  },
+    headroomKw: -1}),
   devices: [withBinaryDiscriminant(withTemperatureDiscriminant({
     id: 'dev-1',
     name: 'Heater',
@@ -60,6 +60,8 @@ const buildContext = (device: PlanInputDevice): PlanContext => ({
   softLimit: 4,
   capacitySoftLimit: 4,
   dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,

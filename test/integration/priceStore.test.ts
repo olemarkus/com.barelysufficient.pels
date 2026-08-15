@@ -8,6 +8,7 @@ import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { buildPelsStatus } from '../../lib/plan/pelsStatus';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { DevicePlan } from '../../lib/plan/planTypes';
+import { buildPlanMeta } from '../utils/planTestUtils';
 
 const TZ = 'Europe/Oslo';
 
@@ -197,12 +198,11 @@ describe('readPriceStore + buildPelsStatus integration', () => {
     const migrated = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
 
     const plan: DevicePlan = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 0,
         softLimitKw: 5,
         softLimitSource: 'capacity',
-        headroomKw: 5,
-      },
+        headroomKw: 5}),
       devices: [],
     };
     const { status } = buildPelsStatus({

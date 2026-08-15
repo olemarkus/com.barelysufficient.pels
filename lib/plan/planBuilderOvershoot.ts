@@ -25,6 +25,7 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { buildPlanCapacityStateSummary } from './planLogging';
+import { splitControlledUsageKw } from './planUsage';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { recordActivationSetback } from './admission';
@@ -105,11 +106,17 @@ export class OvershootTracker {
         headroomKw: context.headroom,
         ...overshootTimingFields,
         ...buildPlanContextHeadroomLogFields(context, capacityGuard, capacityLimitKw),
+        // Supplies exactly the meta the summary reads. It used to pass
+        // `headroomKw` (never read) while omitting the managed/background
+        // split (always read), so this log's `controlledPowerW` /
+        // `uncontrolledPowerW` were null on every overshoot entry.
         ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: context.total,
             softLimitKw: context.softLimit,
-            headroomKw: context.headroom,
+            capacitySoftLimitKw: context.capacitySoftLimit,
+            softLimitSource: context.softLimitSource,
+            ...splitControlledUsageKw({ devices: planDevices, totalKw: context.total }),
           },
           devices: planDevices,
         }),

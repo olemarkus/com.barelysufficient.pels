@@ -41,6 +41,8 @@ const buildContext = (
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
   softLimitSource,
   // Mirrors the producer resolution in `buildPlanContext`: daily binding + fresh
   // power + no capacity breach (total 4 < capacitySoftLimit 5 in this fixture).

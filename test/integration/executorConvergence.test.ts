@@ -2,7 +2,7 @@ import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { hasPlanExecutionDrift } from '../../lib/executor/executorConvergence';
 import { hasPlanExecutionDriftForDevice as hasExecutorPlanExecutionDriftForDevice } from '../../lib/executor/planExecutionDrift';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { buildPlanMeta, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import {
   asOutputDevice,
   buildBinaryDevice,
@@ -735,7 +735,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
   };
 
   const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
-    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [device],
   });
 

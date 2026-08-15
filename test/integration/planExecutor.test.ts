@@ -44,7 +44,7 @@ import { hasPlanExecutionDrift } from '../../lib/executor/executorConvergence';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
-import { resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { buildPlanMeta, resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
 import { normalizeTargetCapabilityValue } from '../../lib/utils/targetCapabilities';
 
@@ -97,11 +97,10 @@ const pd = (
 ) as DevicePlanDevice;
 
 const buildPlan = (): DevicePlan => ({
-  meta: {
+  meta: buildPlanMeta({
     totalKw: 1,
     softLimitKw: 5,
-    headroomKw: 4,
-  },
+    headroomKw: 4}),
   devices: [
     withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       id: 'dev-1',
@@ -122,11 +121,10 @@ const buildPlan = (): DevicePlan => ({
 });
 
 const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => ({
-  meta: {
+  meta: buildPlanMeta({
     totalKw: 1,
     softLimitKw: 5,
-    headroomKw: 4,
-  },
+    headroomKw: 4}),
   devices: [
     withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       id: 'dev-1',
@@ -404,11 +402,10 @@ describe('PlanExecutor declined actuator requests', () => {
     });
 
     const result = await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
-        headroomKw: -1,
-      },
+        headroomKw: -1}),
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
@@ -501,11 +498,10 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await expect(executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 2,
         softLimitKw: 1,
-        headroomKw: -1,
-      },
+        headroomKw: -1}),
       devices: [
         pd({
           id: 'bad-step',
@@ -560,11 +556,10 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -596,11 +591,10 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -634,11 +628,10 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -661,11 +654,10 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor();
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -696,11 +688,10 @@ describe('PlanExecutor restore logging', () => {
     }]);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -734,11 +725,10 @@ describe('PlanExecutor restore logging', () => {
     }]);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -775,11 +765,10 @@ describe('PlanExecutor restore logging', () => {
     const { executor, deviceManager } = buildExecutor();
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -813,11 +802,10 @@ describe('PlanExecutor restore logging', () => {
     );
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
-        headroomKw: -1,
-      },
+        headroomKw: -1}),
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
@@ -950,11 +938,10 @@ describe('PlanExecutor restore logging', () => {
     );
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
-        headroomKw: -1,
-      },
+        headroomKw: -1}),
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
@@ -1061,11 +1048,10 @@ describe('PlanExecutor restore logging', () => {
     });
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
-        headroomKw: -1,
-      },
+        headroomKw: -1}),
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
@@ -1411,11 +1397,10 @@ describe('PlanExecutor pending target commands', () => {
     });
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1',
@@ -1630,11 +1615,10 @@ describe('PlanExecutor stepped loads', () => {
       ...overrides,
     };
     return {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-      },
+        headroomKw: 4}),
       devices: [
         withTemperatureDiscriminant(withSteppedDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           ...merged,
@@ -2200,7 +2184,7 @@ describe('PlanExecutor stepped loads', () => {
         binaryCapabilityId?: string;
       } = {},
   ): DevicePlan => ({
-    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [pd({
       id: 'ev-1',
       name: 'EV Charger',
@@ -3077,11 +3061,10 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deps } = buildExecutor(state, snapshot);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 2,
         softLimitKw: 5,
-        headroomKw: 3,
-      },
+        headroomKw: 3}),
       devices: [
         pd({
           id: 'dev-restore',
@@ -3206,7 +3189,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         binaryCapabilityId?: string;
       } = {},
   ): DevicePlan => ({
-    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [pd({
       id: 'dev-1',
       name: 'Tank',
@@ -3802,7 +3785,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const plan: DevicePlan = {
-      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
           id: 'shed-1',
@@ -3848,7 +3831,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     const plan: DevicePlan = {
-      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
           id: 'shed-1',
@@ -3898,7 +3881,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const plan: DevicePlan = {
-      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
           id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
@@ -3960,7 +3943,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     await executor.applyPlanActions(
-      { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('medium')] },
+      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('medium')] },
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -3974,7 +3957,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     desiredSteppedTrigger.trigger.mockClear();
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(
-      { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('max')] },
+      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('max')] },
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -3994,7 +3977,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const blockedPlan: DevicePlan = {
-      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
           id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
@@ -4010,7 +3993,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
     const admittedPlan: DevicePlan = {
-      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
@@ -4058,7 +4041,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const plan: DevicePlan = {
-      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
           // Underspecified stepped shed: set_step but no resolvable step.
@@ -4301,11 +4284,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions({
-        meta: {
+        meta: buildPlanMeta({
           totalKw: 1,
           softLimitKw: 5,
-          headroomKw: 4,
-        },
+          headroomKw: 4}),
         devices: [
           pd({
             id: 'dev-1',

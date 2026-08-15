@@ -199,22 +199,38 @@ export type SettingsUiPlanSteppedLoadState = DeviceOverviewSteppedLoad;
  * accepted anything.
  */
 export type SettingsUiPlanMetaSnapshot = {
-  totalKw?: number | null;
-  softLimitKw?: number;
-  capacitySoftLimitKw?: number;
-  budgetPaceKw?: number | null;
-  projectedExemptKw?: number | null;
-  softLimitSource?: 'capacity' | 'daily';
-  headroomKw?: number;
-  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
-  hardCapLimitKw?: number | null;
-  usedKWh?: number;
-  hourBudgetKWh?: number;
-  minutesRemaining?: number;
-  controlledKw?: number;
-  uncontrolledKw?: number;
+  /**
+   * `null` = no meter reading this cycle. Required-but-nullable: the capacity
+   * guard holds `null` until its meter's first sample and again after an
+   * in-place meter swap, so absence is real — but "the producer did not send
+   * it" is not a state a consumer should have to tell apart from it.
+   */
+  totalKw: number | null;
+  softLimitKw: number;
+  capacitySoftLimitKw: number;
+  /** `null` = no daily budget axis this cycle. Always emitted. */
+  budgetPaceKw: number | null;
+  projectedExemptKw: number | null;
+  softLimitSource: 'capacity' | 'daily';
+  headroomKw: number;
+  powerFreshnessState: 'fresh' | 'stale_hold' | 'stale_fail_closed';
+  /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
+  hardCapLimitKw: number;
+  usedKWh: number;
+  hourBudgetKWh: number;
+  minutesRemaining: number;
+  /**
+   * The managed side always resolves; the background side is the whole-home
+   * total minus it, so it is `null` exactly when there is no reading. The
+   * asymmetry is `splitControlledUsageKw`'s, stated in its own comment — it is
+   * not two spellings of the same absence.
+   */
+  controlledKw: number;
+  uncontrolledKw: number | null;
+  /** Genuinely absent until the hour has bucket data. */
   hourControlledKWh?: number;
   hourUncontrolledKWh?: number;
+  /** Genuinely absent before the power tracker's first timestamp. */
   lastPowerUpdateMs?: number;
 };
 

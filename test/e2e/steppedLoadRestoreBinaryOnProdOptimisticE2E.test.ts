@@ -72,7 +72,7 @@ import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
@@ -251,7 +251,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
 // planner observed this cycle (prod: 'max' first, then 'low' once the native
 // step materialized).
 const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
-  meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
+  meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
   devices: [
     // `binaryControl`, `currentTarget` and `steppedLoadProfile` live on their
     // orthogonal discriminant clusters; route the stepped/temperature parts

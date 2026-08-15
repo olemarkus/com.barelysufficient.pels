@@ -43,11 +43,6 @@ describe('planHeroTooltips', () => {
       expect(text).toBe(`Safe pace now 6.0 kW — ${SAFE_PACE_TOOLTIP_BY_SOURCE.capacity}`);
     });
 
-    it('falls back to the capacity source when none is given', () => {
-      expect(formatSafePaceTooltip(6, null)).toContain(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity);
-      expect(formatSafePaceTooltip(6, undefined)).toContain(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity);
-    });
-
     it('explains the budget pace and added allowance when both are available', () => {
       expect(formatSafePaceTooltip(12, 'daily', {
         budgetPaceKw: 5,

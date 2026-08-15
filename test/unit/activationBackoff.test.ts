@@ -45,6 +45,8 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   softLimit: 0,
   capacitySoftLimit: 0,
   dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,

@@ -15,7 +15,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import { steppedInputDevice } from '../utils/planTestUtils';
+import { buildPlanMeta, steppedInputDevice } from '../utils/planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
@@ -54,12 +54,11 @@ const buildPlan = (
 ): DevicePlan => {
   const normalizedReason = typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason;
   return {
-    meta: {
+    meta: buildPlanMeta({
       totalKw: 1,
       softLimitKw: 5,
       headroomKw: 4,
-      ...metaOverrides,
-    },
+      ...metaOverrides}),
     devices: [
       withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
         id: 'dev-1',
@@ -239,14 +238,13 @@ describe('PlanService', () => {
 
   it('emits grouped structured plan debug summaries only when the summary changes', async () => {
     const summaryPlan: DevicePlan = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 3.97,
         softLimitKw: 3.0,
         capacitySoftLimitKw: 4.0,
         dailySoftLimitKw: 3.0,
         softLimitSource: 'daily',
-        headroomKw: -0.97,
-      },
+        headroomKw: -0.97}),
       devices: [
         withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
           id: 'dev-1',
@@ -1535,11 +1533,10 @@ describe('PlanService', () => {
       planEngine: {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-          meta: {
+          meta: buildPlanMeta({
             totalKw: 1,
             softLimitKw: 5,
-            headroomKw: 4,
-          },
+            headroomKw: 4}),
           devices: [
             {
               id: 'dev-1',
@@ -1742,11 +1739,10 @@ describe('PlanService', () => {
       planEngine: {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-          meta: {
+          meta: buildPlanMeta({
             totalKw: 1,
             softLimitKw: 5,
-            headroomKw: 4,
-          },
+            headroomKw: 4}),
           devices: [
             {
               id: 'dev-1',
@@ -1872,11 +1868,10 @@ describe('PlanService', () => {
       planEngine: {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-          meta: {
+          meta: buildPlanMeta({
             totalKw: 1,
             softLimitKw: 5,
-            headroomKw: 4,
-          },
+            headroomKw: 4}),
           devices: [
             {
               id: 'dev-1',
@@ -2464,7 +2459,7 @@ describe('PlanService', () => {
           });
 
     const plan = {
-      meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
+      meta: buildPlanMeta({ totalKw: null, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
     } as any;
     const changes = {

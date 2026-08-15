@@ -10,7 +10,7 @@ import {
   withTemperatureDiscriminant,
   withEvDiscriminant,
 } from '../../lib/plan/planTypes';
-import { withMaterializedEvPlugState, resolveFixtureCurrentOn } from './planTestUtils';
+import { buildPlanMeta, resolveFixtureCurrentOn, withMaterializedEvPlugState } from './planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 
 export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
@@ -129,6 +129,6 @@ export const buildEvDevice = (
 });
 
 export const buildPlan = (devices: DevicePlan['devices']): DevicePlan => ({
-  meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+  meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
   devices,
 });

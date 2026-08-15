@@ -12,11 +12,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
-import {
-  buildPlanDevice,
-  steppedInputDevice,
-  steppedPlanDevice,
-} from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanMeta, steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
@@ -46,6 +42,8 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
   softLimitSource: 'capacity' as const,
   budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,
@@ -342,11 +340,10 @@ describe('P1 bug proofs', () => {
     }]);
 
     await executor.applyPlanActions({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 5,
         softLimitKw: 4,
-        headroomKw: -1,
-      },
+        headroomKw: -1}),
       devices: [buildPlanDevice({
         id: 'dev-1',
         name: 'Heater',

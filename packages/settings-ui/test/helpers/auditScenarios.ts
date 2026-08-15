@@ -55,6 +55,7 @@ import type {
   SettingsUiPlanSnapshot,
   SettingsUiPowerPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { buildPlanMeta } from '../helpers/planMetaFixture.ts';
 
 /**
  * Stable list of scenarios. The order is the order they appear in
@@ -233,7 +234,10 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
     totalKw: 8.6,
     softLimitKw: 8.0,
     capacitySoftLimitKw: 8.0,
+    budgetPaceKw: null,
+    projectedExemptKw: null,
     softLimitSource: 'capacity',
+    powerFreshnessState: 'fresh',
     headroomKw: 0,
     hardCapLimitKw: 8.0,
     usedKWh: 3.8,
@@ -303,8 +307,12 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
     totalKw: 4.7,
     softLimitKw: 8.0,
     capacitySoftLimitKw: 8.0,
+    budgetPaceKw: null,
+    projectedExemptKw: null,
     softLimitSource: 'capacity',
+    powerFreshnessState: 'fresh',
     headroomKw: 3.3,
+    hardCapLimitKw: 8.0,
     usedKWh: 1.2,
     hourBudgetKWh: 4.5,
     minutesRemaining: 33,
@@ -390,20 +398,21 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
   'budget-allowance': () => ({
     description: 'Daily safe pace includes a visible allowance for devices outside today\'s budget.',
     plan: {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 12.5,
         softLimitKw: 12,
         capacitySoftLimitKw: 14,
-        dailySoftLimitKw: 12,
         budgetPaceKw: 5,
         projectedExemptKw: 7,
         softLimitSource: 'daily',
         headroomKw: -0.5,
-        hasLivePowerSample: true,
         powerFreshnessState: 'fresh',
+        hardCapLimitKw: 14,
+        usedKWh: 6.2,
+        hourBudgetKWh: 9,
+        minutesRemaining: 21,
         controlledKw: 7.5,
-        uncontrolledKw: 5,
-      },
+        uncontrolledKw: 5}),
       devices: [
         {
           id: 'dev_budget_allowed_charger',

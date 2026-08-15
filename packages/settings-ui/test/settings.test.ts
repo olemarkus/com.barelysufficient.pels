@@ -1,6 +1,7 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 import { buildHomeyApiMock, emitHomeyEvent, installHomeyMock } from './helpers/homeyApiMock';
+import { buildPlanMeta } from './helpers/planMetaFixture.ts';
 
 vi.mock('../src/ui/toast.ts', () => ({
   showToast: vi.fn().mockResolvedValue(undefined),
@@ -1798,11 +1799,10 @@ describe('Plan sorting', () => {
   it('sorts devices by priority ascending within each zone (priority 1 = most important, first)', async () => {
     // Note: This test verifies the settings UI sorting - backend sorting is tested in plan.test.ts
     const planSnapshot = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 4.2,
         softLimitKw: 9.5,
-        headroomKw: 5.3,
-      },
+        headroomKw: 5.3}),
       devices: [
         {
           id: 'dev-1', name: 'Most Important Heater', zone: 'Living Room', priority: 1, currentState: 'heating', plannedState: 'keep',
@@ -1845,11 +1845,10 @@ describe('Plan sorting', () => {
 
   it('marks held devices without repeating the limited state chip', async () => {
     const planSnapshot = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 5.1,
         softLimitKw: 7.5,
-        headroomKw: 2.4,
-      },
+        headroomKw: 2.4}),
       devices: [
         { id: 'a2', name: 'Alpha Two', priority: 2, currentState: 'on', plannedState: 'keep' },
         { id: 'b1', name: 'Bravo One', priority: 1, currentState: 'on', plannedState: 'shed' },
@@ -1878,11 +1877,10 @@ describe('Plan sorting', () => {
 
   it('shows measured and expected power in usage line when available', async () => {
     const planSnapshot = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 3.3,
         softLimitKw: 9.0,
-        headroomKw: 5.7,
-      },
+        headroomKw: 5.7}),
       devices: [
         {
           id: 'device-1',
@@ -1910,11 +1908,10 @@ describe('Plan sorting', () => {
 
   it('shows expected draw label when a keep-off device has no live draw', async () => {
     const planSnapshot = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 1.0,
         softLimitKw: 9.0,
-        headroomKw: 8.0,
-      },
+        headroomKw: 8.0}),
       devices: [
         {
           id: 'device-2',
@@ -1942,11 +1939,10 @@ describe('Plan sorting', () => {
 
   it('shows expected draw label when on but not drawing power', async () => {
     const planSnapshot = {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 2.0,
         softLimitKw: 9.0,
-        headroomKw: 7.0,
-      },
+        headroomKw: 7.0}),
       devices: [
         {
           id: 'device-3',
@@ -1979,11 +1975,10 @@ describe('Plan sorting', () => {
   it('keeps the last rendered plan when a realtime plan update is malformed', async () => {
     const homey = installSettingsHomeyMock({
       planSnapshot: {
-        meta: {
+        meta: buildPlanMeta({
           totalKw: 2.0,
           softLimitKw: 9.0,
-          headroomKw: 7.0,
-        },
+          headroomKw: 7.0}),
         devices: [
           {
             id: 'device-1',
@@ -2008,11 +2003,10 @@ describe('Plan sorting', () => {
     expect(document.querySelector('#plan-cards .plan-card__title')?.textContent).toContain('Heater');
 
     emitHomeyEvent(homey, 'plan_updated', {
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 2.1,
         softLimitKw: 9.0,
-        headroomKw: 6.9,
-      },
+        headroomKw: 6.9}),
       devices: [
         {
           id: 'device-1',
@@ -2044,7 +2038,7 @@ describe('Plan sorting', () => {
 
     installSettingsHomeyMock({
       planSnapshot: {
-        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
         devices: [],
       },
       target_devices_snapshot: [],
@@ -2341,7 +2335,7 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
   // A budget-held card: cause='budget' + isStarved offers the chip by card data;
   // the server-resolved rescuable gate then decides whether it actually renders.
   const budgetHeldPlan = {
-    meta: { totalKw: 2.0, softLimitKw: 9.0, headroomKw: 7.0 },
+    meta: buildPlanMeta({ totalKw: 2.0, softLimitKw: 9.0, headroomKw: 7.0}),
     devices: [
       {
         id: 'heater-1',

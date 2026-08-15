@@ -28,15 +28,8 @@ const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => 
 });
 
 describe('formatHeroHeadline', () => {
-  it('returns null when required fields are missing', () => {
-    expect(formatHeroHeadline(undefined, NOW)).toBeNull();
-    expect(formatHeroHeadline({ totalKw: 5 }, NOW)).toBeNull();
-  });
-
   it('formats an under-budget state', () => {
     const headline = formatHeroHeadline(meta(), NOW);
-    expect(headline).not.toBeNull();
-    if (!headline) return;
     expect(headline.totalKw).toBeCloseTo(5.2);
     expect(headline.softLimitKw).toBeCloseTo(11.0);
     expect(headline.overSoftLimit).toBe(false);
@@ -49,7 +42,7 @@ describe('formatHeroHeadline', () => {
       totalKw: 12,
       headroomKw: -1,
     }), NOW);
-    expect(headline?.overSoftLimit).toBe(true);
+    expect(headline.overSoftLimit).toBe(true);
   });
 
   it('carries the hard cap as a display value only — no instantaneous over-cap judgement', () => {
@@ -62,19 +55,15 @@ describe('formatHeroHeadline', () => {
       headroomKw: -4,
       hardCapLimitKw: 14,
     }), NOW);
-    expect(headline?.hardLimitKw).toBe(14);
+    expect(headline.hardLimitKw).toBe(14);
     expect(headline && 'overHardLimit' in headline).toBe(false);
   });
 
   it('omits age text when lastPowerUpdateMs is missing', () => {
     const headline = formatHeroHeadline(meta({ lastPowerUpdateMs: undefined }), NOW);
-    expect(headline?.ageText).toBeNull();
+    expect(headline.ageText).toBeNull();
   });
 
-  it('leaves hardLimitKw null when no hard cap is configured', () => {
-    const headline = formatHeroHeadline(meta({ hardCapLimitKw: null }), NOW);
-    expect(headline?.hardLimitKw).toBeNull();
-  });
 });
 
 describe('formatEnergyUsedOfBudget', () => {

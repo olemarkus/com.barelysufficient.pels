@@ -5,7 +5,7 @@ import {
   buildSettingsOverviewReadModel,
 } from '../../lib/plan/settingsOverviewReadModel';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 
 describe('settingsOverviewReadModel', () => {
   it('projects capacity and effective hour budgets for settings overview', () => {
@@ -14,7 +14,7 @@ describe('settingsOverviewReadModel', () => {
     });
 
     const readModel = buildSettingsOverviewReadModel({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 0.6,
         softLimitKw: 4.54,
         dailySoftLimitKw: 4.54,
@@ -24,8 +24,7 @@ describe('settingsOverviewReadModel', () => {
         usedKWh: 0.02,
         budgetKWh: 9.5,
         capacityLimitKw: 5,
-        dailyBudgetHourKWh: 12,
-      },
+        dailyBudgetHourKWh: 12}),
       devices: [device],
     });
 
@@ -50,7 +49,7 @@ describe('settingsOverviewReadModel', () => {
     // bypasses excess-property checking. The producer lists fields explicitly
     // now; this is the runtime half of that guarantee.
     const readModel = buildSettingsOverviewReadModel({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 0.6,
         softLimitKw: 4.54,
         dailySoftLimitKw: 4.54,
@@ -61,8 +60,7 @@ describe('settingsOverviewReadModel', () => {
         dailyBudgetHourKWh: 12,
         hasLivePowerSample: true,
         capacityShortfall: false,
-        dailyBudgetExceeded: false,
-      },
+        dailyBudgetExceeded: false}),
       devices: [buildPlanDevice({ reason: { code: PLAN_REASON_CODES.keep, detail: null } })],
     } as never);
 
@@ -83,15 +81,14 @@ describe('settingsOverviewReadModel', () => {
     const solar = buildPlanDevice({ id: 'solar', deviceClass: 'solarpanel', reason: keepReason });
 
     const readModel = buildSettingsOverviewReadModel({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 0.6,
         softLimitKw: 4.5,
         headroomKw: 3.9,
         usedKWh: 0.02,
         budgetKWh: 9.5,
         capacityLimitKw: 5,
-        dailyBudgetHourKWh: 12,
-      },
+        dailyBudgetHourKWh: 12}),
       devices: [heater, battery, solar],
     });
 
@@ -108,15 +105,14 @@ describe('settingsOverviewReadModel', () => {
     });
 
     const readModel = buildSettingsOverviewReadModel({
-      meta: {
+      meta: buildPlanMeta({
         totalKw: 0.6,
         softLimitKw: 4.54,
         headroomKw: 3.94,
         usedKWh: 0.02,
         budgetKWh: 9.5,
         capacityLimitKw: 5,
-        dailyBudgetHourKWh: 4.25,
-      },
+        dailyBudgetHourKWh: 4.25}),
       devices: [device],
     });
 
@@ -278,7 +274,7 @@ describe('settingsOverviewReadModel', () => {
       shedAction: 'turn_off',
     });
     const readModel = buildSettingsOverviewReadModel(
-      { generatedAtMs: 0, meta: {}, devices: [device] } as never,
+      { generatedAtMs: 0, meta: buildPlanMeta({}), devices: [device] } as never,
       { getObservedTemperature: () => ({ currentTarget: 22, currentTemperature: 20.3 }) },
     );
 

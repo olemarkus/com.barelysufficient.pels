@@ -73,9 +73,12 @@ binding ceiling (see § "Device cards say what a device needs"). WHICH ceiling
 binds is one house-level fact, so the hero states it once and the cards spend
 their single line on what each device needs. The hero is therefore the only
 place the owner can read it — and a hover tooltip is not a place: the settings
-UI runs in a touch WebView where nothing hovers. Unknown source renders no
-clause; guessing one would risk naming the hard cap when it is not binding
-(see § "Hard cap is an hourly ceiling").
+UI runs in a touch WebView where nothing hovers. The clause always renders:
+`softLimitSource` is required on the wire and has exactly the two members
+above, so there is no unattributed case to fall back to. (The rule it used to
+state — never guess an attribution, because naming the hard cap when it is not
+binding is the specific error § "Hard cap is an hourly ceiling" warns about —
+still binds anyone adding a source; there is simply no unknown source left.)
 
 The marker tooltip below keeps the longer explanation for pointer devices.
 

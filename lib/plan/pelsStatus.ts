@@ -82,7 +82,12 @@ export function buildPelsStatus(params: {
       projectedOverHardCap: resolveProjectedOverHardCap(plan),
       totalKw: areaTotalKw,
       controlledKw: plan.meta.controlledKw,
-      uncontrolledKw: plan.meta.uncontrolledKw,
+      // `?? undefined` is an ENCODING translation, not a hedge. The domain
+      // spells "no whole-home reading this cycle" as `null`; `pels_status` is a
+      // persisted blob external automations read, and it spells absence by JSON
+      // omission. Keeping `null` here would change the persisted shape, which
+      // the backward-compatibility rule above forbids.
+      uncontrolledKw: plan.meta.uncontrolledKw ?? undefined,
       powerNowKw: plan.meta.powerNowKw,
       // Kept for BACKWARD COMPATIBILITY only. `pels_status` is a persisted
       // payload external automations may read, and removing a field from it
