@@ -101,8 +101,8 @@ export type SteppedLoadTransition = {
 //
 // The runtime predicate is delegated to the browser-safe `isSteppedLoadSnapshot`
 // so there is exactly one definition of "is this a stepped load" — this module
-// owns only the plan-layer narrowing, the way `isTemperaturePlanDevice` and
-// `isEvPlanDevice` own theirs.
+// owns only the plan-layer narrowing, the way `isTemperaturePlanDevice` owns
+// its own.
 export function isSteppedLoadDevice(device: DevicePlanDevice): device is SteppedPlanDevice;
 export function isSteppedLoadDevice(device: PlanInputDevice): device is SteppedPlanInputDevice;
 // Union overload for the dual-read fallback sites that hold a

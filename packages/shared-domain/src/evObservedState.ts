@@ -3,8 +3,8 @@ import { isEvDevice } from './evPlugState';
 
 /**
  * Type guard: the device is an EV charger, and therefore has an observed
- * plug-state. The observer-snapshot twin of `isEvPlanDevice` — a consumer must
- * narrow through this before reading `evChargingState`; the field is omitted
+ * plug-state. A consumer must narrow through this before reading
+ * `evChargingState`; the field is omitted
  * from the base snapshot types, so this guard (or an already-narrowed value) is
  * the only typed way to reach it.
  *

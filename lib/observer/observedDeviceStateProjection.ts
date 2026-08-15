@@ -1,8 +1,10 @@
 import type {
+  DeviceStateOfChargeSnapshot,
   EvChargingState,
   EvObservedProbe,
   ObservedDeviceState,
   ProjectedObservedDeviceState,
+  StateOfChargeObservedProbe,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import type {
@@ -26,6 +28,25 @@ export function readObservedEvChargingState(
     state: (ObservedDeviceState & EvObservedProbe) | undefined,
 ): EvChargingState | undefined {
     return state?.evChargingState;
+}
+
+/**
+ * Owner-blessed raw read of the observed state of charge, for PRODUCER wiring
+ * only — the settings-UI read model surfaces the level on its device card
+ * (`getObservedStateOfCharge` in `createPlanService`). Same shape and same
+ * reason as `readObservedEvChargingState` above: `stateOfCharge` is omitted
+ * from `ObservedDeviceState` (state-of-charge-observed slice), the projection's
+ * stored values physically carry it, and everything that is not this seam
+ * narrows through `hasObservedStateOfCharge`.
+ *
+ * The bag is handed over whole and unjudged. Whether a level is usable is the
+ * bag's own `level` discriminant, resolved upstream by the transport
+ * (`notes/ev-soc-layering.md`) — this reads no freshness and applies no gate.
+ */
+export function readObservedStateOfCharge(
+    state: (ObservedDeviceState & StateOfChargeObservedProbe) | undefined,
+): DeviceStateOfChargeSnapshot | undefined {
+    return state?.stateOfCharge;
 }
 
 /**

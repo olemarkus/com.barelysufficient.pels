@@ -19,12 +19,11 @@ import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredO
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type {
-  EvDiscriminantProbe,
   PlanInputDevice,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import { withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { type FixtureBoostFields, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -37,7 +36,7 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // live diagnostic path uses) ────────────────────────────────────────────────
 
 const buildEvDevice = (
-  overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
+  overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
 // `withMaterializedEvPlugState` (NOT `withEvDiscriminant`) is the fixture
 // boundary here: the preview's `isEvChargerNotResumableForDevice` reads the
 // materialized flat `evChargerNotResumable` only (the raw `evChargingState`

@@ -13,7 +13,6 @@ import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
-  EvDiscriminantProbe,
   PlanInputDevice,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
@@ -22,7 +21,11 @@ import {
   isDeviceObservationStale,
   STALE_DEVICE_OBSERVATION_MS,
 } from '../../lib/observer/observationFreshness';
-import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
+import {
+  buildPlanInputDevice,
+  type FixtureBoostFields,
+  steppedInputDevice,
+} from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 /**
@@ -36,7 +39,7 @@ const inputDevice = (
   o: Partial<PlanInputDevice>
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
-    & EvDiscriminantProbe
+    & FixtureBoostFields
     & {
       evChargingState?: string;
       binaryCapabilityId?: string;
@@ -48,7 +51,7 @@ const steppedInput = (
   o: Partial<PlanInputDevice>
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
-    & EvDiscriminantProbe
+    & FixtureBoostFields
     & {
       evChargingState?: string;
       binaryCapabilityId?: string;
@@ -1226,7 +1229,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       overrides: Partial<PlanInputDevice>
         & BinaryControlDiscriminantProbe
         & TemperatureDiscriminantProbe
-        & EvDiscriminantProbe
+        & FixtureBoostFields
         & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
     ) => inputDevice({
       id: 'tank',
@@ -1374,7 +1377,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       overrides: Partial<PlanInputDevice>
         & BinaryControlDiscriminantProbe
         & TemperatureDiscriminantProbe
-        & EvDiscriminantProbe
+        & FixtureBoostFields
         & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
     ) => inputDevice({
       id: 'tank',

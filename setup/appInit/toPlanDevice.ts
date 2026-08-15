@@ -455,6 +455,33 @@ function resolvePlanBoostFields(params: {
   };
 }
 
+/**
+ * Device-id form of {@link resolveEffectiveTemperatureBoost}, for the settings-UI
+ * read model's boost panel. Same resolution as the producer uses for the plan
+ * decision, so the card cannot offer a temperature boost on a device whose
+ * setpoint control the owner switched off. A device with no snapshot has no
+ * effective config to show.
+ *
+ * The disabled-control policy is read from the LIVE setting, not off the
+ * snapshot. `getSnapshotByDeviceId` hands back the raw `TargetDeviceSnapshot`,
+ * and `temperatureControlDisabled` is stamped only by
+ * `decorateSnapshotWithDeviceControl` — so delegating straight to
+ * `resolveEffectiveTemperatureBoost` here left its guard reading `undefined` and
+ * unable to fire, and the settings UI advertised a temperature boost on exactly
+ * the devices whose setpoints PELS refuses to move. Same policy, same answer as
+ * the plan path; only the source of the flag differs, because this entry point
+ * never had a decorated snapshot to read it from.
+ */
+export function resolveTemperatureBoostConfigForDevice(
+  ctx: AppContext,
+  deviceId: string,
+): TemperatureBoostConfig | undefined {
+  const snapshot = ctx.deviceManager?.getSnapshotByDeviceId(deviceId);
+  if (!snapshot) return undefined;
+  if (ctx.isTemperatureControlDisabled(deviceId)) return undefined;
+  return ctx.getTemperatureBoostConfig?.(deviceId);
+}
+
 type PlanCommandabilityReason = PlanInputDevice['commandabilityReason'];
 
 function resolvePlanCommandabilityReason(

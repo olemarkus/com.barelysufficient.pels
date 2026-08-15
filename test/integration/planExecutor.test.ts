@@ -27,7 +27,6 @@ import type {
 } from '../../lib/plan/planTypes';
 import {
   withBinaryDiscriminant,
-  withEvDiscriminant,
   withSteppedDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
@@ -2163,10 +2162,9 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('marks a prepared stepped restore-from-off actuatable for an EV charger regrouped like production', () => {
-    // The motivating device is an EV charger, and `withEvDiscriminant` strips
-    // `evChargingState` on the way to a plan device, so `isCommandableNow(dev)` is
-    // always false here (TODO.md P1). Guard that this gate never starts depending on
-    // it again: run the fixture through the same regrouping the producer applies.
+    // The motivating device is an EV charger, and the plan device carries no
+    // `evChargingState` at all, so `isCommandableNow(dev)` is always false here
+    // (TODO.md P1). Guard that this gate never starts depending on it again.
     const { executor } = buildExecutor();
     const plan = preparedRestoreFromOffPlan({
       deviceClass: 'evcharger',
@@ -2175,10 +2173,7 @@ describe('PlanExecutor stepped loads', () => {
       boostSupported: false,
       boostRequested: false,
     });
-    const evPlan: DevicePlan = {
-      ...plan,
-      devices: [withEvDiscriminant(plan.devices[0]!)],
-    };
+    const evPlan: DevicePlan = { ...plan, devices: [plan.devices[0]!] };
 
     // The plug-state rides on the EV cluster now — it is the single source every
     // commandability question is answered from, so the plan device carries it

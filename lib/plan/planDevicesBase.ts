@@ -2,7 +2,7 @@ import type {
   DevicePlanDevice, PlanInputDevice, ShedAction, SteppedClusterFields, TemperatureClusterFields,
 } from './planTypes';
 import {
-  withBinaryDiscriminant, withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
+  withBinaryDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
@@ -115,13 +115,12 @@ function resolveInputBinaryControlField(
 
 /**
  * The decisions the producer (`toPlanDevice` → `resolveCommandableNow`) already
- * made, forwarded verbatim onto the output plan device. No EV narrowing needed —
- * they live on the base.
+ * made, forwarded verbatim onto the output plan device.
  *
  * `commandableNow` MUST be carried. Dropping it is what forced consumers back
- * onto raw-field re-derivation against fields `withEvDiscriminant` had already
- * stripped, so every plan-device `isCommandableNow` answered from absence and
- * reported "charger state unknown" for every EV charger.
+ * onto raw-field re-derivation against fields the plan device does not have, so
+ * every plan-device `isCommandableNow` answered from absence and reported
+ * "charger state unknown" for every EV charger.
  */
 function producerResolvedDecisionFields(dev: PlanInputDevice): {
   commandableNow: boolean;
@@ -209,13 +208,13 @@ export function buildBasePlanDevice(params: {
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
-  // The stepped, EV, temperature, and binary discriminants are set explicitly in
-  // the loose literal, then re-tied: `withEvDiscriminant`/`withTemperatureDiscriminant`/
+  // The stepped, temperature, and binary discriminants are set explicitly in
+  // the loose literal, then re-tied: `withTemperatureDiscriminant`/
   // `withBinaryDiscriminant` regroup their orthogonal clusters (binary keyed on
   // `binaryCapabilityId` presence) and `withSteppedDiscriminant` lands the result
   // in one stepped union member. The temperature cluster is sourced as a unit
   // from the input device through `pickTemperatureClusterFields`.
-  return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant(withBinaryDiscriminant({
+  return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
@@ -247,13 +246,6 @@ export function buildBasePlanDevice(params: {
     available: dev.available,
     boostActive,
     surplusAbsorbActive,
-    // Display carriers only: the overview read model renders the boost card
-    // variant from which config the device has, and the SoC bag from the
-    // charger's reading. The planner itself reads none of them — its whole
-    // boost vocabulary is `boostActive` above.
-    temperatureBoost: dev.temperatureBoost,
-    evBoost: dev.evBoost,
-    stateOfCharge: dev.stateOfCharge,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
     binaryCommandPending: binaryCommandPending || undefined,
@@ -261,7 +253,7 @@ export function buildBasePlanDevice(params: {
     shedTemperature,
     releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
-  }))));
+  })));
 }
 
 // The stepped cluster, taken as a unit through the guard. Extracted rather than

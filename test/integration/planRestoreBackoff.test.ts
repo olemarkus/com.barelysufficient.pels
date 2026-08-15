@@ -30,7 +30,6 @@ import type { DevicePlanDevice , SteppedPlanDevice } from '../../lib/plan/planTy
 import {
   type BinaryControlDiscriminantProbe,
   withBinaryDiscriminant,
-  withEvDiscriminant,
 } from '../../lib/plan/planTypes';
 
 // `binaryControl` moved off `DevicePlanDevice`'s base onto the orthogonal
@@ -4540,7 +4539,7 @@ describe('stepped-load shed invariant', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
-        withEvDiscriminant({
+        {
           ...steppedPlanDevice({
             id: 'dev-step',
             name: 'Priority charger',
@@ -4552,13 +4551,11 @@ describe('stepped-load shed invariant', () => {
             desiredStepId: 'medium',
           }),
           // A stepped charger with no EV capabilities — the `target_power`
-          // population, which boosts on SoC and has no plug-state. `deviceClass`
-          // is what makes it an EV device, and `withEvDiscriminant` attaches the
-          // EV cluster only to one (a non-EV device must not carry EV fields a
-          // spread dragged in). The boost itself is the generic decision above:
-          // the planner cannot tell an SoC boost from a temperature one.
+          // population, which boosts on SoC and has no plug-state. The boost is
+          // the generic decision above: the planner cannot tell an SoC boost
+          // from a temperature one, and carries nothing EV-shaped to tell with.
           deviceClass: 'evcharger',
-        }) as DevicePlanDevice,
+        } as DevicePlanDevice,
         buildPlanDevice({
           id: 'lower-priority',
           name: 'Lower priority heater',

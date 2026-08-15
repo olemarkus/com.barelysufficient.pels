@@ -3,23 +3,20 @@ import type {
   PlanInputDevice,
   BinaryControlDiscriminantProbe,
   TemperatureDiscriminantProbe,
-  EvDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
-  withEvDiscriminant,
 } from '../../lib/plan/planTypes';
 import { buildPlanMeta, resolveFixtureCurrentOn, withMaterializedEvPlugState } from './planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 
 export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
   & TemperatureDiscriminantProbe
-  & EvDiscriminantProbe
   & BinaryControlDiscriminantProbe
   & { binaryCapabilityId?: string; evChargingState?: string };
 
-// Regroup a loose output-device override bag (temperature/EV fields flat on the
+// Regroup a loose output-device override bag (temperature fields flat on the
 // base) onto the discriminated `DevicePlanDevice` shape.
 export const asOutputDevice = (
   loose: LooseOutputDevice,
@@ -28,12 +25,12 @@ export const asOutputDevice = (
   const {
     binaryCapabilityId, evChargingState: _evChargingState, binaryControl, currentOn, ...semantic
   } = materialized;
-  return withBinaryDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
+  return withBinaryDiscriminant(withTemperatureDiscriminant({
     ...semantic,
     ...(binaryCapabilityId !== undefined ? {
       currentOn: currentOn ?? resolveFixtureCurrentOn({ ...materialized, binaryControl }),
     } : {}),
-  }))) as DevicePlan['devices'][number];
+  })) as DevicePlan['devices'][number];
 };
 
 export type LooseInputDevice = Partial<PlanInputDevice>

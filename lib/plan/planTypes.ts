@@ -10,14 +10,11 @@ import type {
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   DeviceControlAdapterSnapshot,
-  DeviceStateOfChargeSnapshot,
-  EvBoostConfig,
   ExpectedPowerSource,
   PlannedDeviceState,
   RestorePowerSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
-  TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
@@ -107,35 +104,10 @@ export type SteppedLoadKind = {
 export type NonSteppedLoadKind = Record<never, never>;
 
 /**
- * EV field cluster (EV-variant slice of the discriminated-types refactor).
- *
- * EV is ORTHOGONAL to the stepped/non-stepped axis: an EV charger can also be
- * stepped-controlled. So `EvKind` is NOT a union member alongside
- * `Stepped|NonStepped`; it is an intersection the `isEvPlanDevice` type-guard
- * adds back on top of whichever stepped variant the device already is. The EV
- * fields are OMITTED from `DevicePlanDeviceBase`, so neither stepped nor
- * non-stepped variants expose them un-narrowed — a `device.stateOfCharge` /
- * `.evBoost*` read on a bare `DevicePlanDevice` is a hard compile error
- * (TS2339); consumers must pass through `isEvPlanDevice` (or hold an
- * already-narrowed value) first.
- *
- * Every field is OPTIONAL: `evBoost` / `stateOfCharge` are only present when
- * boost is configured / the charger reports SoC. So the guard groups the cluster
- * onto the variant WITHOUT asserting presence the producer does not guarantee.
- *
- * Raw plug-state stays in observer/transport. Planning carries only the
- * producer-resolved objective and commandability facts on its base type.
- */
-export type EvKind = {
-  evBoost?: EvBoostConfig;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
-};
-
-/**
  * Temperature field cluster (temperature-variant slice of the
  * discriminated-types refactor).
  *
- * Like `EvKind`, this is ORTHOGONAL to the stepped axis (an air-treatment unit
+ * ORTHOGONAL to the stepped axis (an air-treatment unit
  * can be both temperature- and stepped-controlled), so it is NOT a union member
  * alongside `Stepped|NonStepped`; it is the intersection the
  * `isTemperaturePlanDevice` type-guard (`lib/plan/planTemperatureDevice.ts`)
@@ -163,9 +135,8 @@ export type EvKind = {
  *   materializes as `plannedTarget === currentTarget`, which the executor's
  *   no-op fence skips — never as absence.
  *
- * The boost cluster (`temperatureBoost` / `temperatureBoostActive`) is NOT here:
- * it stays on `DevicePlanDeviceBase` (entangled with the cross-kind boost
- * machinery).
+ * Boost is NOT here and is not a temperature fact: the plan device carries one
+ * kind-free `boostActive` decision on its base (`lib/plan/planBoost.ts`).
  */
 // One definition, aliased rather than restated: the trio is the same fact the
 // overview card renders, so a rename must not be able to drift between the two
@@ -179,7 +150,7 @@ export type TemperatureKind = PlannedTemperatureState;
  * Binary-control field cluster (binary-variant slice of the discriminated-types
  * refactor).
  *
- * Like `EvKind`/`TemperatureKind`, binary control is ORTHOGONAL to the stepped
+ * Like `TemperatureKind`, binary control is ORTHOGONAL to the stepped
  * axis (a stepped device also has an onoff control), so this is NOT a union
  * member; it is the intersection the `isBinaryPlanDevice` type-guard
  * (`lib/plan/planBinaryDevice.ts`) adds onto whichever stepped variant the
@@ -293,54 +264,6 @@ export function withSteppedDiscriminant<TBase extends object>(
     ...base
   } = loose;
   return { ...base };
-}
-
-/**
- * EV field cluster as plain independent optionals: the "might be EV" loose
- * shape a construction/merge site carries before the cluster is regrouped onto
- * the orthogonal `EvKind` intersection. Used by `withEvDiscriminant`.
- *
- * Raw plug-state never enters this construction shape; the adapter strips it
- * before producing a `PlanInputDevice`.
- */
-export type EvDiscriminantProbe = {
-  evBoost?: EvBoostConfig;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
-};
-
-/**
- * Regroup the EV field cluster off a loose bag (whose EV fields are independent
- * optionals on the base, e.g. the result of a `{ ...current, ...updates }`
- * merge or a `...snapshot` spread) onto a single `EvKind`-shaped intersection.
- *
- * Stripping is essential for the same reason as `withSteppedDiscriminant`: an
- * object spread can never *remove* a key, so the EV fields would otherwise
- * survive on the base part of the result and re-pollute the base shape the EV
- * slice deliberately omits them from. EV is orthogonal to the stepped axis, so
- * there is no boolean discriminant to recompute — the cluster is regrouped
- * byte-identically (every EV value is forwarded unchanged) and re-attached as
- * `EvKind`. The result's base part is `Omit<TBase, keyof EvDiscriminantProbe>`,
- * matching the EV-stripped `DevicePlanDeviceBase`.
- *
- */
-export function withEvDiscriminant<TBase>(
-  loose: TBase & EvDiscriminantProbe,
-):
-  Omit<TBase, keyof EvDiscriminantProbe> & EvKind {
-  const {
-    evBoost, stateOfCharge, ...base
-  } = loose;
-  // Discriminated like `withBinaryDiscriminant`: the cluster is attached only to
-  // an actual EV device, so a non-EV device cannot carry a stale plug-state a
-  // spread dragged in. The cast mirrors that regrouper's `?? { on: false }` — an
-  // EV device always has a plug-state (the parse boundary drops one that cannot
-  // report a valid member), so `undefined` here means a hand-built fixture
-  // dropped the value, not a state the planner has to model.
-  return {
-    ...base,
-    ...(evBoost !== undefined ? { evBoost } : {}),
-    ...(stateOfCharge !== undefined ? { stateOfCharge } : {}),
-  } as Omit<TBase, keyof EvDiscriminantProbe> & EvKind;
 }
 
 /**
@@ -472,7 +395,7 @@ type DevicePlanDeviceBase = {
   // are split off onto the orthogonal `TemperatureKind` cluster; reach them
   // through the `isTemperaturePlanDevice` guard
   // (`lib/plan/planTemperatureDevice.ts`). The boost cluster
-  // (`temperatureBoost*`) stays on the base. There is intentionally no
+  // There is intentionally no
   // `observationStale` field: the plan has no right to distrust observer data
   // (it trusts the producer-resolved `currentOn`/`currentState`), and staleness
   // *reporting* is the observer's concern, not the plan's.
@@ -488,19 +411,18 @@ type DevicePlanDeviceBase = {
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
   controlAdapter?: DeviceControlAdapterSnapshot;
-  // Display carriers, read only by the settings-UI overview read model to pick
-  // the boost card's variant and render the charger's battery level. No planner
-  // decision reads them — the boost decision is the single `boostActive` below.
-  // They are the last EV-shaped fields on this type and leave with the overview
-  // re-source; do NOT grow a decision path against them.
-  evBoost?: EvBoostConfig;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  // No `evBoost` / `stateOfCharge` / `temperatureBoost`: a boost threshold is
+  // configuration and a battery level is an observation, and the plan device
+  // carries neither. It carries the DECISION they produced (`boostActive`
+  // below), resolved once by the producer; the settings UI reads the config and
+  // the level from the seams that own them (`getEvBoostConfig` /
+  // `getObservedStateOfCharge` in `createPlanService`).
   /**
    * Producer-resolved commandability, REQUIRED so no consumer can read absence
    * as an answer. It was optional through the dual-read transition, and the
-   * consequence was concrete: `withEvDiscriminant` strips `evChargingState`, so
-   * every plan-device `isCommandableNow` call fell into the raw-field fallback,
-   * found nothing, and returned "charger state unknown" — leaving
+   * consequence was concrete: the plan device does not carry `evChargingState`,
+   * so every plan-device `isCommandableNow` call fell into the raw-field
+   * fallback, found nothing, and returned "charger state unknown" — leaving
    * `hasStableBinaryReleaseActuation` dead in production. Same class of bug as a
    * fabricated `currentOn: true`.
    */
@@ -539,7 +461,6 @@ type DevicePlanDeviceBase = {
    */
   controllable: boolean;
   budgetExempt?: boolean;
-  temperatureBoost?: TemperatureBoostConfig;
   /**
    * The device's boost decision this cycle, and the planner's whole boost
    * vocabulary. REQUIRED: `resolveBoostActive` (`lib/plan/planBoost.ts`) answers

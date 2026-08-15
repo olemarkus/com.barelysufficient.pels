@@ -7,8 +7,8 @@ import type { DevicePlanDevice, TemperatureKind } from './planTypes';
  * slice of the discriminated-types refactor).
  *
  * Temperature is ORTHOGONAL to the stepped axis: an air-treatment unit can also
- * be stepped-controlled. So, like `isEvPlanDevice` (and unlike
- * `isSteppedLoadDevice`, which narrows to one union member), this guard narrows
+ * be stepped-controlled. So, unlike `isSteppedLoadDevice` (which narrows to one
+ * union member), this guard narrows
  * by INTERSECTING the temperature field cluster back onto whatever the device
  * already is — `isTemperaturePlanDevice(steppedDevice)` yields
  * `SteppedPlanDevice & TemperatureKind`, which is sound.

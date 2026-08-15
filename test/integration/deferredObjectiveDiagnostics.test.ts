@@ -26,13 +26,12 @@ import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/defer
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
-  type EvDiscriminantProbe,
   type PlanInputDevice,
   type TemperatureDiscriminantProbe,
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
-import { withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { type FixtureBoostFields, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
@@ -63,7 +62,7 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
 };
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
+  overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
 ): PlanInputDevice => withMaterializedEvPlugState({
   id: 'ev-1',
   expectedPowerKw: 1,

@@ -43,8 +43,9 @@ describe('observation value accessors', () => {
       })).toBeUndefined();
     });
 
-    it('returns undefined when no snapshot present', () => {
-      expect(getTrustedStateOfCharge({})).toBeUndefined();
-    });
+    // No "absent bag" case: the parameter REQUIRES the narrowed facet, so a
+    // caller holding a device that might not report a level must narrow through
+    // `hasObservedStateOfCharge` first — the compiler asks the question instead
+    // of this function answering it with `undefined`.
   });
 });

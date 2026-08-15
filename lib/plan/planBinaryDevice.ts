@@ -18,7 +18,7 @@ import type { DevicePlanDevice, BinaryControlKind } from './planTypes';
  * here provides exactly one definition of
  * "is this a binary device", and shared-domain stays browser-safe (it never
  * imports the plan device types — the narrowing overloads live here, in the plan
- * layer), mirroring `isTemperaturePlanDevice`/`isEvPlanDevice`.
+ * layer), mirroring `isTemperaturePlanDevice`.
  *
  * A device whose control capability is absent THIS cycle (e.g. a transient
  * capability drop) is NOT a binary device this cycle — the guard returns false

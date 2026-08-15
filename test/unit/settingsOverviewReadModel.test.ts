@@ -255,16 +255,20 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it('surfaces the EV battery reading so the card can show it beside the level', () => {
-    const device = buildPlanDevice({
-      id: 'ev-1',
-      binaryCapabilityId: 'evcharger_charging',
-      stateOfCharge: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500 }),
-    });
+    const device = buildPlanDevice({ id: 'ev-1', binaryCapabilityId: 'evcharger_charging' });
 
-    // Projected to what the wire type declares: the observation layer's session
-    // bookkeeping is its own business (`notes/ev-soc-layering.md`).
-    expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge)
-      .toEqual({ level: { kind: 'known', percent: 64 } });
+    // Sourced from the OBSERVER, which owns the reading — the plan device carries
+    // the boost decision, never the level it was made from. Projected to what the
+    // wire type declares: the observation layer's session bookkeeping is its own
+    // business (`notes/ev-soc-layering.md`).
+    expect(buildSettingsOverviewDeviceReadModel(device, {
+      getObservedStateOfCharge: () => stateOfChargeFixture({
+        percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
+      }),
+    }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64 } });
+
+    // With no observer dep wired there is no reading to show.
+    expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge).toBeUndefined();
   });
 
   it('emits no battery reading for a device that has none', () => {
@@ -396,10 +400,11 @@ describe('settingsOverviewReadModel', () => {
       expect(forced.temperatureBoostActive).toBe(false);
 
       // A `target_power` charger exposes no plug state; its configured SoC
-      // threshold is what identifies the axis.
-      const configured = buildSettingsOverviewDeviceReadModel(
-        boosting({ evBoost: { enabled: true, boostBelowPercent: 40 } }),
-      );
+      // threshold — read from the settings seam, not off the plan device — is
+      // what identifies the axis.
+      const configured = buildSettingsOverviewDeviceReadModel(boosting(), {
+        getEvBoostConfig: () => ({ enabled: true, boostBelowPercent: 40 }),
+      });
       expect(configured.evBoostActive).toBe(true);
     });
 
