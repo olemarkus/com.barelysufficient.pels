@@ -1378,15 +1378,6 @@ program) remain deferred.*
       live bug — the fix is to extend the existing drop-whole treatment to the EV pair, so the
       declared type and the validated type are the same set. Source: 2026-08-14 adversarial review
       of the strict-contracts train. [P3]
-- [ ] **Extend the control-model vocab guard to `packages/shared-domain/**`.**
-      `controlModel` is gone from the overview wire — the stepped discriminant is now presence of
-      the `steppedLoad` cluster, and the temperature card keys on presence of the atomic
-      `temperature` facet (2026-08-14; `deviceType` is a producer-derived label now, no longer a
-      consumer discriminant). But
-      `scripts/check-control-model-vocab.mjs` still scopes only `lib/plan/**` and
-      `lib/executor/**`, which is exactly how the field survived in shared-domain in the first
-      place: by geography, not by argument. Widen the guard so it cannot come back.
-
 - [ ] **`getEffectiveControlModel` is a third resolver of the retired enum.**
       `packages/settings-ui/src/ui/deviceControlProfiles.ts` recomputes the three-way model in the
       browser from five sources (native activation, the wire value, stored profile, stored
