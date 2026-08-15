@@ -251,7 +251,11 @@ const buildActualSeries = (params: {
   palette: BudgetChartPalette;
 }): SeriesOption => {
   const { labels, actualCumulative, view, palette } = params;
-  const lastActualIndex = actualCumulative.reduce(
+  // `reduce<number>` explicitly: the accumulator is an INDEX and is never null,
+  // but with an `Array<number | null>` receiver and a `number` seed TypeScript
+  // picks the non-generic overload and widens it to `number | null`, which then
+  // poisons every comparison and the `actualCumulative[...]` lookup below.
+  const lastActualIndex = actualCumulative.reduce<number>(
     (best, value, index) => (Number.isFinite(value) ? index : best),
     -1,
   );

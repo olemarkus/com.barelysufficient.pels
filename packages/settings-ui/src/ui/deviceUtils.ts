@@ -94,7 +94,16 @@ export const requiresNativeWiringForActivation = (device?: SettingsUiDeviceListI
   && device.deviceRole !== 'ev_charger'
 );
 
-export const supportsNativeWiringActivation = (device?: SettingsUiDeviceListItem | null): boolean => (
+/**
+ * A type predicate, not a plain boolean: the body already proves the device is
+ * present (it reads `controlAdapter.kind` off it), so callers should not have to
+ * re-check for null afterwards. Generic over the carrier so a
+ * `SettingsUiDeviceDetailItem` narrows to itself rather than widening to the
+ * list item.
+ */
+export const supportsNativeWiringActivation = <T extends SettingsUiDeviceListItem>(
+  device?: T | null,
+): device is T => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && (
     device.controlAdapter.activationRequired === true

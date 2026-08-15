@@ -322,9 +322,14 @@ describe('control toggle — optimistic rollback + serialization', () => {
   it('serialises writes — a second toggle mid-flight is prevented, not lost or duplicated', async () => {
     await seedSimulatingArea();
     const dryRunKey = `capacity_dry_run:${AREA_ID}`;
-    let pendingCb: ((err: Error | null) => void) | null = null;
+    // Seeded with a no-op rather than `null`: the only read is the resolve below,
+    // and a nullable here made TypeScript narrow the binding to `null` (the
+    // assignment happens inside the mock, which control-flow analysis cannot
+    // see), so `pendingCb?.(...)` was rejected as not callable. Holding a
+    // callable at all times says the same thing with no nullable.
+    let pendingCb: (err: Error | null) => void = () => {};
     homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
-      if (key === dryRunKey) { homey.__settingsStore[key] = value; pendingCb = cb ?? null; return; }
+      if (key === dryRunKey) { homey.__settingsStore[key] = value; pendingCb = cb ?? (() => {}); return; }
       homey.__settingsStore[key] = value;
       cb?.(null);
     });
@@ -346,7 +351,7 @@ describe('control toggle — optimistic rollback + serialization', () => {
 
     // Resolve write 1: control settles ON, toggle re-enabled, notice cleared,
     // and the first write is NOT lost — the persisted value is its intent.
-    pendingCb?.(null);
+    pendingCb(null);
     await flushAsync();
     const settled = controlSwitch();
     expect(settled.hasAttribute('disabled')).toBe(false);

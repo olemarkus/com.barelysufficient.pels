@@ -87,7 +87,10 @@ export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailI
   const nativeWiringEffectiveEnabled = device
     ? state.nativeWiringMap[device.id] === true || device.controlAdapter?.activationEnabled === true
     : false;
-  const nativeWiringActivationPending = device
+  // `device !== null`, not a truthiness `device &&`: this is a predicate that
+  // feeds `.selected` / `.hidden` on the DOM elements below, and `device && …`
+  // evaluates to `null` for a null device rather than `false`.
+  const nativeWiringActivationPending = device !== null
     && nativeWiringActivationPendingDeviceId === device.id
     && !nativeWiringEffectiveEnabled;
   const nativeWiringRequiredAndMissing = requiresNativeWiringForActivation(device)

@@ -5,6 +5,7 @@ import { pendingChipTone } from '../src/ui/deadlinePlanPending.ts';
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
 import type { DecoratedDeviceSnapshot, StateOfChargeObservedProbe, TemperatureObservedProbe } from '../../contracts/src/types.ts';
 import type {
+  DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
@@ -58,7 +59,11 @@ const buildHeaterActivePlan = (params: {
   floorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
   planningSpeedKw?: number;
   initialPlanningSpeedKw?: number;
-}): DeferredObjectiveActivePlanV1 => {
+// `latest` is narrowed to non-null: the contract allows `null` (a task committed
+// but not yet planned), but this builder always produces a revision, and tests
+// that reach into `plan.latest.hours` should not have to assert what the builder
+// already guarantees.
+}): DeferredObjectiveActivePlanV1 & { latest: DeferredObjectiveActivePlanRevisionV1 } => {
   const revisedAtMs = params.now.getTime();
   const buildHours = (offsets: number[]) => offsets.map((offset) => ({
     startsAtMs: atLocalHour(params.now, offset).getTime(),
