@@ -32,6 +32,12 @@ const planWithReason = (reason: { code: 'cooldown_restore'; remainingSec: number
     devices: [{
       id: 'charger',
       name: 'Charger',
+      // Required on `SettingsUiPlanDeviceSnapshot` and always written by the
+      // producer. They were missing here and the `as SettingsUiPlanPayload`
+      // cast hid it; the fixture only "worked" because this surface used to
+      // cast the payload instead of parsing it.
+      controllable: true,
+      available: true,
       currentState: 'on',
       plannedState: 'keep',
       currentDrawKw: 1.2,

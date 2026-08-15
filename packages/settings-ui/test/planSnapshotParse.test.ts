@@ -1,12 +1,14 @@
-// Boundary coverage for the target-name half of the plan-snapshot guard.
+// Boundary coverage for the plan-snapshot guard: the target-name half, and the
+// three atomic facets (temperature, stepped cluster, EV plug-state pair).
 //
-// `swapped_out` / `reserved_for_start` carry a required `targetName` on the
-// runtime type, and the formatters interpolate it into a sentence with no
-// fallback. That promise is the CURRENT build's: a snapshot can arrive from an
-// older one across an app update, so this seam — not the formatter — is what
-// has to reject a reason that cannot name its holder. `swap_pending` is
-// deliberately exempt; its `null` is a real unresolved-target state the
-// formatter renders on purpose.
+// The seam exists because this payload crosses a real JSON transport and the
+// consumers inward of it are written to trust what they get: the formatters
+// interpolate `targetName` with no fallback, `resolveTemperatureLine` calls
+// `.toFixed()` on the trio, and `formatStepDisplayLabel` calls `.trim()` on a
+// step id. Rejecting or dropping here is what lets all of them stay total.
+//
+// `swap_pending` is deliberately exempt from the target-name rule; its `null` is
+// a real unresolved-target state the formatter renders on purpose.
 
 import { describe, expect, it } from 'vitest';
 import { parsePlanSnapshot } from '../src/ui/planSnapshotParse.ts';
@@ -110,5 +112,123 @@ describe('parsePlanSnapshot temperature facet guard', () => {
   it('keeps facet-less devices untouched', () => {
     const parsed = parsePlanSnapshot({ devices: [device()] });
     expect((parsed?.devices?.[0] as { temperature?: unknown }).temperature).toBeUndefined();
+  });
+});
+
+describe('parsePlanSnapshot stepped cluster guard', () => {
+  const device = (steppedLoad?: unknown) => ({
+    id: 'dev-1',
+    name: 'Panel heater',
+    controllable: true,
+    available: true,
+    reason: { code: 'capacity' },
+    ...(steppedLoad !== undefined ? { steppedLoad } : {}),
+  });
+
+  const validCluster = {
+    profile: { steps: [{ id: 'low' }, { id: 'high' }] },
+    reportedStepId: 'low',
+    targetStepId: 'high',
+    commandPending: false,
+  };
+
+  it('passes a clean cluster through identity-preserving', () => {
+    const payload = { devices: [device(validCluster)] };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+
+  it('keeps null step ids — they are a real "nothing reported / no target" state', () => {
+    const payload = {
+      devices: [device({ ...validCluster, reportedStepId: null, targetStepId: null })],
+    };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+
+  it('drops a malformed cluster WHOLLY, so the device renders as non-stepped', () => {
+    for (const junk of [
+      // Truthy non-objects: presence of the key is the stepped discriminant, so
+      // these used to route a device into the stepped card.
+      1,
+      'stepped',
+      // A step id of the wrong type reaches `formatStepDisplayLabel`, which
+      // calls `.trim()` on it.
+      { ...validCluster, reportedStepId: 7 },
+      { ...validCluster, targetStepId: {} },
+      // Structural gaps.
+      { ...validCluster, profile: undefined },
+      { ...validCluster, profile: { steps: 'low,high' } },
+      { ...validCluster, commandPending: undefined },
+    ]) {
+      const parsed = parsePlanSnapshot({ devices: [device(junk)] });
+      expect(parsed).not.toBeNull();
+      expect((parsed?.devices?.[0] as { steppedLoad?: unknown }).steppedLoad).toBeUndefined();
+    }
+  });
+});
+
+describe('parsePlanSnapshot EV plug-state guard', () => {
+  const device = (fields: Record<string, unknown>) => ({
+    id: 'dev-1',
+    name: 'Garage charger',
+    controllable: true,
+    available: true,
+    reason: { code: 'capacity' },
+    ...fields,
+  });
+
+  it('passes every member of the closed union through identity-preserving', () => {
+    for (const state of [
+      'plugged_in_charging',
+      'plugged_in',
+      'plugged_in_paused',
+      'plugged_out',
+      'plugged_in_discharging',
+    ]) {
+      const payload = { devices: [device({ evChargingState: state, carChargingState: state })] };
+      expect(parsePlanSnapshot(payload)).toBe(payload);
+    }
+  });
+
+  it.each([
+    ['a non-member string', 'charging'],
+    ['a number', 6],
+    ['an object', {}],
+    ['null', null],
+  ])('drops %s rather than letting it reach a .trim() in the card text', (_label, junk) => {
+    const parsed = parsePlanSnapshot({ devices: [device({ evChargingState: junk })] });
+    expect(parsed).not.toBeNull();
+    expect((parsed?.devices?.[0] as { evChargingState?: unknown }).evChargingState).toBeUndefined();
+  });
+
+  it('drops the two states independently — one being junk says nothing about the other', () => {
+    const parsed = parsePlanSnapshot({
+      devices: [device({ evChargingState: 'plugged_in_charging', carChargingState: 'nonsense' })],
+    });
+    const dev = parsed?.devices?.[0] as { evChargingState?: unknown; carChargingState?: unknown };
+    expect(dev.evChargingState).toBe('plugged_in_charging');
+    expect(dev.carChargingState).toBeUndefined();
+  });
+});
+
+describe('parsePlanSnapshot facet independence', () => {
+  it('drops only the malformed facets and keeps the sound ones on the same device', () => {
+    const parsed = parsePlanSnapshot({
+      devices: [{
+        id: 'dev-1',
+        name: 'Everything device',
+        controllable: true,
+        available: true,
+        reason: { code: 'capacity' },
+        temperature: { currentTarget: 21, currentTemperature: 20.4, plannedTarget: 22 },
+        steppedLoad: 'junk',
+        evChargingState: 'plugged_in',
+        carChargingState: 99,
+      }],
+    });
+    const dev = parsed?.devices?.[0] as Record<string, unknown>;
+    expect(dev.temperature).toEqual({ currentTarget: 21, currentTemperature: 20.4, plannedTarget: 22 });
+    expect(dev.evChargingState).toBe('plugged_in');
+    expect(dev.steppedLoad).toBeUndefined();
+    expect(dev.carChargingState).toBeUndefined();
   });
 });

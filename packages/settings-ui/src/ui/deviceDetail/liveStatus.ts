@@ -40,6 +40,7 @@ import {
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
+import { parsePlanSnapshot } from '../planSnapshotParse.ts';
 import { hasActiveDeadlineObjective, state } from '../state.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 
@@ -134,7 +135,14 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   let plan: { devices?: PlanDeviceSnapshot[]; generatedAtMs?: number } | null | undefined;
   try {
     const payload = await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH);
-    plan = payload?.plan as typeof plan;
+    // Through the shared parser, not a cast. This was the ONE plan consumer that
+    // skipped `parsePlanSnapshot`, and it reads the facets the parser exists to
+    // validate: `resolveTemperatureLine` calls `.toFixed()` on the temperature
+    // trio and `resolveSteppedLevelFact` calls `.trim()` on a step id. The
+    // realtime push primes the cache with an already-parsed plan, so a malformed
+    // payload only reached here on a COLD read — which is exactly why it was
+    // intermittent rather than obviously broken.
+    plan = parsePlanSnapshot(payload?.plan);
     dev = plan?.devices?.find((candidate) => candidate.id === deviceId);
   } catch {
     dev = undefined;

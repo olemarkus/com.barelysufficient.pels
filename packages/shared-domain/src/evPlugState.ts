@@ -34,6 +34,38 @@ import type { EvChargingState } from '../../contracts/src/types';
  */
 export type EvDeviceIdentity = { deviceClass?: string };
 
+// Membership set derived from a `satisfies Record<EvChargingState, …>` literal so
+// a new union member is a compile error here until it's added to the guard (the
+// Set keeps `has` off the prototype chain — `'toString' in record` would lie).
+const EV_CHARGING_STATES: ReadonlySet<string> = new Set(
+  Object.keys({
+    plugged_in_charging: 0,
+    plugged_in: 0,
+    plugged_in_paused: 0,
+    plugged_out: 0,
+    plugged_in_discharging: 0,
+  } satisfies Record<EvChargingState, 0>),
+);
+
+/**
+ * The one guard that turns an untrusted value into an `EvChargingState`.
+ *
+ * It lives here, at the bottom of the EV stack, because BOTH ends of the app
+ * need it and neither may import the other: the capability-read seam
+ * (`lib/device/managerControl.getEvChargingState`) normalises a Homey enum read,
+ * and the settings-UI parse seam (`planSnapshotParse`) validates the same field
+ * arriving over the API bridge. Before this move the guard existed only in
+ * `lib/device`, which the settings UI is forbidden to import — so the WebView
+ * side declared the closed union on its wire type and then never checked it,
+ * and a junk value reached `.trim()` in the card-text helpers.
+ *
+ * Everything else in this module is total over `EvChargingState` precisely
+ * because this function is the only way in.
+ */
+export const isEvChargingState = (value: unknown): value is EvChargingState => (
+  typeof value === 'string' && EV_CHARGING_STATES.has(value)
+);
+
 /**
  * EV-device predicate. A device is "EV" if EITHER its `deviceClass` is
  * `'evcharger'` OR its resolved binary control capability is

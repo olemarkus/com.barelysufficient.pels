@@ -13,7 +13,8 @@
  */
 import type { EvChargingState } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
-import { isEvChargingState, toCapabilityTimestampMs } from './managerControl';
+import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
+import { toCapabilityTimestampMs } from './managerControl';
 import { normalizeStateOfChargePercent } from './transport/stateOfCharge';
 
 /**

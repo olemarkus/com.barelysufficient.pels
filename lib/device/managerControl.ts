@@ -1,4 +1,5 @@
 import type { EvChargingState } from '../../packages/contracts/src/types';
+import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveBinaryOn } from '../utils/binaryControl';
 import type { Logger } from '../utils/types';
@@ -126,23 +127,6 @@ export function getCanSetControl(
     return capability.setable;
   }
   return true;
-}
-
-// Membership set derived from a `satisfies Record<EvChargingState, …>` literal so
-// a new union member is a compile error here until it's added to the guard (the
-// Set keeps `has` off the prototype chain — `'toString' in record` would lie).
-const EV_CHARGING_STATES: ReadonlySet<string> = new Set(
-  Object.keys({
-    plugged_in_charging: 0,
-    plugged_in: 0,
-    plugged_in_paused: 0,
-    plugged_out: 0,
-    plugged_in_discharging: 0,
-  } satisfies Record<EvChargingState, 0>),
-);
-
-export function isEvChargingState(value: unknown): value is EvChargingState {
-  return typeof value === 'string' && EV_CHARGING_STATES.has(value);
 }
 
 // Capability-read parse seam: `evcharger_charging_state` is a closed Homey enum,

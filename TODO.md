@@ -1366,18 +1366,20 @@ program) remain deferred.*
       field is always resolvable. Found while removing the neighbouring energy fallbacks,
       2026-08-12. [P2]
 
-- [ ] **The WebView adapter validates the temperature facet but not the EV pair.**
-      *Persona:* owner on an older app build after a partial upgrade, reading an EV card.
-      *Hypothesis:* `parsePlanSnapshot` (`packages/settings-ui/src/ui/planSnapshotParse.ts`)
-      casts the payload and validates only `id`/`name`/`controllable`/`available`/`reason` plus
-      the temperature facet, so `evChargingState` and `carChargingState` — both now declared as
-      the closed `EvChargingState` union (2026-08-14, when the index signature came off
-      `SettingsUiPlanDeviceSnapshot`) — enter shared-domain typed as that union while carrying an
-      arbitrary string. Consequence today is benign: `resolveEvCarExceptionLabel` compares against
-      literals and falls through to `null`. It is a hole in this seam's own doctrine rather than a
-      live bug — the fix is to extend the existing drop-whole treatment to the EV pair, so the
-      declared type and the validated type are the same set. Source: 2026-08-14 adversarial review
-      of the strict-contracts train. [P3]
+- [ ] **`parsePlanSnapshot` drops malformed facets silently — the adapter never tells its caller.**
+      *Persona:* engineer diagnosing why a stepped device renders as a generic card in production.
+      *Hypothesis:* the seam validates the temperature trio, the `steppedLoad` cluster and the EV
+      plug-state pair, and drops each WHOLE on junk (2026-08-15, PR #2111). Dropping is the right
+      remedy — rejecting the plan would blank every healthy device over one bad field — but it is
+      currently silent, so a corrupted `steppedLoad` and a genuinely non-stepped device are
+      indistinguishable downstream, and `readOverviewPlan` reports `served` for a response it
+      partially discarded. Provenance is erased rather than classified. The fix is NOT to log from
+      inside the parser: it is deliberately a leaf module (both `planRedesign` and
+      `overviewPlanRead` import it, so it must not pull `homey.ts` into its graph). It should
+      RETURN what it dropped and let each caller decide — `realtime.handlePlanUpdated` already
+      logs a fully-malformed push via `logSettingsWarn` and is the natural home for a
+      partially-degraded one. That is a signature change across every call site, which is why it
+      is not folded into the validation PR. Source: Codex review of PR #2111. [P2]
 - [ ] **`getEffectiveControlModel` is a third resolver of the retired enum.**
       `packages/settings-ui/src/ui/deviceControlProfiles.ts` recomputes the three-way model in the
       browser from five sources (native activation, the wire value, stored profile, stored
