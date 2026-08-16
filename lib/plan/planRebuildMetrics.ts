@@ -21,6 +21,7 @@ export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome 
   hadShedding: false,
   isDryRun,
   failed: false,
+  gated: false,
 });
 
 export const buildPlanHeadroomLogFields = (

@@ -696,3 +696,13 @@ export const buildSettingsUiPlanMeta = (
   uncontrolledKw: 3,
   ...overrides,
 });
+
+/**
+ * A build gate that is always open, for specs that are not exercising gating.
+ *
+ * `PlanServiceDeps.planBuildGate` is required: production wires
+ * `PowerMeasurementGate`, and a spec that wants a plan built every cycle says so
+ * here rather than by omitting the dep. Omission used to mean "open", which made
+ * the unmeasured case — the one the gate exists to stop — the silent default.
+ */
+export const openPlanBuildGate = (): { isOpen: () => boolean } => ({ isOpen: () => true });

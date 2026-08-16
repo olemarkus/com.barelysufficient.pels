@@ -19,6 +19,10 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     public setShortfallThresholdProvider = vi.fn();
     public reportTotalPower = vi.fn();
     public getLastTotalPower = vi.fn().mockReturnValue(null);
+    // A home with a meter, which is what this suite is about (settings
+    // propagation): a shut build gate would stop the app booting far enough to
+    // observe any propagation at all.
+    public hasPowerMeasurement = vi.fn().mockReturnValue(true);
     public headroom = vi.fn().mockReturnValue(0);
     public getHeadroom = vi.fn().mockReturnValue(0);
     public getRestoreMargin = vi.fn().mockReturnValue(0.2);
