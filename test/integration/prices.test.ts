@@ -19,6 +19,8 @@ import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapt
 import { flattenAllHours, readCombinedPriceData } from '../../lib/price/priceStore';
 import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
+import type { SpotPriceEntry } from '../../lib/price/spotPriceFetch';
+import type { GridTariffEntryWithSource } from '../../lib/price/gridTariffUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import {
   buildLocalDayBuckets,
@@ -278,7 +280,7 @@ describe('Spot price fetching', () => {
     await flushPromises();
 
     // Check that prices were stored
-    const prices = mockHomeyInstance.settings.get('electricity_prices');
+    const prices = mockHomeyInstance.settings.get('electricity_prices') as SpotPriceEntry[];
     expect(Array.isArray(prices)).toBe(true);
     expect(prices.length).toBeGreaterThan(0);
 
@@ -327,8 +329,9 @@ describe('Spot price fetching', () => {
     const lastPriceEvent = priceEvents[priceEvents.length - 1];
     expect(lastPriceEvent.data).toHaveProperty('days');
     expect(lastPriceEvent.data).toHaveProperty('avgPrice');
-    expect(lastPriceEvent.data.version).toBe(2);
-    expect(typeof lastPriceEvent.data.days).toBe('object');
+    const lastPriceData = lastPriceEvent.data as { version?: number; days?: unknown };
+    expect(lastPriceData.version).toBe(2);
+    expect(typeof lastPriceData.days).toBe('object');
   });
 
   it('uses VAT exemption for NO4 (Nord-Norge)', async () => {
@@ -400,7 +403,7 @@ describe('Spot price fetching', () => {
     await flushPromises();
 
     // Should not throw, prices should be absent or empty
-    const prices = mockHomeyInstance.settings.get('electricity_prices');
+    const prices = mockHomeyInstance.settings.get('electricity_prices') as SpotPriceEntry[] | null;
     expect(prices === null || prices.length === 0).toBe(true);
   });
 
@@ -425,7 +428,7 @@ describe('Spot price fetching', () => {
     await flushPromises();
 
     // No prices stored due to error
-    const prices = mockHomeyInstance.settings.get('electricity_prices');
+    const prices = mockHomeyInstance.settings.get('electricity_prices') as SpotPriceEntry[] | null;
     expect(prices === null || prices.length === 0).toBe(true);
   });
 
@@ -768,7 +771,7 @@ describe('Grid tariff fetching', () => {
     await flushPromises();
 
     // Check that grid tariff data was stored
-    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as Array<Record<string, unknown>>;
     expect(Array.isArray(gridTariffData)).toBe(true);
     expect(gridTariffData.length).toBe(3);
 
@@ -835,7 +838,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // A full day of static fallback data is seeded so prices still work.
-    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as GridTariffEntryWithSource[];
     expect(Array.isArray(gridTariffData)).toBe(true);
     expect(gridTariffData).toHaveLength(24);
     expect(gridTariffData.map((e: { time: number }) => e.time)).toEqual(
@@ -879,7 +882,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // No fallback available and nothing cached → nothing stored.
-    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as Array<Record<string, unknown>>;
     expect(gridTariffData).toBeNull();
   });
 
@@ -1008,7 +1011,7 @@ describe('Grid tariff fetching', () => {
       await flushPromises();
 
       expect(requestedDates).toEqual([today, yesterday, week]);
-      const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+      const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as Array<Record<string, unknown>>;
       expect(Array.isArray(gridTariffData)).toBe(true);
       expect(gridTariffData.length).toBe(mockNveGridTariffResponse.length);
     } finally {

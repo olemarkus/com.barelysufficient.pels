@@ -189,7 +189,7 @@ describe('allow_smart_task_rescue flow card', () => {
     await app.onInit();
     const autocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.allow_smart_task_rescue?.device;
     if (!autocomplete) throw new Error('device autocomplete not registered');
-    const results = await autocomplete('');
+    const results = await autocomplete('') as Array<{ id: string }>;
     expect(results.map((option: { id: string }) => option.id)).toContain('therm-1');
     await app.onUninit?.();
   });

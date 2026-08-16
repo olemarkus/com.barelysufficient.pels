@@ -41,7 +41,7 @@ const DEFAULT_EXTERNAL_CHANGE_BEHAVIOR: Required<MockCapabilityMutationBehavior>
 };
 
 export class MockSettings extends EventEmitter {
-  private store = new Map<string, any>();
+  private store = new Map<string, unknown>();
 
   // Mirror the real SDK's `ManagerSettings.get()`: an unset key (never written,
   // or `unset`) answers `null`, NOT `undefined`. A bare `Map.get` here disagrees
@@ -52,7 +52,7 @@ export class MockSettings extends EventEmitter {
     return this.store.has(key) ? this.store.get(key) : null;
   }
 
-  set(key: string, value: any) {
+  set(key: string, value: unknown) {
     this.store.set(key, value);
     this.emit('set', key);
   }
@@ -74,13 +74,13 @@ export class MockSettings extends EventEmitter {
 }
 
 export class MockDevice {
-  private capabilityValues = new Map<string, any>();
-  private actualCapabilityValues = new Map<string, any>();
-  private lastRequestedCapabilityValues = new Map<string, any>();
+  private capabilityValues = new Map<string, unknown>();
+  private actualCapabilityValues = new Map<string, unknown>();
+  private lastRequestedCapabilityValues = new Map<string, unknown>();
   private capabilityUpdatedAt = new Map<string, string>();
   private actualCapabilityUpdatedAt = new Map<string, string>();
-  private settings: Record<string, any> = {};
-  private settingsObject: any[] | null = null;
+  private settings: Record<string, unknown> = {};
+  private settingsObject: unknown[] | null = null;
   private behaviorByCapability = new Map<string, MockCapabilityBehaviorConfig>();
   private capabilityMetadata = new Map<string, MockCapabilityMetadata>();
   private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
@@ -149,11 +149,11 @@ export class MockDevice {
     return { id: this.id };
   }
 
-  async getCapabilityValue(capabilityId: string): Promise<any> {
+  async getCapabilityValue(capabilityId: string): Promise<unknown> {
     return this.capabilityValues.get(capabilityId);
   }
 
-  async setCapabilityValue(capabilityId: string, value: any): Promise<void> {
+  async setCapabilityValue(capabilityId: string, value: unknown): Promise<void> {
     this.lastRequestedCapabilityValues.set(capabilityId, value);
     const behavior = this.resolveApiWriteBehavior(capabilityId);
     if (!behavior.accept) {
@@ -169,23 +169,23 @@ export class MockDevice {
     return this.capabilityValues.get(capabilityId);
   }
 
-  async getSettings(): Promise<Record<string, any>> {
+  async getSettings(): Promise<Record<string, unknown>> {
     return this.settings;
   }
 
-  setSettings(settings: Record<string, any>): void {
+  setSettings(settings: Record<string, unknown>): void {
     this.settings = settings;
   }
 
-  async getSettingsObject(): Promise<any[] | null> {
+  async getSettingsObject(): Promise<unknown[] | null> {
     return this.settingsObject;
   }
 
-  setSettingsObject(settingsObject: any[] | null): void {
+  setSettingsObject(settingsObject: unknown[] | null): void {
     this.settingsObject = settingsObject;
   }
 
-  getActualCapabilityValue(capabilityId: string): any {
+  getActualCapabilityValue(capabilityId: string): unknown {
     return this.actualCapabilityValues.get(capabilityId);
   }
 
@@ -305,12 +305,12 @@ export class MockDevice {
     this.zone = zone;
   }
 
-  toHomeyApiDevice(): Record<string, any> {
+  toHomeyApiDevice(): Record<string, unknown> {
     const caps = this.getCapabilities();
-    const capabilitiesObj: Record<string, any> = {};
+    const capabilitiesObj: Record<string, unknown> = {};
     for (const cap of caps) {
       const nextValue = this.capabilityValues.get(cap);
-      const entry: Record<string, any> = { id: cap, value: nextValue };
+      const entry: Record<string, unknown> = { id: cap, value: nextValue };
       const metadata = this.capabilityMetadata.get(cap);
       const lastUpdated = this.capabilityUpdatedAt.get(cap);
       if (metadata?.units) entry.units = metadata.units;
@@ -402,7 +402,7 @@ export const setAutoEnableMockDevices = (enabled: boolean): void => {
   autoEnableMockDevices = enabled;
 };
 
-export const emitMockSdkDeviceUpdate = (device: Record<string, any>): void => {
+export const emitMockSdkDeviceUpdate = (device: Record<string, unknown>): void => {
   mockSdkDevicesApiEmitter.emit('realtime', 'device.update', device);
 };
 
@@ -434,20 +434,38 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
 };
 
 
+/** A Flow token as `flow.createToken` registers it, plus the call record specs assert against. */
+// Homey's two production trigger ports disagree about the token type — `object` in
+// `lib/device/transport/transportTypes.ts`, `Record<string, unknown>` in
+// `lib/ports/homeyRuntime.ts`. The mock's `trigger` accepts the looser one so both wire up,
+// and records the stricter view, which is what the specs assert against. One reconciliation
+// here beats one cast in every spec that reads a recorded token.
+const asTriggerRecord = (value?: object): Record<string, unknown> | undefined => (
+  value as Record<string, unknown> | undefined
+);
+
+export type MockFlowToken = {
+  value: unknown;
+  type?: string;
+  title?: string;
+  setValueCount: number;
+  setValueCalls: unknown[];
+};
+
 export const mockHomeyInstance = {
-  on(event: string, listener: (...args: any[]) => void) {
+  on(event: string, listener: (...args: unknown[]) => void) {
     mockHomeyEmitter.on(event, listener);
     return mockHomeyInstance;
   },
-  off(event: string, listener: (...args: any[]) => void) {
+  off(event: string, listener: (...args: unknown[]) => void) {
     mockHomeyEmitter.off(event, listener);
     return mockHomeyInstance;
   },
-  removeListener(event: string, listener: (...args: any[]) => void) {
+  removeListener(event: string, listener: (...args: unknown[]) => void) {
     mockHomeyEmitter.removeListener(event, listener);
     return mockHomeyInstance;
   },
-  emit(event: string, ...args: any[]) {
+  emit(event: string, ...args: unknown[]) {
     return mockHomeyEmitter.emit(event, ...args);
   },
   removeAllListeners(event?: string) {
@@ -455,6 +473,14 @@ export const mockHomeyInstance = {
     return mockHomeyInstance;
   },
   settings: new MockSettings(),
+  // The one `any` left in this file, and deliberately so. Typing this slot makes
+  // `getLatestPlanSnapshotForTests` return a real `DevicePlan | null`, which surfaces 154 errors
+  // across 7 specs: ~89 unguarded `plan.devices` reads, ~45 possibly-undefined array indexes,
+  // and 20 reads of `plannedTarget` that need the temperature discriminant first (it is
+  // `?: never` on the other arms of `DevicePlanDevice`). Those 20 are real — the assertions have
+  // been reading through `any` — but fixing them is plan-domain work, not a typing chore, so it
+  // gets its own change. `reportUnusedDisableDirectives` retires this line the day that lands.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
   app: null as any,
   platform: 'local',
   platformVersion: 2,
@@ -512,8 +538,8 @@ export const mockHomeyInstance = {
       fetchDynamicElectricityPrices: async () => ([]),
       getCurrency: async () => ({ currency: 'NOK' }),
     },
-    _realtimeEvents: [] as Array<{ event: string; data: any }>,
-    realtime: async (event: string, data: any) => {
+    _realtimeEvents: [] as Array<{ event: string; data: unknown }>,
+    realtime: async (event: string, data: unknown) => {
       // Track realtime events for testing
       mockHomeyInstance.api._realtimeEvents.push({ event, data });
     },
@@ -524,7 +550,7 @@ export const mockHomeyInstance = {
       // Return devices from mock drivers when API is called
       if (path === 'manager/devices/device' || path === 'manager/devices' || path === 'devices') {
         const drivers = mockHomeyInstance.drivers.getDrivers();
-        const devices: Record<string, any> = {};
+        const devices: Record<string, unknown> = {};
         for (const driver of Object.values(drivers)) {
           for (const device of driver.getDevices()) {
             devices[device.idValue] = device.toHomeyApiDevice();
@@ -565,20 +591,22 @@ export const mockHomeyInstance = {
       }
       throw new Error(`Mock API GET not implemented for: ${path}`);
     },
-    put: async (path: string, body?: any) => {
+    put: async (path: string, body?: unknown) => {
       // Handle capability value setting: manager/devices/device/{id}/capability/{capId}
       const capMatch = path.match(/^manager\/devices\/device\/(.+?)\/capability\/(.+)$/);
       if (capMatch) {
         const [, deviceId, capabilityId] = capMatch;
         const device = findMockDeviceById(deviceId);
         if (device) {
-          await device.setCapabilityValue(capabilityId, body?.value);
+          // The SDK's `api.put` body is arbitrary; this mock serves only the capability
+          // write, so the shape is asserted here, where it is actually interpreted.
+          await device.setCapabilityValue(capabilityId, (body as { value?: unknown } | undefined)?.value);
         }
         return;
       }
       throw new Error(`Mock API PUT not implemented for: ${path}`);
     },
-    post: async (path: string, body?: any) => {
+    post: async (path: string, body?: unknown) => {
       const flowMatch = path.match(/^manager\/flow\/flowcardaction\/(.+?)\/(.+?)\/run$/);
       if (flowMatch) {
         return {
@@ -597,25 +625,30 @@ export const mockHomeyInstance = {
     },
   },
   flow: {
-    _tokens: {} as Record<string, { value: any }>,
-    _actionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
-    _conditionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
-    _triggerCardRunListeners: {} as Record<string, (args: any, state: any) => Promise<any>>,
-    _triggerCardTriggers: {} as Record<string, Array<{ tokens: any; state: any }>>,
-    _actionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
-    _conditionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
-    _triggerCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
-    createToken: async (id: string, opts: { value: any; type?: string; title?: string }) => {
-      const entry: any = {
+    _tokens: {} as Record<string, MockFlowToken>,
+    _actionCardListeners: {} as Record<string, (args: unknown) => Promise<unknown>>,
+    _conditionCardListeners: {} as Record<string, (args: unknown) => Promise<unknown>>,
+    _triggerCardRunListeners: {} as Record<string, (args: unknown, state: unknown) => Promise<unknown>>,
+    // Tokens/state mirror the production `FlowTriggerCard` port in lib/ports/homeyRuntime.ts,
+    // so a spec reading a token off a recorded trigger sees the same shape the runtime passes.
+    _triggerCardTriggers: {} as Record<string, Array<{
+      tokens?: Record<string, unknown>;
+      state?: Record<string, unknown>;
+    }>>,
+    _actionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<unknown>>>,
+    _conditionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<unknown>>>,
+    _triggerCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<unknown>>>,
+    createToken: async (id: string, opts: { value: unknown; type?: string; title?: string }) => {
+      const entry: MockFlowToken = {
         value: opts.value,
         type: opts.type,
         title: opts.title,
         setValueCount: 0,
-        setValueCalls: [] as any[],
+        setValueCalls: [],
       };
       mockHomeyInstance.flow._tokens[id] = entry;
       return {
-        setValue: async (nextValue: any) => {
+        setValue: async (nextValue: unknown) => {
           entry.value = nextValue;
           entry.setValueCount += 1;
           entry.setValueCalls.push(nextValue);
@@ -623,10 +656,10 @@ export const mockHomeyInstance = {
       };
     },
     getActionCard: (cardId: string) => ({
-      registerRunListener: (listener: (args: any) => Promise<any>) => {
+      registerRunListener: (listener: (args: unknown) => Promise<unknown>) => {
         mockHomeyInstance.flow._actionCardListeners[cardId] = listener;
       },
-      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<any>) => {
+      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<unknown>) => {
         if (!mockHomeyInstance.flow._actionCardAutocompleteListeners[cardId]) {
           mockHomeyInstance.flow._actionCardAutocompleteListeners[cardId] = {};
         }
@@ -634,10 +667,10 @@ export const mockHomeyInstance = {
       },
     }),
     getConditionCard: (cardId: string) => ({
-      registerRunListener: (listener: (args: any) => Promise<any>) => {
+      registerRunListener: (listener: (args: unknown) => Promise<unknown>) => {
         mockHomeyInstance.flow._conditionCardListeners[cardId] = listener;
       },
-      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<any>) => {
+      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<unknown>) => {
         if (!mockHomeyInstance.flow._conditionCardAutocompleteListeners[cardId]) {
           mockHomeyInstance.flow._conditionCardAutocompleteListeners[cardId] = {};
         }
@@ -645,22 +678,22 @@ export const mockHomeyInstance = {
       },
     }),
     getTriggerCard: (cardId: string) => ({
-      registerRunListener: (listener: (args: any, state: any) => Promise<any>) => {
+      registerRunListener: (listener: (args: unknown, state: unknown) => Promise<unknown>) => {
         mockHomeyInstance.flow._triggerCardRunListeners[cardId] = listener;
       },
-      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<any>) => {
+      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<unknown>) => {
         if (!mockHomeyInstance.flow._triggerCardAutocompleteListeners[cardId]) {
           mockHomeyInstance.flow._triggerCardAutocompleteListeners[cardId] = {};
         }
         mockHomeyInstance.flow._triggerCardAutocompleteListeners[cardId][arg] = listener;
       },
-      trigger: (tokens?: any, state?: any) => {
+      trigger: (tokens?: object, state?: object) => {
         if (!mockHomeyInstance.flow._triggerCardTriggers[cardId]) {
           mockHomeyInstance.flow._triggerCardTriggers[cardId] = [];
         }
         mockHomeyInstance.flow._triggerCardTriggers[cardId].push({
-          tokens: tokens || {},
-          state: state || {},
+          tokens: asTriggerRecord(tokens) ?? {},
+          state: asTriggerRecord(state) ?? {},
         });
         return Promise.resolve(true);
       },
@@ -723,12 +756,12 @@ class MockApp {
     mockHomeyInstance.app = this;
   }
 
-  log(...args: any[]) {
+  log(...args: unknown[]) {
     /* istanbul ignore next */
     console.log(...args);
   }
 
-  error(...args: any[]) {
+  error(...args: unknown[]) {
     /* istanbul ignore next */
     console.error(...args);
   }

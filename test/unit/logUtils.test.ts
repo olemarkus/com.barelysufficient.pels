@@ -10,7 +10,7 @@ describe('logUtils', () => {
   it('stringifies payloads and falls back on unserializable values', () => {
     expect(safeJsonStringify({ ok: true })).toBe('{"ok":true}');
 
-    const circular: any = {};
+    const circular: Record<string, unknown> = {};
     circular.self = circular;
     const result = safeJsonStringify(circular);
     expect(result).toContain('unserializable device object');

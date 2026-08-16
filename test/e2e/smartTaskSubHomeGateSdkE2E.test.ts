@@ -53,7 +53,7 @@ describe('smart-task sub-home gate (SDK boundary)', () => {
     const autocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners
       .set_temperature_deadline?.device;
     expect(autocomplete).toBeTypeOf('function');
-    const options = await autocomplete('');
+    const options = await autocomplete('') as Array<{ id: string }>;
     const optionIds = options.map((option: { id: string }) => option.id);
     expect(optionIds).toContain('heater-main');
     expect(optionIds).not.toContain('heater-sub');
