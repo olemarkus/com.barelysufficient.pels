@@ -1,17 +1,17 @@
 /**
- * Regression coverage for the boost-driven stepped-escalation gate.
+ * Regression coverage for the boost-driven stepped-escalation swap.
  *
  * `canUseSwapForSteppedRestore` in `lib/plan/restore/steppedRestoreAdmission.ts`
- * honors `hasRecentObservedDraw` on the plan device: when calibration
- * confirms the device has not been drawing at any step recently, boost
- * cannot trigger a swap to a higher step — pausing a running lower-priority
- * device for a boosted device that isn't accepting load is pure loss. When
- * calibration has no opinion (`undefined`), the legacy bypass remains in
- * effect so newly-paired devices are not penalised during warm-up.
+ * reads `boostActive` and nothing else. Pausing a running lower-priority device
+ * to feed a boosted device that is not accepting load would be pure loss, and
+ * that used to be a second, swap-only draw-evidence gate here
+ * (`hasRecentObservedDraw`). It is now the release inside `resolveBoostActive`
+ * (`lib/plan/planBoost.ts`, pinned by `test/unit/planBoost.test.ts`): a device
+ * confidently drawing nothing arrives with no boost at all, so the question is
+ * answered once, upstream, for every consumer of the decision.
  *
- * The shed-invariant bypass is deliberately NOT gated on draw evidence —
- * boost overrides the fairness invariant unconditionally (see the staircase
- * regression in `planRestoreBoostShedInvariantBypass.test.ts`).
+ * What this file still guards is the restore layer's half — the swap happens
+ * for a boosted device and not for an unboosted one.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -55,7 +55,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
   };
 };
 
-describe('boost-driven escalation honours hasRecentObservedDraw', () => {
+describe('boost-driven escalation swaps on the boost decision alone', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-12T12:00:00Z'));
@@ -65,7 +65,7 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
     vi.useRealTimers();
   });
 
-  const buildScenario = (hasRecentObservedDraw: boolean | undefined) => {
+  const buildScenario = (boostActive: boolean) => {
     const state = createPlanEngineState();
     return applyRestorePlan({
       planDevices: [
@@ -75,12 +75,9 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
           priority: 1,
           currentState: 'on',
           plannedState: 'keep',
-          boostActive: true,
+          boostActive,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
-          ...(hasRecentObservedDraw !== undefined
-            ? { hasRecentObservedDraw: hasRecentObservedDraw }
-            : {}),
         }),
         buildPlanDevice({
           id: 'lower-priority',
@@ -106,23 +103,18 @@ describe('boost-driven escalation honours hasRecentObservedDraw', () => {
     });
   };
 
-  it('keeps the legacy bypass when calibration has no opinion (undefined)', () => {
-    const result = buildScenario(undefined);
-    const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
-    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
-  });
-
-  it('keeps the bypass when calibration confirms recent draw at the current step', () => {
+  it('swaps a lower-priority device out for a boosted climb', () => {
     const result = buildScenario(true);
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
     expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
   });
 
-  it('blocks the swap when calibration says the device has not been drawing at any step', () => {
+  it('does not swap for a device whose boost was released or never engaged', () => {
+    // Released by `resolveBoostActive` — the idle-at-setpoint device that used
+    // to be caught by this layer's own gate now simply arrives unboosted, and
+    // falls back to a plain headroom rejection rather than acquiring a swap.
     const result = buildScenario(false);
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
-    // With the gate engaged, the stepped device falls back to a plain
-    // headroom rejection rather than acquiring a pending swap.
     expect(steppedDev?.reason?.code).not.toBe(PLAN_REASON_CODES.swapPending);
   });
 });

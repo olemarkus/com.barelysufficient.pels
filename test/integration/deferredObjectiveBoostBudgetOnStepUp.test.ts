@@ -186,6 +186,8 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     boostSupported: true,
     boostRequested: false,
     hasStandingDemand: true,
+    // Drawing at its current step, so the boost is not released.
+    confirmedNotDrawing: false,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
@@ -199,7 +201,6 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     currentDrawKw: STEP_LOW_KW,
     expectedPowerKw: STEP_LOW_KW, expectedPowerSource: 'default',
     planningPowerKw: STEP_LOW_KW,
-    hasRecentObservedDraw: true,
     targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
   })),
 ) as PlanInputDevice;
@@ -211,6 +212,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,
+  confirmedNotDrawing: false,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: false },

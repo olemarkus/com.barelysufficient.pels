@@ -108,6 +108,7 @@ const buildPlan = (): DevicePlan => ({
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
       currentState: 'off',
       plannedState: 'keep' as const,
@@ -136,6 +137,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
       currentState: 'on',
       plannedState: 'keep' as const,
@@ -1633,6 +1635,7 @@ describe('PlanExecutor stepped loads', () => {
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      confirmedNotDrawing: false,
       steppedLoadProfile: steppedProfile,
       reportedStepId: 'low',
       selectedStepId: 'low',
@@ -2176,6 +2179,7 @@ describe('PlanExecutor stepped loads', () => {
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      confirmedNotDrawing: false,
     });
     const evPlan: DevicePlan = { ...plan, devices: [plan.devices[0]!] };
 
@@ -4000,6 +4004,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
       hasStandingDemand: true,
+      confirmedNotDrawing: false,
       binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };

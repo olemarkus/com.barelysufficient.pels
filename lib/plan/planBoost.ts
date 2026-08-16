@@ -4,26 +4,36 @@ import { getLogger } from '../logging/logger';
 /**
  * The planner's whole boost vocabulary: one question, one answer, no device
  * kinds. The producer (`resolveBoostSupported` / `resolveBoostRequested` in
- * `lib/device/deviceActionProjection.ts`) has already asked whether this device
- * has a drivable boost axis and whether its own policy wants boost right now;
- * the planner adds the two things only it knows.
+ * `lib/device/deviceActionProjection.ts`) has already asked whether PELS can
+ * drive a boost on this device and whether its own policy wants one right now;
+ * the planner adds the three things only it knows.
  *
  * 1. The runnable gate. `controllable` in particular is not the producer's
  *    answer to keep: deferred-objective admission can flip it to `true` for a
  *    rescued cap-off device AFTER `toPlanDevice` ran, and that device must be
  *    able to boost.
- * 2. The forced request. The limit-lower-priority rescue lane sets
+ * 2. The release. A boost is a claim on other devices' power — it escalates a
+ *    ladder past the fairness invariant and lets a swap pause a running
+ *    lower-priority device. A device that is confidently drawing nothing cannot
+ *    spend what it claims, so the claim is released. This is where the whole
+ *    "is it actually using the power" question lives, for every kind of device
+ *    and every consumer of the decision: a boosted water heater holding at its
+ *    element setpoint and a boosted charger whose car has stopped accepting
+ *    charge are the same situation, and neither should keep a neighbour paused.
+ *    It releases a FORCED boost too — the rescue lane's claim buys the smart
+ *    task nothing on a device that is not drawing either.
+ * 3. The forced request. The limit-lower-priority rescue lane sets
  *    `forceBoostActive` to engage boost independently of the device's own
- *    threshold — but only where boost is supported, so a charger PELS cannot
- *    resume is never forced into one.
+ *    threshold — but only where boost is supported, so a device PELS cannot
+ *    drive is never forced into one.
  *
- * Equivalent by construction to the two per-axis resolvers this replaced:
- * `runnable && ((evGates && (force || evFloor)) || (tempGates && (force ||
- * tempFloor)))` factors into exactly the expression below, because
- * `boostRequested` is each axis's floor already qualified by that axis's gates.
+ * The release is deliberately not a hysteresis band on the floor comparison:
+ * evidence that the device is idle is a stronger and more honest signal than a
+ * margin above a threshold, and it is the one signal both axes share.
  */
 export function resolveBoostActive(dev: PlanInputDevice): boolean {
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
+  if (dev.confirmedNotDrawing) return false;
   if (dev.boostRequested) return true;
   return dev.forceBoostActive === true && dev.boostSupported;
 }
@@ -54,5 +64,6 @@ export function emitBoostStateChange(params: {
     boostSupported: dev.boostSupported,
     boostRequested: dev.boostRequested,
     forced: dev.forceBoostActive === true,
+    confirmedNotDrawing: dev.confirmedNotDrawing,
   });
 }

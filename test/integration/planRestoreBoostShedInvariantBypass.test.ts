@@ -4,13 +4,13 @@
  * shed invariant at every rung because the freshly-entered step had no
  * accepted calibration samples yet, costing ~5 minutes per step.
  *
- * Contract under test: boost bypasses the shed invariant UNCONDITIONALLY —
- * it is the user's priority override over the fairness rule, and must not
- * be gated on draw evidence (`hasRecentObservedDraw`). Even a confident
- * "idle" verdict only blocks the swap path (see
- * `planRestoreBoostObservedDrawGate.test.ts`); per-rung headroom admission,
- * the stepped attempt-hold, and per-device restore timing bound a
- * wrongly-escalated idle device.
+ * Contract under test: an ACTIVE boost bypasses the shed invariant
+ * unconditionally — it is the user's priority override over the fairness rule,
+ * and this layer asks no further questions about it. The draw evidence that
+ * decides whether a boost stays active at all lives one layer up, in
+ * `resolveBoostActive` (`test/unit/planBoost.test.ts`), and deliberately keeps
+ * boosting while calibration has no confident idle verdict — which is exactly
+ * the mid-climb rung this regression is about.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -64,7 +64,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
     vi.useRealTimers();
   });
 
-  const runScenario = (hasRecentObservedDraw: boolean | undefined) => {
+  const runScenario = () => {
     const state = createPlanEngineState();
     return applyRestorePlan({
       planDevices: [
@@ -77,9 +77,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
           boostActive: true,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
-          ...(hasRecentObservedDraw !== undefined
-            ? { hasRecentObservedDraw }
-            : {}),
         }),
         // A shed device makes countShedDevices > 0, which is exactly the
         // condition that used to re-engage the invariant against boost.
@@ -105,19 +102,57 @@ describe('boost bypasses the shed invariant unconditionally', () => {
     });
   };
 
-  it('escalates past the invariant even when draw evidence at the new step is missing (staircase case)', () => {
-    const result = runScenario(false);
+  it('escalates past the invariant while the boost is active (staircase case)', () => {
+    const result = runScenario();
     const heater = result.planDevices.find((d) => d.id === 'water-heater');
     expect(heater?.reason?.code).not.toBe(PLAN_REASON_CODES.shedInvariant);
     expect(heater?.desiredStepId).toBe('max');
     expect(heater?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
   });
 
-  it('escalates past the invariant when calibration has no opinion', () => {
-    const result = runScenario(undefined);
+  it('applies the invariant to a device whose boost was released', () => {
+    // The inverted half of the contract, stated rather than dropped. Before the
+    // release moved upstream, a device with a CONFIDENT idle verdict still
+    // bypassed the invariant here and the old spec asserted exactly that. It no
+    // longer does — `resolveBoostActive` releases the boost, and an unboosted
+    // device is subject to fairness like any other. Pinning it means a future
+    // reader can see the reversal was chosen, not lost in a deletion.
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'water-heater',
+          name: 'Connected 300',
+          priority: 1,
+          currentState: 'on',
+          plannedState: 'keep',
+          boostActive: false,
+          selectedStepId: 'medium',
+          desiredStepId: 'medium',
+        }),
+        buildPlanDevice({
+          id: 'shed-thermostat',
+          name: 'Termostat gang',
+          priority: 5,
+          currentState: 'off',
+          plannedState: 'shed',
+          boostActive: false,
+          controllable: true,
+          expectedPowerKw: 1,
+        }),
+      ],
+      context: buildContext(),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
     const heater = result.planDevices.find((d) => d.id === 'water-heater');
-    expect(heater?.reason?.code).not.toBe(PLAN_REASON_CODES.shedInvariant);
-    expect(heater?.desiredStepId).toBe('max');
+    expect(heater?.reason?.code).toBe(PLAN_REASON_CODES.shedInvariant);
+    expect(heater?.desiredStepId).not.toBe('max');
   });
 
   it('still holds an unboosted device at its step while others are limited', () => {

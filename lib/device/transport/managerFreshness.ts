@@ -41,6 +41,22 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     ? normalizeMeasuredPowerKw(typeof value === 'number' ? value / 1000 : value)
     : null;
   if (measuredKw !== null) {
+    // The observation timestamp travels WITH the reading — that is the stated
+    // contract of `MeasuredPowerObservedFields` ("a measurement and the time it
+    // was observed"), and until now only the parse path honoured it, so a
+    // realtime-fed device carried a `measuredPowerKw` from seconds ago beside a
+    // `measuredPowerObservedAtMs` from the last full refresh. Consumers that need
+    // to know whether the READING is fresh cannot use device-wide
+    // `lastFreshDataMs`: it is a max across capabilities, so a thermometer
+    // update makes a silent power meter look current. `resolveConfirmedNotDrawing`
+    // is exactly such a consumer, and answering it from the wrong clock would
+    // release a boost on a device whose draw is simply unknown.
+    //
+    // Stamped BEFORE the change check on purpose: a repeated identical reading is
+    // still a fresh observation. `changed` gates expensive downstream work
+    // (calibration ingest, rebuild scheduling); it does not decide what was
+    // observed, and a device holding a steady draw must not decay to "stale".
+    snapshot.measuredPowerObservedAtMs = Date.now();
     if (Object.is(snapshot.measuredPowerKw, measuredKw)) {
       return { changed: false, normalizedValue: measuredKw };
     }

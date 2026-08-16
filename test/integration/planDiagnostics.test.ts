@@ -282,6 +282,11 @@ describe('plan diagnostics observations', () => {
         objectiveKind: 'ev_soc',
         deviceType: 'onoff',
         targets: [],
+        // `deviceClass` is the producer's ONLY charger evidence
+        // (`isEvObserved` -> `isEvDevice`). The parse boundary always sets it
+        // alongside the capability; spelling only the capability here made the
+        // fixture rely on a test-helper heuristic broader than production.
+        deviceClass: 'evcharger',
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         binaryControl: { on: false },
@@ -294,6 +299,7 @@ describe('plan diagnostics observations', () => {
         objectiveKind: 'ev_soc',
         currentState: 'off',
         plannedState: 'shed',
+        deviceClass: 'evcharger',
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         controllable: true,

@@ -18,6 +18,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { SettingsUiPlanMetaSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import {
   type BoostResolveInput,
   resolveBoostRequested,
@@ -161,6 +162,7 @@ export const withMaterializedEvPlugState = <T extends {
   boostSupported: boolean;
   boostRequested: boolean;
   hasStandingDemand: boolean;
+  confirmedNotDrawing: boolean;
   objectiveKind?: 'ev_soc';
   objectiveSessionInactive?: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
@@ -190,6 +192,8 @@ export const withMaterializedEvPlugState = <T extends {
     // Mirrors the producer: everything but a charger is going without when it is
     // off. A fixture may still say otherwise explicitly.
     hasStandingDemand: (overrides as { hasStandingDemand?: boolean }).hasStandingDemand ?? !isEv,
+    // Required two-state producer bit; `false` is "no calibration opinion".
+    confirmedNotDrawing: (overrides as { confirmedNotDrawing?: boolean }).confirmedNotDrawing ?? false,
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
     ...(isEv ? {
       objectiveSessionInactive: overrides.evChargingState === 'plugged_out'
@@ -409,21 +413,18 @@ DevicePlanDevice => {
  * by the builder and never land on the device.
  */
 /**
- * Mirror the producer's standing-demand resolution from whatever identity the
- * fixture spelled. Stamped by the builders from the FULL override bag, because
- * they strip `binaryCapabilityId` before materializing and a charger identified
- * only by its control capability would otherwise read as a thermostat.
+ * Mirror the producer's standing-demand resolution EXACTLY: `!isEvObserved`,
+ * which is `deviceClass === 'evcharger'` and nothing else
+ * (`packages/shared-domain/src/evPlugState.ts`). It used to also accept
+ * `deviceRole` and `binaryCapabilityId` as charger evidence, which made the
+ * fixture a superset of the producer — a fixture could express a starvation or
+ * surplus posture `toPlanDevice` can never emit. A mirror that is broader than
+ * what it mirrors is not a mirror.
  */
 export const fixtureHasStandingDemand = (overrides: {
   hasStandingDemand?: boolean;
   deviceClass?: string;
-  deviceRole?: 'ev_charger';
-  binaryCapabilityId?: string;
-}): boolean => overrides.hasStandingDemand ?? !(
-  overrides.deviceClass === 'evcharger'
-  || overrides.deviceRole === 'ev_charger'
-  || overrides.binaryCapabilityId === 'evcharger_charging'
-);
+}): boolean => overrides.hasStandingDemand ?? !isEvDevice(overrides);
 
 export type FixtureBoostFields = {
   evBoost?: EvBoostConfig;
@@ -433,19 +434,29 @@ export type FixtureBoostFields = {
 
 // The producer's boost input, gathered from whatever the fixture spelled. Kept
 // structural (not a `PlanInputDevice`) for the same reason the producer's own
-// input is: the boost question is asked of a device's kind evidence, before any
-// plan shape exists.
+// input is: the boost question is asked of a device's ladder and its own
+// readings, before any plan shape exists. `commandableNow` is resolved from the
+// fixture's plug state and availability exactly as `toPlanDevice` does.
 const fixtureBoostInput = (overrides: FixtureBoostFields & {
   deviceClass?: string;
+  available?: boolean;
+  commandableNow?: boolean;
   targets?: TargetCapabilitySnapshot[];
   steppedLoadProfile?: SteppedLoadProfile;
   evChargingState?: string;
   currentTemperature?: number;
 }): BoostResolveInput => ({
-  deviceClass: overrides.deviceClass,
+  // An explicit override wins, as it does for the device's own `commandableNow`
+  // field. Without this a fixture that spells "not commandable" only as
+  // `commandableNow: false` still resolved `boostSupported: true` — a state the
+  // producer cannot emit, which is exactly what this mirror exists to prevent.
+  commandableNow: overrides.commandableNow ?? resolveCommandableNow({
+    deviceClass: overrides.deviceClass,
+    available: overrides.available ?? true,
+    evChargingState: overrides.evChargingState as EvChargingState | undefined,
+  }),
   targets: overrides.targets ?? [],
   steppedLoadProfile: overrides.steppedLoadProfile,
-  evChargingState: overrides.evChargingState as EvChargingState | undefined,
   evBoost: overrides.evBoost,
   stateOfCharge: overrides.stateOfCharge,
   temperatureBoost: overrides.temperatureBoost,
@@ -532,6 +543,10 @@ export const buildPlanInputDevice = (
     boostSupported: overrides.boostSupported ?? resolveBoostSupported(fixtureBoostInput(overrides)),
     boostRequested: overrides.boostRequested ?? resolveBoostRequested(fixtureBoostInput(overrides)),
     hasStandingDemand: fixtureHasStandingDemand(overrides),
+    // Producer-required two-state bit. Default `false` — "the calibration store
+    // has no opinion", which is what an unseeded fixture genuinely means and the
+    // arm that leaves boost untouched.
+    confirmedNotDrawing: overrides.confirmedNotDrawing ?? false,
   }) as PlanInputDevice;
 };
 

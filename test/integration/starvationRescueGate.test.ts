@@ -148,6 +148,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,
+  confirmedNotDrawing: false,
   controllable: true, // capacity-based control is ON — the budget-starvation scenario
   controlModel: 'stepped_load',
   binaryCapabilityId: 'onoff',

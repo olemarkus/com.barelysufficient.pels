@@ -33,7 +33,7 @@ import type { TransportControlBindingProbe } from '../../lib/device/transportDev
 import type { BinaryCommandabilityProjection } from '../../lib/plan/admission/binaryCommandReachability';
 import {
   buildStepPowerCalibrationView,
-  resolveHasRecentObservedDraw,
+  resolveConfirmedNotDrawing,
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import type { SteppedClusterFields } from '../../lib/plan/planTypes';
@@ -105,8 +105,8 @@ function resolvePendingBinaryCommand(
 function resolvePlanCommandability(
   device: DecoratedDeviceSnapshot & EvObservedProbe,
   opts: ToPlanDeviceOptions | undefined,
+  base: boolean,
 ): BinaryCommandabilityProjection {
-  const base = resolveCommandableNow(device);
   return opts?.projectCommandability?.({
     deviceId: device.id,
     base,
@@ -188,16 +188,20 @@ function resolveSurplusPostureForDevice(params: {
   plainBinaryControlModel: boolean;
   controllable: boolean;
   managed: boolean;
+  // Passed in, not re-derived: `toPlanDevice` decides standing demand once and
+  // both readers take that answer. Two spellings of the one question this
+  // refactor exists to centralise is exactly the fork it removed elsewhere.
+  hasStandingDemand: boolean;
 }): boolean {
   const {
-    ctx, device, opts, plainBinaryControlModel, controllable, managed,
+    ctx, device, opts, plainBinaryControlModel, controllable, managed, hasStandingDemand,
   } = params;
   if (device.temperatureControlDisabled === true) return false;
   if (opts?.surplusPostureEnabled === false) return false;
   return resolveSurplusOnlyPosture({
     surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
     hasBinaryControl: device.binaryControl !== undefined,
-    hasStandingDemand: !isEvObserved(device),
+    hasStandingDemand,
     targets: device.targets,
     steppedLoadProfile: device.steppedLoadProfile,
     plainBinaryControlModel,
@@ -416,32 +420,32 @@ function resolveEffectiveTemperatureBoost(
 }
 
 /**
- * The two kind-free boost bits the planner plans on. This is the only place the
- * boost question is asked in device-kind terms: the charger's plug state, the
- * thermostat's target capability, the configured floors and the measured value
- * against them all resolve HERE, and the planner receives two booleans.
+ * The two boost bits the planner plans on. This is the only place the boost
+ * question is asked at all: the ladder, the drivability, the configured floors
+ * and the measured values against them all resolve HERE, and the planner
+ * receives two booleans.
  *
- * The plug-state gate matters here in a way it could not on the old plan-side
- * call: `evChargingState` is stripped from `PlanInputDevice`, so the planner's
- * `isEvObserved` check could never see one and an unplugged charger below its
- * SoC floor boosted anyway. Resolved at the producer the field is present, so
- * the gate the resolver has always documented finally binds.
+ * The drivability gate matters here in a way it could not on the old plan-side
+ * call: `evChargingState` is stripped from `PlanInputDevice`, so the planner
+ * could never see one and an unplugged charger below its SoC floor boosted
+ * anyway. Resolved at the producer, `commandableNow` carries that answer, so the
+ * gate finally binds — and it binds for every device rather than for chargers
+ * specifically.
  */
 function resolvePlanBoostFields(params: {
-  device: DecoratedDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe
-    & StateOfChargeObservedProbe;
+  device: DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
   steppedCluster: SteppedClusterFields;
+  commandableNow: boolean;
   evBoost: EvBoostConfig | undefined;
   temperatureBoost: TemperatureBoostConfig | undefined;
 }): Pick<PlanInputDevice, 'boostSupported' | 'boostRequested'> {
   const {
-    device, steppedCluster, evBoost, temperatureBoost,
+    device, steppedCluster, commandableNow, evBoost, temperatureBoost,
   } = params;
   const boostInput: BoostResolveInput = {
-    deviceClass: device.deviceClass,
+    commandableNow,
     targets: device.targets,
     steppedLoadProfile: steppedCluster.steppedLoadProfile,
-    ...(isEvObserved(device) ? { evChargingState: device.evChargingState } : {}),
     ...(hasObservedStateOfCharge(device) ? { stateOfCharge: device.stateOfCharge } : {}),
     ...(device.temperature
       ? { currentTemperature: device.temperature.currentTemperature }
@@ -559,11 +563,22 @@ export function toPlanDevice(
   const steppedLadderMissing = resolveSteppedLadderMissing(device, steppedCluster);
   const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
-  const hasRecentObservedDraw = resolveHasRecentObservedDraw(
+  // Resolved once, here, and used twice: the observed-state label the plan
+  // device carries, and the "is PELS holding this off" input the idleness
+  // verdict needs. A device PELS shed must not testify itself out of the boost
+  // that would resume it.
+  const observedCurrentState = resolveObservedCurrentState(device);
+  const confirmedNotDrawing = resolveConfirmedNotDrawing(
     ctx,
     device,
+    observedCurrentState === 'off',
   );
-  const commandability = resolvePlanCommandability(device, opts);
+  // The device's own physical drivability — EV plug-state folded with
+  // availability. Resolved once: the commandability projection below and the
+  // boost gate are two readers of this same answer, and re-deriving it for the
+  // second would be the fork that let an unplugged charger boost.
+  const physicallyCommandable = resolveCommandableNow(device);
+  const commandability = resolvePlanCommandability(device, opts, physicallyCommandable);
   const commandableNow = commandability.commandableNow;
   const commandabilityReason = commandability.reason === 'binary_command_retry'
     ? commandability.reason
@@ -599,6 +614,11 @@ export function toPlanDevice(
   // "Run on solar surplus" dump-load posture (flat `surplusOnly` bit). Resolved
   // in a helper (main-home default vs sub-home capacity-only) — see
   // `resolveSurplusPostureForDevice`.
+  // Being off means going without — true for anything with a thermal demand
+  // model, false for a charger, whose demand arrives with a car rather than
+  // with the setpoint. The one place this is decided; the surplus posture below
+  // and the plan device's own bit are both readers of this single answer.
+  const hasStandingDemand = !isEvObserved(device);
   const surplusOnly = resolveSurplusPostureForDevice({
     ctx,
     device,
@@ -606,6 +626,7 @@ export function toPlanDevice(
     plainBinaryControlModel,
     controllable,
     managed,
+    hasStandingDemand,
   });
   const residualKw = buildResidualKwForPlanDevice({
     device,
@@ -645,6 +666,12 @@ export function toPlanDevice(
     binaryControlObservation: _binaryControlObservation,
     evChargingState: _evChargingState,
     temperature: _temperature,
+    // `stateOfCharge` is deliberately NOT stripped, despite the base type's
+    // comment claiming a plan device carries none. The objectives layer reads it
+    // straight off the plan device (`ObjectiveDeviceInput`, consumed by
+    // `deferredObjectives/diagnosticProgress.ts`), so removing it here silently
+    // turned every EV smart task's progress into `objective_progress_stale`.
+    // The contract and the runtime disagree about this field; see the TODO.
     ...deviceFields
   } = device as typeof device & TransportControlBindingProbe & EvObservedProbe & TemperatureObservedProbe;
   return withSteppedDiscriminant({
@@ -674,7 +701,7 @@ export function toPlanDevice(
     // plan consumers (`planDevices.resolveCurrentState`, `planLiveStateMerge`)
     // trust this producer resolution instead of re-resolving from the raw binary
     // axis, so `binaryControl` can stay off the plan kinds.
-    currentState: resolveObservedCurrentState(device),
+    currentState: observedCurrentState,
     // The public on/off truth, resolved once here for binary devices (present
     // IFF the observer resolved a binary axis this cycle). `isBinaryPlanDevice`
     // re-asserts it as a required `boolean`; non-binary devices carry no on/off
@@ -691,19 +718,27 @@ export function toPlanDevice(
     // Stamped only when true, so the absent case has one spelling.
     ...(steppedLadderMissing ? { steppedLadderMissing: true as const } : {}),
     budgetExempt: ctx.isBudgetExempt(device.id),
-    temperatureBoost,
-    evBoost,
+    // `temperatureBoost` / `evBoost` are deliberately NOT written here. Both are
+    // off the plan contract, and both are already locals feeding
+    // `resolvePlanBoostFields` below. Spreading them anyway type-checked —
+    // `withSteppedDiscriminant<TBase extends object>` infers from the literal, so
+    // no excess-property check fires — and shipped the configs the planner just
+    // shed onto every plan device at runtime, readable by any structural
+    // consumer. That is the same second-answer hazard the strip block above
+    // exists to prevent.
+    // Boost reads the PHYSICAL drivability, not the projected `commandableNow`
+    // above: the projection layers a binary-command retry back-off on top, and a
+    // stepped escalation has no business inheriting the binary axis's retry
+    // bookkeeping. Plug-state and availability are the whole question here.
     ...resolvePlanBoostFields({
-      device, steppedCluster, evBoost, temperatureBoost,
+      device, steppedCluster, commandableNow: physicallyCommandable, evBoost, temperatureBoost,
     }),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow,
-    // Being off means going without — true for anything with a thermal demand
-    // model, false for a charger, whose demand arrives with a car rather than
-    // with the setpoint. The one place this is decided; downstream lanes read
-    // the bit and never ask what kind of device it is.
-    hasStandingDemand: !isEvObserved(device),
+    // Resolved once above; downstream lanes read the bit and never ask what kind
+    // of device it is.
+    hasStandingDemand,
     ...(commandabilityReason ? { commandabilityReason } : {}),
     ...objective,
     canSetControlResolved,
@@ -714,9 +749,9 @@ export function toPlanDevice(
     currentDrawKw: getCurrentDrawKw(device),
     ...resolveTemperatureInputFields(device),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
-    ...(hasRecentObservedDraw !== undefined
-      ? { hasRecentObservedDraw }
-      : {}),
+    // Two-state by contract — see `resolveConfirmedNotDrawing`. Always stamped,
+    // so no consumer has to decide what an absent answer would have meant.
+    confirmedNotDrawing,
   });
 }
 
