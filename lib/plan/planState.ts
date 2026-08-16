@@ -1,6 +1,6 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
-import type { PowerFreshnessState } from './planPowerFreshness';
+import type { PowerFreshnessState } from '../power/sampleFreshness';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,

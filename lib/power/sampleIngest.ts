@@ -96,7 +96,7 @@ const buildMeasuredDevicePowerWById = (params: {
     // legitimately-unchanging device out of its own energy bucket for as long as
     // it stayed correct (confirmed on a real thermostat holding a true 0 W for
     // 16 h). Freshness still guards the WHOLE-HOME sample
-    // (the plan's `powerSampleAgeMs` freshness gate) and observation trust —
+    // (this module's own `sampleFreshness` gate) and observation trust —
     // those ask "is the pipeline alive", which is a different question from "is
     // this capability value current". Do not conflate them again.
     // Availability IS still consulted, and it is a different question from age.

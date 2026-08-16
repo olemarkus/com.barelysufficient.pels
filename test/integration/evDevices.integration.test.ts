@@ -542,7 +542,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     // shed it (synthetic headroom -1 sheds controllable devices). On the cycle
     // power returns, the device is held by the normal restore cooldown — exactly
     // like any binary device after fail-closed shedding (see
-    // planPowerFreshness "allows fail-closed shedding and clears once a fresh
+    // planPowerFreshness.test "allows fail-closed shedding and clears once a fresh
     // sample returns", which likewise does not restore on the recovery cycle).
     // So the deferred resume is not issued yet; it is gated by the restore
     // cooldown, not the EV path. (Previously this asserted an immediate resume,

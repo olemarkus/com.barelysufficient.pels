@@ -2,7 +2,7 @@ import CapacityGuard from '../power/capacityGuard';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import { getCurrentHourContext } from './planHourContext';
-import { resolvePowerSampleFreshness, type PowerFreshnessState } from './planPowerFreshness';
+import { resolvePowerSampleFreshness, type PowerFreshnessState } from '../power/sampleFreshness';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import { sumBudgetExemptMeasuredUsageKw } from './planUsage';
 import type { PlanInputDevice } from './planTypes';
