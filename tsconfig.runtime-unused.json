@@ -10,7 +10,8 @@
     "api.ts",
     "drivers/**/*.ts",
     "flowCards/**/*.ts",
-    "lib/**/*.ts"
+    "lib/**/*.ts",
+    "setup/**/*.ts"
   ],
   "exclude": [
     "node_modules",

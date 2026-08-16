@@ -475,7 +475,7 @@ describe('Spot price fetching', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -560,7 +560,7 @@ describe('Spot price fetching', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -632,7 +632,7 @@ describe('Spot price fetching', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -694,7 +694,7 @@ describe('Spot price fetching', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -974,7 +974,7 @@ describe('Grid tariff fetching', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -1046,7 +1046,7 @@ describe('Grid tariff fetching', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -1288,7 +1288,7 @@ describe('Price optimization', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -2231,7 +2231,7 @@ describe('Price optimization', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -2309,7 +2309,7 @@ describe('Price optimization', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -2387,7 +2387,7 @@ describe('Price optimization', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
@@ -2472,7 +2472,7 @@ describe('Price optimization', () => {
         if (args.length === 0) {
           super(now.getTime());
         } else {
-          // @ts-ignore
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
           super(...args);
         }
       }
