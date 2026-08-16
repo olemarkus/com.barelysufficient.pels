@@ -389,6 +389,10 @@ export class PlanBuilder {
       context.planningTotalKw !== null && context.headroom >= 0,
     );
 
+    // `buildSheddingPlan` takes the WHOLE decision, not just the shed half: the
+    // shedding-active latch must stay engaged through a grace window, or every
+    // restore lane that defers to it releases the devices already limited
+    // (`lib/plan/shedding/AGENTS.md`).
     const sheddingPlan = await trackPlanStageAsync(
       'plan_shedding_ms',
       () => buildSheddingPlan(context, this.state, {
@@ -400,7 +404,7 @@ export class PlanBuilder {
         log: (...args: unknown[]) => this.deps.log(...args),
         debugStructured: this.deps.debugStructured,
         structuredLog: this.deps.structuredLog,
-      }, overshootDecision.shedActionable),
+      }, overshootDecision),
     );
     this.applySheddingUpdates(sheddingPlan);
 

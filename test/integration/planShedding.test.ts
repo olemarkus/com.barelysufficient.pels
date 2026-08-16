@@ -143,12 +143,68 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      overshootDecision.actionable,
+      overshootDecision,
     );
 
     expect(result.shedSet.size).toBe(0);
     expect(result.sheddingActive).toBe(false);
     expect(capacityGuard.setSheddingActive).not.toHaveBeenCalledWith(true);
+  });
+
+  // The shed grace defers a NEW shed; it must not clear the shedding-active
+  // latch. Every restore lane stands down while headroom is negative and reaches
+  // its stay-off marking through `sheddingActive`, so a graced cycle that also
+  // dropped the latch left nothing holding the devices already limited — the
+  // 2026-08-16 restore-all.
+  it('keeps the shedding latch engaged while a grace defers selection', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const context = buildContext({
+      devices: [
+        buildDevice({
+          id: 'dev-1',
+          name: 'Heater',
+          currentDrawKw: 1.2,
+          expectedPowerKw: 1.2,
+          binaryControl: { on: true },
+          controllable: true,
+        }),
+      ],
+      total: 5.4,
+      softLimit: 1.84,
+      capacitySoftLimit: 6,
+      headroomRaw: -3.56,
+      headroom: -3.56,
+      softLimitSource: 'capacity',
+    });
+
+    const result = await buildSheddingPlan(
+      context,
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        debugStructured: vi.fn(),
+      },
+      // The deficit is real; only the decision to act on it is waiting.
+      { actionable: true, shedActionable: false },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.sheddingActive).toBe(true);
+    expect(capacityGuard.setSheddingActive).toHaveBeenCalledWith(true);
   });
 
   it('sheds after a tiny negative headroom persists past the soft overshoot dwell time', async () => {
@@ -201,7 +257,7 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      overshootDecision.actionable,
+      overshootDecision,
     );
 
     expect(overshootDecision.actionable).toBe(true);
@@ -250,7 +306,7 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      overshootDecision.actionable,
+      overshootDecision,
     );
 
     expect(overshootDecision.actionable).toBe(false);
@@ -307,7 +363,7 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      false,
+      { actionable: false, shedActionable: false },
     );
 
     expect(result.shedSet.size).toBe(0);
@@ -3889,7 +3945,7 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      false,
+      { actionable: false, shedActionable: false },
     );
 
     expect(result.shedSet).toEqual(new Set(['second', 'binary']));
@@ -3965,7 +4021,7 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      false,
+      { actionable: false, shedActionable: false },
     );
 
     expect(result.shedSet.has('stepped')).toBe(true);
@@ -4023,7 +4079,7 @@ describe('buildSheddingPlan', () => {
         log: vi.fn(),
         debugStructured: vi.fn(),
       },
-      false,
+      { actionable: false, shedActionable: false },
     );
 
     expect(result.shedSet.has('stepped-zero')).toBe(false);

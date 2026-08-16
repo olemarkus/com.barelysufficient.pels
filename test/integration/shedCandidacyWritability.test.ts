@@ -109,7 +109,7 @@ describe('shed candidacy gates on writability', () => {
       buildContext([capLessTargetBearing, writableBinary], -2),
       state,
       buildDeps(state, buildCapacityGuard()),
-      true,
+      { actionable: true, shedActionable: true },
     );
 
     // The writable device is the only one PELS can actually turn off, so it must
@@ -125,7 +125,7 @@ describe('shed candidacy gates on writability', () => {
       buildContext([capLessTargetBearing], -2),
       state,
       buildDeps(state, buildCapacityGuard()),
-      true,
+      { actionable: true, shedActionable: true },
     );
 
     // Nothing writable to shed: the cap-less device is excluded rather than
