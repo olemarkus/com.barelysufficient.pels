@@ -37,6 +37,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuildScheduler/shortfallSuppression';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
+import { createTestPowerRebuildScheduler } from '../helpers/powerRebuildScheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
@@ -131,16 +132,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('rebuilds immediately when a control boundary is already crossed', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 0 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -156,30 +161,34 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     const logError = vi.fn();
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+      logError,
+    });
 
     const first = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
     const second = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9700,
       limitKw: 10,
       softLimitKw: 9,
@@ -198,16 +207,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('uses the latest coalesced sample values when a timed rebuild fires', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -215,14 +228,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
 
     schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9700,
       limitKw: 10,
       softLimitKw: 8.7,
@@ -240,16 +252,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('creates a pending rebuild when a boundary sample arrives within the min interval', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -264,23 +280,27 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('resolves the pending promise with the cancel reason when the scheduler cancels a queued rebuild', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
 
-    state.legacyScheduler?.cancelAll('test_cancel');
+    scheduler.cancelAll('test_cancel');
 
     await expect(pending).resolves.toBe('test_cancel');
     expect(state.pending).toBeUndefined();
@@ -289,7 +309,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('does not overwrite a queued hard-cap rebuild when a lower-priority signal request is dropped', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    // A stub scheduler on purpose: this case is about which intent wins the queue,
+    // not about what executing one does.
     const scheduler = new PlanRebuildScheduler({
       getNowMs: Date.now,
       resolveDueAtMs: (_intent, currentState) => currentState.nowMs + 1000,
@@ -304,8 +325,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -321,8 +340,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9_200,
       limitKw: 10,
       softLimitKw: 9,
@@ -339,16 +356,21 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
     const rebuildPlanFromCache = vi.fn().mockRejectedValue(new Error('boom'));
     const logError = vi.fn();
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+      logError,
+    });
 
     const pending = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -364,16 +386,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('skips rebuild when power change is below threshold and soft limit is stable', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5050,
       limitKw: 10,
       softLimitKw: 9,
@@ -386,16 +412,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('does not rebuild only because the soft limit changes', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 8 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5000,
       limitKw: 10,
       softLimitKw: 8.2,
@@ -412,16 +442,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     // there is no reason to rebuild; the previous plan is still valid.
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 8980, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9010,  // 30 W above danger threshold, but only 30 W delta
       limitKw: 10,
       softLimitKw: 9,
@@ -435,16 +469,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     // lastRebuildPowerW in danger zone (9050 W >= 9000 W threshold), so treated as sustained
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9050, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9060,  // only 10 W delta — below 100 W threshold
       limitKw: 10,
       softLimitKw: 9,
@@ -457,16 +495,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('rebuilds when sustained in danger zone after max interval', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 11000, lastRebuildPowerW: 9050, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,  // 10 s elapsed > 10 s max
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9060,
       limitKw: 10,
       softLimitKw: 9,
@@ -479,16 +521,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('does not rebuild while headroom stays safely positive even if power changes meaningfully', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 6200,
       limitKw: 10,
       softLimitKw: 9,
@@ -501,16 +547,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('rebuilds after max interval even if delta is small', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 20000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 500,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5050,
       limitKw: 10,
       softLimitKw: 9,
@@ -523,16 +573,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('uses last rebuild power when current power is missing', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       powerDeltaW: 200,
       limitKw: 10,
       softLimitKw: 9,
@@ -546,16 +600,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('keeps last soft limit when soft limit is missing', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 8 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5200,
       powerDeltaW: 200,
       limitKw: 10,
@@ -575,16 +633,21 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       }),
     );
     const logError = vi.fn();
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+      logError,
+    });
 
     const first = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -595,14 +658,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     const second = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9700,
       limitKw: 10,
       softLimitKw: 8.7,
@@ -633,16 +695,21 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 1000, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     const logError = vi.fn();
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+      logError,
+    });
 
     const first = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -653,14 +720,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     state = { ...state, lastMs: Date.now() - 2000 };
 
     const second = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      rebuildPlanFromCache,
-      logError,
       currentPowerW: 9700,
       limitKw: 10,
       softLimitKw: 8.8,
@@ -686,16 +752,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -707,14 +777,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.backoffUntilMs).toBe(Date.now() + 15_000);
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -737,16 +806,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9700,
       limitKw: 10,
       softLimitKw: 9,
@@ -769,16 +842,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: true,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -798,16 +875,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: true,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -818,14 +899,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -848,16 +928,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9700,
       limitKw: 10,
       softLimitKw: 9,
@@ -881,16 +965,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       limitKw: 10,
       softLimitKw: 9.5,
@@ -915,16 +1003,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       limitKw: 10,
       softLimitKw: 9.5,
@@ -944,16 +1036,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       limitKw: 10,
       softLimitKw: 9.5,
@@ -973,16 +1069,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9450,
       limitKw: 10,
       softLimitKw: 9.5,
@@ -1003,16 +1103,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9000,
       limitKw: 10,
       softLimitKw: 9.5,
@@ -1031,16 +1135,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
@@ -1064,17 +1172,21 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
     const onTightNoopHardCapBreach = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600, // 200 W delta vs last — "meaningful", but nothing to shed
       limitKw: 10,
       softLimitKw: 9,
@@ -1096,16 +1208,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -1124,16 +1240,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -1152,16 +1272,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       lastHardCapBreached: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -1182,16 +1306,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       shortfallSuppressionInvalidated: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -1212,17 +1340,21 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       shortfallSuppressionInvalidated: true,
     };
     const rebuildPlanFromCache = vi.fn().mockRejectedValue(new Error('boom'));
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await expect(
       schedulePlanRebuildFromPowerSample({
+      scheduler,
         getState: () => state,
         setState: (next) => {
           state = next;
         },
         minIntervalMs: 2000,
         maxIntervalMs: 30_000,
-        rebuildPlanFromCache,
-        logError: vi.fn(),
         currentPowerW: 10_600,
         limitKw: 10,
         softLimitKw: 9,
@@ -1244,16 +1376,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       shortfallSuppressionInvalidated: true,
     };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -1279,17 +1415,27 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     // sample being required to rebuild immediately.
     let state: PowerSampleRebuildState = { lastMs: 0 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    // The scheduler resolves the due time, so it must be on the SAME monotonic
+    // clock as the call — on epoch time the bogus 15_000 floor would compare
+    // against `Date.now()`, execute anyway, and hide a regression of the
+    // `lastMs > 0` guard this test exists to catch.
+    const getNowMs = () => 5000; // uptime 5s on a monotonic clock
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      getNowMs,
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromPowerSample({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
       },
-      getNowMs: () => 5000, // uptime 5s on a monotonic clock
+      getNowMs,
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 10_600,
       limitKw: 10,
       softLimitKw: 9,
@@ -1376,8 +1522,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('does not rebuild for non-urgent power deltas even after the stable interval elapses', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1385,8 +1537,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
@@ -1405,8 +1555,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('skips the stable interval when convergence is active', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1414,8 +1570,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
@@ -1440,8 +1594,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1449,8 +1609,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 11_000,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1482,9 +1640,15 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
     const beforeSkippedBackoff = getPerfSnapshot().counts.plan_rebuild_skipped_tight_noop_backoff_total ?? 0;
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1492,8 +1656,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1518,8 +1680,14 @@ describe('schedulePlanRebuildFromSignal', () => {
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
     capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1527,8 +1695,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1551,8 +1717,14 @@ describe('schedulePlanRebuildFromSignal', () => {
     capacityGuard.setShortfallThresholdProvider(() => 9.0);
     capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1560,8 +1732,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1585,8 +1755,14 @@ describe('schedulePlanRebuildFromSignal', () => {
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
     capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1594,8 +1770,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1622,8 +1796,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1631,8 +1811,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1649,8 +1827,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('coalesces convergence samples within the min interval', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1658,8 +1842,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 1000,
       stableMinIntervalMs: 1000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
@@ -1679,8 +1861,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('does not rebuild convergence samples when the delta is not meaningful', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1688,8 +1876,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5050,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.05 }),
@@ -1702,8 +1888,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('bypasses the stable interval when headroom is tight', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9300, lastSoftLimitKw: 9.5 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1711,8 +1903,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
@@ -1738,8 +1928,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1747,8 +1943,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1767,9 +1961,15 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
     const firstCapacityGuard = createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 });
 
     const pending = schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1777,8 +1977,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: firstCapacityGuard,
@@ -1798,6 +1996,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     urgentCapacityGuard.reportTotalPower(9.3);
 
     void schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1805,8 +2004,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: urgentCapacityGuard,
@@ -1832,8 +2029,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1841,8 +2044,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 11_000,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1867,8 +2068,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1876,8 +2083,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1905,8 +2110,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1914,8 +2125,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -1950,6 +2159,11 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
     const planState = createPlanEngineState();
     planState.wasOvershoot = true;
     const planUnactionable = true; // summary: nothing actionable, nothing reducible
@@ -1957,6 +2171,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     // ≥100 W jitter per sample — "meaningful" deltas that used to force a rebuild each time.
     for (const powerW of [5450, 5300, 5480]) {
       await schedulePlanRebuildFromSignal({
+      scheduler,
         getState: () => state,
         setState: (next) => {
           state = next;
@@ -1964,8 +2179,6 @@ describe('schedulePlanRebuildFromSignal', () => {
         minIntervalMs: 2000,
         stableMinIntervalMs: 15000,
         maxIntervalMs: 30000,
-        rebuildPlanFromCache,
-        logError: vi.fn(),
         currentPowerW: powerW,
         capacitySettings: { limitKw: 10, marginKw: 0.5 },
         capacityGuard,
@@ -1998,11 +2211,17 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     // Within the max interval, the unrecoverable-shortfall skip suppresses the full
     // rebuild but still drives `checkShortfall`, so recovery detection stays alive.
     capacityGuard.reportTotalPower(4.6);
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2010,8 +2229,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 4600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -2026,6 +2243,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     // forever — otherwise a stale "unactionable" summary could deadlock the skip.
     vi.advanceTimersByTime(60_000);
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2033,8 +2251,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 4600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -2066,9 +2282,15 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: true,
       failed: false,
     });
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     capacityGuard.reportTotalPower(6.1);
     await schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2076,8 +2298,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 6100,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard,
@@ -2095,8 +2315,14 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
       resolveRebuild = resolve;
     }));
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
 
     const pending = schedulePlanRebuildFromSignal({
+      scheduler,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2104,8 +2330,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       minIntervalMs: 2000,
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
-      rebuildPlanFromCache,
-      logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),

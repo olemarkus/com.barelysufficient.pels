@@ -369,7 +369,6 @@ export class PowerSamplePipeline {
             minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
             stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
             maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
-            rebuildPlanFromCache: (reason?: string) => planService.rebuildPlanFromCache(reason),
             currentPowerW,
             capacitySettings,
             capacityGuard,

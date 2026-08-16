@@ -1,7 +1,6 @@
 import type { PlanRebuildScheduler } from './scheduler';
-import type { HardCapBreach, RebuildOutcome } from './policy';
+import type { HardCapBreach } from './policy';
 import {
-  getLegacyPowerScheduler,
   handleSkippedRebuildDecision,
   requestPowerSampleRebuild,
   resolvePowerSampleDecision,
@@ -14,7 +13,6 @@ export {
 
 export type PowerSampleRebuildState = {
   lastMs: number;
-  legacyScheduler?: PlanRebuildScheduler;
   lastRebuildPowerW?: number;
   lastSoftLimitKw?: number;
   lastHardCapBreached?: boolean;
@@ -40,14 +38,12 @@ export type PowerSampleRebuildState = {
 };
 
 export function schedulePlanRebuildFromPowerSample(params: {
-  scheduler?: PlanRebuildScheduler;
+  scheduler: PlanRebuildScheduler;
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
   getNowMs?: () => number;
   minIntervalMs: number;
   maxIntervalMs: number;
-  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
-  logError?: (error: Error) => void;
   currentPowerW?: number;
   powerDeltaW?: number;
   limitKw: number;
@@ -66,8 +62,6 @@ export function schedulePlanRebuildFromPowerSample(params: {
     getNowMs = Date.now,
     minIntervalMs,
     maxIntervalMs,
-    rebuildPlanFromCache,
-    logError,
     currentPowerW,
     powerDeltaW,
     limitKw,
@@ -79,13 +73,6 @@ export function schedulePlanRebuildFromPowerSample(params: {
     onTightNoopHardCapBreach,
     unactionable,
   } = params;
-  const resolvedScheduler = scheduler ?? getLegacyPowerScheduler({
-    getState,
-    setState,
-    getNowMs,
-    rebuildPlanFromCache,
-    logError,
-  });
   const state = getState();
   const now = getNowMs();
   const elapsedMs = now - state.lastMs;
@@ -125,7 +112,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
   }
 
   return requestPowerSampleRebuild({
-    resolvedScheduler,
+    resolvedScheduler: scheduler,
     getState,
     setState,
     fallbackState: state,

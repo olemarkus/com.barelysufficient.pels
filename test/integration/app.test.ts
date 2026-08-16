@@ -893,8 +893,6 @@ describe('MyApp initialization', () => {
       getNowMs: () => (app as any).getPlanRebuildNowMs(),
       minIntervalMs: 1000,
       maxIntervalMs: 10_000,
-      rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
-      logError: vi.fn(),
       currentPowerW: 9500,
       limitKw: 10,
       softLimitKw: 9,
