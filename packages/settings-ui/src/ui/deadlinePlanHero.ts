@@ -146,13 +146,6 @@ export const resolveQueuedHeadlineReason = (params: {
   cannotMeet: boolean;
   deadlineAtMs: number;
   computedFromPricesUpTo: number | null;
-  // Counts buckets in the run-up whose per-bucket cap collapsed to zero
-  // because the daily budget cap was hit. Distinct from `dailyBudgetExhausted`
-  // (which gates the cannot-meet body copy and is restricted to
-  // `planStatus === 'cannot_meet'`): the queued headline-reason resolver wants
-  // to surface "Today's budget is full" on healthy on-track plans whose first
-  // hour falls after midnight too.
-  dailyBudgetExhaustedInRunUp: boolean;
   // Producer-verified "planned hours average price < current hour price"
   // comparison (`resolvePlannedWindowCheaperThanNow` in `deadlinePlan.ts`).
   // Gates the "Cheaper than now" sentence so it never contradicts the
@@ -167,7 +160,6 @@ export const resolveQueuedHeadlineReason = (params: {
     pricesShortOfDeadline: params.computedFromPricesUpTo === null
       || params.computedFromPricesUpTo < params.deadlineAtMs,
     deadlineTime: formatHourLabel(params.deadlineAtMs),
-    dailyBudgetExhausted: params.dailyBudgetExhaustedInRunUp,
     plannedWindowCheaperThanNow: params.plannedWindowCheaperThanNow,
   });
 };
@@ -256,12 +248,6 @@ export type BuildHeroInput = {
   // sentence and suppresses the recourse, so an at-risk hero reached through the
   // overlay never explains itself with the target, the deadline, or the budget.
   deviceLeftOff: boolean;
-  // Whether the latest revision's `dailyBudgetExhaustedBucketCount` is > 0.
-  // Distinct from `dailyBudgetExhausted` above (which is gated on
-  // `planStatus === 'cannot_meet'`): the queued headline-reason resolver
-  // wants this signal even on healthy on-track plans whose first hour falls
-  // after midnight.
-  dailyBudgetExhaustedInRunUp: boolean;
   // Planner's `computedFromPricesUpTo` carried verbatim so the producer can
   // resolve the "prices not through deadline yet" headline-reason branch.
   // Null when the latest revision predates the field.

@@ -110,22 +110,6 @@ const pickKwhPerUnitMean = (
   return value;
 };
 
-// Pull the daily-budget-exhausted bucket count off the revision so the
-// history postmortem can distinguish "missed because the daily budget cap
-// was already used up" from a plain device-side shortfall. The runtime
-// field is optional (legacy revisions don't carry it); we only persist
-// when it's a positive count — zero means the planner checked and the
-// budget was fine, which is the same answer as field-absent from the
-// consumer's point of view, and suppressing it keeps the persisted entry
-// byte-stable.
-const pickDailyBudgetExhaustedBucketCount = (
-  revision: DeferredObjectiveActivePlanRevisionV1,
-): number | undefined => {
-  const value = revision.dailyBudgetExhaustedBucketCount;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
-  return value;
-};
-
 // Producer-resolved floor-shortfall cause, carried onto the snapshot so a
 // finalized entry keeps its attribution. `none` is suppressed for the same
 // byte-stability reason the recorder suppresses it on the revision.
@@ -230,7 +214,6 @@ export const captureRevisionSnapshot = (
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): DeferredObjectivePlanHistoryRevisionSnapshot => {
   const kwhPerUnitMean = pickKwhPerUnitMean(plan);
-  const dailyBudgetExhaustedBucketCount = pickDailyBudgetExhaustedBucketCount(revision);
   const floorShortfallCause = pickFloorShortfallCause(revision);
   const rateConfidence = pickRateConfidence(plan);
   const acceptedSamples = pickAcceptedSamples(plan);
@@ -247,9 +230,6 @@ export const captureRevisionSnapshot = (
     // delivered-vs-committed comparison needs.
     ...(energyExpectedKWh !== undefined ? { energyExpectedKWh } : {}),
     ...(kwhPerUnitMean !== undefined ? { kwhPerUnitMean } : {}),
-    ...(dailyBudgetExhaustedBucketCount !== undefined
-      ? { dailyBudgetExhaustedBucketCount }
-      : {}),
     ...(floorShortfallCause !== undefined ? { floorShortfallCause } : {}),
     ...(rateConfidence !== undefined ? { rateConfidence } : {}),
     ...(acceptedSamples !== undefined ? { acceptedSamples } : {}),

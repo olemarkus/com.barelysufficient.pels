@@ -186,30 +186,13 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
     hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
   });
 
-  it('emits "daily budget shifted" when dailyBudgetExhaustedBucketCount > 0', () => {
+  it('emits "daily budget shifted" when floorShortfallCause is "budget"', () => {
     const rows = buildActivePlanRevisionLog({
       latest: revision({
         revision: 2,
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
-        dailyBudgetExhaustedBucketCount: 3,
-      }),
-      history: [priorRev],
-      timeZone: TZ,
-      kind: 'temperature',
-    });
-    expect(rows[0]?.reason).toBe('Schedule revised — daily budget shifted');
-  });
-
-  it('emits "daily budget shifted" when floorShortfallCause is "budget" even with zero exhausted buckets (per-bucket squeeze case)', () => {
-    const rows = buildActivePlanRevisionLog({
-      latest: revision({
-        revision: 2,
-        reason: 'schedule_revised',
-        revisedAtMs: 2 * HOUR_MS,
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
-        dailyBudgetExhaustedBucketCount: 0,
         floorShortfallCause: 'budget',
       }),
       history: [priorRev],
@@ -280,7 +263,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         planStatus: 'cannot_meet',
-        dailyBudgetExhaustedBucketCount: 2,
+        floorShortfallCause: 'budget',
         hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
       }),
       history: [priorRev], // priorRev planStatus 'on_track' → risk transition

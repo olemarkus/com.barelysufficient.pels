@@ -240,25 +240,19 @@ export type SmartTaskWidgetDetailInput = {
   // up to an hour stale.
   diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
-  dailyBudgetExhaustedBucketCount?: number;
   // Pre-formatted local time of the first planned hour (e.g. "16:00") for the
   // `queued` "Cheaper hours start at HH:MM" line. Locale formatting lives in the
   // caller so shared-domain stays free of Intl.
   firstPlannedTimeLabel?: string | null;
 };
 
-// Budget vs device cause. The producer-resolved `floorShortfallCause` is
-// authoritative (per `feedback_layering_resolution_in_producer`): when present,
-// it alone decides. The `dailyBudgetExhaustedBucketCount` fallback is gated on
-// `floorShortfallCause === undefined` (legacy pre-producer-field revisions) AND
-// `at_risk` only — mirroring the settings UI (`deadlinePlan.ts`). The producer
-// never returns `cannot_meet` with a budget cause, so a non-budget cause that
-// merely brushed the budget cap in the run-up (bucket count > 0) must not be
-// misclassified as budget-driven.
-const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => {
-  if (input.floorShortfallCause !== undefined) return input.floorShortfallCause === 'budget';
-  return input.statusId === 'at_risk' && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
-};
+// Budget vs device cause. The producer-resolved `floorShortfallCause` decides,
+// alone (per `feedback_layering_resolution_in_producer`). Absence is NOT
+// "unknown": the recorder suppresses the `none` case for byte-stability, so an
+// absent cause means the floor was not short at all.
+const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => (
+  input.floorShortfallCause === 'budget'
+);
 
 // An explicit off action is its own cause — neither the budget nor the clock.
 const isLeftOffDriven = (input: SmartTaskWidgetDetailInput): boolean => (
@@ -1407,9 +1401,6 @@ export type DeadlineHeadlineReasonResolverParams = {
   // "Waiting for tomorrow's prices through HH:MM" branch. Caller supplies
   // a formatter to keep shared-domain free of locale helpers.
   deadlineTime: string;
-  // True when one or more horizon buckets in the run-up had their per-bucket
-  // cap collapse to zero because the daily budget cap was hit.
-  dailyBudgetExhausted: boolean;
   // True when the planned hours' average display price is strictly below the
   // current hour's display price. The producer resolves the comparison from
   // the same per-hour display prices the schedule chart renders (see
@@ -1485,9 +1476,8 @@ export type DeadlineLabels = {
   // Resolver for the "why is the smart task starting at HH:MM" subline that
   // sits below the queued headline. Branches resolve in this order:
   //   1. prices_short_of_deadline → "Waiting for tomorrow's prices through HH:MM."
-  //   2. daily_budget_exhausted   → "Today's budget is full — next cheap window after midnight."
-  //   3. planned avg < now price  → "Cheaper than now — starts at HH:MM."
-  //   4. otherwise                → "Scheduled for the cheapest hours it can use — starts at HH:MM."
+  //   2. planned avg < now price  → "Cheaper than now — starts at HH:MM."
+  //   3. otherwise                → "Scheduled for the cheapest hours it can use — starts at HH:MM."
   resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver;
   completedHero: { headline: string; body: string };
   targetUnit: '°C' | '%';
@@ -1600,12 +1590,8 @@ export type RevisionReasonDisambiguation = {
   // True when the prior revision's planStatus differed from this revision's.
   // Drives the `risk changed` variant when no budget / hour-add signal applies.
   planStatusChanged?: boolean;
-  // Any positive value means the daily budget cap squeezed at least one bucket
-  // on this revision. Drives the `daily budget shifted` variant.
-  dailyBudgetExhaustedBucketCount?: number;
-  // Producer-resolved verdict on what bound the floor schedule. Treated as the
-  // strongest budget signal — overrides count-of-exhausted-buckets which can
-  // stay at zero on the per-bucket background squeeze case.
+  // Producer-resolved verdict on what bound the floor schedule: the only
+  // budget signal a revision carries.
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
   // Hour-diff symmetric-difference counts vs the prior revision. Drives the
   // `cheaper hour opened` variant when hours grew without budget pressure.
@@ -1629,10 +1615,7 @@ const SCHEDULE_REVISED_OPENED = `${SCHEDULE_REVISED_BASE} — cheaper hour opene
 const resolveScheduleRevisedLabel = (
   d: RevisionReasonDisambiguation,
 ): string => {
-  const budgetExhausted = typeof d.dailyBudgetExhaustedBucketCount === 'number'
-    && d.dailyBudgetExhaustedBucketCount > 0;
-  const budgetCause = d.floorShortfallCause === 'budget';
-  if (budgetExhausted || budgetCause) return SCHEDULE_REVISED_BUDGET;
+  if (d.floorShortfallCause === 'budget') return SCHEDULE_REVISED_BUDGET;
   if (d.planStatusChanged === true) return SCHEDULE_REVISED_RISK;
   const added = typeof d.hoursAdded === 'number' ? d.hoursAdded : 0;
   const removed = typeof d.hoursRemoved === 'number' ? d.hoursRemoved : 0;
@@ -1706,15 +1689,12 @@ const withLastFetched = (base: string, lastFetchedShort: string | null): string 
 );
 
 // Shared across both kinds — the "why is the smart task starting at HH:MM"
-// resolver branches on data the planner already publishes (`computedFromPricesUpTo`
-// vs `deadlineAtMs`, `dailyBudgetExhaustedBucketCount`). The caller resolves
-// the comparisons to flat booleans so this stays free of timestamp math.
+// resolver branches on data the planner already publishes
+// (`computedFromPricesUpTo` vs `deadlineAtMs`). The caller resolves the
+// comparisons to flat booleans so this stays free of timestamp math.
 const resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver = (params) => {
   if (params.pricesShortOfDeadline) {
     return `Waiting for tomorrow’s prices through ${params.deadlineTime}.`;
-  }
-  if (params.dailyBudgetExhausted) {
-    return 'Today’s budget is full — next cheap window after midnight.';
   }
   // "Cheaper than now" is a verifiable claim, so it only renders when the
   // producer-resolved price comparison proves it — the schedule chart sits

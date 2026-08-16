@@ -1477,7 +1477,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // — applied to the latest revision so v2.7.2 PR 3 can assert the
       // snapshot capture path. Original revision keeps the field absent
       // (matches the typical timeline: budget collapse appears mid-run).
-      latestDailyBudgetExhaustedBucketCount?: number;
       // Mirrors `DeferredObjectiveActivePlanRevisionV1.floorShortfallCause` —
       // the signal that REPLACED the retired count above.
       latestFloorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
@@ -1521,9 +1520,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
             hours: params.latestHourStarts.map((startsAtMs) => ({ startsAtMs, plannedKWh: 1.0 })),
             energyNeededKWh: 2.0,
             planStatus: params.latestPlanStatus ?? 'on_track' as const,
-            ...(params.latestDailyBudgetExhaustedBucketCount !== undefined
-              ? { dailyBudgetExhaustedBucketCount: params.latestDailyBudgetExhaustedBucketCount }
-              : {}),
             ...(params.latestFloorShortfallCause !== undefined
               ? { floorShortfallCause: params.latestFloorShortfallCause }
               : {}),
@@ -1829,32 +1825,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalPlan?.kwhPerUnitMean).toBeUndefined();
     });
 
-    // v2.7.2 PR 3 capture: `dailyBudgetExhaustedBucketCount` on the latest
-    // revision flows onto the persisted snapshot so the history postmortem
-    // can distinguish missed-by-budget-exhaustion from a plain shortfall.
-    it('captures `dailyBudgetExhaustedBucketCount` on the final snapshot when the revision had budget collapse', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 6 * HOUR_MS;
-      const plans = buildActivePlansV4({
-        deviceId: 'dev',
-        deadlineAtMs,
-        latestRevision: 2,
-        latestRevisedAtMs: HOUR_MS,
-        latestHourStarts: [HOUR_MS, 2 * HOUR_MS],
-        originalHourStarts: [HOUR_MS],
-        kwhPerUnit: 0.59,
-        latestPlanStatus: 'cannot_meet',
-        latestDailyBudgetExhaustedBucketCount: 4,
-      });
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.finalPlan?.dailyBudgetExhaustedBucketCount).toBe(4);
-    });
-
     it('captures `floorShortfallCause` on the final snapshot so a miss keeps its attribution', () => {
       // The signal that replaced `dailyBudgetExhaustedBucketCount`. It must
       // reach the persisted snapshot or `snapshotShowsBudgetExhausted` goes
@@ -1898,29 +1868,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.finalPlan?.floorShortfallCause).toBeUndefined();
-    });
-
-    it('omits `dailyBudgetExhaustedBucketCount` when the revision reports zero buckets', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 6 * HOUR_MS;
-      const plans = buildActivePlansV4({
-        deviceId: 'dev',
-        deadlineAtMs,
-        latestRevision: 1,
-        latestRevisedAtMs: 0,
-        latestHourStarts: [HOUR_MS],
-        latestDailyBudgetExhaustedBucketCount: 0,
-      });
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      // Zero is meaningful on the runtime field, but the snapshot suppresses
-      // it so legacy v3 entries stay byte-stable on round-trip and the
-      // consumer's "treat absence as zero" rule keeps working.
-      expect(entry.finalPlan?.dailyBudgetExhaustedBucketCount).toBeUndefined();
     });
 
     it('appends a revision-log entry per replan with reason + +/- hour counts', () => {

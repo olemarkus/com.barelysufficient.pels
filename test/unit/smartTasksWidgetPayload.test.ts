@@ -311,7 +311,6 @@ describe('buildSmartTasksWidgetPayload', () => {
           ...buildPlan({}).latest!,
           planStatus: 'cannot_meet',
           floorShortfallCause: 'budget',
-          dailyBudgetExhaustedBucketCount: 3,
         },
       }),
     }));
@@ -335,7 +334,6 @@ describe('buildSmartTasksWidgetPayload', () => {
           ...buildPlan({}).latest!,
           planStatus: 'cannot_meet',
           floorShortfallCause: 'time_capacity',
-          dailyBudgetExhaustedBucketCount: 4,
         },
       }),
     }));
@@ -375,7 +373,7 @@ describe('buildSmartTasksWidgetPayload', () => {
         latest: {
           ...buildPlan({}).latest!,
           planStatus: 'at_risk',
-          dailyBudgetExhaustedBucketCount: 2,
+          floorShortfallCause: 'budget',
         },
       }),
       time: buildPlan({
@@ -732,8 +730,11 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
             planStatus: 'cannot_meet',
             revisedAtMs: NOW - 4 * HOUR,
             kwhPerUnitMean: 0.5,
-            dailyBudgetExhaustedBucketCount: 3,
-          },
+            // History snapshot, not an active-plan revision: entries recorded
+            // before v2.23.0 still carry the retired count, and
+            // `snapshotShowsBudgetExhausted` still honours it.
+            dailyBudgetExhaustedBucketCount: 4,
+            },
         })],
       }),
       devices: [],

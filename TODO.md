@@ -1538,24 +1538,23 @@ program) remain deferred.*
       briefly treats as commandable is indistinguishable from a charger refusing to start.
       Source: Codex on PR #2042. [P2]
 
-- [ ] **Retire the `dailyBudgetExhaustedBucketCount` contract field and the UI branches it still
-      gates.** The producer side is gone: the smart-task allocator now caps an hour at its own
-      `plannedControlledKWh` share instead of differencing the day-total-clamped `allowedCumKWh`,
-      and `isDailyBudgetExhausted` went with it. What remains is read-only tolerance for revisions
-      an older build persisted — the optional field on
-      `packages/contracts/src/deferredObjectiveActivePlans.ts`, its validator in
-      `activePlanSettings.ts`, the plan-history v4 readers, and the consumers that branch on it:
-      the "daily budget exhausted" hero message (`deadlinePlanHero.ts`), the **"Open Budget"**
-      recourse chip in the same file, the card attribution in `deadlineLabels.ts` /
-      `deadlinePlan.ts`, and `deferredPlanHistoryAttribution.ts`. All of those are now permanently
-      falsy on new data, so the copy simply never appears; deleting them removes the dead branch
-      and the misleading remedy for good. `floorShortfallCause: 'budget'` is the surviving budget
-      signal, and `snapshotShowsBudgetExhausted` already honours both shapes so history written by
-      an older build keeps its attribution — that resolver is the one place a reader may still
-      consult the retired count, and it is load-bearing (it censors budget-caused misses out of the
-      weather energy-signature fit). Do this once enough history has rolled over that dropping the
-      legacy read is safe. Source: 2026-08-09 investigation of a smart task that skipped the last
-      two hours of an overspent day. [P2]
+- [ ] **Retire the last `dailyBudgetExhaustedBucketCount` reader, on the history side.** The
+      active-plan half is done: the field is off
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`, out of the `activePlanSettings.ts`
+      validator, out of `captureRevisionSnapshot`, and every consumer that branched on it
+      (`deadlinePlan.ts`, `deadlinePlanHero.ts`, `deadlineLabels.ts`, `activePlanRevisionLog.ts`,
+      the smart-tasks widget) now reads `floorShortfallCause: 'budget'` alone. Active plans
+      re-settle hourly and are deleted at the deadline, so no live plan could still carry it.
+      What remains is the HISTORY side: the optional field on
+      `DeferredObjectivePlanHistoryRevisionSnapshot`, its validator in `planHistorySettings.ts`,
+      and `snapshotShowsBudgetExhausted` (`packages/shared-domain/src/deferredPlanHistoryShared.ts`),
+      read by `deferredPlanHistoryAttribution.ts`, `deferredPlanHistoryPostmortem.ts` and
+      `deferredPlanHistory.ts`. That resolver is load-bearing — it censors budget-caused misses
+      out of the weather energy-signature fit — and history entries recorded before 2026-08-09
+      genuinely carry the count. **Gate this on the entry cap, not on a date:** plan history is a
+      30-entry FIFO (`planHistory.ts` `HISTORY_ENTRY_CAP`) with NO age expiry, so a rarely-run
+      smart task can hold a pre-cutover entry indefinitely. Source: 2026-08-09 investigation of a
+      smart task that skipped the last two hours of an overspent day. [P2]
 
 - [ ] **Name the daily budget when it is a contributing cause of a smart-task miss, not only the
       sole one.** `resolveStatus` reaches `limited_by_daily_budget` only when lifting the per-bucket

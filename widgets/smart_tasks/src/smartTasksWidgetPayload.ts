@@ -341,7 +341,6 @@ const resolveRowCopy = (
     pendingReason: plan.pendingReason,
     diagnosticReasonCode: plan.diagnosticReasonCode,
     floorShortfallCause: plan.latest?.floorShortfallCause,
-    dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
     firstPlannedTimeLabel,
   });
   // Suppress the receipt-flavoured plan-meta line on a failing task: the
