@@ -71,10 +71,11 @@ export function buildPlanMeta(params: {
     // The measured whole-home draw, or `null` when this cycle had none. The
     // single resolved figure every status/display consumer reads — it replaced
     // a `powerKnown` boolean that each of them recombined with a raw total.
-    powerNowKw: context.powerIsMeasured ? power.totalKw : null,
-    hasLivePowerSample: power.freshnessState === 'fresh',
+    powerNowKw: power.measuredTotalKw,
+    hasLivePowerSample: power.hasLiveSample,
     powerSampleAgeMs: power.powerSampleAgeMs,
     powerFreshnessState: power.freshnessState,
+    powerIsMeasured: context.powerIsMeasured,
     ...shortfallMeta,
     hourlyBudgetExhausted,
     usedKWh: context.usedKWh,
@@ -93,9 +94,10 @@ export function buildPlanMeta(params: {
     dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
     dailyBudgetExceeded: today?.state.exceeded ?? false,
     dailyBudgetHourKWh: extractPlanDailyBudgetHourKWh(dailyBudgetSnapshot),
-    lastPowerUpdateMs: typeof powerTracker.lastTimestamp === 'number'
-      ? powerTracker.lastTimestamp
-      : undefined,
+    // From the producer's reading, not a second read of the tracker: the meta
+    // writer resolving its own timestamp is how two views of the same sample
+    // drift apart. `undefined` stays the wire's "no sample yet".
+    lastPowerUpdateMs: power.lastPowerUpdateMs ?? undefined,
   };
 }
 
@@ -142,8 +144,8 @@ export function buildPlanContextHeadroomLogFields(
     // The measured whole-home draw, or `null` when this cycle had none. The
     // single resolved figure every status/display consumer reads — it replaced
     // a `powerKnown` boolean that each of them recombined with a raw total.
-    powerNowKw: context.powerIsMeasured ? power.totalKw : null,
-    hasLivePowerSample: power.freshnessState === 'fresh',
+    powerNowKw: power.measuredTotalKw,
+    hasLivePowerSample: power.hasLiveSample,
     powerSampleAgeMs: power.powerSampleAgeMs,
     powerFreshnessState: power.freshnessState,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,

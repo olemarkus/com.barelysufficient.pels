@@ -326,10 +326,16 @@ const buildExecutableReleaseIntent = (
     return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
   }
   if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
-  // binary_restore is the only positive (turn-on) intent: require a fresh power sample
-  // (avoid racing the capacity guard), the device kept, no pending swap target, and a plan
-  // reason that does not block restore (capacity/cooldown/etc).
-  if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
+  // binary_restore is the only positive (turn-on) intent: require a MEASURED power
+  // sample (avoid racing the capacity guard), the device kept, no pending swap target,
+  // and a plan reason that does not block restore (capacity/cooldown/etc).
+  //
+  // Reads the producer-resolved `powerIsMeasured`, not the freshness label: this is
+  // the same question `planBuilderDecoration` answers for the same intent, and testing
+  // the label here answered it differently (a fresh timestamp with no total counted as
+  // fresh). `undefined` on an older persisted plan means "do not block" — unchanged
+  // from the previous optional-chained read.
+  if (planMeta?.powerIsMeasured === false) return null;
   if (dev.plannedState !== 'keep') return null;
   if (isSwapTargetPendingReason(dev.reason)) return null;
   if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return null;

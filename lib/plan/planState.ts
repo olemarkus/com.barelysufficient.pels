@@ -1,6 +1,5 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
-import type { PowerFreshnessState } from '../power/sampleFreshness';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -294,8 +293,6 @@ export class PlanEngineState {
   startupRestoreBlockedUntilMs: number | null = null;
 
   currentRebuildReason: string | null = null;
-
-  lastPowerFreshnessState: PowerFreshnessState | null = null;
 
   hourlyBudgetExhausted: boolean = false;
 

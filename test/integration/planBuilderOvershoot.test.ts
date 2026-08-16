@@ -269,6 +269,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.setSystemTime(now);
       // A prior plan was already built this lifetime, so this is NOT a cold start.
       state.lastPlanBuiltAtMs = now - 30_000;
+      // PELS has been up long enough to have watched the meter go silent: the
+      // producer will not escalate to fail-closed inside its startup grace,
+      // because a restart reloads a timestamp that is already old.
+      state.appStartedAtMs = now - (11 * 60_000);
 
       const structuredLog = { info: vi.fn() };
       // Fresh guard that never received a finite total: getLastTotalPower() === null,
@@ -328,6 +332,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // `rememberPlanSnapshot` recorded a build timestamp (a baseline EXISTS) but the
       // total was null, so there is no previous total to diff a fresh sample against.
       state.lastPlanBuiltAtMs = now - 30_000;
+      // PELS has been up long enough to have watched the meter go silent: the
+      // producer will not escalate to fail-closed inside its startup grace,
+      // because a restart reloads a timestamp that is already old.
+      state.appStartedAtMs = now - (11 * 60_000);
       state.lastPlanTotalKw = null;
 
       const structuredLog = { info: vi.fn() };
@@ -434,6 +442,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {
     const state = createPlanEngineState();
+    // The sample below is stamped at epoch+500ms, i.e. long stale. Say the app
+    // has been up longer than the shed timeout so the producer is past its
+    // startup grace and actually escalates, which is what this case needs.
+    state.appStartedAtMs = 0;
     const structuredLog = { info: vi.fn() };
     const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
     capacityGuard.reportTotalPower(2.5);
@@ -819,6 +831,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // A prior plan was already built this lifetime with a finite total, so a numeric
       // delta CAN be computed — this is not a cold start and not a null-total case.
       state.lastPlanBuiltAtMs = now - 30_000;
+      // PELS has been up long enough to have watched the meter go silent: the
+      // producer will not escalate to fail-closed inside its startup grace,
+      // because a restart reloads a timestamp that is already old.
+      state.appStartedAtMs = now - (11 * 60_000);
       state.lastPlanTotalKw = 0.5;
 
       const structuredLog = { info: vi.fn() };

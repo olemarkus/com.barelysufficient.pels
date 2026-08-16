@@ -18,7 +18,6 @@
 // the home into import); (3) the lift releases back to baseline once export is
 // gone past the min dwell; (4) a non-willing device never lifts.
 import { planContextPower } from '../utils/planContextPowerFixture';
-import { resolveMeasuredTotalKw } from '../../lib/plan/planContext';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -104,7 +103,7 @@ const buildDevices = (params: {
   resolveSurplusEligibility({
     devices: params.context.devices,
     state: params.state,
-    signedNetKw: resolveMeasuredTotalKw(params.context),
+    signedNetKw: params.context.measuredDrawKw,
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
     getPriority: params.deps.getPriorityForDevice,
   });
@@ -353,7 +352,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       resolveSurplusEligibility({
         devices: context.devices,
         state,
-        signedNetKw: resolveMeasuredTotalKw(context),
+        signedNetKw: context.measuredDrawKw,
         inferredSurplusKw,
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         getPriority: deps(true).getPriorityForDevice,

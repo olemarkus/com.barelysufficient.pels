@@ -12,7 +12,6 @@
 // (`recordPowerSampleForApp`) with a synthetic solar fixture (class:'solarpanel',
 // managed:true, controllable:false). Nothing internal is mocked.
 import { planContextPower } from '../utils/planContextPowerFixture';
-import { resolveMeasuredTotalKw } from '../../lib/plan/planContext';
 import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -169,7 +168,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       devices: context.devices,
       needed: 5,
       limitSource: 'capacity',
-      total: resolveMeasuredTotalKw(context),
+      total: context.measuredDrawKw,
       capacitySoftLimit: context.capacitySoftLimit,
       state: createPlanEngineState(),
       deps: {

@@ -95,7 +95,7 @@ export class OvershootTracker {
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
       const overshootDiagnostics = buildOvershootEntryDiagnostics({
-        measuredTotalKw: context.powerIsMeasured ? power.totalKw : null,
+        measuredTotalKw: power.measuredTotalKw,
         nowTs,
         lastPowerUpdateMs,
         previousTotalKw: this.state.lastPlanTotalKw,
@@ -116,6 +116,7 @@ export class OvershootTracker {
         ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: power.totalKw,
+            powerNowKw: power.measuredTotalKw,
             softLimitKw: context.softLimit,
             capacitySoftLimitKw: context.capacitySoftLimit,
             softLimitSource: context.softLimitSource,

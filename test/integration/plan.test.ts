@@ -1794,7 +1794,10 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2000, 1000);
+    // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
+    // stale, and these cases would then be exercising the fail-closed shed
+    // rather than the same-sample skip they are named for.
+    await (app as any).powerSamplePipeline.recordPowerSample(2000, Date.now());
 
     let plan = getLatestPlanSnapshotForTests();
     const initialShed = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
@@ -3052,7 +3055,10 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await (app as any).powerSamplePipeline.recordPowerSample(3000, 1000);
+    // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
+    // stale, and these cases would then be exercising the fail-closed shed
+    // rather than the same-sample skip they are named for.
+    await (app as any).powerSamplePipeline.recordPowerSample(3000, Date.now());
 
     let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
@@ -3108,13 +3114,17 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await (app as any).powerSamplePipeline.recordPowerSample(3000, 1000);
+    // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
+    // stale, and these cases would then be exercising the fail-closed shed
+    // rather than the same-sample skip they are named for.
+    const sampleBaseMs = Date.now();
+    await (app as any).powerSamplePipeline.recordPowerSample(3000, sampleBaseMs);
 
     // Clear swap state without a new measurement.
     (app as any).planEngine.state.swapByDevice = {};
 
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 120000;
-    await (app as any).powerSamplePipeline.recordPowerSample(3000, 2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000, sampleBaseMs + 1000);
 
     const plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');

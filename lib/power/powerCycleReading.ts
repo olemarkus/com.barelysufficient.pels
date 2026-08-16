@@ -1,6 +1,10 @@
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { PowerTrackerState } from './tracker';
-import { resolvePowerSampleFreshness, type PowerFreshnessState } from './sampleFreshness';
+import {
+  POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
+  resolvePowerSampleFreshness,
+  type PowerFreshnessState,
+} from './sampleFreshness';
 
 /**
  * What one plan cycle is allowed to know about power.
@@ -43,6 +47,13 @@ export type PowerCycleReading = {
    * reconstruct one from a total plus a freshness label.
    */
   measuredAtOrBelowKw: (thresholdKw: number) => boolean;
+  /**
+   * The complement of `measuredAtOrBelowKw`: MEASURED to be drawing above the
+   * limit. Not `!measuredAtOrBelowKw` — an unmeasured cycle is false for both,
+   * which is why the two exist separately rather than as one predicate a caller
+   * negates. Three sites used to hand-compose this from a boolean and a total.
+   */
+  measuredAboveKw: (limitKw: number) => boolean;
   display: PowerCycleDisplay;
 };
 
@@ -58,6 +69,15 @@ export type PowerCycleDisplay = {
    * forgetting to check for one.
    */
   totalKw: number | null;
+  /**
+   * The total PLANNING may use: the reading when it is trustworthy, `null` when
+   * there is none. Resolved ONCE, here — consumers must not recombine
+   * `isMeasured` with `totalKw` for themselves, which is the raw-total-plus-flag
+   * shape deleted on 2026-08-07 and easy to reintroduce one site at a time.
+   */
+  measuredTotalKw: number | null;
+  /** Producer-resolved; consumers must not test `freshnessState === 'fresh'`. */
+  hasLiveSample: boolean;
   freshnessState: PowerFreshnessState;
   powerSampleAgeMs: number | null;
   lastPowerUpdateMs: number | null;
@@ -86,7 +106,30 @@ export type PowerFreshnessLogger = Pick<PinoLogger, 'info' | 'warn'>;
 export class PowerFreshnessMonitor {
   private lastState: PowerFreshnessState | null = null;
 
-  constructor(private readonly structuredLog?: PowerFreshnessLogger) {}
+  /**
+   * When this monitor first looked. The escalation to `stale_fail_closed` is
+   * measured from HERE as well as from the sample, because the sample timestamp
+   * outlives the process: `loadPowerTrackerState` restores it across a restart,
+   * so a Homey reboot after any gap longer than the timeout would otherwise
+   * resolve fail-closed on the very first build — shedding the whole house blind
+   * before the first 10-second poll had a chance to land. The producer must not
+   * reach a conclusion it has not waited for.
+   *
+   * Seeded from app start where the caller knows it, so the window is "how long
+   * has PELS been able to observe", not "how long since the first plan build" —
+   * a home whose first build happens late must not get a fresh grace.
+   */
+  private observingSinceMs: number | null = null;
+
+  constructor(
+    private readonly structuredLog?: PowerFreshnessLogger,
+    /**
+     * When PELS became able to observe. Read lazily rather than captured, so a
+     * caller that learns its start time after construction is not silently
+     * ignored. Falls back to the first `observe` when absent.
+     */
+    private readonly getObservingSinceMs?: () => number,
+  ) {}
 
   observe(params: {
     powerTracker: PowerTrackerState;
@@ -99,8 +142,9 @@ export class PowerFreshnessMonitor {
     nowMs: number;
   }): PowerCycleReading {
     const { powerTracker, totalKw, nowMs } = params;
+    this.observingSinceMs = this.getObservingSinceMs?.() ?? this.observingSinceMs ?? nowMs;
     const freshness = resolvePowerSampleFreshness(powerTracker, nowMs);
-    const state = freshness.powerFreshnessState;
+    const state = this.holdWhileStillWaiting(freshness.powerFreshnessState, nowMs);
     this.emitTransitionLogs(state, freshness.powerSampleAgeMs);
     this.lastState = state;
     const measured = state === 'fresh' && totalKw !== null;
@@ -114,13 +158,34 @@ export class PowerFreshnessMonitor {
       measuredAtOrBelowKw: (thresholdKw: number): boolean => (
         measured && totalKw !== null && totalKw <= thresholdKw
       ),
+      measuredAboveKw: (limitKw: number): boolean => (
+        measured && totalKw !== null && totalKw > limitKw
+      ),
       display: {
         totalKw,
+        measuredTotalKw: measured ? totalKw : null,
+        hasLiveSample: freshness.hasLivePowerSample,
         freshnessState: state,
         powerSampleAgeMs: freshness.powerSampleAgeMs,
         lastPowerUpdateMs: freshness.lastPowerUpdateMs,
       },
     };
+  }
+
+  /**
+   * Downgrade a fail-closed verdict to a hold until this monitor has itself been
+   * watching for the full timeout.
+   *
+   * Only reachable with a sample timestamp that predates the process — i.e. a
+   * restart. A home that has never sampled at all already resolves to
+   * `stale_hold` and has no age to escalate on, so this does not change it; a
+   * home sampling normally is fresh and never reaches here. What it removes is
+   * the restart blind-shed, and nothing else.
+   */
+  private holdWhileStillWaiting(state: PowerFreshnessState, nowMs: number): PowerFreshnessState {
+    if (state !== 'stale_fail_closed') return state;
+    const observingForMs = nowMs - (this.observingSinceMs ?? nowMs);
+    return observingForMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS ? state : 'stale_hold';
   }
 
   /**
