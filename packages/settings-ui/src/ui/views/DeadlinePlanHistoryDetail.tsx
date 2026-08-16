@@ -60,12 +60,14 @@ type Props = {
   timeZone: string;
 };
 
-// ─── Legacy kWh-bar chart (v3 fallback) ───────────────────────────────────────
+// ─── kWh-bar chart (thin-data fallback) ──────────────────────────────────────
 //
-// Kept intact so entries that predate PR 1's recorder (no `progressSamples`,
-// no `kwhPerUnitMean` on either snapshot) still render a chart instead of an
-// empty card. The producer returns `mode: 'legacy_kwh'` for these entries and
-// the view falls through to `LegacyKwhChart` below.
+// NOT a v3-only path, despite the `legacy_kwh` mode name. `hasUsableTrajectory`
+// asks for two observed samples OR a positive rate on either snapshot, so any
+// entry that lacks both falls through here — a v3 entry that predates the
+// recorder, yes, but equally a short run today, or one where PELS restarted
+// before a diagnostic cycle landed. Deleting this branch would give those
+// entries an empty card, so it stays until the gate itself changes.
 
 type HourRow = {
   // `startsAtMs` is the row identity (sort + de-dupe key when both original

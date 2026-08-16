@@ -122,7 +122,7 @@ export type ObservedStateEmitterDispatcher = {
 };
 
 /**
- * Tiny typed EventEmitter wrapper owned by wiring (`lib/app/`) and consumed by
+ * Tiny typed EventEmitter wrapper owned by wiring (`setup/`) and consumed by
  * wiring listeners. Observer owns the emitter at this physical location so
  * transport can call into it via a callback bag without any static import.
  */
