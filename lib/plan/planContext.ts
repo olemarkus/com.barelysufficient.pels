@@ -1,11 +1,13 @@
-import CapacityGuard from '../power/capacityGuard';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
+import type { PowerCycleReading } from '../power/powerCycleReading';
 import { getCurrentHourContext } from './planHourContext';
-import { resolvePowerSampleFreshness, type PowerFreshnessState } from '../power/sampleFreshness';
-import { isCapacityBreached } from './planRemainingSheddableLoad';
 import { sumBudgetExemptMeasuredUsageKw } from './planUsage';
 import type { PlanInputDevice } from './planTypes';
+
+// "The house is drawing nothing." Small enough that a real idle home clears it
+// and any running load does not.
+const IDLE_HOUSE_KW = 0.01;
 
 export type DailyBudgetContext = {
   enabled: boolean;
@@ -60,29 +62,34 @@ export type CurrentHourPriceLevel = {
 export type PlanContext = {
   devices: PlanInputDevice[];
   desiredForMode: Record<string, number>;
-  total: number | null;
   /**
-   * The meter total PLANNING may use: the measured figure when it is
-   * trustworthy, and `null` when it is not. Absence is the semantic — there is
-   * no companion flag to remember, and no way to spend an untrustworthy number
-   * by forgetting to check one.
+   * The planner's entire power vocabulary: ask for a limit, get the headroom
+   * against it. Always a number.
    *
-   * This is the field every consumer takes. `total` above is the raw reading and
-   * `powerFreshnessState` below is the freshness fact the UI renders; neither is
-   * a planning input. Before 2026-08-07 consumers received the raw total plus a
-   * `powerKnown` boolean and re-derived trust themselves
-   * (`resolvePlanningTotalPower`, deleted with that flag), which is the
-   * consumer-side provenance branch the root AGENTS.md rule forbids:
-   * "Downstream layers may then assume the typed invariant holds; they must not
-   * re-validate or branch on the input's source/provenance."
+   * There is no total here, no freshness label, and nothing to discriminate.
+   * `lib/power` owns the meter, so it decides what a doubtful reading means and
+   * answers in kW — the planner cannot tell a measured headroom from a
+   * synthesized one, and has no business trying (2026-08-16 ruling; the twin of
+   * `observationStale` being off the plan kinds).
    *
-   * The boolean is now a local inside this function — derived, used to resolve
-   * the axes, and never exported.
+   * The lineage: consumers once received a raw total plus a `powerKnown` boolean
+   * and re-derived trust themselves; 2026-08-07 replaced that with a single
+   * `planningTotalKw` whose absence carried the meaning; this removes the
+   * absence too, because a nullable is still a consumer-side branch on whether
+   * the producer's answer can be believed.
    */
-  planningTotalKw: number | null;
-  hasLivePowerSample: boolean;
-  powerSampleAgeMs: number | null;
-  powerFreshnessState: PowerFreshnessState;
+  headroomForLimitKw: (limitKw: number) => number;
+  /**
+   * Producer-resolved: are this cycle's numbers a reading, or the producer's
+   * hold? See `PowerCycleReading.isMeasured` — it says only that, never why.
+   */
+  powerIsMeasured: boolean;
+  /**
+   * Producer-resolved: is the house MEASURED to be drawing at or below this
+   * limit? False whenever there is no measurement, so a caller can only ever act
+   * on a positive. See `PowerCycleReading.measuredAtOrBelowKw`.
+   */
+  powerMeasuredAtOrBelowKw: (limitKw: number) => boolean;
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
@@ -135,6 +142,24 @@ export type PlanContext = {
 };
 
 /**
+ * The measured whole-home draw, or `null` when this cycle had none.
+ *
+ * Derived, deliberately, instead of sitting on `PlanContext` as a field. Two
+ * consumers need the NUMBER rather than a difference — the surplus allocator's
+ * signed net (which goes negative on export) and the shortfall deficit — and for
+ * them "we did not measure" has no safe numeric stand-in: a synthesized 0 would
+ * read as a balanced house to one and no deficit to the other. Every other
+ * consumer wants `headroomForLimitKw` or `powerIsMeasured` and must not reach
+ * for this.
+ *
+ * Headroom against a zero limit is the negated draw, so no extra field has to be
+ * carried to recover it.
+ */
+export const resolveMeasuredTotalKw = (context: PlanContext): number | null => (
+  context.powerIsMeasured ? -context.headroomForLimitKw(0) : null
+);
+
+/**
  * Collapses "the caller omitted it" into "there is no daily-budget axis", so
  * the two states downstream consumers would otherwise have to tell apart become
  * one. Extracted rather than inlined as `?? null` at the return: `buildPlanContext`
@@ -144,8 +169,13 @@ const resolveDailyPaceAxis = (value: number | null | undefined): number | null =
 
 export function buildPlanContext(params: {
   devices: PlanInputDevice[];
-  capacityGuard: CapacityGuard | undefined;
+  /**
+   * This cycle's reading, resolved by `lib/power`. The planner does not fetch a
+   * total from the capacity guard any more — it is handed the answers.
+   */
+  power: PowerCycleReading;
   capacitySettings: { limitKw: number; marginKw: number };
+  /** Hourly usage/bucket math only. Not a freshness input — that is `power`'s. */
   powerTracker: PowerTrackerState;
   softLimit: number;
   capacitySoftLimit: number;
@@ -162,7 +192,7 @@ export function buildPlanContext(params: {
 }): PlanContext {
   const {
     devices,
-    capacityGuard,
+    power,
     capacitySettings,
     powerTracker,
     softLimit,
@@ -178,9 +208,6 @@ export function buildPlanContext(params: {
   } = params;
 
   const now = Date.now();
-  const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
-  const freshness = resolvePowerSampleFreshness(powerTracker, now);
-  const powerKnown = freshness.powerFreshnessState === 'fresh' && total !== null;
 
   // Compute used/budget kWh for this hour
   const budgetKWh = resolveUsableCapacityKw(capacitySettings);
@@ -188,12 +215,9 @@ export function buildPlanContext(params: {
   const usedKWh = hourContext.usedKWh;
   const minutesRemaining = hourContext.minutesRemaining;
 
-  // One rule for every admission axis: fresh power reads the real difference,
-  // stale_hold synthesizes 0, stale_fail_closed forces -1.
-  const resolveAxisHeadroomKw = (limitKw: number): number => {
-    if (powerKnown && total !== null) return limitKw - total;
-    return freshness.powerFreshnessState === 'stale_fail_closed' ? -1 : 0;
-  };
+  // Every admission axis asks the producer the same way. What a doubtful meter
+  // means to the answer is `lib/power`'s business, not this builder's.
+  const resolveAxisHeadroomKw = power.headroomKw;
 
   const headroomRaw = resolveAxisHeadroomKw(softLimit);
   // headroom is the ACTUAL available capacity. Use this for shedding.
@@ -209,7 +233,9 @@ export function buildPlanContext(params: {
 
   // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
   // force a minimal negative headroom to proactively shed controllable devices.
-  if (hourlyBudgetExhausted && softLimit <= 0 && total !== null && total <= 0.01) {
+  // The ~0 read must be MEASURED: this used to test the raw cached total, which
+  // could fire off a reading the meter had long stopped confirming.
+  if (hourlyBudgetExhausted && softLimit <= 0 && power.measuredAtOrBelowKw(IDLE_HOUSE_KW)) {
     headroom = -1; // triggers shedding logic with needed ~=1 kW (effectivePower fallback)
     // An exhausted hour blocks every restore, including budget-exempt candidates
     // on the capacity axis (the note's exhausted-hour carve-out).
@@ -220,21 +246,21 @@ export function buildPlanContext(params: {
   return {
     devices,
     desiredForMode,
-    total,
-    // Resolved once, here, so no consumer re-derives it from the raw pair.
-    planningTotalKw: powerKnown ? total : null,
-    hasLivePowerSample: freshness.hasLivePowerSample,
-    powerSampleAgeMs: freshness.powerSampleAgeMs,
-    powerFreshnessState: freshness.powerFreshnessState,
+    headroomForLimitKw: power.headroomKw,
+    powerIsMeasured: power.isMeasured,
+    powerMeasuredAtOrBelowKw: power.measuredAtOrBelowKw,
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,
     budgetPaceKw: resolveDailyPaceAxis(budgetPaceKw),
     projectedExemptKw: resolveDailyPaceAxis(projectedExemptKw),
     softLimitSource,
+    // "Capacity is not the constraint doing the work" — which requires having
+    // MEASURED that, not merely having synthesized a headroom. The old form was
+    // `powerKnown && !isCapacityBreached(total, capacitySoftLimit)`; both halves
+    // fold into the one producer question.
     budgetReleasableHeadroomHold: softLimitSource === 'daily'
-      && powerKnown
-      && !isCapacityBreached(total, capacitySoftLimit),
+      && power.measuredAtOrBelowKw(capacitySoftLimit),
     capacityHeadroomKw,
     budgetHeadroomKw,
     hourBucketKey: hourContext.bucketKey,

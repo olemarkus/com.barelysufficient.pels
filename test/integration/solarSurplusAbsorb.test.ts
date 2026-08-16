@@ -17,6 +17,8 @@
 // lift when export cannot cover the device's expected draw (so a raise never tips
 // the home into import); (3) the lift releases back to baseline once export is
 // gone past the min dwell; (4) a non-willing device never lifts.
+import { planContextPower } from '../utils/planContextPowerFixture';
+import { resolveMeasuredTotalKw } from '../../lib/plan/planContext';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -54,11 +56,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
     }),
   ],
   desiredForMode: { [DEVICE_ID]: MODE_C },
-  total: signedNetKw,
-  planningTotalKw: signedNetKw,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(signedNetKw),
   softLimit: 10,
   capacitySoftLimit: 10,
   dailySoftLimit: null,
@@ -106,7 +104,7 @@ const buildDevices = (params: {
   resolveSurplusEligibility({
     devices: params.context.devices,
     state: params.state,
-    signedNetKw: params.context.planningTotalKw,
+    signedNetKw: resolveMeasuredTotalKw(params.context),
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
     getPriority: params.deps.getPriorityForDevice,
   });
@@ -161,10 +159,7 @@ const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
   const device = buildDevices({
     context: {
       ...buildContext(0),
-      total: null,
-      planningTotalKw: null,
-      hasLivePowerSample: false,
-      powerFreshnessState: 'stale_hold',
+      ...planContextPower(null),
     },
     state,
     deps: deps(true),
@@ -350,10 +345,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       const powerKnown = options.powerKnown ?? true;
       const context: PlanContext = {
         ...buildContext(signedNetKw),
-        ...(powerKnown ? {} : {
-          total: null, planningTotalKw: null, powerKnown: false,
-          hasLivePowerSample: false, powerFreshnessState: 'stale_hold' as const,
-        }),
+        ...(powerKnown ? {} : planContextPower(null)),
       };
       // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
       // producer-injected inferred term + debug seam) BEFORE materialization;
@@ -361,7 +353,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       resolveSurplusEligibility({
         devices: context.devices,
         state,
-        signedNetKw: context.planningTotalKw,
+        signedNetKw: resolveMeasuredTotalKw(context),
         inferredSurplusKw,
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         getPriority: deps(true).getPriorityForDevice,

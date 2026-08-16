@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { PowerFreshnessMonitor } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildPlanContext } from '../../lib/plan/planContext';
 import {
@@ -12,6 +13,17 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
+
+// The producer resolves the reading; `buildPlanContext` receives answers. Tests
+// state the two real inputs — what the meter read and when it last sampled.
+const readingFor = (
+  powerTracker: { lastTimestamp?: number },
+  capacityGuard?: CapacityGuard,
+) => new PowerFreshnessMonitor().observe({
+  powerTracker,
+  totalKw: capacityGuard?.getLastTotalPower() ?? null,
+  nowMs: Date.now(),
+});
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
@@ -39,199 +51,161 @@ describe('power sample freshness policy', () => {
     vi.useRealTimers();
   });
 
+  const contextFor = (params: {
+    powerTracker: { lastTimestamp?: number };
+    capacityGuard?: CapacityGuard;
+    devices?: PlanInputDevice[];
+    softLimit?: number;
+    capacitySoftLimit?: number;
+    dailySoftLimit?: number | null;
+    budgetPaceKw?: number | null;
+    softLimitSource?: 'capacity' | 'daily';
+    hourlyBudgetExhausted?: boolean;
+  }) => buildPlanContext({
+    devices: params.devices ?? [],
+    power: readingFor(params.powerTracker, params.capacityGuard),
+    capacitySettings: { limitKw: 6, marginKw: 0.2 },
+    powerTracker: params.powerTracker,
+    softLimit: params.softLimit ?? 5,
+    capacitySoftLimit: params.capacitySoftLimit ?? 5,
+    dailySoftLimit: params.dailySoftLimit ?? null,
+    budgetPaceKw: params.budgetPaceKw ?? null,
+    softLimitSource: params.softLimitSource ?? 'capacity',
+    desiredForMode: {},
+    hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
+    currentHourPriceLevel: { cheap: false, expensive: false },
+  });
+
   it('uses real computed headroom for fresh samples', () => {
     const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
     capacityGuard.reportTotalPower(3.2);
 
-    const context = buildPlanContext({
-      devices: [],
+    const context = contextFor({
       capacityGuard,
-      capacitySettings: { limitKw: 6, marginKw: 0.2 },
       powerTracker: { lastTimestamp: Date.now() - (POWER_SAMPLE_STALE_THRESHOLD_MS - 1) },
-      softLimit: 5,
-      capacitySoftLimit: 5,
-      dailySoftLimit: null,
-      softLimitSource: 'capacity',
-      desiredForMode: {},
-      hourlyBudgetExhausted: false,
-      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
-    expect(context.planningTotalKw).not.toBeNull();
-    expect(context.hasLivePowerSample).toBe(true);
-    expect(context.powerFreshnessState).toBe('fresh');
+    expect(context.powerIsMeasured).toBe(true);
     expect(context.headroomRaw).toBeCloseTo(1.8, 6);
     expect(context.headroom).toBeCloseTo(1.8, 6);
   });
 
+  // The cached total (4.4) is deliberately NOT spent: an unmeasured cycle holds
+  // at 0 rather than reading a figure the meter has stopped confirming.
   it('uses stale-hold fallback headroom 0 for short gaps and startup with no sample', () => {
     const staleCapacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
     staleCapacityGuard.reportTotalPower(4.4);
-    const staleHoldContext = buildPlanContext({
-      devices: [],
+    const staleHoldContext = contextFor({
       capacityGuard: staleCapacityGuard,
-      capacitySettings: { limitKw: 6, marginKw: 0.2 },
       powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
-      softLimit: 5,
-      capacitySoftLimit: 5,
-      dailySoftLimit: null,
-      softLimitSource: 'capacity',
-      desiredForMode: {},
-      hourlyBudgetExhausted: false,
-      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
-    expect(staleHoldContext.planningTotalKw).toBeNull();
-    expect(staleHoldContext.hasLivePowerSample).toBe(false);
-    expect(staleHoldContext.powerFreshnessState).toBe('stale_hold');
-    expect(staleHoldContext.total).toBe(4.4);
-    expect(staleHoldContext.powerSampleAgeMs).toBe(2 * 60 * 1000);
+    expect(staleHoldContext.powerIsMeasured).toBe(false);
     expect(staleHoldContext.headroomRaw).toBe(0);
     expect(staleHoldContext.headroom).toBe(0);
 
-    const startupContext = buildPlanContext({
-      devices: [],
-      capacityGuard: undefined,
-      capacitySettings: { limitKw: 6, marginKw: 0.2 },
-      powerTracker: {},
-      softLimit: 5,
-      capacitySoftLimit: 5,
-      dailySoftLimit: null,
-      softLimitSource: 'capacity',
-      desiredForMode: {},
-      hourlyBudgetExhausted: false,
-      currentHourPriceLevel: { cheap: false, expensive: false },
-    });
+    const startupContext = contextFor({ powerTracker: {} });
 
-    expect(startupContext.powerFreshnessState).toBe('stale_hold');
-    expect(startupContext.powerSampleAgeMs).toBeNull();
+    expect(startupContext.powerIsMeasured).toBe(false);
     expect(startupContext.headroomRaw).toBe(0);
     expect(startupContext.headroom).toBe(0);
   });
 
   it('uses fail-closed fallback headroom -1 once stale timeout is reached', () => {
-    const context = buildPlanContext({
-      devices: [],
-      capacityGuard: undefined,
-      capacitySettings: { limitKw: 6, marginKw: 0.2 },
+    const context = contextFor({
       powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
-      softLimit: 5,
-      capacitySoftLimit: 5,
-      dailySoftLimit: null,
-      softLimitSource: 'capacity',
-      desiredForMode: {},
-      hourlyBudgetExhausted: false,
-      currentHourPriceLevel: { cheap: false, expensive: false },
     });
 
-    expect(context.powerFreshnessState).toBe('stale_fail_closed');
+    expect(context.powerIsMeasured).toBe(false);
     expect(context.headroomRaw).toBe(-1);
     expect(context.headroom).toBe(-1);
   });
-});
 
-// Per-axis restore-admission inputs share the binding axis's freshness policy
-// (fresh: real difference; stale_hold: 0; stale_fail_closed: -1) and the
-// exhausted-hour force, so fail-closed and exhausted hours block every restore
-// on every axis — including budget-exempt candidates on the capacity axis.
-describe('per-axis admission headroom resolution', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-04-18T10:00:00.000Z'));
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  // Per-axis restore-admission inputs share the binding axis's policy (measured:
+  // real difference; held: 0; fail-closed: -1) and the exhausted-hour force, so
+  // fail-closed and exhausted hours block every restore on every axis —
+  // including budget-exempt candidates on the capacity axis.
+  describe('per-axis admission headroom resolution', () => {
+    const exemptRunningDevice = buildDevice({
+      id: 'exempt-heater',
+      budgetExempt: true,
+      currentDrawKw: 1.25,
+    });
+    const perAxis = {
+      softLimit: 2.2,
+      capacitySoftLimit: 10,
+      dailySoftLimit: 2.2,
+      budgetPaceKw: 0.9,
+      softLimitSource: 'daily' as const,
+    };
 
-  const exemptRunningDevice = buildDevice({
-    id: 'exempt-heater',
-    budgetExempt: true,
-    currentDrawKw: 1.25,
-  });
+    it('resolves both axes from fresh power, with the MEASURED exempt sum on the budget axis', () => {
+      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
+      capacityGuard.reportTotalPower(1.85);
+      const context = contextFor({
+        ...perAxis,
+        devices: [exemptRunningDevice],
+        capacityGuard,
+        powerTracker: { lastTimestamp: Date.now() - 1000 },
+      });
 
-  const baseParams = {
-    capacitySettings: { limitKw: 6, marginKw: 0.2 },
-    desiredForMode: {},
-    hourlyBudgetExhausted: false,
-    currentHourPriceLevel: { cheap: false, expensive: false },
-    softLimit: 2.2,
-    capacitySoftLimit: 10,
-    dailySoftLimit: 2.2,
-    budgetPaceKw: 0.9,
-    softLimitSource: 'daily' as const,
-  };
-
-  it('resolves both axes from fresh power, with the MEASURED exempt sum on the budget axis', () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(1.85);
-    const context = buildPlanContext({
-      ...baseParams,
-      devices: [exemptRunningDevice],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - 1000 },
+      expect(context.capacityHeadroomKw).toBeCloseTo(10 - 1.85, 6);
+      // budget pace (0.9) + measured exempt (1.25) - total (1.85)
+      expect(context.budgetHeadroomKw).toBeCloseTo(0.3, 6);
     });
 
-    expect(context.capacityHeadroomKw).toBeCloseTo(10 - 1.85, 6);
-    // budget pace (0.9) + measured exempt (1.25) - total (1.85)
-    expect(context.budgetHeadroomKw).toBeCloseTo(0.3, 6);
-  });
+    it('has no budget axis without a resolved daily pace', () => {
+      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
+      capacityGuard.reportTotalPower(1.85);
+      const context = contextFor({
+        ...perAxis,
+        dailySoftLimit: null,
+        budgetPaceKw: null,
+        softLimitSource: 'capacity',
+        capacityGuard,
+        powerTracker: { lastTimestamp: Date.now() - 1000 },
+      });
 
-  it('has no budget axis without a resolved daily pace', () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(1.85);
-    const context = buildPlanContext({
-      ...baseParams,
-      dailySoftLimit: null,
-      budgetPaceKw: null,
-      softLimitSource: 'capacity',
-      devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - 1000 },
+      expect(context.budgetHeadroomKw).toBeNull();
     });
 
-    expect(context.budgetHeadroomKw).toBeNull();
-  });
+    it('synthesizes 0 on both axes in stale-hold and -1 once fail-closed', () => {
+      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
+      capacityGuard.reportTotalPower(1.85);
+      const staleHold = contextFor({
+        ...perAxis,
+        capacityGuard,
+        powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
+      });
+      expect(staleHold.capacityHeadroomKw).toBe(0);
+      expect(staleHold.budgetHeadroomKw).toBe(0);
 
-  it('synthesizes 0 on both axes in stale-hold and -1 once fail-closed', () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(1.85);
-    const staleHold = buildPlanContext({
-      ...baseParams,
-      devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
-    });
-    expect(staleHold.powerFreshnessState).toBe('stale_hold');
-    expect(staleHold.capacityHeadroomKw).toBe(0);
-    expect(staleHold.budgetHeadroomKw).toBe(0);
-
-    const failClosed = buildPlanContext({
-      ...baseParams,
-      devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
-    });
-    expect(failClosed.powerFreshnessState).toBe('stale_fail_closed');
-    expect(failClosed.capacityHeadroomKw).toBe(-1);
-    expect(failClosed.budgetHeadroomKw).toBe(-1);
-  });
-
-  it('forces both axes to -1 in an exhausted hour with a ~0 meter', () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(0);
-    const context = buildPlanContext({
-      ...baseParams,
-      softLimit: 0,
-      hourlyBudgetExhausted: true,
-      currentHourPriceLevel: { cheap: false, expensive: false },
-      devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - 1000 },
+      const failClosed = contextFor({
+        ...perAxis,
+        capacityGuard,
+        powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
+      });
+      expect(failClosed.capacityHeadroomKw).toBe(-1);
+      expect(failClosed.budgetHeadroomKw).toBe(-1);
     });
 
-    expect(context.headroom).toBe(-1);
-    expect(context.capacityHeadroomKw).toBe(-1);
-    expect(context.budgetHeadroomKw).toBe(-1);
+    // The ~0 read has to be MEASURED now: the force used to fire off the raw
+    // cached total, which survives a dropout.
+    it('forces both axes to -1 in an exhausted hour with a ~0 meter', () => {
+      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
+      capacityGuard.reportTotalPower(0);
+      const context = contextFor({
+        ...perAxis,
+        softLimit: 0,
+        hourlyBudgetExhausted: true,
+        capacityGuard,
+        powerTracker: { lastTimestamp: Date.now() - 1000 },
+      });
+
+      expect(context.headroom).toBe(-1);
+      expect(context.capacityHeadroomKw).toBe(-1);
+      expect(context.budgetHeadroomKw).toBe(-1);
+    });
   });
 });
 

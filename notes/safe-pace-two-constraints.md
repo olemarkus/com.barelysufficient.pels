@@ -440,17 +440,22 @@ In the ordinary case it does not, and the reasoning is worth recording so nobody
 capacityPaceKw`, so `headroom < 0` implies `P_import > capacityPaceKw`, which makes
 `capacityBreached` true and admits the exempt device by that clause anyway.
 
-**But the two clauses are not equivalent in general.** At
-`lib/plan/planContext.ts:82-91` two branches force `headroom = -1` while
-`P_import > capacityPaceKw` is false or unknowable, so shedding runs with
-`overCapacityPace` false. They must be handled **differently**, and conflating
-them is a trap:
+**But the two clauses are not equivalent in general.** Two branches force
+`headroom = -1` while `P_import > capacityPaceKw` is false or unknowable, so
+shedding runs with `overCapacityPace` false. They must be handled **differently**,
+and conflating them is a trap:
 
-- **`stale_fail_closed`.** The source stays `context.softLimitSource`. If that is
-  `'capacity'`, the `limitSource !== 'daily'` clause admits budget-exempt
-  candidates today, so keying candidacy on a bare `overCapacityPace` would reject
-  them and a fail-closed meter would stop shedding exactly the devices it most
-  needs to. This branch needs an explicit forced-breach term.
+- **An unmeasured cycle.** Since 2026-08-16 the planner is not told *why* a
+  headroom is what it is: `lib/power` owns the meter and answers
+  `headroomKw(limitKw)` with a number, forcing −1 once the sample has aged past
+  the shed timeout and holding at 0 before that (`lib/power/powerCycleReading.ts`).
+  The one thing the planner may know is `powerIsMeasured` — measured or the
+  producer's hold, never which stale state produced it. The source stays
+  `context.softLimitSource`. If that is `'capacity'`, the `limitSource !== 'daily'`
+  clause admits budget-exempt candidates today, so keying candidacy on a bare
+  `overCapacityPace` would reject them and a fail-closed meter would stop shedding
+  exactly the devices it most needs to. This branch needs an explicit
+  forced-breach term.
 - **Exhausted hour.** The opposite. `buildSheddingPlan.ts:103` deliberately
   overrides the source to `'daily'` (`candidateLimitSource = hourlyBudgetExhausted
   ? 'daily' : context.softLimitSource`) precisely so exempt devices stay
@@ -459,8 +464,13 @@ them is a trap:
   this branch to a forced-breach term would let `shedAllCandidates` shed "Get power
   now" devices, which is a behaviour change, not a preservation.
 
-So the rule is: carry `stale_fail_closed` into the predicate, and leave the
-exhausted-hour override exactly where it is.
+So the rule is: carry the forced-breach term into the predicate, and leave the
+exhausted-hour override exactly where it is. Note what the rule may NOT be
+written as any more — "carry `stale_fail_closed` into the predicate", its
+original wording. That name does not exist inside `lib/plan`, by design: a
+planner branch on a freshness label is the provenance branch the root
+`AGENTS.md` forbids, and it was how four control paths came to re-derive
+"is power observable" for themselves, each slightly differently.
 
 What the rebase does steer is everything else `softLimitSource` feeds: the reason
 copy (`lib/plan/planReasons.ts`), the hero tick's source label and tooltip,
@@ -499,11 +509,13 @@ that from a source string that was itself computed from a collapsed scalar. That
 is worth having, for the reason copy and the starvation attribution in particular,
 but it is a legibility win, not a decoupling one.
 
-The identity covers the deficit only. `planContext.ts:79-92` layers two overrides
-on top of the collapsed scalar, and a re-expression has to carry both: a
-`stale_fail_closed` power sample forces `headroomRaw = -1`, and
-`hourlyBudgetExhausted && bindingPaceKw <= 0 && P_import <= 0.01` forces
-`headroom = -1` so an exhausted hour still sheds when the meter reads ~0.
+The identity covers the deficit only. `buildPlanContext` layers two overrides on
+top of the collapsed scalar, and a re-expression has to carry both: an unmeasured
+cycle past the shed timeout resolves `headroomRaw = -1` inside `lib/power`, and
+`hourlyBudgetExhausted && bindingPaceKw <= 0 && measuredAtOrBelowKw(0.01)` forces
+`headroom = -1` so an exhausted hour still sheds when the meter reads ~0. The
+second one is MEASURED now — it used to test the raw cached total, which survives
+a dropout.
 
 ### The display threshold stays rebased, and that is not fixable by renaming
 
@@ -583,7 +595,7 @@ Two further consequences:
   item 4: the two are equivalent in the ordinary case and **not** in the two
   forced-headroom branches, where `overCapacityPace` is false while shedding must
   still run. The predicate has to be `overCapacityPace || forcedBreach`, with
-  `forcedBreach` carrying `stale_fail_closed` and exhausted-hour explicitly. Done
+  `forcedBreach` carrying the unmeasured-cycle force and exhausted-hour explicitly. Done
   that way it is behaviour-preserving; done naively it silently protects exempt
   devices from a fail-closed meter.
 

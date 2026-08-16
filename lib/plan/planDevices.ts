@@ -108,7 +108,7 @@ export function buildInitialPlanDevices(params: {
     const plannedTarget = resolvePlannedTarget({
       dev,
       desiredForMode: context.desiredForMode,
-      planningTotalKw: context.planningTotalKw,
+      powerIsMeasured: context.powerIsMeasured,
       currentHourPriceLevel: context.currentHourPriceLevel,
       state,
       deps,
@@ -174,8 +174,8 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
-  /** `context.planningTotalKw`: the usable meter total, or `null` when none is trustworthy. */
-  planningTotalKw: number | null;
+  /** Producer-resolved: did this cycle have a measurement at all. */
+  powerIsMeasured: boolean;
   /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
   currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
@@ -184,7 +184,7 @@ function resolvePlannedTarget(params: {
   const {
     dev,
     desiredForMode,
-    planningTotalKw,
+    powerIsMeasured,
     currentHourPriceLevel,
     state,
     deps,
@@ -209,7 +209,7 @@ function resolvePlannedTarget(params: {
       dev,
       config: deps.getPriceOptimizationSettings()[dev.id],
       observedTarget: dev.currentTarget,
-      planningTotalKw,
+      powerIsMeasured,
       currentHourPriceLevel,
       state,
       deps,
@@ -311,12 +311,12 @@ function applyModeSeedModulation(params: {
    * device, so the unknown-power hold always has a value to hold at.
    */
   observedTarget: number;
-  planningTotalKw: number | null;
+  powerIsMeasured: boolean;
   currentHourPriceLevel: CurrentHourPriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ModeSeedModulation {
-  const { seedValue, dev, config, observedTarget, planningTotalKw, currentHourPriceLevel, state, deps } = params;
+  const { seedValue, dev, config, observedTarget, powerIsMeasured, currentHourPriceLevel, state, deps } = params;
   const pricedTarget = deps.getPriceOptimizationEnabled() && config?.enabled
     ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel)
     : seedValue;
@@ -327,7 +327,7 @@ function applyModeSeedModulation(params: {
     config,
     state,
   });
-  const holds = planningTotalKw === null && deps.holdsModeTargetRaisesWhilePowerUnknown?.() === true;
+  const holds = !powerIsMeasured && deps.holdsModeTargetRaisesWhilePowerUnknown?.() === true;
   if (!holds) return { kind: 'value', plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
   const holdBothDirections = isCoolingCapableTemperatureDeviceClass(dev.deviceClass);
   if (holdBothDirections || surplusTarget > observedTarget) {

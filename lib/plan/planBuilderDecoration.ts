@@ -34,9 +34,9 @@ export function attachDeferredReleaseIntents(
     const deferredReleaseIntent = intentByDeviceId[device.id];
     if (!deferredReleaseIntent) return device;
     // binary_restore is the only intent that drives a positive (turn-on) command, so it requires
-    // a fresh power sample to avoid racing the capacity guard on stale data. binary_release and
-    // shed_release are negative commands and remain safe to issue under stale-power.
-    if (deferredReleaseIntent === 'binary_restore' && context.powerFreshnessState !== 'fresh') return device;
+    // a MEASURED sample to avoid racing the capacity guard on a synthesized headroom.
+    // binary_release and shed_release are negative commands and remain safe without one.
+    if (deferredReleaseIntent === 'binary_restore' && !context.powerIsMeasured) return device;
     return { ...device, deferredReleaseIntent };
   });
 }

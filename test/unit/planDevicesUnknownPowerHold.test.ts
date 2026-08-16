@@ -1,6 +1,7 @@
 // Unit tier on purpose: every case calls the pure `buildInitialPlanDevices`
 // directly — no I/O, no SDK, no clock — and asserts its return. Extracted from
 // `test/integration/planDevices.test.ts` (which keeps the seam-driven cases).
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -10,6 +11,10 @@ import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 const inputDevice = (
   o: Parameters<typeof buildPlanInputDevice>[0] = {},
@@ -26,11 +31,7 @@ const currentTargetOf = (device: DevicePlanDevice): number | null | undefined =>
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
   desiredForMode: {},
-  total: 3,
-  planningTotalKw: 3,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
@@ -88,7 +89,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
       context: {
         ...buildContext([heater(params.targetValue)]),
         desiredForMode: { tank: params.modeTarget },
-        planningTotalKw: params.powerKnown ? 3 : null,
+        powerIsMeasured: params.powerKnown,
         // The two readings `powerKnown === false` is derived from; kept
         // consistent so the fixture cannot pass on a contradictory context.
         ...(params.powerKnown ? {} : { total: null, powerFreshnessState: 'stale_hold' as const }),
@@ -154,9 +155,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 18.6, unit: '°C', min: 5, max: 35, step: 1 }],
         })]),
         desiredForMode: { tank: 22 },
-        planningTotalKw: null,
-        total: null,
-        powerFreshnessState: 'stale_hold',
+        ...planContextPower(null),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),
@@ -192,8 +191,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           // `powerKnown: false` alone and the stale companion number stayed
           // inherited — the two-correlated-fields hazard the resolved field exists
           // to remove.
-          planningTotalKw: null,
-          powerFreshnessState: 'stale_hold' as const,
+          ...planContextPower(null),
         }),
       },
       state: createPlanEngineState(),
@@ -225,9 +223,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
         desiredForMode: { tank: 20 },
-        planningTotalKw: null,
-        total: null,
-        powerFreshnessState: 'stale_hold' as const,
+        ...planContextPower(null),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),
@@ -252,9 +248,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           deadlineFloorTargetC: 60,
         })]),
         desiredForMode: { tank: 55 },
-        planningTotalKw: null,
-        total: null,
-        powerFreshnessState: 'stale_hold',
+        ...planContextPower(null),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),

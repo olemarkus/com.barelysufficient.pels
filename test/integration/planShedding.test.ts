@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import type { Mock } from 'vitest';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -49,17 +50,16 @@ const buildDevice = (
   }) as PlanInputDevice;
 };
 
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
+// `total` is the fixture's own input (what the meter read this cycle), not a
+// `PlanContext` field any more: the context carries the producer's ANSWERS, and
+// this builder derives them from the reading exactly as `lib/power` does.
+const buildContext = (
+  overrides: Partial<PlanContext> & { total?: number | null } = {},
+): PlanContext => {
   const total = overrides.total ?? null;
-  const powerKnown = overrides.planningTotalKw !== undefined
-    ? overrides.planningTotalKw !== null
-    : (typeof total === 'number' && Number.isFinite(total));
   return {
     devices: [],
     desiredForMode: {},
-    hasLivePowerSample: overrides.hasLivePowerSample ?? powerKnown,
-    powerSampleAgeMs: overrides.powerSampleAgeMs ?? (powerKnown ? 0 : null),
-    powerFreshnessState: overrides.powerFreshnessState ?? (powerKnown ? 'fresh' : 'stale_hold'),
     softLimit: 0,
     capacitySoftLimit: 0,
     dailySoftLimit: null,
@@ -77,9 +77,10 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
     headroom: 0,
     restoreMarginPlanning: 0.2,
     currentHourPriceLevel: { cheap: false, expensive: false },
+    // Power answers derived from the fixture's reading FIRST, so a case that
+    // wants a cached-but-unmeasured total can still say so explicitly.
+    ...planContextPower(total),
     ...overrides,
-    total,
-    planningTotalKw: powerKnown ? total : null,
   };
 };
 
@@ -339,11 +340,7 @@ describe('buildSheddingPlan', () => {
           controllable: true,
         }),
       ],
-      total: 6.2,
-      planningTotalKw: null,
-      hasLivePowerSample: false,
-      powerSampleAgeMs: 2 * 60 * 1000,
-      powerFreshnessState: 'stale_hold',
+      ...planContextPower(null),
       softLimit: 5,
       capacitySoftLimit: 5,
       headroomRaw: 0,

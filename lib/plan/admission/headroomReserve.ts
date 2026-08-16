@@ -79,11 +79,11 @@ const RELEASED = -1;
  */
 export function resolveHeadroomReserves(params: {
   devices: readonly DevicePlanDevice[];
-  planningTotalKw: number | null;
+  powerIsMeasured: boolean;
   state: Pick<PlanEngineState, 'headroomReserveArmedMs'>;
   nowTs: number;
 }): HeadroomReserve[] {
-  const { devices, planningTotalKw, state, nowTs } = params;
+  const { devices, powerIsMeasured, state, nowTs } = params;
   const previousArmedMs = state.headroomReserveArmedMs;
   const nextArmedMs: Record<string, number> = {};
   const reserves: HeadroomReserve[] = [];
@@ -91,7 +91,7 @@ export function resolveHeadroomReserves(params: {
   for (const device of devices) {
     if (device.reservesStartupPower !== true) continue;
     const decision = resolveReserveForDevice({
-      device, planningTotalKw, armedMs: previousArmedMs[device.id] ?? null, nowTs,
+      device, powerIsMeasured, armedMs: previousArmedMs[device.id] ?? null, nowTs,
     });
     if (decision.armedMs !== null) nextArmedMs[device.id] = decision.armedMs;
     if (decision.reserve) reserves.push(decision.reserve);
@@ -120,12 +120,12 @@ type ReserveDecision = {
 
 function resolveReserveForDevice(params: {
   device: DevicePlanDevice;
-  /** `context.planningTotalKw` — `null` when no trustworthy total exists. */
-  planningTotalKw: number | null;
+  /** Producer-resolved: did this cycle have a measurement at all. */
+  powerIsMeasured: boolean;
   armedMs: number | null;
   nowTs: number;
 }): ReserveDecision {
-  const { device, planningTotalKw, armedMs, nowTs } = params;
+  const { device, powerIsMeasured, armedMs, nowTs } = params;
 
   // Already started once under this grant — stay released, whatever the meter says right now.
   if (armedMs === RELEASED) return { outcome: 'satisfied', armedMs: RELEASED, reserve: null };
@@ -134,7 +134,7 @@ function resolveReserveForDevice(params: {
   // so a reserve would be guesswork that strands lower-priority devices. The outcome name says
   // it — the ABSENCE of the number is the condition, not a flag beside one. The stamp is kept so
   // the bound keeps running.
-  if (planningTotalKw === null) return { outcome: 'unknown_total', armedMs, reserve: null };
+  if (!powerIsMeasured) return { outcome: 'unknown_total', armedMs, reserve: null };
 
   // Both of the next two gates read fields a flaky Homey poll can flip for a single cycle
   // (`steppedLoadProfile`, `available`, `commandableNow`). They withhold the reserve for that

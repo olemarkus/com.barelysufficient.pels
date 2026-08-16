@@ -150,8 +150,12 @@ export async function updateGuardState(params: {
   headroom: number;
   overshootActionable: boolean;
   capacitySoftLimit: number;
-  /** `context.planningTotalKw` — already resolved; `null` means no trustworthy total. */
-  planningTotalKw: number | null;
+  /**
+   * The measured whole-home draw (`resolveMeasuredTotalKw`), or `null` when this
+   * cycle had none. The deficit is a real quantity in kW, so unlike most planner
+   * power questions it cannot be answered with a headroom.
+   */
+  measuredTotalKw: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
@@ -161,7 +165,7 @@ export async function updateGuardState(params: {
     headroom,
     overshootActionable,
     capacitySoftLimit,
-    planningTotalKw,
+    measuredTotalKw,
     devices,
     shedSet,
     softLimitSource,
@@ -172,11 +176,11 @@ export async function updateGuardState(params: {
     shedSet,
     headroom,
     limitSource: softLimitSource,
-    total: planningTotalKw,
+    total: measuredTotalKw,
     capacitySoftLimit,
   });
   const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
-  const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThreshold);
+  const deficitKw = computeShortfallDeficitKw(measuredTotalKw, shortfallThreshold);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
     await capacityGuard?.setSheddingActive(true);
@@ -188,7 +192,7 @@ export async function updateGuardState(params: {
         deficitKw,
         devices,
         shedSet,
-        total: planningTotalKw,
+        total: measuredTotalKw,
         limitSource: softLimitSource,
         capacitySoftLimit,
       }),
@@ -210,7 +214,7 @@ export async function updateGuardState(params: {
       deficitKw,
       devices,
       shedSet,
-      total: planningTotalKw,
+      total: measuredTotalKw,
       limitSource: softLimitSource,
       capacitySoftLimit,
     }),

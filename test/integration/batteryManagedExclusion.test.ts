@@ -14,6 +14,8 @@
 // `controllable === true` + temperature requirement) are exactly what keeps the
 // battery inert. These tests prove being managed+non-controllable+non-temperature is
 // sufficient; no new control gate is added.
+import { planContextPower } from '../utils/planContextPowerFixture';
+import { resolveMeasuredTotalKw } from '../../lib/plan/planContext';
 import { describe, expect, it } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -29,6 +31,10 @@ import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 const BATTERY_ID = 'home-battery';
 const HEATER_ID = 'heater';
@@ -74,11 +80,7 @@ const heaterInputDevice = (): PlanInputDevice =>
 const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices,
   desiredForMode: { [HEATER_ID]: 21 },
-  total: 3,
-  planningTotalKw: 3,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
@@ -195,7 +197,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       devices: context.devices,
       needed: 5, // ask for a large reduction so any eligible device is offered
       limitSource: 'capacity',
-      total: context.total,
+      total: resolveMeasuredTotalKw(context),
       capacitySoftLimit: context.capacitySoftLimit,
       state: createPlanEngineState(),
       deps: {

@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -27,6 +28,10 @@ import {
   steppedInputDevice,
 } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 /**
  * Local fixture wrappers that widen the stable shared builders with the
@@ -74,11 +79,7 @@ const boostActiveOf = (device: DevicePlanDevice): boolean => device.boostActive;
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
   desiredForMode: {},
-  total: 3,
-  planningTotalKw: 3,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,

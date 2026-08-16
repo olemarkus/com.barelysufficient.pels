@@ -8,6 +8,7 @@
  * question ("was the off ours?") is settled upstream and covered in
  * `externalOffHoldDetection.test.ts`; here the hold is a given.
  */
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyUncontrolledBinaryRestore,
@@ -40,6 +41,10 @@ import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/pl
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 const makeDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => (
   withBinaryDiscriminant({
@@ -136,11 +141,7 @@ describe('external-off hold — plan-device propagation', () => {
   const buildContext = (devices: PlanContext['devices']): PlanContext => ({
     devices,
     desiredForMode: {},
-    total: 1,
-    planningTotalKw: 1,
-    hasLivePowerSample: true,
-    powerSampleAgeMs: 0,
-    powerFreshnessState: 'fresh',
+    ...planContextPower(FIXTURE_TOTAL_KW),
     hourBucketKey: '2026-07-25T12',
     softLimit: 10,
     capacitySoftLimit: 10,

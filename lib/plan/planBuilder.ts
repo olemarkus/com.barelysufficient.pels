@@ -24,6 +24,7 @@
  */
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
+import { PowerFreshnessMonitor, type PowerCycleDisplay } from '../power/powerCycleReading';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
@@ -57,7 +58,7 @@ import type {
   DeferredDecorationInput,
 } from '../../packages/planner-types/src/deferredDecoration';
 import { OvershootTracker } from './planBuilderOvershoot';
-import { buildPlanMeta, emitPowerFreshnessTransitionLogs } from './planBuilderMeta';
+import { buildPlanMeta } from './planBuilderMeta';
 import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './planBuilderDecoration';
 
 export type PlanBuilderDeps = {
@@ -125,9 +126,16 @@ export class PlanBuilder {
   // plus the headroom-card sync and the diagnostics observation.
   private readonly stages: PlanMaterializationStages;
 
+  /**
+   * Per builder, so a main home and its meter areas keep separate freshness
+   * histories. Owned by `lib/power`; the builder only drives it once per cycle.
+   */
+  private readonly powerFreshnessMonitor: PowerFreshnessMonitor;
+
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {
     this.overshootTracker = new OvershootTracker(state, deps);
     this.stages = new PlanMaterializationStages(deps, state);
+    this.powerFreshnessMonitor = new PowerFreshnessMonitor(deps.structuredLog);
   }
 
   private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
@@ -221,6 +229,7 @@ export class PlanBuilder {
 
     const {
       context,
+      power,
       sheddingPlan,
       overshootDecision,
     } = await this.buildContextAndShedding(
@@ -277,6 +286,7 @@ export class PlanBuilder {
     });
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
+      power,
       capacityGuard: this.capacityGuard,
       capacityLimitKw: this.capacitySettings.limitKw,
       powerTracker: this.powerTracker,
@@ -288,6 +298,7 @@ export class PlanBuilder {
 
     const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta({
       context,
+      power,
       planDevices: finalized.planDevices,
       dailyBudgetSnapshot,
       powerTracker: this.powerTracker,
@@ -342,6 +353,9 @@ export class PlanBuilder {
     getCyclePriority: (deviceId: string) => number,
   ): Promise<{
     context: PlanContext;
+    // Display-only facts, carried BESIDE the context rather than on it so no
+    // planner stage can reach a freshness label (2026-08-16 ruling).
+    power: PowerCycleDisplay;
     sheddingPlan: SheddingPlan;
     overshootDecision: SoftOvershootDecision;
   }> {
@@ -352,9 +366,17 @@ export class PlanBuilder {
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
     const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
 
+    // One reading per build, resolved by `lib/power`. It also owns the freshness
+    // state machine, so the transition logs fire here as a side effect of asking
+    // — the planner no longer holds a `lastPowerFreshnessState` to compare.
+    const power = this.powerFreshnessMonitor.observe({
+      powerTracker: this.powerTracker,
+      totalKw: this.capacityGuard?.getLastTotalPower() ?? null,
+      nowMs: Date.now(),
+    });
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
       devices,
-      capacityGuard: this.capacityGuard,
+      power,
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
       softLimit,
@@ -368,16 +390,15 @@ export class PlanBuilder {
       currentHourPriceLevel: this.resolveCurrentHourPriceLevel(devices),
       dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
     }));
-    this.logPowerFreshness(context);
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
       // Stamped by `computeDynamicSoftLimit` a few lines above, from the same
       // hourly budget the soft limit itself is paced against.
       hourRemainingKWh: this.state.hourlyRemainingKWh,
       // Only price a wait when a restore PELS issued is still settling, and only
-      // while power is actually observable — a `stale_fail_closed` headroom is a
+      // while power is actually observable — a synthesized headroom is a
       // blind-mode shed and must never be delayed.
-      restoreTransientPossible: context.powerFreshnessState === 'fresh'
+      restoreTransientPossible: context.powerIsMeasured
         && this.hasOpenActivationAttempt(nowTs),
       state: this.state,
       nowTs,
@@ -386,7 +407,7 @@ export class PlanBuilder {
     this.syncConfirmedRestoreAttributionAttempts(
       devices,
       this.powerTracker.lastTimestamp ?? null,
-      context.planningTotalKw !== null && context.headroom >= 0,
+      context.powerIsMeasured && context.headroom >= 0,
     );
 
     // `buildSheddingPlan` takes the WHOLE decision, not just the shed half: the
@@ -408,7 +429,7 @@ export class PlanBuilder {
     );
     this.applySheddingUpdates(sheddingPlan);
 
-    return { context, sheddingPlan, overshootDecision };
+    return { context, power: power.display, sheddingPlan, overshootDecision };
   }
 
   /**
@@ -511,13 +532,4 @@ export class PlanBuilder {
     }
   }
 
-  private logPowerFreshness(context: PlanContext): void {
-    const previousState = this.state.lastPowerFreshnessState;
-    const currentState = context.powerFreshnessState;
-    const structuredLog = this.deps.structuredLog;
-
-    emitPowerFreshnessTransitionLogs(structuredLog, previousState, currentState, context);
-
-    this.state.lastPowerFreshnessState = currentState;
-  }
 }

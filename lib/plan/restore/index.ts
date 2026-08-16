@@ -191,7 +191,7 @@ function resolveCycleHeadroomReserves(
 ): HeadroomReserve[] {
   return resolveHeadroomReserves({
     devices: planDevices,
-    planningTotalKw: context.planningTotalKw,
+    powerIsMeasured: context.powerIsMeasured,
     state,
     nowTs: Date.now(),
   });
