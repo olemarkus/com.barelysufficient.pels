@@ -214,7 +214,6 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && Array.isArray(v.hours)
     && v.hours.every(isPlanHour)
     && isOptionalReservationSegments(v.reservationSegments)
-    && (v.devicePriority === undefined || isFiniteNumber(v.devicePriority))
     && isOptionalNonEmptyString(v.allocationContextSignature)
     && hasValidRevisionEnergyFields(v)
     && hasValidRevisionDurationFields(v);
@@ -335,9 +334,42 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && isOptionalRevisionHistory(v.history);
 };
 
+// `devicePriority` left the revision contract once ordering moved to the live
+// mode catalog. A revision persisted by an older build still carries it, and the
+// recorder resubmits whatever it loaded on the next dirty flush — so an
+// unvalidated legacy value (`Infinity`, `null`, an object) would ride back out
+// to the settings store on every write. Drop the key here instead: the plan is
+// still accepted (losing a live commitment over an unread field would be the
+// worse outcome), it just arrives without the retired baggage.
+//
+// Deliberately NOT a general unknown-key strip: a field this build does not
+// recognise may be a FORWARD-compat one a newer build wrote, and those must
+// round-trip intact.
+const stripRetiredRevisionFields = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+): DeferredObjectiveActivePlanRevisionV1 => {
+  if (!Object.prototype.hasOwnProperty.call(revision, 'devicePriority')) return revision;
+  const { devicePriority: _retired, ...rest } = revision as DeferredObjectiveActivePlanRevisionV1
+    & { devicePriority?: unknown };
+  void _retired;
+  return rest;
+};
+
 export const normalizeDeferredObjectiveActivePlans = (
   raw: unknown,
-): DeferredObjectiveActivePlansV1 => normalizeDeferredObjectiveActivePlansShape(raw, {
-  isValidPlan: isActivePlan,
-  empty: createEmptyActivePlans,
-});
+): DeferredObjectiveActivePlansV1 => {
+  const normalized = normalizeDeferredObjectiveActivePlansShape(raw, {
+    isValidPlan: isActivePlan,
+    empty: createEmptyActivePlans,
+  });
+  return {
+    ...normalized,
+    plansByDeviceId: Object.fromEntries(
+      Object.entries(normalized.plansByDeviceId).map(([deviceId, plan]) => [deviceId, {
+        ...plan,
+        latest: plan.latest === null ? null : stripRetiredRevisionFields(plan.latest),
+        ...(plan.history ? { history: plan.history.map(stripRetiredRevisionFields) } : {}),
+      }]),
+    ),
+  };
+};

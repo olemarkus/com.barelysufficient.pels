@@ -29,8 +29,8 @@ export type DeferredObjectiveActivePlanRevisionReason =
   | 'flow_permission_changed';
 
 // Identifies whether the kWh-per-unit value used for the revision came from a
-// learned profile or the bootstrap fallback. Optional so older persisted
-// plans (without the field) continue to load.
+// learned profile or the bootstrap fallback. Optional on the revision because
+// the recorder omits it when no rate source was consulted — see the field.
 export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap';
 
 // Producer-resolved presentation-speed mode for the hero meta line. The
@@ -42,9 +42,8 @@ export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap
 // The human label strings ("Auto" / "Learning…") stay in the settings UI per
 // `feedback_ui_text_shared_with_logs` — only the enum is persisted. `Manual`
 // / `Conservative` are future modes that would extend this union if/when they
-// ship. Optional for backward compatibility — older persisted revisions don't
-// carry it and the UI falls back to deriving it from `kwhPerUnitSource`
-// (absent → `auto`).
+// ship. Optional on the revision for the same producer-side reason as
+// `kwhPerUnitSource`; the UI derives it from that field (absent → `auto`).
 export type DeferredObjectiveActivePlanSpeedMode = 'auto' | 'learning';
 
 // Producer-resolved verdict for what bound the floor schedule on this revision.
@@ -57,9 +56,12 @@ export type DeferredObjectiveActivePlanSpeedMode = 'auto' | 'learning';
 // to the budget-bound recourse (`Open Budget`) without re-deriving cause from
 // `dailyBudgetExhaustedBucketCount` — which fails on the per-bucket background
 // squeeze case where the count stays at zero but the cause is still budget.
-// Optional so older persisted plans (without the field) continue to load and
-// the UI should fall back to the legacy `(cannot_meet || at_risk) &&
-// bucketCount > 0` derivation when absent.
+// Optional on the revision because the recorder suppresses the `none` case for
+// byte-stability. On any plan a current build wrote, ABSENT MEANS "no
+// shortfall" — do NOT read absence as "unknown" and fall back to the retired
+// `(cannot_meet || at_risk) && bucketCount > 0` derivation. Active plans
+// re-settle hourly and are deleted at the deadline, so no live plan predates
+// this field.
 export type DeferredObjectiveActivePlanFloorShortfallCause =
   | 'budget'
   | 'step_power'
@@ -200,17 +202,18 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // different quantity. One display formatter still spells the rule inline —
   // `formatEnergyEstimateKWh` in `packages/shared-domain/src/deadlineLabels.ts`,
   // which takes pre-resolved numbers rather than a revision; route it through
-  // the resolver if its signature ever changes. Optional for backward
-  // compatibility.
+  // the resolver if its signature ever changes.
   energyExpectedKWh?: number;
   // Planner status. UI surfaces a "Can't fully meet" chip when this is
   // `cannot_meet` or `at_risk`.
   planStatus: DeferredObjectiveActivePlanStatusV1;
   // Source of the kWh-per-unit value the planner used. `bootstrap` means a
   // conservative default was used because no learned profile was available
-  // yet; the next accepted sample will flip this to `learned`. Optional for
-  // backward compatibility — older persisted revisions don't carry it and the
-  // UI should treat absence as `learned`.
+  // yet; the next accepted sample will flip this to `learned`. Optional
+  // because the RECORDER omits it whenever the diagnostic never consulted a
+  // rate source (`activePlanRevisionBuild.ts`), not merely because older
+  // revisions lack it — absence is an ordinary shape a current build writes.
+  // Consumers treat absence as `learned`.
   kwhPerUnitSource?: DeferredObjectiveActivePlanKwhPerUnitSource;
   // Producer-resolved display rate (kWh per °C / %) for the plan-inputs row.
   // The recorder collapses the bootstrap-vs-learned branching the settings UI
@@ -220,15 +223,16 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // `null`) when no usable positive rate was resolved — the source
   // short-circuited or the rate wasn't a finite positive number. The `| null`
   // in the type is tolerated only so a hand-edited/forward-compat payload that
-  // explicitly set it null still round-trips through the validator. Optional for
-  // backward compatibility — older persisted revisions don't carry it and the UI
-  // falls back to the live learned-profile mean.
+  // explicitly set it null still round-trips through the validator. That
+  // producer-side omission is why the field is optional, not legacy data; the
+  // UI falls back to the live learned-profile mean.
   rateMean?: number | null;
   // Producer-resolved presentation-speed mode. See
   // `DeferredObjectiveActivePlanSpeedMode` for the enum + the
-  // enum-not-human-string rationale. Optional for backward compatibility —
-  // older persisted revisions don't carry it and the UI derives it from
-  // `kwhPerUnitSource` (absent → `auto`).
+  // enum-not-human-string rationale. Optional on the same condition as
+  // `kwhPerUnitSource` above — the recorder writes both or neither, so a
+  // current build omits it whenever no rate source resolved. The UI derives it
+  // from `kwhPerUnitSource` (absent → `auto`).
   speedMode?: DeferredObjectiveActivePlanSpeedMode;
   // Number of horizon buckets whose per-bucket cap collapsed to zero because
   // the daily budget cap had already been reached. Lets the UI explain a
@@ -241,23 +245,22 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // table and the squeeze-case rationale. Persisting it lets the hero copy
   // resolver route a `cannot_meet` / `at_risk` plan whose cause is `budget` to
   // the `Open Budget` recourse even when `dailyBudgetExhaustedBucketCount`
-  // stays at zero (the per-bucket background squeeze case). Optional for
-  // backward compatibility — legacy revisions without the field fall back to
-  // the count-based heuristic so the consumer never branches on absence as a
-  // signal in itself.
+  // stays at zero (the per-bucket background squeeze case). Optional because
+  // the recorder suppresses the `none` case for byte-stability, so on a current
+  // build ABSENT MEANS "no shortfall" — an ordinary shape, not a legacy one.
+  // Consumers must not read absence as "unknown".
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
   // Planner's effective useful power (kW) used to estimate hours-of-work for
   // the current plan. Surfaced in the hero meta line ("Y.Y kW") so the user
-  // can sanity-check estimated duration. Optional for backward compatibility.
+  // can sanity-check estimated duration. Optional because the recorder writes
+  // it only when the planner resolved a finite positive speed; absence is an
+  // ordinary shape a current build produces.
   planningSpeedKw?: number;
   // Pre-formatted estimated duration ("Yh Zm") matching `planningSpeedKw`.
   // Lives on the revision so all surfaces format consistently with the math
-  // the planner actually used. Optional for backward compatibility.
+  // the planner actually used. Optional on the same condition as
+  // `planningSpeedKw`: no resolvable speed means no duration to format.
   estimatedDurationText?: string;
-  // Legacy resolved device priority. Retained only so persisted revisions from
-  // older releases still parse; new revisions derive ordering from the current
-  // user-saved mode catalog and do not write this field.
-  devicePriority?: number;
   // Stable signature of the smart-task prefix, order, objective settings, and
   // higher-task claim topology used for this allocation. A mismatch forces an
   // immediate coordinated replan; ordinary higher-task energy/rate drift on an
