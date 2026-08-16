@@ -5433,7 +5433,6 @@ describe('shared-domain hero-line formatters', () => {
       startProgress: 35,
       targetValue: 65,
       targetUnit: '°C',
-      deadlineTime: '16:00',
     });
     expect(out).toBe('Delivered 1.8 of 4.2 kWh · 35.0 °C → 42.0 °C of 65.0 °C target');
   });
@@ -5448,7 +5447,6 @@ describe('shared-domain hero-line formatters', () => {
       startProgress: null,
       targetValue: 65,
       targetUnit: '°C',
-      deadlineTime: '16:00',
     });
     expect(out).toBe('Delivered 0.0 of 4.2 kWh · now 42.0 °C of 65.0 °C target');
   });
@@ -5469,7 +5467,6 @@ describe('shared-domain hero-line formatters', () => {
       startProgress: 45.1,
       targetValue: 80,
       targetUnit: '%',
-      deadlineTime: '16:00',
     });
     expect(out).toBe('Delivered 0.4 of 4.2 kWh · now 45% of 80% target');
     expect(out).not.toMatch(/45%\s*→\s*45%/);
@@ -5490,7 +5487,6 @@ describe('shared-domain hero-line formatters', () => {
       startProgress: null,
       targetValue: 65,
       targetUnit: '°C',
-      deadlineTime: '16:00',
     });
     expect(out).toBe('Delivered 1.8 of 4.2 kWh · still 35.0 °C of 65.0 °C target');
     expect(out).not.toMatch(/won.t reach/i);
@@ -5506,7 +5502,6 @@ describe('shared-domain hero-line formatters', () => {
       startProgress: null,
       targetValue: 22,
       targetUnit: '°C',
-      deadlineTime: '16:00',
     })).toBeNull();
   });
 
@@ -5520,7 +5515,6 @@ describe('shared-domain hero-line formatters', () => {
       startProgress: 30,
       targetValue: 80,
       targetUnit: '%',
-      deadlineTime: '07:00',
     });
     expect(out).toBe('Delivered 5.0 of 20.0 kWh · 30% → 46% of 80% target');
   });
