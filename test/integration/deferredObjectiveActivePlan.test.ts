@@ -3760,7 +3760,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(normalized.plansByDeviceId.dev?.commitment).toEqual(commitment);
     });
 
-    it('round-trips priority-allocation power, priority, and context signatures', () => {
+    it('round-trips priority-allocation power and context signatures', () => {
       const hours = [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 2 }];
       const reservationSegments = [{
         startMs: 2 * HOUR_MS + 30 * 60 * 1000,
@@ -3775,7 +3775,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
             ...basePlan({
               hours,
               reservationSegments,
-              devicePriority: 2,
               allocationContextSignature: 'priority-context',
             }),
             commitment: { committedAtMs: HOUR_MS, hours },
@@ -3784,7 +3783,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       };
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev?.latest).toMatchObject({
-        devicePriority: 2,
         allocationContextSignature: 'priority-context',
         hours,
         reservationSegments,
@@ -3794,7 +3792,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     it.each([
       ['non-positive admission power', { hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 0 }] }],
-      ['a non-finite device priority', { devicePriority: Number.POSITIVE_INFINITY }],
       ['an empty allocation context', { allocationContextSignature: '' }],
       ['an inverted reservation segment', {
         reservationSegments: [{
@@ -3819,6 +3816,30 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         plansByDeviceId: { dev: basePlan(revisionOverrides) },
       };
       expect(normalizeDeferredObjectiveActivePlans(persisted).plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it('keeps a persisted plan carrying a stray legacy `devicePriority`', () => {
+      // `devicePriority` was dropped from the revision contract once ordering
+      // moved to the live mode catalog; nothing writes or reads it. A plan
+      // persisted by an older build still carries it, and the junk value can no
+      // longer reach a comparison — so the seam must ACCEPT the plan rather
+      // than drop it, which would lose a live commitment over a field nothing
+      // consults. It is stripped on the way in rather than left to ride along:
+      // the recorder resubmits what it loaded, so an unvalidated legacy value
+      // would otherwise be written back out on every dirty flush.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ devicePriority: Number.POSITIVE_INFINITY } as never),
+        },
+      };
+      const plan = normalizeDeferredObjectiveActivePlans(persisted).plansByDeviceId.dev;
+      expect(plan).toBeDefined();
+      expect(plan?.latest).not.toHaveProperty('devicePriority');
+      // Every contract field still resolves; the stray key changed nothing.
+      expect(plan?.latest?.revision).toBe(1);
+      expect(plan?.latest?.planStatus).toBe('on_track');
+      expect(plan?.latest?.energyNeededKWh).toBeCloseTo(1.5);
     });
 
     it('drops a committed plan without a latest revision', () => {
