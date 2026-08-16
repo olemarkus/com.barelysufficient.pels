@@ -4650,11 +4650,9 @@ var OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1e3;
 // lib/objectives/deferredObjectives/activePlanSchedule.ts
 var ONE_HOUR_MS3 = 60 * 60 * 1e3;
 
-// lib/objectives/deferredObjectives/concurrentEligibleTasks.ts
-var ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1e3;
-
 // lib/objectives/deferredObjectives/priorityAllocation.ts
 var HOUR_MS2 = 60 * 60 * 1e3;
+var ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1e3;
 
 // lib/utils/dateUtils.ts
 var timeZoneOffsetErrorLogged = /* @__PURE__ */ new Set();

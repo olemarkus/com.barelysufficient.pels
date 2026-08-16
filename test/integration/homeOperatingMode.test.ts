@@ -5,30 +5,31 @@
 // - the resolution chain (per-home value → global default) observable in the
 //   bundle diagnostics, with transitions edge-logged NAMING the home;
 // - the stuck-cold guard: a pinned mode with no `mode_device_targets` record
-//   follows the global mode and surfaces a fault — the effective mode always
-//   indexes a real record, never an empty-object default;
+//   follows the global mode — the effective mode always indexes a real
+//   record, never an empty-object default;
 // - the global mode fan-out still reaching every home without a pinned mode;
 // - the rename seam: the UI publishes the new record alongside the old one
 //   before a `mode_aliases` write fans out to sub-home plans, then removes the
 //   old record only after every pin resolves to the new one — no intermediate
 //   global fallback may actuate a warmer target;
 // - the malformed-pin boundary: a non-string `operating_mode:<homeId>` value
-//   fails safe onto the global mode with its own surfaced fault — never read
-//   as an intentional unpin;
+//   fails safe onto the global mode — never read as an intentional unpin;
 // - the priorities seam: a `capacity_priorities` reorder fans out to sub-home
 //   plans, so a pinned area adopts its new shedding order without waiting for
 //   an unrelated rebuild;
 // - the read-failure boundary: a THROWN `operating_mode:<homeId>` settings
-//   read is contained at the adapter — the accessor holds a last-known pin or
-//   follows the current global mode when no pin was known, with a distinct
-//   surfaced fault, and the mode-change rebuild still completes;
+//   read is contained at the adapter, `HomeModeCatalog` reports its own
+//   unavailability, and the mode-change rebuild still completes;
 // - fulfilled `undefined` for an existing pin and a store-wide empty key list
 //   are suspect reads that preserve a known pin; only a healthy key list that
 //   omits the pin proves a genuine unpin;
-// - the per-home priority resolver ranking by the home's OWN effective mode;
 // - the device-scoped reader feeding the overshoot default seed: a THROWN pin
 //   read must SKIP the seed, never persist a default derived from the global
 //   mode (that write outlives the transient failure).
+// Pin faults (`unconfigured_mode`, `malformed_pin`) are NOT logged by any
+// production path — `resolveOperatingModeForDevice` folds them into
+// `unavailable` and skips the seed silently, so these tests assert the
+// containment, not an event.
 // Only outward seams are mocked: the shared mock Homey settings store backs
 // the real homes store and settings handler; bundles run their real plan
 // engine/service.
@@ -40,10 +41,7 @@ import {
   type HomeConfig,
 } from '../../lib/home/homeConfig';
 import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
-import {
-  createHomeOperatingModeAccessor,
-  resolveOperatingModeForDevice,
-} from '../../setup/homeRuntime/homeOperatingMode';
+import { resolveOperatingModeForDevice } from '../../setup/homeRuntime/homeOperatingMode';
 import { disableUnsupportedDevices } from '../../setup/appDeviceSupport';
 import { HomeMembershipService } from '../../setup/homeMembership';
 import {
@@ -467,7 +465,6 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     const targets = mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:h_a`) as
       Record<string, Record<string, number>>;
     expect(targets[effectiveMode]).toEqual({ 'dev-1': 21 });
-    expect(logs.findEvents('home_operating_mode_unconfigured')).toHaveLength(0);
   });
 
   it('an additive mode rename never rebuilds a pinned area through the global fallback', async () => {
@@ -531,8 +528,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
         .slice(transitionsBefore);
       expect(transitions).toHaveLength(1);
       expect(transitions.at(-1)).toMatchObject({ mode: 'Chill', source: 'per_home' });
-      expect(logs.findEvents('home_operating_mode_unconfigured')).toHaveLength(0);
-    } finally {
+      } finally {
       settingsHandler.stop();
     }
   });
@@ -593,11 +589,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     const targets = mockHomeyInstance.settings.get(`${MODE_DEVICE_TARGETS}:h_a`) as
       Record<string, Record<string, number>>;
     expect(targets[effectiveMode]).toBeDefined();
-    expect(logs.findEvents('home_operating_mode_pin_malformed')).toHaveLength(0);
-    expect(logs.findEvents('home_operating_mode_unconfigured')).toHaveLength(0);
   });
 
-  it('contains a THROWN pinned-mode read: last-known mode held, fault surfaced once, rebuild completes', async () => {
+  it('contains a THROWN pinned-mode read: last-known mode held, catalog reports unavailable, rebuild completes', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
@@ -684,61 +678,6 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
   });
 
-  it('unpins only when a healthy key list confirms genuine absence', () => {
-    const pinKey = `${OPERATING_MODE_SETTING}:h_a`;
-    mockHomeyInstance.settings.set(pinKey, 'Cooler');
-    const accessor = createHomeOperatingModeAccessor(rig.ctx, 'h_a');
-    expect(accessor.getOperatingMode()).toBe('Cooler');
-
-    mockHomeyInstance.settings.unset(pinKey);
-
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain(pinKey);
-    expect(accessor.getOperatingMode()).toBe('Home');
-  });
-
-  it('falls back to the global mode when the FIRST pin read throws (nothing known to hold)', () => {
-    const passthroughGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => {
-      if (key === `${OPERATING_MODE_SETTING}:h_a`) {
-        throw new Error('settings backend unavailable');
-      }
-      return passthroughGet(key);
-    });
-
-    const accessor = createHomeOperatingModeAccessor(rig.ctx, 'h_a');
-    expect(accessor.getOperatingMode()).toBe('Home');
-    // Priorities resolve under the fallback mode — never an escaping throw.
-    expect(accessor.getPriorityForDevice('dev-1')).toBe(1);
-    expect(logs.findEvent('home_operating_mode_read_failed')).toMatchObject({
-      homeId: 'h_a',
-      fallbackMode: 'Home',
-    });
-  });
-
-  it('keeps following a changed global mode when an unpinned read throws', () => {
-    const accessor = createHomeOperatingModeAccessor(rig.ctx, 'h_a');
-    expect(accessor.getOperatingMode()).toBe('Home');
-
-    rig.ctx.operatingMode = 'Away';
-    const passthroughGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => {
-      if (key === `${OPERATING_MODE_SETTING}:h_a`) {
-        throw new Error('settings backend unavailable');
-      }
-      return passthroughGet(key);
-    });
-
-    // The last successful read proved this area was a global follower. A
-    // transient failure must not freeze the old Home mode, especially for a
-    // silent-meter area with no later power-driven rebuild.
-    expect(accessor.getOperatingMode()).toBe('Away');
-    expect(accessor.getPriorityForDevice('dev-1')).toBe(100);
-    expect(logs.findEvent('home_operating_mode_read_failed')).toMatchObject({
-      homeId: 'h_a',
-      fallbackMode: 'Away',
-    });
-  });
-
   it('a global mode change leaves every initialized area catalog independent', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
@@ -769,31 +708,15 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       .not.toThrow();
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
   });
-
-  it('ranks device priority by the home\'s OWN effective mode', () => {
-    const accessorA = createHomeOperatingModeAccessor(rig.ctx, 'h_a');
-    const accessorB = createHomeOperatingModeAccessor(rig.ctx, 'h_b');
-
-    // Unpinned: both homes rank by the global mode.
-    expect(accessorA.getPriorityForDevice('dev-1')).toBe(1);
-    expect(accessorB.getPriorityForDevice('dev-1')).toBe(1);
-
-    mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
-    expect(accessorA.getPriorityForDevice('dev-1')).toBe(7);
-    expect(accessorB.getPriorityForDevice('dev-1')).toBe(1);
-
-    // A device the pinned mode does not rank falls to the lowest tier — it
-    // must not inherit the global mode's rank.
-    expect(accessorA.getPriorityForDevice('dev-2')).toBe(100);
-  });
 });
 
 // The device-scoped reader (`resolveOperatingModeForDevice`) feeds the only
 // consumer that PERSISTS a mode-derived value: the overshoot default seed in
-// `setup/appDeviceSupport.ts`. Unlike the bundle accessor it is stateless, so
-// a failed pin read has no last-known mode to hold — and a default seeded
-// under the global fallback outlives the transient failure, because every
-// later refresh keeps the entry that is already there.
+// `setup/appDeviceSupport.ts`. Unlike `HomeModeCatalog`, which a registered
+// bundle reads and which can hold its last-known mode, this reader is
+// stateless: a failed pin read has no last-known mode to hold — and a default
+// seeded under the global fallback outlives the transient failure, because
+// every later refresh keeps the entry that is already there.
 // Only outward seams are mocked: the shared mock settings store backs the real
 // membership service and the real seed pass.
 describe('per-home operating mode (device-scoped overshoot seed)', () => {

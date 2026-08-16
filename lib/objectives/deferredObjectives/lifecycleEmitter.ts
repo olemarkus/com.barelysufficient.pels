@@ -109,8 +109,8 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   // device as belonging to a separate-meter sub-home, so THIS lane's
   // diagnostics — the sole writers of plan-history/active-plan records and the
   // drivers of the status buses — resolve to the dedicated
-  // `objective_device_in_sub_home` unknown code, and the concurrent-eligible
-  // denominator excludes the task (a relocated reserved task must not shrink
+  // `objective_device_in_sub_home` unknown code, and the priority-allocation
+  // roster excludes the task (a relocated reserved task must not shrink
   // main tasks' shares). Optional: absent (tests) or with no sub-homes
   // configured, behavior is identical.
   isDeviceInSubHome?: (deviceId: string) => boolean;

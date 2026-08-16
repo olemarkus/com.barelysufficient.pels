@@ -110,7 +110,6 @@ export type AppContext = {
   registerFlowCards: () => void;
   refreshTargetDevicesSnapshot: (options?: RefreshTargetDevicesSnapshotOptions) => Promise<void>;
   recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
-  startHeartbeat: () => void;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
   getCurrentPriceLevel: () => PriceLevel;

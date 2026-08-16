@@ -12,7 +12,6 @@ vi.mock('../../setup/appLifecycleHelpers', () => ({
     ctx.loadPowerTracker();
     ctx.loadPriceOptimizationSettings();
     ctx.priceCoordinator.initOptimizer();
-    ctx.startHeartbeat();
     await ctx.updateOverheadToken();
     await ctx.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
     await ctx.planService.rebuildPlanFromCache('startup_snapshot_bootstrap');

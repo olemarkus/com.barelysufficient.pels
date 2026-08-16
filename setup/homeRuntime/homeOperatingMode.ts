@@ -1,49 +1,24 @@
 /**
- * Legacy pre-migration operating-mode resolution plus the stateless,
- * owner-aware device-support reader.
+ * The stateless, owner-aware device-support operating-mode reader.
  *
  * Main uses the historical unsuffixed catalog. Initialized meter areas own
  * suffixed aliases, priorities, targets, and active mode; before initialization
- * they deliberately follow Main as a compatibility fallback. This module keeps
- * the legacy active-mode accessor for pre-migration reads and exposes the
+ * they deliberately follow Main as a compatibility fallback. Registered bundles
+ * read the active mode through `HomeModeCatalog`; this module serves the
  * owner-aware device-support resolver used outside a registered bundle.
- *
- * The accessor also carries this home's priority resolver: priorities are
- * ranked per mode, so a home on its own mode must rank devices by that mode
- * (`resolveDevicePriority`), not by main's.
- *
- * The legacy accessor's logging is edge-triggered: a transition of the
- * effective mode logs `home_operating_mode_changed` naming the home, a
- * refused pinned mode logs `home_operating_mode_unconfigured`, a
- * malformed pin (non-string persisted value) logs
- * `home_operating_mode_pin_malformed`, and a suspect pin read logs
- * `home_operating_mode_read_failed` / `home_operating_mode_read_suspect` while
- * the accessor holds a last-known pin or keeps following the current global
- * mode when no pin was known — each once per distinct fault. Reads between
- * transitions stay silent.
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import {
-  resolveDevicePriority,
   resolveHomeOperatingMode,
-  type HomeOperatingModeFault,
   type HomeOperatingModeResolution,
 } from '../../lib/utils/capacityHelpers';
-import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   homeScopedSettingsKey,
   MAIN_HOME_ID,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import { readPersistedHomeModeCatalog } from './homeModeCatalog';
-
-export type HomeOperatingModeAccessor = {
-  /** Legacy effective mode (per-home pin → Main fallback). */
-  getOperatingMode: () => string;
-  /** Device priority under this home's OWN effective mode. */
-  getPriorityForDevice: (deviceId: string) => number;
-};
 
 /**
  * The pin read classified AT this adapter boundary. A thrown read, a fulfilled
@@ -66,19 +41,6 @@ type HomeOperatingModeReadOutcome =
     state: 'suspect';
     reason: Exclude<HomeOperatingModeReadSuspectReason, 'read_failed'>;
   };
-
-/**
- * Resolve as if unpinned (pure — no settings read): the global-mode fallback
- * used when a suspect read leaves no last-known value to hold.
- */
-const resolveUnpinned = (ctx: AppContext): HomeOperatingModeResolution => (
-  resolveHomeOperatingMode({
-    perHomeModeRaw: undefined,
-    globalMode: ctx.operatingMode,
-    resolveAlias: (name) => ctx.resolveModeName(name),
-    modeDeviceTargets: ctx.modeDeviceTargets,
-  })
-);
 
 const resolveForHome = (ctx: AppContext, homeId: HomeId): HomeOperatingModeReadOutcome => {
   const settingsKey = homeScopedSettingsKey(OPERATING_MODE_SETTING, homeId);
@@ -115,159 +77,6 @@ const resolveForHome = (ctx: AppContext, homeId: HomeId): HomeOperatingModeReadO
       resolveAlias: (name) => ctx.resolveModeName(name),
       modeDeviceTargets: ctx.modeDeviceTargets,
     }),
-  };
-};
-
-/**
- * Legacy live accessor retained for compatibility tests and pre-marker
- * resolution. Initialized bundles use `HomeModeCatalog` instead.
- */
-/** One edge-trigger key per DISTINCT fault (reason + payload), null when clean. */
-const faultLogKey = (fault: HomeOperatingModeFault | null): string | null => {
-  if (fault === null) return null;
-  return fault.reason === 'unconfigured_mode'
-    ? `unconfigured_mode:${fault.requestedMode}`
-    : `malformed_pin:${fault.valueType}`;
-};
-
-const logFault = (
-  ctx: AppContext,
-  homeId: HomeId,
-  fault: HomeOperatingModeFault,
-  fallbackMode: string,
-): void => {
-  if (fault.reason === 'unconfigured_mode') {
-    ctx.getStructuredLogger('homes')?.warn({
-      event: 'home_operating_mode_unconfigured',
-      homeId,
-      requestedMode: fault.requestedMode,
-      fallbackMode,
-      detail: 'pinned mode has no mode_device_targets record; following the global mode '
-        + 'instead of planning with empty targets',
-    });
-    return;
-  }
-  ctx.getStructuredLogger('homes')?.warn({
-    event: 'home_operating_mode_pin_malformed',
-    homeId,
-    valueType: fault.valueType,
-    fallbackMode,
-    detail: 'operating_mode:<homeId> holds a malformed non-string value; following the '
-      + 'global mode fail-safe until the pin is rewritten or cleared',
-  });
-};
-
-const logReadFailure = (
-  ctx: AppContext,
-  homeId: HomeId,
-  error: unknown,
-  fallbackMode: string,
-): void => {
-  ctx.getStructuredLogger('homes')?.warn({
-    event: 'home_operating_mode_read_failed',
-    homeId,
-    fallbackMode,
-    err: normalizeError(error),
-    detail: 'operating_mode:<homeId> settings read threw; holding the last-known '
-      + 'pinned mode, or following the current global mode when no pin was known, '
-      + 'until a read succeeds',
-  });
-};
-
-const logSuspectRead = (
-  ctx: AppContext,
-  homeId: HomeId,
-  reason: Exclude<HomeOperatingModeReadSuspectReason, 'read_failed'>,
-  fallbackMode: string,
-): void => {
-  ctx.getStructuredLogger('homes')?.warn({
-    event: 'home_operating_mode_read_suspect',
-    homeId,
-    reason,
-    fallbackMode,
-    detail: 'operating_mode:<homeId> returned ambiguous absence evidence; holding '
-      + 'the last-known pinned mode, or following the current global mode when '
-      + 'no pin was known, until a healthy read proves the key absent or present',
-  });
-};
-
-/** One edge-triggered fault emission per resolve: suspect read OR resolver fault. */
-const logResolveFault = (
-  ctx: AppContext,
-  homeId: HomeId,
-  outcome: HomeOperatingModeReadOutcome,
-  fallbackMode: string,
-): void => {
-  if (outcome.state === 'suspect') {
-    if (outcome.reason === 'read_failed') {
-      logReadFailure(ctx, homeId, outcome.error, fallbackMode);
-    } else {
-      logSuspectRead(ctx, homeId, outcome.reason, fallbackMode);
-    }
-    return;
-  }
-  if (outcome.resolution.fault !== null) {
-    logFault(ctx, homeId, outcome.resolution.fault, fallbackMode);
-  }
-};
-
-/**
- * The contained resolution for a suspect pin read. A last-known PIN holds its
- * fixed mode, because falling back on one flaky read would swing the area's
- * targets. A last-known global follower instead keeps following the CURRENT
- * global mode: holding its old effective value would strand a silent-meter
- * area on an obsolete mode after a global mode change.
- */
-const heldResolution = (
-  ctx: AppContext,
-  lastKnown: { mode: string; source: 'per_home' | 'global' } | null,
-): HomeOperatingModeResolution => (
-  lastKnown?.source === 'per_home'
-    ? { mode: lastKnown.mode, source: lastKnown.source, fault: null }
-    : resolveUnpinned(ctx)
-);
-
-export const createHomeOperatingModeAccessor = (
-  ctx: AppContext,
-  homeId: HomeId,
-): HomeOperatingModeAccessor => {
-  let lastLogged: { mode: string; source: 'per_home' | 'global'; faultKey: string | null } | null = null;
-  const resolve = (): HomeOperatingModeResolution => {
-    const outcome = resolveForHome(ctx, homeId);
-    // Suspect read: the persisted pin truth is UNKNOWN, so hold the last-known
-    // effective mode when it came from a pin — flipping to the global fallback
-    // on one flaky read would swing a pinned area's targets and back (the same
-    // transient-read rule that keeps bundles running on a 'suspect'
-    // homes-config read). A known global follower still follows the CURRENT
-    // global mode; otherwise this failed read could strand a silent-meter area
-    // on the old global mode indefinitely. Before the first successful read
-    // there is nothing to hold, so resolve as unpinned too.
-    const resolution = outcome.state === 'resolved'
-      ? outcome.resolution
-      : heldResolution(ctx, lastLogged);
-    const faultKey = outcome.state === 'suspect'
-      ? `suspect:${outcome.reason}`
-      : faultLogKey(resolution.fault);
-    if (lastLogged?.mode !== resolution.mode || lastLogged?.source !== resolution.source) {
-      ctx.getStructuredLogger('homes')?.info({
-        event: 'home_operating_mode_changed',
-        homeId,
-        mode: resolution.mode,
-        previousMode: lastLogged?.mode ?? null,
-        source: resolution.source,
-      });
-    }
-    if (faultKey !== null && faultKey !== lastLogged?.faultKey) {
-      logResolveFault(ctx, homeId, outcome, resolution.mode);
-    }
-    lastLogged = { mode: resolution.mode, source: resolution.source, faultKey };
-    return resolution;
-  };
-  return {
-    getOperatingMode: () => resolve().mode,
-    getPriorityForDevice: (deviceId) => (
-      resolveDevicePriority(ctx.capacityPriorities, resolve().mode, deviceId)
-    ),
   };
 };
 
@@ -363,9 +172,12 @@ export const resolveOperatingModeForDevice = (
   // The bundle accessor can hold its last-known effective mode; this stateless
   // reader cannot, and its consumer persists a value derived from the mode, so
   // a global-mode fallback would freeze a wrong-mode default for a pinned area
-  // (later refreshes keep the entry that is already there). The home's own
-  // accessor surfaces the fault on its next resolve; no logging here, by
-  // design — a snapshot-refresh pass must not emit events.
+  // (later refreshes keep the entry that is already there). No logging here,
+  // by design — a snapshot-refresh pass must not emit events — and nothing
+  // else logs a pin fault either, so an `unconfigured_mode` or `malformed_pin`
+  // pin is silent apart from the skipped seed. `HomeModeCatalog` is what a
+  // registered bundle reads, and it reports its own unavailability
+  // (`home_mode_catalog_unavailable`).
   if (outcome.state === 'suspect' || outcome.resolution.fault !== null) {
     return { state: 'unavailable' };
   }

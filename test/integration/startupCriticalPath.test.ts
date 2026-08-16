@@ -36,7 +36,6 @@ const buildContext = () => {
   });
   const loadPowerTracker = vi.mocked(ctx.loadPowerTracker);
   const loadPriceOptimizationSettings = vi.mocked(ctx.loadPriceOptimizationSettings);
-  const startHeartbeat = vi.mocked(ctx.startHeartbeat);
   const updateOverheadToken = vi.mocked(ctx.updateOverheadToken);
   const updateDailyBudgetState = vi.mocked(ctx.dailyBudgetService!.updateState);
   const refreshTargetDevicesSnapshot = vi.mocked(ctx.refreshTargetDevicesSnapshot);
@@ -53,7 +52,6 @@ const buildContext = () => {
 
   loadPowerTracker.mockImplementation(() => undefined);
   loadPriceOptimizationSettings.mockImplementation(() => undefined);
-  startHeartbeat.mockImplementation(() => undefined);
   updateOverheadToken.mockImplementation(async () => undefined);
   updateDailyBudgetState.mockImplementation(() => undefined);
   refreshTargetDevicesSnapshot.mockImplementation(async () => undefined);
@@ -72,7 +70,6 @@ const buildContext = () => {
     loadPowerTracker,
     loadPriceOptimizationSettings,
     initOptimizer,
-    startHeartbeat,
     updateOverheadToken,
     updateDailyBudgetState,
     refreshTargetDevicesSnapshot,
@@ -99,7 +96,6 @@ describe('startup critical path perf guardrails', () => {
     expect(params.loadPowerTracker).toHaveBeenCalledWith({ skipDailyBudgetUpdate: true });
     expect(params.loadPriceOptimizationSettings).toHaveBeenCalledTimes(1);
     expect(params.initOptimizer).toHaveBeenCalledTimes(1);
-    expect(params.startHeartbeat).toHaveBeenCalledTimes(1);
     expect(params.updateOverheadToken).toHaveBeenCalledTimes(1);
     expect(params.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(params.registerFlowCards).toHaveBeenCalledTimes(1);

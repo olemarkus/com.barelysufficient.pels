@@ -75,10 +75,9 @@ export type {
   DeferredObjectivePlanPreviewCandidate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 export {
-  ConcurrentEligibleTaskTracker,
   ELIGIBILITY_ABANDON_GRACE_MS,
-} from './concurrentEligibleTasks';
-export { PriorityAllocationTracker } from './priorityAllocation';
+  PriorityAllocationTracker,
+} from './priorityAllocation';
 export {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,

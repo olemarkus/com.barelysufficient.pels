@@ -136,7 +136,6 @@ export async function startAppServices(ctx: AppContext): Promise<void> {
   await runStep('loadPowerTracker', async () => appContext.loadPowerTracker({ skipDailyBudgetUpdate: true }));
   await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
   await runStep('initOptimizer', async () => priceCoordinator.initOptimizer());
-  await runStep('startHeartbeat', async () => appContext.startHeartbeat());
   scheduleBackgroundTask(
     'startup_update_overhead_token',
     () => appContext.updateOverheadToken(),
