@@ -7,7 +7,6 @@ import {
 import {
   resolveHardCapBreachFromSignal,
   resolveHeadroomTight,
-  type RebuildOutcome,
 } from './policy';
 import {
   schedulePlanRebuildFromPowerSample,
@@ -47,15 +46,13 @@ const resolveEffectiveSignalMinIntervalMs = (params: {
 };
 
 export function schedulePlanRebuildFromSignal(params: {
-  scheduler?: PlanRebuildScheduler;
+  scheduler: PlanRebuildScheduler;
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
   getNowMs?: () => number;
   minIntervalMs: number;
   stableMinIntervalMs?: number;
   maxIntervalMs: number;
-  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
-  logError?: (error: Error) => void;
   currentPowerW?: number;
   powerDeltaW?: number;
   capacitySettings: { limitKw: number; marginKw: number };
@@ -73,8 +70,6 @@ export function schedulePlanRebuildFromSignal(params: {
     minIntervalMs,
     stableMinIntervalMs,
     maxIntervalMs,
-    rebuildPlanFromCache,
-    logError,
     currentPowerW,
     powerDeltaW,
     capacitySettings,
@@ -130,8 +125,6 @@ export function schedulePlanRebuildFromSignal(params: {
     getNowMs,
     minIntervalMs: effectiveMinIntervalMs,
     maxIntervalMs,
-    rebuildPlanFromCache,
-    logError,
     currentPowerW,
     powerDeltaW,
     limitKw: capacitySettings.limitKw,

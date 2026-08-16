@@ -17,7 +17,6 @@ import {
   shouldApplyTightMitigationHoldoff,
   shouldApplyTightNoopBackoff,
   TIGHT_MITIGATION_HOLDOFF_MS,
-  TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS,
   type HardCapBreach,
   type RebuildDecision,
   type RebuildOutcome,
@@ -263,64 +262,6 @@ const recordPowerSampleRebuildExecution = (reason: string): void => {
     'plan_rebuild_execute.power_sample_total',
   ]);
   incReasonCounter('plan_rebuild_execute.power_sample_reason', reason);
-};
-
-export const getLegacyPowerScheduler = (params: {
-  getState: () => PowerSampleRebuildState;
-  setState: (state: PowerSampleRebuildState) => void;
-  getNowMs: () => number;
-  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
-  logError?: (error: Error) => void;
-}): PlanRebuildScheduler => {
-  const {
-    getState,
-    setState,
-    getNowMs,
-    rebuildPlanFromCache,
-    logError,
-  } = params;
-  const existing = getState().legacyScheduler;
-  if (existing) return existing;
-
-  const scheduler = new PlanRebuildScheduler({
-    getNowMs,
-    resolveDueAtMs: (intent, state) => {
-      const st = getState();
-      // Execution-side floor: while nothing is actionable, no trigger (signal or
-      // hardCap) may execute a rebuild faster than the floor after the last one.
-      // Anchored to `lastMs` (set only on a real execution), so `now` deterministically
-      // passes it after the interval instead of sliding forward on each recompute.
-      // Requires `lastMs > 0`: with a monotonic clock an un-run scheduler
-      // (`lastMs === 0`) is process start, and `0 + interval` is a real future time
-      // that would wrongly defer the very first (initial-sample) rebuild.
-      const floorMs = st.tightUnactionable === true && st.lastMs > 0
-        ? st.lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
-        : Number.NEGATIVE_INFINITY;
-      if (intent.kind === 'hardCap') return Math.max(state.nowMs, floorMs);
-      if (intent.kind === 'signal') return Math.max(st.pendingDueMs ?? state.nowMs, floorMs);
-      return Number.POSITIVE_INFINITY;
-    },
-    executeIntent: (intent) => {
-      if (intent.kind !== 'signal' && intent.kind !== 'hardCap') return undefined;
-      return executePendingPowerRebuild({
-        getState,
-        setState,
-        getNowMs,
-        rebuildPlanFromCache,
-      });
-    },
-    onIntentCancelled: (_intent, reason) => {
-      cancelPendingPowerRebuild({ getState, setState, reason });
-    },
-    onIntentError: (_intent, error) => {
-      logError?.(error);
-    },
-  });
-  setState({
-    ...getState(),
-    legacyScheduler: scheduler,
-  });
-  return scheduler;
 };
 
 export function executePendingPowerRebuild(params: {
