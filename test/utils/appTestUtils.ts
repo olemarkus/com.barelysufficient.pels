@@ -9,7 +9,22 @@ let appInstances: any[] = [];
 
 type CreateAppOptions = {
   preserveStartupRestoreStabilization?: boolean;
+  /**
+   * Leave the home with NO meter measurement, so `PowerMeasurementGate` keeps
+   * the plan-build gate shut. Only for suites that exercise the gate itself.
+   *
+   * The default seeds one, because a whole-home meter is a documented PELS
+   * prerequisite (`docs/getting-started.md`) — a booted app that has never seen
+   * a reading is a startup instant, not a steady state, and a suite that leaves
+   * it that way is asserting against a home PELS does not claim to serve.
+   */
+  withoutPowerMeasurement?: boolean;
 };
+
+// A real, unremarkable reading: the house drawing nothing leaves full headroom,
+// so seeding it opens the gate without steering any capacity decision. Suites
+// that care about the total report their own over the top.
+const SEEDED_TOTAL_POWER_KW = 0;
 
 /**
  * Create an app instance and track it for cleanup.
@@ -25,6 +40,17 @@ export function createApp(options: CreateAppOptions = {}): any {
     app.initPlanEngine = (...args: unknown[]) => {
       const result = originalInitPlanEngine(...args);
       app.planEngine?.clearStartupRestoreStabilization?.();
+      return result;
+    };
+  }
+  if (!options.withoutPowerMeasurement) {
+    // Seed at guard construction, not after `onInit`: rebuilds that run DURING
+    // startup (the price-delta-on-startup path) would otherwise still find the
+    // build gate shut. Same private-member seam as the plan-engine wrap above.
+    const originalInitCapacityGuard = app.initCapacityGuard.bind(app);
+    app.initCapacityGuard = (...args: unknown[]) => {
+      const result = originalInitCapacityGuard(...args);
+      app.capacityGuard?.reportTotalPower(SEEDED_TOTAL_POWER_KW);
       return result;
     };
   }

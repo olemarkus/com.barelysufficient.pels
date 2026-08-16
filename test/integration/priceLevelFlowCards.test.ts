@@ -2,6 +2,7 @@ import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../../lib/price/priceLevels';
 import { PlanService } from '../../lib/plan/planService';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { openPlanBuildGate } from '../utils/planTestUtils';
 
 describe('Price level helpers', () => {
   it('exposes enum values and option metadata', () => {
@@ -75,6 +76,7 @@ describe('Price level flow cards', () => {
     });
 
     const planService = new PlanService({
+      planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       homey: mockHomeyInstance as any,
       writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),

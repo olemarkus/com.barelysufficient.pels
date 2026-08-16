@@ -143,4 +143,23 @@ export type PlanServiceDeps = {
   // one-cycle `deferred_objective_unknown reasonCode:objective_missing_device`
   // status, which fires a spurious `waiting → unachievable` flow trigger.
   snapshotWarmupGate?: SnapshotWarmupGate;
+  /**
+   * Whether a plan may be built at all this cycle. Owned and answered by the
+   * wiring layer; the planner does not know what it is waiting on, and must not
+   * grow a branch that asks.
+   *
+   * It exists so the planner never has to model "there is no measurement":
+   * every power value it receives is a real one, so nothing on `PlanContext`
+   * needs to be nullable or discriminated for an absence that a closed gate has
+   * already excluded. See `setup/powerMeasurementGate.ts` for the production
+   * implementation and the rule it serves.
+   *
+   * REQUIRED. It was briefly optional, on the theory that callers predating it
+   * wanted the old always-build behavior — but every construction site, in
+   * production and in tests, wires one. An optional here buys nothing and costs
+   * the guarantee: a `?.isOpen() === false` reads as "unmeasured means build
+   * anyway", which is the exact case this gate exists to stop. A test that wants
+   * an ungated build says so by passing an always-open gate.
+   */
+  planBuildGate: { isOpen: () => boolean };
 };

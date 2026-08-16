@@ -565,9 +565,14 @@ export type DevicePlan = {
    * OPTIONAL is reserved for genuine absence, and each one below says why.
    */
   meta: {
-    // `null` = no meter reading this cycle: the capacity guard holds `null`
-    // until its meter's first sample, and again after an in-place meter swap
-    // (`resetLastTotalPower`). Required-but-nullable, never absent.
+    // NULLABLE ONLY AS A RESIDUE — due to be a plain `number`.
+    //
+    // It meant "no meter reading this cycle": the guard held `null` until its
+    // meter's first sample, and again between an in-place meter swap and the
+    // new meter's first reading. The build gate (`setup/powerMeasurementGate.ts`)
+    // now refuses to build a plan in either state, so no plan can carry a null
+    // total for any reason a home can actually be in — a raw untrusted total has
+    // no business on a plan type in the first place.
     totalKw: number | null;
     softLimitKw: number;
     capacitySoftLimitKw: number;
@@ -660,6 +665,14 @@ export type PlanRebuildOutcome = {
   hadShedding: boolean;
   isDryRun: boolean;
   failed: boolean;
+  /**
+   * True when no plan was built because the wiring layer's build gate was shut
+   * (in production: this home has no meter measurement yet). Distinct from
+   * `failed` — nothing went wrong, there was simply nothing to plan from — and
+   * distinct from a zeroed no-op, which means a plan WAS built and changed
+   * nothing.
+   */
+  gated: boolean;
 };
 
 // `PlanInputDevice` (the planner's input contract) and its `StepPowerCalibrationView`

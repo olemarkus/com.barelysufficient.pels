@@ -1053,6 +1053,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
+    // The area's meter has to have reported once before a plan is built for it,
+    // so there is a status blob to publish at all.
+    rig.registry.routeMeterReadings({ 'm-a': 1000 }, Date.now());
     await drainPending();
 
     const blob = mockHomeyInstance.settings.get('pels_status:h_a') as { dryRunEffective?: boolean } | undefined;
@@ -1233,6 +1236,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
+    // Fresh bundle, fresh guard: the recreated home needs its meter to report
+    // before it builds (and so persists) anything.
+    rig.registry.routeMeterReadings({ 'm-a': 1000 }, Date.now());
     await drainPending();
     expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeTruthy();
   });

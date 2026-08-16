@@ -136,11 +136,32 @@ export default class CapacityGuard {
   }
 
   /**
+   * Whether this home has a meter measurement to plan from at all.
+   *
+   * False only before the meter's first reading, and again after an in-place
+   * meter swap (`resetLastTotalPower`) until the new meter reports. It is NOT a
+   * freshness question — an old reading is still a measurement, and what a
+   * doubtful one means is decided here in `lib/power`, never by a consumer.
+   *
+   * The planner does not build a plan while this is false: there is nothing to
+   * plan from, and modelling that absence downstream would push a nullable or a
+   * `kind: 'unknown'` into every consumer of a value that is otherwise always
+   * trustworthy (root `AGENTS.md` → "Clean and trusted interfaces between
+   * layers"). Gating is the alternative to that absence.
+   */
+  hasPowerMeasurement(): boolean {
+    return this.mainPowerKw !== null;
+  }
+
+  /**
    * Clear the last observed total power back to "no sample yet". A per-home
    * capacity bundle (multi-home R7b) calls this on an in-place meter swap so a
    * rebuild before the NEW meter's first reading cannot shed/restore on the
-   * PREVIOUS meter's stale load (`headroom()` reports null until the new meter
-   * reports). The main home never invokes it.
+   * PREVIOUS meter's stale load. The main home never invokes it.
+   *
+   * Since the build gate this is stronger than "`headroom()` reports null":
+   * `hasPowerMeasurement()` goes false with it, so the bundle builds no plan at
+   * all until the new meter reports.
    */
   resetLastTotalPower(): void {
     this.mainPowerKw = null;

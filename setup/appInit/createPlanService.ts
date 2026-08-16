@@ -15,6 +15,12 @@ import {
 import { resolveTemperatureBoostConfigForDevice } from './toPlanDevice';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { PowerMeasurementGate } from '../powerMeasurementGate';
+
+// How long a home may sit with no meter reading before the gate warns. Matches
+// the boot grace the zone-tree gate uses, and is short in tests so a suite can
+// reach the warning without burning wall-clock.
+const NO_POWER_SAMPLE_WARN_MS = process.env.NODE_ENV === 'test' ? 500 : 5 * 60 * 1000;
 
 // `planEngine` is the engine this service drives: the main home omits it (the
 // wiring assigns `ctx.planEngine` before `initPlanService`, the historical
@@ -114,5 +120,14 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     deviceDiagnostics: scope.getDeviceDiagnostics(),
     emitsUiRealtime: scope.emitsUiRealtime,
     snapshotWarmupGate: ctx.snapshotWarmupGate,
+    // Scope-owned, so each home gates on ITS OWN meter: a sub-home whose area
+    // meter has never reported must not ride the main home's first sample.
+    planBuildGate: new PowerMeasurementGate({
+      homeId: scope.homeId,
+      getCapacityGuard: scope.getCapacityGuard,
+      logger: () => ctx.getStructuredLogger('power/measurement-gate'),
+      warnAfterMs: NO_POWER_SAMPLE_WARN_MS,
+      nowMs: () => Date.now(),
+    }),
   });
 }

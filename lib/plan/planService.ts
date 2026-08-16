@@ -369,6 +369,15 @@ export class PlanService {
       addPerfDuration('plan_rebuild_warmup_wait_ms', Date.now() - waitStart);
       incPerfCounter('plan_rebuild_warmup_waited_total');
     }
+    // A closed build gate is a SKIP, not a wait: the trigger that asked for this
+    // rebuild (a price update, a settings write, a device change) has no reason
+    // to be held open indefinitely, and the sample that opens the gate schedules
+    // its own rebuild when it lands. Skipping before enqueuing also keeps a
+    // gated home off the plan operation queue entirely.
+    if (!this.deps.planBuildGate.isOpen()) {
+      incPerfCounter('plan_rebuild_gated_total');
+      return { ...createPlanRebuildOutcome(this.deps.getCapacityDryRun()), gated: true };
+    }
     const enqueuedAt = Date.now();
     this.queuedRebuilds += 1;
     const queueDepth = this.queuedRebuilds;

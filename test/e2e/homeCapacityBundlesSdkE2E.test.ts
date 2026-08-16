@@ -101,7 +101,14 @@ const buildHeaterDevice = async (deviceId: string, zoneId: string, setpoint: num
 // Drive BOTH meters through the real Homey Energy poll at the wire path the
 // REST client hits: one live report, two id-stamped cumulative items (a device
 // marked "Tracks total home energy consumption" appears exactly like this).
-const meterState = { mainW: 200, subW: 200, failZones: false, subOffline: false, subMeterId: 'm-sub' };
+const meterState = {
+  mainW: 200,
+  subW: 200,
+  failZones: false,
+  mainOffline: false,
+  subOffline: false,
+  subMeterId: 'm-sub',
+};
 const installApiRoutes = () => {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
@@ -110,7 +117,9 @@ const installApiRoutes = () => {
       // dropout — never a fabricated zero), so the bundle stops sampling.
       return {
         items: [
-          { type: 'cumulative', id: 'm-main', values: { W: meterState.mainW } },
+          ...(meterState.mainOffline
+            ? []
+            : [{ type: 'cumulative', id: 'm-main', values: { W: meterState.mainW } }]),
           ...(meterState.subOffline
             ? []
             : [{ type: 'cumulative', id: meterState.subMeterId, values: { W: meterState.subW } }]),
@@ -200,6 +209,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     meterState.mainW = 200;
     meterState.subW = 200;
     meterState.failZones = false;
+    meterState.mainOffline = false;
     meterState.subOffline = false;
     meterState.subMeterId = 'm-sub';
   });
@@ -765,13 +775,14 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
       await vi.advanceTimersByTimeAsync(10_000);
       await drainPending();
     }
-    // Positive control: the bundle IS live and allowed to actuate, so the silence
-    // below is the unknown-power hold and not some unrelated gate (dry-run,
-    // membership, source epoch) trivially suppressing every write.
-    expect((mockHomeyInstance.settings.get('pels_status:h_sub') as
-      | { dryRunEffective?: unknown }
-      | undefined)?.dryRunEffective).toBe(false);
     expect(callsFor(putSpy, 'device-sub-heat')).toEqual([]);
+    // A never-sampled area builds no plan at all, so it also publishes no status
+    // blob — the old positive control (reading `dryRunEffective: false` here)
+    // can no longer run in this phase. It moves below instead: proving the SAME
+    // bundle is live and allowed to actuate the moment its meter reports proves
+    // the silence above was the missing measurement and not some unrelated gate
+    // (dry-run, membership, source epoch) suppressing every write.
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status:h_sub');
 
     // The meter comes back. Now the area's draw is known and well under its
     // 6 kW cap, so the same mode target is applied — the hold is on the unknown,
@@ -783,6 +794,12 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
       () => wasCalledWith(putSpy, TEMP_CAP('device-sub-heat'), 22, meterLivePhaseStart),
       60,
     );
+    // The relocated positive control (see above): live, not dry-run, not fenced.
+    // Had any of those been suppressing the writes, this would still read true
+    // or stay absent now that a measurement exists.
+    expect((mockHomeyInstance.settings.get('pels_status:h_sub') as
+      | { dryRunEffective?: unknown }
+      | undefined)?.dryRunEffective).toBe(false);
   }, 30_000);
 
   // A silent-meter area gets no power-driven rebuilds and the freshness
@@ -790,6 +807,52 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
   // must therefore rebuild that bundle immediately so a cooler-mode LOWERING —
   // the direction the unknown-power hold deliberately lets through — is not
   // left unapplied indefinitely.
+  // The main home's half of the same rule. PELS requires a whole-home meter
+  // (`docs/getting-started.md`), so "never sampled" is a startup instant, not a
+  // configuration — but until it passes, there is nothing to plan from, and a
+  // plan built anyway would have to carry that absence into every consumer.
+  it('builds no plan for the main home until its meter reports, then builds one', async () => {
+    const heater = await buildHeaterDevice('device-main-heat', 'z1', 18);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'device-main-heat': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-main-heat': true });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'device-main-heat': 22 } });
+    // The meter never appears in the live report, so no sample is ever ingested
+    // — never a fabricated zero.
+    meterState.mainOffline = true;
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp({ withoutPowerMeasurement: true });
+    await app.onInit();
+    for (let poll = 0; poll < 12; poll += 1) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+    }
+
+    // No plan: no published status, and the pending mode raise stays unwritten.
+    expect(mockHomeyInstance.settings.get('pels_status')).toBeFalsy();
+    expect(callsFor(putSpy, 'device-main-heat')).toEqual([]);
+
+    // The meter appears. The sample schedules its own rebuild, so the plan
+    // arrives without any other trigger.
+    const meterLivePhaseStart = putSpy.mock.calls.length;
+    meterState.mainOffline = false;
+    meterState.mainW = 200;
+    await advancePollsUntil(
+      () => wasCalledWith(putSpy, TEMP_CAP('device-main-heat'), 22, meterLivePhaseStart),
+      60,
+    );
+    expect(mockHomeyInstance.settings.get('pels_status')).toBeTruthy();
+  }, 30_000);
+
   it('applies a cooler-mode lowering to an area heater while the area meter is silent', async () => {
     const heater = await buildHeaterDevice('device-sub-heat', 'z2', 22);
     const mainDevice = await buildOnOffDevice('device-main', 'z1');

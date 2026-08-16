@@ -2,6 +2,7 @@ import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import { startAppServices } from '../../setup/appLifecycleHelpers';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { openPlanBuildGate } from '../utils/planTestUtils';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -187,6 +188,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
@@ -234,6 +236,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
@@ -272,6 +275,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
