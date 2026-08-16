@@ -23,7 +23,6 @@ import {
   isCapacityBreached,
   resolveRemainingSheddableLoadKw,
   toPlanRemainingSheddableDevice,
-  type RemainingShedBehavior,
 } from './planRemainingSheddableLoad';
 
 export type { PlanCapacityStateSummary } from '../power/capacityStateSummary';
@@ -163,7 +162,6 @@ function sumPlanRemainingSheddableLoadKw(
   for (const sourceDevice of devices) {
     const power = resolveRemainingSheddableLoadKw({
       device: toPlanRemainingSheddableDevice(sourceDevice),
-      shedBehavior: resolvePlanDeviceShedBehavior(sourceDevice),
       alreadyShed: sourceDevice.plannedState === 'shed',
       limitSource: context.limitSource,
       capacityBreached: context.capacityBreached,
@@ -184,7 +182,6 @@ function sumActionableControlledLoadKw(
     if (!isActionableShortfallCandidate(sourceDevice)) continue;
     const power = resolveRemainingSheddableLoadKw({
       device: toPlanRemainingSheddableDevice(sourceDevice),
-      shedBehavior: resolvePlanDeviceShedBehavior(sourceDevice),
       alreadyShed: sourceDevice.plannedState === 'shed',
       limitSource: context.limitSource,
       capacityBreached: context.capacityBreached,
@@ -217,16 +214,6 @@ function resolvePlanRemainingSheddableContext(
     limitSource: plan.meta.softLimitSource,
     capacityBreached: isCapacityBreached(plan.meta.totalKw, plan.meta.capacitySoftLimitKw),
   };
-}
-
-function resolvePlanDeviceShedBehavior(device: DevicePlanDevice | undefined): RemainingShedBehavior {
-  if (device?.shedAction === 'set_temperature' && typeof device.shedTemperature === 'number') {
-    return { action: 'set_temperature', temperature: device.shedTemperature };
-  }
-  if (device?.shedAction === 'set_step') {
-    return { action: 'set_step' };
-  }
-  return { action: 'turn_off' };
 }
 
 function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unknown> {

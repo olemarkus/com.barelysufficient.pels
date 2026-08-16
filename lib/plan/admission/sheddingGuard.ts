@@ -1,13 +1,12 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import { getSheddingClearThresholdKw } from '../../power/capacityGuard';
 import type { PlanCapacityStateSummary } from '../../power/capacityStateSummary';
-import type { PlanInputDevice, ShedAction } from '../planTypes';
+import type { PlanInputDevice } from '../planTypes';
 import type { PlanContext } from '../planContext';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { buildPlanInputCapacityStateSummary } from '../planLogging';
 import {
   isCapacityBreached,
-  normalizeRemainingShedBehavior,
   resolveRemainingSheddableLoadKw,
   sumRemainingSheddableLoadKw,
   toInputRemainingSheddableDevice,
@@ -43,13 +42,11 @@ function sumRemainingReducibleControlledLoadKw(params: {
   limitSource: PlanContext['softLimitSource'];
   total: number | null;
   capacitySoftLimit: number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number {
-  const { devices, shedSet, limitSource, total, capacitySoftLimit, getShedBehavior } = params;
+  const { devices, shedSet, limitSource, total, capacitySoftLimit } = params;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return sumRemainingSheddableLoadKw({
     devices: devices.map(toInputRemainingSheddableDevice),
-    shedBehaviorForDevice: (device) => normalizeRemainingShedBehavior(getShedBehavior(device.id)),
     isAlreadyShed: (device) => shedSet.has(device.id),
     limitSource,
     capacityBreached,
@@ -62,9 +59,8 @@ function buildShortfallCapacityStateSummary(params: {
   total: number | null;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): PlanCapacityStateSummary {
-  const { devices, shedSet, total, limitSource, capacitySoftLimit, getShedBehavior } = params;
+  const { devices, shedSet, total, limitSource, capacitySoftLimit } = params;
   const summary = buildPlanInputCapacityStateSummary(devices, shedSet, {
     summarySource: 'plan_input',
     summarySourceAtMs: Date.now(),
@@ -78,7 +74,6 @@ function buildShortfallCapacityStateSummary(params: {
     limitSource,
     total,
     capacitySoftLimit,
-    getShedBehavior,
   }));
 
   return {
@@ -102,9 +97,8 @@ function maybeBuildShortfallCapacityStateSummary(params: {
   total: number | null;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): PlanCapacityStateSummary | undefined {
-  const { deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit, getShedBehavior } = params;
+  const { deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit } = params;
   if (deficitKw <= 0) return undefined;
   return buildShortfallCapacityStateSummary({
     devices,
@@ -112,7 +106,6 @@ function maybeBuildShortfallCapacityStateSummary(params: {
     total,
     limitSource,
     capacitySoftLimit,
-    getShedBehavior,
   });
 }
 
@@ -133,9 +126,8 @@ export function countRemainingCandidates(params: {
   limitSource: PlanContext['softLimitSource'];
   total: number | null;
   capacitySoftLimit: number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number {
-  const { devices, shedSet, headroom, limitSource, total, capacitySoftLimit, getShedBehavior } = params;
+  const { devices, shedSet, headroom, limitSource, total, capacitySoftLimit } = params;
   if (headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
@@ -147,7 +139,6 @@ export function countRemainingCandidates(params: {
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
     .filter((d) => resolveRemainingSheddableLoadKw({
       device: toInputRemainingSheddableDevice(d),
-      shedBehavior: normalizeRemainingShedBehavior(getShedBehavior(d.id)),
       alreadyShed: false,
       limitSource,
       capacityBreached,
@@ -164,7 +155,6 @@ export async function updateGuardState(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   capacityGuard: CapacityGuard | undefined;
 }): Promise<{ sheddingActive: boolean }> {
   const {
@@ -175,7 +165,6 @@ export async function updateGuardState(params: {
     devices,
     shedSet,
     softLimitSource,
-    getShedBehavior,
     capacityGuard,
   } = params;
   const remainingCandidates = countRemainingCandidates({
@@ -185,7 +174,6 @@ export async function updateGuardState(params: {
     limitSource: softLimitSource,
     total: planningTotalKw,
     capacitySoftLimit,
-    getShedBehavior,
   });
   const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
   const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThreshold);
@@ -203,7 +191,6 @@ export async function updateGuardState(params: {
         total: planningTotalKw,
         limitSource: softLimitSource,
         capacitySoftLimit,
-        getShedBehavior,
       }),
     });
     return { sheddingActive: true };
@@ -226,7 +213,6 @@ export async function updateGuardState(params: {
       total: planningTotalKw,
       limitSource: softLimitSource,
       capacitySoftLimit,
-      getShedBehavior,
     }),
   });
   const next = capacityGuard?.isSheddingActive() ?? current;

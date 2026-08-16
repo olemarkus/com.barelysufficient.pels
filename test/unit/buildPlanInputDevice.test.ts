@@ -31,6 +31,11 @@ describe('buildPlanInputDevice', () => {
       // fixture declares no power at all, and the producer answers 0 for a device
       // nobody described — it no longer invents a generic 1 kW.
       currentDrawKw: 0,
+      // Required since the dual-read collapse: the producer always stamps a
+      // residual, so the fixture resolves one through the same
+      // `resolveResidualKwShed` the producer uses. A device drawing nothing
+      // frees nothing by being shed.
+      residualKw: { shed: 0 },
       // The draw-when-running twin, also required. Unlike `currentDrawKw` this
       // one DOES end on a fallback: "draws nothing when running" is not an answer,
       // so the ladder resolves the 1 kW default rather than absence.

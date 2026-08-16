@@ -11,6 +11,7 @@ import {
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'
@@ -36,6 +37,7 @@ const buildInputDevice = (
   return withBinaryDiscriminant({
     ...merged,
     currentOn: resolveFixtureCurrentOn(merged),
+    residualKw: merged.residualKw ?? fixtureResidualKw(merged),
   }) as PlanInputDevice;
 };
 

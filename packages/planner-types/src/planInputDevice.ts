@@ -280,7 +280,7 @@ export type PlanInputDeviceBase = {
    * Both fields are optional for the duration of the dual-read transition;
    * chunk 6 makes them required.
    */
-  residualKw?: {
+  residualKw: {
     shed: number;
     restore?: {
       kw: number;

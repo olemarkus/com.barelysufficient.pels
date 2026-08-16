@@ -160,6 +160,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 0.2, softLimitKw: 6.75, headroomKw: 6.55}),
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
+    residualKw: { shed: 0 },
     id: DEVICE_ID,
     name: 'Elbillader',
     commandableNow: true,

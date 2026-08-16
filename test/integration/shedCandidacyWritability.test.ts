@@ -77,6 +77,9 @@ const capLessTargetBearing: PlanInputDevice = {
   binaryCapabilityId: undefined,
   controllable: true,
   expectedPowerKw: 2,
+  // Both devices carry real load; the test is about which one PELS can
+  // actually act on, so neither may resolve to zero relief.
+  residualKw: { shed: 2 },
 } as unknown as PlanInputDevice;
 
 const writableBinary: PlanInputDevice = {
@@ -88,6 +91,9 @@ const writableBinary: PlanInputDevice = {
   currentOn: true,
   controllable: true,
   expectedPowerKw: 2,
+  // Both devices carry real load; the test is about which one PELS can
+  // actually act on, so neither may resolve to zero relief.
+  residualKw: { shed: 2 },
 } as unknown as PlanInputDevice;
 
 describe('shed candidacy gates on writability', () => {

@@ -4,16 +4,11 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
-  getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
 } from './planSteppedLoad';
-import {
-  getSteppedLoadStep,
-  isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
 import {
   resolveResidualKwShed,
   type ResidualKwShedBehavior,
@@ -33,7 +28,7 @@ type RemainingSheddablePowerFields = {
 };
 
 type RemainingSheddableResidualFields = {
-  residualKw?: { shed: number };
+  residualKw: { shed: number };
 };
 
 type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
@@ -93,19 +88,8 @@ export type RemainingSheddableDevice =
   | SteppedTemperatureRemainingSheddableDevice
   | SteppedRemainingSheddableDevice;
 
-export type RemainingShedBehavior =
-  | { action: 'turn_off' }
-  | { action: 'set_step' }
-  | { action: 'set_temperature'; temperature: number };
-
-export type RawShedBehavior = {
-  action: 'turn_off' | 'set_step' | 'set_temperature';
-  temperature: number | null;
-};
-
 export type RemainingSheddableLoadParams = {
   device: RemainingSheddableDevice;
-  shedBehavior: RemainingShedBehavior;
   alreadyShed: boolean;
   limitSource: 'capacity' | 'daily' | 'both';
   capacityBreached: boolean;
@@ -118,16 +102,6 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingS
   currentState?: string;
   budgetExempt?: boolean;
 };
-
-export function normalizeRemainingShedBehavior(behavior: RawShedBehavior): RemainingShedBehavior {
-  if (behavior.action === 'set_temperature' && behavior.temperature !== null) {
-    return { action: 'set_temperature', temperature: behavior.temperature };
-  }
-  if (behavior.action === 'set_step') {
-    return { action: 'set_step' };
-  }
-  return { action: 'turn_off' };
-}
 
 export function isCapacityBreached(totalKw: number | null, capacitySoftLimitKw: number): boolean {
   return typeof totalKw === 'number' && Number.isFinite(totalKw) && totalKw > capacitySoftLimitKw;
@@ -224,7 +198,6 @@ function toPlanResidualTemperatureTarget(
 export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadParams): number {
   const {
     device,
-    shedBehavior,
     alreadyShed,
     limitSource,
     capacityBreached,
@@ -235,29 +208,19 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   if (alreadyShed) return 0;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
 
-  // Producer-resolved path (chunk 3 of the planner-detype refactor). When the
-  // device snapshot carries `residualKw.shed`, the kind-switch decision has
-  // already happened at the producer seam (`lib/device/deviceResidualKw.ts`),
-  // so the consumer just reads the number. Dual-read fallback below covers
-  // legacy/test fixtures built without the producer; chunk 6 removes it.
-  if (device.residualKw) {
-    return Math.max(0, device.residualKw.shed);
-  }
-
-  if (!canStillShedDevice({ device, shedBehavior })) return 0;
-  return Math.max(0, device.currentDrawKw);
+  // The kind-switch decision happened at the producer seam
+  // (`lib/device/deviceResidualKw.ts`); the consumer just reads the number.
+  return Math.max(0, device.residualKw.shed);
 }
 
 export function sumRemainingSheddableLoadKw(params: {
   devices: RemainingSheddableDevice[];
-  shedBehaviorForDevice: (device: RemainingSheddableDevice) => RemainingShedBehavior;
   isAlreadyShed: (device: RemainingSheddableDevice) => boolean;
   limitSource: 'capacity' | 'daily' | 'both';
   capacityBreached: boolean;
 }): number {
   const {
     devices,
-    shedBehaviorForDevice,
     isAlreadyShed,
     limitSource,
     capacityBreached,
@@ -266,7 +229,6 @@ export function sumRemainingSheddableLoadKw(params: {
   for (const device of devices) {
     totalKw += resolveRemainingSheddableLoadKw({
       device,
-      shedBehavior: shedBehaviorForDevice(device),
       alreadyShed: isAlreadyShed(device),
       limitSource,
       capacityBreached,
@@ -285,7 +247,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
-    ...(device.residualKw ? { residualKw: device.residualKw } : {}),
+    residualKw: device.residualKw,
   };
 }
 
@@ -346,85 +308,4 @@ function toPlanRemainingTemperatureTarget(device: DevicePlanDevice): RemainingSh
     id: 'target_temperature',
     ...(isTemperaturePlanDevice(device) ? { currentValue: device.currentTarget } : {}),
   };
-}
-
-// =============================================================================
-// Dual-read fallback: legacy kind-switch logic, retained for the chunk-3
-// transition. Removed in chunk 6 once all PlanInputDevice / DevicePlanDevice
-// inputs carry `residualKw.shed` from the producer. Behavior preserved exactly.
-// =============================================================================
-
-function canStillShedDevice(params: {
-  device: RemainingSheddableDevice;
-  shedBehavior: RemainingShedBehavior;
-}): boolean {
-  const { device, shedBehavior } = params;
-  if (shedBehavior.action === 'set_temperature') {
-    return canStillShedTemperatureDevice({ device, shedTemperature: shedBehavior.temperature });
-  }
-  if (!isSteppedRemainingSheddableDevice(device)) return true;
-  return canStillShedSteppedLoad({
-    device,
-    shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-  });
-}
-
-function canStillShedSteppedLoad(params: {
-  device: SteppedRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice;
-  shedAction: 'turn_off' | 'set_step';
-}): boolean {
-  const { device, shedAction } = params;
-  const targetStep = getSteppedLoadShedTargetStep({
-    device,
-    shedAction,
-    currentDesiredStepId: device.selectedStepId,
-  });
-  if (targetStep && targetStep.id !== device.selectedStepId) return true;
-  return canFinishSteppedTurnOffWithBinary({ device, shedAction, targetStep });
-}
-
-function canFinishSteppedTurnOffWithBinary(params: {
-  device: SteppedRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice;
-  shedAction: 'turn_off' | 'set_step';
-  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
-}): boolean {
-  const { device, shedAction, targetStep } = params;
-  if (
-    shedAction !== 'turn_off'
-    || !isBinaryPlanDevice(device)
-    || targetStep?.id !== device.selectedStepId
-  ) {
-    return false;
-  }
-  const selectedStep = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
-  return Boolean(selectedStep && !isSteppedLoadOffStep(device.steppedLoadProfile, selectedStep.id));
-}
-
-function canStillShedTemperatureDevice(params: {
-  device: RemainingSheddableDevice;
-  shedTemperature: number;
-}): boolean {
-  const { device, shedTemperature } = params;
-  if (!isTemperatureRemainingSheddableDevice(device)) return false;
-  const { temperatureTarget } = device;
-  if (typeof temperatureTarget.currentValue !== 'number' || !Number.isFinite(temperatureTarget.currentValue)) {
-    return true;
-  }
-  const normalizedShedTemperature = normalizeTargetCapabilityValue({
-    target: temperatureTarget,
-    value: shedTemperature,
-  });
-  return temperatureTarget.currentValue !== normalizedShedTemperature;
-}
-
-function isSteppedRemainingSheddableDevice(
-  device: RemainingSheddableDevice,
-): device is SteppedRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice {
-  return 'steppedLoadProfile' in device;
-}
-
-function isTemperatureRemainingSheddableDevice(
-  device: RemainingSheddableDevice,
-): device is TemperatureRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice {
-  return 'temperatureTarget' in device;
 }

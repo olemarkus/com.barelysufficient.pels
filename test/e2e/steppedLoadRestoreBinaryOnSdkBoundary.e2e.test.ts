@@ -226,6 +226,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
+    residualKw: { shed: 0 },
     id: DEVICE_ID,
     name: 'Connected 300',
     commandableNow: true,

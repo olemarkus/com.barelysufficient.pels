@@ -282,12 +282,12 @@ function pickPropagatedPlanFields(
   >,
 ): Partial<Pick<
   DevicePlanDevice,
-  'stepPowerCalibration' | 'residualKw' | 'surplusOnly'
+  'stepPowerCalibration' | 'surplusOnly'
   | 'externalOffHoldActive' | 'reservesStartupPower'
->> {
+>> & Pick<DevicePlanDevice, 'residualKw'> {
   return {
     ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
-    ...(dev.residualKw ? { residualKw: dev.residualKw } : {}),
+    residualKw: dev.residualKw,
     ...(dev.surplusOnly === true ? { surplusOnly: true as const } : {}),
     ...(dev.externalOffHoldActive === true ? { externalOffHoldActive: true as const } : {}),
     ...(dev.reservesStartupPower === true ? { reservesStartupPower: true as const } : {}),

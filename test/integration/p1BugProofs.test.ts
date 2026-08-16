@@ -64,6 +64,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
   });
   const state = createPlanEngineState();
   const deps: PlanExecutorDeps = {
+    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
@@ -85,7 +86,6 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
@@ -109,7 +109,7 @@ describe('P1 bug proofs', () => {
       currentState: 'off',
       plannedState: 'keep',
       boostActive: false,
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       expectedPowerKw: 2,
       planningPowerKw: 4,
     });
@@ -141,7 +141,6 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       capacityGuard,
     });
     await updateGuardState({
@@ -152,7 +151,6 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       capacityGuard,
     });
     await updateGuardState({
@@ -163,7 +161,6 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       capacityGuard,
     });
 
@@ -202,12 +199,12 @@ describe('P1 bug proofs', () => {
           currentOn: true,
           controllable: true,
           binaryCapabilityId: 'onoff',
-          currentDrawKw: 0,
+          currentDrawKw: 0, residualKw: { shed: 0 },
           binaryCommandPending: true,
         }) as PlanInputDevice,
         withBinaryDiscriminant({
           available: true,
-          currentDrawKw: 1,
+          currentDrawKw: 1, residualKw: { shed: 1 },
           id: 'stale',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Stale',
@@ -225,7 +222,6 @@ describe('P1 bug proofs', () => {
       ],
       shedSet: new Set(['shed']),
       softLimitSource: 'capacity',
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       capacityGuard,
     });
 
@@ -287,7 +283,7 @@ describe('P1 bug proofs', () => {
         currentState: 'off',
         expectedPowerKw: 1.25,
         // Parked at its off step and drawing nothing — its own meter says so.
-        currentDrawKw: 0,
+        currentDrawKw: 0, residualKw: { shed: 0 },
       }),
       binaryControl: { on: false },
       currentOn: false,
@@ -301,8 +297,8 @@ describe('P1 bug proofs', () => {
       shedReasons: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getPriorityForDevice: () => 100,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands),

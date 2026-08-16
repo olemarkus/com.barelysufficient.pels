@@ -247,7 +247,7 @@ describe('PlanService', () => {
         softLimitSource: 'daily',
         headroomKw: -0.97}),
       devices: [
-        withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+        withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -265,7 +265,7 @@ describe('PlanService', () => {
           available: true,
           reason: insufficientHeadroomFixtureReason({ needKw: 0.98, availableKw: -0.97 }),
         })) as DevicePlan['devices'][number],
-        withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+        withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-2',
           name: 'Heater 2',
           commandableNow: true,
@@ -283,7 +283,7 @@ describe('PlanService', () => {
           available: true,
           reason: insufficientHeadroomFixtureReason({ needKw: 1.1, availableKw: -0.97 }),
         })) as DevicePlan['devices'][number],
-        withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+        withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'ev-1',
           name: 'EV',
           commandableNow: true,
@@ -349,7 +349,7 @@ describe('PlanService', () => {
           currentState: 'on',
           plannedState: 'keep',
           boostActive: false,
-          currentDrawKw: 0,
+          currentDrawKw: 0, residualKw: { shed: 0 },
           expectedPowerKw: 3,
         })),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -404,7 +404,7 @@ describe('PlanService', () => {
           currentState: 'on',
           plannedState: 'keep',
           boostActive: false,
-          currentDrawKw: 0,
+          currentDrawKw: 0, residualKw: { shed: 0 },
           expectedPowerKw: 3,
         })),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -451,7 +451,7 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       boostActive: false,
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       expectedPowerKw: 3,
     });
     plan.devices.push(withBinaryDiscriminant({
@@ -463,7 +463,7 @@ describe('PlanService', () => {
       currentOn: false,
       plannedState: 'shed' as const,
       boostActive: false,
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       expectedPowerKw: 1.2,
       reason: fixtureDeviceReason('shed due to capacity')!,
     }) as DevicePlan['devices'][number]);
@@ -517,7 +517,7 @@ describe('PlanService', () => {
           currentState: 'on',
           plannedState: 'keep',
           boostActive: false,
-          currentDrawKw: 0,
+          currentDrawKw: 0, residualKw: { shed: 0 },
           planningPowerKw: 3,
           reportedStepId: 'max',
           targetStepId: 'max',
@@ -548,7 +548,7 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       boostActive: false,
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       expectedPowerKw: 3,
     });
     const { service } = createPlanService({
@@ -588,14 +588,14 @@ describe('PlanService', () => {
             currentState: 'on',
             plannedState: 'keep',
             boostActive: false,
-            currentDrawKw: 0,
+            currentDrawKw: 0, residualKw: { shed: 0 },
             expectedPowerKw: 3,
           }))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
             currentState: 'on',
             plannedState: 'keep',
             boostActive: false,
-            currentDrawKw: 0.25,
+            currentDrawKw: 0.25, residualKw: { shed: 0.25 },
             expectedPowerKw: 3,
           })),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -681,7 +681,7 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       boostActive: false,
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       expectedPowerKw: 3,
     });
     const { service } = createPlanService({
@@ -723,7 +723,7 @@ describe('PlanService', () => {
         binaryControl: { on: true },
         currentOn: true,
         currentTemperature: 21,
-        currentDrawKw: 0.25,
+        currentDrawKw: 0.25, residualKw: { shed: 0.25 },
         expectedPowerKw: 3, expectedPowerSource: 'default',
         binaryCommandPending: true,
       }];
@@ -761,7 +761,7 @@ describe('PlanService', () => {
       currentState: 'off',
       plannedState: 'keep',
       boostActive: false,
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       expectedPowerKw: 3,
       binaryCommandPending: true,
     });
@@ -813,7 +813,7 @@ describe('PlanService', () => {
         zone: 'Living room',
         budgetExempt: false,
         currentTemperature: 16,
-        currentDrawKw: 1.2,
+        currentDrawKw: 1.2, residualKw: { shed: 1.2 },
         expectedPowerKw: 2.5,
         pendingTargetCommand: {
           desired: 20,
@@ -871,7 +871,7 @@ describe('PlanService', () => {
   it('logs a post-actuation overview transition once the live state settles', async () => {
     let currentOn = false;
     const overviewDebugStructured = vi.fn();
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1069,7 +1069,7 @@ describe('PlanService', () => {
   it('does not publish drifted live state as the committed snapshot', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1154,7 +1154,7 @@ describe('PlanService', () => {
     // from an ordinary no-op.
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const onAbort = vi.fn();
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1234,7 +1234,7 @@ describe('PlanService', () => {
       })),
     }));
 
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1329,7 +1329,7 @@ describe('PlanService', () => {
       })),
     }));
 
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1399,7 +1399,7 @@ describe('PlanService', () => {
 
   it('preserves generatedAtMs when syncLivePlanState refreshes live state', async () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1477,7 +1477,7 @@ describe('PlanService', () => {
   it('refreshes the stored plan snapshot when a pending binary command is confirmed by live state', async () => {
     let hasPendingBinaryCommands = true;
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1564,7 +1564,7 @@ describe('PlanService', () => {
       };
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [
-        { controllable: true, available: true, currentDrawKw: 0,
+        { controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Heater 1',
@@ -1581,7 +1581,7 @@ describe('PlanService', () => {
           currentOn: liveCurrentOnById['dev-1'],
           currentTemperature: 21,
         },
-        { controllable: true, available: true, currentDrawKw: 0,
+        { controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-2',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Heater 2',
@@ -1700,7 +1700,7 @@ describe('PlanService', () => {
     const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = true;
     });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -1786,7 +1786,7 @@ describe('PlanService', () => {
       };
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [
-        { available: true, currentDrawKw: 0,
+        { available: true, currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Heater 1',
@@ -1804,7 +1804,7 @@ describe('PlanService', () => {
           currentTemperature: 21,
           controllable: true,
         },
-        { available: true, currentDrawKw: 0,
+        { available: true, currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-2',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Heater 2',
@@ -1921,7 +1921,7 @@ describe('PlanService', () => {
       };
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [
-        { currentDrawKw: 0,
+        { currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Heater 1',
@@ -1940,7 +1940,7 @@ describe('PlanService', () => {
           controllable: true,
           available: true,
         },
-        { currentDrawKw: 0,
+        { currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'dev-2',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Heater 2',
@@ -2057,7 +2057,7 @@ describe('PlanService', () => {
     const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = false;
     });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -2205,7 +2205,7 @@ describe('PlanService', () => {
       syncPendingTargetCommands,
       decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
     };
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -2342,7 +2342,7 @@ describe('PlanService', () => {
       expectedPowerKw: 1,
       expectedPowerSource: 'default' as const,
       name: 'Heater',
-      currentDrawKw: 0,
+      currentDrawKw: 0, residualKw: { shed: 0 },
       commandableNow: true,
       boostSupported: false,
       boostRequested: false,
@@ -2492,7 +2492,7 @@ describe('PlanService', () => {
       binaryCapabilityId: 'onoff' as const,
       currentTemperature: 21,
     };
-    let liveDevices: PlanInputDevice[] = [withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+    let liveDevices: PlanInputDevice[] = [withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0, residualKw: { shed: 0 },
       ...liveDeviceBase,
       binaryControl: { on: true },
       currentOn: true,
@@ -2544,7 +2544,7 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
     applyPlanActions.mockClear();
 
-    liveDevices = [withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0,
+    liveDevices = [withTemperatureDiscriminant(withBinaryDiscriminant({ currentDrawKw: 0, residualKw: { shed: 0 },
       ...liveDeviceBase,
       binaryControl: { on: false },
       currentOn: false,
@@ -3044,7 +3044,7 @@ describe('PlanService', () => {
   it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1 });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -3101,7 +3101,7 @@ describe('PlanService', () => {
   it('does not call schedulePostActuationRefresh after rebuild actuation when no writes occur', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',
@@ -3238,7 +3238,7 @@ describe('PlanService', () => {
     // Report a real device write so the rebuild resolves `appliedActions: true` —
     // the post-actuation refresh is gated on having actually written.
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1, commandRequestCount: 0 });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0,
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [{ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Heater',

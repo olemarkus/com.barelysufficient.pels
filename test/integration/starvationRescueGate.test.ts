@@ -165,6 +165,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   currentTarget: TARGET_C,
   lastFreshDataMs: nowMs,
   currentDrawKw: 1.5,
+  residualKw: { shed: 1.5 },
   expectedPowerKw: 1.5, expectedPowerSource: 'default',
   planningPowerKw: 1.5,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],

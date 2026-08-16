@@ -43,7 +43,6 @@ export async function buildSheddingPlan(
     devices: context.devices,
     shedSet,
     softLimitSource: sheddingLimitSource,
-    getShedBehavior: deps.getShedBehavior,
     capacityGuard: deps.capacityGuard,
   });
   const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;

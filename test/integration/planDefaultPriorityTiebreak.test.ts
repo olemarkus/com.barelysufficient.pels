@@ -29,6 +29,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   binaryControl: { on: true },
   currentOn: true,
   currentDrawKw: 1.5,
+  residualKw: { shed: 1.5 },
 }) as PlanInputDevice;
 
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
@@ -53,6 +54,7 @@ const buildRestoreDevice = (id: string): DevicePlanDevice => ({
   id,
   name: id,
   currentDrawKw: 1.5,
+  residualKw: { shed: 1.5 },
   currentState: 'off',
   plannedState: 'keep',
   boostActive: false,

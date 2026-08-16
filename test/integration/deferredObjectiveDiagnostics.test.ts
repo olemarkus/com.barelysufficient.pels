@@ -2898,7 +2898,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceType: 'temperature' as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
-      currentDrawKw: 1.5,
+      currentDrawKw: 1.5, residualKw: { shed: 1.5 },
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
     })) as PlanInputDevice;
@@ -2974,7 +2974,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 0 kW step. The producer must walk down the candidate list to
     // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
     // horizon plan still builds.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
       id: 'heater-1',
       name: 'Idle Panel Heater',
       commandableNow: true,
@@ -3047,7 +3047,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // halves are asserted below; the SDK-boundary regression for the 2026-08-01
   // incident lives in `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
   it('plans a thermostat with no declared power instead of reporting missing_charge_rate', () => {
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Powerless Thermostat',
@@ -3112,7 +3112,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // positive number; the tag was a producer-side fact this layer reconstructed.
     // `controlModel` is deliberately ABSENT from this fixture so the case fails if
     // the consumer ever goes back to inferring the gap from it.
-    const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
+    const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Water heater with no live ladder',
@@ -3325,7 +3325,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0, residualKw: { shed: 0 },
       id,
       name: id,
       targets: [],
