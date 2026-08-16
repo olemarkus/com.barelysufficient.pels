@@ -6,8 +6,6 @@ import type {
 import type {
   DeferredObjectivePlanHistoryDiscoveredFrom,
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryEntryV1,
-  DeferredObjectivePlanHistoryEntryV2,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryObservedInterval,
@@ -21,7 +19,6 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
-import { randomUUID } from 'node:crypto';
 
 // Bumped to 5 when persistence switched to compact, device-independent rows.
 // v4 remains on its original settings key so a rollback can still read the
@@ -40,6 +37,12 @@ import { randomUUID } from 'node:crypto';
 // written at v5; v3/v4 reads are upgraded in-memory without
 // dropping any persisted state — see `feedback_homey_sdk_unreliable` for the
 // "never delete persisted state on a single empty/missing read" invariant.
+//
+// v3 is the OLDEST readable schema. v1, v2 and v3 all landed inside the v2.7.0
+// development window, so no published release ever persisted a v1 or v2
+// envelope and their upgrade path has been removed. An envelope claiming
+// either version reads as empty here and as `unavailable` from the strict
+// parser, rather than being re-imported with synthesized ids.
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 5 as const;
 
 const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV5 => ({
@@ -319,26 +322,16 @@ const hasValidPlanSnapshots = (v: Record<string, unknown>): boolean => (
   isRevisionSnapshotOrNull(v.originalPlan) && isRevisionSnapshotOrNull(v.finalPlan)
 );
 
-const isV1EntryShape = (value: unknown): value is DeferredObjectivePlanHistoryEntryV1 => {
+const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHistoryEntry => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return hasValidIdentity(v)
     && hasValidTargets(v)
     && hasValidTimestamps(v)
     && hasValidProgress(v)
-    && hasValidOutcome(v);
-};
-
-const isV2EntryShape = (value: unknown): value is DeferredObjectivePlanHistoryEntryV2 => {
-  if (!isV1EntryShape(value)) return false;
-  const v = value as unknown as Record<string, unknown>;
-  return hasValidCoverage(v);
-};
-
-const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHistoryEntry => {
-  if (!isV2EntryShape(value)) return false;
-  const v = value as unknown as Record<string, unknown>;
-  return typeof v.id === 'string'
+    && hasValidOutcome(v)
+    && hasValidCoverage(v)
+    && typeof v.id === 'string'
     && v.id.length > 0
     && hasValidPlanSnapshots(v)
     && hasValidV4Extensions(v);
@@ -387,34 +380,6 @@ const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHist
   return hasValidRecordExtensions(v);
 };
 
-const upgradeV1Entry = (
-  entry: DeferredObjectivePlanHistoryEntryV1,
-): DeferredObjectivePlanHistoryEntry => ({
-  ...entry,
-  id: randomUUID(),
-  observedIntervals: [{ fromMs: entry.startedAtMs, toMs: entry.finalizedAtMs }],
-  discoveredFrom: 'observation',
-  originalPlan: null,
-  finalPlan: null,
-});
-
-const upgradeV2Entry = (
-  entry: DeferredObjectivePlanHistoryEntryV2,
-): DeferredObjectivePlanHistoryEntry => ({
-  ...entry,
-  id: randomUUID(),
-  originalPlan: null,
-  finalPlan: null,
-});
-
-const normalizeV1 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
-  entries.filter(isV1EntryShape).map(upgradeV1Entry)
-);
-
-const normalizeV2 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
-  entries.filter(isV2EntryShape).map(upgradeV2Entry)
-);
-
 // v3 and v4 entries share the same validation function: the v4-only fields
 // (`progressSamples`, `deliveredKWh`, `totalCost`, `revisions[]`,
 // `revisionSnapshot.kwhPerUnitMean`) are all optional, so v3 entries
@@ -446,18 +411,6 @@ export const normalizeDeferredObjectivePlanHistory = (
       entries: normalizeV3OrV4(r.entries),
     };
   }
-  if (r.version === 2) {
-    return {
-      version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-      entries: normalizeV2(r.entries).map(toPlanHistoryRecord),
-    };
-  }
-  if (r.version === 1) {
-    return {
-      version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-      entries: normalizeV1(r.entries).map(toPlanHistoryRecord),
-    };
-  }
   return createEmptyDeferredObjectivePlanHistory();
 };
 
@@ -473,7 +426,7 @@ export const parseDeferredObjectivePlanHistory = (
   if (!raw || typeof raw !== 'object') return { state: 'unavailable' };
   const candidate = raw as Record<string, unknown>;
   if (!Array.isArray(candidate.entries)) return { state: 'unavailable' };
-  if (![1, 2, 3, 4, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
+  if (![3, 4, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
     return { state: 'unavailable' };
   }
   const normalized = normalizeDeferredObjectivePlanHistory(raw);

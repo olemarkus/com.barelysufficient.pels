@@ -6,7 +6,11 @@ import {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const v2Entry = {
+// The fields every persisted schema from v3 onward shares. Named for what it
+// is rather than for a version: v1/v2 are no longer readable (no released
+// build ever wrote them), so this is simply the common base the v3/v4/v5
+// fixtures below extend.
+const baseEntry = {
   deviceId: 'dev',
   deviceName: 'Water Heater',
   objectiveKind: 'temperature',
@@ -27,37 +31,27 @@ const v2Entry = {
   discoveredFrom: 'observation',
 };
 
-describe('normalizeDeferredObjectivePlanHistory v2 → v3 migration', () => {
-  it('synthesizes a uuid and null plan snapshots for legacy v2 entries', () => {
-    const result = normalizeDeferredObjectivePlanHistory({
-      version: 2,
-      entries: [v2Entry],
-    });
-    expect(result.version).toBe(DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION);
-    expect(result.entries).toHaveLength(1);
-    const migrated = result.entries[0]!;
-    expect(typeof migrated.id).toBe('string');
-    expect(migrated.id.length).toBeGreaterThan(10);
-    expect(migrated.originalPlan).toBeNull();
-    expect(migrated.finalPlan).toBeNull();
-    // Pre-existing fields are preserved.
-    expect(migrated.outcome).toBe('met');
-    expect(migrated.finalizedAtMs).toBe(HOUR_MS);
-  });
-
-  it('assigns distinct uuids when migrating multiple v2 entries in one read', () => {
-    const result = normalizeDeferredObjectivePlanHistory({
-      version: 2,
-      entries: [v2Entry, { ...v2Entry, deviceId: 'dev-b' }],
-    });
-    expect(result.entries).toHaveLength(2);
-    expect(result.entries[0]!.id).not.toBe(result.entries[1]!.id);
+describe('normalizeDeferredObjectivePlanHistory pre-v3 payloads', () => {
+  it('drops a v1/v2 payload entirely — no released build ever wrote one', () => {
+    // v1, v2 and v3 all landed inside the v2.7.0 development window, so no
+    // published release ever persisted a v1 or v2 envelope. The upgrade path
+    // for them is gone; an envelope claiming those versions is treated as
+    // unreadable rather than silently re-imported with synthesized ids.
+    const v2Payload = { version: 2, entries: [baseEntry] };
+    const normalized = normalizeDeferredObjectivePlanHistory(v2Payload);
+    expect(normalized.entries).toHaveLength(0);
+    // The empty envelope is stamped at the CURRENT version, not echoed back at
+    // the rejected one — a caller persisting this must not re-write `2`.
+    expect(normalized.version).toBe(DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION);
+    expect(parseDeferredObjectivePlanHistory(v2Payload)).toEqual({ state: 'unavailable' });
+    expect(parseDeferredObjectivePlanHistory({ version: 1, entries: [] }))
+      .toEqual({ state: 'unavailable' });
   });
 
   it('rejects v3 entries that are missing the id field', () => {
     const result = normalizeDeferredObjectivePlanHistory({
       version: 3,
-      entries: [{ ...v2Entry, originalPlan: null, finalPlan: null }],
+      entries: [{ ...baseEntry, originalPlan: null, finalPlan: null }],
     });
     // Entry without `id` is dropped by the v3 validator.
     expect(result.entries).toHaveLength(0);
@@ -65,7 +59,7 @@ describe('normalizeDeferredObjectivePlanHistory v2 → v3 migration', () => {
 
   it('accepts well-formed v3 entries unchanged', () => {
     const v3Entry = {
-      ...v2Entry,
+      ...baseEntry,
       id: 'fixed-id-1',
       originalPlan: null,
       finalPlan: null,
@@ -84,7 +78,7 @@ describe('normalizeDeferredObjectivePlanHistory v2 → v3 migration', () => {
     // must tolerate the extra key (never reject/drop the entry) so pre-refactor
     // history keeps loading. Locks in the forward-compat guarantee.
     const legacyEntry = {
-      ...v2Entry,
+      ...baseEntry,
       id: 'legacy-with-policy-avoid',
       originalPlan: null,
       finalPlan: null,
@@ -101,7 +95,7 @@ describe('normalizeDeferredObjectivePlanHistory v2 → v3 migration', () => {
 
 describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
   const v3Entry = {
-    ...v2Entry,
+    ...baseEntry,
     id: 'v3-entry-1',
     originalPlan: null,
     finalPlan: null,
