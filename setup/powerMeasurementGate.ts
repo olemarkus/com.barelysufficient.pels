@@ -21,6 +21,13 @@ import type { Logger as PinoLogger } from '../lib/logging/logger';
  * bundle back to "no reading from THIS meter yet".
  *
  * The planner sees only `isOpen()` and never learns what it is waiting on.
+ *
+ * **A home that never reports stays planless, and that is the answer.** Owner
+ * ruling 2026-08-16: a home whose meter never reports is effectively
+ * unmanageable, and leaving it as it is beats turning the whole house off. So
+ * there is deliberately no escalation here — no "shed blind after N gated
+ * cycles", no fabricated reading. The warning below is the whole response, and
+ * it names the configured source so the owner can fix the actual cause.
  */
 export type PowerMeasurementGateOptions = {
   homeId: HomeId;
@@ -34,6 +41,14 @@ export type PowerMeasurementGateOptions = {
    */
   warnAfterMs: number;
   nowMs: () => number;
+  /**
+   * The configured power source, so the warning names the right cause. Under
+   * `flow` a silent home means the flow never fired; under `homey_energy` it
+   * means the selected meter is not reporting. Asserting the flow cause for
+   * both is wrong for most homes, and this line is the only diagnostic an
+   * operator gets.
+   */
+  getPowerSource: () => string | null;
 };
 
 export class PowerMeasurementGate {
@@ -84,12 +99,17 @@ export class PowerMeasurementGate {
     }
     if (this.warned || nowMs - this.gatedSinceMs < this.options.warnAfterMs) return;
     this.warned = true;
+    const powerSource = this.options.getPowerSource();
     this.options.logger()?.warn({
       event: 'home_bundle_gated_no_power_sample',
       homeId: this.options.homeId,
       gatedForMs: nowMs - this.gatedSinceMs,
-      detail: 'no meter reading yet; no plan is built for this home until one arrives — '
-        + 'on the flow power source this means the flow that sends power to PELS has never fired',
+      powerSource,
+      detail: powerSource === 'flow'
+        ? 'no meter reading yet; no plan is built for this home until one arrives — '
+          + 'the flow that reports power usage to PELS has never fired'
+        : 'no meter reading yet; no plan is built for this home until one arrives — '
+          + 'the selected whole-home meter is not reporting',
     });
   }
 }

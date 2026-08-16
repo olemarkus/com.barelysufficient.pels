@@ -120,7 +120,13 @@ const applyMembershipReadyPlan = async (params: {
       });
       return 'retry';
     }
+    // A GATED skip built no plan, so it reconciled nothing — treat it like the
+    // point-of-use abort rather than like a successful no-op, or this one-shot
+    // apply edge is consumed by a build that never happened. Reachable at boot
+    // whenever a bundle's zone tree commits before its meter's first reading;
+    // the sample's own rebuild then has no edge left to ride.
     reconciledCurrent = !rebuildAborted
+      && !outcome.gated
       && isCurrentSampleRevision(params.getStableSampleRevision, params.revision);
   } finally {
     endPreparedReconcile();
@@ -267,6 +273,14 @@ export function installBundleReadinessAndFreshness(
         }
         if (outcome.isDryRun) {
           logger()?.debug({ event: 'home_freshness_heartbeat_rebuild_dry_run_skipped', homeId });
+          return;
+        }
+        // Same reason as the two above: a GATED skip escalated nothing, so it must
+        // not burn the one-shot for this stale period. Harmless today only by an
+        // ordering accident (the gate can only open via a sample, which moves
+        // `lastTimestamp`), and that is too thin a thread for a safety path.
+        if (outcome.gated) {
+          logger()?.debug({ event: 'home_freshness_heartbeat_rebuild_gated_skipped', homeId });
           return;
         }
         // Still fail-closed on completion (a sample racing in would have moved
