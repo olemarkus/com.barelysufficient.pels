@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -48,7 +48,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const state = createPlanEngineState();
 
     const structuredLog = { info: vi.fn() };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
@@ -121,7 +121,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.setSystemTime(now);
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -194,7 +194,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.setSystemTime(now);
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -273,7 +273,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const structuredLog = { info: vi.fn() };
       // Fresh guard that never received a finite total: getLastTotalPower() === null,
       // mimicking a transient/failed whole-home power read.
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -331,7 +331,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       state.lastPlanTotalKw = null;
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -382,7 +382,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   it('logs overshoot as exhausted when all shed candidates are already at minimum', async () => {
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
     capacityGuard.reportTotalPower(4.8);
 
     const builder = new PlanBuilder({
@@ -435,7 +435,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
@@ -495,7 +495,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     state.overshootStartedMs = Date.now() + 5_000;
 
     const structuredLog = { info: vi.fn() };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
     capacityGuard.reportTotalPower(0.5);
 
     const builder = new PlanBuilder({
@@ -547,7 +547,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
       capacityGuard.reportTotalPower(4.8);
 
       const builder = new PlanBuilder({
@@ -614,7 +614,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -678,7 +678,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.setSystemTime(now);
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -748,7 +748,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.setSystemTime(now);
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -824,7 +824,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const structuredLog = { info: vi.fn() };
       // Guard still holds an old cached total (getLastTotalPower stays finite) even
       // though the sample timestamp is now stale.
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
       capacityGuard.reportTotalPower(0.8);
 
       const builder = new PlanBuilder({
@@ -886,7 +886,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -962,7 +962,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.setSystemTime(now);
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -1041,7 +1041,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -1146,7 +1146,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -1256,7 +1256,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -1365,7 +1365,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       });
 
       const structuredLog = { info: vi.fn() };
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -1445,7 +1445,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const start = new Date('2026-04-15T11:03:44.000Z').getTime();
       vi.setSystemTime(start);
       const state = createPlanEngineState();
-      const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 3, softMarginKw: 0 });
+      const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 3, softMarginKw: 0 });
       // Priority 1 is the most protected device; 4 sheds first.
       const priorities: Record<string, number> = { protected: 1, mid: 2, heater: 4 };
       const powerTracker = { lastTimestamp: start, lastPowerW: 4_351 };

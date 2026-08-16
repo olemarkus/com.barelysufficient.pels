@@ -4,12 +4,13 @@
  */
 
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 
 describe('Daily Budget Shortfall Prevention', () => {
   let guard: CapacityGuard;
 
   beforeEach(() => {
-    guard = new CapacityGuard({
+    guard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 1,

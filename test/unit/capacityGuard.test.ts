@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 
 describe('CapacityGuard', () => {
   let originalNow: () => number;
@@ -20,31 +20,31 @@ describe('CapacityGuard', () => {
 
   describe('Limit calculations', () => {
     it('returns default soft limit when no provider', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
+      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       expect(guard.getSoftLimit()).toBe(4.8);
     });
 
     it('uses soft limit provider when set', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
+      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       guard.setSoftLimitProvider(() => 3.5);
       expect(guard.getSoftLimit()).toBe(3.5);
     });
 
     it('uses shortfall threshold provider when set', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
+      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       guard.setShortfallThresholdProvider(() => 10.0);
       expect(guard.getShortfallThreshold()).toBe(10.0);
     });
 
     it('falls back to hard limit for shortfall threshold', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
+      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       expect(guard.getShortfallThreshold()).toBe(5);
     });
   });
 
   describe('Power tracking', () => {
     it('reports and retrieves total power', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
+      const guard = createTestCapacityGuard({ homeId: 'main' });
       expect(guard.getLastTotalPower()).toBeNull();
 
       guard.reportTotalPower(3.5);
@@ -52,7 +52,7 @@ describe('CapacityGuard', () => {
     });
 
     it('calculates headroom correctly', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
+      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
       expect(guard.getHeadroom()).toBeNull();
 
       guard.reportTotalPower(3.0);
@@ -63,7 +63,7 @@ describe('CapacityGuard', () => {
     });
 
     it('ignores invalid power values', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
+      const guard = createTestCapacityGuard({ homeId: 'main' });
       guard.reportTotalPower(3.0);
       guard.reportTotalPower(NaN);
       expect(guard.getLastTotalPower()).toBe(3.0);
@@ -72,56 +72,62 @@ describe('CapacityGuard', () => {
 
   describe('Shedding state', () => {
     it('starts with shedding inactive', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
+      const guard = createTestCapacityGuard({ homeId: 'main' });
       expect(guard.isSheddingActive()).toBe(false);
     });
 
-    it('can set shedding active', async () => {
-      const callbacks: string[] = [];
-      const guard = new CapacityGuard({
-      homeId: 'main',
-        onSheddingStart: () => { callbacks.push('start'); },
-        onSheddingEnd: () => { callbacks.push('end'); },
-      });
+    it('can set shedding active', () => {
+      const guard = createTestCapacityGuard({ homeId: 'main' });
 
-      await guard.setSheddingActive(true);
+      guard.setSheddingActive(true);
       expect(guard.isSheddingActive()).toBe(true);
-      expect(callbacks).toEqual(['start']);
 
-      // Setting same value doesn't trigger callback
-      await guard.setSheddingActive(true);
-      expect(callbacks).toEqual(['start']);
+      // Setting the same value is a no-op.
+      guard.setSheddingActive(true);
+      expect(guard.isSheddingActive()).toBe(true);
 
-      await guard.setSheddingActive(false);
+      // No power reported, so headroom is unknown and the clear is not refused.
+      guard.setSheddingActive(false);
       expect(guard.isSheddingActive()).toBe(false);
-      expect(callbacks).toEqual(['start', 'end']);
     });
 
-    it('uses override headroom when clearing shedding state', async () => {
-      const guard = new CapacityGuard({
-      homeId: 'main',
+    it('uses override headroom when clearing shedding state', () => {
+      const guard = createTestCapacityGuard({
+        homeId: 'main',
         limitKw: 4,
         softMarginKw: 0.5,
-        restoreMarginKw: 0.2,
       });
 
       guard.reportTotalPower(3.65);
-      await guard.setSheddingActive(true);
-      await guard.setSheddingActive(false, 0.45);
+      guard.setSheddingActive(true);
+      // Guard headroom is 4 - 0.5 - 3.65 = -0.15, below the clear threshold;
+      // the override clears it because 0.45 >= SHEDDING_CLEAR_THRESHOLD_KW.
+      guard.setSheddingActive(false, 0.45);
 
       expect(guard.isSheddingActive()).toBe(false);
+    });
+
+    it('refuses to clear the latch while headroom is below the clear threshold', () => {
+      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
+
+      guard.reportTotalPower(3.65);
+      guard.setSheddingActive(true);
+      // 4 - 3.65 = 0.35 kW, short of the 0.4 kW clear threshold.
+      guard.setSheddingActive(false);
+
+      expect(guard.isSheddingActive()).toBe(true);
     });
   });
 
   describe('Shortfall detection', () => {
     it('starts without shortfall', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
+      const guard = createTestCapacityGuard({ homeId: 'main' });
       expect(guard.isInShortfall()).toBe(false);
     });
 
     it('enters shortfall when hard cap exceeded and no candidates', async () => {
       const shortfallEvents: Array<{ type: string; deficit?: number }> = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
@@ -138,7 +144,7 @@ describe('CapacityGuard', () => {
 
     it('does not enter shortfall when candidates remain', async () => {
       const shortfallEvents: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
@@ -154,7 +160,7 @@ describe('CapacityGuard', () => {
 
     it('does not enter shortfall when under hard cap', async () => {
       const shortfallEvents: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
@@ -180,7 +186,7 @@ describe('CapacityGuard', () => {
         onShortfall: () => {},
         structuredLog,
       };
-      const guard = new CapacityGuard(options);
+      const guard = createTestCapacityGuard(options);
 
       guard.reportTotalPower(5.5);
       await guard.checkShortfall(false, 0.5);
@@ -209,7 +215,7 @@ describe('CapacityGuard', () => {
     it('publishes alert candidates separately from the slower incident-clear latch', async () => {
       const candidates: Array<{ incidentId: string; deficitKw: number }> = [];
       const conditionCleared = vi.fn();
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
         homeId: 'main',
         limitKw: 5,
         onShortfallAlertCandidate: (entry) => { candidates.push(entry); },
@@ -248,7 +254,7 @@ describe('CapacityGuard', () => {
 
     it('publishes the alert candidate even when the immediate state write rejects', async () => {
       const candidate = vi.fn();
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
         homeId: 'main',
         limitKw: 5,
         onShortfall: () => Promise.reject(new Error('settings unavailable')),
@@ -267,7 +273,7 @@ describe('CapacityGuard', () => {
       const structuredLog: Pick<import('../../lib/logging/logger').Logger, 'info'> = {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
@@ -319,7 +325,7 @@ describe('CapacityGuard', () => {
   describe('Shortfall clearing with hysteresis', () => {
     it('requires 60s sustained positive headroom to clear shortfall', async () => {
       const events: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
@@ -352,7 +358,7 @@ describe('CapacityGuard', () => {
 
     it('resets timer when headroom drops', async () => {
       const events: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,
@@ -401,7 +407,7 @@ describe('CapacityGuard', () => {
         limitKw: 5,
         structuredLog,
       };
-      const guard = new CapacityGuard(options);
+      const guard = createTestCapacityGuard(options);
 
       guard.reportTotalPower(5.5);
       await guard.checkShortfall(false, 0.5);
@@ -450,7 +456,7 @@ describe('CapacityGuard', () => {
   describe('uses separate shortfall threshold', () => {
     it('uses shortfall threshold provider for detection', async () => {
       const events: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
         limitKw: 5,
         softMarginKw: 0.2,

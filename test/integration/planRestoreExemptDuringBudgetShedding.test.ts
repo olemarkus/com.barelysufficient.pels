@@ -13,6 +13,7 @@
  * stay-off / stay-at-level marking.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import type { PlanContext } from '../../lib/plan/planContext';
@@ -370,7 +371,7 @@ describe('exempt restore lane through the full plan build with the latch held', 
   });
 
   it('admits the exempt device on the capacity axis while shedding stays latched on the budget axis', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
     const tracker = { lastTimestamp: DAY_START_UTC };
     const builder = buildBuilder({ capacityGuard, tracker });
 

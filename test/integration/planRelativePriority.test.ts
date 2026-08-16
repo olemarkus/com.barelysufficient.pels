@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
@@ -29,7 +29,7 @@ describe('PlanBuilder relative priority constraint', () => {
   });
 
   it('keeps producer-resolved ranks consistent through smart-task decoration and materialization', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0 });
     capacityGuard.reportTotalPower(0);
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({

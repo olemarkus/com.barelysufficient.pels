@@ -1,9 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
-import { getLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
-
-const moduleLogger = getLogger('power/capacity-guard');
 import {
   buildNullCapacityStateSummary,
   type PlanCapacityStateSummary,
@@ -26,14 +23,16 @@ export type CapacityGuardOptions = {
   homeId: HomeId;
   limitKw?: number;
   softMarginKw?: number;
-  restoreMarginKw?: number;
-  onSheddingStart?: TriggerCallback;
-  onSheddingEnd?: TriggerCallback;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
   onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
   onShortfallAlertConditionCleared?: ShortfallAlertConditionClearedCallback;
-  structuredLog?: CapacityGuardLogger;
+  /**
+   * Required: both factories always inject the home-attributed `capacity`
+   * logger, so a module-logger default would only ever fire in a test and would
+   * silently drop the `homeId` correlation every incident log depends on.
+   */
+  structuredLog: CapacityGuardLogger;
   capacityStateSummaryProvider?: CapacityStateSummaryProvider;
 };
 
@@ -43,11 +42,13 @@ export type CapacityShortfallAlertCandidate = {
   detectedAtMs: number;
 };
 
-const SHEDDING_CLEAR_HYSTERESIS_KW = 0.2;
-
-export function getSheddingClearThresholdKw(restoreMarginKw: number): number {
-  return restoreMarginKw + SHEDDING_CLEAR_HYSTERESIS_KW;
-}
+/**
+ * Headroom a restore must clear before the shedding latch releases: the restore
+ * margin plus hysteresis, so a plan hovering at the threshold cannot flap the
+ * latch between rebuilds. Both terms are fixed — the restore margin was a
+ * constructor option that neither factory ever supplied, so it was always 0.2.
+ */
+export const SHEDDING_CLEAR_THRESHOLD_KW = 0.4;
 
 /**
  * CapacityGuard - State container for capacity management.
@@ -60,7 +61,6 @@ export default class CapacityGuard {
 
   private limitKw: number;
   private softMarginKw: number;
-  private restoreMarginKw: number;
   private mainPowerKw: number | null = null;
   private shortfallClearStartTime: number | null = null;
 
@@ -69,8 +69,6 @@ export default class CapacityGuard {
   private inShortfall = false;
 
   // Callbacks
-  private onSheddingStart?: TriggerCallback;
-  private onSheddingEnd?: TriggerCallback;
   private onShortfall?: ShortfallCallback;
   private onShortfallCleared?: TriggerCallback;
   private onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
@@ -81,7 +79,7 @@ export default class CapacityGuard {
   private shortfallThresholdProvider?: ShortfallThresholdProvider;
   private capacityStateSummaryProvider: CapacityStateSummaryProvider;
 
-  private structuredLog?: CapacityGuardLogger;
+  private structuredLog: CapacityGuardLogger;
   private homeId: HomeId;
   private incidentId: string | null = null;
   private incidentStartMs = 0;
@@ -92,9 +90,6 @@ export default class CapacityGuard {
     this.limitKw = options.limitKw ?? 10;
     this.softMarginKw = options.softMarginKw ?? 0.2;
     this.structuredLog = options.structuredLog;
-    this.restoreMarginKw = options.restoreMarginKw ?? 0.2;
-    this.onSheddingStart = options.onSheddingStart;
-    this.onSheddingEnd = options.onSheddingEnd;
     this.onShortfall = options.onShortfall;
     this.onShortfallCleared = options.onShortfallCleared;
     this.onShortfallAlertCandidate = options.onShortfallAlertCandidate;
@@ -133,20 +128,6 @@ export default class CapacityGuard {
 
   getLastTotalPower(): number | null {
     return this.mainPowerKw;
-  }
-
-  /**
-   * Clear the last observed total power back to "no sample yet". A per-home
-   * capacity bundle (multi-home R7b) calls this on an in-place meter swap so a
-   * rebuild before the NEW meter's first reading cannot shed/restore on the
-   * PREVIOUS meter's stale load (`headroom()` reports null until the new meter
-   * reports). The main home never invokes it.
-   */
-  resetLastTotalPower(): void {
-    this.mainPowerKw = null;
-    if (this.shortfallHasCandidates === false) {
-      this.onShortfallAlertConditionCleared?.();
-    }
   }
 
   // --- Limit calculations ---
@@ -196,17 +177,9 @@ export default class CapacityGuard {
     return this.limitKw;
   }
 
-  headroom(): number | null {
+  getHeadroom(): number | null {
     if (this.mainPowerKw === null) return null;
     return this.getSoftLimit() - this.mainPowerKw;
-  }
-
-  getHeadroom(): number | null {
-    return this.headroom();
-  }
-
-  getRestoreMargin(): number {
-    return this.restoreMarginKw;
   }
 
   // --- State management (called by Plan) ---
@@ -225,22 +198,22 @@ export default class CapacityGuard {
 
   /**
    * Called by Plan after making shedding decisions.
-   * Updates sheddingActive state and triggers callbacks.
+   *
+   * Asymmetric on purpose: activating always takes, while releasing is refused
+   * unless headroom clears `SHEDDING_CLEAR_THRESHOLD_KW`. A refusal is silent,
+   * so callers that need to know what happened re-read `isSheddingActive()`.
    */
-  async setSheddingActive(active: boolean, clearHeadroomKw?: number | null): Promise<void> {
+  setSheddingActive(active: boolean, clearHeadroomKw?: number | null): void {
     if (active && !this.sheddingActive) {
       this.sheddingActive = true;
-      await this.onSheddingStart?.();
       return;
     }
     if (!active && this.sheddingActive) {
-      const headroom = clearHeadroomKw ?? this.headroom();
-      const clearThreshold = getSheddingClearThresholdKw(this.restoreMarginKw);
-      if (headroom !== null && headroom < clearThreshold) {
+      const headroom = clearHeadroomKw ?? this.getHeadroom();
+      if (headroom !== null && headroom < SHEDDING_CLEAR_THRESHOLD_KW) {
         return;
       }
       this.sheddingActive = false;
-      await this.onSheddingEnd?.();
     }
   }
 
@@ -300,7 +273,7 @@ export default class CapacityGuard {
     const thresholdW = Math.round(this.getShortfallThreshold() * 1000);
     const powerW = Math.round((this.mainPowerKw ?? 0) * 1000);
     const summary = capacityStateSummary ?? this.capacityStateSummaryProvider();
-    (this.structuredLog ?? moduleLogger).info({
+    this.structuredLog.info({
       event: 'hard_cap_shortfall_detected',
       homeId: this.homeId,
       incidentId: this.incidentId,
@@ -328,7 +301,7 @@ export default class CapacityGuard {
     const now = Date.now();
     if (this.shortfallClearStartTime === null) {
       this.shortfallClearStartTime = now;
-      (this.structuredLog ?? moduleLogger).info({
+      this.structuredLog.info({
         event: 'hard_cap_shortfall_recovery_started',
         homeId: this.homeId,
         incidentId: this.incidentId,
@@ -339,7 +312,7 @@ export default class CapacityGuard {
     if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
       const powerW = Math.round((this.mainPowerKw ?? 0) * 1000);
       const thresholdW = Math.round(shortfallThreshold * 1000);
-      (this.structuredLog ?? moduleLogger).info({
+      this.structuredLog.info({
         event: 'hard_cap_shortfall_recovered',
         homeId: this.homeId,
         incidentId: this.incidentId,
@@ -358,7 +331,7 @@ export default class CapacityGuard {
 
   private resetShortfallClearTimer(): void {
     if (this.shortfallClearStartTime !== null) {
-      (this.structuredLog ?? moduleLogger).info({
+      this.structuredLog.info({
         event: 'hard_cap_shortfall_recovery_reset',
         homeId: this.homeId,
         incidentId: this.incidentId,

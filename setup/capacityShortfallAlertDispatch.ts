@@ -358,7 +358,7 @@ const createSustainedLane = (env: AlertLaneEnv): CapacityShortfallAlertDispatch 
       return;
     }
     // `isConditionActive` reads the last power sample the guard ever saw, with
-    // no freshness bound (nothing calls `resetLastTotalPower` in production).
+    // no freshness bound and nothing that ever clears it.
     // A meter that stops reporting would therefore leave the predicate frozen
     // at "breaching" and let wall time alone walk the whole ladder, well before
     // the 10-minute stale-sample escalation notices. A republished candidate is

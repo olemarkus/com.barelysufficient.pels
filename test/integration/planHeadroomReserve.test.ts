@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
@@ -52,7 +52,7 @@ const makeBuilder = (params: {
   reportTotalPower: (kw: number) => void;
   setSoftLimitKw: (kw: number) => void;
 } => {
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0.2 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0.2 });
   capacityGuard.reportTotalPower(params.totalKw);
   // The dynamic soft limit is what the daily-budget lane already moves at runtime, so driving it
   // here is the honest way to put the home under pressure and then take it away again — the

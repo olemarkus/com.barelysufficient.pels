@@ -1,4 +1,5 @@
 import type { Mock } from 'vitest';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanContext } from '../../lib/plan/planContext';
@@ -4245,14 +4246,13 @@ describe('buildSheddingPlan', () => {
   });
 
   it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
-    const guard = new CapacityGuard({
+    const guard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 4,
       softMarginKw: 0,
-      restoreMarginKw: 0.2,
     });
     guard.reportTotalPower(3.65);
-    await guard.setSheddingActive(true);
+    guard.setSheddingActive(true);
 
     const result = await buildSheddingPlan(
       buildContext({
@@ -4323,14 +4323,13 @@ describe('buildSheddingPlan', () => {
   });
 
   it('clears shedding using the active plan headroom even if capacity guard headroom is lower', async () => {
-    const guard = new CapacityGuard({
+    const guard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 4,
       softMarginKw: 0.5,
-      restoreMarginKw: 0.2,
     });
     guard.reportTotalPower(3.65);
-    await guard.setSheddingActive(true);
+    guard.setSheddingActive(true);
 
     const result = await buildSheddingPlan(
       buildContext({
@@ -4359,14 +4358,13 @@ describe('buildSheddingPlan', () => {
   });
 
   it('clears shedding active once headroom clears the restore margin plus hysteresis', async () => {
-    const guard = new CapacityGuard({
+    const guard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 4,
       softMarginKw: 0,
-      restoreMarginKw: 0.2,
     });
     guard.reportTotalPower(3.59);
-    await guard.setSheddingActive(true);
+    guard.setSheddingActive(true);
 
     const result = await buildSheddingPlan(
       buildContext({

@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -102,7 +102,7 @@ describe('PlanBuilder budget exemption handling', () => {
       todayKey,
       plannedKWh: 1.5,
     });
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(3);
 
     const devices: PlanInputDevice[] = [
@@ -190,7 +190,7 @@ describe('PlanBuilder budget exemption handling', () => {
 
   it('uses the producer-resolved gross uncontrolled bucket for plan meta hourly other energy', async () => {
     const currentHourIso = '2026-03-11T10:00:00.000Z';
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
@@ -237,7 +237,7 @@ describe('PlanBuilder budget exemption handling', () => {
   it('uses the planning hour bucket for plan meta hourly energy split', async () => {
     const currentHourIso = '2026-03-11T10:00:00.000Z';
     const lastSampleHourIso = '2026-03-11T09:00:00.000Z';
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({

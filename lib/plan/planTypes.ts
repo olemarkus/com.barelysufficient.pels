@@ -566,8 +566,7 @@ export type DevicePlan = {
    */
   meta: {
     // `null` = no meter reading this cycle: the capacity guard holds `null`
-    // until its meter's first sample, and again after an in-place meter swap
-    // (`resetLastTotalPower`). Required-but-nullable, never absent.
+    // until its meter's first sample. Required-but-nullable, never absent.
     totalKw: number | null;
     softLimitKw: number;
     capacitySoftLimitKw: number;

@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -68,7 +68,7 @@ const buildBuilder = (params: {
   /** Omit to configure every device; `{}` reproduces an unconfigured install. */
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 }): PlanBuilder => {
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
   capacityGuard.reportTotalPower(3);
   return new PlanBuilder({
     setCapacityInShortfall: vi.fn(),

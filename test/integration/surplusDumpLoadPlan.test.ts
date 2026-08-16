@@ -11,6 +11,7 @@
 // seams (capacity guard totals, power tracker, deps, a faked clock) are provided
 // directly.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
@@ -94,7 +95,7 @@ const makeHarness = (params: {
   decorate?: (devices: PlanInputDevice[]) => DeferredDecorationBundle;
 }): Harness => {
   const limitKw = params.limitKw ?? 10;
-  const guard = new CapacityGuard({ homeId: 'main', limitKw, softMarginKw: 0.2 });
+  const guard = createTestCapacityGuard({ homeId: 'main', limitKw, softMarginKw: 0.2 });
   guard.reportTotalPower(params.totalKw);
   const state = createPlanEngineState();
   const builder = new PlanBuilder({

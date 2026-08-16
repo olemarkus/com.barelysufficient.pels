@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -159,7 +160,7 @@ describe('per-axis restore admission through the full plan build', () => {
   });
 
   it('admits the exempt device on the capacity axis while the non-exempt device stays budget-held', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
     const tracker = { lastTimestamp: DAY_START_UTC };
     const builder = buildBuilder({ capacityGuard, tracker });
 

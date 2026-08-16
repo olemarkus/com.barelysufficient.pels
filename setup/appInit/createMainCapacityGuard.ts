@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { getLogger } from '../../lib/logging/logger';
 import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
 import type { AppContext } from '../../lib/app/appContext';
 import { normalizeError } from '../../lib/utils/errorUtils';
@@ -68,7 +69,11 @@ export const createMainCapacityGuard = (params: {
     },
     onShortfallAlertCandidate: shortfallAlertDispatch.onCandidate,
     onShortfallAlertConditionCleared: shortfallAlertDispatch.onConditionCleared,
-    structuredLog: ctx.getStructuredLogger('capacity'),
+    // Resolved here, not defaulted inside the guard: `getStructuredLogger`
+    // answers `undefined` only in the boot window before structured logging is
+    // wired, and classifying that is setup's job. The guard is handed a
+    // definite logger and never branches on whether logging came up.
+    structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
     capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
       ctx.planService?.getLatestPlanSnapshot(),
       {

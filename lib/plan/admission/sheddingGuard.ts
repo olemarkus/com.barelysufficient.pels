@@ -1,5 +1,5 @@
 import type CapacityGuard from '../../power/capacityGuard';
-import { getSheddingClearThresholdKw } from '../../power/capacityGuard';
+import { SHEDDING_CLEAR_THRESHOLD_KW } from '../../power/capacityGuard';
 import type { PlanCapacityStateSummary } from '../../power/capacityStateSummary';
 import type { PlanInputDevice } from '../planTypes';
 import type { PlanContext } from '../planContext';
@@ -179,7 +179,7 @@ export async function updateGuardState(params: {
   const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThreshold);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
-    await capacityGuard?.setSheddingActive(true);
+    capacityGuard?.setSheddingActive(true);
     await handleShortfallCheck({
       capacityGuard,
       remaining: remainingCandidates,
@@ -196,11 +196,10 @@ export async function updateGuardState(params: {
     return { sheddingActive: true };
   }
 
-  const restoreMargin = capacityGuard?.getRestoreMargin() ?? 0.2;
-  const canDisable = headroom >= getSheddingClearThresholdKw(restoreMargin);
+  const canDisable = headroom >= SHEDDING_CLEAR_THRESHOLD_KW;
   const current = capacityGuard?.isSheddingActive() ?? false;
   if (canDisable) {
-    await capacityGuard?.setSheddingActive(false, headroom);
+    capacityGuard?.setSheddingActive(false, headroom);
   }
   await handleShortfallCheck({
     capacityGuard,

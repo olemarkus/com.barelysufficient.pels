@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
@@ -140,7 +141,7 @@ const runShedThenBlockedRestore = async (params: {
   limitKw: number;
   dailyBudget: boolean;
 }) => {
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0 });
   const tracker = { lastTimestamp: DAY_START_UTC };
   const builder = buildBuilder({ capacityGuard, limitKw: params.limitKw, tracker, dailyBudget: params.dailyBudget });
 

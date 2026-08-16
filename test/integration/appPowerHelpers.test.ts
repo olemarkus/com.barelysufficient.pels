@@ -9,6 +9,7 @@ vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
 });
 
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { buildEmptyCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
@@ -67,7 +68,7 @@ const createCapacityGuardMock = (params: {
     softLimitKw = limitKw - marginKw,
     totalPowerKw,
   } = params;
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw, softMarginKw: marginKw });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw, softMarginKw: marginKw });
   capacityGuard.setSoftLimitProvider(() => softLimitKw);
   if (typeof totalPowerKw === 'number') {
     capacityGuard.reportTotalPower(totalPowerKw);
@@ -1428,7 +1429,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('rebuilds convergence samples through the scheduler and preserves shortfall fallback', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1469,7 +1470,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastSoftLimitKw: 9.5,
       backoffUntilMs: Date.now() + 60_000,
     };
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1513,7 +1514,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
     capacityGuard.reportTotalPower(9.3);
@@ -1546,7 +1547,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.0);
     capacityGuard.reportTotalPower(9.3);
@@ -1580,7 +1581,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
     capacityGuard.reportTotalPower(9.3);
@@ -1608,7 +1609,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('rebuilds immediately when the hard-cap threshold is breached below the soft limit', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1724,7 +1725,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('bypasses the stable interval and checks shortfall when the hard-cap threshold is breached', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1787,7 +1788,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     vi.advanceTimersByTime(1000);
     await Promise.resolve();
 
-    const urgentCapacityGuard = new CapacityGuard({
+    const urgentCapacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1820,7 +1821,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('enters shortfall when a tight no-op rebuild leaves the hard cap breached', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1855,7 +1856,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('does not enter shortfall for soft-limit-only no-op rebuilds', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9600, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1889,7 +1890,7 @@ describe('schedulePlanRebuildFromSignal', () => {
 
   it('skips full rebuilds while shortfall is active and no actionable reduction remains', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1935,7 +1936,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   // WITH the unactionable summary must let the skip engage.
   it('suppresses the rebuild storm when overshoot persists but the plan is unactionable', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -1981,7 +1982,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('drives recovery checks during suppression then yields a rebuild at the max interval', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
     const onShortfallCleared = vi.fn();
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
@@ -2051,7 +2052,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastSoftLimitKw: 3.9,
       shortfallSuppressionInvalidated: true,
     };
-    const capacityGuard = new CapacityGuard({
+    const capacityGuard = createTestCapacityGuard({
       homeId: 'main',
       limitKw: 10,
       softMarginKw: 0.5,
