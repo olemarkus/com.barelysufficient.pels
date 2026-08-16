@@ -380,12 +380,12 @@ describe('settingsOverviewReadModel', () => {
     });
     expect(buildSettingsOverviewDeviceReadModel(settled).stateKind).toBe('idle');
   });
-  describe('boost axis on the wire', () => {
-    // The planner holds one boost decision; the two wire flags exist only to
-    // pick the card's boost wording, so the read model resolves WHICH axis from
-    // the device's own identity. The forced case is the one a config-presence
-    // rule gets wrong: a smart-task rescue boosts a device whose owner
-    // configured no threshold at all, and that card must still say so.
+  describe('boost on the wire', () => {
+    // One bit, carried through as the planner decided it. The read model used to
+    // ship two per-axis flags and re-derive WHICH axis was boosting by
+    // presence-sniffing the observer and the config seams — a discrimination the
+    // planner does not make and the snapshot has no way to make correctly. The
+    // card's hover wording is the view's job now (`PlanDeviceCards.tsx`).
     const boosting = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) => buildPlanDevice({
       id: 'dev',
       boostActive: true,
@@ -393,34 +393,26 @@ describe('settingsOverviewReadModel', () => {
       ...overrides,
     });
 
-    it('reads a charger as boosting on state of charge, configured or forced', () => {
+    it('carries the boost decision through for a charger', () => {
       const deps = { getObservedEvChargingState: () => 'plugged_in_charging' as const };
-      const forced = buildSettingsOverviewDeviceReadModel(boosting(), deps);
-      expect(forced.evBoostActive).toBe(true);
-      expect(forced.temperatureBoostActive).toBe(false);
-
-      // A `target_power` charger exposes no plug state; its configured SoC
-      // threshold — read from the settings seam, not off the plan device — is
-      // what identifies the axis.
-      const configured = buildSettingsOverviewDeviceReadModel(boosting(), {
-        getEvBoostConfig: () => ({ enabled: true, boostBelowPercent: 40 }),
-      });
-      expect(configured.evBoostActive).toBe(true);
+      expect(buildSettingsOverviewDeviceReadModel(boosting(), deps).boostActive).toBe(true);
     });
 
-    it('reads anything else as boosting on temperature', () => {
+    it('carries the same bit for a temperature device, with no second answer beside it', () => {
       const device = buildSettingsOverviewDeviceReadModel(boosting({ deviceType: 'temperature' }));
-      expect(device.temperatureBoostActive).toBe(true);
-      expect(device.evBoostActive).toBe(false);
+      expect(device.boostActive).toBe(true);
+      // The retired pair must not come back: a snapshot carrying a per-axis flag
+      // is a snapshot answering a question the plan never asked.
+      expect('evBoostActive' in device).toBe(false);
+      expect('temperatureBoostActive' in device).toBe(false);
     });
 
-    it('reports neither axis when the device is not boosting', () => {
+    it('reports not boosting when the device is not boosting', () => {
       const device = buildSettingsOverviewDeviceReadModel(buildPlanDevice({
         id: 'dev',
         reason: { code: PLAN_REASON_CODES.keep, detail: null },
       }));
-      expect(device.temperatureBoostActive).toBe(false);
-      expect(device.evBoostActive).toBe(false);
+      expect(device.boostActive).toBe(false);
     });
   });
 });

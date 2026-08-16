@@ -192,8 +192,15 @@ export const shouldDisplayExternalOffReason = (
 // ─── Status chip ladder ───────────────────────────────────────────────────────
 
 export const PLAN_CARD_BOOST_CHIP_LABEL = 'Boost';
-export const PLAN_CARD_BOOST_TEMPERATURE_TOOLTIP = 'Temperature boost is active';
-export const PLAN_CARD_BOOST_EV_TOOLTIP = 'EV boost is active';
+// One sentence, naming no kind — because boost has no kind to name. A tank's
+// temperature and a car's battery percentage are the same quantity in different
+// units, so there was never an axis to report; and `boostActive` has two causes
+// (the device's own threshold and a smart-task forced boost), so naming a
+// per-device toggle would be wrong for the forced one — the owner would open the
+// device page and find that toggle switched off. What is true in both cases is
+// what the chip now says: this device is being given priority.
+// Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.
+export const PLAN_CARD_BOOST_TOOLTIP = 'Given priority over other devices';
 // The chip states what the flag actually does — the device is exempt from the
 // daily budget — and matches what the same flag is called on the Devices list
 // and on its own detail toggle. The former "Always on" promised something the
@@ -213,15 +220,14 @@ export type PlanCardChipParams = {
   starvation: SettingsUiPlanDeviceStarvation | undefined;
   // View-resolved: shouldOfferBudgetExemptCardAction && isStarvationRescuable.
   rescueEligible: boolean;
-  temperatureBoostActive: boolean;
-  evBoostActive: boolean;
+  // One boost, no kind — the same bit the planner decides and the wire carries.
+  boostActive: boolean;
   budgetExempt: boolean;
 };
 
 export const resolvePlanCardStatusChip = (params: PlanCardChipParams): PlanCardStatusChip | null => {
   const {
-    displayKind, dryRun, starvation, rescueEligible,
-    temperatureBoostActive, evBoostActive, budgetExempt,
+    displayKind, dryRun, starvation, rescueEligible, boostActive, budgetExempt,
   } = params;
   // No release action in simulation: PELS actuates nothing, so there is
   // nothing to let run — the starvation badge below still explains the state.
@@ -234,14 +240,9 @@ export const resolvePlanCardStatusChip = (params: PlanCardChipParams): PlanCardS
     const badge = formatStarvationBadge(starvation);
     if (badge) return { type: 'status', label: badge.label, tone: badge.tone, tooltip: badge.tooltip };
   }
-  if (temperatureBoostActive) {
+  if (boostActive) {
     return {
-      type: 'status', label: PLAN_CARD_BOOST_CHIP_LABEL, tone: 'ok', tooltip: PLAN_CARD_BOOST_TEMPERATURE_TOOLTIP,
-    };
-  }
-  if (evBoostActive) {
-    return {
-      type: 'status', label: PLAN_CARD_BOOST_CHIP_LABEL, tone: 'ok', tooltip: PLAN_CARD_BOOST_EV_TOOLTIP,
+      type: 'status', label: PLAN_CARD_BOOST_CHIP_LABEL, tone: 'ok', tooltip: PLAN_CARD_BOOST_TOOLTIP,
     };
   }
   if (budgetExempt) {

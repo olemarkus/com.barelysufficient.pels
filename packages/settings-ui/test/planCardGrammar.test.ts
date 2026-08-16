@@ -146,8 +146,7 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
     dryRun: false,
     starvation: undefined,
     rescueEligible: false,
-    temperatureBoostActive: false,
-    evBoostActive: false,
+    boostActive: false,
     budgetExempt: false,
   };
   const heldBackStarved = { isStarved: true, accumulatedMs: 60_000};
@@ -173,15 +172,23 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
 
   it('falls through boost then budget-exempt, one chip max', () => {
     expect(resolvePlanCardStatusChip({
-      ...base, displayKind: 'active', temperatureBoostActive: true, budgetExempt: true,
-    })).toMatchObject({ type: 'status', label: 'Boost' });
-    expect(resolvePlanCardStatusChip({
-      ...base, displayKind: 'active', evBoostActive: true,
+      ...base, displayKind: 'active', boostActive: true, budgetExempt: true,
     })).toMatchObject({ type: 'status', label: 'Boost' });
     expect(resolvePlanCardStatusChip({
       ...base, displayKind: 'active', budgetExempt: true,
     })).toMatchObject({ type: 'status', label: 'Budget exempt' });
     expect(resolvePlanCardStatusChip({ ...base, displayKind: 'active' })).toBeNull();
+  });
+
+  it('names no kind in the boost wording, because boost has none', () => {
+    // The retired pair said `Temperature boost is active` / `EV boost is active`.
+    // Both were wrong for a smart-task forced boost, which has no configured
+    // threshold at all — the owner would have opened the device page and found
+    // that toggle switched off. What is true for every cause is what it says now.
+    const boost = resolvePlanCardStatusChip({ ...base, displayKind: 'active', boostActive: true });
+    expect(boost).toMatchObject({
+      type: 'status', label: 'Boost', tooltip: 'Given priority over other devices',
+    });
   });
 });
 

@@ -200,6 +200,18 @@ absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 | **Unknown** | PELS does not have enough current state to choose a more specific word. |
 
+**Boost names no kind.** The `Boost` chip's hover text is
+`Given priority over other devices`, and it is the only wording there is.
+**Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.**
+Two spellings existed because the wire carried two per-axis flags, and both were
+wrong twice over: a tank's temperature and a car's battery percentage are the
+same quantity in different units, so there is no axis to report; and a boost can
+be forced by a smart task on a device whose owner configured no threshold, so
+naming a per-device toggle sent that owner to a page where the toggle is off.
+The chip says what is true of every boost — this device is being given priority.
+Do not reintroduce a per-kind spelling, and do not let a consumer derive one:
+the plan carries a single `boostActive` and nothing beside it.
+
 **Card grammar (2026-07 legibility pass):** one anatomy for every card —
 title + at most ONE status chip (ladder: `Let it run now` → `Held back` →
 `Boost` → `Budget exempt`; the `Smart task` badge is an

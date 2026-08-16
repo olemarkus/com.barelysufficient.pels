@@ -252,12 +252,32 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   zone?: string;
   budgetExempt?: boolean;
   temperatureBoost?: TemperatureBoostConfig;
-  temperatureBoostActive?: boolean;
+  /**
+   * The device's one boost decision, as the planner made it
+   * (`resolveBoostActive`, `lib/plan/planBoost.ts`). There is no kind behind it
+   * and no per-axis pair on this wire: a tank's temperature and a car's battery
+   * percentage are the same quantity in different units, so "which axis" is not
+   * a question the plan can answer or the snapshot should carry. The card's
+   * hover wording is the view's to choose, from the device facets beside this
+   * field.
+   *
+   * REQUIRED, like `controllable` and `available` beside it and for the same
+   * reason: the producer writes it for every device, so an absent value would be
+   * a third state on the wire for a two-state fact, and every consumer would pay
+   * for it with the same `=== true` collapse.
+   *
+   * Deliberately NOT added to `isPlanDeviceSnapshot`, unlike those two. That
+   * guard rejects the WHOLE snapshot when any single device fails it
+   * (`parsePlanSnapshot` returns `null`), which is the right severity for facts
+   * the UI cannot describe PELS's behaviour without — and far too blunt for a
+   * status chip. A payload missing this should cost one absent chip, not every
+   * device card on the Overview.
+   */
+  boostActive: boolean;
   // True when a surplus-absorb lift is the binding cause of this device's planned target
   // (raised to self-consume solar). Drives the "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
   evBoost?: EvBoostConfig;
-  evBoostActive?: boolean;
   /**
    * The charging state of the CAR associated with this charger (distinct from
    * the charger's own `evChargingState` on `DeviceOverviewSnapshot`). Read by

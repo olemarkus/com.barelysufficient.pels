@@ -352,8 +352,7 @@ export const PlanCardStatusChipView = ({
     starvation: dev.starvation,
     rescueEligible: shouldOfferBudgetExemptCardAction(dev.starvation)
       && isStarvationRescuable(dev.id),
-    temperatureBoostActive: dev.temperatureBoostActive === true,
-    evBoostActive: dev.evBoostActive === true,
+    boostActive: dev.boostActive,
     budgetExempt: dev.budgetExempt === true,
   });
   if (chip === null) return null;

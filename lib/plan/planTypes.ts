@@ -472,11 +472,12 @@ type DevicePlanDeviceBase = {
    * gate, so absence is never a state — it would only ever be a fixture that
    * forgot, read by a consumer as "not boosting".
    *
-   * There are no per-axis twins any more. `temperatureBoostActive` and
-   * `evBoostActive` used to ride here beside it; nothing in the planner could
-   * tell them apart (every decision site read the OR), and the settings UI reads
-   * which VARIANT to render off the device's boost config, not off which axis
-   * fired.
+   * There are no per-axis twins any more, here or on the wire. `temperatureBoostActive`
+   * and `evBoostActive` used to ride beside this bit; nothing in the planner
+   * could tell them apart (every decision site read the OR), and the settings
+   * snapshot could not answer "which axis" correctly either — it guessed from
+   * which observer seams happened to return a value. Naming the axis is a copy
+   * concern, so the view names it, from the device's own facets.
    */
   boostActive: boolean;
   // Producer-resolved: `true` when a surplus-absorb lift is the binding cause of this
