@@ -29,7 +29,7 @@ import { getLogger } from '../logging/logger';
  *
  * The release is deliberately not a hysteresis band on the floor comparison:
  * evidence that the device is idle is a stronger and more honest signal than a
- * margin above a threshold, and it is the one signal both axes share.
+ * margin above a threshold, and it holds whatever the device measures itself in.
  */
 export function resolveBoostActive(dev: PlanInputDevice): boolean {
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;

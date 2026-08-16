@@ -68,7 +68,7 @@ const plannedTargetOf = (device: DevicePlanDevice): number | undefined =>
   (isTemperaturePlanDevice(device) ? device.plannedTarget : undefined);
 
 
-/** The plan device's one boost flag, whatever axis produced it. */
+/** The plan device's one boost flag. There is no second one, and no kind behind it. */
 const boostActiveOf = (device: DevicePlanDevice): boolean => device.boostActive;
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
@@ -159,7 +159,7 @@ describe('buildInitialPlanDevices', () => {
     // stale by the real resolver; it is NOT wired into the boost path (a genuine
     // reintroduction guard isn't constructible here without first re-plumbing
     // freshness into the boost decision). The real guard is the end-state assertion
-    // (`temperatureBoostActive === true` from a finite latched reading) below.
+    // (`boostActive === true` from a finite latched reading) below.
     expect(isDeviceObservationStale({
       lastFreshDataMs: Date.now() - STALE_DEVICE_OBSERVATION_MS - 60_000,
     })).toBe(true);

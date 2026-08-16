@@ -1344,22 +1344,6 @@ program) remain deferred.*
       accidental. Same shape of hole as `evChargingState`, which IS stripped here while
       `ObjectiveDeviceInput` documents it as forwarded — worth resolving together. [P2]
 
-- [ ] **The overview read model guesses which boost axis is active, and gets it wrong.**
-      `resolveBoostAxis` (`lib/plan/settingsOverviewReadModel.ts`) reconstructs
-      `evBoostActive`/`temperatureBoostActive` by presence-sniffing two unrelated seams — "did
-      `getObservedEvChargingState` return something, or is there an `evBoost` config?" — and its
-      `else` arm asserts "temperature" for everything else. A `target_power` charger exposes no
-      plug state, so one force-boosted by the smart-task rescue lane with no configured threshold
-      renders `PLAN_CARD_BOOST_TEMPERATURE_TOOLTIP` on a charger. Chip label and tone are
-      identical, so this is tooltip-only. It is also the last place a consumer answers a semantic
-      question from provenance rather than from a producer-resolved value. The durable fix is now
-      cheap: `resolveBoostLevel` (`lib/device/deviceActionProjection.ts`) already picks between
-      the state-of-charge source and the temperature source and discards which one won — return it
-      on the `measured` arm, carry it as one `boostAxis` field beside `boostSupported`/
-      `boostRequested`, and let the read model map instead of re-derive. That would also let the
-      two per-axis booleans leave `packages/contracts/src/settingsUiApi.ts`. Found 2026-08-16 by
-      three independent review lenses on the boost-consolidation branch. [P2]
-
 - [ ] **`objectiveKind` / `objectiveSessionInactive` are write-only on both plan types.**
       Resolved by `resolvePlanObjective` (`setup/appInit/toPlanDevice.ts`), forwarded through
       `producerResolvedDecisionFields` (`lib/plan/planDevicesBase.ts`), declared on both

@@ -71,8 +71,8 @@ describe('resolveBoostActive', () => {
     // A boost is a claim on other devices' power — it escalates past the
     // fairness invariant and lets a swap pause a running lower-priority device.
     // A water heater holding at its element setpoint cannot spend what it
-    // claims, so the claim goes back. One rule, both axes, every consumer: the
-    // restore path no longer asks this question a second time for itself.
+    // claims, so the claim goes back. One rule, every consumer: the restore
+    // path no longer asks this question a second time for itself.
     expect(resolveBoostActive(device({
       boostSupported: true,
       boostRequested: true,

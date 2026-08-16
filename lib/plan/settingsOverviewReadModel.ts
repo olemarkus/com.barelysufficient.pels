@@ -160,19 +160,6 @@ function resolveOverviewTemperatureFacet(
 }
 
 /**
- * Which boost the card should describe. The planner holds ONE boost decision
- * (`boostActive`) — it cannot tell a state-of-charge boost from a temperature
- * one, and has no business doing so — but the wire still carries two flags to
- * pick the card's boost wording, so the AXIS is resolved here from what owns it:
- * the observer's charger identity, plus a configured SoC threshold for a
- * `target_power` charger that exposes no plug state. A boosting device that is
- * neither boosts on temperature; nothing else can be boost-supported at all.
- *
- * Reading the axis off the boost CONFIG instead would be wrong for the case that
- * matters most: a smart-task rescue forces boost on a device whose owner
- * configured no threshold, and that card must still say what it is doing.
- */
-/**
  * The card's battery level, projected to the one property the wire type declares
  * rather than passed whole: the observation layer's session/invalidation
  * bookkeeping is its own business, and `level` is the producer's complete answer
@@ -184,16 +171,6 @@ function resolveOverviewStateOfCharge(
 ): { level: DeviceStateOfChargeSnapshot['level'] } | undefined {
   const stateOfCharge = deps.getObservedStateOfCharge?.(deviceId);
   return stateOfCharge ? { level: stateOfCharge.level } : undefined;
-}
-
-function resolveBoostAxis(
-  device: DevicePlan['devices'][number],
-  deps: SettingsOverviewReadModelDeps,
-): { evBoostActive: boolean; temperatureBoostActive: boolean } {
-  if (!device.boostActive) return { evBoostActive: false, temperatureBoostActive: false };
-  const onStateOfCharge = deps.getObservedEvChargingState?.(device.id) !== undefined
-    || deps.getEvBoostConfig?.(device.id) !== undefined;
-  return { evBoostActive: onStateOfCharge, temperatureBoostActive: !onStateOfCharge };
 }
 
 export function buildSettingsOverviewDeviceReadModel(
@@ -244,7 +221,11 @@ export function buildSettingsOverviewDeviceReadModel(
     temperatureBoost: deps.getTemperatureBoostConfig?.(device.id),
     surplusAbsorbActive: device.surplusAbsorbActive,
     evBoost: deps.getEvBoostConfig?.(device.id),
-    ...resolveBoostAxis(device, deps),
+    // One boost bit, carried through as the planner decided it. The read model
+    // used to re-derive WHICH axis was boosting by presence-sniffing two
+    // unrelated seams; the card's wording is the view's job, and the axis was
+    // never the plan's to know.
+    boostActive: device.boostActive,
     // Projected to the one property the wire type declares rather than passed
     // whole: the observation layer's session/invalidation bookkeeping is its own
     // business, and `level` is the producer's complete answer to whether this
