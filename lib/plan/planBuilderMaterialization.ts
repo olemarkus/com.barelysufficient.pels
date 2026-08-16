@@ -35,7 +35,6 @@ import {
 } from './planReasons';
 import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
-import { isCapacityBreached } from './planRemainingSheddableLoad';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildCeilingShortfallInputs } from './planReasonShortfall';
 import { buildSwapState } from './swap/state';
@@ -187,14 +186,19 @@ export class PlanMaterializationStages {
       shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
       ...holds,
       softLimitSource: context.softLimitSource,
-      capacityBreached: isCapacityBreached(context.total, context.capacitySoftLimit),
+      // Measured-only: a synthesized headroom must not produce a user-visible
+      // breach reason. This used to read the RAW total, which survives a meter
+      // dropout, so a stale cached figure could claim a breach PELS could not
+      // observe. Shedding is unaffected — a fail-closed meter still forces -1.
+      capacityBreached: context.powerIsMeasured
+        && !context.powerMeasuredAtOrBelowKw(context.capacitySoftLimit),
       budgetReleasableHeadroomHold: context.budgetReleasableHeadroomHold,
       // The hold lane's post-pass axes — `applyHoldPlan` always supplies a
       // ledger on this path, so `ledgerAxes` is only null for scalar-only
       // direct callers (tests), which simply get no per-cycle shortfall rather
       // than a silently different availability basis.
       //
-      // Gated on a trustworthy total (`planningTotalKw`, resolved once by the
+      // Gated on a measurement (`powerIsMeasured`, resolved once by the
       // producer): whenever there is none the context synthesizes the headroom
       // (stale_hold → 0, stale_fail_closed → −1, and a fresh tracker with a null
       // total — e.g. right after an in-place meter swap — also synthesizes 0),
@@ -202,7 +206,7 @@ export class PlanMaterializationStages {
       // the real recourse is a fresh meter reading, not freed power. No new
       // numbers while unknown; holds keep whatever the last known cycle
       // attached.
-      admissionInputs: holdResult.ledgerAxes && context.planningTotalKw !== null
+      admissionInputs: holdResult.ledgerAxes && context.powerIsMeasured
         ? buildCeilingShortfallInputs({
           ledgerAxes: holdResult.ledgerAxes,
           headroomReserves: restoreResult.headroomReserves,

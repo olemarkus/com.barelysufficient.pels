@@ -12,6 +12,7 @@
  * capacity axis in exactly that regime; non-exempt devices keep the ordinary
  * stay-off / stay-at-level marking.
  */
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../../lib/plan/restore';
@@ -24,6 +25,10 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -40,8 +45,7 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   headroom: -0.8,
   restoreMarginPlanning: 0.2,
   currentHourPriceLevel: { cheap: false, expensive: false },
-  planningTotalKw: 2,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   ...overrides,
 } as PlanContext);
 

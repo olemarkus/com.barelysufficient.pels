@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanContext } from '../../lib/plan/planContext';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -32,6 +33,10 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
+
 // `binaryControl` moved off `DevicePlanDevice`'s base onto the orthogonal
 // `BinaryControlKind` cluster, so the shared `buildPlanDevice`/`steppedPlanDevice`
 // param shapes no longer accept it. These thin wrappers split the cluster off the
@@ -62,11 +67,7 @@ const buildBinarySteppedPlanDevice = (
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
   desiredForMode: {},
-  total: 0,
-  planningTotalKw: 0,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   softLimit: 0,
   capacitySoftLimit: 0,
   dailySoftLimit: null,
@@ -2597,9 +2598,6 @@ describe('restore admission — headroom and penalty gates', () => {
   const freshBatchContext = (headroomKw: number): PlanContext => buildContext({
     headroomRaw: headroomKw,
     headroom: headroomKw,
-    hasLivePowerSample: true,
-    powerSampleAgeMs: 1_000,
-    powerFreshnessState: 'fresh',
   } as Partial<PlanContext>);
 
   const freshBatchDeps = (now: number) => ({
@@ -2730,10 +2728,7 @@ describe('restore admission — headroom and penalty gates', () => {
       context: buildContext({
         headroomRaw: 5,
         headroom: 5,
-        planningTotalKw: null,
-        hasLivePowerSample: false,
-        powerSampleAgeMs: 61_000,
-        powerFreshnessState: 'stale_hold',
+        ...planContextPower(null),
       } as Partial<PlanContext>),
       state,
       sheddingActive: false,
@@ -4248,7 +4243,7 @@ describe('stepped-load shed invariant', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.975, headroom: 1.975, powerFreshnessState: 'fresh' }),
+      context: buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4293,7 +4288,7 @@ describe('stepped-load shed invariant', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.975, headroom: 1.975, powerFreshnessState: 'fresh' }),
+      context: buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4338,7 +4333,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 0, expectedPowerKw: 0.1,
         }),
       ],
-      context: buildContext({ headroomRaw: 1, headroom: 1, powerFreshnessState: 'fresh' }),
+      context: buildContext({ headroomRaw: 1, headroom: 1 }),
       state,
       sheddingActive: false,
       deps: {

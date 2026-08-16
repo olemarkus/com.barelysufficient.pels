@@ -49,6 +49,17 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   design needs an exemption clause written into an AGENTS.md or a note, that is evidence to
   redesign it, not permission to write the clause. See
   `notes/deferred-load-objectives/preemptive-power-reservation.md`.
+- **The planner trusts power data and holds no concept of staleness.** `lib/power`
+  owns the meter, so it decides what a doubtful reading means and answers in kW:
+  `PlanContext` carries `headroomForLimitKw`, `powerIsMeasured`, and
+  `powerMeasuredAtOrBelowKw` — no total, no freshness label, nothing to
+  discriminate. `PowerFreshnessState` must not be importable from `lib/plan`. This
+  is the twin of `observationStale` being off the plan kinds, and it exists
+  because four control paths had each re-derived "is power observable" from a
+  freshness label, disagreeing with the producer's own answer. Display facts
+  (`powerFreshnessState`, the raw total) travel BESIDE the context to the meta
+  writer, never on it — a field a builder can reach is a field a builder will
+  branch on. Owner ruling 2026-08-16; `notes/safe-pace-two-constraints.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
 - **The planner does not import the executor.** Setup composes planner and executor behind the
   `PlanEngine` behavior contract, while shared result shapes live in `lib/planContract/`.

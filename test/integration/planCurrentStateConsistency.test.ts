@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanContext } from '../../lib/plan/planContext';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
@@ -14,6 +15,10 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanMeta } from '../utils/planTestUtils';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 const buildLiveDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
@@ -51,11 +56,7 @@ const buildPlan = (
 const buildContext = (device: PlanInputDevice): PlanContext => ({
   devices: [device],
   desiredForMode: {},
-  total: 5,
-  planningTotalKw: 5,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 4,
   capacitySoftLimit: 4,

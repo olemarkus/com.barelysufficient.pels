@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -33,11 +34,7 @@ const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
   desiredForMode: {},
-  total: 1.25,
-  planningTotalKw: 1.25,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh' as const,
+  ...planContextPower(1.25),
   hourBucketKey: '2025-01-01T00',
   softLimit: 5,
   capacitySoftLimit: 5,
@@ -137,7 +134,7 @@ describe('P1 bug proofs', () => {
       headroom: -0.05,
       overshootActionable: true,
       capacitySoftLimit: 5,
-      planningTotalKw: 5.05,
+      measuredTotalKw: 5.05,
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
@@ -147,7 +144,7 @@ describe('P1 bug proofs', () => {
       headroom: 0.21,
       overshootActionable: false,
       capacitySoftLimit: 5,
-      planningTotalKw: 4.79,
+      measuredTotalKw: 4.79,
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
@@ -157,7 +154,7 @@ describe('P1 bug proofs', () => {
       headroom: -0.05,
       overshootActionable: true,
       capacitySoftLimit: 5,
-      planningTotalKw: 5.05,
+      measuredTotalKw: 5.05,
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
@@ -182,7 +179,7 @@ describe('P1 bug proofs', () => {
       headroom: -1,
       overshootActionable: true,
       capacitySoftLimit: 5,
-      planningTotalKw: 6,
+      measuredTotalKw: 6,
       devices: [
         withBinaryDiscriminant({
           available: true,

@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -6,6 +7,10 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 // Regression coverage for the shed-candidacy writability gate.
 //
@@ -20,11 +25,7 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext => ({
   devices,
   desiredForMode: {},
-  total: 6,
-  planningTotalKw: 6,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   softLimit: 4,
   capacitySoftLimit: 4,
   dailySoftLimit: null,

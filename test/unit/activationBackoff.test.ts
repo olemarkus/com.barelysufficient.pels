@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { type HeadroomCardDeviceLike, withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
@@ -35,14 +36,14 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import { buildDeviceDiagnosticsRecorderStub } from '../mocks/deviceDiagnosticsRecorder';
 
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
+
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
   desiredForMode: {},
-  total: 0,
-  planningTotalKw: 0,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   softLimit: 0,
   capacitySoftLimit: 0,
   dailySoftLimit: null,

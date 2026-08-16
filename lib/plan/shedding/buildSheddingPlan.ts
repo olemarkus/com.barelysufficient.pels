@@ -1,8 +1,7 @@
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanEngineState } from '../planState';
-import type { PlanContext } from '../planContext';
+import { resolveMeasuredTotalKw, type PlanContext } from '../planContext';
 
-import { isCapacityBreached } from '../planRemainingSheddableLoad';
 import { updateGuardState } from '../admission';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
@@ -44,7 +43,7 @@ export async function buildSheddingPlan(
   const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
-    planningTotalKw: context.planningTotalKw,
+    measuredTotalKw: resolveMeasuredTotalKw(context),
     overshootActionable: sheddingActionable,
     capacitySoftLimit: context.capacitySoftLimit,
     devices: context.devices,
@@ -104,14 +103,17 @@ function planShedding(
     measurementPowerW,
     neededKw: needed,
     nowTs,
-    allowEscalation: isCapacityBreached(context.planningTotalKw, context.capacitySoftLimit),
+    // Measured-only, as before: `isCapacityBreached` was fed the trustworthy
+    // total, so an unmeasured cycle never escalated.
+    allowEscalation: context.powerIsMeasured
+      && !context.powerMeasuredAtOrBelowKw(context.capacitySoftLimit),
   });
 
   const candidateParams: ShedCandidateParams = {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
     limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
-    total: context.planningTotalKw,
+    total: resolveMeasuredTotalKw(context),
     capacitySoftLimit: context.capacitySoftLimit,
     state,
     deps,

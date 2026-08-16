@@ -30,8 +30,11 @@ const evDevice = (): PlanDevice => ({
   currentOn: false,
 } as unknown as PlanDevice);
 
+// The gate is now "did this cycle measure", not which stale state it was in —
+// the planner is not told the difference. The parameterised cases below still
+// name each freshness state, because that is what produces each answer.
 const contextWithFreshness = (powerFreshnessState: PowerFreshnessState): PlanContext =>
-  ({ powerFreshnessState } as unknown as PlanContext);
+  ({ powerIsMeasured: powerFreshnessState === 'fresh' } as unknown as PlanContext);
 
 describe('attachDeferredReleaseIntents — power freshness gate', () => {
   it('attaches a binary_restore intent when the power sample is fresh', () => {

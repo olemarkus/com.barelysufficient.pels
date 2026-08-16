@@ -24,6 +24,7 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import type { PowerCycleDisplay } from '../power/powerCycleReading';
 import { buildPlanCapacityStateSummary } from './planLogging';
 import { splitControlledUsageKw } from './planUsage';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -59,6 +60,7 @@ export class OvershootTracker {
 
   public updateOvershootState(params: {
     context: PlanContext;
+    power: PowerCycleDisplay;
     capacityGuard: CapacityGuard | undefined;
     capacityLimitKw: number;
     powerTracker: PowerTrackerState;
@@ -69,6 +71,7 @@ export class OvershootTracker {
   }): void {
     const {
       context,
+      power,
       capacityGuard,
       capacityLimitKw,
       powerTracker,
@@ -92,7 +95,7 @@ export class OvershootTracker {
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
       const overshootDiagnostics = buildOvershootEntryDiagnostics({
-        context,
+        measuredTotalKw: context.powerIsMeasured ? power.totalKw : null,
         nowTs,
         lastPowerUpdateMs,
         previousTotalKw: this.state.lastPlanTotalKw,
@@ -105,18 +108,18 @@ export class OvershootTracker {
         reasonCode: 'active_overshoot',
         headroomKw: context.headroom,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, capacityGuard, capacityLimitKw),
+        ...buildPlanContextHeadroomLogFields(context, power, capacityGuard, capacityLimitKw),
         // Supplies exactly the meta the summary reads. It used to pass
         // `headroomKw` (never read) while omitting the managed/background
         // split (always read), so this log's `controlledPowerW` /
         // `uncontrolledPowerW` were null on every overshoot entry.
         ...buildPlanCapacityStateSummary({
           meta: {
-            totalKw: context.total,
+            totalKw: power.totalKw,
             softLimitKw: context.softLimit,
             capacitySoftLimitKw: context.capacitySoftLimit,
             softLimitSource: context.softLimitSource,
-            ...splitControlledUsageKw({ devices: planDevices, totalKw: context.total }),
+            ...splitControlledUsageKw({ devices: planDevices, totalKw: power.totalKw }),
           },
           devices: planDevices,
         }),
@@ -141,21 +144,21 @@ export class OvershootTracker {
         reasonCode: 'overshoot_cleared',
         durationMs,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, capacityGuard, capacityLimitKw),
+        ...buildPlanContextHeadroomLogFields(context, power, capacityGuard, capacityLimitKw),
       });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = nowTs;
     }
-    this.rememberPlanSnapshot(context, trackedPlanDevicesById, nowTs);
+    this.rememberPlanSnapshot(power, trackedPlanDevicesById, nowTs);
     this.state.wasOvershoot = overshootActive;
   }
 
   private rememberPlanSnapshot(
-    context: PlanContext,
+    power: PowerCycleDisplay,
     trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>,
     nowTs: number,
   ): void {
-    this.state.lastPlanTotalKw = context.total;
+    this.state.lastPlanTotalKw = power.totalKw;
     this.state.lastPlanBuiltAtMs = nowTs;
     this.state.lastPlanDevicesById = trackedPlanDevicesById;
   }
@@ -286,7 +289,12 @@ type OvershootEntryDiagnostics = {
 };
 
 function buildOvershootEntryDiagnostics(params: {
-  context: PlanContext;
+  /**
+   * The total this cycle MEASURED, or `null` when the producer synthesized the
+   * headroom instead. It replaces a raw total plus a separate freshness check:
+   * a stale cached total could otherwise be diffed into a confident cause.
+   */
+  measuredTotalKw: number | null;
   nowTs: number;
   lastPowerUpdateMs: number | null;
   previousTotalKw: number | null;
@@ -295,7 +303,7 @@ function buildOvershootEntryDiagnostics(params: {
   currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
 }): OvershootEntryDiagnostics {
   const {
-    context,
+    measuredTotalKw,
     nowTs,
     lastPowerUpdateMs,
     previousTotalKw,
@@ -314,12 +322,12 @@ function buildOvershootEntryDiagnostics(params: {
     .filter((contributor) => !contributor.controllable)
     .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
   const totalDeltaKw = (
-    typeof context.total === 'number'
+    typeof measuredTotalKw === 'number'
     && typeof previousTotalKw === 'number'
-    && Number.isFinite(context.total)
+    && Number.isFinite(measuredTotalKw)
     && Number.isFinite(previousTotalKw)
   )
-    ? roundOvershootKw(context.total - previousTotalKw)
+    ? roundOvershootKw(measuredTotalKw - previousTotalKw)
     : null;
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
@@ -331,7 +339,6 @@ function buildOvershootEntryDiagnostics(params: {
     // FRESH and COMPLETE this cycle. Any uncertainty collapses to one honest
     // `attribution_inputs_incomplete` reason rather than a confident-but-wrong cause.
     attributionInputsComplete: areAttributionInputsComplete({
-      powerFreshnessState: context.powerFreshnessState,
       totalDeltaKw,
       currentDevicesById,
       previousDevicesById,
@@ -393,26 +400,25 @@ function resolveOvershootAttributionReason(params: {
 
 // The SINGLE completeness gate behind a confident attribution verdict. Returns true
 // only when every confident-cause precondition holds:
-//  (a) the power sample is FRESH — verified via the freshness state, not merely that
-//      totals are finite, so a stale cached total under `stale_fail_closed` (which
-//      forces an actionable overshoot off an old `getLastTotalPower()`) never yields a
-//      confident delta;
-//  (b) a finite, diffable total delta exists (a fresh sample with a missing previous
-//      total cannot be diffed); AND
-//  (c) every tracked device that could PLAUSIBLY have carried the rise — controllable
+//  (a) a finite, diffable total delta exists. This used to be TWO clauses — an
+//      explicit freshness check plus a diffability check — because the delta was
+//      taken from the RAW total, which survives a dropout and could be diffed
+//      into a confident-but-wrong cause. The delta is now built from the
+//      producer's MEASURED total (`null` whenever it synthesized the headroom
+//      instead), so an unmeasured cycle cannot produce a delta and the freshness
+//      clause has nothing left to add; AND
+//  (b) every tracked device that could PLAUSIBLY have carried the rise — controllable
 //      OR uncontrolled, with a current reading above the attribution epsilon — was
 //      diffable (both current and previous power resolvable).
-// (a)+(b) guard the stale-total / missing-sample cases; (c) guards the undiffable
+// (a) guards the stale-total / missing-sample cases; (b) guards the undiffable
 // managed-or-uncontrolled device and the zero-current newcomer (whose 0/off current
 // read could not have caused the rise, so its undiffability is harmless).
 function areAttributionInputsComplete(params: {
-  powerFreshnessState: PlanContext['powerFreshnessState'];
   totalDeltaKw: number | null;
   currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
   previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
 }): boolean {
-  const { powerFreshnessState, totalDeltaKw, currentDevicesById, previousDevicesById } = params;
-  if (powerFreshnessState !== 'fresh') return false;
+  const { totalDeltaKw, currentDevicesById, previousDevicesById } = params;
   if (totalDeltaKw === null) return false;
   return !hasUndiffablePlausibleContributor(currentDevicesById, previousDevicesById);
 }

@@ -14,7 +14,7 @@ export function buildRestoreBatchState(params: {
     && !timing.inRestoreCooldown
     && !timing.inStartupStabilization
     && !timing.activeOvershoot
-    && context.powerFreshnessState === 'fresh';
+    && context.powerIsMeasured;
   return {
     enabled,
     maxDevices: RESTORE_BATCH_MAX_DEVICES,

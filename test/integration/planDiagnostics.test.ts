@@ -1,3 +1,4 @@
+import { planContextPower } from '../utils/planContextPowerFixture';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
 import {
   isDeviceObservationStale,
@@ -28,16 +29,14 @@ const buildContext = (
   device: PlanInputDevice,
   desiredForMode: Record<string, number> = {},
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
-  powerFreshnessState: PlanContext['powerFreshnessState'] = 'fresh',
+  // What the meter read, or `null` for a cycle with no measurement. The power
+  // answers follow from it (`planContextPower`), as they do in production.
+  fixtureTotalKw: number | null = 4,
   currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = { cheap: false, expensive: false },
 ): PlanContext => ({
   devices: [device],
   desiredForMode,
-  total: 4,
-  planningTotalKw: powerFreshnessState === 'fresh' ? 4 : null,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState,
+  ...planContextPower(fixtureTotalKw),
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
@@ -46,7 +45,7 @@ const buildContext = (
   softLimitSource,
   // Mirrors the producer resolution in `buildPlanContext`: daily binding + fresh
   // power + no capacity breach (total 4 < capacitySoftLimit 5 in this fixture).
-  budgetReleasableHeadroomHold: softLimitSource === 'daily' && powerFreshnessState === 'fresh',
+  budgetReleasableHeadroomHold: softLimitSource === 'daily' && fixtureTotalKw !== null,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',
@@ -112,7 +111,7 @@ const buildObservation = (params: {
   restoreResult?: Partial<RestorePlanResult>;
   desiredForMode?: Record<string, number>;
   softLimitSource?: PlanContext['softLimitSource'];
-  powerFreshnessState?: PlanContext['powerFreshnessState'];
+  fixtureTotalKw?: number | null;
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
@@ -124,7 +123,7 @@ const buildObservation = (params: {
     buildPlanInputDevice(params.inputDevice),
     params.desiredForMode,
     params.softLimitSource,
-    params.powerFreshnessState,
+    params.fixtureTotalKw,
     params.currentHourPriceLevel,
   ),
   getObservationStale: params.getObservationStale ?? (() => false),
@@ -961,7 +960,8 @@ describe('plan diagnostics observations', () => {
       },
       desiredForMode: { 'heater-1': 21 },
       softLimitSource: 'daily',
-      powerFreshnessState: 'stale_hold',
+      // No measurement this cycle — the hold exists regardless of the budget.
+      fixtureTotalKw: null,
     });
 
     expect(observation).toMatchObject({

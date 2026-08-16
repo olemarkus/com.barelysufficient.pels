@@ -7,9 +7,9 @@
  */
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
+import type { PowerCycleDisplay } from '../power/powerCycleReading';
 import type { DevicePlan, DevicePlanDevice } from './planTypes';
 import type { PlanContext } from './planContext';
-import type { Logger as PinoLogger } from '../logging/logger';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKw } from './planUsage';
 import {
@@ -30,6 +30,13 @@ export function buildPlanMeta(params: {
   context: PlanContext;
   planDevices: DevicePlanDevice[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  /**
+   * The producer's display facts for this cycle. They arrive ALONGSIDE the
+   * context rather than on it, so a planner stage cannot reach a freshness
+   * label: everything here is written outward onto the snapshot and never read
+   * back as a control input.
+   */
+  power: PowerCycleDisplay;
   powerTracker: PowerTrackerState;
   capacityGuard: CapacityGuard | undefined;
   capacityLimitKw: number;
@@ -39,6 +46,7 @@ export function buildPlanMeta(params: {
     context,
     planDevices,
     dailyBudgetSnapshot,
+    power,
     powerTracker,
     capacityGuard,
     capacityLimitKw,
@@ -46,13 +54,13 @@ export function buildPlanMeta(params: {
   } = params;
   const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
     devices: planDevices,
-    totalKw: context.total,
+    totalKw: power.totalKw,
   });
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
-  const shortfallMeta = buildShortfallMeta(capacityGuard, context.total, capacityLimitKw);
+  const shortfallMeta = buildShortfallMeta(capacityGuard, power.totalKw, capacityLimitKw);
   return {
-    totalKw: context.total,
+    totalKw: power.totalKw,
     softLimitKw: context.softLimit,
     capacitySoftLimitKw: context.capacitySoftLimit,
     dailySoftLimitKw: context.dailySoftLimit,
@@ -63,10 +71,10 @@ export function buildPlanMeta(params: {
     // The measured whole-home draw, or `null` when this cycle had none. The
     // single resolved figure every status/display consumer reads — it replaced
     // a `powerKnown` boolean that each of them recombined with a raw total.
-    powerNowKw: context.planningTotalKw,
-    hasLivePowerSample: context.hasLivePowerSample,
-    powerSampleAgeMs: context.powerSampleAgeMs,
-    powerFreshnessState: context.powerFreshnessState,
+    powerNowKw: context.powerIsMeasured ? power.totalKw : null,
+    hasLivePowerSample: power.freshnessState === 'fresh',
+    powerSampleAgeMs: power.powerSampleAgeMs,
+    powerFreshnessState: power.freshnessState,
     ...shortfallMeta,
     hourlyBudgetExhausted,
     usedKWh: context.usedKWh,
@@ -89,56 +97,6 @@ export function buildPlanMeta(params: {
       ? powerTracker.lastTimestamp
       : undefined,
   };
-}
-
-export function emitPowerFreshnessTransitionLogs(
-  structuredLog: PinoLogger | undefined,
-  previousState: PlanContext['powerFreshnessState'] | null,
-  currentState: PlanContext['powerFreshnessState'],
-  context: PlanContext,
-): void {
-  emitStaleHoldTransitionLogs(structuredLog, previousState, currentState, context);
-  emitFailClosedTransitionLogs(structuredLog, previousState, currentState, context);
-}
-
-function emitStaleHoldTransitionLogs(
-  structuredLog: PinoLogger | undefined,
-  previousState: PlanContext['powerFreshnessState'] | null,
-  currentState: PlanContext['powerFreshnessState'],
-  context: PlanContext,
-): void {
-  if (previousState !== 'stale_hold' && currentState === 'stale_hold') {
-    structuredLog?.warn?.({
-      event: 'power_sample_stale_hold_entered',
-      powerSampleAgeMs: context.powerSampleAgeMs,
-      syntheticHeadroomKw: context.headroomRaw,
-    });
-  } else if (previousState === 'stale_hold' && currentState !== 'stale_hold') {
-    structuredLog?.info?.({
-      event: 'power_sample_stale_hold_cleared',
-      powerSampleAgeMs: context.powerSampleAgeMs,
-    });
-  }
-}
-
-function emitFailClosedTransitionLogs(
-  structuredLog: PinoLogger | undefined,
-  previousState: PlanContext['powerFreshnessState'] | null,
-  currentState: PlanContext['powerFreshnessState'],
-  context: PlanContext,
-): void {
-  if (previousState !== 'stale_fail_closed' && currentState === 'stale_fail_closed') {
-    structuredLog?.warn?.({
-      event: 'power_sample_stale_fail_closed_entered',
-      powerSampleAgeMs: context.powerSampleAgeMs,
-      syntheticHeadroomKw: -1,
-    });
-  } else if (previousState === 'stale_fail_closed' && currentState !== 'stale_fail_closed') {
-    structuredLog?.info?.({
-      event: 'power_sample_stale_fail_closed_cleared',
-      powerSampleAgeMs: context.powerSampleAgeMs,
-    });
-  }
 }
 
 function buildShortfallMeta(
@@ -165,28 +123,29 @@ function buildShortfallMeta(
 
 export function buildPlanContextHeadroomLogFields(
   context: PlanContext,
+  power: PowerCycleDisplay,
   capacityGuard: CapacityGuard | undefined,
   hardCapLimitKw: number,
 ): Record<string, number | boolean | string | null> {
   const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
   const shortfallBudgetHeadroomKw
-    = typeof context.total === 'number' && typeof shortfallBudgetThresholdKw === 'number'
-      ? shortfallBudgetThresholdKw - context.total
+    = typeof power.totalKw === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+      ? shortfallBudgetThresholdKw - power.totalKw
       : null;
-  const hardCapHeadroomKw = typeof context.total === 'number'
-    ? hardCapLimitKw - context.total
+  const hardCapHeadroomKw = typeof power.totalKw === 'number'
+    ? hardCapLimitKw - power.totalKw
     : null;
   return {
-    totalKw: context.total,
+    totalKw: power.totalKw,
     softLimitKw: context.softLimit,
     softHeadroomKw: context.headroom,
     // The measured whole-home draw, or `null` when this cycle had none. The
     // single resolved figure every status/display consumer reads — it replaced
     // a `powerKnown` boolean that each of them recombined with a raw total.
-    powerNowKw: context.planningTotalKw,
-    hasLivePowerSample: context.hasLivePowerSample,
-    powerSampleAgeMs: context.powerSampleAgeMs,
-    powerFreshnessState: context.powerFreshnessState,
+    powerNowKw: context.powerIsMeasured ? power.totalKw : null,
+    hasLivePowerSample: power.freshnessState === 'fresh',
+    powerSampleAgeMs: power.powerSampleAgeMs,
+    powerFreshnessState: power.freshnessState,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
     shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,

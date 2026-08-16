@@ -2007,7 +2007,11 @@ program) remain deferred.*
       `POWER_SAMPLE_STALE_THRESHOLD_MS` because `isConditionActive` reads the last sample the
       guard ever saw with no freshness bound — consumer-side resolution the next consumer will
       have to copy. Expose a freshness-resolved predicate (e.g. `isConditionEvidencedAt(nowMs)`)
-      on the guard and delete the lane-local branch. Source: 2026-08-02 release review,
+      on the guard and delete the lane-local branch. **Now has a real owner:** the
+      2026-08-16 planner-trusts-power change moved freshness resolution into `lib/power`
+      (`sampleFreshness.ts` + `powerCycleReading.ts`), so the predicate belongs beside it rather
+      than being re-derived a third time — `setup/homeSampledMeterIdentity.ts` hand-mirrors the
+      same age math for a fourth. Source: 2026-08-02 release review,
       pels-layering-guardian. [P2]
 - [ ] **Decide the limit-lower-priority pairing story: the runtime honours limit-only, the
       surfaces claim it is inert.** `lib/objectives/deferredObjectives/admission.ts:96` engages
@@ -3977,6 +3981,23 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       Source: prod log review 2026-08-06. [P3]
 
 ## P3 Future and Exploratory Work
+
+- [ ] **App tests model stale-hold as an ABSENT sample timestamp, which the build gate made
+      unreachable.** `createApp` seeds a measurement onto the capacity guard only, deliberately
+      leaving `powerTracker.lastTimestamp` untouched so a suite's own headroom expectations are not
+      rewritten. Production stamps both together (`recordPowerSampleForApp` takes the tracker and
+      the guard), so the harness sits in a state real ingest cannot produce: a total present on a
+      home that has never sampled, which resolves to `stale_hold`. Since
+      `setup/powerMeasurementGate.ts`, a genuinely never-sampled home builds no plan at all, so the
+      real stale-hold is *total present, timestamp OLD* — and tests like `plan.test.ts` "marks off
+      devices as shed with stale-hold fallback headroom when no power sample is available" assert
+      through a door production no longer has. Re-express them with an aged timestamp and stamp
+      both in the seed. Measured blast radius when the seed was made faithful: 15 tests across
+      `plan.test.ts`, `evDevices.integration.test.ts`, `smartTaskSubHomeGateApp.test.ts`, and
+      `app.test.ts`, mostly EV/swap cases whose headroom expectations assume the synthesized 0.
+      *Hypothesis:* a future change to freshness handling passes the suite while breaking real
+      homes, because the suite's stale-hold is reached by a path production cannot take.
+      *Persona:* the contributor who trusts a green run before shipping a capacity change. [P3]
 
 - [ ] **Widget bundles ship unminified while the settings bundle does not.**
       `scripts/build-widgets.mjs` passes no `--minify`, so the packaged app carries 689 KB of

@@ -50,6 +50,13 @@ export function createApp(options: CreateAppOptions = {}): any {
     const originalInitCapacityGuard = app.initCapacityGuard.bind(app);
     app.initCapacityGuard = (...args: unknown[]) => {
       const result = originalInitCapacityGuard(...args);
+      // Guard only, deliberately: the tracker keeps whatever the suite sets, so
+      // seeding a measurement does not also hand every test a FRESH sample and
+      // silently rewrite its headroom. Production stamps both together
+      // (`recordPowerSampleForApp`), so this leaves the harness in a state real
+      // ingest cannot produce — total present, never sampled, reading as
+      // `stale_hold`. Tracked in TODO.md; see the tests that assert stale-hold
+      // via an absent timestamp rather than an old one.
       app.capacityGuard?.reportTotalPower(SEEDED_TOTAL_POWER_KW);
       return result;
     };

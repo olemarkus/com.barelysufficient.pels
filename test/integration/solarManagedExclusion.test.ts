@@ -11,6 +11,8 @@
 // (`buildDeviceDiagnosticsObservations`), and the REAL whole-home sample ingest
 // (`recordPowerSampleForApp`) with a synthetic solar fixture (class:'solarpanel',
 // managed:true, controllable:false). Nothing internal is mocked.
+import { planContextPower } from '../utils/planContextPowerFixture';
+import { resolveMeasuredTotalKw } from '../../lib/plan/planContext';
 import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -29,6 +31,10 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
+
+// A plain, unremarkable meter reading: fixtures that only need power to be
+// MEASURED say so through the reading, the way production does.
+const FIXTURE_TOTAL_KW = 3;
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
@@ -79,11 +85,7 @@ const heaterInputDevice = (): PlanInputDevice =>
 const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices,
   desiredForMode: { [HEATER_ID]: 21 },
-  total: 3,
-  planningTotalKw: 3,
-  hasLivePowerSample: true,
-  powerSampleAgeMs: 0,
-  powerFreshnessState: 'fresh',
+  ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
@@ -167,7 +169,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       devices: context.devices,
       needed: 5,
       limitSource: 'capacity',
-      total: context.total,
+      total: resolveMeasuredTotalKw(context),
       capacitySoftLimit: context.capacitySoftLimit,
       state: createPlanEngineState(),
       deps: {

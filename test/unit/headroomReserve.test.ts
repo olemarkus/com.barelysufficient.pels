@@ -29,7 +29,7 @@ const run = (devices: DevicePlanDevice[], over?: {
   const state = { headroomReserveArmedMs: over?.armed ?? {} };
   const reserves = resolveHeadroomReserves({
     devices,
-    planningTotalKw: (over?.powerKnown ?? true) ? 1 : null,
+    powerIsMeasured: over?.powerKnown ?? true,
     state,
     nowTs: over?.nowTs ?? NOW,
   });
