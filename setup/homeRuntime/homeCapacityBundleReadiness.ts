@@ -9,7 +9,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanService } from '../../lib/plan/planService';
-import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/plan/planPowerFreshness';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 

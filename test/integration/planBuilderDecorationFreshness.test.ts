@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { attachDeferredReleaseIntents } from '../../lib/plan/planBuilderDecoration';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { DevicePlan } from '../../lib/plan/planTypes';
-import type { PowerFreshnessState } from '../../lib/plan/planPowerFreshness';
+import type { PowerFreshnessState } from '../../lib/power/sampleFreshness';
 
 type PlanDevice = DevicePlan['devices'][number];
 

@@ -7,7 +7,7 @@ import type {
   PlanInputDeviceBase,
   StepPowerCalibrationView,
 } from '../../packages/planner-types/src/planInputDevice';
-import type { PowerFreshnessState } from './planPowerFreshness';
+import type { PowerFreshnessState } from '../power/sampleFreshness';
 import type {
   DeviceControlAdapterSnapshot,
   ExpectedPowerSource,
