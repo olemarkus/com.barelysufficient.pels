@@ -1,13 +1,14 @@
 import type CapacityGuard from '../power/capacityGuard';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
+import { computeShortfallThreshold } from '../plan/planBudget';
 import type { PowerTrackerState } from '../power/tracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
   CapacityGuard,
-  'getSoftLimit' | 'getShortfallThreshold' | 'isSheddingActive' | 'isInShortfall'
+  'getSoftLimit' | 'isSheddingActive' | 'isInShortfall'
 >;
 
 type CapacityStatusMetrics = {
@@ -94,7 +95,7 @@ function resolveCapacityStatusMetrics(params: {
   // Derive headroom from the already-fetched softLimit to avoid a second provider call.
   // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
   const headroom = total !== null ? softLimit - total : null;
-  const shortfallBudgetThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
+  const shortfallBudgetThreshold = computeShortfallThreshold({ capacitySettings, powerTracker });
   const shortfallBudgetHeadroom = total !== null ? shortfallBudgetThreshold - total : null;
   const hardCapHeadroom = total !== null ? capacitySettings.limitKw - total : null;
   return {

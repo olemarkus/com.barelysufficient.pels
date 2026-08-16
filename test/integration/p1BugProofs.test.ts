@@ -128,10 +128,10 @@ describe('P1 bug proofs', () => {
       activateShedding: vi.fn(() => { active = true; transitions.push(true); }),
       releaseShedding: vi.fn(() => { active = false; transitions.push(false); }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
+      shortfallThresholdKw: 5,
       capacityGuard,
       headroom: -0.05,
       overshootActionable: true,
@@ -142,6 +142,7 @@ describe('P1 bug proofs', () => {
       softLimitSource: 'capacity',
     });
     await updateGuardState({
+      shortfallThresholdKw: 5,
       capacityGuard,
       headroom: 0.21,
       overshootActionable: false,
@@ -152,6 +153,7 @@ describe('P1 bug proofs', () => {
       softLimitSource: 'capacity',
     });
     await updateGuardState({
+      shortfallThresholdKw: 5,
       capacityGuard,
       headroom: -0.05,
       overshootActionable: true,
@@ -173,10 +175,10 @@ describe('P1 bug proofs', () => {
       activateShedding: vi.fn(),
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
+      shortfallThresholdKw: 5,
       capacityGuard,
       headroom: -1,
       overshootActionable: true,

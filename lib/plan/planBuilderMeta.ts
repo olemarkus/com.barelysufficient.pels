@@ -34,6 +34,8 @@ export function buildPlanMeta(params: {
   capacityGuard: CapacityGuard | undefined;
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
+  /** Producer-resolved `computeShortfallThreshold` for this build. */
+  shortfallBudgetThresholdKw: number;
 }): DevicePlan['meta'] {
   const {
     context,
@@ -43,6 +45,7 @@ export function buildPlanMeta(params: {
     capacityGuard,
     capacityLimitKw,
     hourlyBudgetExhausted,
+    shortfallBudgetThresholdKw,
   } = params;
   const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
     devices: planDevices,
@@ -50,7 +53,12 @@ export function buildPlanMeta(params: {
   });
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
-  const shortfallMeta = buildShortfallMeta(capacityGuard, context.total, capacityLimitKw);
+  const shortfallMeta = buildShortfallMeta(
+    capacityGuard,
+    context.total,
+    capacityLimitKw,
+    shortfallBudgetThresholdKw,
+  );
   return {
     totalKw: context.total,
     softLimitKw: context.softLimit,
@@ -145,10 +153,10 @@ function buildShortfallMeta(
   capacityGuard: CapacityGuard | undefined,
   totalKw: number | null,
   hardCapLimitKw: number,
+  shortfallBudgetThresholdKw: number,
 ): ShortfallMeta {
-  const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
   const shortfallBudgetHeadroomKw
-    = typeof totalKw === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+    = typeof totalKw === 'number'
       ? shortfallBudgetThresholdKw - totalKw
       : null;
   const hardCapHeadroomKw = typeof totalKw === 'number'
@@ -165,12 +173,11 @@ function buildShortfallMeta(
 
 export function buildPlanContextHeadroomLogFields(
   context: PlanContext,
-  capacityGuard: CapacityGuard | undefined,
   hardCapLimitKw: number,
+  shortfallBudgetThresholdKw: number,
 ): Record<string, number | boolean | string | null> {
-  const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
   const shortfallBudgetHeadroomKw
-    = typeof context.total === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+    = typeof context.total === 'number'
       ? shortfallBudgetThresholdKw - context.total
       : null;
   const hardCapHeadroomKw = typeof context.total === 'number'

@@ -1,4 +1,5 @@
 import type CapacityGuard from '../power/capacityGuard';
+import { computeShortfallThreshold } from '../plan/planBudget';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanEngineState } from '../plan/planState';
@@ -38,9 +39,10 @@ export class ShortfallExecutor {
 
     const capacityGuard = this.deps.getCapacityGuard();
     const capacitySettings = this.deps.getCapacitySettings();
-    const shortfallThreshold = capacityGuard
-      ? capacityGuard.getShortfallThreshold()
-      : capacitySettings.limitKw;
+    const shortfallThreshold = computeShortfallThreshold({
+      capacitySettings,
+      powerTracker: this.deps.getPowerTracker(),
+    });
     const softLimit = capacityGuard ? capacityGuard.getSoftLimit() : capacitySettings.limitKw;
     const total = resolveLastTotalPowerKw(this.deps.getPowerTracker());
     const totalStr = total === null ? 'unknown' : total.toFixed(2);

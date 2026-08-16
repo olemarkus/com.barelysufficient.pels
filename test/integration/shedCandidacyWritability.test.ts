@@ -46,6 +46,7 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext
 
 const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuard: CapacityGuard) => ({
   capacityGuard,
+  shortfallThresholdKw: Number.POSITIVE_INFINITY,
   powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
   pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
@@ -61,7 +62,6 @@ const buildCapacityGuard = (): CapacityGuard => ({
   releaseShedding: vi.fn(),
   checkShortfall: vi.fn().mockResolvedValue(undefined),
   isInShortfall: vi.fn().mockReturnValue(false),
-  getShortfallThreshold: vi.fn().mockReturnValue(6),
   getRestoreMargin: vi.fn().mockReturnValue(0.2),
 } as unknown as CapacityGuard);
 

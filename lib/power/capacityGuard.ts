@@ -1,18 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
-import {
-  buildNullCapacityStateSummary,
-  type PlanCapacityStateSummary,
-} from './capacityStateSummary';
+import type { PlanCapacityStateSummary } from './capacityStateSummary';
 
 type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type ShortfallAlertCandidateCallback = (candidate: CapacityShortfallAlertCandidate) => void;
 type ShortfallAlertConditionClearedCallback = () => void;
 type SoftLimitProvider = () => number | null;
-type ShortfallThresholdProvider = () => number | null;
-type CapacityStateSummaryProvider = () => PlanCapacityStateSummary;
 type CapacityGuardLogger = Pick<PinoLogger, 'info'>;
 
 export type CapacityGuardOptions = {
@@ -33,7 +28,6 @@ export type CapacityGuardOptions = {
    * silently drop the `homeId` correlation every incident log depends on.
    */
   structuredLog: CapacityGuardLogger;
-  capacityStateSummaryProvider?: CapacityStateSummaryProvider;
 };
 
 export type CapacityShortfallAlertCandidate = {
@@ -49,6 +43,12 @@ export type CapacityShortfallAlertCandidate = {
  * constructor option that neither factory ever supplied, so it was always 0.2.
  */
 export const SHEDDING_CLEAR_THRESHOLD_KW = 0.4;
+
+/** Panic is a hard-cap question, so it is asked against the hard-cap budget. */
+const isOverShortfallThreshold = (
+  totalKw: number | null,
+  shortfallThresholdKw: number,
+): boolean => totalKw !== null && totalKw > shortfallThresholdKw;
 
 /**
  * CapacityGuard - State container for capacity management.
@@ -75,8 +75,6 @@ export default class CapacityGuard {
 
   // Providers
   private softLimitProvider?: SoftLimitProvider;
-  private shortfallThresholdProvider?: ShortfallThresholdProvider;
-  private capacityStateSummaryProvider: CapacityStateSummaryProvider;
 
   private structuredLog: CapacityGuardLogger;
   private homeId: HomeId;
@@ -93,8 +91,6 @@ export default class CapacityGuard {
     this.onShortfallCleared = options.onShortfallCleared;
     this.onShortfallAlertCandidate = options.onShortfallAlertCandidate;
     this.onShortfallAlertConditionCleared = options.onShortfallAlertConditionCleared;
-    this.capacityStateSummaryProvider = options.capacityStateSummaryProvider
-      ?? buildNullCapacityStateSummary;
   }
 
   // --- Configuration ---
@@ -109,10 +105,6 @@ export default class CapacityGuard {
 
   setSoftLimitProvider(provider: SoftLimitProvider | undefined): void {
     this.softLimitProvider = provider;
-  }
-
-  setShortfallThresholdProvider(provider: ShortfallThresholdProvider | undefined): void {
-    this.shortfallThresholdProvider = provider;
   }
 
   // --- Limit calculations ---
@@ -149,17 +141,6 @@ export default class CapacityGuard {
       if (typeof dynamic === 'number' && dynamic >= 0) return dynamic;
     }
     return Math.max(0, this.limitKw - this.softMarginKw);
-  }
-
-  getShortfallThreshold(): number {
-    if (this.shortfallThresholdProvider) {
-      const threshold = this.shortfallThresholdProvider();
-      if (typeof threshold === 'number' && threshold >= 0) return threshold;
-    }
-    // Shortfall (panic mode) should trigger at the hard cap, not the soft limit.
-    // The soft limit (with margin) is for shedding decisions, but panic is only
-    // when we actually exceed the contracted grid capacity limit.
-    return this.limitKw;
   }
 
   // --- State management (called by Plan) ---
@@ -207,32 +188,38 @@ export default class CapacityGuard {
     /** Current kW above the shortfall threshold. */
     deficitKw: number;
     totalKw: number | null;
-    capacityStateSummary?: PlanCapacityStateSummary;
+    /**
+     * `capacityPaceKw` on the hard-cap budget — resolved by the caller from
+     * `computeShortfallThreshold`, which is a pure function of capacity
+     * settings and the tracker. The guard used to relay it through a provider
+     * with a hard-cap fallback; every caller already holds the inputs.
+     */
+    shortfallThresholdKw: number;
+    capacityStateSummary: PlanCapacityStateSummary;
   }): Promise<void> {
-    const { hasCandidates, deficitKw, totalKw, capacityStateSummary } = params;
+    const {
+      hasCandidates, deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary,
+    } = params;
     this.shortfallHasCandidates = hasCandidates;
-    const shortfallThreshold = this.getShortfallThreshold();
-    const alertConditionActive = this.isOverShortfallThreshold(totalKw) && !hasCandidates;
+    const alertConditionActive = !hasCandidates
+      && isOverShortfallThreshold(totalKw, shortfallThresholdKw);
 
     // Enter shortfall if over threshold AND no candidates left
     const enterPromise = alertConditionActive && !this.inShortfall
-      ? this.enterShortfall(deficitKw, totalKw, capacityStateSummary)
+      ? this.enterShortfall(deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary)
       : null;
     this.publishShortfallAlertCondition(alertConditionActive, deficitKw);
     await enterPromise;
 
     // Check for shortfall clearing (requires sustained positive headroom)
     if (this.inShortfall) {
-      await this.maybeClearShortfall(shortfallThreshold, totalKw);
+      await this.maybeClearShortfall(shortfallThresholdKw, totalKw);
     }
   }
 
-  public isShortfallAlertConditionActive(totalKw: number | null): boolean {
-    return this.shortfallHasCandidates === false && this.isOverShortfallThreshold(totalKw);
-  }
-
-  private isOverShortfallThreshold(totalKw: number | null): boolean {
-    return totalKw !== null && totalKw > this.getShortfallThreshold();
+  public isShortfallAlertConditionActive(totalKw: number | null, shortfallThresholdKw: number): boolean {
+    return this.shortfallHasCandidates === false
+      && isOverShortfallThreshold(totalKw, shortfallThresholdKw);
   }
 
   private publishShortfallAlertCondition(active: boolean, deficitKw: number): void {
@@ -251,13 +238,13 @@ export default class CapacityGuard {
   private async enterShortfall(
     deficitKw: number,
     totalKw: number | null,
-    capacityStateSummary?: PlanCapacityStateSummary,
+    shortfallThresholdKw: number,
+    capacityStateSummary: PlanCapacityStateSummary,
   ): Promise<void> {
     this.incidentId = `inc_${randomUUID()}`;
     this.incidentStartMs = Date.now();
-    const thresholdW = Math.round(this.getShortfallThreshold() * 1000);
+    const thresholdW = Math.round(shortfallThresholdKw * 1000);
     const powerW = Math.round((totalKw ?? 0) * 1000);
-    const summary = capacityStateSummary ?? this.capacityStateSummaryProvider();
     this.structuredLog.info({
       event: 'hard_cap_shortfall_detected',
       homeId: this.homeId,
@@ -266,7 +253,7 @@ export default class CapacityGuard {
       thresholdW,
       headroomW: thresholdW - powerW,
       excessW: powerW - thresholdW,
-      ...summary,
+      ...capacityStateSummary,
     });
     this.inShortfall = true;
     this.shortfallClearStartTime = null;

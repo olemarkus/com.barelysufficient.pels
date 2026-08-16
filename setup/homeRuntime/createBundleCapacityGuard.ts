@@ -1,8 +1,8 @@
 import type { AppContext } from '../../lib/app/appContext';
 import { getLogger } from '../../lib/logging/logger';
+import { computeShortfallThreshold } from '../../lib/plan/planBudget';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanEngine } from '../../lib/plan/planEngine';
-import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
@@ -81,6 +81,7 @@ export function createBundleCapacityGuard(params: {
     isTemporarilyFenced,
     isConditionActive: () => guard.isShortfallAlertConditionActive(
       resolveLastTotalPowerKw(getPowerTracker()),
+      computeShortfallThreshold({ capacitySettings: scalars, powerTracker: getPowerTracker() }),
     ),
     getHomeDisplayName,
     flow: ctx.homey.flow,
@@ -99,16 +100,8 @@ export function createBundleCapacityGuard(params: {
     // See `createMainCapacityGuard`: setup classifies the boot-window
     // `undefined`, so the guard is handed a definite logger.
     structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
-    capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
-      planService.getLatestPlanSnapshot(),
-      {
-        summarySource: 'plan_snapshot',
-        summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-      },
-    ),
   });
   guard.setSoftLimitProvider(() => planEngine.computeDynamicSoftLimit());
-  guard.setShortfallThresholdProvider(() => planService.computeShortfallThreshold());
   return {
     guard,
     flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,

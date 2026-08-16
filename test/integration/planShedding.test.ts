@@ -102,7 +102,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const context = buildContext({
@@ -137,6 +136,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -161,7 +161,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const context = buildContext({
@@ -195,6 +194,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -218,7 +218,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(true),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const context = buildContext({
@@ -244,6 +243,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -271,7 +271,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const context = buildContext({
@@ -301,6 +300,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -357,7 +357,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -373,6 +372,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -428,7 +428,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -444,6 +443,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4.5,
         powerTracker: { lastTimestamp: 789 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -484,7 +484,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -500,6 +499,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 456 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -529,7 +529,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -553,6 +552,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -604,7 +604,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -620,6 +619,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
@@ -678,7 +678,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -694,6 +693,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -760,7 +760,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -776,6 +775,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -822,7 +822,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -838,6 +837,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 600 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 18, stepId: null }),
@@ -886,7 +886,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -902,6 +901,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 111 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -955,7 +955,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -971,6 +970,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 113 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -1021,7 +1021,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1037,6 +1036,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 115 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -1089,7 +1089,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1105,6 +1104,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 116 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -1159,7 +1159,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1175,6 +1174,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 114 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -1224,7 +1224,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1240,6 +1239,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 112 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1293,7 +1293,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1309,6 +1308,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 222 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1363,7 +1363,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1379,6 +1378,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 223 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1433,7 +1433,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1449,6 +1448,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 224 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1501,7 +1501,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1517,6 +1516,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 333 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1562,7 +1562,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1578,6 +1577,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 334 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -1623,7 +1623,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1640,6 +1639,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 335 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -1691,7 +1691,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1707,6 +1706,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 444 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1764,7 +1764,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1780,6 +1779,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1838,7 +1838,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1854,6 +1853,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1912,7 +1912,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1928,6 +1927,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 555 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
@@ -1980,7 +1980,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     // Need 0.5kW of relief. The binary device has higher priority (sheds first
@@ -1999,6 +1998,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 700 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2059,7 +2059,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     // Need 1.5kW relief. heater-high is above lowest active and should step down
@@ -2077,6 +2076,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2125,7 +2125,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2141,6 +2140,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 666 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2197,7 +2197,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2213,6 +2212,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 667 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2241,7 +2241,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2268,6 +2267,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 1_000 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2290,7 +2290,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -2306,6 +2305,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2335,7 +2335,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -2359,6 +2358,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 1001 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2387,7 +2387,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2418,6 +2417,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4.5,
         powerTracker: { lastTimestamp: 1002 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2443,7 +2443,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2474,6 +2473,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
@@ -2519,7 +2519,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2553,6 +2552,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
@@ -2587,7 +2587,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(8),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2612,6 +2611,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 8,
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2643,7 +2643,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(8),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2675,6 +2674,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 8,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2698,7 +2698,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(2.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2730,6 +2729,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 2.5,
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2752,7 +2752,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(2.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2784,6 +2783,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 2.5,
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2828,7 +2828,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2844,6 +2843,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 6,
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2888,7 +2888,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(2),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -2904,6 +2903,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 2,
         powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -2952,7 +2952,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(2),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -2968,6 +2967,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 2,
         powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3000,7 +3000,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn().mockImplementation((headroomKw: number) => { if (headroomKw >= 0.4) sheddingActive = false; }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3015,6 +3014,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3037,7 +3037,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3052,6 +3051,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3112,11 +3112,11 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     const baseDeps = {
       capacityGuard,
+      shortfallThresholdKw: 10,
       powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
       pendingBinaryCommandStore: emptyPendingStore,
       getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
@@ -3220,7 +3220,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
     } as unknown as CapacityGuard;
 
@@ -3245,6 +3244,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3268,11 +3268,11 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const deps: Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> = {
       capacityGuard,
+      shortfallThresholdKw: 6,
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getPriorityForDevice: () => 100,
       log: vi.fn(),
@@ -3303,6 +3303,7 @@ describe('buildSheddingPlan', () => {
       {
         ...deps,
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
@@ -3322,6 +3323,7 @@ describe('buildSheddingPlan', () => {
       {
         ...deps,
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
@@ -3402,13 +3404,13 @@ describe('buildSheddingPlan', () => {
     });
 
     const incidentDeps = (): Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> => ({
+      shortfallThresholdKw: 6,
       capacityGuard: {
         isSheddingActive: vi.fn().mockReturnValue(true),
         activateShedding: vi.fn(),
         releaseShedding: vi.fn(),
         checkShortfall: vi.fn().mockResolvedValue(undefined),
         isInShortfall: vi.fn().mockReturnValue(false),
-        getShortfallThreshold: vi.fn().mockReturnValue(3.073),
         getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
       } as unknown as CapacityGuard,
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3430,6 +3432,7 @@ describe('buildSheddingPlan', () => {
         {
           ...deps,
           capacityGuard: undefined,
+          shortfallThresholdKw: 3.073,
           powerTracker: { lastTimestamp: 1_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         },
@@ -3457,6 +3460,7 @@ describe('buildSheddingPlan', () => {
           ...deps,
           // New sample, byte-identical watts: the meter has not caught up yet.
           capacityGuard: undefined,
+          shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         },
@@ -3487,6 +3491,7 @@ describe('buildSheddingPlan', () => {
         {
           ...deps,
           capacityGuard: undefined,
+          shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         },
@@ -3512,6 +3517,7 @@ describe('buildSheddingPlan', () => {
         {
           ...deps,
           capacityGuard: undefined,
+          shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         },
@@ -3534,6 +3540,7 @@ describe('buildSheddingPlan', () => {
         {
           ...deps,
           capacityGuard: undefined,
+          shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 3_000, lastPowerW: 3_271 } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         },
@@ -3577,6 +3584,7 @@ describe('buildSheddingPlan', () => {
         {
           ...deps,
           capacityGuard: undefined,
+          shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 4_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         },
@@ -3599,7 +3607,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3623,6 +3630,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3657,7 +3665,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3681,6 +3688,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1006 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3718,7 +3726,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5.04),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3757,6 +3764,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5.04,
         powerTracker: { lastTimestamp: 2001 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3784,7 +3792,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5.04),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3823,6 +3830,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5.04,
         powerTracker: { lastTimestamp: 2003 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3845,7 +3853,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5.04),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3889,6 +3896,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 5.04,
         powerTracker: { lastTimestamp: 2002 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
@@ -3923,7 +3931,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -3962,6 +3969,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 1007 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -3992,7 +4000,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -4036,6 +4043,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 1008 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId) => (deviceId === 'temp'
@@ -4062,7 +4070,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -4096,6 +4103,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 1009 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
@@ -4123,7 +4131,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-77'),
     } as unknown as CapacityGuard;
 
@@ -4152,6 +4159,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
@@ -4188,7 +4196,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-88'),
     } as unknown as CapacityGuard;
 
@@ -4213,6 +4220,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4240,7 +4248,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -4264,6 +4271,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4290,7 +4298,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -4314,6 +4321,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4349,6 +4357,7 @@ describe('buildSheddingPlan', () => {
       createPlanEngineState(),
       {
         capacityGuard: guard,
+        shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4370,7 +4379,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn().mockImplementation((headroomKw: number) => { if (headroomKw >= 0.4) sheddingActive = false; }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -4386,6 +4394,7 @@ describe('buildSheddingPlan', () => {
       createPlanEngineState(),
       {
         capacityGuard,
+        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4423,6 +4432,7 @@ describe('buildSheddingPlan', () => {
       createPlanEngineState(),
       {
         capacityGuard: guard,
+        shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4457,6 +4467,7 @@ describe('buildSheddingPlan', () => {
       createPlanEngineState(),
       {
         capacityGuard: guard,
+        shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 801 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -4482,7 +4493,6 @@ describe('buildSheddingPlan', () => {
       releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
-      getShortfallThreshold: vi.fn().mockReturnValue(8),
     } as unknown as CapacityGuard;
 
     const unmetered = buildDevice({
@@ -4509,6 +4519,7 @@ describe('buildSheddingPlan', () => {
       state,
       {
         capacityGuard,
+        shortfallThresholdKw: 8,
         powerTracker: { lastTimestamp: 4001 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),

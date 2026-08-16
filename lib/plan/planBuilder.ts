@@ -277,8 +277,8 @@ export class PlanBuilder {
     });
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
-      capacityGuard: this.capacityGuard,
       capacityLimitKw: this.capacitySettings.limitKw,
+      shortfallBudgetThresholdKw: this.computeShortfallThreshold(),
       powerTracker: this.powerTracker,
       deviceNameById,
       planDevices: finalized.planDevices,
@@ -293,6 +293,7 @@ export class PlanBuilder {
       powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
       capacityLimitKw: this.capacitySettings.limitKw,
+      shortfallBudgetThresholdKw: this.computeShortfallThreshold(),
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     }));
     this.stages.observeDiagnostics({
@@ -392,6 +393,7 @@ export class PlanBuilder {
       'plan_shedding_ms',
       () => buildSheddingPlan(context, this.state, {
         capacityGuard: this.capacityGuard,
+        shortfallThresholdKw: this.computeShortfallThreshold(),
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         getPriorityForDevice: getCyclePriority,

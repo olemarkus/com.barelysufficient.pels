@@ -1,7 +1,7 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { computeShortfallThreshold } from '../../lib/plan/planBudget';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { getLogger } from '../../lib/logging/logger';
-import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
 import type { AppContext } from '../../lib/app/appContext';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
@@ -57,6 +57,7 @@ export const createMainCapacityGuard = (params: {
     isTemporarilyFenced: params.isTemporarilyFenced,
     isConditionActive: () => guard.isShortfallAlertConditionActive(
       resolveLastTotalPowerKw(ctx.powerTracker),
+      computeShortfallThreshold({ capacitySettings: ctx.capacitySettings, powerTracker: ctx.powerTracker }),
     ),
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     flow: ctx.homey.flow,
@@ -77,13 +78,6 @@ export const createMainCapacityGuard = (params: {
     // wired, and classifying that is setup's job. The guard is handed a
     // definite logger and never branches on whether logging came up.
     structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
-    capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
-      ctx.planService?.getLatestPlanSnapshot(),
-      {
-        summarySource: 'plan_snapshot',
-        summarySourceAtMs: ctx.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-      },
-    ),
   });
   return { guard, shortfallSideEffectGate };
 };

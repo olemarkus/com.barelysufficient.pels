@@ -5,6 +5,10 @@
 
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+
+// The guard no longer resolves the hard-cap budget itself; callers pass it in.
+const TEST_SHORTFALL_THRESHOLD_KW = 10;
 
 describe('Daily Budget Shortfall Prevention', () => {
   let guard: CapacityGuard;
@@ -31,43 +35,67 @@ describe('Daily Budget Shortfall Prevention', () => {
     // When power exceeds shortfallThreshold AND no candidates, shortfall triggers
 
     // Default threshold is the hard cap (10 kW), but we can override for testing
-    const shortfallThreshold = 10; // hard cap
-    guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
     // Case 1: Power (3 kW) is below shortfall threshold (9 kW)
     // Even with no candidates, shortfall should NOT trigger
-    await guard.checkShortfall({ hasCandidates: false, deficitKw: 0, totalKw: 3 }); // no candidates
+    await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0,
+      totalKw: 3,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // no candidates
     expect(guard.isInShortfall()).toBe(false);
 
     // Case 2: Even if we artificially set power above threshold,
     // if we're being called with hasCandidates=true, shortfall won't trigger
-    await guard.checkShortfall({ hasCandidates: true, deficitKw: 3, totalKw: 12 }); // Has candidates (daily budget case)
+    await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 3,
+      totalKw: 12,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // Has candidates (daily budget case)
     expect(guard.isInShortfall()).toBe(false);
   });
 
   test('hourly cap violation (softLimitSource=capacity) checks shortfall', async () => {
-    const shortfallThreshold = 10; // hard cap (limitKw)
-    guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
     // Power exceeds shortfall threshold (hard cap) AND no candidates
-    await guard.checkShortfall({ hasCandidates: false, deficitKw: 3, totalKw: 12 }); // No candidates
+    await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 3,
+      totalKw: 12,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // No candidates
 
     // Shortfall should be triggered
     expect(guard.isInShortfall()).toBe(true);
   });
 
   test('combined violation (both limits equal, capacity wins) checks shortfall based on hourly threshold', async () => {
-    const shortfallThreshold = 10; // hard cap
-    guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
     // Power is below hourly hard cap but might exceed daily budget soft limit
-    await guard.checkShortfall({ hasCandidates: false, deficitKw: 2, totalKw: 5 }); // No candidates
+    await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 2,
+      totalKw: 5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // No candidates
 
     // Should NOT trigger shortfall because we're below hourly threshold
     expect(guard.isInShortfall()).toBe(false);
 
     // Now exceed hourly threshold
-    await guard.checkShortfall({ hasCandidates: false, deficitKw: 3, totalKw: 12 });
+    await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 3,
+      totalKw: 12,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
     // Now it should trigger
     expect(guard.isInShortfall()).toBe(true);

@@ -102,6 +102,7 @@ describe('planner current-state consistency', () => {
       state,
       {
         capacityGuard: undefined,
+        shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,

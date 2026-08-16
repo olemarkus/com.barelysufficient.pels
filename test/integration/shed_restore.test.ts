@@ -77,7 +77,6 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = {
             getHeadroom: () => -2.0, // Need 2kW
             getSoftLimit: () => 10,
-            getShortfallThreshold: () => 10,
             isSheddingActive: () => false,
             activateShedding: vi.fn(),
             releaseShedding: vi.fn(),
@@ -124,7 +123,6 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = {
             getHeadroom: () => -0.4, // Need 0.4kW
             getSoftLimit: () => 10,
-            getShortfallThreshold: () => 10,
             isSheddingActive: () => false,
             activateShedding: vi.fn(),
             releaseShedding: vi.fn(),
@@ -166,7 +164,6 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = {
             getHeadroom: () => 2.0,
             getSoftLimit: () => 10,
-            getShortfallThreshold: () => 10,
             isSheddingActive: () => false,
             activateShedding: vi.fn(),
             releaseShedding: vi.fn(),

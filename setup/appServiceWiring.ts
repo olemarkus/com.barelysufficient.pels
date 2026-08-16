@@ -442,7 +442,6 @@ export class AppServiceWiring {
     if (!ctx.capacityGuard) return;
     ctx.defaultComputeDynamicSoftLimit = ctx.computeDynamicSoftLimit;
     ctx.capacityGuard.setSoftLimitProvider(() => ctx.computeDynamicSoftLimit());
-    ctx.capacityGuard.setShortfallThresholdProvider(() => this.deps.computeShortfallThreshold());
   }
 
   initSettingsHandler(): void {

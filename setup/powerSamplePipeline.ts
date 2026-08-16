@@ -8,6 +8,7 @@ import { recordPowerSampleForApp } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
 import { resolveLastTotalPowerKw } from '../lib/power/lastTotalPower';
+import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
@@ -374,6 +375,10 @@ export class PowerSamplePipeline {
             capacitySettings,
             capacityGuard,
             latchedTotalKw: resolveLastTotalPowerKw(this.deps.getPowerTracker()),
+            shortfallThresholdKw: computeShortfallThreshold({
+              capacitySettings,
+              powerTracker: this.deps.getPowerTracker(),
+            }),
             planConvergenceActive,
             skipWhileShortfallUnrecoverable,
             unactionable: planUnactionable,

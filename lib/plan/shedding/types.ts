@@ -40,6 +40,8 @@ export type OvershootStats = {
 
 export type SheddingDeps = {
   capacityGuard: CapacityGuard | undefined;
+  /** Producer-resolved `computeShortfallThreshold` for this build. */
+  shortfallThresholdKw: number;
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;

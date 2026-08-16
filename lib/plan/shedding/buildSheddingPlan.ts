@@ -44,6 +44,7 @@ export async function buildSheddingPlan(
     shedSet,
     softLimitSource: sheddingLimitSource,
     capacityGuard: deps.capacityGuard,
+    shortfallThresholdKw: deps.shortfallThresholdKw,
   });
   const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;
   const recoveredFromShedding = wasSheddingActive && !guardResult.sheddingActive;

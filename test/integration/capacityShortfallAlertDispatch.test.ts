@@ -11,6 +11,10 @@ import type { FlowTriggerCard } from '../../lib/ports/homeyRuntime';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+
+// The guard no longer resolves the hard-cap budget itself; callers pass it in.
+const TEST_SHORTFALL_THRESHOLD_KW = 6;
 
 type TriggerFn = FlowTriggerCard['trigger'];
 type TriggerMock = ReturnType<typeof vi.fn<TriggerFn>>;
@@ -140,7 +144,13 @@ describe('capacity shortfall alert dispatch', () => {
       isPreparedReconcileActive: () => false,
     });
 
-    await guard.checkShortfall({ hasCandidates: false, deficitKw: 0.5, totalKw: 99 });
+    await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 99,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(handleShortfall).toHaveBeenCalledExactlyOnceWith(0.5);

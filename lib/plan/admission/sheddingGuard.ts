@@ -1,6 +1,9 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import { SHEDDING_CLEAR_THRESHOLD_KW } from '../../power/capacityGuard';
-import type { PlanCapacityStateSummary } from '../../power/capacityStateSummary';
+import {
+  buildNullCapacityStateSummary,
+  type PlanCapacityStateSummary,
+} from '../../power/capacityStateSummary';
 import type { PlanInputDevice } from '../planTypes';
 import type { PlanContext } from '../planContext';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
@@ -19,21 +22,27 @@ function handleShortfallCheck(
     remaining: number;
     deficitKw: number;
     totalKw: number | null;
-    capacityStateSummary?: PlanCapacityStateSummary;
+    shortfallThresholdKw: number;
+    capacityStateSummary: PlanCapacityStateSummary;
   },
 ): Promise<void> {
-  const { capacityGuard, remaining, deficitKw, totalKw, capacityStateSummary } = params;
+  const {
+    capacityGuard, remaining, deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary,
+  } = params;
   return deficitKw > 0
     ? (capacityGuard?.checkShortfall({
       hasCandidates: remaining > 0,
       deficitKw,
       totalKw,
+      shortfallThresholdKw,
       capacityStateSummary,
     }) ?? Promise.resolve())
     : (capacityGuard?.checkShortfall({
       hasCandidates: true,
       deficitKw: 0,
       totalKw,
+      shortfallThresholdKw,
+      capacityStateSummary,
     }) ?? Promise.resolve());
 }
 
@@ -96,16 +105,18 @@ function buildShortfallCapacityStateSummary(params: {
   };
 }
 
-function maybeBuildShortfallCapacityStateSummary(params: {
+function resolveShortfallCapacityStateSummary(params: {
   deficitKw: number;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   total: number | null;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
-}): PlanCapacityStateSummary | undefined {
+}): PlanCapacityStateSummary {
   const { deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit } = params;
-  if (deficitKw <= 0) return undefined;
+  // Only an entering incident reads it, and that needs a positive deficit, so
+  // the null summary spares every ordinary rebuild the device walk.
+  if (deficitKw <= 0) return buildNullCapacityStateSummary();
   return buildShortfallCapacityStateSummary({
     devices,
     shedSet,
@@ -162,6 +173,8 @@ export async function updateGuardState(params: {
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
   capacityGuard: CapacityGuard | undefined;
+  /** Producer-resolved `computeShortfallThreshold` for this build. */
+  shortfallThresholdKw: number;
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
@@ -172,6 +185,7 @@ export async function updateGuardState(params: {
     shedSet,
     softLimitSource,
     capacityGuard,
+    shortfallThresholdKw,
   } = params;
   const remainingCandidates = countRemainingCandidates({
     devices,
@@ -181,8 +195,7 @@ export async function updateGuardState(params: {
     total: planningTotalKw,
     capacitySoftLimit,
   });
-  const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
-  const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThreshold);
+  const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThresholdKw);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
     capacityGuard?.activateShedding();
@@ -191,7 +204,8 @@ export async function updateGuardState(params: {
       remaining: remainingCandidates,
       deficitKw,
       totalKw: planningTotalKw,
-      capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
+      shortfallThresholdKw,
+      capacityStateSummary: resolveShortfallCapacityStateSummary({
         deficitKw,
         devices,
         shedSet,
@@ -213,7 +227,8 @@ export async function updateGuardState(params: {
     remaining: remainingCandidates,
     deficitKw,
     totalKw: planningTotalKw,
-    capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
+    shortfallThresholdKw,
+    capacityStateSummary: resolveShortfallCapacityStateSummary({
       deficitKw,
       devices,
       shedSet,
