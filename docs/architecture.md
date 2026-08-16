@@ -130,13 +130,13 @@ See `notes/state-management/observer-transport-split.md` for the layering ration
 
 ## Transitional allowances
 
-A small number of modules still cross layers in ways the contract above forbids. These are listed in `TODO.md` and accepted as tightening work, not as new patterns to imitate:
+A small number of modules still cross layers in ways the contract above forbids. Each is registered as a named `.dependency-cruiser.cjs` rule and accepted as tightening work, not as new patterns to imitate:
 
-- `lib/utils/**` still has a few imports from `lib/device`, `lib/power`, and `lib/plan`. The cruiser rule for this case is registered at warning severity (not error), so CI does not fail on it — but new code must not extend this set.
+- `lib/utils/**` still has three imports from `lib/power` and `lib/plan` — two type-only, one value import (`settingsHandlers.ts` → `CapacityGuard`). The `lib/device` edge is gone. The cruiser rule for this case is registered at warning severity (not error), so CI does not fail on it — but new code must not extend this set.
 - `lib/plan/**` imports no executor modules. Setup owns the concrete planner/executor composition and implements the narrow `PlanEngine` behavior contract; neutral cross-boundary result types live in `lib/planContract/`. The cruiser rejects compiled plan→executor edges through `no-plan-to-executor`, and the source AST guard behind `npm run arch:grep` rejects type-only and dynamic forms before compilation erases them.
 - `lib/plan/**` consumes only the `DeviceObservation` read interface from `lib/device/deviceObservation.ts`; the `no-plan-to-device` cruiser rule blocks every other `lib/device/` import at error level. Binary control writes are dispatched by executor (`lib/executor/binaryControlDispatch.ts`), not plan. The orchestrating class is now `DeviceTransport` at `lib/device/deviceTransport.ts` — see `notes/state-management/observer-transport-split.md` for the layering rationale and the per-PR split history.
 
-If you find a cross-layer import that isn't in the TODO list, treat it as a bug, not a precedent.
+If you find a cross-layer import that has no named cruiser rule covering it, treat it as a bug, not a precedent.
 
 ## Related references
 

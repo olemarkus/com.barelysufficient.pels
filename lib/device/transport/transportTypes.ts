@@ -114,7 +114,7 @@ export type DeviceTransportOptions = {
     onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
     /**
      * Observer-owned dispatcher consulted by transport after translation of
-     * each realtime event. Wiring (`lib/app/`) builds the dispatcher against
+     * each realtime event. Wiring (`setup/`) builds the dispatcher against
      * `lib/observer/observedStateEvents.ts`'s `ObservedStateEmitter`. When
      * supplied, observer is the single source of truth for the post-translation
      * fan-out and transport does not emit through its own EventEmitter.

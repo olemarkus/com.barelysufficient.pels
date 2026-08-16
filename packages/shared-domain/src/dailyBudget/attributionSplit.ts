@@ -6,7 +6,10 @@
  * background load, not the net grid total reduced by self-consumed solar. Gross
  * controlled + uncontrolled = gross consumption and may exceed the net total under PV,
  * so the split is NOT clamped to the net total. When no gross uncontrolled bucket exists
- * (legacy persisted state) it falls back to deriving the split from the net total.
+ * it falls back to deriving the split from the net total. That is NOT a legacy-only path:
+ * `lib/power/tracker.ts` carries the controlled and uncontrolled bucket families forward
+ * independently, so a bucket can hold controlled attribution while the uncontrolled family
+ * was never written for it.
  *
  * This is attribution DISPLAY only — consumed by the Power view, the daily-budget
  * breakdown view, and plan.meta. Budget PACING (`budgetControlUsedNowKWh = net total −
@@ -45,7 +48,8 @@ export const resolveAttributionSplit = (params: {
     return { controlled, uncontrolled };
   }
 
-  // Legacy state without a persisted gross uncontrolled bucket: derive from the net total.
+  // No persisted gross uncontrolled bucket for this hour: derive from the net total.
+  // Reachable on current state, not just on pre-2026-06-22 buckets — see the header.
   const boundedExempt = Math.min(exempt, total);
   const controlled = Math.max(0, Math.min((controlledGross as number) - boundedExempt, total));
   return { controlled, uncontrolled: Math.max(0, total - controlled) };

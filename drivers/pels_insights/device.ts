@@ -61,6 +61,12 @@ const REQUIRED_CAPABILITIES = [
   'pels_devices_off',
 ];
 
+// Entries are NEVER retired on an install-age argument. `removeDeprecatedCapability`
+// swallows a failed `removeCapability` (logs and continues), so "every install has
+// booted with this entry listed" proves the removal was ATTEMPTED, not that it
+// succeeded — this list IS the retry. A device whose removal failed transiently on
+// its last boot before an entry was dropped would keep the obsolete capability
+// forever, and the cost of that is far worse than carrying a few strings.
 const RETIRED_CAPABILITIES = [
   'alarm_generic',
   'pels_shedding',
