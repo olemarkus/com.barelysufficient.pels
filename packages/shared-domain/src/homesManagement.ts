@@ -50,10 +50,8 @@ export const zoneAncestryPath = (
   while (currentId !== null) {
     if (visited.has(currentId)) return null; // parent cycle
     // Own-key guard: an inherited-property id ('constructor', …) must read as
-    // an unknown zone, never resolve Object.prototype machinery. (hasOwnProperty
-    // spelling: this package lints against a pre-ES2022 browser lib without
-    // Object.hasOwn.)
-    const zone: HomesZoneNode | undefined = Object.prototype.hasOwnProperty.call(zones, currentId)
+    // an unknown zone, never resolve Object.prototype machinery.
+    const zone: HomesZoneNode | undefined = Object.hasOwn(zones, currentId)
       ? zones[currentId]
       : undefined;
     if (zone === undefined) return null; // unknown zone / broken parent chain

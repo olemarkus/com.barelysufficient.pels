@@ -136,10 +136,8 @@ export const resolveHomeBadgeRead = (payload: unknown): HomeBadgeRead => {
   Object.entries(membership).forEach(([deviceId, entry]) => {
     const homeId = asNonEmptyString(asRecord(entry)?.homeId);
     // Own-key guard: an inherited-property id ('constructor', …) must read as
-    // an unlisted home, never resolve Object.prototype machinery. (hasOwnProperty
-    // spelling: this package lints against a pre-ES2022 browser lib without
-    // Object.hasOwn.)
-    if (homeId !== null && Object.prototype.hasOwnProperty.call(areaNameByHomeId, homeId)) {
+    // an unlisted home, never resolve Object.prototype machinery.
+    if (homeId !== null && Object.hasOwn(areaNameByHomeId, homeId)) {
       areaHomeIdByDeviceId[deviceId] = homeId;
     }
   });

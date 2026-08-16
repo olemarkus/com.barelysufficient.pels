@@ -72,6 +72,17 @@ const nodeTypeScriptRules = {
   'n/no-unsupported-features/es-syntax': ['error', { version: '>=18.0.0', ignores: ['modules'] }],
 };
 
+// Both test blocks below relax a lot of production rules, but not this one. `@ts-ignore`
+// succeeds even when there is nothing to suppress, so it never tells you it has gone stale — 24
+// dead ones accumulated in settings.test.ts that way, invisible until the mock they guarded was
+// finally typed. `@ts-expect-error` raises TS2578 the moment it stops being needed, which is the
+// property we actually want from a suppression, so it stays allowed unconditionally.
+const testTsCommentRule = ['error', {
+  'ts-ignore': true,
+  'ts-nocheck': true,
+  'ts-expect-error': false,
+}];
+
 const browserTypeScriptRules = {
   ...sharedTypeScriptRules,
   ...sharedGeneralRules,
@@ -451,7 +462,7 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/ban-ts-comment': testTsCommentRule,
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
@@ -600,7 +611,7 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/ban-ts-comment': testTsCommentRule,
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
