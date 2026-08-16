@@ -5,6 +5,7 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -24,6 +25,11 @@ const buildDevice = (
   return withBinaryDiscriminant({
     ...merged,
     currentDrawKw: fixtureCurrentDrawKw(merged),
+    // Resolved for a turn_off shed, the producer's default. A fixture whose
+    // shed is a setpoint move it is ALREADY at frees nothing, and must say so
+    // by overriding `residualKw` — the consumer no longer re-derives it.
+    residualKw: merged.residualKw
+      ?? fixtureResidualKw({ ...merged, currentDrawKw: fixtureCurrentDrawKw(merged) }),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };

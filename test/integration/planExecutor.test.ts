@@ -101,7 +101,7 @@ const buildPlan = (): DevicePlan => ({
     softLimitKw: 5,
     headroomKw: 4}),
   devices: [
-    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -130,7 +130,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     softLimitKw: 5,
     headroomKw: 4}),
   devices: [
-    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -1648,7 +1648,7 @@ describe('PlanExecutor stepped loads', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [
-        withTemperatureDiscriminant(withSteppedDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+        withTemperatureDiscriminant(withSteppedDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
           ...merged,
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
@@ -4006,13 +4006,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       hasStandingDemand: true,
       confirmedNotDrawing: false,
       binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
-      currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+      currentDrawKw: 0, residualKw: { shed: 0 }, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
       boostActive: false, hasStandingDemand: true,
-      currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+      currentDrawKw: 0, residualKw: { shed: 0 }, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
       binaryCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,

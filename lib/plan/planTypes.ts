@@ -544,7 +544,7 @@ type DevicePlanDeviceBase = {
    * plan-cycle gates. See the corresponding doc-block on `PlanInputDevice`
    * for field semantics.
    */
-  residualKw?: {
+  residualKw: {
     shed: number;
     restore?: {
       kw: number;

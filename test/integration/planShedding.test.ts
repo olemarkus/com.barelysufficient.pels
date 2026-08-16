@@ -14,6 +14,7 @@ import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -39,6 +40,11 @@ const buildDevice = (
   return withBinaryDiscriminant({
     ...merged,
     currentDrawKw: fixtureCurrentDrawKw(merged),
+    // Resolved for a turn_off shed, the producer's default. A fixture whose
+    // shed is a setpoint move it is ALREADY at frees nothing, and must say so
+    // by overriding `residualKw` — the consumer no longer re-derives it.
+    residualKw: merged.residualKw
+      ?? fixtureResidualKw({ ...merged, currentDrawKw: fixtureCurrentDrawKw(merged) }),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };
@@ -2406,6 +2412,9 @@ describe('buildSheddingPlan', () => {
             currentTarget: 15,
             currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
+            // Already AT the shed setpoint: the producer resolves zero relief,
+            // which is what makes the overshoot exhausted.
+            residualKw: { shed: 0 },
           }),
         ],
         total: 4.8,

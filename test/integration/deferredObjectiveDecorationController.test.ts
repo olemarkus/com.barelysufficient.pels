@@ -2,7 +2,7 @@ import { DeferredObjectiveDecorationController } from '../../lib/objectives/defe
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 
-const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0,
+const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0, residualKw: { shed: 0 },
   id: 'dev',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Device',

@@ -4,7 +4,6 @@ import {
   sumRemainingSheddableLoadKw,
   toInputRemainingSheddableDevice,
   toPlanRemainingSheddableDevice,
-  type RemainingShedBehavior,
 } from '../../lib/plan/planRemainingSheddableLoad';
 import {
   resolveResidualKwShed,
@@ -53,7 +52,6 @@ const buildPlanInputDevice = (
 };
 
 describe('resolveRemainingSheddableLoadKw — stale observation handling', () => {
-  const turnOffBehavior: RemainingShedBehavior = { action: 'turn_off' };
 
   it('credits a still-drawing unknown-state device its measured draw', () => {
     // A device whose observer label is 'unknown' carries no confirmed-off
@@ -74,7 +72,6 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
     }));
     const kw = resolveRemainingSheddableLoadKw({
       device: unknown,
-      shedBehavior: turnOffBehavior,
       alreadyShed: false,
       limitSource: 'capacity',
       capacityBreached: true,
@@ -92,7 +89,6 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
     }));
     const kw = resolveRemainingSheddableLoadKw({
       device: fresh,
-      shedBehavior: turnOffBehavior,
       alreadyShed: false,
       limitSource: 'capacity',
       capacityBreached: true,
@@ -101,16 +97,13 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
   });
 });
 
-describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity', () => {
-  // Behaviour-preservation regression for the producer-resolved residual.
-  // We build a representative cascade scenario (mixed simple / temperature /
-  // stepped devices) and assert that the producer-resolved path yields the
-  // same total as the legacy dual-read fallback. The dual-read fallback fires
-  // when `residualKw` is absent; the producer-resolved path fires when it is
-  // populated.
-  const turnOffBehavior: RemainingShedBehavior = { action: 'turn_off' };
+describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
+  // The consumer reads `residualKw.shed` and nothing else. These cascades pin
+  // the absolute totals the producer's values must sum to; the per-device
+  // adversarial test below pins each value in isolation so a refactor cannot
+  // satisfy the cascade vacuously.
 
-  it('agrees with the legacy fallback across a representative cascade scenario', () => {
+  it('sums a representative mixed cascade from the producer values', () => {
     const simpleOn = buildPlanInputDevice({
       id: 'simple-on',
       controllable: true,
@@ -141,19 +134,8 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       measuredPowerKw: 1.2,
     });
 
-    // Legacy fallback path — residualKw absent on every input.
-    const legacyDevices = [simpleOn, steppedMax, steppedAtLowestActive].map(toInputRemainingSheddableDevice);
-    const legacyTotal = sumRemainingSheddableLoadKw({
-      devices: legacyDevices,
-      shedBehaviorForDevice: () => turnOffBehavior,
-      isAlreadyShed: () => false,
-      limitSource: 'capacity',
-      capacityBreached: true,
-    });
-
-    // Producer-resolved path — populate residualKw with what the producer
-    // would emit for a turn_off shed. The shape mirrors `toPlanDevice` in
-    // `setup/appInit.ts`.
+    // Populate residualKw with what the producer emits for a turn_off shed.
+    // The shape mirrors `toPlanDevice` in `setup/appInit.ts`.
     const producerDevices = [
       { ...simpleOn, residualKw: { shed: 1.4 } },
       { ...steppedMax, residualKw: { shed: 2.9 } },
@@ -163,14 +145,12 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     ].map(toInputRemainingSheddableDevice);
     const producerTotal = sumRemainingSheddableLoadKw({
       devices: producerDevices,
-      shedBehaviorForDevice: () => turnOffBehavior,
       isAlreadyShed: () => false,
       limitSource: 'capacity',
       capacityBreached: true,
     });
 
-    expect(producerTotal).toBeCloseTo(legacyTotal, 6);
-    expect(producerTotal).toBeGreaterThan(0);
+    expect(producerTotal).toBeCloseTo(1.4 + 2.9 + 1.2, 6);
   });
 
   // Edge-case cascade-parity coverage added 2026-05-27. Closes TODO §"Before
@@ -187,7 +167,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
   //       when the target step ID equals the current step ID.)
   //   (d) Temperature device with `currentValue == normalized shedTemperature`.
   //       Both paths reject the shed via `canStillShedTemperature` → 0.
-  it('agrees with the legacy fallback across the cascade-parity edge cases (a, d)', () => {
+  it('sums the edge cases (a, d) from the producer values', () => {
     // The cascade also includes a positive-residual baseline (steppedMax) so
     // the watt-equality assertion has something non-zero to anchor on.
     const baselineSteppedMax = buildPlanInputDevice({
@@ -233,11 +213,6 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       }],
     });
 
-    const turnOff: RemainingShedBehavior = { action: 'turn_off' };
-    const setTemperatureTo18: RemainingShedBehavior = { action: 'set_temperature', temperature: 18 };
-    const shedBehaviorForDevice = (device: { id: string }): RemainingShedBehavior => (
-      device.id === temperatureNoopShed.id ? setTemperatureTo18 : turnOff
-    );
 
     const fixtures = [
       baselineSteppedMax,
@@ -245,17 +220,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       temperatureNoopShed,
     ];
 
-    // Legacy fallback path — residualKw absent on every input.
-    const legacyDevices = fixtures.map(toInputRemainingSheddableDevice);
-    const legacyTotal = sumRemainingSheddableLoadKw({
-      devices: legacyDevices,
-      shedBehaviorForDevice,
-      isAlreadyShed: () => false,
-      limitSource: 'capacity',
-      capacityBreached: true,
-    });
-
-    // Producer-resolved path — populate `residualKw.shed` using the same
+    // Populate `residualKw.shed` using the same
     // resolver wired by `setup/appInit/residualKwForPlanDevice.ts`. We
     // compute it inline rather than importing the wiring helper because the
     // helper takes a `TargetDeviceSnapshot`, not a `PlanInputDevice`.
@@ -306,18 +271,13 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     }).map(toInputRemainingSheddableDevice);
     const producerTotal = sumRemainingSheddableLoadKw({
       devices: producerDevices,
-      shedBehaviorForDevice,
       isAlreadyShed: () => false,
       limitSource: 'capacity',
       capacityBreached: true,
     });
 
-    // Watt-equality across the cascade for the agreeing edge cases (a, b, d).
-    expect(producerTotal).toBeCloseTo(legacyTotal, 6);
-    // Pin the absolute total too — baseline 2.9 + (a) 1.2 + (d) 0.
-    // If a future refactor accidentally collapses a positive case to 0 (or
-    // vice versa) but keeps producer/legacy aligned, the cross-path
-    // assertion still passes while this one fires.
+    // Baseline 2.9 + (a) 1.2 + (d) 0. Case (d) contributing 0 is the point:
+    // the producer resolved a no-op setpoint shed to zero relief.
     expect(producerTotal).toBeCloseTo(2.9 + 1.2, 6);
   });
 
@@ -325,8 +285,6 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
   // refactor that flattens all branches to one path can't pass the cascade
   // assertion vacuously.
   it('each edge case yields its documented per-device residual under the producer path', () => {
-    const turnOff: RemainingShedBehavior = { action: 'turn_off' };
-    const setTo18: RemainingShedBehavior = { action: 'set_temperature', temperature: 18 };
 
     // (a) hasBinaryControl=false, at lowest active step (`low`) →
     //     `resolveSteppedShedTargetStepResidual` resolves a non-equal target
@@ -348,7 +306,6 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
         }),
         residualKw: { shed: 1.2 },
       }),
-      shedBehavior: turnOff,
       alreadyShed: false,
       limitSource: 'capacity',
       capacityBreached: true,
@@ -378,7 +335,6 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
         }),
         residualKw: { shed: 0 },
       }),
-      shedBehavior: setTo18,
       alreadyShed: false,
       limitSource: 'capacity',
       capacityBreached: true,

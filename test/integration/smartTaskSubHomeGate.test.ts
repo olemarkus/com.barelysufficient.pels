@@ -200,7 +200,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
 
-const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0,
+const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
   id: 'heater-sub',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
@@ -551,7 +551,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       // actuate a binary-off terminal release without the sub-home gate (the
       // control test below proves it).
       planService: {
-        getPlanDevices: () => [withBinaryDiscriminant({ currentDrawKw: 0,
+        getPlanDevices: () => [withBinaryDiscriminant({ currentDrawKw: 0, residualKw: { shed: 0 },
           id: 'd1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Cabin heater',

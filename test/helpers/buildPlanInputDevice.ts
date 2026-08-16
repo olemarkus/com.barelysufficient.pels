@@ -1,5 +1,6 @@
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveResidualKwShed } from '../../lib/device/deviceResidualKw';
 import { fixtureCurrentDrawKw, fixtureExpectedPowerKw } from '../utils/planTestUtils';
 
 /**
@@ -68,5 +69,69 @@ export function buildPlanInputDevice(
     // Spread LAST and `??`-guarded so an explicit `commandableNow: undefined`
     // override cannot erase the required field, while an explicit `false` stands.
     commandableNow: commandableNow ?? resolveCommandableNow({ ...rest, available: available ?? true }),
+    // Required since the dual-read collapse: the producer always stamps
+    // `residualKw`, so a fixture without one is a shape production never emits.
+    // Resolved through the SAME function the producer uses
+    // (`resolveResidualKwShed`) rather than defaulted to the draw, so a stepped
+    // fixture already at its off step still resolves to 0 — the answer the
+    // deleted kind-switch fallback used to compute at the consumer. `turn_off`
+    // is the behaviour the producer assumes when nothing else is configured.
+    residualKw: overrides.residualKw ?? {
+      shed: resolveResidualKwShed({
+        device: fixtureResidualShedInput({
+          ...overrides,
+          currentDrawKw: fixtureCurrentDrawKw({ ...overrides, currentDrawKw, measuredPowerKw }),
+        }),
+        shedBehavior: { action: 'turn_off' },
+      }),
+    },
   } as unknown as PlanInputDevice;
+}
+
+/**
+ * Resolve a fixture's `residualKw` through the SAME function the producer uses
+ * (`resolveResidualKwShed`). Exported because several specs keep their own
+ * local device builder; they must not re-derive this by hand, or a stepped
+ * fixture already at its off step would claim relief it cannot deliver.
+ * `turn_off` is the behaviour the producer assumes when nothing else is
+ * configured.
+ */
+export function fixtureResidualKw(
+  device: Record<string, unknown> & { currentDrawKw?: number },
+): { shed: number } {
+  return {
+    shed: resolveResidualKwShed({
+      // A fixture that declares no draw draws nothing, and shedding nothing
+      // frees nothing — the same answer `fixtureCurrentDrawKw` resolves.
+      device: fixtureResidualShedInput({ ...device, currentDrawKw: device.currentDrawKw ?? 0 }),
+      shedBehavior: { action: 'turn_off' },
+    }),
+  };
+}
+
+// Mirrors `toResidualSteppedLoad` / `toResidualTemperatureTarget` in
+// `setup/appInit/residualKwForPlanDevice.ts`, reading the fields a fixture
+// declares instead of a `DecoratedDeviceSnapshot`.
+function fixtureResidualShedInput(device: Record<string, unknown> & { currentDrawKw: number }) {
+  const steppedLoadProfile = device.steppedLoadProfile as
+    { steps?: { id: string }[] } | undefined;
+  const temperatureTarget = Array.isArray(device.targets)
+    && (device.targets as { id?: string }[]).some((t) => t?.id === 'target_temperature')
+    ? { currentValue: device.currentTarget as number | undefined }
+    : undefined;
+  return {
+    currentDrawKw: device.currentDrawKw,
+    ...(temperatureTarget ? { temperatureTarget } : {}),
+    ...(steppedLoadProfile
+      ? {
+        steppedLoad: {
+          profile: steppedLoadProfile as never,
+          selectedStepId: device.selectedStepId as string | undefined,
+          hasKnownEffectiveStep: device.selectedStepId !== undefined,
+          currentDrawKw: device.currentDrawKw,
+          hasBinaryControl: device.binaryCapabilityId !== undefined,
+        },
+      }
+      : {}),
+  };
 }

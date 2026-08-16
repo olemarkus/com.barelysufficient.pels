@@ -29,6 +29,7 @@ import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
+import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
 
 /**
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved
@@ -377,6 +378,13 @@ DevicePlanDevice => {
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // Required since the dual-read collapse: the producer always stamps a
+    // residual, so a fixture without one is a shape production never emits and
+    // `resolveRemainingSheddableLoadKw` would dereference `undefined`. Resolved
+    // through the SAME function the producer uses, never defaulted to the draw
+    // — a stepped fixture already at its off step must still resolve to 0.
+    residualKw: overrides.residualKw
+      ?? fixtureResidualKw({ ...overrides, currentDrawKw: fixtureCurrentDrawKw(overrides) }),
     // Stamped AFTER the caller spread, like `currentDrawKw`: an explicit
     // `expectedPowerKw: undefined` in a fixture must not ship a required field
     // as missing, which would propagate as NaN through every restore
@@ -523,6 +531,13 @@ export const buildPlanInputDevice = (
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // Required since the dual-read collapse: the producer always stamps a
+    // residual, so a fixture without one is a shape production never emits and
+    // `resolveRemainingSheddableLoadKw` would dereference `undefined`. Resolved
+    // through the SAME function the producer uses, never defaulted to the draw
+    // — a stepped fixture already at its off step must still resolve to 0.
+    residualKw: overrides.residualKw
+      ?? fixtureResidualKw({ ...overrides, currentDrawKw: fixtureCurrentDrawKw(overrides) }),
     // Stamped AFTER the caller spread, like `currentDrawKw`: an explicit
     // `expectedPowerKw: undefined` in a fixture must not ship a required field
     // as missing, which would propagate as NaN through every restore

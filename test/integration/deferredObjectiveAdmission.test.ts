@@ -157,6 +157,7 @@ const buildDevice = (params: {
   currentTarget: TARGET_C,
   lastFreshDataMs: params.nowMs,
   currentDrawKw: params.currentOn ? 1.5 : 0,
+  residualKw: { shed: params.currentOn ? 1.5 : 0 },
   expectedPowerKw: params.currentOn ? 1.5 : 0, expectedPowerSource: 'default',
   planningPowerKw: params.currentOn ? 1.5 : 0,
   // This fixture models the semantic `HomeScope` producer output. A sole
@@ -238,7 +239,7 @@ const buildContender = (params: {
   nowMs: number;
   controllable?: boolean;
   priority?: number;
-}): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0,
+}): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0, residualKw: { shed: 0 },
   id: CONTENDER_ID,
   name: 'Contender',
   commandableNow: true,
