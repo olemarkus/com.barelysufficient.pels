@@ -135,13 +135,6 @@ const isOptionalFiniteNonNegative = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value >= 0)
 );
 
-// `dailyBudgetExhaustedBucketCount` is a RETIRED field: the recorder no longer
-// writes it. The validator still accepts it so revisions persisted by an older
-// build round-trip instead of being dropped on upgrade.
-const isOptionalNonNegativeCount = (value: unknown): boolean => (
-  value === undefined || (isFiniteNumber(value) && value >= 0)
-);
-
 // `floorShortfallCause` is the producer-resolved verdict that routes the hero
 // recourse (budget-bound → `Open Budget`, otherwise device-side). Optional for
 // backward compatibility with revisions persisted before the field shipped.
@@ -165,16 +158,14 @@ const isOptionalFloorShortfallCause = (value: unknown): boolean => (
 // revision the recorder writes (see `buildRevision` in `activePlanRecorder.ts`),
 // but the previous validator never checked them — a tampered or downgraded
 // payload could carry an unknown status string or NaN energy figure all the
-// way to the hero/status chip. `energyExpectedKWh`, the retired
-// `dailyBudgetExhaustedBucketCount`, and `floorShortfallCause` are optional
-// but must round-trip cleanly when the recorder did persist them. Split out
-// of `isRevision` so the top-level guard stays under the cyclomatic-complexity
-// cap.
+// way to the hero/status chip. `energyExpectedKWh` and `floorShortfallCause`
+// are optional but must round-trip cleanly when the recorder did persist them.
+// Split out of `isRevision` so the top-level guard stays under the
+// cyclomatic-complexity cap.
 const hasValidRevisionEnergyFields = (v: Record<string, unknown>): boolean => (
   isFiniteNumber(v.energyNeededKWh)
     && isPlanStatus(v.planStatus)
     && isOptionalFiniteNonNegative(v.energyExpectedKWh)
-    && isOptionalNonNegativeCount(v.dailyBudgetExhaustedBucketCount)
     && isOptionalFloorShortfallCause(v.floorShortfallCause)
 );
 

@@ -228,9 +228,6 @@
     if (params.pricesShortOfDeadline) {
       return `Waiting for tomorrow\u2019s prices through ${params.deadlineTime}.`;
     }
-    if (params.dailyBudgetExhausted) {
-      return "Today\u2019s budget is full \u2014 next cheap window after midnight.";
-    }
     if (params.plannedWindowCheaperThanNow) {
       return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
     }

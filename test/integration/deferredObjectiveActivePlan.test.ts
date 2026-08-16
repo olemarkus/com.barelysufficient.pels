@@ -3987,49 +3987,23 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(normalized.plansByDeviceId.dev?.latest?.energyExpectedKWh).toBeCloseTo(3.8);
       });
 
-      it('drops a plan whose revision dailyBudgetExhaustedBucketCount is negative', () => {
-        const persisted = {
-          version: 1,
-          plansByDeviceId: {
-            dev: basePlan({
-              reason: 'flow_card',
-              dailyBudgetExhaustedBucketCount: -1,
-            }),
-          },
-        };
-        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
-        expect(normalized.plansByDeviceId.dev).toBeUndefined();
-      });
-
-      it('accepts a retired dailyBudgetExhaustedBucketCount = 0 (legacy payload)', () => {
-        // The recorder no longer writes this field at all, but revisions
-        // persisted by an older build still carry it. The validator stays
-        // lenient so those payloads load instead of being dropped on upgrade.
-        const persisted = {
-          version: 1,
-          plansByDeviceId: {
-            dev: basePlan({
-              reason: 'flow_card',
-              dailyBudgetExhaustedBucketCount: 0,
-            }),
-          },
-        };
-        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
-        expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(0);
-      });
-
-      it('accepts a retired dailyBudgetExhaustedBucketCount > 0 (legacy payload)', () => {
+      it('keeps a legacy payload still carrying the retired dailyBudgetExhaustedBucketCount', () => {
+        // The field left the active-plan contract once its producer was
+        // removed in v2.23.0. A revision persisted by an older build can still
+        // carry it, and nothing reads it — so the seam must load the plan
+        // rather than drop a live commitment over an unread key.
         const persisted = {
           version: 1,
           plansByDeviceId: {
             dev: basePlan({
               reason: 'schedule_revised',
               dailyBudgetExhaustedBucketCount: 3,
-            }),
+            } as never),
           },
         };
         const normalized = normalizeDeferredObjectiveActivePlans(persisted);
-        expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(3);
+        expect(normalized.plansByDeviceId.dev).toBeDefined();
+        expect(normalized.plansByDeviceId.dev?.latest?.planStatus).toBe('on_track');
       });
 
       it('drops a plan whose provenance displayConfidence is an unknown band', () => {
@@ -4212,7 +4186,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         // refactor that tightens any field accidentally would surface here.
         // Mirrors `buildRevision` + `resolveProvenance` output for a typical
         // schedule_revised cycle (energyExpectedKWh < energyNeededKWh,
-        // dailyBudgetExhaustedBucketCount > 0, displayConfidence set).
+        // displayConfidence set).
         const persisted = {
           version: 1,
           plansByDeviceId: {
@@ -4221,7 +4195,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
                 reason: 'schedule_revised',
                 energyNeededKWh: 4.5,
                 energyExpectedKWh: 3.8,
-                dailyBudgetExhaustedBucketCount: 2,
                 kwhPerUnitSource: 'learned',
                 planningSpeedKw: 1.5,
                 estimatedDurationText: '3h',
@@ -4243,7 +4216,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(normalized.plansByDeviceId.dev).toBeDefined();
         expect(normalized.plansByDeviceId.dev?.latest?.energyNeededKWh).toBe(4.5);
         expect(normalized.plansByDeviceId.dev?.latest?.energyExpectedKWh).toBe(3.8);
-        expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(2);
         expect(normalized.plansByDeviceId.dev?.latest?.planStatus).toBe('on_track');
         expect(
           normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,

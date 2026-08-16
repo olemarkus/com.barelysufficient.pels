@@ -143,7 +143,6 @@ const buildDisambiguation = (
   if (rev.reason !== 'schedule_revised') return undefined;
   return {
     planStatusChanged: prior !== null && prior.planStatus !== rev.planStatus,
-    dailyBudgetExhaustedBucketCount: rev.dailyBudgetExhaustedBucketCount,
     floorShortfallCause: rev.floorShortfallCause,
     hoursAdded: hourDiff?.added,
     hoursRemoved: hourDiff?.removed,

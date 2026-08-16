@@ -446,10 +446,7 @@ var PENDING_REASONS_OWNING_DETAIL_ROW = /* @__PURE__ */ new Set([
   "awaiting_horizon_plan"
 ]);
 var suppressesSmartTaskConfidenceChip = (reason) => PENDING_REASONS_OWNING_DETAIL_ROW.has(resolveSmartTaskPendingReason(reason));
-var isBudgetDriven = (input) => {
-  if (input.floorShortfallCause !== void 0) return input.floorShortfallCause === "budget";
-  return input.statusId === "at_risk" && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
-};
+var isBudgetDriven = (input) => input.floorShortfallCause === "budget";
 var isLeftOffDriven = (input) => input.diagnosticReasonCode === "objective_device_left_off";
 var resolveAtRiskCopy = (input) => {
   if (isLeftOffDriven(input)) {
@@ -711,9 +708,6 @@ var withLastFetched = (base, lastFetchedShort) => lastFetchedShort ? `${base} La
 var resolveQueuedHeadlineReason = (params) => {
   if (params.pricesShortOfDeadline) {
     return `Waiting for tomorrow\u2019s prices through ${params.deadlineTime}.`;
-  }
-  if (params.dailyBudgetExhausted) {
-    return "Today\u2019s budget is full \u2014 next cheap window after midnight.";
   }
   if (params.plannedWindowCheaperThanNow) {
     return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
@@ -1364,7 +1358,6 @@ var resolveRowCopy = (plan, statusId, firstPlannedTimeLabel) => {
     pendingReason: plan.pendingReason,
     diagnosticReasonCode: plan.diagnosticReasonCode,
     floorShortfallCause: plan.latest?.floorShortfallCause,
-    dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
     firstPlannedTimeLabel
   });
   const suppressPlanMeta = statusId === "cannot_meet" || statusId === "unavailable" || !plan.latest;

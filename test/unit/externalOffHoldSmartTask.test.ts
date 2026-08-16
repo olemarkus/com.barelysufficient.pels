@@ -139,7 +139,6 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     expect(resolveSmartTaskWidgetDetailCopy({
       statusId: 'at_risk',
       diagnosticReasonCode: 'objective_device_left_off',
-      dailyBudgetExhaustedBucketCount: 3,
     })).toEqual({
       whyLabel: 'Device is staying off until turned on again.',
       recourseHint: null,

@@ -234,12 +234,6 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // current build omits it whenever no rate source resolved. The UI derives it
   // from `kwhPerUnitSource` (absent → `auto`).
   speedMode?: DeferredObjectiveActivePlanSpeedMode;
-  // Number of horizon buckets whose per-bucket cap collapsed to zero because
-  // the daily budget cap had already been reached. Lets the UI explain a
-  // `cannot_meet` outcome that would otherwise look like a device or schedule
-  // problem. Optional for backward compatibility — older persisted revisions
-  // don't carry it and the UI should treat absence as zero.
-  dailyBudgetExhaustedBucketCount?: number;
   // Producer-resolved verdict for what bound the floor schedule. See the
   // `DeferredObjectiveActivePlanFloorShortfallCause` doc above for the mapping
   // table and the squeeze-case rationale. Persisting it lets the hero copy

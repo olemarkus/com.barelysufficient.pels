@@ -51,11 +51,9 @@ const buildHeaterActivePlan = (params: {
   energyNeededKWh?: number;
   energyExpectedKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
-  dailyBudgetExhaustedBucketCount?: number;
-  // Producer-resolved verdict for the floor shortfall. Existing fixtures omit
-  // this so the consumer's legacy fallback continues to fire (those tests
-  // were written against the count-based heuristic). New fixtures should set
-  // this to mirror the producer's mapping for the scenario under test.
+  // Producer-resolved verdict for the floor shortfall, and the only budget
+  // signal a revision carries. Set it to mirror the producer's mapping for the
+  // scenario under test; absence means the floor was not short at all.
   floorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
   planningSpeedKw?: number;
   initialPlanningSpeedKw?: number;
@@ -80,9 +78,6 @@ const buildHeaterActivePlan = (params: {
       ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
     ...(params.energyExpectedKWh !== undefined ? { energyExpectedKWh: params.energyExpectedKWh } : {}),
     planStatus: params.planStatus ?? ('on_track' as const),
-    ...(params.dailyBudgetExhaustedBucketCount !== undefined
-      ? { dailyBudgetExhaustedBucketCount: params.dailyBudgetExhaustedBucketCount }
-      : {}),
     ...(params.floorShortfallCause !== undefined
       ? { floorShortfallCause: params.floorShortfallCause }
       : {}),
@@ -1006,19 +1001,12 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.chips.some((chip) => chip.text === 'Heating')).toBe(false);
   });
 
-  it('keeps a pre-v2.9 cannot-meet revision on device-side recourse even when buckets were exhausted in the run-up', () => {
-    // Pre-v2.9.x persisted revisions don't carry `floorShortfallCause`, so the
-    // consumer falls back to the legacy `bucketCount > 0` heuristic. The fix
-    // restricts that heuristic to `at_risk` because by construction the
-    // producer (`resolveStatus` in `horizonPlanner.ts`) only returns
-    // `cannot_meet` on the `!budgetBound` branch — a `cannot_meet` plan's
-    // cause is `time_capacity` (or `step_power` / `estimate`), never
-    // `budget`. A pre-v2.9 `cannot_meet` revision whose run-up happened to
-    // brush the daily-budget cap (cumulative `dailyBudgetExhaustedBucketCount
-    // > 0`) is still a physical/time miss — routing it to "Open Budget"
-    // would misdirect the user. Once the recorder re-records each plan
-    // post-upgrade the explicit `floorShortfallCause: 'time_capacity'` takes
-    // over and the gate becomes moot.
+  it('keeps a cannot-meet revision on device-side recourse, never the budget tab', () => {
+    // By construction the producer (`resolveStatus` in `horizonPlanner.ts`)
+    // only returns `cannot_meet` on the `!budgetBound` branch, so a
+    // `cannot_meet` plan's cause is `time_capacity` (or `step_power` /
+    // `estimate`), never `budget`. Routing such a plan to "Open Budget" would
+    // misdirect the user at the moment they most need the right lever.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1067,8 +1055,7 @@ describe('deadline plan page payload', () => {
       targetTemperatureC: 22,
       energyNeededKWh: 4,
       planStatus: 'cannot_meet',
-      dailyBudgetExhaustedBucketCount: 3,
-      // No `floorShortfallCause` — pre-v2.9.x persisted revision shape.
+      floorShortfallCause: 'time_capacity',
     }));
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -1081,13 +1068,13 @@ describe('deadline plan page payload', () => {
 
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
     // No daily-budget message — the cause cannot be budget for a cannot_meet
-    // verdict, so the legacy heuristic must not fire.
+    // verdict.
     expect(payload.hero.metaLine).not.toMatch(/today's daily budget is fully booked/i);
     expect(payload.hero.metaLine).not.toMatch(/lower it so future days reserve power earlier/i);
     // The shortfall copy is the chosen explanation — pointing at the device.
     expect(payload.hero.metaLine).toMatch(/not enough time for this target/i);
     // Recourse stays on the device-side `Adjust device` (Overview tab), not
-    // the budget tab. Mirrors the post-v2.9 `time_capacity` route.
+    // the budget tab.
     expect(payload.hero.recourse?.targetTab).toBe('overview');
     expect(payload.hero.recourse?.label).toBe('Adjust device');
     expect(payload.hero.recourse?.deviceId).toBe('heater');
@@ -1150,7 +1137,7 @@ describe('deadline plan page payload', () => {
       targetTemperatureC: 22,
       energyNeededKWh: 4,
       planStatus: 'at_risk',
-      dailyBudgetExhaustedBucketCount: 3,
+      floorShortfallCause: 'budget',
     }));
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -1176,13 +1163,12 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse?.deviceId).toBeUndefined();
   });
 
-  it('routes the per-bucket squeeze case (bucketCount: 0 + floorShortfallCause: budget) to Open Budget', () => {
+  it('routes the per-bucket squeeze case to Open Budget on the producer cause alone', () => {
     // Prod squeeze repro: the planner sees a per-bucket background-squeeze and
-    // resolves `at_risk: limited_by_daily_budget`, but the cumulative
-    // `dailyBudgetExhaustedBucketCount` stays at 0 — only the producer's
-    // `floorShortfallCause: 'budget'` flag captures that the recourse belongs
-    // on the Budget tab. Pre-fix this regressed to the device-side `Adjust
-    // device` button.
+    // resolves `at_risk: limited_by_daily_budget`. No count of exhausted
+    // buckets is involved — the producer's `floorShortfallCause: 'budget'` is
+    // what puts the recourse on the Budget tab. Pre-fix this regressed to the
+    // device-side `Adjust device` button.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1231,8 +1217,6 @@ describe('deadline plan page payload', () => {
       targetTemperatureC: 22,
       energyNeededKWh: 4,
       planStatus: 'at_risk',
-      // The squeeze signature: zero exhausted buckets, cause is still budget.
-      dailyBudgetExhaustedBucketCount: 0,
       floorShortfallCause: 'budget',
     }));
 
@@ -1252,13 +1236,12 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse?.deviceId).toBeUndefined();
   });
 
-  it('keeps device-side routing when floorShortfallCause is step_power and no bucket has been exhausted', () => {
+  it('keeps device-side routing when floorShortfallCause is step_power', () => {
     // Step-power undercount means the floor was short because climbing a
     // higher step (within budget) would help — the cause is device-side, not
-    // budget. With `dailyBudgetExhaustedBucketCount: 0` the legacy backstop
-    // also stays silent, so neither the new flat field nor the legacy
-    // heuristic surface the budget recourse. The hero copy stays on the
-    // device-side `Adjust device` button as expected for step-bound floors.
+    // budget, so the budget recourse must stay silent. The hero copy stays on
+    // the device-side `Adjust device` button as expected for step-bound
+    // floors.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1307,7 +1290,6 @@ describe('deadline plan page payload', () => {
       targetTemperatureC: 22,
       energyNeededKWh: 4,
       planStatus: 'at_risk',
-      dailyBudgetExhaustedBucketCount: 0,
       floorShortfallCause: 'step_power',
     }));
 
@@ -1394,7 +1376,7 @@ describe('deadline plan page payload', () => {
       targetTemperatureC: 65,
       energyNeededKWh: 10,
       planStatus: 'at_risk',
-      dailyBudgetExhaustedBucketCount: 3,
+      floorShortfallCause: 'budget',
     }));
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -4610,7 +4592,6 @@ describe('resolveQueuedHeadlineReason', () => {
       cannotMeet: true,
       deadlineAtMs,
       computedFromPricesUpTo: deadlineAtMs,
-      dailyBudgetExhaustedInRunUp: false,
       plannedWindowCheaperThanNow: true,
     })).toBeNull();
   });
@@ -4624,7 +4605,6 @@ describe('resolveQueuedHeadlineReason', () => {
       cannotMeet: false,
       deadlineAtMs,
       computedFromPricesUpTo: deadlineAtMs,
-      dailyBudgetExhaustedInRunUp: false,
       plannedWindowCheaperThanNow: true,
     })).toBeNull();
   });
@@ -4638,25 +4618,9 @@ describe('resolveQueuedHeadlineReason', () => {
       cannotMeet: false,
       deadlineAtMs,
       computedFromPricesUpTo: deadlineAtMs - 60 * 60 * 1000,
-      dailyBudgetExhaustedInRunUp: false,
       plannedWindowCheaperThanNow: true,
     });
     expect(out).toMatch(/Waiting for tomorrow.s prices/);
-  });
-
-  it('surfaces "Today\'s budget is full" when prices are complete but the run-up hit the cap', async () => {
-    const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveQueuedHeadlineReason({
-      labels,
-      firstChargingHour: baseHour,
-      nowMs: baseHour.startsAtMs - 60_000,
-      cannotMeet: false,
-      deadlineAtMs,
-      computedFromPricesUpTo: deadlineAtMs,
-      dailyBudgetExhaustedInRunUp: true,
-      plannedWindowCheaperThanNow: true,
-    });
-    expect(out).toMatch(/Today.s budget is full/);
   });
 
   it('says "Cheaper than now — starts at HH:MM" only when the price comparison verified it', async () => {
@@ -4668,7 +4632,6 @@ describe('resolveQueuedHeadlineReason', () => {
       cannotMeet: false,
       deadlineAtMs,
       computedFromPricesUpTo: deadlineAtMs,
-      dailyBudgetExhaustedInRunUp: false,
       plannedWindowCheaperThanNow: true,
     });
     expect(out).toMatch(/^Cheaper than now — starts at \d{2}:\d{2}\.$/);
@@ -4687,7 +4650,6 @@ describe('resolveQueuedHeadlineReason', () => {
       cannotMeet: false,
       deadlineAtMs,
       computedFromPricesUpTo: deadlineAtMs,
-      dailyBudgetExhaustedInRunUp: false,
       plannedWindowCheaperThanNow: false,
     });
     expect(out).toMatch(
