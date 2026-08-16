@@ -264,9 +264,10 @@ const mergeLegacyPlanHistory = (
   if (raw === null || raw === undefined) return current;
   if (typeof raw !== 'object') return current;
   const legacyVersion = (raw as Record<string, unknown>).version;
-  // V1/V2 migration synthesizes UUIDs, so reparsing either after v5 exists
-  // would create a fresh duplicate on every boot. Rollback imports only need
-  // V3/V4, whose rows already carry stable IDs.
+  // Rollback imports only need V3/V4, the versions this key can hold. The
+  // parser refuses anything else anyway; keeping the check explicit here says
+  // which versions a rollback is expected to produce, and keeps the merge from
+  // depending on that parser detail.
   if (legacyVersion !== 3 && legacyVersion !== 4) return current;
   const parsed = parseDeferredObjectivePlanHistory(raw);
   if (parsed.state === 'unavailable') return current;

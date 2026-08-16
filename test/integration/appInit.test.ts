@@ -72,10 +72,7 @@ import {
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from '../../setup/appInit';
-import {
-  DeferredObjectivePlanHistoryRecorder,
-  normalizeDeferredObjectivePlanHistory,
-} from '../../lib/objectives/deferredObjectives';
+import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives';
 import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
@@ -499,46 +496,6 @@ describe('app init plan service wiring', () => {
     const reupgraded = createDeferredObjectivePlanHistoryRecorder(ctx);
     expect(reupgraded.getHistorySnapshot().entries.map((entry) => entry.id))
       .toEqual(['legacy-v4', expect.any(String), 'rollback-v4']);
-  });
-
-  it('does not re-import v2 rows with fresh ids after the initial v5 migration', () => {
-    const ctx = createAppContextMock();
-    const store = new Map<string, unknown>();
-    (ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>)
-      .mockImplementation((key: string) => store.get(key));
-    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
-      .mockImplementation(() => [...store.keys()]);
-    (ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>)
-      .mockImplementation((key: string, value: unknown) => { store.set(key, value); });
-    const v2Entry = {
-      deviceId: 'dev',
-      deviceName: 'Water Heater',
-      objectiveKind: 'temperature',
-      targetTemperatureC: 65,
-      targetPercent: null,
-      deadlineAtMs: 3_600_000,
-      startedAtMs: 0,
-      finalizedAtMs: 3_600_000,
-      startProgressC: 50,
-      startProgressPercent: null,
-      finalProgressC: 65,
-      finalProgressPercent: null,
-      initialEnergyNeededKWh: 22.5,
-      outcome: 'met',
-      metAtMs: 3_599_999,
-      usedDeadlineReserve: false,
-      observedIntervals: [{ fromMs: 0, toMs: 3_600_000 }],
-      discoveredFrom: 'observation',
-    };
-    const migrated = normalizeDeferredObjectivePlanHistory({ version: 2, entries: [v2Entry] });
-    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, migrated);
-    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING, { version: 2, entries: [v2Entry] });
-
-    const first = createDeferredObjectivePlanHistoryRecorder(ctx).getHistorySnapshot();
-    const second = createDeferredObjectivePlanHistoryRecorder(ctx).getHistorySnapshot();
-    expect(first.entries).toHaveLength(1);
-    expect(second.entries).toHaveLength(1);
-    expect(second.entries[0]!.id).toBe(first.entries[0]!.id);
   });
 
   it('advances the watermark to now after a successful startup back-fill scan', () => {

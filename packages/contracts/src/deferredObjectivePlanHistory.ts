@@ -403,18 +403,3 @@ export type DeferredObjectivePlanHistoryV5 = {
   version: 5;
   entries: DeferredObjectivePlanHistoryRecord[];
 };
-
-// Legacy v2 entry shape kept only so the v2→v3 migration can read pre-v3
-// data. The v2 envelope (`{ version: 2, entries: ... }`) isn't exported as a
-// type because no production code constructs it.
-export type DeferredObjectivePlanHistoryEntryV2 = Omit<
-  DeferredObjectivePlanHistoryEntry,
-  'id' | 'originalPlan' | 'finalPlan'
->;
-
-// Legacy v1 entry shape kept only so the migration in planHistorySettings.ts can read pre-v2
-// data.
-export type DeferredObjectivePlanHistoryEntryV1 = Omit<
-  DeferredObjectivePlanHistoryEntryV2,
-  'observedIntervals' | 'discoveredFrom'
->;
