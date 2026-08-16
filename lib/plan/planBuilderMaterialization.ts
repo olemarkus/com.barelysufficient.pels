@@ -190,8 +190,7 @@ export class PlanMaterializationStages {
       // breach reason. This used to read the RAW total, which survives a meter
       // dropout, so a stale cached figure could claim a breach PELS could not
       // observe. Shedding is unaffected — a fail-closed meter still forces -1.
-      capacityBreached: context.powerIsMeasured
-        && !context.powerMeasuredAtOrBelowKw(context.capacitySoftLimit),
+      capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
       budgetReleasableHeadroomHold: context.budgetReleasableHeadroomHold,
       // The hold lane's post-pass axes — `applyHoldPlan` always supplies a
       // ledger on this path, so `ledgerAxes` is only null for scalar-only

@@ -19,11 +19,23 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 const readingFor = (
   powerTracker: { lastTimestamp?: number },
   capacityGuard?: CapacityGuard,
-) => new PowerFreshnessMonitor().observe({
-  powerTracker,
-  totalKw: capacityGuard?.getLastTotalPower() ?? null,
-  nowMs: Date.now(),
-});
+) => {
+  // Already watching: the producer will not escalate to fail-closed on its FIRST
+  // look (a restart reloads an aged timestamp, and escalating on it would shed
+  // the house blind at boot). These cases are about the LADDER, not the grace —
+  // the grace has its own tests in `test/unit/powerCycleReading.test.ts`.
+  const monitor = new PowerFreshnessMonitor();
+  monitor.observe({
+    powerTracker: {},
+    totalKw: null,
+    nowMs: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
+  });
+  return monitor.observe({
+    powerTracker,
+    totalKw: capacityGuard?.getLastTotalPower() ?? null,
+    nowMs: Date.now(),
+  });
+};
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
@@ -219,6 +231,24 @@ describe('planner behavior under stale power freshness states', () => {
     vi.useRealTimers();
   });
 
+  /**
+   * Drive a builder to a genuine fail-closed: one real sample, then silence past
+   * the shed timeout. A builder cannot escalate on its FIRST look any more — the
+   * producer holds until it has watched for the timeout itself, because
+   * `lastTimestamp` survives a restart and escalating on it would shed the whole
+   * house blind at boot.
+   */
+  async function driveToFailClosed(
+    builder: PlanBuilder,
+    sampleNow: (nowMs: number) => void,
+    devices: PlanInputDevice[],
+  ) {
+    sampleNow(Date.now());
+    await builder.buildDevicePlanSnapshot(devices);
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
+    return builder.buildDevicePlanSnapshot(devices);
+  }
+
   function buildBuilder(params: {
     tracker: { lastTimestamp?: number };
     capacityGuard?: CapacityGuard;
@@ -301,7 +331,7 @@ describe('planner behavior under stale power freshness states', () => {
     });
 
     const builder = buildBuilder({ tracker, capacityGuard, state });
-    const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
+    const plan = await driveToFailClosed(builder, (ms) => { tracker.lastTimestamp = ms; }, [buildDevice()]);
 
     expect(plan.meta.powerFreshnessState).toBe('stale_fail_closed');
     expect(plan.devices[0]?.plannedState).toBe('shed');
@@ -321,7 +351,7 @@ describe('planner behavior under stale power freshness states', () => {
       structuredLog,
     });
 
-    const failClosedPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
+    const failClosedPlan = await driveToFailClosed(builder, (ms) => { tracker.lastTimestamp = ms; }, [buildDevice()]);
     expect(failClosedPlan.meta.powerFreshnessState).toBe('stale_fail_closed');
     expect(failClosedPlan.meta.headroomKw).toBe(-1);
     expect(failClosedPlan.devices[0]?.plannedState).toBe('shed');
@@ -335,7 +365,10 @@ describe('planner behavior under stale power freshness states', () => {
 
     const recoveredPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
     expect(recoveredPlan.meta.powerFreshnessState).toBe('fresh');
-    expect(recoveredPlan.meta.headroomKw).toBeCloseTo(3.8, 6);
+    // A real difference again, not the synthesized -1. The exact figure moves
+    // with the dynamic soft limit, which the 10 minutes spent reaching
+    // fail-closed necessarily advanced.
+    expect(recoveredPlan.meta.headroomKw).toBeGreaterThan(0);
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'power_sample_stale_fail_closed_cleared',
     }));

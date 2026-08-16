@@ -592,6 +592,14 @@ export type DevicePlan = {
     hasLivePowerSample: boolean;
     powerSampleAgeMs: number | null;
     powerFreshnessState: PowerFreshnessState;
+    /**
+     * Producer-resolved: did this cycle have a measurement. Downstream layers
+     * that gate a positive (turn-on) action read THIS, never
+     * `powerFreshnessState` — `lib/executor` used to test the label itself and
+     * so answered the same question with a different predicate (`fresh` alone,
+     * where the planner required a total too).
+     */
+    powerIsMeasured: boolean;
     capacityShortfall: boolean;
     // Genuinely absent when there is no capacity guard: the threshold is the
     // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.

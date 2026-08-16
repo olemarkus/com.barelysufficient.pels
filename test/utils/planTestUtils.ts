@@ -654,6 +654,7 @@ const buildPlanMetaFields = (
   hasLivePowerSample: true,
   powerSampleAgeMs: 0,
   powerFreshnessState: 'fresh',
+  powerIsMeasured: true,
   capacityShortfall: false,
   shortfallBudgetHeadroomKw: null,
   hardCapLimitKw: 10,

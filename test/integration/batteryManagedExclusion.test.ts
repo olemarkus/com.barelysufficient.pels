@@ -15,7 +15,6 @@
 // battery inert. These tests prove being managed+non-controllable+non-temperature is
 // sufficient; no new control gate is added.
 import { planContextPower } from '../utils/planContextPowerFixture';
-import { resolveMeasuredTotalKw } from '../../lib/plan/planContext';
 import { describe, expect, it } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -197,7 +196,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       devices: context.devices,
       needed: 5, // ask for a large reduction so any eligible device is offered
       limitSource: 'capacity',
-      total: resolveMeasuredTotalKw(context),
+      total: context.measuredDrawKw,
       capacitySoftLimit: context.capacitySoftLimit,
       state: createPlanEngineState(),
       deps: {

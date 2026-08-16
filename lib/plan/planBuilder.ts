@@ -135,7 +135,7 @@ export class PlanBuilder {
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {
     this.overshootTracker = new OvershootTracker(state, deps);
     this.stages = new PlanMaterializationStages(deps, state);
-    this.powerFreshnessMonitor = new PowerFreshnessMonitor(deps.structuredLog);
+    this.powerFreshnessMonitor = new PowerFreshnessMonitor(deps.structuredLog, () => state.appStartedAtMs);
   }
 
   private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }

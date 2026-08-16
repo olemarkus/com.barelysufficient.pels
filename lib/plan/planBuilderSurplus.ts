@@ -14,7 +14,7 @@
  */
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
-import { resolveMeasuredTotalKw, type PlanContext } from './planContext';
+import type { PlanContext } from './planContext';
 import type { PlanInputDevice } from './planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
@@ -80,7 +80,7 @@ export function runSurplusPass(params: {
     state,
     // Producer-resolved: `null` when no trustworthy total exists this cycle, so
     // the allocator has no untrusted number to guard against.
-    signedNetKw: resolveMeasuredTotalKw(context),
+    signedNetKw: context.measuredDrawKw,
     inferredSurplusKw: params.getInferredSurplusKw?.() ?? null,
     excludeIds,
     getConfig: params.getConfig,

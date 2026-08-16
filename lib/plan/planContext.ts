@@ -77,6 +77,14 @@ export type PlanContext = {
    * `planningTotalKw` whose absence carried the meaning; this removes the
    * absence too, because a nullable is still a consumer-side branch on whether
    * the producer's answer can be believed.
+   *
+   * **Not an admission input.** This is the producer's raw answer; the
+   * exhausted-hour force is applied ON TOP of it, into `headroom`,
+   * `capacityHeadroomKw`, and `budgetHeadroomKw`. Those three are what admission
+   * and shedding read. Calling this with `softLimit` returns a DIFFERENT (and
+   * more permissive) number than `headroom` in an exhausted hour, so a consumer
+   * that reaches for it to re-derive an axis has silently dropped that force.
+   * Its only caller outside this file is `resolveMeasuredTotalKw`.
    */
   headroomForLimitKw: (limitKw: number) => number;
   /**
@@ -90,6 +98,28 @@ export type PlanContext = {
    * on a positive. See `PowerCycleReading.measuredAtOrBelowKw`.
    */
   powerMeasuredAtOrBelowKw: (limitKw: number) => boolean;
+  /**
+   * Producer-resolved: MEASURED above the limit. Distinct from
+   * `!powerMeasuredAtOrBelowKw` — an unmeasured cycle is false for both. Three
+   * sites used to hand-compose this, and a fourth (`planLogging`) disagreed.
+   */
+  powerMeasuredAboveKw: (limitKw: number) => boolean;
+  /**
+   * The measured whole-home draw, or `null` when this cycle had none.
+   *
+   * Resolved ONCE by the producer. Two consumers need the NUMBER rather than a
+   * difference — the surplus allocator's signed net (which goes negative on
+   * export) and the shortfall deficit — and for them "we did not measure" has no
+   * safe numeric stand-in: a synthesized 0 would read as a balanced house to one
+   * and no deficit to the other. Every other consumer wants a headroom or a
+   * predicate above and must not reach for this.
+   *
+   * It is the one nullable left on the power axis, and it is genuine domain
+   * absence rather than an unresolved read. It replaced a derivation that
+   * recovered the draw by negating `headroomForLimitKw(0)` — correct only while
+   * that answer stayed exactly linear and unclamped, an invariant held by comment.
+   */
+  measuredDrawKw: number | null;
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
@@ -140,24 +170,6 @@ export type PlanContext = {
   currentHourPriceLevel: CurrentHourPriceLevel;
   dailyBudget?: DailyBudgetContext;
 };
-
-/**
- * The measured whole-home draw, or `null` when this cycle had none.
- *
- * Derived, deliberately, instead of sitting on `PlanContext` as a field. Two
- * consumers need the NUMBER rather than a difference — the surplus allocator's
- * signed net (which goes negative on export) and the shortfall deficit — and for
- * them "we did not measure" has no safe numeric stand-in: a synthesized 0 would
- * read as a balanced house to one and no deficit to the other. Every other
- * consumer wants `headroomForLimitKw` or `powerIsMeasured` and must not reach
- * for this.
- *
- * Headroom against a zero limit is the negated draw, so no extra field has to be
- * carried to recover it.
- */
-export const resolveMeasuredTotalKw = (context: PlanContext): number | null => (
-  context.powerIsMeasured ? -context.headroomForLimitKw(0) : null
-);
 
 /**
  * Collapses "the caller omitted it" into "there is no daily-budget axis", so
@@ -249,6 +261,8 @@ export function buildPlanContext(params: {
     headroomForLimitKw: power.headroomKw,
     powerIsMeasured: power.isMeasured,
     powerMeasuredAtOrBelowKw: power.measuredAtOrBelowKw,
+    powerMeasuredAboveKw: power.measuredAboveKw,
+    measuredDrawKw: power.display.measuredTotalKw,
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,
