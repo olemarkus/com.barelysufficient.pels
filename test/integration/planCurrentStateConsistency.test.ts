@@ -108,7 +108,7 @@ describe('planner current-state consistency', () => {
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         log: vi.fn(),
       },
-      true,
+      { actionable: true, shedActionable: true },
     );
 
     return {

@@ -9,6 +9,7 @@ import {
   type PlanSheddingResult,
   type ShedCandidateParams,
   type SheddingDeps,
+  type SheddingOvershootInput,
   type SheddingPlan,
 } from './types';
 import {
@@ -23,16 +24,22 @@ export async function buildSheddingPlan(
   context: PlanContext,
   state: PlanEngineState,
   deps: SheddingDeps,
-  overshootActionable = context.headroom < 0,
+  overshoot: SheddingOvershootInput = {
+    actionable: context.headroom < 0,
+    shedActionable: context.headroom < 0,
+  },
 ): Promise<SheddingPlan> {
   const {
     shedSet,
     shedReasons,
     updates,
     overshootStats,
-  } = planShedding(context, state, deps, overshootActionable);
+  } = planShedding(context, state, deps, overshoot.shedActionable);
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
-  const sheddingActionable = overshootActionable || hourlyBudgetExhausted;
+  // `actionable`, not `shedActionable`: the latch answers "is the house in an
+  // overshoot", which a deferred shed does not change. See
+  // `SheddingOvershootInput` for what tying it to the shed choice cost.
+  const sheddingActionable = overshoot.actionable || hourlyBudgetExhausted;
   const sheddingLimitSource = hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
   const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
