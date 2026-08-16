@@ -3982,6 +3982,35 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 
 ## P3 Future and Exploratory Work
 
+- [ ] **A sub-home meter area under `power_source = flow` renders nothing, forever.**
+      `routeMeterReadings` (`setup/homeRuntime/homeRuntimeRegistry.ts`) drops every reading unless
+      the source is `homey_energy`, and a sub-home pipeline has no other sample entry — so its
+      capacity guard never receives `reportTotalPower`, `PowerMeasurementGate` never opens, and no
+      plan (and therefore no `pels_status:<homeId>` blob) is ever written for that area. Actuation
+      is already correctly withheld (`resolveEffectiveDryRun` forces dry-run when the source is
+      unauthorized), so nothing unsafe happens; the gap is that the per-home Limits/Overview
+      surface has nothing to render and says nothing about why. Note this contradicts the intent
+      recorded at `setup/homeRuntime/homeCapacityBundleApi.ts` ("the ready-edge is DECOUPLED from
+      sample arrival ... so it works in flow mode"). Per the 2026-08-16 ruling a meterless home is
+      unmanageable and correctly gets no plan, so the fix is a surface that SAYS so, not a
+      fabricated plan. *Hypothesis:* an owner who adds a meter area while on the flow source sees a
+      permanently blank card and reads it as PELS being broken. *Persona:* the multi-home owner
+      mid-setup. [P2]
+
+- [ ] **A gated boot serves a stale persisted `pels_status` as live.** The blob lives in Homey
+      settings, so a home that boots gated (no meter reading yet) never rewrites it and the
+      `plan_budget` widget plus any external `pels_status` reader keep rendering the pre-restart
+      headroom, limits, and device counts. `lastPowerUpdate` is in the payload
+      (`lib/plan/pelsStatus.ts`) so a consumer could age it, but none does. *Hypothesis:* an owner
+      checks the widget after a restart with a dead meter and acts on numbers from before the
+      reboot. *Persona:* the widget-first owner. [P2]
+
+- [ ] **`PlanService.buildDevicePlanSnapshot` is an ungated build door next to a gated one.**
+      `rebuildPlanFromCache` consults `planBuildGate`; the public `buildDevicePlanSnapshot` on the
+      same class does not. No production caller today, but the asymmetry is invisible at the call
+      site. Either route it through the same gate or make it non-public. Source: 2026-08-16
+      pels-layering-guardian review. [P3]
+
 - [ ] **App tests model stale-hold as an ABSENT sample timestamp, which the build gate made
       unreachable.** `createApp` seeds a measurement onto the capacity guard only, deliberately
       leaving `powerTracker.lastTimestamp` untouched so a suite's own headroom expectations are not

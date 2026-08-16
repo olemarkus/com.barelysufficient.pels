@@ -56,7 +56,10 @@ const applySourceRecovery = async (
       () => !isSourceRecoveryCurrent(params, sampleRevision),
       () => { rebuildAborted = true; },
     );
-    if (outcome.failed) return false;
+    // A gated skip applied nothing, so the recovery has not happened — report it
+    // as not-recovered and let the retry chain keep running, exactly as a failure
+    // does. Reporting success here stops the chain believing the write landed.
+    if (outcome.failed || outcome.gated) return false;
     reconciledCurrent = !rebuildAborted && isSourceRecoveryCurrent(params, sampleRevision);
   } finally {
     endPreparedReconcile();

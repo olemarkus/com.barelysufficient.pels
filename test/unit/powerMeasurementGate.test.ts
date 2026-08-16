@@ -14,6 +14,7 @@ const buildGate = (guard: CapacityGuard | undefined, nowMs: () => number) => {
     logger: () => ({ info, warn }) as never,
     warnAfterMs: WARN_AFTER_MS,
     nowMs,
+    getPowerSource: () => 'homey_energy',
   });
   return { gate, info, warn };
 };
@@ -65,6 +66,10 @@ describe('PowerMeasurementGate', () => {
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'home_bundle_gated_no_power_sample',
       homeId: 'main',
+      // Names the configured source: the flow-specific cause is wrong for a
+      // Homey Energy home, and this line is the operator's only diagnostic.
+      powerSource: 'homey_energy',
+      detail: expect.stringContaining('whole-home meter is not reporting'),
     }));
   });
 
