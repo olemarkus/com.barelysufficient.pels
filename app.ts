@@ -686,11 +686,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       this.structuredLogger.child({ component }, { level: 'debug' }).debug({ ...payload, debugTopic });
     };
   }
-  public startHeartbeat(): void {
-    // No-op retained for startup wiring compatibility. The settings UI is only
-    // available while the app runtime is alive, so a persistent heartbeat setting
-    // only creates write churn without adding useful liveness signal.
-  }
   public getDynamicSoftLimitOverride(): number | null {
     if (!this.defaultComputeDynamicSoftLimit || this.computeDynamicSoftLimit === this.defaultComputeDynamicSoftLimit) {
       return null;

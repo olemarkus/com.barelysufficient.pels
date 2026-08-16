@@ -23,15 +23,3 @@ export type CapacitySettings = {
 export function resolveUsableCapacityKw(capacitySettings: CapacitySettings): number {
   return Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
 }
-
-/**
- * Deprecated alias of `resolveUsableCapacityKw`, kept only until its last caller
- * (`lib/diagnostics/periodicStatus.ts`) moves over. The name promises
- * `capacityPaceKw` — the dynamic hourly threshold — but it returns
- * `hourlyAllowanceKWh`, a different quantity: the pace budgets the allowance over
- * the time left in the hour and legitimately exceeds it in an under-used hour. Do
- * not add callers; use `resolveUsableCapacityKw` directly.
- */
-export function resolveCapacitySoftLimitKw(capacitySettings: CapacitySettings): number {
-  return resolveUsableCapacityKw(capacitySettings);
-}

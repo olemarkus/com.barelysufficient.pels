@@ -1,5 +1,5 @@
 import type CapacityGuard from '../power/capacityGuard';
-import { resolveCapacitySoftLimitKw, resolveUsableCapacityKw } from '../power/capacityModel';
+import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
@@ -88,7 +88,7 @@ function resolveCapacityStatusMetrics(params: {
 }): CapacityStatusMetrics {
   const { capacityGuard, capacitySettings } = params;
   const total = capacityGuard?.getLastTotalPower() ?? null;
-  const softLimit = capacityGuard?.getSoftLimit() ?? resolveCapacitySoftLimitKw(capacitySettings);
+  const softLimit = capacityGuard?.getSoftLimit() ?? resolveUsableCapacityKw(capacitySettings);
   // Derive headroom from the already-fetched softLimit to avoid a second provider call.
   // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
   const headroom = total !== null ? softLimit - total : null;

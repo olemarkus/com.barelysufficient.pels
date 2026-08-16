@@ -88,7 +88,7 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
 
 1. **Smart-task controller** — the `lib/objectives/deferredObjectives/` subsystem (status
    `statusBus`/`statusTransitions`, lifecycle `activePlanRecorder`, `endedEventBus`, horizon
-   `rescueReplan`/`policyHorizon`, the concurrent-eligible tracker), **relocated out of `lib/plan`**
+   `rescueReplan`/`policyHorizon`, `priorityAllocation`), **relocated out of `lib/plan`**
    (PR-B, into the objectives peer) and advanced on its **own clock tick** wired in `setup/`.
    It already has non-plan consumers
    (`flowCards/deadlineObjectiveCards.ts`, `smartTaskTokens.ts`, `smartTaskRescueCard.ts`,

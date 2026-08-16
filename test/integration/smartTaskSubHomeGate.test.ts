@@ -26,11 +26,6 @@ import {
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 import {
-  ConcurrentEligibleTaskTracker,
-  resolveConcurrentEligibleCount,
-} from '../../lib/objectives/deferredObjectives/concurrentEligibleTasks';
-import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
-import {
   buildDeferredObjectiveDiagnostics,
   DeferredObjectiveDecorationController,
   normalizeDeferredObjectiveSettings,
@@ -768,61 +763,6 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     expect(h.abandonLifecycleFallback).toHaveBeenCalledWith('d1');
     expect(h.ordinarySameTargetCanDispatch()).toBe(true);
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
-  });
-});
-
-// ─── Concurrent-eligible denominator: relocated tasks stop diluting ──────────
-describe('concurrent-eligible count: sub-home tasks leave the denominator immediately', () => {
-  const reservedEntry = (deadlineAtMs: number): DeferredObjectiveSettingsEntry => ({
-    enabled: true,
-    kind: 'temperature',
-    enforcement: 'soft',
-    targetTemperatureC: 60,
-    deadlineAtMs,
-    rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
-  });
-  const priorityOneDevice = (id: string): ObjectiveDeviceInput => (
-    { id, name: id, priority: 1, targets: [] } as unknown as ObjectiveDeviceInput
-  );
-  const settings = normalizeDeferredObjectiveSettings({
-    version: 1,
-    objectivesByDeviceId: {
-      'heater-sub': reservedEntry(NOW_MS + 6 * 60 * 60 * 1000),
-      'heater-main': reservedEntry(NOW_MS + 6 * 60 * 60 * 1000),
-    },
-  });
-  const deviceById = new Map<string, ObjectiveDeviceInput>([
-    ['heater-sub', priorityOneDevice('heater-sub')],
-    ['heater-main', priorityOneDevice('heater-main')],
-  ]);
-
-  it('excludes a sub-home reserved task from the tracker denominator', () => {
-    const tracker = new ConcurrentEligibleTaskTracker();
-    const count = resolveConcurrentEligibleCount({
-      settings,
-      deviceById,
-      nowMs: NOW_MS,
-      tracker,
-      isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
-    });
-    expect(typeof count).toBe('function');
-    expect((count as (bucketStartMs: number) => number)(NOW_MS)).toBe(1);
-  });
-
-  it('prunes a pre-relocation entry IMMEDIATELY — membership is authoritative, no abandon grace', () => {
-    const tracker = new ConcurrentEligibleTaskTracker();
-    // Cycle 1: both tasks eligible (no sub-homes yet).
-    tracker.observe({ settings, deviceById, nowMs: NOW_MS });
-    expect(tracker.count({ nowMs: NOW_MS })).toBe(2);
-    // Cycle 2, seconds later: the device was pinned into a sub-home. The old
-    // entry must not linger for the SDK-flicker grace window.
-    tracker.observe({
-      settings,
-      deviceById,
-      nowMs: NOW_MS + 30_000,
-      isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
-    });
-    expect(tracker.count({ nowMs: NOW_MS + 30_000 })).toBe(1);
   });
 });
 

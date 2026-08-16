@@ -41,9 +41,8 @@ export type BackgroundTasksControllerDeps = {
  *
  * Each `start*` method registers the task and stores its stop callback;
  * `stopAll()` cleans them up in the same order `PelsApp` used to. The
- * heartbeat and power-tracker pruning timers stay on `PelsApp` because
- * they're either no-ops (heartbeat) or coupled to the shared
- * `TimerRegistry` (pruning).
+ * power-tracker pruning timer stays on `PelsApp` because it is coupled to
+ * the shared `TimerRegistry`.
  */
 export class BackgroundTasksController {
   private stopPriceLowestTrigger?: () => void;

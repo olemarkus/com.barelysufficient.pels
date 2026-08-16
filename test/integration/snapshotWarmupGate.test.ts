@@ -107,7 +107,6 @@ const buildBootstrapContext = () => {
   vi.spyOn(ctx.homeyEnergyHelpers, 'start').mockImplementation(() => undefined);
   vi.mocked(ctx.loadPowerTracker).mockImplementation(() => undefined);
   vi.mocked(ctx.loadPriceOptimizationSettings).mockImplementation(() => undefined);
-  vi.mocked(ctx.startHeartbeat).mockImplementation(() => undefined);
   vi.mocked(ctx.updateOverheadToken).mockImplementation(async () => undefined);
   vi.mocked(ctx.registerFlowCards).mockImplementation(() => undefined);
   vi.mocked(ctx.dailyBudgetService!.updateState).mockImplementation(() => undefined);

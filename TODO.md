@@ -169,12 +169,13 @@ patch releases, not release blockers; each item carries its own source/date.
 - [ ] **Three settings readers still gate their key-list cross-check on `undefined` alone, so
       their transient-miss protection is unreachable on a real Homey.** `settings.get()` answers
       an unset key with `null`, so in `setup/mainMeterSettings.ts:22-27` the `raw === null` early
-      return fires before the cross-check, and in `setup/homeRuntime/homeOperatingMode.ts:95` the
-      whole suspect ladder (`malformed_key_list` / `empty_key_list` / `missing_existing_key`) is
-      skipped. Both then resolve a transient miss to a real value: Main silently reverts to
-      Automatic (changing which physical meter drives its capacity budget), and a pinned meter
-      area silently reverts to the global operating mode (different device targets, no fault
-      surfaced) — each contradicting its own docstring.
+      return fires before the cross-check, and in `setup/homeRuntime/homeOperatingMode.ts`
+      (`resolveForHome`) the whole suspect ladder (`malformed_key_list` / `empty_key_list` /
+      `missing_existing_key`) is skipped. Both then resolve a transient miss to a real value:
+      Main silently reverts to Automatic (changing which physical meter drives its capacity
+      budget), and a pinned meter area silently reverts to the global operating mode (different
+      device targets, and nothing logs it — no production path emits a pin fault) — each
+      contradicting its own docstring.
       `setup/externalOffHoldAdapter.ts:61` is the same class with no cross-check at all: one bad
       read makes every de-opted device look un-opted, so PELS resumes loads the owner turned off
       by hand.
@@ -821,8 +822,10 @@ program) remain deferred.*
       (`setup/homeRuntime/homeScope.ts`). The settings UI then receives it through the
       contract as data rather than recomputing it, which also sidesteps that it cannot import
       `lib/**`;
-      (b) delete `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts`), an alias of
-      `resolveUsableCapacityKw` whose name promises the capacity pace but returns the allowance;
+      (b) — DONE: `resolveCapacitySoftLimitKw` is deleted and its one caller
+      (`lib/diagnostics/periodicStatus.ts`) reads `resolveUsableCapacityKw` directly. The naming
+      mismatch it documented survives at that call site, which still files the hourly allowance
+      under `softLimitKw`; that is (c)'s problem, not a missing alias;
       (c) make `capacityGuard.getSoftLimit()` return one quantity, surfacing an unwired provider
       as an explicit unresolved state rather than a substituted threshold, and decide the caller
       contract at the same time: `lib/executor/shortfallExecutor.ts` needs a number, so specify

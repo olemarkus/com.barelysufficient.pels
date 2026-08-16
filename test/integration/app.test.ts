@@ -3952,7 +3952,6 @@ describe('periodic snapshot refresh scheduling', () => {
       'disposeBinaryCommandReachability',
     );
 
-    (app as any).startHeartbeat();
     (app as any).startPowerTrackerPruning();
     (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
     (app as any).snapshotHelpers.schedulePostActuationRefresh();

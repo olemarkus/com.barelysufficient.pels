@@ -255,17 +255,19 @@ than a boundary problem to work around; nothing needs to live in
 still recomputes them in the browser. A name landing without its ownership landing
 is exactly the failure this section is about.
 
-**One concept, two names.** `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts`)
-is an alias of `resolveUsableCapacityKw`, so it returns `hourlyAllowanceKWh` while
-its name promises `capacityPaceKw`. Anything reaching for "the capacity soft limit"
-gets the wrong quantity.
+**One concept, two names — resolved.** `resolveCapacitySoftLimitKw` was an alias of
+`resolveUsableCapacityKw` that returned `hourlyAllowanceKWh` while its name promised
+`capacityPaceKw`. It is deleted; `resolveUsableCapacityKw` is the only name for the
+quantity. The mislabelling it enabled still exists one level up, where
+`lib/diagnostics/periodicStatus.ts` files that allowance under `softLimitKw` — see the
+`getSoftLimit()` leg below.
 
 **No name at all — resolved.** `budgetPaceKw` used to be an unnamed intermediate
 inside `computeDailySoftLimit`, with only the rebased `budgetPaceImportKw` reaching
 `PlanContext` and `plan.meta` as `dailySoftLimitKw`, so nothing downstream could
 obtain the pace that applies to the non-exempt house. It is now returned by name
 alongside `projectedExemptKw` and published on both `PlanContext` and `plan.meta`.
-This leg of the rule is done; the other three below are not.
+Two legs of the rule are done; the other two below are not.
 
 ## Two constraints with different subjects
 

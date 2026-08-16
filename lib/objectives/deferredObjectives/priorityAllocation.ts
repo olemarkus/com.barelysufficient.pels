@@ -19,13 +19,34 @@ import { rankActiveDevicePriorities } from '../../../packages/shared-domain/src/
 import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
-import { ELIGIBILITY_ABANDON_GRACE_MS } from './concurrentEligibleTasks';
 import { roundKWh } from './activePlanMath';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 
 const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
 const DEFAULT_PRIORITY = 100;
+
+// Survive one full cooldown window of transient SDK misses before a device
+// stops holding a reservation. Without this window, a single Homey SDK
+// snapshot eviction (`feedback_homey_sdk_unreliable`) drops the device from
+// `params.devices` for one plan cycle, its reserved energy is released to
+// lower-priority tasks, and diagnostic verdicts oscillate `on_track` ↔
+// `at_risk: feasible_above_floor` across adjacent cycles. Capacity guard still
+// holds regardless, so this is verdict-flicker hardening only.
+//
+// It governs two maps with different lifetimes: `lastSeenAtMsByDeviceId` (the
+// roster, pruned here in `observe`) and `missingReservationSinceByDeviceId`
+// (the reservation decision, read by `shouldReserveMissingDevice`, which also
+// seeds one window from a persisted commitment after a restart).
+//
+// Picked to align with the abandon-grace pattern in `planHistory.ts`
+// (`ABANDON_GRACE_MS = 60 min`): both want "tolerate a long-ish gap before
+// reclassifying state derived from a possibly-flaky SDK read." A shorter
+// window leaves the flicker visible on slow-recovering devices; a longer
+// window keeps reserving for a genuinely-removed device past the point it can
+// return — harmless, because over-reserving only under-books lower-priority
+// tasks, the strictly conservative direction.
+export const ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1000;
 
 // Keeps the allocation roster stable across a transient SDK device-snapshot
 // miss. It deliberately stores presence timestamps only: the mode catalog is
