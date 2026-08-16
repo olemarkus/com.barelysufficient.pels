@@ -1301,6 +1301,20 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **20 plan assertions read `plannedTarget` without the temperature discriminant, and
+      `mockHomeyInstance.app` is the `any` keeping that invisible.**
+      Typing the mock's installed-app slot makes `getLatestPlanSnapshotForTests` return a real
+      `DevicePlan | null`, which surfaces 154 errors across 7 specs: ~89 unguarded `plan.devices`
+      reads, ~45 possibly-undefined array indexes, and 20 reads of `plannedTarget`. That last
+      group is the substantive one — `plannedTarget` is `?: never` on every non-temperature arm
+      of `DevicePlanDevice`, so those assertions have been resolving through `any` rather than
+      discriminating first (`reference_temperature_discriminant_split`). Fix direction: narrow on
+      the temperature facet at each read, then drop the scoped `eslint-disable-next-line
+      @typescript-eslint/no-explicit-any` on `app` in `test/mocks/homey.ts`; the block sets
+      `reportUnusedDisableDirectives`, so the directive reports itself unused once the reads are
+      fixed. Deliberately excluded from the change that found it (PR #2118) because it is
+      plan-domain work, not a typing chore. Found 2026-08-16 enabling `no-explicit-any` for the
+      mock and unit tiers. [P2]
 - [ ] **A single transient temperature-facet miss discards the pending `set_temperature` record.**
       `prunePendingTargetCommandsForPlan` (`lib/plan/planTargetControl.ts`) keys retention on
       `isTemperaturePlanDevice(device)`, so the one cycle in which a device plans as `onoff`

@@ -85,7 +85,7 @@ describe('Expected power flow card', () => {
 
     const actionAutocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.set_expected_power_usage?.device;
     expect(actionAutocomplete).toBeDefined();
-    const options = await actionAutocomplete?.('') || [];
+    const options = (await actionAutocomplete?.('') || []) as Array<{ id: string }>;
     const offeredIds = options.map((option: { id: string }) => option.id);
     expect(offeredIds).toContain('dev-heater');
     expect(offeredIds).not.toContain('dev-batt');

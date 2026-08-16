@@ -89,8 +89,8 @@ describe('Lowest price trigger cadence', () => {
 
     expect(beforeTriggers).toHaveLength(1);
     expect(todayTriggers).toHaveLength(1);
-    expect(beforeTriggers[0].tokens.current_price).toBe(11);
-    expect(todayTriggers[0].tokens.current_price).toBe(11);
+    expect(beforeTriggers[0]?.tokens?.current_price).toBe(11);
+    expect(todayTriggers[0]?.tokens?.current_price).toBe(11);
   });
 
   it('does not retrigger repeatedly within the same hour', () => {

@@ -1567,7 +1567,7 @@ describe('MyApp initialization', () => {
 
       const targetWritesBeforeShedding = setCapabilitySpy.mock.calls.filter(([path, body]) => (
         path === 'manager/devices/device/dev-1/capability/target_temperature'
-        && body?.value === 23
+        && (body as { value?: unknown } | undefined)?.value === 23
       )).length;
       expect(targetWritesBeforeShedding).toBe(0);
       expect(logSpy.mock.calls.some(
@@ -1583,12 +1583,12 @@ describe('MyApp initialization', () => {
       await (app as any).powerSamplePipeline.recordPowerSample(1000);
       await waitFor(() => setCapabilitySpy.mock.calls.filter(([path, body]) => (
         path === 'manager/devices/device/dev-1/capability/onoff'
-        && body?.value === false
+        && (body as { value?: unknown } | undefined)?.value === false
       )).length >= 1, 5000);
 
       const targetWritesAfterShedding = setCapabilitySpy.mock.calls.filter(([path, body]) => (
         path === 'manager/devices/device/dev-1/capability/target_temperature'
-        && body?.value === 23
+        && (body as { value?: unknown } | undefined)?.value === 23
       )).length;
       expect(targetWritesAfterShedding).toBe(targetWritesBeforeShedding);
       expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
@@ -2607,7 +2607,7 @@ describe('computeDynamicSoftLimit', () => {
     await initApp(app);
 
     // pels_status should be set even with no devices
-    const status = mockHomeyInstance.settings.get('pels_status');
+    const status = mockHomeyInstance.settings.get('pels_status') as { lastPowerUpdate?: unknown };
     expect(status).toBeDefined();
     expect(status).toHaveProperty('lastPowerUpdate');
     // No power data received yet, so lastPowerUpdate should be null
@@ -2640,7 +2640,7 @@ describe('computeDynamicSoftLimit', () => {
     expect(plan.devices.length).toBeGreaterThan(0);
 
     // pels_status should be set
-    const status = mockHomeyInstance.settings.get('pels_status');
+    const status = mockHomeyInstance.settings.get('pels_status') as { lastPowerUpdate?: unknown };
     expect(status).toBeDefined();
     expect(status).toHaveProperty('headroomKw');
   });
@@ -3117,8 +3117,8 @@ describe('periodic snapshot refresh scheduling', () => {
       ]),
     });
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
-      trigger: (_tokens?: unknown, state?: { deviceId?: string }) => (
-        state?.deviceId === 'dev-1'
+      trigger: (_tokens?: object, state?: object) => (
+        (state as { deviceId?: string } | undefined)?.deviceId === 'dev-1'
           ? Promise.reject(new Error('boom'))
           : Promise.resolve(true)
       ),

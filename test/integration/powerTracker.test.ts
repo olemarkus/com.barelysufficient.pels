@@ -11,6 +11,7 @@ import {
   getUtcHour,
   aggregateAndPruneHistory,
   recordPowerSample,
+  type PowerTrackerState,
 } from '../../lib/power/tracker';
 import {
   getHourBucketKey,
@@ -50,8 +51,8 @@ describe('power tracker integration', () => {
 
     const bucketKey = getHourBucketKey(start);
     vi.advanceTimersByTime(60000);
-    const state = mockHomeyInstance.settings.get('power_tracker_state');
-    expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
+    const state = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState;
+    expect(state.buckets?.[bucketKey]).toBeCloseTo(0.5, 3);
   });
 
   it('reloads tracker state when settings change', async () => {
@@ -92,13 +93,13 @@ describe('power tracker integration', () => {
     // Call prunePowerTrackerHistory which triggers aggregation
     app['prunePowerTrackerHistory']();
 
-    const state = mockHomeyInstance.settings.get('power_tracker_state');
+    const state = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState;
 
     // Old hourly bucket should be removed
-    expect(state.buckets[oldBucketKey]).toBeUndefined();
+    expect(state.buckets?.[oldBucketKey]).toBeUndefined();
 
     // Should be aggregated into daily totals
-    expect(state.dailyTotals[oldDateKey]).toBeCloseTo(1.5, 3);
+    expect(state.dailyTotals?.[oldDateKey]).toBeCloseTo(1.5, 3);
 
     // Should be in hourly averages pattern. Weekday is derived from the local date key
     // (date-label weekday is identical whether we parse it as UTC or local midnight).
@@ -109,9 +110,9 @@ describe('power tracker integration', () => {
     const patternKey = `${localDayOfWeek}_${localHour}`;
     void getUtcDayOfWeek;
     void getUtcHour;
-    expect(state.hourlyAverages[patternKey]).toBeDefined();
-    expect(state.hourlyAverages[patternKey].sum).toBeCloseTo(1.5, 3);
-    expect(state.hourlyAverages[patternKey].count).toBe(1);
+    expect(state.hourlyAverages?.[patternKey]).toBeDefined();
+    expect(state.hourlyAverages?.[patternKey].sum).toBeCloseTo(1.5, 3);
+    expect(state.hourlyAverages?.[patternKey].count).toBe(1);
   });
 
   it('keeps recent hourly data without aggregation', async () => {
@@ -135,10 +136,10 @@ describe('power tracker integration', () => {
     // Pruning shouldn't affect recent buckets
     app['prunePowerTrackerHistory']();
 
-    const state = mockHomeyInstance.settings.get('power_tracker_state');
+    const state = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState;
 
     // Recent hourly bucket should still exist
-    expect(state.buckets[recentBucketKey]).toBeCloseTo(2.0, 3);
+    expect(state.buckets?.[recentBucketKey]).toBeCloseTo(2.0, 3);
   });
 
   it('resets sampling when lastTimestamp looks like seconds', async () => {

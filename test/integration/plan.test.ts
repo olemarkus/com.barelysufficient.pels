@@ -109,7 +109,7 @@ describe('Device plan snapshot', () => {
     const lastPlanEvent = planEvents[planEvents.length - 1];
     expect(lastPlanEvent.data).toHaveProperty('meta');
     expect(lastPlanEvent.data).toHaveProperty('devices');
-    expect(Array.isArray(lastPlanEvent.data.devices)).toBe(true);
+    expect(Array.isArray((lastPlanEvent.data as { devices?: unknown }).devices)).toBe(true);
   });
 
   it('sheds devices with higher priority NUMBER first (priority 1 = most important, shed last)', async () => {
