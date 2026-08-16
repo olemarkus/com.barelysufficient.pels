@@ -1327,6 +1327,82 @@ program) remain deferred.*
       fixed. Deliberately excluded from the change that found it (PR #2118) because it is
       plan-domain work, not a typing chore. Found 2026-08-16 enabling `no-explicit-any` for the
       mock and unit tiers. [P2]
+
+- [ ] **`stateOfCharge` rides the plan device undeclared, and the objectives layer depends on it.**
+      `PlanInputDeviceBase` states "No `evBoost` / `stateOfCharge` / `temperatureBoost`"
+      (`packages/planner-types/src/planInputDevice.ts`), and `toPlanDevice` does not declare the
+      field — but it reaches every plan device anyway on the `...deviceFields` spread, invisible
+      to tsc because `withSteppedDiscriminant<TBase extends object>` infers from the literal. That
+      is not dead weight: `ObjectiveDeviceInput` reads `device.stateOfCharge?.level`
+      (`lib/objectives/deferredObjectives/diagnosticProgress.ts`), and its own docblock describes
+      the plan device as the carrier. Stripping it — attempted 2026-08-16 on the review's advice
+      that it had no live consumer — turned every EV smart task's progress into
+      `objective_progress_stale` and broke four `evDevices.integration` cases plus the deferred
+      release intent. Reverted. The contract and the runtime disagree, and today only a test run
+      says which is right. Fix: declare the field on the type the objectives layer actually
+      consumes and correct the base-type comment, so the dependency is stated rather than
+      accidental. Same shape of hole as `evChargingState`, which IS stripped here while
+      `ObjectiveDeviceInput` documents it as forwarded — worth resolving together. [P2]
+
+- [ ] **The overview read model guesses which boost axis is active, and gets it wrong.**
+      `resolveBoostAxis` (`lib/plan/settingsOverviewReadModel.ts`) reconstructs
+      `evBoostActive`/`temperatureBoostActive` by presence-sniffing two unrelated seams — "did
+      `getObservedEvChargingState` return something, or is there an `evBoost` config?" — and its
+      `else` arm asserts "temperature" for everything else. A `target_power` charger exposes no
+      plug state, so one force-boosted by the smart-task rescue lane with no configured threshold
+      renders `PLAN_CARD_BOOST_TEMPERATURE_TOOLTIP` on a charger. Chip label and tone are
+      identical, so this is tooltip-only. It is also the last place a consumer answers a semantic
+      question from provenance rather than from a producer-resolved value. The durable fix is now
+      cheap: `resolveBoostLevel` (`lib/device/deviceActionProjection.ts`) already picks between
+      the state-of-charge source and the temperature source and discards which one won — return it
+      on the `measured` arm, carry it as one `boostAxis` field beside `boostSupported`/
+      `boostRequested`, and let the read model map instead of re-derive. That would also let the
+      two per-axis booleans leave `packages/contracts/src/settingsUiApi.ts`. Found 2026-08-16 by
+      three independent review lenses on the boost-consolidation branch. [P2]
+
+- [ ] **`objectiveKind` / `objectiveSessionInactive` are write-only on both plan types.**
+      Resolved by `resolvePlanObjective` (`setup/appInit/toPlanDevice.ts`), forwarded through
+      `producerResolvedDecisionFields` (`lib/plan/planDevicesBase.ts`), declared on both
+      `PlanInputDevice` and `DevicePlanDeviceBase` — and read by nobody since `hasStandingDemand`
+      replaced the last two consumers (the diagnostics `isEvLikeDevice` gate and the surplus
+      dump-load gate). Every smart-task site reads `objective.kind` off its own settings entry or
+      `diag.objectiveKind`, never off a plan device; `ObjectiveDeviceInput` (`lib/objectives/types.ts`)
+      has no such field. `knip` does not catch a dead type property. Leaving a literal `'ev_soc'`
+      on the plan device is a second, equally-available answer to the question `hasStandingDemand`
+      now owns. Fix: drop both from `DevicePlanDeviceBase` and the forwarding helper; keep them on
+      `PlanInputDevice` only if the objectives layer proves it needs them. Found 2026-08-16. [P2]
+
+- [ ] **`TrustedTemperatureInput.currentTemperature` kept the optionality its twin just shed.**
+      The same change made `TrustedStateOfChargeInput.stateOfCharge` required, with the rationale
+      that as an optional field the signature accepted any object at all — so removing the field
+      upstream would not break a call site, it would make them all read `undefined` and answer "no
+      level" forever. `currentTemperature?: number` in `lib/utils/observationTrust.ts` still has
+      exactly that shape, as does `BoostResolveInput.currentTemperature`, decoupled from both
+      `temperatureBoost` and `targets`. No reachable failure today — `resolveBoostLevel` gates on
+      the target capability and the typed test fixtures get excess-property checks. Fix: co-type
+      the temperature source the same way, or record why the asymmetry is deliberate. [P3]
+
+- [ ] **The two boost configs are one config wearing two units.**
+      `resolveBoostLevel` (`lib/device/deviceActionProjection.ts`) now treats a tank temperature
+      and a car's battery percentage as what they are — one quantity, "how full is this device's
+      store", read from whichever capability the device has. The persisted settings have not
+      caught up: `ev_boost_settings.boostBelowPercent` and
+      `temperature_boost_settings.boostBelowC` are the same field, and the resolver still needs
+      two branches purely to name them. Collapsing them to one per-device `boostBelow` (unit
+      carried by the source capability, as it already is everywhere downstream) would leave a
+      single branch that picks a reading, and would let the settings UI render one control.
+      Two smaller things fall out of the same change:
+      (a) `enabled` on both config types is a state the runtime can never observe — the
+      normalizers (`normalizeEvBoostSettings` / `normalizeTemperatureBoostSettings`) drop every
+      entry whose `enabled !== true` or whose floor is non-finite, and every runtime reader
+      (`appSettingsHelpers.ts` → `ctx.getEvBoostConfig` / `getTemperatureBoostConfig`) plus the
+      settings UI's own state goes through them, so config PRESENCE is already the enablement;
+      (b) with that, the `enabled` and finiteness re-checks inside `resolveBoostLevel` are the
+      hedging-consumer symptom the clean/trusted-interface rule names, and can go.
+      Deferred because it touches the persisted blobs, their back-compat, and the settings-UI
+      write path (`deviceDetail/evBoost.ts`, `deviceDetail/temperatureBoost.ts`). Found
+      2026-08-16 while consolidating the two boost decisions. [P2]
+
 - [ ] **A single transient temperature-facet miss discards the pending `set_temperature` record.**
       `prunePendingTargetCommandsForPlan` (`lib/plan/planTargetControl.ts`) keys retention on
       `isTemperaturePlanDevice(device)`, so the one cycle in which a device plans as `onoff`

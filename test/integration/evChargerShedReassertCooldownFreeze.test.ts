@@ -166,6 +166,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     boostSupported: false,
     boostRequested: false,
     hasStandingDemand: true,
+    confirmedNotDrawing: false,
     deviceClass: 'evcharger',
     binaryControl: snapshot.binaryControl,
     currentState: snapshot.binaryControl?.on === false ? 'off' : 'on',

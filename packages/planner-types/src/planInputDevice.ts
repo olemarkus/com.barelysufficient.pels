@@ -205,16 +205,20 @@ export type PlanInputDeviceBase = {
   /**
    * Producer-resolved boost facts, kind-free by construction. The producer
    * (`resolveBoostSupported` / `resolveBoostRequested` in
-   * `lib/device/deviceActionProjection.ts`) asks the device-kind questions once
-   * — is this a plugged-in stepped charger, is this a stepped device with a
-   * temperature target, is its measured value below its configured floor — and
-   * hands the planner two booleans. The planner never sees a state of charge, a
-   * temperature, or a boost config.
+   * `lib/device/deviceActionProjection.ts`) resolves the whole question once —
+   * can PELS drive this device's step ladder right now, and is the device's
+   * store below the floor its owner set — and hands the planner two booleans.
+   * The planner never sees a state of charge, a temperature, or a boost config.
    *
-   * - `boostSupported`: the device has a boost axis PELS can drive right now.
+   * There is ONE level behind `boostRequested`, not one per device kind: a
+   * tank's temperature and a car's battery percentage are the same quantity in
+   * different units, and the producer reads it from whichever capability the
+   * device has.
+   *
+   * - `boostSupported`: PELS has a boost it can drive on this device right now.
    *   This is what a FORCED boost needs (the deferred limit-lower-priority
    *   rescue lane sets `forceBoostActive` independently of the device's own
-   *   threshold, and must not engage it on a charger PELS cannot resume).
+   *   threshold, and must not engage it on a device PELS cannot drive).
    * - `boostRequested`: the device's own policy asks for boost this cycle.
    *   Implies `boostSupported`.
    *
@@ -335,9 +339,11 @@ export type PlanInputDeviceBase = {
   currentDrawKw: number;
   // `currentTemperature` is split off onto the orthogonal `TemperaturePlanInputKind`
   // cluster; reach it through the `isTemperaturePlanDevice` guard
-  // (`lib/plan/planTemperatureDevice.ts`). `temperatureBoost` stays on the base.
+  // (`lib/plan/planTemperatureDevice.ts`). `temperatureBoost` is NOT on the base
+  // either — no boost config reaches the planner; see the `boostSupported` /
+  // `boostRequested` docblock above.
   // Set by the deferred limit-lower-priority rescue lane (admission) to force boost on while
-  // the smart task is in its planned hours; the boost resolvers honour it independent of the
+  // the smart task is in its planned hours; `resolveBoostActive` honours it independent of the
   // device's own boost config/threshold, so the escalation/shedding machinery claims capacity
   // from lower-priority devices.
   forceBoostActive?: boolean;
@@ -412,16 +418,20 @@ export type PlanInputDeviceBase = {
    */
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
   /**
-   * True when the calibration store has a recent in-band draw observation at
-   * ANY of the device's steps — evidence the device is accepting load (a
-   * just-stepped-up device still ramping at the previous step's level counts).
-   * `false` means no recent draw was observed at any step AND the reported
-   * step has confidence-qualified calibration: the idle-at-setpoint
-   * signature. `undefined` means the store has no opinion (no reported step,
-   * or warm-up). Consulted by boost-driven swap escalation to avoid pausing
-   * a running lower-priority device for a boosted device that isn't drawing.
+   * Producer-resolved: the calibration store is confident this device is
+   * drawing nothing right now — the idle-at-setpoint signature (no recent
+   * in-band draw at ANY step, and the reported step's calibration is
+   * confidence-qualified). A just-stepped-up device still ramping at the
+   * previous step's level reads `false`, which is what keeps a boosted
+   * staircase climbing.
+   *
+   * REQUIRED and two-state: "the store has no opinion" is `false`, because
+   * absence of evidence is not evidence of idleness. Read by
+   * `resolveBoostActive` (`lib/plan/planBoost.ts`), which releases the boost —
+   * a claim on other devices' power — from a device that cannot spend it. See
+   * `resolveConfirmedNotDrawing` (`setup/appInit/calibrationViews.ts`).
    */
-  hasRecentObservedDraw?: boolean;
+  confirmedNotDrawing: boolean;
 };
 
 export type StepPowerCalibrationView = {

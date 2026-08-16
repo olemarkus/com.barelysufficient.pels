@@ -38,6 +38,7 @@ const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnly
   surplusWilling: true,
   hasBinaryControl: true,
   hasStandingDemand: true,
+  confirmedNotDrawing: false,
   deviceClass: 'socket',
   targets: [],
   steppedLoadProfile: undefined,

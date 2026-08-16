@@ -11,8 +11,17 @@ These earlier issues have already been addressed and should not be re-triaged as
 - target-based restores go through the same restore admission gate as normal restores
 - near-zero post-reserve restores are blocked by a hard admission floor
 - stepped keep-invariant restores are blocked above the lowest non-zero step while any device is
-  still shed — EXCEPT for a device with an active boost, which bypasses the invariant
-  unconditionally (boost is the user's priority override; 2026-07-05)
+  still shed — EXCEPT for a device with an ACTIVE boost, which bypasses the invariant (boost is
+  the user's priority override; 2026-07-05). The restore lane itself asks no further question
+  about that boost: it reads `boostActive` and nothing else, so the bypass is unconditional
+  *at this layer*. Whether the boost is active at all is decided one layer up, by
+  `resolveBoostActive` (`lib/plan/planBoost.ts`), which releases it when the producer confirms
+  the device is drawing nothing — a fresh meter reading below the active floor, on a device PELS
+  is not itself holding off, with no in-band draw at any rung inside the window. A mid-climb rung
+  keeps its boost, because the evidence scan spans every step and the departed rung is still
+  live; that is what keeps the 2026-07-05 staircase fixed. Do not re-add a draw-evidence gate
+  inside the restore lane: it would ask the same question twice, and the swap-only version that
+  used to live there is exactly what this replaced.
 - an active stepped boost preserves the highest admitted or observed rung across plan rebuilds;
   the restore lane may continue climbing one admitted rung at a time, but base-plan normalization
   no longer resets the device to its configured low step between those admissions. Normal target
@@ -59,8 +68,10 @@ Batching is intentionally narrow:
 - target-based and stepped restores remain conservative unless separately proven safe
 - stepped-load `off -> lowest active step` restores follow normal cross-device priority ordering;
   the conservative stepped gate applies to later step-ups while other devices remain shed, unless
-  the device has an active boost (unconditional invariant bypass, 2026-07-05; headroom admission
-  and attempt-hold still gate each rung)
+  the device has an active boost (invariant bypass, 2026-07-05; headroom admission and
+  attempt-hold still gate each rung). "Active" is the upstream decision described above — a boost
+  released for confirmed no-draw is not active, and the device is then subject to the invariant
+  like any other
 
 After a batch, the normal meter-settling / restore-cooldown behavior still blocks the next cycle.
 

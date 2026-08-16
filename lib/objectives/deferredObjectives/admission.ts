@@ -163,7 +163,7 @@ export type DeferredAdmissionInput = {
 
 // A planned limit-lower-priority task forces the device's boost on. `resolveBoostActive`
 // (`lib/plan/planBoost.ts`) honours the request wherever the producer resolved a drivable
-// boost axis (`boostSupported`), so the existing escalation/shedding machinery claims
+// boost (`boostSupported`), so the existing escalation/shedding machinery claims
 // capacity from lower-priority devices — whatever kind of device it is.
 const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } => (
   engageBoost ? { forceBoostActive: true } : {}

@@ -394,7 +394,9 @@ type DevicePlanDeviceBase = {
   // `currentTarget`, `currentTemperature`, and `plannedTarget` (planner output)
   // are split off onto the orthogonal `TemperatureKind` cluster; reach them
   // through the `isTemperaturePlanDevice` guard
-  // (`lib/plan/planTemperatureDevice.ts`). The boost cluster
+  // (`lib/plan/planTemperatureDevice.ts`). The boost configs and readings are
+  // off the plan device entirely — it carries the resolved `boostActive`
+  // decision and nothing behind it.
   // There is intentionally no
   // `observationStale` field: the plan has no right to distrust observer data
   // (it trusts the producer-resolved `currentOn`/`currentState`), and staleness
@@ -527,7 +529,11 @@ type DevicePlanDeviceBase = {
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
-  hasRecentObservedDraw?: boolean;
+  // `confirmedNotDrawing` deliberately does NOT travel onto the plan output.
+  // It is an input to the one boost decision (`resolveBoostActive`), and that
+  // decision's result — `boostActive` — is what the plan carries. Propagating
+  // the evidence as well is how the restore path came to re-ask the same
+  // question with its own answer.
   /**
    * Producer-resolved residual-kW projection propagated from
    * `PlanInputDevice.residualKw` at plan-build time (chunks 3-4 of the

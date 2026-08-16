@@ -23,10 +23,23 @@ export const asOutputDevice = (
 ): DevicePlan['devices'][number] => {
   const materialized = withMaterializedEvPlugState(loose);
   const {
-    binaryCapabilityId, evChargingState: _evChargingState, binaryControl, currentOn, ...semantic
+    binaryCapabilityId, evChargingState: _evChargingState, binaryControl, currentOn,
+    // Plan-INPUT bits. `withMaterializedEvPlugState` stamps them for the input
+    // builder; an output device carries none of them, and `confirmedNotDrawing`
+    // in particular is the evidence `planTypes.ts` says must not travel onto the
+    // plan output. Letting them ride made every fixture from this family a
+    // second answer to a question the plan already decided.
+    boostSupported: _boostSupported, boostRequested: _boostRequested,
+    confirmedNotDrawing: _confirmedNotDrawing,
+    ...semantic
   } = materialized;
   return withBinaryDiscriminant(withTemperatureDiscriminant({
     ...semantic,
+    // Required on `DevicePlanDevice` precisely so absence is never a state.
+    // Every fixture here shipped it undefined, so the two restore-admission
+    // readers answered from absence and a dropped `boostActive` in production
+    // would have passed these suites unnoticed.
+    boostActive: loose.boostActive ?? false,
     ...(binaryCapabilityId !== undefined ? {
       currentOn: currentOn ?? resolveFixtureCurrentOn({ ...materialized, binaryControl }),
     } : {}),

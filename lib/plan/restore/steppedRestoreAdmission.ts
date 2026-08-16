@@ -159,15 +159,12 @@ export function blockSteppedRestoreForShedInvariant(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
-  // Boost is the user's priority override: it bypasses the fairness invariant
-  // unconditionally, with no draw-evidence consult (gating on evidence
-  // re-blocked a boosted climb for minutes per rung — see the staircase
-  // regression in planRestoreBoostShedInvariantBypass.test.ts). An
-  // idle-at-setpoint device that escalates anyway is bounded by per-rung
-  // headroom admission, the stepped attempt-hold (each rung must settle
-  // before the next), and per-device restore timing. The evidence gate
-  // remains only on the swap path (`canUseSwapForSteppedRestore`), where
-  // phantom boost demand would pause a running lower-priority device.
+  // Boost is the user's priority override: it bypasses the fairness invariant.
+  // No draw-evidence consult here — `resolveBoostActive` already released the
+  // boost if the device is drawing nothing, so an active boost IS a device with
+  // demand. Re-asking would also break the staircase case a second time: a
+  // freshly-entered rung has no accepted calibration samples of its own (see the
+  // regression in planRestoreBoostShedInvariantBypass.test.ts).
   if (dev.boostActive) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
@@ -239,25 +236,12 @@ function canUseSwapForSteppedRestore(params: {
   const { dev, nextStep, lowestNonZeroStep } = params;
   if (lowestNonZeroStep === null) return false;
   if (isOffSteppedRestoreCandidate(dev) && nextStep.id === lowestNonZeroStep.id) return true;
-  return isBoostEffectiveForEscalation(dev);
-}
-
-/**
- * True when a boost is active *and* there is no evidence that the device is
- * idle (e.g. a Hoiax holding at its element setpoint, or a thermostat in a
- * room already at target). Calibration-confident `false` for
- * `hasRecentObservedDraw` — no in-band draw at ANY step recently — blocks
- * boost-driven swaps: pausing a running lower-priority device to feed a
- * boosted device that is not accepting load would be pure loss. When the
- * calibration store has no opinion (undefined), the bypass behaves as
- * before so newly-paired devices are not penalized during warm-up.
- * Deliberately NOT consulted by the shed-invariant bypass above — boost
- * overrides fairness unconditionally.
- */
-function isBoostEffectiveForEscalation(dev: SteppedPlanDevice): boolean {
-  if (!dev.boostActive) return false;
-  if (dev.hasRecentObservedDraw === false) return false;
-  return true;
+  // Pausing a running lower-priority device to feed a boosted one is only worth
+  // it if the boosted device will actually take the load. That used to be a
+  // second, swap-only draw-evidence gate here; it is now the release inside
+  // `resolveBoostActive`, so a device idling at its setpoint has no boost left
+  // to swap on and the question is answered once for every consumer.
+  return dev.boostActive;
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(params: {
