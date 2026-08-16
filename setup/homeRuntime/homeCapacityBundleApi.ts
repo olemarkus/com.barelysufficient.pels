@@ -460,9 +460,8 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     reloadCapacityScalars: () => {
       if (isTornDown()) return;
       const next = capacityStore.read();
+      // The capacity scalars live in their own store; nothing mirrors them now.
       setScalars(next);
-      guard.setLimit(next.limitKw);
-      guard.setSoftMargin(next.marginKw);
       // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
       // ACTIVATION path (P2#2). The rebuild after that transition can produce the
       // SAME action signature as the never-applied dry-run shed plan, which used

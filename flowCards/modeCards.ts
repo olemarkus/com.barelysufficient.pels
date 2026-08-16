@@ -51,8 +51,9 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
       throw new Error('Limit must be a positive number (kW).');
     }
     const previous = deps.homey.settings.get(CAPACITY_LIMIT_KW);
+    // The settings write is the whole action: `handleCapacityLimitChange`
+    // reloads the capacity scalars and rebuilds off the change listener.
     deps.homey.settings.set(CAPACITY_LIMIT_KW, limit);
-    deps.setCapacityLimit(limit);
     deps.getStructuredLogger('capacity')?.info({
       event: 'capacity_limit_set',
       limitKw: limit,

@@ -22,20 +22,6 @@ describe('CapacityGuard', () => {
     mockTime += ms;
   };
 
-  describe('Limit calculations', () => {
-    it('returns default soft limit when no provider', () => {
-      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      expect(guard.getSoftLimit()).toBe(4.8);
-    });
-
-    it('uses soft limit provider when set', () => {
-      const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      guard.setSoftLimitProvider(() => 3.5);
-      expect(guard.getSoftLimit()).toBe(3.5);
-    });
-
-  });
-
   describe('Shedding state', () => {
     it('starts with shedding inactive', () => {
       const guard = createTestCapacityGuard({ homeId: 'main' });
@@ -83,11 +69,7 @@ describe('CapacityGuard', () => {
 
     it('enters shortfall when hard cap exceeded and no candidates', async () => {
       const shortfallEvents: Array<{ type: string; deficit?: number }> = [];
-      const guard = createTestCapacityGuard({
-      homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
-        onShortfall: (deficit) => { shortfallEvents.push({ type: 'shortfall', deficit }); },
+      const guard = createTestCapacityGuard({ homeId: 'main', onShortfall: (deficit) => { shortfallEvents.push({ type: 'shortfall', deficit }); },
       });
 
       await guard.checkShortfall({
@@ -107,8 +89,6 @@ describe('CapacityGuard', () => {
       const shortfallEvents: string[] = [];
       const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { shortfallEvents.push('shortfall'); },
       });
 
@@ -128,8 +108,6 @@ describe('CapacityGuard', () => {
       const shortfallEvents: string[] = [];
       const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { shortfallEvents.push('shortfall'); },
       });
 
@@ -152,8 +130,6 @@ describe('CapacityGuard', () => {
       };
       const options = {
         homeId: 'h_area',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => {},
         structuredLog,
       };
@@ -198,7 +174,6 @@ describe('CapacityGuard', () => {
       const conditionCleared = vi.fn();
       const guard = createTestCapacityGuard({
         homeId: 'main',
-        limitKw: 5,
         onShortfallAlertCandidate: (entry) => { candidates.push(entry); },
         onShortfallAlertConditionCleared: conditionCleared,
       });
@@ -259,12 +234,7 @@ describe('CapacityGuard', () => {
 
     it('publishes the alert candidate even when the immediate state write rejects', async () => {
       const candidate = vi.fn();
-      const guard = createTestCapacityGuard({
-        homeId: 'main',
-        limitKw: 5,
-        onShortfall: () => Promise.reject(new Error('settings unavailable')),
-        onShortfallAlertCandidate: candidate,
-      });
+      const guard = createTestCapacityGuard({ homeId: 'main', onShortfall: () => Promise.reject(new Error('settings unavailable')), onShortfallAlertCandidate: candidate });
 
       await expect(guard.checkShortfall({
       hasCandidates: false,
@@ -285,8 +255,6 @@ describe('CapacityGuard', () => {
       };
       const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => {},
         structuredLog,
       });
@@ -342,8 +310,6 @@ describe('CapacityGuard', () => {
       const events: string[] = [];
       const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
         onShortfallCleared: () => { events.push('cleared'); },
       });
@@ -397,8 +363,6 @@ describe('CapacityGuard', () => {
       const events: string[] = [];
       const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
         onShortfallCleared: () => { events.push('cleared'); },
       });
@@ -479,7 +443,6 @@ describe('CapacityGuard', () => {
       };
       const options = {
         homeId: 'h_area',
-        limitKw: 5,
         structuredLog,
       };
       const guard = createTestCapacityGuard(options);
@@ -565,14 +528,11 @@ describe('CapacityGuard', () => {
       const events: string[] = [];
       const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
       });
 
       // The panic threshold is the caller's to resolve and is deliberately
       // higher than the shedding soft limit.
-      guard.setSoftLimitProvider(() => 3.0);
 
       // Power is 5kW - over soft limit (3) but under shortfall threshold (6)
       await guard.checkShortfall({

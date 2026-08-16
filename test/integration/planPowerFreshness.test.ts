@@ -231,8 +231,8 @@ describe('planner behavior under stale power freshness states', () => {
     state?: ReturnType<typeof createPlanEngineState>;
   }): PlanBuilder {
     return new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => params.capacityGuard,
+      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

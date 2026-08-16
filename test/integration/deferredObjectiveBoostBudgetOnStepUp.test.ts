@@ -251,7 +251,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   vi.setSystemTime(new Date(nowMs));
 
   const powerTracker = buildPowerTracker(nowMs);
-  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: LIMIT_KW, softMarginKw: 0 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   powerTracker.lastPowerW = STEP_LOW_KW * 1000;
 
   const deferredController = new DeferredObjectiveDecorationController({
@@ -264,8 +264,8 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   });
 
   const builder = new PlanBuilder({
-    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
+    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

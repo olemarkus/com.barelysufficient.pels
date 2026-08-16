@@ -344,8 +344,8 @@ const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
   tracker: { lastTimestamp: number; lastPowerW?: number };
 }): PlanBuilder => new PlanBuilder({
-  setCapacityInShortfall: vi.fn(),
   getCapacityGuard: () => params.capacityGuard,
+  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
   getOperatingMode: () => 'Home',
   getModeDeviceTargets: () => ({}),
@@ -371,7 +371,7 @@ describe('exempt restore lane through the full plan build with the latch held', 
   });
 
   it('admits the exempt device on the capacity axis while shedding stays latched on the budget axis', async () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
     const builder = buildBuilder({ capacityGuard, tracker });
 

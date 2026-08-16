@@ -2,7 +2,6 @@ import type { AppContext } from '../../lib/app/appContext';
 import { getLogger } from '../../lib/logging/logger';
 import { computeShortfallThreshold } from '../../lib/plan/planBudget';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
-import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
@@ -23,7 +22,6 @@ export function createBundleCapacityGuard(params: {
   ctx: AppContext;
   homeId: HomeId;
   scalars: CapacityScalarSettings;
-  planEngine: PlanEngine;
   planService: PlanService;
   getHomeDisplayName: () => string;
   getPowerTracker: () => PowerTrackerState;
@@ -41,7 +39,7 @@ export function createBundleCapacityGuard(params: {
   holdDeferredShortfallSideEffect: () => void;
 } {
   const {
-    ctx, homeId, scalars, planEngine, planService, getHomeDisplayName, getPowerTracker,
+    ctx, homeId, scalars, planService, getHomeDisplayName, getPowerTracker,
     isTornDown, isMembershipReady,
     isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
     isPreparedReconcileActive, shortfallRetryTimerKey,
@@ -88,8 +86,6 @@ export function createBundleCapacityGuard(params: {
   });
   const guard = new CapacityGuard({
     homeId,
-    limitKw: scalars.limitKw,
-    softMarginKw: scalars.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
     onShortfallCleared: async () => {
       shortfallAlertDispatch.onIncidentCleared();
@@ -101,7 +97,6 @@ export function createBundleCapacityGuard(params: {
     // `undefined`, so the guard is handed a definite logger.
     structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
   });
-  guard.setSoftLimitProvider(() => planEngine.computeDynamicSoftLimit());
   return {
     guard,
     flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,

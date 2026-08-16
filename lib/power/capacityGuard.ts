@@ -7,7 +7,6 @@ type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type ShortfallAlertCandidateCallback = (candidate: CapacityShortfallAlertCandidate) => void;
 type ShortfallAlertConditionClearedCallback = () => void;
-type SoftLimitProvider = () => number | null;
 type CapacityGuardLogger = Pick<PinoLogger, 'info'>;
 
 export type CapacityGuardOptions = {
@@ -16,8 +15,6 @@ export type CapacityGuardOptions = {
    * Required so every hard-cap incident record is attributable.
    */
   homeId: HomeId;
-  limitKw?: number;
-  softMarginKw?: number;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
   onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
@@ -51,16 +48,23 @@ const isOverShortfallThreshold = (
 ): boolean => totalKw !== null && totalKw > shortfallThresholdKw;
 
 /**
- * CapacityGuard - State container for capacity management.
- * The Plan (buildDevicePlanSnapshot) is the single decision-maker for shedding.
- * Guard tracks state (sheddingActive, shortfall) and provides shortfall hysteresis.
+ * Latched state for one home's capacity control: the shedding latch and the
+ * hard-cap shortfall incident.
+ *
+ * It holds no power reading and no capacity settings. The tracker is the single
+ * power latch (`resolveLastTotalPowerKw`) and capacity settings are read from
+ * their own store, so every threshold this class once relayed — the soft limit,
+ * the shortfall threshold — is now resolved by the caller and passed in. What
+ * remains is the state nothing else owns: the shedding latch with its clear
+ * hysteresis, and the incident identity plus its sustained-recovery clock.
+ *
+ * The Plan (`buildDevicePlanSnapshot`) is still the single decision-maker for
+ * shedding; this only records what it decided.
  */
 export default class CapacityGuard {
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
 
-  private limitKw: number;
-  private softMarginKw: number;
   private shortfallClearStartTime: number | null = null;
 
   // State - updated by Plan
@@ -73,9 +77,6 @@ export default class CapacityGuard {
   private onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
   private onShortfallAlertConditionCleared?: ShortfallAlertConditionClearedCallback;
 
-  // Providers
-  private softLimitProvider?: SoftLimitProvider;
-
   private structuredLog: CapacityGuardLogger;
   private homeId: HomeId;
   private incidentId: string | null = null;
@@ -84,63 +85,11 @@ export default class CapacityGuard {
 
   constructor(options: CapacityGuardOptions) {
     this.homeId = options.homeId;
-    this.limitKw = options.limitKw ?? 10;
-    this.softMarginKw = options.softMarginKw ?? 0.2;
     this.structuredLog = options.structuredLog;
     this.onShortfall = options.onShortfall;
     this.onShortfallCleared = options.onShortfallCleared;
     this.onShortfallAlertCandidate = options.onShortfallAlertCandidate;
     this.onShortfallAlertConditionCleared = options.onShortfallAlertConditionCleared;
-  }
-
-  // --- Configuration ---
-
-  setLimit(limitKw: number): void {
-    this.limitKw = Math.max(0, limitKw);
-  }
-
-  setSoftMargin(marginKw: number): void {
-    this.softMarginKw = Math.max(0, marginKw);
-  }
-
-  setSoftLimitProvider(provider: SoftLimitProvider | undefined): void {
-    this.softLimitProvider = provider;
-  }
-
-  // --- Limit calculations ---
-
-  /**
-   * Returns **two different quantities** depending on wiring, which is why the
-   * name is `softLimit` and not one of the canonical ones. With a provider wired
-   * it is `capacityPaceKw`, the dynamic hourly threshold. Otherwise it silently
-   * substitutes `hourlyAllowanceKWh`, a different quantity that never decays at
-   * the hour boundary. The accept test is `typeof === 'number' && >= 0`, which is
-   * deliberately *not* a finiteness gate — `Infinity` passes and is returned
-   * verbatim, contrary to the boundary rule in the root `AGENTS.md`.
-   *
-   * A caller cannot tell which quantity it received, and the substitution is not
-   * uniformly safer: the static allowance is *stricter* than the pace mid-hour
-   * (the pace can sit at several times the allowance while the hour is under-used)
-   * and *looser* at the end of it (no drain, and it never reaches 0 on an
-   * exhausted hour, where `computeDynamicSoftLimit` returns 0). So a wiring
-   * regression silently shifts the limit in both directions, rather than failing
-   * loudly.
-   *
-   * `notes/safe-pace-two-constraints.md` § "Canonical names" is the definition of
-   * record and tracks the fix: surface the unresolved state explicitly, and settle
-   * the caller contract (fail-closed, matching the stale-meter posture) in the same
-   * change. Until then, treat this as unresolved-or-a-pace, never as a known pace.
-   *
-   * The note's revisit trigger fires on any new caller — add one only deliberately,
-   * and note that `flowCards/headroomAndEvSocCards.ts` already consumes it with no
-   * fallback of its own and publishes it to a structured log.
-   */
-  getSoftLimit(): number {
-    if (this.softLimitProvider) {
-      const dynamic = this.softLimitProvider();
-      if (typeof dynamic === 'number' && dynamic >= 0) return dynamic;
-    }
-    return Math.max(0, this.limitKw - this.softMarginKw);
   }
 
   // --- State management (called by Plan) ---

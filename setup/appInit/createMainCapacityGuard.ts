@@ -64,8 +64,6 @@ export const createMainCapacityGuard = (params: {
   });
   const guard = new CapacityGuard({
     homeId: MAIN_HOME_ID,
-    limitKw: ctx.capacitySettings.limitKw,
-    softMarginKw: ctx.capacitySettings.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
     onShortfallCleared: async () => {
       shortfallAlertDispatch.onIncidentCleared();

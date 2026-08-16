@@ -8,7 +8,7 @@ import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
   CapacityGuard,
-  'getSoftLimit' | 'isSheddingActive' | 'isInShortfall'
+  'isSheddingActive' | 'isInShortfall'
 >;
 
 type CapacityStatusMetrics = {
@@ -50,6 +50,11 @@ export function buildPeriodicStatusLogFields(params: {
   operatingMode: string;
   capacityDryRun: boolean;
   starvedDeviceCount?: number;
+  /**
+   * `capacityPaceKw` — the dynamic hourly threshold, resolved by the caller.
+   * Logged as `softLimitKw` (`notes/safe-pace-two-constraints.md`).
+   */
+  capacityPaceKw: number;
 }): PeriodicStatusLogFields {
   const {
     capacityGuard,
@@ -58,8 +63,9 @@ export function buildPeriodicStatusLogFields(params: {
     operatingMode,
     capacityDryRun,
     starvedDeviceCount = 0,
+    capacityPaceKw,
   } = params;
-  const metrics = resolveCapacityStatusMetrics({ capacityGuard, capacitySettings, powerTracker });
+  const metrics = resolveCapacityStatusMetrics({ capacitySettings, powerTracker, capacityPaceKw });
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
   const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
   const inShortfall = capacityGuard?.isInShortfall() ?? false;
@@ -85,13 +91,13 @@ export function buildPeriodicStatusLogFields(params: {
 }
 
 function resolveCapacityStatusMetrics(params: {
-  capacityGuard?: CapacityGuardView;
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
+  capacityPaceKw: number;
 }): CapacityStatusMetrics {
-  const { capacityGuard, capacitySettings, powerTracker } = params;
+  const { capacitySettings, powerTracker, capacityPaceKw } = params;
   const total = resolveLastTotalPowerKw(powerTracker);
-  const softLimit = capacityGuard?.getSoftLimit() ?? resolveUsableCapacityKw(capacitySettings);
+  const softLimit = capacityPaceKw;
   // Derive headroom from the already-fetched softLimit to avoid a second provider call.
   // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
   const headroom = total !== null ? softLimit - total : null;

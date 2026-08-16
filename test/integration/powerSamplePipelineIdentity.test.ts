@@ -31,8 +31,8 @@ const buildPipeline = (
   };
   return new PowerSamplePipeline({
     getPowerTracker: () => powerTracker,
-    getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),
     getCapacityGuard: () => undefined,
+    getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),
     getPlanEngine: () => ({
       state: {
         pendingSheds: new Set<string>(),
@@ -47,6 +47,7 @@ const buildPipeline = (
       getLatestPlanSnapshot: () => null,
       getLatestPlanSnapshotUpdatedAtMs: () => null,
       rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
+      computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
     getDeviceManager: () => undefined,
     planRebuildScheduler: {

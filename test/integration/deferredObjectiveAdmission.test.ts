@@ -194,7 +194,7 @@ const buildBuilder = (
   powerTrackerRef: { current: PowerTrackerState },
   overrides: BuilderOverrides = {},
 ) => {
-  const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+  const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
   const capacitySettings = overrides.capacitySettings ?? { limitKw: 100, marginKw: 0 };
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(),
@@ -205,8 +205,8 @@ const buildBuilder = (
     getHardCapKw: () => capacitySettings.limitKw,
   });
   return new PlanBuilder({
-    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
+    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => capacitySettings,
     getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
     getModeDeviceTargets: () => ({}),
@@ -346,7 +346,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => {
-        const guard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+        const guard = createTestCapacityGuard({ homeId: 'main' });
         return guard;
       },
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
@@ -581,7 +581,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     vi.setSystemTime(new Date(nowMs));
     const powerTracker = buildPowerTracker(nowMs);
 
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const deferredController = new DeferredObjectiveDecorationController({
       getDeferredObjectiveSettings: () => ({
         version: 1,
@@ -602,8 +602,8 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
+      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

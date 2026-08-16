@@ -71,11 +71,11 @@ const buildBuilder = (params: {
   /** Omit to configure every device; `{}` reproduces an unconfigured install. */
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 }): PlanBuilder => {
-  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   lastPowerW = (3) * 1000;
   return new PlanBuilder({
-    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
+    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({

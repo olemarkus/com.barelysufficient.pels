@@ -78,6 +78,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     log: deps.log,
     logDebug: deps.logDebug,
   };
+  const builder = new PlanBuilder(builderDeps, state);
   const executorDeps: PlanExecutorDeps = {
     getHomeDisplayName: deps.getHomeDisplayName,
     homeId: deps.homeId,
@@ -89,6 +90,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getCapacityGuard: deps.getCapacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
     getPowerTracker: deps.getPowerTracker,
+    getCapacityPaceKw: () => builder.computeDynamicSoftLimit(),
     getCapacityDryRun: deps.getCapacityDryRun,
     getOperatingMode: deps.getOperatingMode,
     getShedBehavior: deps.getShedBehavior,
@@ -99,7 +101,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     deviceDiagnostics: deps.deviceDiagnostics,
     pendingBinaryCommandStore,
   };
-  const builder = new PlanBuilder(builderDeps, state);
   const executor = new PlanExecutor(executorDeps, state);
   return {
     planEngine: new ComposedPlanEngine({

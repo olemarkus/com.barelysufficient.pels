@@ -190,9 +190,7 @@ describe('Airtreatment device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
     (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
+    (app as any).computeDynamicSoftLimit = () => 1;
     await runCycle();
     expect(reportedTargets['flexit-1']).toBe(16);
     expect(reportedTargets['flexit-2']).toBe(16);
@@ -202,9 +200,7 @@ describe('Airtreatment device integration', () => {
     (app as any).planEngine.state.lastRecoveryMs = Date.now() - 180000;
     (app as any).powerSampleRebuildState = { lastMs: 0 };
     (app as any).computeDynamicSoftLimit = () => 10;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 10);
-    }
+    (app as any).computeDynamicSoftLimit = () => 10;
     if ((app as any).capacityGuard?.setShortfallThresholdProvider) {
       (app as any).capacityGuard.setShortfallThresholdProvider(() => 10);
     }

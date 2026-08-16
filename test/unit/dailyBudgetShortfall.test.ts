@@ -14,11 +14,7 @@ describe('Daily Budget Shortfall Prevention', () => {
   let guard: CapacityGuard;
 
   beforeEach(() => {
-    guard = createTestCapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 1,
-    });
+    guard = createTestCapacityGuard({ homeId: 'main' });
 
     // Report some power
   });

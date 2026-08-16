@@ -103,7 +103,7 @@ describe('PlanBuilder budget exemption handling', () => {
       todayKey,
       plannedKWh: 1.5,
     });
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const devices: PlanInputDevice[] = [
       buildInputDevice({
@@ -126,8 +126,8 @@ describe('PlanBuilder budget exemption handling', () => {
     ];
 
     const builder = new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
+      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
@@ -192,11 +192,11 @@ describe('PlanBuilder budget exemption handling', () => {
   it('uses the producer-resolved gross uncontrolled bucket for plan meta hourly other energy', async () => {
     const lastPowerW = (2.5) * 1000;
     const currentHourIso = '2026-03-11T10:00:00.000Z';
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
+      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
@@ -240,11 +240,11 @@ describe('PlanBuilder budget exemption handling', () => {
     const lastPowerW = (2.5) * 1000;
     const currentHourIso = '2026-03-11T10:00:00.000Z';
     const lastSampleHourIso = '2026-03-11T09:00:00.000Z';
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
+      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

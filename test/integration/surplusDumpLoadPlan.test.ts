@@ -96,12 +96,12 @@ const makeHarness = (params: {
   decorate?: (devices: PlanInputDevice[]) => DeferredDecorationBundle;
 }): Harness => {
   const limitKw = params.limitKw ?? 10;
-  const guard = createTestCapacityGuard({ homeId: 'main', limitKw, softMarginKw: 0.2 });
+  const guard = createTestCapacityGuard({ homeId: 'main' });
   let lastPowerW = params.totalKw * 1000;
   const state = createPlanEngineState();
   const builder = new PlanBuilder({
-    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => guard,
+    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

@@ -50,20 +50,18 @@ describe('capacity settings propagation', () => {
     vi.clearAllTimers();
   });
 
-  it('updates CapacityGuard when settings change', async () => {
+  it('reloads the capacity scalars when settings change', async () => {
     const app = createApp();
     await app.onInit();
 
     expect(capacityGuardInstances.length).toBe(1);
-    const guard = capacityGuardInstances[0];
 
     // Change limit and margin via settings events.
     mockHomeyInstance.settings.set('capacity_limit_kw', 7);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.4);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(guard.setLimit).toHaveBeenLastCalledWith(7);
-    expect(guard.setSoftMargin).toHaveBeenLastCalledWith(0.4);
-    // Note: Guard no longer has setDryRun - dry run mode is handled by Plan
+    // Nothing mirrors the scalars any more — the reload IS the propagation.
+    expect((app as any).capacitySettings).toMatchObject({ limitKw: 7, marginKw: 0.4 });
   });
 });

@@ -28,6 +28,7 @@ describe('periodic status used kWh', () => {
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
     const fields = buildPeriodicStatusLogFields({
+      capacityPaceKw: 6.5,
       powerTracker: state,
       capacitySettings: { limitKw: 7, marginKw: 0.5 },
       operatingMode: 'Home',
@@ -51,8 +52,8 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 55, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      capacityPaceKw: 4,
       capacityGuard: {
-        getSoftLimit: () => 4,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
@@ -84,8 +85,8 @@ describe('periodic status used kWh', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     let getSoftLimitCallCount = 0;
     buildPeriodicStatusLogFields({
+      capacityPaceKw: (() => { getSoftLimitCallCount += 1; return 5.0; })(),
       capacityGuard: {
-        getSoftLimit: () => { getSoftLimitCallCount += 1; return 5.0; },
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
@@ -102,8 +103,8 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      capacityPaceKw: 4.8,
       capacityGuard: {
-        getSoftLimit: () => 4.8,
         isSheddingActive: () => true,
         isInShortfall: () => false,
       },
@@ -127,8 +128,8 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 57, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      capacityPaceKw: 4.8,
       capacityGuard: {
-        getSoftLimit: () => 4.8,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
@@ -150,8 +151,8 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      capacityPaceKw: 5,
       capacityGuard: {
-        getSoftLimit: () => 5,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },

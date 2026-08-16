@@ -515,7 +515,6 @@ function createBundlePlanningRuntime(params: {
     ctx: params.ctx,
     homeId: params.homeId,
     scalars: params.getCapacityScalars(),
-    planEngine,
     planService,
     getHomeDisplayName: scope.getHomeDisplayName,
     getPowerTracker: params.tracker.getState,

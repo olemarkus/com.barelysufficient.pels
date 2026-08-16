@@ -62,6 +62,12 @@ export function schedulePlanRebuildFromSignal(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   capacityGuard?: CapacityGuard;
   /**
+   * `capacityPaceKw` — the planner's live hourly threshold, resolved by the
+   * caller. The scheduler compares the latched total against it to decide how
+   * urgently to rebuild, so it must be the same number the planner acts on.
+   */
+  capacityPaceKw: number;
+  /**
    * The tracker's latched whole-home total in kW, resolved by the caller
    * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading, in which case
    * headroom falls back to the incoming sample. Distinct from `currentPowerW`:
@@ -93,14 +99,14 @@ export function schedulePlanRebuildFromSignal(params: {
     powerDeltaW,
     capacitySettings,
     capacityGuard,
+    capacityPaceKw,
     latchedTotalKw,
     shortfallThresholdKw,
     planConvergenceActive,
     skipWhileShortfallUnrecoverable = false,
     unactionable,
   } = params;
-  const softLimitKw = capacityGuard?.getSoftLimit()
-    ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
+  const softLimitKw = capacityPaceKw;
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
   const headroomKw = latchedTotalKw !== null ? softLimitKw - latchedTotalKw : fallbackHeadroomKw;
   const isInShortfall = capacityGuard?.isInShortfall() ?? false;

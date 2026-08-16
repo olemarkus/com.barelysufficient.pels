@@ -26,6 +26,8 @@ export type ShortfallExecutorDeps = {
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getPowerTracker: () => PowerTrackerState;
+  /** `capacityPaceKw` — the planner's live hourly threshold, for the log line. */
+  getCapacityPaceKw: () => number;
 };
 
 export class ShortfallExecutor {
@@ -37,13 +39,12 @@ export class ShortfallExecutor {
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.stateSideEffectActive) return;
 
-    const capacityGuard = this.deps.getCapacityGuard();
     const capacitySettings = this.deps.getCapacitySettings();
     const shortfallThreshold = computeShortfallThreshold({
       capacitySettings,
       powerTracker: this.deps.getPowerTracker(),
     });
-    const softLimit = capacityGuard ? capacityGuard.getSoftLimit() : capacitySettings.limitKw;
+    const softLimit = this.deps.getCapacityPaceKw();
     const total = resolveLastTotalPowerKw(this.deps.getPowerTracker());
     const totalStr = total === null ? 'unknown' : total.toFixed(2);
     const home = this.deps.getHomeDisplayName();

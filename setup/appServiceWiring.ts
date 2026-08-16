@@ -441,7 +441,6 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     if (!ctx.capacityGuard) return;
     ctx.defaultComputeDynamicSoftLimit = ctx.computeDynamicSoftLimit;
-    ctx.capacityGuard.setSoftLimitProvider(() => ctx.computeDynamicSoftLimit());
   }
 
   initSettingsHandler(): void {

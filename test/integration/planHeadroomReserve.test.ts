@@ -52,7 +52,7 @@ const makeBuilder = (params: {
   reportTotalPower: (kw: number) => void;
   setSoftLimitKw: (kw: number) => void;
 } => {
-  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0.2 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   // The tracker is the single power latch, so the builder's whole-home total is
   // driven by writing the sample here rather than reporting it to the guard.
   let lastPowerW = params.totalKw * 1000;
@@ -61,8 +61,8 @@ const makeBuilder = (params: {
   // capacity guard's own hour-average projection is not steerable from a single power report.
   let softLimitKw = params.softLimitKw ?? null;
   const builder = new PlanBuilder({
-    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
+    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

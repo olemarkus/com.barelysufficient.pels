@@ -117,8 +117,8 @@ const buildBuilder = (params: {
   tracker: { lastTimestamp: number; lastPowerW?: number };
   dailyBudget: boolean;
 }): PlanBuilder => new PlanBuilder({
-  setCapacityInShortfall: vi.fn(),
   getCapacityGuard: () => params.capacityGuard,
+  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0 }),
   getOperatingMode: () => 'Home',
   getModeDeviceTargets: () => ({}),
@@ -141,9 +141,11 @@ const runShedThenBlockedRestore = async (params: {
   limitKw: number;
   dailyBudget: boolean;
 }) => {
-  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
-  const builder = buildBuilder({ capacityGuard, limitKw: params.limitKw, tracker, dailyBudget: params.dailyBudget });
+  const builder = buildBuilder({
+    capacityGuard, limitKw: params.limitKw, tracker, dailyBudget: params.dailyBudget,
+  });
 
   tracker.lastPowerW = 1.5 * 1000;
   const first = await builder.buildDevicePlanSnapshot([buildDevice(true)]);

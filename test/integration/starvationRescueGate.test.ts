@@ -191,7 +191,7 @@ const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObj
 const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 24) => {
   // Large capacity limit, zero margin — capacity never binds, so the daily budget is the
   // only soft constraint and any shed is a daily-budget shed.
-  const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(rescue),
     getTimeZone: () => 'UTC',
@@ -201,8 +201,8 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getHardCapKw: () => 100,
   });
   return new PlanBuilder({
-    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
+    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

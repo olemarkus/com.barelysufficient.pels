@@ -375,6 +375,7 @@ export class PowerSamplePipeline {
             capacitySettings,
             capacityGuard,
             latchedTotalKw: resolveLastTotalPowerKw(this.deps.getPowerTracker()),
+            capacityPaceKw: planService.computeDynamicSoftLimit(),
             shortfallThresholdKw: computeShortfallThreshold({
               capacitySettings,
               powerTracker: this.deps.getPowerTracker(),

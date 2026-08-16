@@ -59,7 +59,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
 - Accept code duplication if consolidation would violate an architectural boundary. Add a comment explaining the constraint.
 
-**Known transitional allowance:** `lib/utils/**` still has three imports from `lib/power` and `lib/plan` (`todo-tighten-utils-layering`, registered at warn severity in `.dependency-cruiser.cjs` — that rule is the tracking, there is no `TODO.md` entry). Two are type-only (`appTypeGuards.ts` → `PowerTrackerState`, `capacityHelpers.ts` → `ShedAction`/`ShedBehavior`); the one value import is `settingsHandlers.ts` → `CapacityGuard`. The `lib/device` edge is gone. Do not expand the set.
+**Known transitional allowance:** `lib/utils/**` still has two imports from `lib/power` and `lib/plan` (`todo-tighten-utils-layering`, registered at warn severity in `.dependency-cruiser.cjs` — that rule is the tracking, there is no `TODO.md` entry). Both are type-only: `appTypeGuards.ts` → `PowerTrackerState`, `capacityHelpers.ts` → `ShedAction`/`ShedBehavior`. The `lib/device` edge is gone, and so is the last value import — `settingsHandlers.ts` → `CapacityGuard` went with the guard's settings mirror, since the capacity scalars now have one owner and nothing copies them. Do not expand the set.
 
 **Clean and trusted interfaces between layers (convention, not cruiser-enforced):**
 

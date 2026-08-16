@@ -75,16 +75,17 @@ export function registerAppFlowCards(ctx: AppContext): void {
       flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
     getCapacityGuard: () => ctx.capacityGuard,
-    // Resolved here rather than inside the guard: the guard holds no power, and
-    // the tracker is the single latch (`resolveLastTotalPowerKw`).
+    // Resolved here, not inside the guard: the guard holds neither power nor a
+    // limit. `capacityPaceKw` is the planner's live threshold and the tracker is
+    // the single power latch, so the Flow condition answers against the same
+    // number the planner acts on.
     getHeadroom: () => {
-      const softLimitKw = ctx.capacityGuard?.getSoftLimit();
       const totalKw = resolveLastTotalPowerKw(ctx.powerTracker);
-      if (softLimitKw === undefined || totalKw === null) return null;
-      return softLimitKw - totalKw;
+      if (totalKw === null) return null;
+      return ctx.computeDynamicSoftLimit() - totalKw;
     },
     getLatchedTotalKw: () => resolveLastTotalPowerKw(ctx.powerTracker),
-    setCapacityLimit: (kw) => ctx.capacityGuard?.setLimit(kw),
+    getCapacityPaceKw: () => ctx.computeDynamicSoftLimit(),
     getSnapshot: () => ctx.getFlowSnapshot(),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
     getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),

@@ -336,6 +336,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       getLatestPlanSnapshot: vi.fn(() => null),
       getLatestPlanSnapshotUpdatedAtMs: vi.fn(() => null),
       rebuildPlanFromCache: vi.fn(async () => undefined),
+      computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService;
     const nowMs = Date.UTC(2026, 0, 15, 12, 0, 0);
     // Mirrors `PlanRebuildIntentPolicy.executeIntent`: the sample promise is a

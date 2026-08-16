@@ -868,6 +868,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
       starvedDeviceCount: this.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
+      capacityPaceKw: this.computeDynamicSoftLimit(),
     };
     this.getStructuredLogger('status')?.info(buildPeriodicStatusLogFields(periodicStatusParams));
     if (options.includeDeviceHealth === true) {

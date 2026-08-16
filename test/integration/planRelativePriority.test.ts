@@ -30,12 +30,12 @@ describe('PlanBuilder relative priority constraint', () => {
 
   it('keeps producer-resolved ranks consistent through smart-task decoration and materialization', async () => {
     let lastPowerW = 0;
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0 });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     lastPowerW = (0) * 1000;
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({
-      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
+      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
