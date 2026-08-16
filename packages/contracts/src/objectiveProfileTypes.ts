@@ -33,12 +33,14 @@ export type DeviceObjectiveProfile = {
   // `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` so a capacity-shed thermostat cooling
   // *away* from the pre-drop value doesn't sit rejected for the full 24h
   // safety timeout. Resets to 0 whenever a sample shows forward progress.
-  // Optional for backward compatibility — legacy profiles missing the field
-  // are treated as 0.
+  // Optional because it belongs to the ARMED recovery cluster: disarming
+  // destructures it off the profile along with `recoveryTargetValue` and
+  // `recoveryArmedAtMs` (`lib/objectives/recovery.ts`), so absence means "not
+  // in recovery", not "written by an older build". Readers treat it as 0.
   recoveryNoProgressSamples?: number;
   // Recent (input, kWh/unit) samples kept verbatim so the band fitter can
   // re-bucket data when the value distribution shifts. Bounded ring buffer
-  // (newest at the end); legacy profiles without this field still load.
+  // (newest at the end). Absent until the first accepted observation.
   samples?: ObjectiveProfileSampleObservation[];
   // Contiguous, sorted bands of kWh/unit covering the observed input range.
   // Absent when the buffer holds too few samples to split usefully; the
@@ -76,8 +78,9 @@ export type ObjectiveProfileSampleObservation = {
   inputValue: number;
   kwhPerUnit: number;
   // Outdoor temperature when the rise window closed, recorded so a future
-  // estimator can condition heating rates on weather. Optional-field
-  // evolution: legacy observations simply lack it.
+  // estimator can condition heating rates on weather. Written only when a
+  // reading was available (`profiles.ts` spreads it conditionally), so absence
+  // means "no weather for that window" — an ordinary shape, not a legacy one.
   outdoorTemperatureC?: number;
 };
 

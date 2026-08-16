@@ -152,18 +152,6 @@ export const resolveHomeLimitsStatus = (
   const limitReason = toLimitReason(record.limitReason);
   if (limitedDeviceCount === null || limitReason === null) return pending;
 
-  const controlledKw = toFiniteNumber(record.controlledKw);
-  const uncontrolledKw = toFiniteNumber(record.uncontrolledKw);
-  // Prefer the whole-area meter total the blob carries: a meter area can report
-  // a live total while per-device attribution (controlledKw/uncontrolledKw) is
-  // absent, in which case the parts sum is null but a real draw exists. Fall back
-  // to summing the parts only when the total is missing. Gate the COMPUTED sum
-  // too: two large finite operands can overflow to Infinity, which must read as
-  // "unknown", never "Infinity kW".
-  const partsSumKw = controlledKw !== null && uncontrolledKw !== null
-    ? toFiniteNumber(controlledKw + uncontrolledKw)
-    : null;
-  const totalKw = toFiniteNumber(record.totalKw) ?? partsSumKw;
   // "Power now" is the producer's own resolved figure (`powerNowKw`,
   // `planBuilderMeta`), displayed as given. It used to be recomposed here from
   // `powerKnown && hasLivePowerSample && totalKw !== null &&
@@ -172,22 +160,15 @@ export const resolveHomeLimitsStatus = (
   // carried the canonical value, because the resolved figure was consulted as a
   // presence flag rather than shown.
   //
-  // `hasLivePowerSample` was redundant in that chain: `powerKnown` was
-  // `freshness === 'fresh' && total !== null`, which already implied it. The
-  // finiteness checks were NOT — they survive above. The read of
-  // `record.totalKw` is untrusted input off the settings store, and the parts sum
-  // is a COMPUTED value two finite operands can overflow (`MAX_VALUE +
-  // MAX_VALUE` → Infinity, which must read as unknown, never "Infinity kW"), so
-  // that gate lives where the sum is made.
-  const resolvedKw = toFiniteNumber(record.powerNowKw);
-  // LEGACY BLOBS ONLY: those written before `powerNowKw` existed (2026-08-08)
-  // carry the `powerKnown` flag and the composed total instead. Kept so an
-  // upgrade does not blank the card until the next status write, and because the
-  // parts-sum fallback above is documented behaviour for a meter area with
-  // attribution but no total. Both can go once no persisted blob predates the
-  // field.
-  const legacyKw = record.powerKnown === true ? totalKw : null;
-  const powerNowKw = resolvedKw ?? legacyKw;
+  // The recomposition is gone entirely, along with the `powerKnown`/parts-sum
+  // fallback that survived it for pre-2026-08-08 blobs. The producer derives
+  // `powerKnown` FROM `powerNowKw` (`lib/plan/pelsStatus.ts`), so on anything a
+  // current build wrote the two agree by construction and the fallback could
+  // never contribute a value the resolved figure did not already carry.
+  //
+  // The read is still untrusted input off the settings store, so the finiteness
+  // gate stays.
+  const powerNowKw = toFiniteNumber(record.powerNowKw);
   return {
     posture,
     powerNowKw,

@@ -326,7 +326,6 @@ export const resolveDeliveredSoFarLine = (
     startProgress: params.startProgress,
     targetValue: params.targetValue,
     targetUnit: params.targetUnit,
-    deadlineTime: formatHourLabel(params.deadlineAtMs),
   });
 };
 
