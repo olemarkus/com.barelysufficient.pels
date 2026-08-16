@@ -219,6 +219,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     }),
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+    getPowerTracker: () => ({}),
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),

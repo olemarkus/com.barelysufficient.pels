@@ -34,7 +34,8 @@ describe('Headroom for device condition', () => {
 
     // Force a known headroom value
     const guard = (app as any).capacityGuard;
-    guard.getHeadroom = () => 0.4; // kW
+    guard.getSoftLimit = () => 0.4; // kW
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
@@ -58,7 +59,8 @@ describe('Headroom for device condition', () => {
     await app.onInit();
 
     const guard = (app as any).capacityGuard;
-    guard.getHeadroom = () => 0.4;
+    guard.getSoftLimit = () => 0.4;
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
@@ -83,7 +85,8 @@ describe('Headroom for device condition', () => {
     await app.onInit();
 
     const guard = (app as any).capacityGuard;
-    guard.getHeadroom = () => 0.4;
+    guard.getSoftLimit = () => 0.4;
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
@@ -111,7 +114,8 @@ describe('Headroom for device condition', () => {
     await app.onInit();
 
     const guard = (app as any).capacityGuard;
-    guard.getHeadroom = () => 1.35;
+    guard.getSoftLimit = () => 1.35;
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -170,7 +174,8 @@ describe('Headroom for device condition', () => {
     await app.onInit();
 
     const guard = (app as any).capacityGuard;
-    guard.getHeadroom = () => 2.28;
+    guard.getSoftLimit = () => 2.28;
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -213,10 +218,11 @@ describe('Headroom for device condition', () => {
     await app.onInit();
 
     const guard = (app as any).capacityGuard;
-    let currentPowerKw = 4.28;
     guard.getSoftLimit = () => 4.5;
-    guard.getLastTotalPower = () => currentPowerKw;
-    guard.getHeadroom = () => 4.5 - currentPowerKw;
+    const setPowerKw = (kw: number) => {
+      (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: kw * 1000 };
+    };
+    setPowerKw(4.28);
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -228,11 +234,11 @@ describe('Headroom for device condition', () => {
     vi.advanceTimersByTime(2389);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
 
-    currentPowerKw = 3.02;
+    setPowerKw(3.02);
     vi.advanceTimersByTime(5049);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
 
-    currentPowerKw = 4.21;
+    setPowerKw(4.21);
     vi.advanceTimersByTime(53985);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
 
@@ -241,7 +247,7 @@ describe('Headroom for device condition', () => {
 
     await device.setCapabilityValue('measure_power', 2870);
     await (app as any).refreshTargetDevicesSnapshot();
-    currentPowerKw = 4.23;
+    setPowerKw(4.23);
 
     vi.advanceTimersByTime(2721);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
@@ -264,7 +270,8 @@ describe('Headroom for device condition', () => {
     await app.onInit();
 
     const guard = (app as any).capacityGuard;
-    guard.getHeadroom = () => 0.4;
+    guard.getSoftLimit = () => 0.4;
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();

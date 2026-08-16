@@ -114,7 +114,7 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
   limitKw: number;
-  tracker: { lastTimestamp: number };
+  tracker: { lastTimestamp: number; lastPowerW?: number };
   dailyBudget: boolean;
 }): PlanBuilder => new PlanBuilder({
   setCapacityInShortfall: vi.fn(),
@@ -142,20 +142,20 @@ const runShedThenBlockedRestore = async (params: {
   dailyBudget: boolean;
 }) => {
   const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0 });
-  const tracker = { lastTimestamp: DAY_START_UTC };
+  const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
   const builder = buildBuilder({ capacityGuard, limitKw: params.limitKw, tracker, dailyBudget: params.dailyBudget });
 
-  capacityGuard.reportTotalPower(1.5);
+  tracker.lastPowerW = 1.5 * 1000;
   const first = await builder.buildDevicePlanSnapshot([buildDevice(true)]);
 
   vi.setSystemTime(new Date(SECOND_BUILD_AT_MS));
   tracker.lastTimestamp = SECOND_BUILD_AT_MS;
-  capacityGuard.reportTotalPower(0.35);
+  tracker.lastPowerW = 0.35 * 1000;
   await builder.buildDevicePlanSnapshot([buildDevice(false)]);
 
   vi.setSystemTime(new Date(THIRD_BUILD_AT_MS));
   tracker.lastTimestamp = THIRD_BUILD_AT_MS;
-  capacityGuard.reportTotalPower(0.35);
+  tracker.lastPowerW = 0.35 * 1000;
   const third = await builder.buildDevicePlanSnapshot([buildDevice(false)]);
 
   const firstDevice = first.devices.find((d) => d.id === DEVICE_ID);

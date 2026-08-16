@@ -60,19 +60,14 @@ const createCapacityGuardMock = (params: {
   limitKw?: number;
   marginKw?: number;
   softLimitKw?: number;
-  totalPowerKw?: number;
 } = {}): CapacityGuard => {
   const {
     limitKw = 10,
     marginKw = 0.5,
     softLimitKw = limitKw - marginKw,
-    totalPowerKw,
   } = params;
   const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw, softMarginKw: marginKw });
   capacityGuard.setSoftLimitProvider(() => softLimitKw);
-  if (typeof totalPowerKw === 'number') {
-    capacityGuard.reportTotalPower(totalPowerKw);
-  }
   return capacityGuard;
 };
 
@@ -1379,6 +1374,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     const pending = schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1390,7 +1386,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5 }),
     });
 
     vi.advanceTimersByTime(14999);
@@ -1408,6 +1404,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1419,7 +1416,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5 }),
       planConvergenceActive: true,
     });
 
@@ -1435,7 +1432,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       softMarginKw: 0.5,
       onShortfall,
     });
-    capacityGuard.reportTotalPower(11);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1443,6 +1439,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 11,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1454,7 +1452,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 11_000,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       planConvergenceActive: true,
     });
 
@@ -1477,7 +1474,6 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1486,6 +1482,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     const beforeSkippedBackoff = getPerfSnapshot().counts.plan_rebuild_skipped_tight_noop_backoff_total ?? 0;
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1497,7 +1495,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       planConvergenceActive: true,
     });
 
@@ -1517,10 +1514,11 @@ describe('schedulePlanRebuildFromSignal', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1532,7 +1530,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -1550,10 +1547,11 @@ describe('schedulePlanRebuildFromSignal', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.0);
-    capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1565,7 +1563,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1584,10 +1581,11 @@ describe('schedulePlanRebuildFromSignal', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1599,7 +1597,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1617,7 +1614,6 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1625,6 +1621,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1636,7 +1634,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       planConvergenceActive: true,
     });
 
@@ -1652,6 +1649,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     const pending = schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1663,7 +1661,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5 }),
       planConvergenceActive: true,
     });
 
@@ -1682,6 +1680,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1693,7 +1692,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5050,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.05 }),
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5 }),
       planConvergenceActive: true,
     });
 
@@ -1705,6 +1704,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1716,7 +1716,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5 }),
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1733,7 +1733,6 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 9.5);
     capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1741,6 +1740,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1752,7 +1753,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1768,9 +1768,9 @@ describe('schedulePlanRebuildFromSignal', () => {
       appliedActions: false,
       failed: false,
     });
-    const firstCapacityGuard = createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 });
 
     const pending = schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1782,7 +1782,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: firstCapacityGuard,
     });
 
     vi.advanceTimersByTime(1000);
@@ -1796,9 +1795,10 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     urgentCapacityGuard.setSoftLimitProvider(() => 9.5);
     urgentCapacityGuard.setShortfallThresholdProvider(() => 9.2);
-    urgentCapacityGuard.reportTotalPower(9.3);
 
     void schedulePlanRebuildFromSignal({
+      capacityGuard: urgentCapacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1810,7 +1810,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: urgentCapacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1827,7 +1826,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       softMarginKw: 0.5,
       onShortfall,
     });
-    capacityGuard.reportTotalPower(11);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1835,6 +1833,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 11,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1846,7 +1846,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 11_000,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(onShortfall).toHaveBeenCalledWith(1);
@@ -1862,7 +1861,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       softMarginKw: 0.5,
       onShortfall,
     });
-    capacityGuard.reportTotalPower(9.6);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1870,6 +1868,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 9.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1881,7 +1881,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(onShortfall).not.toHaveBeenCalled();
@@ -1898,8 +1897,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 3.9);
     capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
+    await capacityGuard.checkShortfall({ hasCandidates: false, deficitKw: 0.306, totalKw: 5.267 });
     const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
@@ -1908,6 +1906,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 5.267,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1919,12 +1919,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(checkShortfallSpy).toHaveBeenLastCalledWith(false, expect.closeTo(0.306, 3));
+    expect(checkShortfallSpy).toHaveBeenLastCalledWith(expect.objectContaining({
+      hasCandidates: false,
+      deficitKw: expect.closeTo(0.306, 3),
+    }));
   });
 
   // Regression: the 2026-07-06 cpuwarn crash. A persistent unwinnable overshoot
@@ -1944,8 +1946,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 3.9);
     capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
+    await capacityGuard.checkShortfall({ hasCandidates: false, deficitKw: 0.306, totalKw: 5.267 });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1958,6 +1959,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     // ≥100 W jitter per sample — "meaningful" deltas that used to force a rebuild each time.
     for (const powerW of [5450, 5300, 5480]) {
       await schedulePlanRebuildFromSignal({
+        capacityGuard,
+        latchedTotalKw: 5.267,
         getState: () => state,
         setState: (next) => {
           state = next;
@@ -1969,7 +1972,6 @@ describe('schedulePlanRebuildFromSignal', () => {
         logError: vi.fn(),
         currentPowerW: powerW,
         capacitySettings: { limitKw: 10, marginKw: 0.5 },
-        capacityGuard,
         planConvergenceActive: isPlanActivelyConverging(planState, { unactionable: planUnactionable }),
         skipWhileShortfallUnrecoverable: true,
         unactionable: planUnactionable,
@@ -1991,8 +1993,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 3.9);
     capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
+    await capacityGuard.checkShortfall({ hasCandidates: false, deficitKw: 0.306, totalKw: 5.267 });
     const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
@@ -2002,8 +2003,9 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     // Within the max interval, the unrecoverable-shortfall skip suppresses the full
     // rebuild but still drives `checkShortfall`, so recovery detection stays alive.
-    capacityGuard.reportTotalPower(4.6);
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 4.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2015,7 +2017,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 4600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
@@ -2027,6 +2028,8 @@ describe('schedulePlanRebuildFromSignal', () => {
     // forever — otherwise a stale "unactionable" summary could deadlock the skip.
     vi.advanceTimersByTime(60_000);
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 4.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2038,7 +2041,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 4600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
@@ -2060,16 +2062,16 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     capacityGuard.setSoftLimitProvider(() => 3.9);
     capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
+    await capacityGuard.checkShortfall({ hasCandidates: false, deficitKw: 0.306, totalKw: 5.267 });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: true,
       appliedActions: true,
       failed: false,
     });
 
-    capacityGuard.reportTotalPower(6.1);
     await schedulePlanRebuildFromSignal({
+      capacityGuard,
+      latchedTotalKw: 6.1,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2081,7 +2083,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 6100,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
@@ -2098,6 +2099,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     }));
 
     const pending = schedulePlanRebuildFromSignal({
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2109,7 +2111,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5 }),
     });
 
     expect(addPerfDurationMock).not.toHaveBeenCalledWith('power_sample_rebuild_ms', expect.any(Number));

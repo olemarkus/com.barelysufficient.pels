@@ -18,14 +18,12 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     public setSoftLimitProvider = vi.fn();
     public setShortfallThresholdProvider = vi.fn();
     public reportTotalPower = vi.fn();
-    public getLastTotalPower = vi.fn().mockReturnValue(null);
     public headroom = vi.fn().mockReturnValue(0);
-    public getHeadroom = vi.fn().mockReturnValue(0);
-    public getRestoreMargin = vi.fn().mockReturnValue(0.2);
     public isSheddingActive = vi.fn().mockReturnValue(false);
     public isInShortfall = vi.fn().mockReturnValue(false);
     public getSoftLimit = vi.fn().mockReturnValue(10);
-    public setSheddingActive = vi.fn();
+    public activateShedding = vi.fn();
+    public releaseShedding = vi.fn();
     public checkShortfall = vi.fn();
     constructor(opts: any = {}) {
       // Call setters once to mirror constructor usage.

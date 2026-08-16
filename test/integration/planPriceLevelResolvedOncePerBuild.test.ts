@@ -10,6 +10,9 @@ import type {
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 
+// The tracker is the single power latch; tests drive the whole-home total here.
+let lastPowerW = 0;
+
 /**
  * Resolving the current-hour price level is NOT cheap: it rebuilds the entire
  * combined price series out of settings (`PriceService.getCombinedHourlyPrices`
@@ -69,7 +72,7 @@ const buildBuilder = (params: {
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 }): PlanBuilder => {
   const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
-  capacityGuard.reportTotalPower(3);
+  lastPowerW = (3) * 1000;
   return new PlanBuilder({
     setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
@@ -83,7 +86,7 @@ const buildBuilder = (params: {
       params.deviceIds.map((id) => [id, { enabled: true, cheapDelta: 2, expensiveDelta: -2 }]),
     ),
     getCurrentHourPriceLevel: params.getCurrentHourPriceLevel,
-    getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+    getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getPriorityForDevice: () => 100,
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),

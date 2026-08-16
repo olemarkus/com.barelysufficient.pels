@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { getLogger } from '../../lib/logging/logger';
 import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
 import type { AppContext } from '../../lib/app/appContext';
@@ -54,7 +55,9 @@ export const createMainCapacityGuard = (params: {
     sustainedTimerKey: MAIN_SHORTFALL_ALERT_SUSTAINED_TIMER,
     isDiscarded: params.isDiscarded,
     isTemporarilyFenced: params.isTemporarilyFenced,
-    isConditionActive: () => guard.isShortfallAlertConditionActive(),
+    isConditionActive: () => guard.isShortfallAlertConditionActive(
+      resolveLastTotalPowerKw(ctx.powerTracker),
+    ),
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     flow: ctx.homey.flow,
   });

@@ -252,7 +252,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
 
   const powerTracker = buildPowerTracker(nowMs);
   const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: LIMIT_KW, softMarginKw: 0 });
-  capacityGuard.reportTotalPower(STEP_LOW_KW);
+  powerTracker.lastPowerW = STEP_LOW_KW * 1000;
 
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(),

@@ -60,6 +60,14 @@ export function schedulePlanRebuildFromSignal(params: {
   powerDeltaW?: number;
   capacitySettings: { limitKw: number; marginKw: number };
   capacityGuard?: CapacityGuard;
+  /**
+   * The tracker's latched whole-home total in kW, resolved by the caller
+   * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading, in which case
+   * headroom falls back to the incoming sample. Distinct from `currentPowerW`:
+   * this scheduler runs BEFORE the sample is persisted, so the latch is the
+   * previous one.
+   */
+  latchedTotalKw: number | null;
   planConvergenceActive?: boolean;
   skipWhileShortfallUnrecoverable?: boolean;
   unactionable?: boolean;
@@ -79,15 +87,15 @@ export function schedulePlanRebuildFromSignal(params: {
     powerDeltaW,
     capacitySettings,
     capacityGuard,
+    latchedTotalKw,
     planConvergenceActive,
     skipWhileShortfallUnrecoverable = false,
     unactionable,
   } = params;
   const softLimitKw = capacityGuard?.getSoftLimit()
     ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
-  const guardPower = capacityGuard?.getLastTotalPower() ?? null;
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
-  const headroomKw = guardPower !== null ? softLimitKw - guardPower : fallbackHeadroomKw;
+  const headroomKw = latchedTotalKw !== null ? softLimitKw - latchedTotalKw : fallbackHeadroomKw;
   const isInShortfall = capacityGuard?.isInShortfall() ?? false;
   const currentState = resetShortfallSuppressionInvalidationWhenRecovered({
     state: getState(),
@@ -98,7 +106,7 @@ export function schedulePlanRebuildFromSignal(params: {
     capacityGuard,
     capacitySettings,
     currentPowerW,
-    guardPower,
+    latchedTotalKw,
   });
   const maxIntervalExceeded = maxIntervalMs > 0
     && (getNowMs() - currentState.lastMs) >= maxIntervalMs;
@@ -110,7 +118,11 @@ export function schedulePlanRebuildFromSignal(params: {
     maxIntervalExceeded,
   })) {
     incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
-    return Promise.resolve(capacityGuard?.checkShortfall(false, hardCapBreach.deficitKw)).finally(() => {
+    return Promise.resolve(capacityGuard?.checkShortfall({
+      hasCandidates: false,
+      deficitKw: hardCapBreach.deficitKw,
+      totalKw: latchedTotalKw,
+    })).finally(() => {
       addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
     });
   }
@@ -141,7 +153,7 @@ export function schedulePlanRebuildFromSignal(params: {
     planConvergenceActive,
     hardCapBreach,
     onTightNoopHardCapBreach: async (deficitKw) => {
-      await capacityGuard?.checkShortfall(false, deficitKw);
+      await capacityGuard?.checkShortfall({ hasCandidates: false, deficitKw, totalKw: latchedTotalKw });
     },
     unactionable,
   }).finally(() => {

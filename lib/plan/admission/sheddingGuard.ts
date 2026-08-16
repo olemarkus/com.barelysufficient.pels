@@ -18,17 +18,23 @@ function handleShortfallCheck(
     capacityGuard: CapacityGuard | undefined;
     remaining: number;
     deficitKw: number;
+    totalKw: number | null;
     capacityStateSummary?: PlanCapacityStateSummary;
   },
 ): Promise<void> {
-  const { capacityGuard, remaining, deficitKw, capacityStateSummary } = params;
+  const { capacityGuard, remaining, deficitKw, totalKw, capacityStateSummary } = params;
   return deficitKw > 0
-    ? (capacityGuard?.checkShortfall(
-      remaining > 0,
+    ? (capacityGuard?.checkShortfall({
+      hasCandidates: remaining > 0,
       deficitKw,
+      totalKw,
       capacityStateSummary,
-    ) ?? Promise.resolve())
-    : (capacityGuard?.checkShortfall(true, 0) ?? Promise.resolve());
+    }) ?? Promise.resolve())
+    : (capacityGuard?.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw,
+    }) ?? Promise.resolve());
 }
 
 function computeShortfallDeficitKw(total: number | null, shortfallThreshold: number): number {
@@ -179,11 +185,12 @@ export async function updateGuardState(params: {
   const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThreshold);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
-    capacityGuard?.setSheddingActive(true);
+    capacityGuard?.activateShedding();
     await handleShortfallCheck({
       capacityGuard,
       remaining: remainingCandidates,
       deficitKw,
+      totalKw: planningTotalKw,
       capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
         deficitKw,
         devices,
@@ -199,12 +206,13 @@ export async function updateGuardState(params: {
   const canDisable = headroom >= SHEDDING_CLEAR_THRESHOLD_KW;
   const current = capacityGuard?.isSheddingActive() ?? false;
   if (canDisable) {
-    capacityGuard?.setSheddingActive(false, headroom);
+    capacityGuard?.releaseShedding(headroom);
   }
   await handleShortfallCheck({
     capacityGuard,
     remaining: remainingCandidates,
     deficitKw,
+    totalKw: planningTotalKw,
     capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
       deficitKw,
       devices,

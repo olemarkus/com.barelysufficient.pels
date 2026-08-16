@@ -76,6 +76,11 @@ export type FlowCardDeps = {
   recordPowerSample: (powerW: number) => Promise<void>;
   getCapacityGuard: () => CapacityGuard | undefined;
   getHeadroom: () => number | null;
+  /**
+   * The tracker's latched whole-home total in kW, resolved by setup
+   * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading.
+   */
+  getLatchedTotalKw: () => number | null;
   setCapacityLimit: (kw: number) => void;
   // Decorated: the runtime snapshot carries the app-layer step-command
   // decoration (`desiredStepId` / `targetStepId`) that the clamp-deviation

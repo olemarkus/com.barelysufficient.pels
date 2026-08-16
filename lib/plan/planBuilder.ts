@@ -354,7 +354,6 @@ export class PlanBuilder {
 
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
       devices,
-      capacityGuard: this.capacityGuard,
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
       softLimit,

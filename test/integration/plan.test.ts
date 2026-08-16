@@ -1219,7 +1219,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-    await (app as any).capacityGuard?.setSheddingActive(false);
+    await (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — simulate that interval having elapsed.
@@ -1588,7 +1588,8 @@ describe('Device plan snapshot', () => {
 
     // Force headroom small; monkey-patch guard headroom and margin.
     (app as any).capacitySettings.marginKw = 0.2;
-    (app as any).capacityGuard.getHeadroom = () => 0.3;
+    (app as any).capacityGuard.getSoftLimit = () => 0.3;
+    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
 
     const plan = {
       devices: [
@@ -2245,7 +2246,8 @@ describe('Device plan snapshot', () => {
     // Simulate recent shedding/overshoot.
     (app as any).planEngine.state.lastInstabilityMs = Date.now();
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.getHeadroom = () => 5; // plenty of headroom
+      (app as any).capacityGuard.getSoftLimit = () => 5; // plenty of headroom
+      (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
       (app as any).capacityGuard.isSheddingActive = () => false;
     }
 
@@ -2293,7 +2295,8 @@ describe('Device plan snapshot', () => {
     // This happens when power drops but we haven't sustained positive headroom long enough
     (app as any).planEngine.state.lastInstabilityMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.getHeadroom = () => 2; // plenty of headroom
+      (app as any).capacityGuard.getSoftLimit = () => 2; // plenty of headroom
+      (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
       (app as any).capacityGuard.isSheddingActive = () => false;
       (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
     }
@@ -4030,7 +4033,7 @@ describe('Dry run mode', () => {
       (app as any).planEngine.state.lastRecoveryMs = 0;
       (app as any).planEngine.state.lastDeviceShedMs = {};
       // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
-      await (app as any).capacityGuard?.setSheddingActive(false);
+      await (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
 
       await (app as any).powerSamplePipeline.recordPowerSample(2000);
 

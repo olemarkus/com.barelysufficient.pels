@@ -7,6 +7,7 @@ import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import { recordPowerSampleForApp } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
+import { resolveLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
@@ -329,7 +330,6 @@ export class PowerSamplePipeline {
         capacitySettings,
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
-        capacityGuard,
         // Stamp the producer-resolved `currentOn` onto the raw snapshots before the
         // plan-layer usage math: these devices come straight from the transport and
         // carry `binaryControl` but no `currentOn`, so the usage on/off reads would
@@ -373,6 +373,7 @@ export class PowerSamplePipeline {
             currentPowerW,
             capacitySettings,
             capacityGuard,
+            latchedTotalKw: resolveLastTotalPowerKw(this.deps.getPowerTracker()),
             planConvergenceActive,
             skipWhileShortfallUnrecoverable,
             unactionable: planUnactionable,

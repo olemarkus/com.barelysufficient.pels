@@ -34,11 +34,9 @@ type InternalApp = {
   dailyBudgetService: {
     getSnapshot(): DailyBudgetUiPayload | null;
   };
-  capacityGuard: {
-    reportTotalPower(expectedPowerKw: number): void;
-  };
   powerTracker: {
     lastTimestamp?: number;
+    lastPowerW?: number;
   };
   computeDynamicSoftLimit: () => number;
 };
@@ -256,9 +254,9 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     currentTimeMs += 61_000;
     (app as any).computeDynamicSoftLimit = () => 10.0;
-    (app as any).capacityGuard.reportTotalPower(0.4);
+    (app as any).powerTracker.lastPowerW = 400;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-    await (app as any).capacityGuard?.setSheddingActive(false);
+    (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
     (app as any).planEngine.state.lastRecoveryMs = currentTimeMs - 61_000;
     plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     evPlan = getPlanEntry(plan, charger.idValue);
@@ -525,7 +523,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     const appState = app as InternalApp & { powerTracker: { lastTimestamp?: number } };
     appState.computeDynamicSoftLimit = () => 10.0;
-    appState.capacityGuard.reportTotalPower(0.4);
+    appState.powerTracker.lastPowerW = 400;
     appState.powerTracker.lastTimestamp = currentTimeMs - 10 * 60 * 1000;
     await appState.planService.rebuildPlanFromCache('ev_deadline_stale_power_test');
     await flushPromises();
@@ -828,10 +826,10 @@ async function rebuildPlan(
 ): Promise<{ devices: PlanDeviceEntry[] }> {
   const appState = app as InternalApp & {
     computeDynamicSoftLimit: () => number;
-    powerTracker: { lastTimestamp?: number };
+    powerTracker: { lastTimestamp?: number; lastPowerW?: number };
   };
   appState.computeDynamicSoftLimit = () => options.softLimitKw;
-  appState.capacityGuard.reportTotalPower(options.totalPowerKw);
+  appState.powerTracker.lastPowerW = options.totalPowerKw * 1000;
   appState.powerTracker.lastTimestamp = currentTimeMs;
   await appState.planService.rebuildPlanFromCache('ev_integration_test');
   await flushPromises();

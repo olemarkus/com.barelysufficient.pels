@@ -16,7 +16,6 @@ describe('periodic status used kWh', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
     await recordPowerSample({
       state,
@@ -25,12 +24,10 @@ describe('periodic status used kWh', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
     const fields = buildPeriodicStatusLogFields({
-      capacityGuard: undefined,
       powerTracker: state,
       capacitySettings: { limitKw: 7, marginKw: 0.5 },
       operatingMode: 'Home',
@@ -55,13 +52,13 @@ describe('periodic status used kWh', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
       capacityGuard: {
-        getLastTotalPower: () => 2.48,
         getSoftLimit: () => 4,
         getShortfallThreshold: () => 5,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
       powerTracker: {
+        lastPowerW: 2480,
         buckets: {
           [getHourBucketKey(nowMs)]: 2.52,
         },
@@ -86,13 +83,12 @@ describe('periodic status used kWh', () => {
     let getSoftLimitCallCount = 0;
     buildPeriodicStatusLogFields({
       capacityGuard: {
-        getLastTotalPower: () => 3.0,
         getSoftLimit: () => { getSoftLimitCallCount += 1; return 5.0; },
         getShortfallThreshold: () => 6,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
-      powerTracker: {},
+      powerTracker: { lastPowerW: 3000 },
       capacitySettings: { limitKw: 6, marginKw: 1 },
       operatingMode: 'Home',
       capacityDryRun: false,
@@ -106,13 +102,12 @@ describe('periodic status used kWh', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
       capacityGuard: {
-        getLastTotalPower: () => 7.4,
         getSoftLimit: () => 4.8,
         getShortfallThreshold: () => 6,
         isSheddingActive: () => true,
         isInShortfall: () => false,
       },
-      powerTracker: {},
+      powerTracker: { lastPowerW: 7400 },
       capacitySettings: { limitKw: 6, marginKw: 1.2 },
       operatingMode: 'Home',
       capacityDryRun: false,
@@ -130,13 +125,12 @@ describe('periodic status used kWh', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
       capacityGuard: {
-        getLastTotalPower: () => 5.2,
         getSoftLimit: () => 4.8,
         getShortfallThreshold: () => 8.6,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
-      powerTracker: {},
+      powerTracker: { lastPowerW: 5200 },
       capacitySettings: { limitKw: 6, marginKw: 1.2 },
       operatingMode: 'Home',
       capacityDryRun: false,
@@ -153,13 +147,12 @@ describe('periodic status used kWh', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
       capacityGuard: {
-        getLastTotalPower: () => 3,
         getSoftLimit: () => 5,
         getShortfallThreshold: () => 6,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
-      powerTracker: {},
+      powerTracker: { lastPowerW: 3000 },
       capacitySettings: { limitKw: 6, marginKw: 1 },
       operatingMode: 'Home',
       capacityDryRun: false,

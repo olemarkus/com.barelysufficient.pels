@@ -1,4 +1,4 @@
-import CapacityGuard from '../power/capacityGuard';
+import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import { getCurrentHourContext } from './planHourContext';
@@ -144,7 +144,6 @@ const resolveDailyPaceAxis = (value: number | null | undefined): number | null =
 
 export function buildPlanContext(params: {
   devices: PlanInputDevice[];
-  capacityGuard: CapacityGuard | undefined;
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
   softLimit: number;
@@ -162,7 +161,6 @@ export function buildPlanContext(params: {
 }): PlanContext {
   const {
     devices,
-    capacityGuard,
     capacitySettings,
     powerTracker,
     softLimit,
@@ -178,7 +176,10 @@ export function buildPlanContext(params: {
   } = params;
 
   const now = Date.now();
-  const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
+  // Value and freshness now come from the same latch, so they always describe
+  // the same sample. They used to be joined across two objects: the value from
+  // `capacityGuard.getLastTotalPower()`, the freshness from the tracker.
+  const total = resolveLastTotalPowerKw(powerTracker);
   const freshness = resolvePowerSampleFreshness(powerTracker, now);
   const powerKnown = freshness.powerFreshnessState === 'fresh' && total !== null;
 

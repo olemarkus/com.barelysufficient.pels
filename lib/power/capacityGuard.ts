@@ -61,7 +61,6 @@ export default class CapacityGuard {
 
   private limitKw: number;
   private softMarginKw: number;
-  private mainPowerKw: number | null = null;
   private shortfallClearStartTime: number | null = null;
 
   // State - updated by Plan
@@ -116,20 +115,6 @@ export default class CapacityGuard {
     this.shortfallThresholdProvider = provider;
   }
 
-  // --- Power tracking ---
-
-  reportTotalPower(powerKw: number): void {
-    if (!Number.isFinite(powerKw)) return;
-    this.mainPowerKw = powerKw;
-    if (this.shortfallHasCandidates === false && !this.isShortfallAlertConditionActive()) {
-      this.onShortfallAlertConditionCleared?.();
-    }
-  }
-
-  getLastTotalPower(): number | null {
-    return this.mainPowerKw;
-  }
-
   // --- Limit calculations ---
 
   /**
@@ -177,11 +162,6 @@ export default class CapacityGuard {
     return this.limitKw;
   }
 
-  getHeadroom(): number | null {
-    if (this.mainPowerKw === null) return null;
-    return this.getSoftLimit() - this.mainPowerKw;
-  }
-
   // --- State management (called by Plan) ---
 
   isSheddingActive(): boolean {
@@ -196,59 +176,63 @@ export default class CapacityGuard {
     return this.incidentId;
   }
 
+  /** Latch shedding on. Called by Plan once it has decided to shed. */
+  activateShedding(): void {
+    this.sheddingActive = true;
+  }
+
   /**
-   * Called by Plan after making shedding decisions.
-   *
-   * Asymmetric on purpose: activating always takes, while releasing is refused
-   * unless headroom clears `SHEDDING_CLEAR_THRESHOLD_KW`. A refusal is silent,
-   * so callers that need to know what happened re-read `isSheddingActive()`.
+   * Release the shedding latch, but only once `headroomKw` clears
+   * `SHEDDING_CLEAR_THRESHOLD_KW` — a plan hovering at the threshold must not
+   * flap the latch between rebuilds. A refusal is silent, so callers that need
+   * to know what happened re-read `isSheddingActive()`.
    */
-  setSheddingActive(active: boolean, clearHeadroomKw?: number | null): void {
-    if (active && !this.sheddingActive) {
-      this.sheddingActive = true;
-      return;
-    }
-    if (!active && this.sheddingActive) {
-      const headroom = clearHeadroomKw ?? this.getHeadroom();
-      if (headroom !== null && headroom < SHEDDING_CLEAR_THRESHOLD_KW) {
-        return;
-      }
-      this.sheddingActive = false;
-    }
+  releaseShedding(headroomKw: number): void {
+    if (!this.sheddingActive) return;
+    if (headroomKw < SHEDDING_CLEAR_THRESHOLD_KW) return;
+    this.sheddingActive = false;
   }
 
   /**
    * Called by Plan after shedding decisions to check/update shortfall state.
-   * @param hasCandidates - Whether there are still devices that could be shed
-   * @param deficitKw - Current kW above the shortfall threshold
+   *
+   * `totalKw` is the caller's resolved whole-home total (`null` = no
+   * trustworthy reading). The guard holds no power of its own: the tracker is
+   * the single latch, so the value and its freshness describe one sample
+   * instead of two objects that can disagree.
    */
-  async checkShortfall(
-    hasCandidates: boolean,
-    deficitKw: number,
-    capacityStateSummary?: PlanCapacityStateSummary,
-  ): Promise<void> {
+  async checkShortfall(params: {
+    /** Whether there are still devices that could be shed. */
+    hasCandidates: boolean;
+    /** Current kW above the shortfall threshold. */
+    deficitKw: number;
+    totalKw: number | null;
+    capacityStateSummary?: PlanCapacityStateSummary;
+  }): Promise<void> {
+    const { hasCandidates, deficitKw, totalKw, capacityStateSummary } = params;
     this.shortfallHasCandidates = hasCandidates;
     const shortfallThreshold = this.getShortfallThreshold();
-    const thresholdExceeded = this.mainPowerKw !== null && this.mainPowerKw > shortfallThreshold;
-    const alertConditionActive = thresholdExceeded && !hasCandidates;
+    const alertConditionActive = this.isOverShortfallThreshold(totalKw) && !hasCandidates;
 
     // Enter shortfall if over threshold AND no candidates left
     const enterPromise = alertConditionActive && !this.inShortfall
-      ? this.enterShortfall(deficitKw, capacityStateSummary)
+      ? this.enterShortfall(deficitKw, totalKw, capacityStateSummary)
       : null;
     this.publishShortfallAlertCondition(alertConditionActive, deficitKw);
     await enterPromise;
 
     // Check for shortfall clearing (requires sustained positive headroom)
     if (this.inShortfall) {
-      await this.maybeClearShortfall(shortfallThreshold);
+      await this.maybeClearShortfall(shortfallThreshold, totalKw);
     }
   }
 
-  public isShortfallAlertConditionActive(): boolean {
-    return this.shortfallHasCandidates === false
-      && this.mainPowerKw !== null
-      && this.mainPowerKw > this.getShortfallThreshold();
+  public isShortfallAlertConditionActive(totalKw: number | null): boolean {
+    return this.shortfallHasCandidates === false && this.isOverShortfallThreshold(totalKw);
+  }
+
+  private isOverShortfallThreshold(totalKw: number | null): boolean {
+    return totalKw !== null && totalKw > this.getShortfallThreshold();
   }
 
   private publishShortfallAlertCondition(active: boolean, deficitKw: number): void {
@@ -266,12 +250,13 @@ export default class CapacityGuard {
 
   private async enterShortfall(
     deficitKw: number,
+    totalKw: number | null,
     capacityStateSummary?: PlanCapacityStateSummary,
   ): Promise<void> {
     this.incidentId = `inc_${randomUUID()}`;
     this.incidentStartMs = Date.now();
     const thresholdW = Math.round(this.getShortfallThreshold() * 1000);
-    const powerW = Math.round((this.mainPowerKw ?? 0) * 1000);
+    const powerW = Math.round((totalKw ?? 0) * 1000);
     const summary = capacityStateSummary ?? this.capacityStateSummaryProvider();
     this.structuredLog.info({
       event: 'hard_cap_shortfall_detected',
@@ -288,16 +273,22 @@ export default class CapacityGuard {
     await this.onShortfall?.(deficitKw);
   }
 
-  private async maybeClearShortfall(shortfallThreshold: number): Promise<void> {
-    const thresholdHeadroom = shortfallThreshold - (this.mainPowerKw ?? 0);
+  private async maybeClearShortfall(
+    shortfallThreshold: number,
+    totalKw: number | null,
+  ): Promise<void> {
+    const thresholdHeadroom = shortfallThreshold - (totalKw ?? 0);
     if (thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-      await this.updateShortfallClearTimer(shortfallThreshold);
+      await this.updateShortfallClearTimer(shortfallThreshold, totalKw);
       return;
     }
     this.resetShortfallClearTimer();
   }
 
-  private async updateShortfallClearTimer(shortfallThreshold: number): Promise<void> {
+  private async updateShortfallClearTimer(
+    shortfallThreshold: number,
+    totalKw: number | null,
+  ): Promise<void> {
     const now = Date.now();
     if (this.shortfallClearStartTime === null) {
       this.shortfallClearStartTime = now;
@@ -310,7 +301,7 @@ export default class CapacityGuard {
       return;
     }
     if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
-      const powerW = Math.round((this.mainPowerKw ?? 0) * 1000);
+      const powerW = Math.round((totalKw ?? 0) * 1000);
       const thresholdW = Math.round(shortfallThreshold * 1000);
       this.structuredLog.info({
         event: 'hard_cap_shortfall_recovered',

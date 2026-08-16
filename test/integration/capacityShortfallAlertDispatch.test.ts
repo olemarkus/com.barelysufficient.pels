@@ -140,8 +140,7 @@ describe('capacity shortfall alert dispatch', () => {
       isPreparedReconcileActive: () => false,
     });
 
-    guard.reportTotalPower(5.5);
-    await guard.checkShortfall(false, 0.5);
+    await guard.checkShortfall({ hasCandidates: false, deficitKw: 0.5, totalKw: 99 });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(handleShortfall).toHaveBeenCalledExactlyOnceWith(0.5);

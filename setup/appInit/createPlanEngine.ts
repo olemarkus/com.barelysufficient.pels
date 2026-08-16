@@ -88,6 +88,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     actuator: deps.actuator,
     getCapacityGuard: deps.getCapacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
+    getPowerTracker: deps.getPowerTracker,
     getCapacityDryRun: deps.getCapacityDryRun,
     getOperatingMode: deps.getOperatingMode,
     getShedBehavior: deps.getShedBehavior,

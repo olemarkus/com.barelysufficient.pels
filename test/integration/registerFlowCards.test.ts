@@ -104,6 +104,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     recordPowerSample: vi.fn().mockResolvedValue(undefined),
     getCapacityGuard: vi.fn(),
     getHeadroom: vi.fn(() => null),
+    getLatchedTotalKw: () => null,
     setCapacityLimit: vi.fn(),
     getSnapshot: vi.fn().mockResolvedValue([]),
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),

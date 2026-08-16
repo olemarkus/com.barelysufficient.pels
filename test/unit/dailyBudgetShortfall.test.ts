@@ -17,7 +17,6 @@ describe('Daily Budget Shortfall Prevention', () => {
     });
 
     // Report some power
-    guard.reportTotalPower(3);
   });
 
   test('daily budget violation (softLimitSource=daily) does not check shortfall', async () => {
@@ -37,13 +36,12 @@ describe('Daily Budget Shortfall Prevention', () => {
 
     // Case 1: Power (3 kW) is below shortfall threshold (9 kW)
     // Even with no candidates, shortfall should NOT trigger
-    await guard.checkShortfall(false, 0); // no candidates
+    await guard.checkShortfall({ hasCandidates: false, deficitKw: 0, totalKw: 3 }); // no candidates
     expect(guard.isInShortfall()).toBe(false);
 
     // Case 2: Even if we artificially set power above threshold,
     // if we're being called with hasCandidates=true, shortfall won't trigger
-    guard.reportTotalPower(12); // Exceeds threshold
-    await guard.checkShortfall(true, 3); // Has candidates (daily budget case)
+    await guard.checkShortfall({ hasCandidates: true, deficitKw: 3, totalKw: 12 }); // Has candidates (daily budget case)
     expect(guard.isInShortfall()).toBe(false);
   });
 
@@ -52,8 +50,7 @@ describe('Daily Budget Shortfall Prevention', () => {
     guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
     // Power exceeds shortfall threshold (hard cap) AND no candidates
-    guard.reportTotalPower(12); // Exceeds 10 kW hard cap
-    await guard.checkShortfall(false, 3); // No candidates
+    await guard.checkShortfall({ hasCandidates: false, deficitKw: 3, totalKw: 12 }); // No candidates
 
     // Shortfall should be triggered
     expect(guard.isInShortfall()).toBe(true);
@@ -64,15 +61,13 @@ describe('Daily Budget Shortfall Prevention', () => {
     guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
     // Power is below hourly hard cap but might exceed daily budget soft limit
-    guard.reportTotalPower(5); // Below 10 kW hard cap
-    await guard.checkShortfall(false, 2); // No candidates
+    await guard.checkShortfall({ hasCandidates: false, deficitKw: 2, totalKw: 5 }); // No candidates
 
     // Should NOT trigger shortfall because we're below hourly threshold
     expect(guard.isInShortfall()).toBe(false);
 
     // Now exceed hourly threshold
-    guard.reportTotalPower(12);
-    await guard.checkShortfall(false, 3);
+    await guard.checkShortfall({ hasCandidates: false, deficitKw: 3, totalKw: 12 });
 
     // Now it should trigger
     expect(guard.isInShortfall()).toBe(true);

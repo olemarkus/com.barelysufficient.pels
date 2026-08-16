@@ -49,7 +49,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
     const structuredLog = { info: vi.fn() };
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(2.5);
+    const lastPowerW = 2.5 * 1000;
 
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
@@ -60,7 +60,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
       getDynamicSoftLimitOverride: () => 2.1,
@@ -114,6 +114,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('reports all-below-epsilon attribution when no managed device rose past the epsilon', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -132,7 +133,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: now }),
+        getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.81,
@@ -145,7 +146,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       // First sample sits just over the soft limit but within the deadband, so the
       // overshoot is only pending (not yet actionable) and no entry is logged.
-      capacityGuard.reportTotalPower(0.83);
+      lastPowerW = (0.83) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'steady-device',
@@ -159,7 +160,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // qualifies and the whole rise stays below the epsilon.
       vi.advanceTimersByTime(21_000);
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(0.84);
+      lastPowerW = (0.84) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'steady-device',
@@ -187,6 +188,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // cannot arrive unreadable. Disappearance is a different case, tracked in
   // TODO.md.
   it('reports attribution_inputs_incomplete when a managed device has a readable current but missing previous baseline', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -205,7 +207,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -219,7 +221,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // First build: only the anchor device is known. This records a prior plan
       // baseline (total + tracked devices) but the newcomer below is absent, so it
       // will have NO previous snapshot to diff against next cycle.
-      capacityGuard.reportTotalPower(0.5);
+      lastPowerW = (0.5) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'anchor',
@@ -234,7 +236,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // so it is dropped from contributors and its rise lands in the unattributed
       // delta — which must NOT be blamed on background load.
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(0.8);
+      lastPowerW = (0.8) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'anchor',
@@ -271,7 +273,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       state.lastPlanBuiltAtMs = now - 30_000;
 
       const structuredLog = { info: vi.fn() };
-      // Fresh guard that never received a finite total: getLastTotalPower() === null,
+      // The tracker carries no `lastPowerW`, so the resolved total is null —
       // mimicking a transient/failed whole-home power read.
       const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
 
@@ -319,6 +321,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('reports attribution_inputs_incomplete on a fresh sample after a stale-hold previous (previous total null, baseline exists)', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -344,7 +347,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         // Fresh power sample this cycle, so the current total IS a finite number — only
         // the PREVIOUS total is missing, which is what must drive power_sample_unavailable.
-        getPowerTracker: () => ({ lastTimestamp: now }),
+        getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -358,7 +361,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // A fresh finite total enters overshoot. Because the previous total is null, the
       // device delta cannot be computed (totalDeltaKw === null) even though THIS sample
       // is perfectly readable — a true cold start would have NO baseline at all.
-      capacityGuard.reportTotalPower(0.8);
+      lastPowerW = (0.8) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'some-device',
@@ -380,10 +383,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('logs overshoot as exhausted when all shed candidates are already at minimum', async () => {
+    let lastPowerW = 0;
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(4.8);
+    lastPowerW = (4.8) * 1000;
 
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
@@ -394,7 +398,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
@@ -433,10 +437,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // for a device at a KNOWN step is covered by the step-ladder cases above.
 
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {
+    let lastPowerW = 0;
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(2.5);
+    lastPowerW = (2.5) * 1000;
 
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
@@ -447,7 +452,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: 500 }),
+      getPowerTracker: () => ({ lastTimestamp: 500 , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
       getDynamicSoftLimitOverride: () => 2.1,
@@ -489,6 +494,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('clamps overshoot duration to zero when the start timestamp is in the future', async () => {
+    let lastPowerW = 0;
     const state = createPlanEngineState();
     state.wasOvershoot = true;
     state.overshootLogged = true;
@@ -496,7 +502,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
     const structuredLog = { info: vi.fn() };
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(0.5);
+    lastPowerW = (0.5) * 1000;
 
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
@@ -507,7 +513,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
       getDynamicSoftLimitOverride: () => 2.1,
@@ -533,6 +539,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('does not attribute overshoot when the total rise stays within the deadband', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -548,7 +555,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
-      capacityGuard.reportTotalPower(4.8);
+      lastPowerW = (4.8) * 1000;
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -559,7 +566,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: vi.fn()
@@ -580,11 +587,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
         }),
       ];
 
-      capacityGuard.reportTotalPower(1.01);
+      lastPowerW = (1.01) * 1000;
       await builder.buildDevicePlanSnapshot(devices);
 
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(1.03);
+      lastPowerW = (1.03) * 1000;
       await builder.buildDevicePlanSnapshot(devices);
 
       expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -600,6 +607,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('does not attribute overshoot when the restored device is not a contributor', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -625,7 +633,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -644,11 +652,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
         }),
       ];
 
-      capacityGuard.reportTotalPower(0.5);
+      lastPowerW = (0.5) * 1000;
       await builder.buildDevicePlanSnapshot(devices);
 
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(0.8);
+      lastPowerW = (0.8) * 1000;
       await builder.buildDevicePlanSnapshot(devices);
 
       expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -671,6 +679,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // CURRENT power is 0/off cannot have caused the rise, so its undiffability is harmless
   // and must NOT suppress a genuine background_load_dominant verdict.
   it('reports background_load_dominant when an undiffable newcomer reads zero current power', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -689,7 +698,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -702,7 +711,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       // First build records a baseline with only the steady anchor; the newcomer below
       // is absent, so it will have NO previous snapshot to diff against next cycle.
-      capacityGuard.reportTotalPower(0.5);
+      lastPowerW = (0.5) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
       ]);
@@ -712,7 +721,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // appears, but it reads 0 W (off) — it could not have caused the rise, so its
       // missing previous snapshot is harmless and the verdict stays background-dominant.
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(0.8);
+      lastPowerW = (0.8) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
         buildDevice({
@@ -741,6 +750,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // epsilon, no previous snapshot) is just as capable of being the real cause, so it
   // must block a confident background_load_dominant verdict — not be ignored.
   it('reports attribution_inputs_incomplete when an undiffable uncontrolled device could be the cause', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -759,7 +769,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -771,7 +781,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       }, state);
 
       // First build records a baseline with only the steady anchor.
-      capacityGuard.reportTotalPower(0.5);
+      lastPowerW = (0.5) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
       ]);
@@ -782,7 +792,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // uncontrolled device can be the real cause, this must NOT be blamed on background
       // load — it collapses to the honest incomplete reason.
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(0.8);
+      lastPowerW = (0.8) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
         buildDevice({
@@ -811,6 +821,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // STALE) delta is produced. The freshness gate must reject this and report incomplete
   // rather than classify a confident cause from a stale delta.
   it('reports attribution_inputs_incomplete when the total delta is computed from a stale cached total', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -825,7 +836,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // Guard still holds an old cached total (getLastTotalPower stays finite) even
       // though the sample timestamp is now stale.
       const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 4, softMarginKw: 0 });
-      capacityGuard.reportTotalPower(0.8);
+      lastPowerW = (0.8) * 1000;
 
       const builder = new PlanBuilder({
         setCapacityInShortfall: vi.fn(),
@@ -838,7 +849,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         // Stale-but-present timestamp (> 10 min) drives the fail-closed freshness state,
         // which forces an actionable overshoot off the OLD cached total of 0.8.
-        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) }),
+        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -872,6 +883,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('attributes overshoot when the restored device is a positive contributor', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -897,7 +909,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
@@ -908,7 +920,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
-      capacityGuard.reportTotalPower(0.6);
+      lastPowerW = (0.6) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-device',
@@ -918,7 +930,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ]);
 
       structuredLog.info.mockClear();
-      capacityGuard.reportTotalPower(1.3);
+      lastPowerW = (1.3) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-device',
@@ -955,6 +967,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // the non-managed device that caused the breach rather than only reporting an
   // unattributed delta.
   it('surfaces a rising uncontrolled tracked device as an uncontrolled contributor', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -973,7 +986,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
@@ -998,13 +1011,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
         }),
       ];
 
-      capacityGuard.reportTotalPower(0.6);
+      lastPowerW = (0.6) * 1000;
       await builder.buildDevicePlanSnapshot(buildDevices(0.3, 0.3));
 
       structuredLog.info.mockClear();
       // The uncontrolled device climbs 0.3 -> 1.5 kW (+1.2) while the managed
       // device holds, so the rise is owned by tracked background load.
-      capacityGuard.reportTotalPower(1.8);
+      lastPowerW = (1.8) * 1000;
       await builder.buildDevicePlanSnapshot(buildDevices(0.3, 1.5));
 
       expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -1027,6 +1040,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('attributes a delayed overshoot within the attribution window even after the device has shown initial load', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -1052,7 +1066,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
@@ -1063,7 +1077,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
-      capacityGuard.reportTotalPower(0.4);
+      lastPowerW = (0.4) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1075,7 +1089,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ]);
 
       vi.setSystemTime(start + 10_000);
-      capacityGuard.reportTotalPower(0.7);
+      lastPowerW = (0.7) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1088,7 +1102,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ]);
 
       vi.setSystemTime(start + 20_000);
-      capacityGuard.reportTotalPower(0.75);
+      lastPowerW = (0.75) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1103,7 +1117,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog.info.mockClear();
 
       vi.setSystemTime(start + 30_000);
-      capacityGuard.reportTotalPower(1.3);
+      lastPowerW = (1.3) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1132,6 +1146,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('keeps attribution open through a pending soft overshoot until a truly clean sample arrives', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -1157,7 +1172,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
@@ -1168,7 +1183,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
-      capacityGuard.reportTotalPower(0.4);
+      lastPowerW = (0.4) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1181,7 +1196,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ]);
 
       vi.setSystemTime(start + 10_000);
-      capacityGuard.reportTotalPower(0.7);
+      lastPowerW = (0.7) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1195,7 +1210,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ]);
 
       vi.setSystemTime(start + 20_000);
-      capacityGuard.reportTotalPower(1.03);
+      lastPowerW = (1.03) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1215,7 +1230,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog.info.mockClear();
 
       vi.setSystemTime(start + 30_000);
-      capacityGuard.reportTotalPower(1.3);
+      lastPowerW = (1.3) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1241,6 +1256,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('does not close restore attribution on a stale-hold rebuild with non-negative synthetic headroom', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -1267,7 +1283,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp }),
+        getPowerTracker: () => ({ lastTimestamp , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
@@ -1278,7 +1294,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
-      capacityGuard.reportTotalPower(0.4);
+      lastPowerW = (0.4) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1292,7 +1308,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       vi.setSystemTime(start + 10_000);
       lastTimestamp = start + 10_000;
-      capacityGuard.reportTotalPower(0.7);
+      lastPowerW = (0.7) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1307,7 +1323,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       lastTimestamp = start + 20_000;
       vi.setSystemTime(start + 90_000);
-      capacityGuard.reportTotalPower(0.75);
+      lastPowerW = (0.75) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1328,7 +1344,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       vi.setSystemTime(start + 100_000);
       lastTimestamp = start + 100_000;
-      capacityGuard.reportTotalPower(1.3);
+      lastPowerW = (1.3) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1351,6 +1367,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   });
 
   it('keeps attribution open when the only non-zero thermostat load is stale', async () => {
+    let lastPowerW = 0;
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -1376,7 +1393,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
@@ -1387,7 +1404,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
-      capacityGuard.reportTotalPower(0.4);
+      lastPowerW = (0.4) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1399,7 +1416,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ]);
 
       vi.setSystemTime(start + 10_000);
-      capacityGuard.reportTotalPower(0.7);
+      lastPowerW = (0.7) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1414,7 +1431,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog.info.mockClear();
 
       vi.setSystemTime(start + 20_000);
-      capacityGuard.reportTotalPower(1.3);
+      lastPowerW = (1.3) * 1000;
       await builder.buildDevicePlanSnapshot([
         buildDevice({
           id: 'restored-thermostat',
@@ -1483,7 +1500,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         }),
       ];
 
-      capacityGuard.reportTotalPower(4.351);
+      powerTracker.lastPowerW = 4.351 * 1000;
       const first = await builder.buildDevicePlanSnapshot(devices(true));
       expect(first.devices.filter((d) => d.plannedState === 'shed').map((d) => d.id)).toEqual(['heater']);
 
@@ -1492,7 +1509,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       // user's #1 device in the field.
       vi.setSystemTime(start + 10_000);
       powerTracker.lastTimestamp = start + 10_000;
-      capacityGuard.reportTotalPower(4.351);
+      powerTracker.lastPowerW = 4.351 * 1000;
       const second = await builder.buildDevicePlanSnapshot(devices(false));
 
       const shedIds = second.devices.filter((d) => d.plannedState === 'shed').map((d) => d.id);

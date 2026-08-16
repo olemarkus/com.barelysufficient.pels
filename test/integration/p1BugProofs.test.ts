@@ -84,6 +84,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     }),
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+    getPowerTracker: () => ({}),
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -124,16 +125,14 @@ describe('P1 bug proofs', () => {
     const transitions: boolean[] = [];
     const capacityGuard = {
       isSheddingActive: vi.fn(() => active),
-      setSheddingActive: vi.fn(async (next: boolean) => {
-        active = next;
-        transitions.push(next);
-      }),
+      activateShedding: vi.fn(() => { active = true; transitions.push(true); }),
+      releaseShedding: vi.fn(() => { active = false; transitions.push(false); }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
-      getRestoreMargin: vi.fn().mockReturnValue(0.2),
       getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
+      capacityGuard,
       headroom: -0.05,
       overshootActionable: true,
       capacitySoftLimit: 5,
@@ -141,9 +140,9 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
-      capacityGuard,
     });
     await updateGuardState({
+      capacityGuard,
       headroom: 0.21,
       overshootActionable: false,
       capacitySoftLimit: 5,
@@ -151,9 +150,9 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
-      capacityGuard,
     });
     await updateGuardState({
+      capacityGuard,
       headroom: -0.05,
       overshootActionable: true,
       capacitySoftLimit: 5,
@@ -161,7 +160,6 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set(),
       softLimitSource: 'capacity',
-      capacityGuard,
     });
 
     expect(transitions[0]).toBe(true);
@@ -172,13 +170,14 @@ describe('P1 bug proofs', () => {
   it('passes the in-flight shed summary to shortfall logging', async () => {
     const capacityGuard = {
       isSheddingActive: vi.fn(() => false),
-      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      activateShedding: vi.fn(),
+      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
-      getRestoreMargin: vi.fn().mockReturnValue(0.2),
       getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
+      capacityGuard,
       headroom: -1,
       overshootActionable: true,
       capacitySoftLimit: 5,
@@ -222,10 +221,12 @@ describe('P1 bug proofs', () => {
       ],
       shedSet: new Set(['shed']),
       softLimitSource: 'capacity',
-      capacityGuard,
     });
 
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 1, expect.objectContaining({
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
+      hasCandidates: true,
+      deficitKw: 1,
+      capacityStateSummary: expect.objectContaining({
       controlledDevices: 2,
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
@@ -235,6 +236,7 @@ describe('P1 bug proofs', () => {
       zeroDrawControlledDevices: 1,
       pendingControlledDevices: 1,
       summarySource: 'plan_input',
+      }),
     }));
   });
 

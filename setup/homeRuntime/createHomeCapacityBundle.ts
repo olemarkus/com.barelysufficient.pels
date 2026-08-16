@@ -518,6 +518,7 @@ function createBundlePlanningRuntime(params: {
     planEngine,
     planService,
     getHomeDisplayName: scope.getHomeDisplayName,
+    getPowerTracker: params.tracker.getState,
     isTornDown: params.isTornDown,
     isMembershipReady: params.isMembershipReady,
     isMeterSourceAuthorized: params.isMeterSourceAuthorized,

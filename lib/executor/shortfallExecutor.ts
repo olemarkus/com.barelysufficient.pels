@@ -1,4 +1,6 @@
 import type CapacityGuard from '../power/capacityGuard';
+import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
+import type { PowerTrackerState } from '../power/tracker';
 import type { PlanEngineState } from '../plan/planState';
 import { getLogger } from '../logging/logger';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -22,6 +24,7 @@ export type ShortfallExecutorDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getPowerTracker: () => PowerTrackerState;
 };
 
 export class ShortfallExecutor {
@@ -39,7 +42,7 @@ export class ShortfallExecutor {
       ? capacityGuard.getShortfallThreshold()
       : capacitySettings.limitKw;
     const softLimit = capacityGuard ? capacityGuard.getSoftLimit() : capacitySettings.limitKw;
-    const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
+    const total = resolveLastTotalPowerKw(this.deps.getPowerTracker());
     const totalStr = total === null ? 'unknown' : total.toFixed(2);
     const home = this.deps.getHomeDisplayName();
 

@@ -102,7 +102,7 @@ function logHeadroomCheck(params: {
     deviceId,
     deviceName: deviceSnap?.name,
     softLimitKw: capacityGuard.getSoftLimit(),
-    currentPowerKw: capacityGuard.getLastTotalPower() ?? null,
+    currentPowerKw: deps.getLatchedTotalKw(),
     deviceConsumptionKw: decision.observedKw,
     expectedPowerKw: deviceSnap?.expectedPowerKw ?? null,
     expectedPowerSource: deviceSnap?.expectedPowerSource ?? null,

@@ -325,11 +325,11 @@ export const resolveHardCapBreachFromSignal = (params: {
   capacityGuard?: CapacityGuard;
   capacitySettings: { limitKw: number };
   currentPowerW?: number;
-  guardPower: number | null;
+  latchedTotalKw: number | null;
 }): HardCapBreach => {
-  const { capacityGuard, capacitySettings, currentPowerW, guardPower } = params;
+  const { capacityGuard, capacitySettings, currentPowerW, latchedTotalKw } = params;
   const shortfallThresholdKw = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
-  const totalPowerKw = guardPower ?? (
+  const totalPowerKw = latchedTotalKw ?? (
     typeof currentPowerW === 'number' ? currentPowerW / 1000 : null
   );
   return resolveHardCapBreach(totalPowerKw, shortfallThresholdKw);

@@ -29,8 +29,9 @@ describe('PlanBuilder relative priority constraint', () => {
   });
 
   it('keeps producer-resolved ranks consistent through smart-task decoration and materialization', async () => {
+    let lastPowerW = 0;
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(0);
+    lastPowerW = (0) * 1000;
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
@@ -41,7 +42,7 @@ describe('PlanBuilder relative priority constraint', () => {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       // The live dependency is intentionally stale: every consumer in this
       // cycle must use the relative ranks snapshotted on the input devices.

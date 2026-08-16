@@ -229,6 +229,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     }),
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+    getPowerTracker: () => ({}),
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),

@@ -342,7 +342,7 @@ const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscrim
 
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
-  tracker: { lastTimestamp: number };
+  tracker: { lastTimestamp: number; lastPowerW?: number };
 }): PlanBuilder => new PlanBuilder({
   setCapacityInShortfall: vi.fn(),
   getCapacityGuard: () => params.capacityGuard,
@@ -372,12 +372,12 @@ describe('exempt restore lane through the full plan build with the latch held', 
 
   it('admits the exempt device on the capacity axis while shedding stays latched on the budget axis', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-    const tracker = { lastTimestamp: DAY_START_UTC };
+    const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
     const builder = buildBuilder({ capacityGuard, tracker });
 
     // Cycle 1: both devices running plus background, far over the ~1.1 kW
     // pace: both get shed and the shedding latch engages.
-    capacityGuard.reportTotalPower(BACKGROUND_KW + 2.25);
+    tracker.lastPowerW = (BACKGROUND_KW + 2.25) * 1000;
     const first = await builder.buildDevicePlanSnapshot([
       buildHeaterInput({ on: true, exempt: false }),
       buildThermostatInput(true),
@@ -390,7 +390,7 @@ describe('exempt restore lane through the full plan build with the latch held', 
     // the latch never clears.
     vi.setSystemTime(new Date(SECOND_BUILD_AT_MS));
     tracker.lastTimestamp = SECOND_BUILD_AT_MS;
-    capacityGuard.reportTotalPower(BACKGROUND_KW);
+    tracker.lastPowerW = BACKGROUND_KW * 1000;
     await builder.buildDevicePlanSnapshot([
       buildHeaterInput({ on: false, exempt: true }),
       buildThermostatInput(false),
@@ -398,7 +398,7 @@ describe('exempt restore lane through the full plan build with the latch held', 
 
     vi.setSystemTime(new Date(THIRD_BUILD_AT_MS));
     tracker.lastTimestamp = THIRD_BUILD_AT_MS;
-    capacityGuard.reportTotalPower(BACKGROUND_KW);
+    tracker.lastPowerW = BACKGROUND_KW * 1000;
     const third = await builder.buildDevicePlanSnapshot([
       buildHeaterInput({ on: false, exempt: true }),
       buildThermostatInput(false),

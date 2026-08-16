@@ -22,11 +22,11 @@ type InternalApp = {
     capacityGuard: {
         getHeadroom: () => number | null;
         isSheddingActive: () => boolean;
-        setSheddingActive: (active: boolean) => void;
+        activateShedding: () => void;
+        releaseShedding: (headroomKw: number) => void;
         checkShortfall: () => void;
         getSoftLimit: () => number;
         getShortfallThreshold: () => number;
-        getLastTotalPower: () => number;
         isInShortfall: () => boolean;
         getRestoreMargin: () => number;
     } | undefined;
@@ -56,6 +56,7 @@ describe('Shed vs Restore Logic', () => {
         const app = createApp() as unknown as InternalApp;
         await (app as any).onInit();
         (app as any).powerTracker.lastTimestamp = Date.now();
+        (app as any).powerTracker.lastPowerW = 12000;
         // Force soft limit to 10 for controllable shedding test
         (app as any).computeDynamicSoftLimit = () => 10;
 
@@ -77,9 +78,9 @@ describe('Shed vs Restore Logic', () => {
             getHeadroom: () => -2.0, // Need 2kW
             getSoftLimit: () => 10,
             getShortfallThreshold: () => 10,
-            getLastTotalPower: () => 12,
             isSheddingActive: () => false,
-            setSheddingActive: vi.fn(),
+            activateShedding: vi.fn(),
+            releaseShedding: vi.fn(),
             checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
@@ -111,6 +112,7 @@ describe('Shed vs Restore Logic', () => {
         const app = createApp() as unknown as InternalApp;
         await (app as any).onInit();
         (app as any).powerTracker.lastTimestamp = Date.now();
+        (app as any).powerTracker.lastPowerW = 10400;
         (app as any).computeDynamicSoftLimit = () => 10;
 
         // Device C: Expected 5kW, Measured 0kW (Maybe checking in but idle?)
@@ -123,9 +125,9 @@ describe('Shed vs Restore Logic', () => {
             getHeadroom: () => -0.4, // Need 0.4kW
             getSoftLimit: () => 10,
             getShortfallThreshold: () => 10,
-            getLastTotalPower: () => 10.4,
             isSheddingActive: () => false,
-            setSheddingActive: vi.fn(),
+            activateShedding: vi.fn(),
+            releaseShedding: vi.fn(),
             checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
@@ -149,6 +151,7 @@ describe('Shed vs Restore Logic', () => {
         const app = createApp() as unknown as InternalApp;
         await (app as any).onInit();
         (app as any).powerTracker.lastTimestamp = Date.now();
+        (app as any).powerTracker.lastPowerW = 8000;
         (app as any).computeDynamicSoftLimit = () => 10;
 
         // Device E: Expected 3.0kW, Measured 0.0kW (Currently OFF)
@@ -164,9 +167,9 @@ describe('Shed vs Restore Logic', () => {
             getHeadroom: () => 2.0,
             getSoftLimit: () => 10,
             getShortfallThreshold: () => 10,
-            getLastTotalPower: () => 8,
             isSheddingActive: () => false,
-            setSheddingActive: vi.fn(),
+            activateShedding: vi.fn(),
+            releaseShedding: vi.fn(),
             checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,

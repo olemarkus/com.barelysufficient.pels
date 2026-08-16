@@ -1,6 +1,7 @@
 import { requireDailyBudgetService, requireFlowHomey } from './contextGuards';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   hasMainHomeSmartTaskAuthority,
@@ -74,7 +75,15 @@ export function registerAppFlowCards(ctx: AppContext): void {
       flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
     getCapacityGuard: () => ctx.capacityGuard,
-    getHeadroom: () => ctx.capacityGuard?.getHeadroom() ?? null,
+    // Resolved here rather than inside the guard: the guard holds no power, and
+    // the tracker is the single latch (`resolveLastTotalPowerKw`).
+    getHeadroom: () => {
+      const softLimitKw = ctx.capacityGuard?.getSoftLimit();
+      const totalKw = resolveLastTotalPowerKw(ctx.powerTracker);
+      if (softLimitKw === undefined || totalKw === null) return null;
+      return softLimitKw - totalKw;
+    },
+    getLatchedTotalKw: () => resolveLastTotalPowerKw(ctx.powerTracker),
     setCapacityLimit: (kw) => ctx.capacityGuard?.setLimit(kw),
     getSnapshot: () => ctx.getFlowSnapshot(),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),

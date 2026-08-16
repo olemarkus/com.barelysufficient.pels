@@ -19,6 +19,9 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
+// The tracker is the single power latch; tests drive the whole-home total here.
+const LATCHED_TOTAL_W = 1.5 * 1000;
+
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 // GATE TRACE (PR3 step 0): prove that a smart task carrying `rescue.exemptFromBudget`
@@ -189,11 +192,10 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // Large capacity limit, zero margin — capacity never binds, so the daily budget is the
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-  capacityGuard.reportTotalPower(1.5);
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(rescue),
     getTimeZone: () => 'UTC',
-    getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
+    getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
     getHardCapKw: () => 100,
@@ -207,7 +209,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getPriceOptimizationEnabled: () => true,
     getPriceOptimizationSettings: () => ({}),
     getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-    getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
+    getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getPriorityForDevice: () => 1,

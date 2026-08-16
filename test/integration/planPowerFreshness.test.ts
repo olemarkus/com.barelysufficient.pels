@@ -1,5 +1,4 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildPlanContext } from '../../lib/plan/planContext';
 import {
@@ -41,14 +40,11 @@ describe('power sample freshness policy', () => {
   });
 
   it('uses real computed headroom for fresh samples', () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(3.2);
 
     const context = buildPlanContext({
       devices: [],
-      capacityGuard,
       capacitySettings: { limitKw: 6, marginKw: 0.2 },
-      powerTracker: { lastTimestamp: Date.now() - (POWER_SAMPLE_STALE_THRESHOLD_MS - 1) },
+      powerTracker: { lastTimestamp: Date.now() - (POWER_SAMPLE_STALE_THRESHOLD_MS - 1), lastPowerW: 3.2 * 1000 },
       softLimit: 5,
       capacitySoftLimit: 5,
       dailySoftLimit: null,
@@ -66,13 +62,10 @@ describe('power sample freshness policy', () => {
   });
 
   it('uses stale-hold fallback headroom 0 for short gaps and startup with no sample', () => {
-    const staleCapacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    staleCapacityGuard.reportTotalPower(4.4);
     const staleHoldContext = buildPlanContext({
       devices: [],
-      capacityGuard: staleCapacityGuard,
       capacitySettings: { limitKw: 6, marginKw: 0.2 },
-      powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
+      powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 4.4 * 1000 },
       softLimit: 5,
       capacitySoftLimit: 5,
       dailySoftLimit: null,
@@ -92,9 +85,8 @@ describe('power sample freshness policy', () => {
 
     const startupContext = buildPlanContext({
       devices: [],
-      capacityGuard: undefined,
       capacitySettings: { limitKw: 6, marginKw: 0.2 },
-      powerTracker: {},
+      powerTracker: { lastPowerW: 4.4 * 1000 },
       softLimit: 5,
       capacitySoftLimit: 5,
       dailySoftLimit: null,
@@ -113,9 +105,8 @@ describe('power sample freshness policy', () => {
   it('uses fail-closed fallback headroom -1 once stale timeout is reached', () => {
     const context = buildPlanContext({
       devices: [],
-      capacityGuard: undefined,
       capacitySettings: { limitKw: 6, marginKw: 0.2 },
-      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
+      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 4.4 * 1000 },
       softLimit: 5,
       capacitySoftLimit: 5,
       dailySoftLimit: null,
@@ -163,13 +154,10 @@ describe('per-axis admission headroom resolution', () => {
   };
 
   it('resolves both axes from fresh power, with the MEASURED exempt sum on the budget axis', () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(1.85);
     const context = buildPlanContext({
       ...baseParams,
       devices: [exemptRunningDevice],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - 1000 },
+      powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 1.85 * 1000 },
     });
 
     expect(context.capacityHeadroomKw).toBeCloseTo(10 - 1.85, 6);
@@ -178,29 +166,23 @@ describe('per-axis admission headroom resolution', () => {
   });
 
   it('has no budget axis without a resolved daily pace', () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(1.85);
     const context = buildPlanContext({
       ...baseParams,
       dailySoftLimit: null,
       budgetPaceKw: null,
       softLimitSource: 'capacity',
       devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - 1000 },
+      powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 1.85 * 1000 },
     });
 
     expect(context.budgetHeadroomKw).toBeNull();
   });
 
   it('synthesizes 0 on both axes in stale-hold and -1 once fail-closed', () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(1.85);
     const staleHold = buildPlanContext({
       ...baseParams,
       devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
+      powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 1.85 * 1000 },
     });
     expect(staleHold.powerFreshnessState).toBe('stale_hold');
     expect(staleHold.capacityHeadroomKw).toBe(0);
@@ -209,8 +191,7 @@ describe('per-axis admission headroom resolution', () => {
     const failClosed = buildPlanContext({
       ...baseParams,
       devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
+      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 1.85 * 1000 },
     });
     expect(failClosed.powerFreshnessState).toBe('stale_fail_closed');
     expect(failClosed.capacityHeadroomKw).toBe(-1);
@@ -218,16 +199,13 @@ describe('per-axis admission headroom resolution', () => {
   });
 
   it('forces both axes to -1 in an exhausted hour with a ~0 meter', () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(0);
     const context = buildPlanContext({
       ...baseParams,
       softLimit: 0,
       hourlyBudgetExhausted: true,
       currentHourPriceLevel: { cheap: false, expensive: false },
       devices: [],
-      capacityGuard,
-      powerTracker: { lastTimestamp: Date.now() - 1000 },
+      powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 0 * 1000 },
     });
 
     expect(context.headroom).toBe(-1);
@@ -273,11 +251,8 @@ describe('planner behavior under stale power freshness states', () => {
   }
 
   it('does not proactively shed solely because power data is in stale-hold', async () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(5.8);
     const builder = buildBuilder({
       tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
-      capacityGuard,
     });
 
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
@@ -289,15 +264,12 @@ describe('planner behavior under stale power freshness states', () => {
   });
 
   it('logs stale-hold only on transition, not on every rebuild', async () => {
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(5.8);
     const structuredLog = {
       info: vi.fn(),
       warn: vi.fn(),
     };
     const builder = buildBuilder({
       tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
-      capacityGuard,
       structuredLog,
     });
 
@@ -317,8 +289,6 @@ describe('planner behavior under stale power freshness states', () => {
   // shed. A first cut of the grace gated every deficit and delayed exactly this.
   it('grants no shed grace while power is stale, even with a restore in flight', async () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(4.9);
     const state = createPlanEngineState();
     recordActivationAttemptStart({
       state,
@@ -327,7 +297,7 @@ describe('planner behavior under stale power freshness states', () => {
       nowTs: Date.now(),
     });
 
-    const builder = buildBuilder({ tracker, capacityGuard, state });
+    const builder = buildBuilder({ tracker, state });
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
 
     expect(plan.meta.powerFreshnessState).toBe('stale_fail_closed');
@@ -335,16 +305,16 @@ describe('planner behavior under stale power freshness states', () => {
   });
 
   it('allows fail-closed shedding and clears once a fresh sample returns', async () => {
-    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
-    const capacityGuard = createTestCapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(4.9);
+    const tracker: { lastTimestamp: number; lastPowerW?: number } = {
+      lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
+      lastPowerW: 4.9 * 1000,
+    };
     const structuredLog = {
       info: vi.fn(),
       warn: vi.fn(),
     };
     const builder = buildBuilder({
       tracker,
-      capacityGuard,
       structuredLog,
     });
 
@@ -358,7 +328,7 @@ describe('planner behavior under stale power freshness states', () => {
     }));
 
     tracker.lastTimestamp = Date.now();
-    capacityGuard.reportTotalPower(2);
+    tracker.lastPowerW = 2 * 1000;
 
     const recoveredPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
     expect(recoveredPlan.meta.powerFreshnessState).toBe('fresh');

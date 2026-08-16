@@ -1,10 +1,12 @@
 import type { AppContext } from '../../lib/app/appContext';
 import { getLogger } from '../../lib/logging/logger';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import { createCapacityShortfallAlertDispatch } from '../capacityShortfallAlertDispatch';
@@ -24,6 +26,7 @@ export function createBundleCapacityGuard(params: {
   planEngine: PlanEngine;
   planService: PlanService;
   getHomeDisplayName: () => string;
+  getPowerTracker: () => PowerTrackerState;
   isTornDown: () => boolean;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
@@ -38,7 +41,8 @@ export function createBundleCapacityGuard(params: {
   holdDeferredShortfallSideEffect: () => void;
 } {
   const {
-    ctx, homeId, scalars, planEngine, planService, getHomeDisplayName, isTornDown, isMembershipReady,
+    ctx, homeId, scalars, planEngine, planService, getHomeDisplayName, getPowerTracker,
+    isTornDown, isMembershipReady,
     isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
     isPreparedReconcileActive, shortfallRetryTimerKey,
     shortfallAlertImmediateTimerKey, shortfallAlertSustainedTimerKey,
@@ -75,7 +79,9 @@ export function createBundleCapacityGuard(params: {
     sustainedTimerKey: shortfallAlertSustainedTimerKey,
     isDiscarded,
     isTemporarilyFenced,
-    isConditionActive: () => guard.isShortfallAlertConditionActive(),
+    isConditionActive: () => guard.isShortfallAlertConditionActive(
+      resolveLastTotalPowerKw(getPowerTracker()),
+    ),
     getHomeDisplayName,
     flow: ctx.homey.flow,
   });
