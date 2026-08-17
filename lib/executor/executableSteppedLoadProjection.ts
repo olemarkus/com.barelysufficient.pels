@@ -37,9 +37,9 @@ import {
 
 type PlanDevice = DevicePlan['devices'][number];
 
-export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | null {
-  if (!isSteppedLoadDevice(dev)) return null;
-  if (shouldHoldCurrentState(dev)) return null;
+export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | undefined {
+  if (!isSteppedLoadDevice(dev)) return undefined;
+  if (shouldHoldCurrentState(dev)) return undefined;
   const planningCurrent = {
     on: resolveEffectiveCurrentOn(dev),
     stepId: dev.selectedStepId,
@@ -54,7 +54,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     plannedStepId,
     plannedTransition,
   });
-  if (isUnderspecifiedSetStepShedIntent(dev, desired)) return null;
+  if (isUnderspecifiedSetStepShedIntent(dev, desired)) return undefined;
   const transition = desiredMatchesTransition(desired, plannedTransition) ? plannedTransition : null;
   const matchingRestoreAttempt = desired.stepId !== undefined
     ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
@@ -62,7 +62,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   const matchingCommandAttempt = desired.stepId !== undefined
     ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
     : null;
-  return {
+  const intent: ExecutableSteppedLoadIntent = {
     id: dev.id,
     name: dev.name,
     purpose: dev.plannedState === 'shed' ? 'shed' : 'keep',
@@ -84,6 +84,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
       ? dev.lastDesiredStepId
       : undefined,
   };
+  return intent;
 }
 
 /**
@@ -103,7 +104,7 @@ export function resolveSteppedLoadCurrentFallback(
 }
 
 export function buildExecutableSteppedLoadDevice(
-  intent: ExecutableSteppedLoadIntent | null,
+  intent: ExecutableSteppedLoadIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
   currentFallback?: ExecutableSteppedLoadCurrentFallback,
   commandSession?: ExecutableSteppedLoadCommandSession,

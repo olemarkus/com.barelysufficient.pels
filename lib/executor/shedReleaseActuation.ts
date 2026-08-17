@@ -60,7 +60,7 @@ export type ShedReleaseActuationDeps = {
 
 export const applyShedReleaseIntent = async (params: {
   intent: ExecutableReleaseIntent;
-  steppedLoadIntent: ExecutableSteppedLoadIntent | null;
+  steppedLoadIntent: ExecutableSteppedLoadIntent | undefined;
   observed: ExecutableObservedDeviceState | undefined;
   snapshot: Pick<ObservedDeviceState, 'binaryControl'> | undefined;
   forceAgainstReleasedOpposing?: boolean;

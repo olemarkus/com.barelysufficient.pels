@@ -1,3 +1,4 @@
+import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 // Integration tests for the binary "Run on solar surplus" dump-load rung (PR-7).
 //
 // WHAT THIS PROBES: the planner layer end to end through the REAL PlanBuilder —
@@ -126,7 +127,9 @@ const makeHarness = (params: {
 const deviceOf = (plan: DevicePlan, id: string) => plan.devices.find((device) => device.id === id);
 
 const intentOf = (plan: DevicePlan, id: string) => (
-  buildExecutablePlan(plan).devices.find((device) => device.id === id)?.binary ?? null
+  ((d) => (d && hasBinaryCommand(d) ? d.binary : null))(
+    buildExecutablePlan(plan).devices.find((device) => device.id === id),
+  )
 );
 
 // Two builds separated by the settle window: the allocator needs the export to
@@ -213,7 +216,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('keep');
     expect(intentOf(plan, PUMP)).toEqual({
-      kind: 'restore', deviceId: PUMP, name: 'Pool pump', source: 'controlled',
+      desiredOn: true, deviceId: PUMP, name: 'Pool pump', source: 'controlled',
     });
     // The stamp lives and dies with `shedDecidedMs` (both linger until a restore
     // actuation / capacity-control-off clears them) — so while the lifted pump is
@@ -246,7 +249,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const engaged = await engagePump(h, () => [buildPump({ on: false })]);
     // Engage in progress: eligible, keep, restore intent — but the pump is still OFF.
     expect(deviceOf(engaged, PUMP)?.plannedState).toBe('keep');
-    expect(intentOf(engaged, PUMP)?.kind).toBe('restore');
+    expect(intentOf(engaged, PUMP)?.desiredOn).toBe(true);
     expect(h.state.surplusEligibilityByDevice[PUMP]?.eligible).toBe(true);
 
     // Surplus vanishes (importing 2 kW, but 8 kW of headroom under the 10 kW cap)
@@ -257,7 +260,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const pump = deviceOf(held, PUMP);
     expect(pump?.plannedState).toBe('shed');
     expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
-    expect(intentOf(held, PUMP)?.kind).not.toBe('restore');
+    expect(intentOf(held, PUMP)?.desiredOn).not.toBe(true);
     // The bug is real: eligibility is still LATCHED (release pending), so a bare
     // `eligible === true` check would have suppressed the hold.
     expect(h.state.surplusEligibilityByDevice[PUMP]?.eligible).toBe(true);
@@ -277,7 +280,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');
     expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
-    expect(intentOf(plan, PUMP)?.kind).toBe('shed');
+    expect(intentOf(plan, PUMP)?.desiredOn).toBe(false);
     expect(h.state.surplusOnlyShedByDevice[PUMP]).toBe(true);
   });
 
@@ -444,7 +447,7 @@ const onPumpSnapshot: TargetDeviceSnapshot = {
 } as unknown as TargetDeviceSnapshot;
 
 const uncontrolledRestoreIntent = {
-  kind: 'restore' as const,
+  desiredOn: true as const,
   deviceId: PUMP,
   name: 'Pool pump',
   source: 'uncontrolled' as const,

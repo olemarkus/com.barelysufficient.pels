@@ -1,3 +1,4 @@
+import type { DesiredBinaryKind } from './executableDesiredState';
 import type {
   DeviceControlAdapterSnapshot,
   DeviceDescriptor,
@@ -48,16 +49,80 @@ export type ExecutorDeviceSnapshot = ObservedDeviceState
   & SteppedLoadDescriptorProbe
   & { currentOn?: boolean; commandableNow?: boolean };
 
+/**
+ * One device's commands for this cycle.
+ *
+ * **Each command axis is OMITTED unless the plan drives it**, and reached
+ * through its guard below — the same discipline `DevicePlanDeviceBase` uses for
+ * `currentOn`, so an un-narrowed `intent.binary` read is a hard compile error
+ * (TS2339). It replaces four `| null` slots whose absence meant nothing in
+ * particular.
+ *
+ * Scope of that guarantee, stated honestly: it holds at the type level and in
+ * `planExecutionDrift.ts`, which narrows and reads. `planExecutorDispatch.ts`
+ * narrows once per device (`resolveDeviceCommands`) and then passes `|
+ * undefined` locals down, so the appliers still carry their own `if (!intent)`
+ * guard — on that path this is closer to a `null`-to-omission rename than a
+ * removed re-check. Tightening the appliers to require a command is the
+ * remaining step; do not read this docblock as claiming it is already done.
+ *
+ * Note the producer obligation this drops: `release` used to be a REQUIRED
+ * `| null` property, so forgetting it was a compile error (TS2741). With every
+ * axis conditional, omitting a spread in `buildExecutableDeviceIntent` compiles
+ * cleanly — and `release` is the axis with no positive projection test, since
+ * the lifecycle-release suites hand their appliers a hand-built intent. Treat
+ * that spread as load-bearing when editing the producer.
+ *
+ * There is no "which axes does this device have" question here: that is settled
+ * upstream (`isSteppedLoadDevice`, `isBinaryPlanDevice`). Presence of a command
+ * means the plan wants that axis DRIVEN this cycle, nothing more.
+ */
 export type ExecutableDeviceIntent = {
   id: string;
   name: string;
   controllable: boolean;
-  target: ExecutableTargetIntent | null;
-  binary: ExecutableBinaryIntent | null;
-  release: ExecutableReleaseIntent | null;
-  steppedLoad: ExecutableSteppedLoadIntent | null;
+  /** Set only by the projection's failure path; the device carries no commands. */
   projectionError?: unknown;
 };
+
+export type ExecutableTargetCommandKind = { target: ExecutableTargetIntent };
+export type ExecutableBinaryCommandKind = { binary: ExecutableBinaryIntent };
+export type ExecutableReleaseCommandKind = { release: ExecutableReleaseIntent };
+export type ExecutableSteppedCommandKind = { steppedLoad: ExecutableSteppedLoadIntent };
+
+/**
+ * Command guards. Presence-only, like the observed clusters in shared-domain:
+ * the producer attaches a command exactly when the plan drives that axis, so
+ * asking "is the key there" IS asking "does the plan drive this axis".
+ *
+ * Domain-constrained to `ExecutableDeviceIntent` on purpose, and the presence
+ * test is `!= null` rather than `!== undefined`. `ExecutableObservedDeviceState`
+ * in this same file declares `target` and `steppedLoad` with `| null` as its
+ * "no axis" spelling, and an observed state sits beside an intent at every
+ * consumer — so an unconstrained `<T extends object>` guard would accept
+ * `hasTargetCommand(observed)`, return true on `target: null`, and narrow it to
+ * a non-nullable command. One identifier's typo, invisible to the compiler.
+ */
+export const hasTargetCommand = <T extends ExecutableDeviceIntent>(
+  i: T,
+): i is T & ExecutableTargetCommandKind => (
+  'target' in i && (i as T & ExecutableTargetCommandKind).target != null
+);
+export const hasBinaryCommand = <T extends ExecutableDeviceIntent>(
+  i: T,
+): i is T & ExecutableBinaryCommandKind => (
+  'binary' in i && (i as T & ExecutableBinaryCommandKind).binary != null
+);
+export const hasReleaseCommand = <T extends ExecutableDeviceIntent>(
+  i: T,
+): i is T & ExecutableReleaseCommandKind => (
+  'release' in i && (i as T & ExecutableReleaseCommandKind).release != null
+);
+export const hasSteppedCommand = <T extends ExecutableDeviceIntent>(
+  i: T,
+): i is T & ExecutableSteppedCommandKind => (
+  'steppedLoad' in i && (i as T & ExecutableSteppedCommandKind).steppedLoad != null
+);
 
 /**
  * The narrow, executor-facing view of one planned device that the convergence
@@ -147,19 +212,42 @@ export type ExecutableObservedSteppedLoadState = {
   currentDrawKw: number;
 };
 
-export type ExecutableBinaryIntent =
-  | {
-    kind: 'shed';
-    deviceId: string;
-    name: string;
-    reason?: string;
-  }
-  | {
-    kind: 'restore';
-    deviceId: string;
-    name: string;
-    source: 'controlled' | 'uncontrolled';
-  };
+/**
+ * A binary command the plan wants issued: the END STATE of the device's on/off
+ * handle, never the category the planner filed it under.
+ *
+ * **Membership is the answer.** The planner emits the set of devices it drives;
+ * one it is not driving this cycle has no intent at all. So there is no "no
+ * opinion" value here and `desiredOn` is a strict `boolean` — a nullable would
+ * hand the executor back a question the planner already answered.
+ *
+ * This replaces a `kind: 'shed' | 'restore'` union that made the executor
+ * re-derive on/off from the planner's vocabulary, and a `reason?: string` that
+ * was a swap label threaded through five signatures only to be stored as
+ * metadata on the pending-command record — it decided nothing.
+ */
+export type ExecutableBinaryIntent = DesiredBinaryKind & {
+  deviceId: string;
+  name: string;
+  /**
+   * MANAGED -> UNMANAGED path ONLY, and the last provenance field on this type.
+   *
+   * `uncontrolled` marks the one case where PELS must undo its OWN prior
+   * actuation: a device PELS had shed while it was managed, whose Power-limit
+   * control the owner then turned off. Without this release it stays off
+   * forever, because shed selection does not consult commandability while both
+   * restore paths do. `applyUncontrolledBinaryRestore` gates it on
+   * `state.shedDecidedMs`, so it can only ever fire for a shed PELS itself
+   * decided.
+   *
+   * It is NOT a general "is this device controllable" flag and must not be read
+   * as one. It belongs on `ExecutableReleaseIntent` beside `binary_release` /
+   * `shed_release`, which is where the release semantics already live; it stays
+   * here for now because moving it is a behavioural change to the one path that
+   * keeps a device from being stranded off.
+   */
+  source: 'controlled' | 'uncontrolled';
+};
 
 export type ExecutableReleaseIntent = {
   kind: 'binary_restore' | 'binary_release' | 'shed_release';

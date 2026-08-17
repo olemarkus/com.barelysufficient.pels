@@ -391,7 +391,7 @@ export class LifecycleFallbackDispatcher {
     }
     return applyShedReleaseIntent({
       intent,
-      steppedLoadIntent: steppedLoad,
+      steppedLoadIntent: steppedLoad ?? undefined,
       observed,
       snapshot: observed.snapshot,
       forceAgainstReleasedOpposing,

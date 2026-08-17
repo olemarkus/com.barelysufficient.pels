@@ -37,10 +37,10 @@ const logger = getLogger('executor/binary');
 
 export const applyBinaryRestore = async (
   ctx: PlanExecutorBinaryContext,
-  intent: ExecutableBinaryIntent | null,
+  intent: ExecutableBinaryIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
-  if (!intent || intent.kind !== 'restore' || intent.source !== 'controlled') return false;
+  if (!intent || !intent.desiredOn || intent.source !== 'controlled') return false;
   const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot) {
     canApplyRestoreSnapshot(ctx, {
@@ -68,10 +68,10 @@ export const applyBinaryRestore = async (
 
 export const applyUncontrolledBinaryRestore = async (
   ctx: PlanExecutorBinaryContext,
-  intent: ExecutableBinaryIntent | null,
+  intent: ExecutableBinaryIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
-  if (!intent || intent.kind !== 'restore' || intent.source !== 'uncontrolled') return false;
+  if (!intent || !intent.desiredOn || intent.source !== 'uncontrolled') return false;
   const shedDecided = ctx.state.shedDecidedMs[intent.deviceId];
   if (!shedDecided) return false;
   // "Run on solar surplus" carve-out (shared home for the merge-blocking
@@ -171,7 +171,7 @@ export const applyBinarySheddingToDevice = async (
 
 export const applyDeferredBinaryCommand = async (
   ctx: PlanExecutorBinaryContext,
-  intent: ExecutableReleaseIntent | null,
+  intent: ExecutableReleaseIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
   options: {
     preferObservedSnapshot?: boolean;

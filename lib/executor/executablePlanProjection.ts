@@ -3,9 +3,11 @@ import {
   isBinaryOnOrUnknown,
   resolveBinaryCommandCurrentOn,
 } from '../../packages/shared-domain/src/binaryControlState';
+import {
+  hasSteppedCommand,
+} from './executablePlan';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
-  formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, PlannedShedTargetKind } from '../plan/planTypes';
@@ -52,14 +54,20 @@ export function buildExecutablePlan(plan: DevicePlan): ExecutablePlan {
 }
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): ExecutableDeviceIntent {
+  const target = buildExecutableTargetIntent(planDevice);
+  const binary = buildExecutableBinaryIntent(planDevice);
+  const release = buildExecutableReleaseIntent(planDevice, planMeta);
+  const steppedLoad = buildExecutableSteppedLoadIntent(planDevice);
+  // Attach a command only for an axis the plan drives; absence IS the answer, so
+  // no consumer re-derives it. See `ExecutableDeviceIntent`.
   return {
     id: planDevice.id,
     name: planDevice.name,
     controllable: planDevice.controllable,
-    target: buildExecutableTargetIntent(planDevice),
-    binary: buildExecutableBinaryIntent(planDevice),
-    release: buildExecutableReleaseIntent(planDevice, planMeta),
-    steppedLoad: buildExecutableSteppedLoadIntent(planDevice),
+    ...(target ? { target } : {}),
+    ...(binary ? { binary } : {}),
+    ...(release ? { release } : {}),
+    ...(steppedLoad ? { steppedLoad } : {}),
   };
 }
 
@@ -71,10 +79,6 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
       id: planDevice.id,
       name: planDevice.name,
       controllable: planDevice.controllable,
-      target: null,
-      binary: null,
-      release: null,
-      steppedLoad: null,
       projectionError: error,
     };
   }
@@ -215,7 +219,12 @@ const isDroppedUnderspecifiedSetStepShed = (
 ): boolean => (
   isSteppedLoadDevice(planDevice)
   && planDevice.plannedShedTargetKind === 'step'
-  && executableDevice?.steppedLoad === null
+  // A MISSING executable device is not a dropped shed — the old `?.steppedLoad
+  // === null` answered false for `undefined`, and this arm feeds
+  // `hasExecutableShedDevices`, which gates the keep-invariant stepped-restore
+  // block. Only a device that IS projected and carries no step command counts.
+  && executableDevice !== undefined
+  && !hasSteppedCommand(executableDevice)
   && !isHeldByRestoreAdmission(planDevice)
 );
 
@@ -328,43 +337,44 @@ const buildObservedSteppedLoadState = (
   };
 };
 
-const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
-  if (isSteppedLoadDevice(dev)) return null;
-  if (!isBinaryPlanDevice(dev)) return null;
+const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | undefined => {
+  if (isSteppedLoadDevice(dev)) return undefined;
+  if (!isBinaryPlanDevice(dev)) return undefined;
   if (dev.controllable === false) {
     return dev.plannedState === 'keep'
-      ? { kind: 'restore', deviceId: dev.id, name: dev.name, source: 'uncontrolled' }
-      : null;
+      ? { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'uncontrolled' }
+      : undefined;
   }
   if (dev.plannedState === 'shed') {
     return buildExecutableBinaryShedIntent(dev);
   }
-  if (dev.plannedState !== 'keep') return null;
-  if (isSwapTargetPendingReason(dev.reason)) return null;
-  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
-  return { kind: 'restore', deviceId: dev.id, name: dev.name, source: 'controlled' };
+  if (dev.plannedState !== 'keep') return undefined;
+  if (isSwapTargetPendingReason(dev.reason)) return undefined;
+  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
+  return { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'controlled' };
 };
 
-const buildExecutableBinaryShedIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
-  if (isSwapTargetPendingReason(dev.reason)) return null;
-  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
+const buildExecutableBinaryShedIntent = (dev: PlanDevice): ExecutableBinaryIntent | undefined => {
+  if (isSwapTargetPendingReason(dev.reason)) return undefined;
+  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
   // A shed whose end state is the setpoint has no binary intent to issue.
-  if (dev.plannedShedTargetKind === 'target_value') return null;
-  const isSwap = dev.reason?.code === PLAN_REASON_CODES.swappedOut;
+  if (dev.plannedShedTargetKind === 'target_value') return undefined;
   return {
-    kind: 'shed',
     deviceId: dev.id,
     name: dev.name,
-    reason: isSwap && dev.reason ? formatDeviceReason(dev.reason) : undefined,
+    desiredOn: false,
+    // A shed never rides the managed -> unmanaged release path; that path only
+    // ever turns a device back ON.
+    source: 'controlled',
   };
 };
 
 const buildExecutableReleaseIntent = (
   dev: PlanDevice,
   planMeta?: PlanMeta,
-): ExecutableReleaseIntent | null => {
+): ExecutableReleaseIntent | undefined => {
   const kind = dev.deferredReleaseIntent;
-  if (!kind) return null;
+  if (!kind) return undefined;
   // The release intent is producer-resolved in deferred-objective admission. This per-cycle
   // projection only reconciles a binary_restore (resume) against the current cycle's planner
   // state — power-freshness (re-evaluated every cycle, incl. realtime reconcile) and the final
@@ -387,9 +397,9 @@ const buildExecutableReleaseIntent = (
   // the label here answered it differently (a fresh timestamp with no total counted as
   // fresh). `undefined` on an older persisted plan means "do not block" — unchanged
   // from the previous optional-chained read.
-  if (planMeta?.powerIsMeasured === false) return null;
-  if (dev.plannedState !== 'keep') return null;
-  if (isSwapTargetPendingReason(dev.reason)) return null;
-  if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return null;
+  if (planMeta?.powerIsMeasured === false) return undefined;
+  if (dev.plannedState !== 'keep') return undefined;
+  if (isSwapTargetPendingReason(dev.reason)) return undefined;
+  if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return undefined;
   return { kind, deviceId: dev.id, name: dev.name };
 };
