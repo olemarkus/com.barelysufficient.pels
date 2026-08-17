@@ -96,7 +96,10 @@ afterEach(() => {
 });
 
 describe('limiting card statement vs radiogroup', () => {
-  it('renders the pause statement for an EV-preset charger', async () => {
+  // The preset's amp ladder is exactly what the planner parks at an intermediate
+  // charging level, so a bare pause sentence here would contradict the Overview
+  // card reading `Limited to 16 A` for the same charger.
+  it('renders the lower-the-level statement for an EV-preset charger', async () => {
     const { state, statement, segmented, hint, render } = await loadShedStatementHarness();
     const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
     state.managedMap = { [device.id]: true };
@@ -104,6 +107,25 @@ describe('limiting card statement vs radiogroup', () => {
     state.deviceTargetPowerConfigs = {
       [device.id]: { enabled: true, preset: 'ev_charger_1_phase', min: 0, max: 7360, step: 460 },
     };
+
+    render(device);
+
+    expect(statement.hidden).toBe(false);
+    expect(statement.textContent).toBe(
+      'When limiting this charger, PELS lowers the charging level, '
+      + 'and pauses charging only if lowering is not enough. It resumes when power allows.',
+    );
+    expect(segmented.hidden).toBe(true);
+    expect(hint.hidden).toBe(true);
+  });
+
+  // No preset means no charging levels to lower, so pausing really is the whole
+  // of it and the older sentence stays true.
+  it('keeps the pause statement for a charger with no level preset', async () => {
+    const { state, statement, segmented, hint, render } = await loadShedStatementHarness();
+    const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
+    state.managedMap = { [device.id]: true };
+    state.controllableMap = { [device.id]: true };
 
     render(device);
 

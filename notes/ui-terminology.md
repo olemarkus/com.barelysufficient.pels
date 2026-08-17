@@ -200,6 +200,18 @@ absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 | **Unknown** | PELS does not have enough current state to choose a more specific word. |
 
+**`Limited to <step>` names where a limited device actually landed** (2026-08-17).
+The bold state word stays `Limited`; this longer line is the *state line* carried
+by the device **activity log** and the runtime device log (`formatDeviceOverview`
+→ `deviceOverviewStrings.ts`). A device's configured limiting behaviour is only
+the worst case, not the action: PELS may leave a device set to turn off running
+at a lower level instead. So the line names that level — `Limited to 16 A`,
+`Limited to Low` — whenever the plan parks the device somewhere it still draws,
+whatever behaviour is configured and including EV chargers. A device the plan
+actually leaves off reads `Turned off` (or `Charging paused` for a charger), and
+the bare `Limited` survives only when there is no level to name at all. Never
+`Limited to Off`: a device at its off level is off, and says so.
+
 **Boost names no kind.** The `Boost` chip's hover text is
 `Given priority over other devices`, and it is the only wording there is.
 **Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.**
@@ -406,7 +418,10 @@ that formatter at all — they lived in `resolveHeldStateActionLabel`, which now
 has no production caller.
 
 **Charging paused** survives as an EV *state* word (state row), not as a reason
-line.
+line — and only for a charger the plan actually **stops**. Since 2026-08-17 a
+charger the plan merely trims to a lower charging level reads `Limited to <step>`
+instead (§ "Device state words"): it is still charging, just slower, and
+`Charging paused` said otherwise while the charger drew 3.7 kW.
 
 The kW figure on blocked-resume lines (and the sibling status
 `Not enough available power to resume — N kW more needed`) is the
@@ -441,13 +456,22 @@ reintroduce it. Canonical sentences (source:
 
 | Case | Statement |
 |---|---|
-| EV charger (preset or not — the executor pauses the charging capability) | `When limiting this charger, PELS pauses charging and resumes it when power allows.` |
+| EV charger on an amp preset (`ev_charger_1_phase` / `ev_charger_3_phase`) | `When limiting this charger, PELS lowers the charging level, and pauses charging only if lowering is not enough. It resumes when power allows.` |
+| EV charger with no level preset (the executor pauses the charging capability) | `When limiting this charger, PELS pauses charging and resumes it when power allows.` |
 | Plain binary device | `When limiting this device, PELS turns it off and turns it back on when power allows.` |
 | Temperature control disabled | `Temperature control is off for this device. When limiting it, PELS turns it off and turns it back on when power allows.` |
 | Forced temperature-only | `When limiting this device, PELS lowers its temperature instead of turning it off.` |
 | Forced step-only | `When limiting this device, PELS steps it down and back up as power allows.` |
 | Power-limit control off | `Power-limit control is off — PELS will not limit this charger/device.` |
 | No power reading | `PELS does not limit this charger/device.` |
+
+The two charger rows split on 2026-08-17. A preset charger's amp ladder is
+exactly what the planner now parks at an intermediate charging level, so the
+bare pause sentence contradicted the Overview card reading `Limited to 16 A` for
+the same charger; a charger with no ladder has no level to lower, and pausing
+really is the whole of it. The preset row must keep both halves — that PELS
+lowers the level, and that it pauses only when lowering is not enough — or the
+sentence trades one half-truth for the other.
 
 The EV page's **Charging card** opens with a control-mode **readout**
 (`Charging control · EV 3-phase`) and a `Change` button that expands Setup and

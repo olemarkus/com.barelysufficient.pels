@@ -321,11 +321,21 @@ const resolveShedStatement = (params: {
     + (shedControls.supportsStep ? 1 : 0);
   if (shedControls.canConfigure && visibleOptionCount > 1) return null;
 
-  // Every EV charger gets the pause/resume sentence, preset or not: a binary
-  // "turn off" on the charging capability is actuated as pausing charging
-  // (lib/executor/shedReleaseActuation.ts), so "turns it off" would misstate
-  // what the owner observes.
   if (noun === 'charger') {
+    // A charger on an amp preset is limited by LEVEL first. Since 2026-08-17 the
+    // planner parks it at the highest charging level that fits and reaches a
+    // pause only when nothing lower would do (`lib/plan/planSteppedShedResolution.ts`
+    // — the configured behaviour is the worst case, not the action). A bare
+    // pause sentence would contradict the Overview, which reads
+    // `Limited to 16 A` for exactly this charger.
+    if (shedControls.forceTurnOffOnly) {
+      return 'When limiting this charger, PELS lowers the charging level, '
+        + 'and pauses charging only if lowering is not enough. It resumes when power allows.';
+    }
+    // No level ladder, so pausing is the whole of it — and pausing is what a
+    // binary "turn off" on the charging capability actuates
+    // (lib/executor/shedReleaseActuation.ts), so "turns it off" would misstate
+    // what the owner observes.
     return 'When limiting this charger, PELS pauses charging and resumes it when power allows.';
   }
   if (shedControls.forceTemperatureOnly) {

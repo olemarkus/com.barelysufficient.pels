@@ -2,6 +2,7 @@ import type {
   DeviceStateOfChargeSnapshot,
   EvChargingState,
   SteppedLoadProfile,
+  SteppedLoadStep,
 } from '../../contracts/src/types.js';
 import {
   buildComparableDeviceReason,
@@ -279,15 +280,58 @@ const resolvePlannedPowerState = (
   }
 };
 
+/**
+ * The rung this cycle's limiting PARKS the device at, or `null` when there is no
+ * rung to name — the device is not stepped, the plan named no step, or it named
+ * one the ladder does not carry.
+ *
+ * Shed behaviour is a FLOOR — "worst case, turn off" — not an action. Since
+ * 2026-08-17 the planner may leave a `turn_off` stepped device at any rung above
+ * that floor and the executor commands exactly that rung
+ * (`resolveSteppedLoadDirectShedStepId`, `lib/plan/planSteppedShedResolution.ts`).
+ * So the display keys on where the plan actually parks the device, never on the
+ * configured behaviour: a charger trimmed to 16 A read "Charging paused" while it
+ * drew 3.7 kW.
+ */
+const resolveParkedShedStep = (device: DeviceOverviewSnapshot): SteppedLoadStep | null => {
+  const { steppedLoad } = device;
+  const targetStepId = getTargetStepId(device);
+  if (!steppedLoad || targetStepId === undefined) return null;
+  return steppedLoad.profile.steps.find((candidate) => candidate.id === targetStepId) ?? null;
+};
+
+/**
+ * Whether a parked rung leaves the device running.
+ *
+ * Mirrors `isSteppedLoadOffStep` (`packages/contracts/src/deviceControlProfiles.ts`):
+ * a rung is off when it draws nothing OR carries the reserved `off` id. Copied
+ * rather than imported — shared-domain must not take a runtime VALUE dependency
+ * on contracts (`no-runtime-value-deps-on-contracts`; contracts is stripped from
+ * the packaged app, so a value import crashes it at boot). That duplication is
+ * the sanctioned price of the packaging boundary.
+ */
+const isRunningStep = (step: SteppedLoadStep): boolean => (
+  step.planningPowerW > 0 && step.id !== 'off'
+);
+
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
-  if (isEvChargerDevice(device)) return DEVICE_OVERVIEW_CHARGING_PAUSED;
+  const parkedStep = resolveParkedShedStep(device);
+  // Setpoint limiting is named BEFORE any rung. A stepped device can be limited
+  // by lowering its setpoint while keeping a running step target, and naming the
+  // rung there reported "Limited to Max" for a device whose step never moved —
+  // the setpoint is what this cycle lowered, so that is what the owner is told.
   if (device.shedAction === 'set_temperature') return DEVICE_OVERVIEW_LOWERED;
-  if (device.shedAction === 'set_step') {
-    const targetStepId = getTargetStepId(device);
-    // Same display formatter as the usage line and the card rail — one entry
-    // must not read "Limited to 32a" beside "target: 32 A".
-    return targetStepId ? deviceOverviewLimitedToStep(formatStepDisplayLabel(targetStepId)) : DEVICE_OVERVIEW_LIMITED;
+  // Same display formatter as the usage line and the card rail — one entry
+  // must not read "Limited to 32a" beside "target: 32 A".
+  if (parkedStep !== null && isRunningStep(parkedStep)) {
+    return deviceOverviewLimitedToStep(formatStepDisplayLabel(parkedStep.id));
   }
+  if (isEvChargerDevice(device)) return DEVICE_OVERVIEW_CHARGING_PAUSED;
+  // A `set_step` device parked at the OFF rung is off, and says so: naming the
+  // rung there read "Limited to Off", which is both awkward and the same
+  // situation a `turn_off` device reports as "Turned off". The bare `Limited`
+  // survives for the one case with no rung to name at all.
+  if (device.shedAction === 'set_step' && parkedStep === null) return DEVICE_OVERVIEW_LIMITED;
   return DEVICE_OVERVIEW_TURNED_OFF;
 };
 
@@ -328,7 +372,13 @@ const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
   if (!isEvChargerDevice(device)) return null;
   const evState = normalizeDeviceState(device.evChargingState);
 
-  if (device.plannedState === 'shed') return DEVICE_OVERVIEW_CHARGING_PAUSED;
+  // The EV branch runs BEFORE the generic shed branch in `resolveStateMsg`, so
+  // this is where a charger's limited line is decided — it used to answer
+  // "Charging paused" unconditionally, which is a lie about a charger the plan
+  // merely trimmed to a lower rung. One home for the limited line: the shared
+  // resolver parks-first, and falls through to "Charging paused" only for a
+  // charger the plan actually stops.
+  if (device.plannedState === 'shed') return resolveShedStateMsg(device);
   if (device.plannedState === 'inactive') return resolveEvInactiveStateMsg(evState);
   if (device.plannedState === 'keep') return resolveEvKeepStateMsg(device, evState);
   return null;

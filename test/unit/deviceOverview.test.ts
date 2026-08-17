@@ -249,6 +249,126 @@ describe('device overview formatter', () => {
     });
   });
 
+  // Shed behaviour is a FLOOR ("worst case, turn off"), not an action: since
+  // 2026-08-17 the planner may park a `turn_off` stepped device at any rung above
+  // the off step and the executor honours it. The state line must key on where
+  // the plan actually parks the device, or a device still running reads as
+  // switched off.
+  it('reads a turn_off device parked at a running rung as limited to that step', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      currentDrawKw: 2,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'max',
+      targetStepId: 'medium',
+      planningPowerKw: 2,
+    })).stateMsg).toBe('Limited to Medium');
+  });
+
+  // A stepped device can be limited by lowering its setpoint while its step
+  // target stays where it was. Naming the rung there said "Limited to Max" for a
+  // device whose step never moved, hiding the setpoint that actually changed.
+  it('reads a stepped device limited by setpoint as lowered, not as its unchanged step', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'set_temperature',
+      shedTemperature: 15,
+      currentDrawKw: 2,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'max',
+      targetStepId: 'max',
+      selectedStepId: 'max',
+      planningPowerKw: 2,
+    })).stateMsg).toBe('Lowered');
+  });
+
+  it('keeps a turn_off device parked at the off step turned off', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      currentDrawKw: 0,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'off',
+      targetStepId: 'off',
+      selectedStepId: 'off',
+      planningPowerKw: 0,
+    })).stateMsg).toBe('Turned off');
+  });
+
+  // Naming the rung when the plan parked the device at the off step read
+  // "Limited to Off" — awkward, and the same situation a `turn_off` device
+  // reports as "Turned off".
+  it('reads a set_step device parked at the off step as turned off', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      currentDrawKw: 0,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'off',
+      targetStepId: 'off',
+      selectedStepId: 'off',
+      planningPowerKw: 0,
+    })).stateMsg).toBe('Turned off');
+  });
+
+  // The one case with no rung to name at all keeps the bare state word.
+  it('keeps the bare Limited word for a set_step device with no target step', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      currentDrawKw: 0,
+      reason: r('shed due to capacity'),
+    }, {
+      targetStepId: null,
+    })).stateMsg).toBe('Limited');
+  });
+
+  // A charger trimmed to a lower rung is still charging, just slower — "Charging
+  // paused" contradicted a charger drawing 3.7 kW. Only a charger the plan
+  // actually stops keeps that line.
+  it('does not call a charger parked at a running rung paused', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      deviceRole: 'ev_charger',
+      evChargingState: 'plugged_in_charging',
+      currentDrawKw: 3.7,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'max',
+      targetStepId: 'low',
+      planningPowerKw: 1.25,
+    })).stateMsg).toBe('Limited to Low');
+  });
+
+  it('keeps Charging paused for a charger the plan actually stops', () => {
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      deviceRole: 'ev_charger',
+      evChargingState: 'plugged_in_paused',
+      currentDrawKw: 0,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'off',
+      targetStepId: 'off',
+      selectedStepId: 'off',
+      planningPowerKw: 0,
+    })).stateMsg).toBe('Charging paused');
+  });
+
   it('formats reported stepped-load feedback as confirmed observed state', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',
