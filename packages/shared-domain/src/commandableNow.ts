@@ -49,7 +49,7 @@ export function resolveCommandableNow(dev: CommandableNowInput): boolean {
  * Consumer read of the producer-resolved bit. NOT a dual-read: nothing
  * re-resolves from raw fields, because a carrier that had lost them would answer
  * from absence. That is how `isCommandableNow` came to report `false` for every
- * plan device once `withEvDiscriminant` stripped the plug-state — the fallback
+ * plan device once the since-deleted `withEvDiscriminant` stripped the plug-state — the fallback
  * saw nothing and answered anyway (TODO 2026-07-25). Callers holding a raw
  * snapshot call {@link resolveCommandableNow} explicitly.
  */

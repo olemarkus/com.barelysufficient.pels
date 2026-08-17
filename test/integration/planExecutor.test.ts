@@ -86,7 +86,7 @@ const pd = (
     },
 ): DevicePlanDevice => withTemperatureDiscriminant(
   // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
-  // raw `evChargingState` (which `withEvDiscriminant` drops in production) and
+  // raw `evChargingState` (which the producer drops in production) and
   // materializes `commandableNow` + the EV trio in its place. Without it these
   // fixtures kept a field production removes, which is exactly why the executor's
   // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.

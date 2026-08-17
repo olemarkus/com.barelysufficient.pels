@@ -178,10 +178,11 @@ export function buildSettingsOverviewDeviceReadModel(
   deps: SettingsOverviewReadModelDeps = {},
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
-  // EV boost fields live on the orthogonal `EvKind` cluster (off the base);
-  // narrow once so the snapshot can surface them. Non-EV devices have them
-  // undefined. The raw `evChargingState` comes from the observer (its canonical
-  // owner), NOT the plan device — see `getObservedEvChargingState`.
+  // EV boost config and battery level come from the seams that own them
+  // (`getEvBoostConfig` / `getObservedStateOfCharge`), and the raw
+  // `evChargingState` from the observer — its canonical owner. None of them ride
+  // the plan device: there is no EV cluster on the plan types (owner ruling
+  // 2026-08-15, `lib/plan/AGENTS.md`).
   const temperature = resolveOverviewTemperatureFacet(device, deps);
   const temperatureFields = temperature !== undefined ? { temperature } : {};
   // The stepped discriminant, from the device's own ladder. This site used to

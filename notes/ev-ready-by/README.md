@@ -111,7 +111,10 @@ Every other state is commandable. `isEvPlugStateCommandable`
 (`packages/shared-domain/src/evPlugState.ts`) is the only place that decision is
 made; commandability, the boost gate, and the boost-panel copy all derive from
 it, and nothing carries a derived copy of the answer — the plug-state itself is
-what the plan device carries, on the EV cluster.
+what the OBSERVER carries (`ObservedDeviceState.evChargingState`, required on the
+narrowed `EvObservedFields`). It does not ride the plan device: there is no EV
+cluster on the plan types (owner ruling 2026-08-15, `lib/plan/AGENTS.md`), and the
+settings UI reads the state through `getObservedEvChargingState`.
 
 The value is vendor-defined and inconsistent, so nothing finer can be read from
 it. Easee maps op mode 6 "Ready to Charge" AND 7 "Awaiting Authentication" to
