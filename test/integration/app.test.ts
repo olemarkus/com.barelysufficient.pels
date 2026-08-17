@@ -123,7 +123,7 @@ const initApp = async (app: any) => {
   appInstance.initCapacityGuard();
   appInstance.initPlanEngine();
   appInstance.initPlanService();
-  appInstance.initCapacityGuardProviders();
+  appInstance.captureDefaultDynamicSoftLimit();
   appInstance.initSettingsHandler();
   appInstance.registerFlowCards();
   await appInstance.refreshTargetDevicesSnapshot();
@@ -707,7 +707,7 @@ describe('MyApp initialization', () => {
     await expect(setModeListener({ mode: '   ' })).rejects.toThrow('Mode must be provided');
   });
 
-  it('set_capacity_limit flow card updates the guard limit', async () => {
+  it('set_capacity_limit flow card writes the capacity limit setting', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -716,15 +716,15 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const capacityGuard = (app as any).capacityGuard;
-    const setLimitSpy = vi.spyOn(capacityGuard, 'setLimit');
-
     const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
     expect(setLimitListener).toBeDefined();
 
     const result = await setLimitListener({ limit_kw: 5 });
     expect(result).toBe(true);
-    expect(setLimitSpy).toHaveBeenCalledWith(5);
+    // The settings write is the whole action now: the capacity scalars have one
+    // owner, and the change listener reloads them.
+    expect(mockHomeyInstance.settings.get('capacity_limit_kw')).toBe(5);
+    expect((app as any).capacitySettings.limitKw).toBe(5);
   });
 
   it('set_daily_budget_kwh flow card updates daily budget settings', async () => {
@@ -884,6 +884,7 @@ describe('MyApp initialization', () => {
     };
     let powerSampleRebuildState = (app as any).powerSampleRebuildState;
     const pending = schedulePlanRebuildFromPowerSample({
+      limitKw: 10,
       scheduler: (app as any).planRebuildScheduler,
       getState: () => powerSampleRebuildState,
       setState: (next) => {
@@ -894,7 +895,6 @@ describe('MyApp initialization', () => {
       minIntervalMs: 1000,
       maxIntervalMs: 10_000,
       currentPowerW: 9500,
-      limitKw: 10,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -1009,7 +1009,7 @@ describe('MyApp initialization', () => {
 
     (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     void setLimitListener({ limit_kw: 4 });
@@ -1574,9 +1574,7 @@ describe('MyApp initialization', () => {
       )).toBe(false);
 
       (app as any).computeDynamicSoftLimit = () => 0.1;
-      if ((app as any).capacityGuard?.setSoftLimitProvider) {
-        (app as any).capacityGuard.setSoftLimitProvider(() => 0.1);
-      }
+      (app as any).computeDynamicSoftLimit = () => 0.1;
 
       await (app as any).powerSamplePipeline.recordPowerSample(1000);
       await waitFor(() => setCapabilitySpy.mock.calls.filter(([path, body]) => (
@@ -2302,9 +2300,7 @@ describe('MyApp initialization', () => {
       // --- Phase 1: trigger overshoot and shed the device ---
       nowSpy.mockReturnValue(baseNow);
       (app as any).computeDynamicSoftLimit = () => 2;
-      if ((app as any).capacityGuard?.setSoftLimitProvider) {
-        (app as any).capacityGuard.setSoftLimitProvider(() => 2);
-      }
+      (app as any).computeDynamicSoftLimit = () => 2;
       await (app as any).powerSamplePipeline.recordPowerSample(3000, baseNow);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'shed'
@@ -2318,9 +2314,7 @@ describe('MyApp initialization', () => {
 
       // --- Phase 3: power drops, system recovers ---
       (app as any).computeDynamicSoftLimit = () => 5;
-      if ((app as any).capacityGuard?.setSoftLimitProvider) {
-        (app as any).capacityGuard.setSoftLimitProvider(() => 5);
-      }
+      (app as any).computeDynamicSoftLimit = () => 5;
       await heater.setCapabilityValue('measure_power', 0);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).powerSamplePipeline.recordPowerSample(500, afterLongOvershoot);

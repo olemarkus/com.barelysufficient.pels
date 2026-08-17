@@ -1,4 +1,3 @@
-import type CapacityGuard from './capacityGuard';
 import type { DeviceObjectiveProfile } from '../objectives/types';
 import type { PowerSource } from './powerSource';
 
@@ -81,7 +80,6 @@ export type RecordPowerSampleParams = {
   exemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;
   nowMs?: number;
-  capacityGuard?: CapacityGuard;
   hourBudgetKWh?: number;
   rebuildPlanFromCache: (reason?: string) => Promise<void>;
   saveState: (state: PowerTrackerState) => void;

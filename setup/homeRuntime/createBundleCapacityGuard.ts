@@ -1,9 +1,11 @@
 import type { AppContext } from '../../lib/app/appContext';
-import type { PlanEngine } from '../../lib/plan/planEngine';
-import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
+import { getLogger } from '../../lib/logging/logger';
+import { computeShortfallThreshold } from '../../lib/plan/planBudget';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import { createCapacityShortfallAlertDispatch } from '../capacityShortfallAlertDispatch';
@@ -19,10 +21,24 @@ const SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 export function createBundleCapacityGuard(params: {
   ctx: AppContext;
   homeId: HomeId;
-  scalars: CapacityScalarSettings;
-  planEngine: PlanEngine;
-  planService: PlanService;
+  /**
+   * Live, for the same reason as `getPowerTracker`: `reloadCapacityScalars`
+   * REPLACES the scalar object on a settings change, so a construction-time
+   * snapshot would leave the deferred alert predicate re-checking the old cap
+   * while planning had already moved to the new one — suppressing a real alert
+   * after a decrease, holding an obsolete one after an increase. The main-home
+   * twin reads `ctx.capacitySettings` at call time and is live already.
+   */
+  getCapacityScalars: () => CapacityScalarSettings;
+  /**
+   * Lazy on purpose: the only uses are the two deferred shortfall callbacks,
+   * which fire when a hard-cap incident happens, long after boot. Binding it
+   * eagerly forced the plan engine to be constructed before the guard, which
+   * in turn forced every planner-side guard access to be a lazy getter.
+   */
+  getPlanService: () => PlanService;
   getHomeDisplayName: () => string;
+  getPowerTracker: () => PowerTrackerState;
   isTornDown: () => boolean;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
@@ -37,7 +53,8 @@ export function createBundleCapacityGuard(params: {
   holdDeferredShortfallSideEffect: () => void;
 } {
   const {
-    ctx, homeId, scalars, planEngine, planService, getHomeDisplayName, isTornDown, isMembershipReady,
+    ctx, homeId, getCapacityScalars, getPlanService, getHomeDisplayName, getPowerTracker,
+    isTornDown, isMembershipReady,
     isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
     isPreparedReconcileActive, shortfallRetryTimerKey,
     shortfallAlertImmediateTimerKey, shortfallAlertSustainedTimerKey,
@@ -64,8 +81,8 @@ export function createBundleCapacityGuard(params: {
     isTemporarilyFenced,
     shouldHoldDeferredForPreparedApply: isPreparedReconcileActive,
     scheduleRetry: scheduleShortfallRetry,
-    applyShortfall: (deficitKw) => planService.handleShortfall(deficitKw),
-    applyClear: () => planService.handleShortfallCleared(),
+    applyShortfall: (deficitKw) => getPlanService().handleShortfall(deficitKw),
+    applyClear: () => getPlanService().handleShortfallCleared(),
   });
   const shortfallAlertDispatch = createCapacityShortfallAlertDispatch({
     homeId,
@@ -74,14 +91,18 @@ export function createBundleCapacityGuard(params: {
     sustainedTimerKey: shortfallAlertSustainedTimerKey,
     isDiscarded,
     isTemporarilyFenced,
-    isConditionActive: () => guard.isShortfallAlertConditionActive(),
+    isConditionActive: () => guard.isShortfallAlertConditionActive(
+      resolveLastTotalPowerKw(getPowerTracker()),
+      computeShortfallThreshold({
+        capacitySettings: getCapacityScalars(),
+        powerTracker: getPowerTracker(),
+      }),
+    ),
     getHomeDisplayName,
     flow: ctx.homey.flow,
   });
   const guard = new CapacityGuard({
     homeId,
-    limitKw: scalars.limitKw,
-    softMarginKw: scalars.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
     onShortfallCleared: async () => {
       shortfallAlertDispatch.onIncidentCleared();
@@ -89,17 +110,10 @@ export function createBundleCapacityGuard(params: {
     },
     onShortfallAlertCandidate: shortfallAlertDispatch.onCandidate,
     onShortfallAlertConditionCleared: shortfallAlertDispatch.onConditionCleared,
-    structuredLog: ctx.getStructuredLogger('capacity'),
-    capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
-      planService.getLatestPlanSnapshot(),
-      {
-        summarySource: 'plan_snapshot',
-        summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-      },
-    ),
+    // See `createMainCapacityGuard`: setup classifies the boot-window
+    // `undefined`, so the guard is handed a definite logger.
+    structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
   });
-  guard.setSoftLimitProvider(() => planEngine.computeDynamicSoftLimit());
-  guard.setShortfallThresholdProvider(() => planService.computeShortfallThreshold());
   return {
     guard,
     flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,

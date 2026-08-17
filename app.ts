@@ -177,7 +177,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     = createCombinedPricesReaderForApp(this.homey, () => this.priceCoordinator);
   public powerTracker: PowerTrackerState = {};
   private powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
-  public capacityGuard?: CapacityGuard;
+  public capacityGuard!: CapacityGuard;
   public readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
   public readonly deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus
     = createDeferredObjectivePlanRevisionBus();
@@ -321,6 +321,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     planRebuildScheduler: this.planRebuildScheduler,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
+    getCapacityGuard: () => this.capacityGuard,
     getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
     savePowerTracker: (state) => this.savePowerTracker(state),
     setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
@@ -506,7 +507,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     initCapacityGuard: () => this.initCapacityGuard(),
     initDeviceDiagnosticsService: () => this.initDeviceDiagnosticsService(),
     initPlanService: () => this.initPlanService(),
-    initCapacityGuardProviders: () => this.initCapacityGuardProviders(),
+    captureDefaultDynamicSoftLimit: () => this.captureDefaultDynamicSoftLimit(),
     initSettingsHandler: () => this.initSettingsHandler(),
   });
   public setExpectedOverride(deviceId: string, kw: number): boolean {
@@ -658,8 +659,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   private getPlanRebuildNowMs(): number {
     return this.planRebuildScheduler.now().nowMs;
   }
-  private initCapacityGuardProviders(): void {
-    this.serviceWiring.initCapacityGuardProviders();
+  private captureDefaultDynamicSoftLimit(): void {
+    this.serviceWiring.captureDefaultDynamicSoftLimit();
   }
   private initSettingsHandler(): void {
     this.serviceWiring.initSettingsHandler();
@@ -868,6 +869,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
       starvedDeviceCount: this.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
+      capacityPaceKw: this.computeDynamicSoftLimit(),
+      sheddingActive: this.planEngine.state.sheddingActive,
     };
     this.getStructuredLogger('status')?.info(buildPeriodicStatusLogFields(periodicStatusParams));
     if (options.includeDeviceHealth === true) {

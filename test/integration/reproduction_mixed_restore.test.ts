@@ -116,7 +116,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // 2. Headroom returns - enough for BOTH
         (app as any).computeDynamicSoftLimit = () => 10.0;
         // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-        await (app as any).capacityGuard?.setSheddingActive(false);
+        (app as any).planEngine.state.sheddingActive = false;
         (app as any).planEngine.state.lastRecoveryMs = currentTime - 61000;
         // Headroom = 10 - 5 = 5kW. Needs 2kW.
 

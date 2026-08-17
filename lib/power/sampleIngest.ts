@@ -1,5 +1,4 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
-import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './tracker';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
@@ -194,7 +193,6 @@ export async function recordPowerSampleForApp(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
   powerTracker: PowerTrackerState;
-  capacityGuard?: CapacityGuard;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
   splitControlledUsage: SplitControlledUsage;
@@ -209,7 +207,6 @@ export async function recordPowerSampleForApp(params: {
     capacitySettings,
     getLatestTargetSnapshot,
     powerTracker,
-    capacityGuard,
     schedulePlanRebuild,
     saveState,
     splitControlledUsage,
@@ -258,7 +255,6 @@ export async function recordPowerSampleForApp(params: {
     exemptPowerW,
     currentDevicePowerWById,
     nowMs,
-    capacityGuard,
     hourBudgetKWh,
     rebuildPlanFromCache: schedulePlanRebuild,
     saveState,

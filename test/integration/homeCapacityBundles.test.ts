@@ -1447,7 +1447,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
         this: CapacityGuard,
         ...args: Parameters<CapacityGuard['checkShortfall']>
       ) {
-        if (injectFailure && args[1] > 0) {
+        if (injectFailure && args[0].deficitKw > 0) {
           injectFailure = false;
           sourceReadUnavailable = true;
         }

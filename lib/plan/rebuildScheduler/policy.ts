@@ -1,4 +1,3 @@
-import type CapacityGuard from '../../power/capacityGuard';
 
 export type RebuildDecisionState = {
   lastMs: number;
@@ -322,14 +321,13 @@ export const resolveHardCapBreach = (
 };
 
 export const resolveHardCapBreachFromSignal = (params: {
-  capacityGuard?: CapacityGuard;
-  capacitySettings: { limitKw: number };
   currentPowerW?: number;
-  guardPower: number | null;
+  latchedTotalKw: number | null;
+  /** Producer-resolved `computeShortfallThreshold`; see `signalDriven`. */
+  shortfallThresholdKw: number;
 }): HardCapBreach => {
-  const { capacityGuard, capacitySettings, currentPowerW, guardPower } = params;
-  const shortfallThresholdKw = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
-  const totalPowerKw = guardPower ?? (
+  const { currentPowerW, latchedTotalKw, shortfallThresholdKw } = params;
+  const totalPowerKw = latchedTotalKw ?? (
     typeof currentPowerW === 'number' ? currentPowerW / 1000 : null
   );
   return resolveHardCapBreach(totalPowerKw, shortfallThresholdKw);

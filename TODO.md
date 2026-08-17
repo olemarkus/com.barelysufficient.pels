@@ -556,21 +556,22 @@ What remains open is below.*
       mutates Main's cooldown state doing it.**
       *Persona:* multi-meter owner whose annex EV charger asks "is there available power for device?"
       in a Flow before it starts a session. *Hypothesis:* every input the card reads is bound to Main.
-      `getHeadroom`/`getCapacityGuard` resolve `ctx.capacityGuard`
-      (`setup/appInit/registerAppFlowCards.ts:64-65`) and `evaluateHeadroomForDevice` resolves Main's
+      `getHeadroom` and `getCapacityPaceKw` resolve Main's `ctx.powerTracker` and
+      `ctx.computeDynamicSoftLimit()` (`setup/appInit/registerAppFlowCards.ts:81-87`), and
+      `evaluateHeadroomForDevice` resolves Main's
       plan service (`:117`), so an area device is measured against Main's available power instead of
       its own meter's. The run listener is also not a read: `evaluateHeadroomForDevice(...
       cleanupMissingDevices: true)` writes Main's `PlanEngineState` (headroom-card cooldowns,
       activation penalties, activation-attempt diagnostics, `lib/plan/planHeadroomDevice.ts:82-120`)
       over the FULL unfiltered snapshot, and a `stateChanged` result then requests a Main plan
       rebuild. So asking about an area device perturbs Main's control state. Fix direction: resolve
-      the device's owning home and answer from THAT home's guard, routing any rebuild to that home.
+      the device's owning home and answer from THAT home's tracker and pace, routing any rebuild to that home.
       Deliberately NOT refused or filtered out of the picker: the card takes a device and a device
       already names its home, so it stays in scope and must keep working (owner ruling, 2026-07-26).
       Blocked on the per-home runtime read seam: `HomeRuntimeRegistry` is a private field of
       `AppServiceWiring` and `HomeCapacityBundle` exposes no guard/available-power handle, so fix
       this together with that seam. Files: `flowCards/headroomAndEvSocCards.ts:37-77`,
-      `setup/appInit/registerAppFlowCards.ts:64-65,117`,
+      `setup/appInit/registerAppFlowCards.ts:81-87,137`,
       `setup/homeRuntime/createHomeCapacityBundle.ts`.
       Source: multi-home finishing train PR 8a, 2026-07-26.
 
@@ -793,13 +794,11 @@ deviceOverview entries shipped in the 2026-06-03 train; the items below (the fir
 program) remain deferred.*
 
 - [ ] **One concept, one name, one owner for the pace/limit family.** `softLimit` currently names
-      four different quantities depending on call site and wiring, and the unwired fallbacks
-      disagree with each other: `capacityGuard.getSoftLimit()` falls back to the hourly
-      allowance, `lib/executor/shortfallExecutor.ts:40-41` falls back to the **hard cap**,
-      `lib/diagnostics/periodicStatus.ts` and `lib/plan/rebuildScheduler/signalDriven.ts`
-      to the allowance. A caller cannot tell which quantity it got, so a wiring regression
-      degrades to a quieter limit instead of failing loudly, which is the root `AGENTS.md`
-      "unavailable must not become a default" rule applied to a control threshold. Adopt the
+      three different quantities depending on call site: `bindingPaceKw` on `PlanContext`,
+      `capacityPaceKw` at every consumer that logs it as `softLimitKw`, and
+      `budgetPaceImportKw` as `dailySoftLimitKw`. The wiring-dependent half is closed — see (c)
+      — so a wiring regression can no longer degrade to a quieter limit; what remains is the
+      rename onto one name per quantity. Adopt the
       canonical names in `notes/safe-pace-two-constraints.md` § "Canonical names"
       (`hardCapKw`, `safetyMarginKw`, `hourlyAllowanceKWh`, `sustainableRateKw`, `capacityPaceKw`,
       `budgetPaceKw`, `budgetPaceImportKw`, `bindingPaceKw`) and give each exactly one producer.
@@ -809,14 +808,14 @@ program) remain deferred.*
       `setup/homeRuntime/createHomeCapacityBundle.ts:406`), the budget rows are main-only
       (sub-homes get `getDailyBudgetSnapshot: () => null`, `createHomeCapacityBundle.ts:291`), so
       a sub-home has no `budgetPaceKw` and its `softLimitSource` can never be `'daily'`. Concrete work:
-      (a) collapse the seven independent `hardCapKw - safetyMarginKw` computations onto one
+      (a) collapse the five independent `hardCapKw - safetyMarginKw` computations onto one
       owner — the nominal owner `resolveUsableCapacityKw` (`lib/power/capacityModel.ts`) plus
-      six recomputations in `lib/power/capacityGuard.ts`,
-      `lib/plan/rebuildScheduler/signalDriven.ts`, `lib/power/sampleIngest.ts`,
+      four recomputations in `lib/power/sampleIngest.ts`,
       `packages/settings-ui/src/ui/capacity.ts`, `packages/settings-ui/src/ui/homeLimits.ts`,
-      and `packages/settings-ui/src/ui/views/BudgetOverview.tsx` (inventory kept in
-      `notes/safe-pace-two-constraints.md` § "One concept, seven implementations"; the last two
-      were missing from the earlier count of five). It is a pure function of two
+      and `packages/settings-ui/src/ui/views/BudgetOverview.tsx` (the `lib/power/capacityGuard.ts`
+      and `lib/plan/rebuildScheduler/signalDriven.ts` copies went with the guard's soft-limit
+      fallback; inventory kept in
+      `notes/safe-pace-two-constraints.md` § "One concept, five implementations"). It is a pure function of two
       settings values with no runtime state, so the owner is the capacity-settings owner, and it
       should be handed out already resolved next to the existing `getHardCapKw` accessor
       (`setup/homeRuntime/homeScope.ts`). The settings UI then receives it through the
@@ -824,14 +823,14 @@ program) remain deferred.*
       `lib/**`;
       (b) — DONE: `resolveCapacitySoftLimitKw` is deleted and its one caller
       (`lib/diagnostics/periodicStatus.ts`) reads `resolveUsableCapacityKw` directly. The naming
-      mismatch it documented survives at that call site, which still files the hourly allowance
-      under `softLimitKw`; that is (c)'s problem, not a missing alias;
-      (c) make `capacityGuard.getSoftLimit()` return one quantity, surfacing an unwired provider
-      as an explicit unresolved state rather than a substituted threshold, and decide the caller
-      contract at the same time: `lib/executor/shortfallExecutor.ts` needs a number, so specify
-      fail-closed (matching the stale-meter posture) rather than today's fall back to
-      `hardCapKw`, which is the loosest candidate. Without that the ambiguity just moves from the
-      producer to every call site;
+      mismatch it documented survives at that call site only as a stale field name: it files
+      `capacityPaceKw` under `softLimitKw`. That is the rename in the preamble, not a missing alias;
+      (c) — DONE (2026-08-17, `refactor/capacity-guard-strip`): `capacityGuard.getSoftLimit()`,
+      its provider, and the guard's `limitKw`/`softMarginKw` mirror are deleted. Every consumer
+      is handed a producer-resolved `capacityPaceKw` from `computeDynamicSoftLimit`, and
+      `lib/executor/shortfallExecutor.ts` takes a non-optional guard, so its `hardCapKw`
+      fallback is gone too. The unresolved state was removed rather than modelled, so no
+      fail-closed caller contract was needed;
       (d) give `budgetPaceKw` a real name and producer instead of leaving it an unnamed
       intermediate inside `computeDailySoftLimit`, so downstream can obtain the pace that applies
       to the non-exempt house;
@@ -840,7 +839,7 @@ program) remain deferred.*
       threshold, so nothing downstream can show the user what is actually measured against their
       budget. It equals `nonExemptGross - solar` and goes negative when solar more than covers
       the non-exempt load, which is the exact analogue of `P_import` going negative on export
-      (`capacityGuard.reportTotalPower` does not floor). Do not add a floor: it would break the
+      (`resolveLastTotalPowerKw` hands it out signed and unfloored). Do not add a floor: it would break the
       deficit identity in the item below (`capacityPaceKw` 20, `budgetPaceKw` 5, `exemptKw` 7,
       `P_import` 2 gives 10 kW headroom today and 5 kW clamped, delaying restores). The kWh axis
       keeps its floor for the separate reason at `lib/plan/planHourContext.ts:21-22`. Ship it as
@@ -1692,8 +1691,9 @@ program) remain deferred.*
 - [ ] **`reservedHeadroomKw` is built from the RAW hard cap, while the live guard sheds against
       `limitKw − marginKw`.** `getHardCapKw: () => ctx.capacitySettings.limitKw`
       (`setup/homeRuntime/homeScope.ts`, `setup/appInit/deferredObjectiveLifecycle.ts`) feeds
-      `policyHorizon.resolveReservedHeadroomKw`, but `CapacityGuard.getSoftLimit()` is
-      `max(0, limitKw − softMarginKw)`. So the forecast is one safety margin more generous than what
+      `policyHorizon.resolveReservedHeadroomKw`, but the planner paces against
+      `capacityPaceKw`, derived from `hourlyAllowanceKWh = max(0, limitKw − marginKw)`
+      (`resolveUsableCapacityKw`). So the forecast is one safety margin more generous than what
       the runtime will admit. That was tolerable while the value was only a kWh ceiling; it now also
       SELECTS the rung the feasibility probes test, so any rung sitting in the
       `(limitKw − marginKw, limitKw]` band is probed as reachable when the guard will never admit
@@ -1914,7 +1914,7 @@ program) remain deferred.*
       an exempt admission consume part of the capacity clearance margin the latch was holding.
       Bounded by the admission floor and the shed/restore cooldowns (documented in the
       predicate's docblock), so no divergence — but recording the latch *cause* alongside
-      `sheddingActive` in the capacity guard and gating the lane on it would close the corner.
+      `PlanEngineState.sheddingActive` and gating the lane on it would close the corner.
       Source: pels-runtime-reality review of the exempt-restore-lane PR, 2026-08-03. [P2]
 
 - [ ] **A `set_temperature`-only budget-exempt device stays budget-pinned while binary/stepped
@@ -2045,12 +2045,55 @@ program) remain deferred.*
       though candidates keep republishing; the sustained lane already re-serves on rejection.
       Pre-existing parity with the retired hold, not a regression. Don't latch when `fire()`
       resolves `rejected`. Source: 2026-08-02 release review, pels-runtime-reality. [P2]
+- [ ] **`checkShortfall` has two callers and two definitions of `totalKw`.**
+      `lib/plan/admission/sheddingGuard.ts` passes `context.measuredDrawKw` (freshness-gated,
+      `null` once the sample passes `POWER_SAMPLE_STALE_THRESHOLD_MS`); the two
+      `lib/plan/rebuildScheduler/signalDriven.ts` sites pass `latchedTotalKw`
+      (`resolveLastTotalPowerKw`, the raw latch, non-null whenever any sample has landed).
+      Nothing enforces that they agree, and the guard's docblock says only "the caller's
+      resolved whole-home total", which does not name a resolution. Divergent case: sample age
+      90 s, latch 11.2 kW, threshold 9.0, no candidates — the planner does nothing while the
+      signal-driven path mints an incident, so the lifecycle turns order-dependent.
+
+      **Not reachable today**, which is why this is deferred rather than fixed in
+      `refactor/capacity-guard-strip`: `schedulePlanRebuildFromSignal` has exactly one caller
+      (`setup/powerSamplePipeline.ts`), inside the tracker ingest callback that runs after
+      `saveState` and before the awaited rebuild, so the latch it reads is the sample just
+      written — age ~0, `fresh`, and `measuredDrawKw` non-null too. The agreement is incidental
+      (an ordering in another file) where it used to be structural (one `mainPowerKw` field
+      served both callers). Moving that scheduler off the sample path, or adding a third caller,
+      makes it live.
+
+      Note which side changed: `mainPowerKw` was the raw latch, so `signalDriven` kept the old
+      semantics and the planner moved to the gated reading — the planner is the correct side.
+      The fix is not a one-liner: `latchedTotalKw` also feeds `resolveHardCapBreachFromSignal`,
+      where the raw latch plus the `currentPowerW` fallback is the right input for a
+      *scheduling* decision. Separate "what to schedule on" from "what decides an incident",
+      then give `checkShortfall` one named resolution in its contract.
+
+- [ ] **The signal-driven shortfall paths log a hard-cap incident with no capacity evidence.**
+      `lib/plan/rebuildScheduler/signalDriven.ts` passes `buildNullCapacityStateSummary()` into
+      `checkShortfall` at both sites that can reach `enterShortfall`, so
+      `hard_cap_shortfall_detected` emits `summarySource: null` and every count/power field
+      `null`. Until `refactor/capacity-guard-strip` the guard filled this in itself from
+      `capacityStateSummaryProvider`, which both factories wired to
+      `buildPlanCapacityStateSummary(planService.getLatestPlanSnapshot(), ...)`; removing the
+      provider made the omission visible rather than causing it, since a caller that passed no
+      summary always meant to pass one. The worse of the two is the
+      `skipWhileShortfallUnrecoverable` branch, which exists precisely because the plan is
+      unwinnable — the incident where an operator most needs
+      `remainingActionableControlledLoad` and the managed/background split. The caller already
+      holds the data: `setup/powerSamplePipeline.ts` builds `latestPlanSummary` from the same
+      snapshot a few lines above and does not pass it down. Thread it through; the planner path
+      (`lib/plan/admission/sheddingGuard.ts`) already builds a real summary and is the model.
+
 - [ ] **Fold the shortfall-alert staleness watchdog into `CapacityGuard`.**
       `setup/capacityShortfallAlertDispatch.ts:360-369` re-derives evidence staleness against
-      `POWER_SAMPLE_STALE_THRESHOLD_MS` because `isConditionActive` reads the last sample the
-      guard ever saw with no freshness bound — consumer-side resolution the next consumer will
-      have to copy. Expose a freshness-resolved predicate (e.g. `isConditionEvidencedAt(nowMs)`)
-      on the guard and delete the lane-local branch. **Now has a real owner:** the
+      `POWER_SAMPLE_STALE_THRESHOLD_MS` because `isConditionActive` resolves the tracker's
+      latched total (`resolveLastTotalPowerKw`) with no freshness bound — consumer-side
+      resolution the next consumer will have to copy. Resolve freshness where the total is
+      resolved and delete the lane-local branch; the guard no longer holds power, so the
+      predicate cannot live on it. **Now has a real owner:** the
       2026-08-16 planner-trusts-power change moved freshness resolution into `lib/power`
       (`sampleFreshness.ts` + `powerCycleReading.ts`), so the predicate belongs beside it rather
       than being re-derived a third time — `setup/homeSampledMeterIdentity.ts` hand-mirrors the
@@ -4028,7 +4071,7 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 - [ ] **A sub-home meter area under `power_source = flow` renders nothing, forever.**
       `routeMeterReadings` (`setup/homeRuntime/homeRuntimeRegistry.ts`) drops every reading unless
       the source is `homey_energy`, and a sub-home pipeline has no other sample entry — so its
-      capacity guard never receives `reportTotalPower`, `PowerMeasurementGate` never opens, and no
+      tracker never latches a sample, `hasPowerMeasurement` stays false, `PowerMeasurementGate` never opens, and no
       plan (and therefore no `pels_status:<homeId>` blob) is ever written for that area. Actuation
       is already correctly withheld (`resolveEffectiveDryRun` forces dry-run when the source is
       unauthorized), so nothing unsafe happens; the gap is that the per-home Limits/Overview
@@ -4055,10 +4098,11 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       pels-layering-guardian review. [P3]
 
 - [ ] **App tests model stale-hold as an ABSENT sample timestamp, which the build gate made
-      unreachable.** `createApp` seeds a measurement onto the capacity guard only, deliberately
+      unreachable.** `createApp` seeds `powerTracker.lastPowerW` only, deliberately
       leaving `powerTracker.lastTimestamp` untouched so a suite's own headroom expectations are not
-      rewritten. Production stamps both together (`recordPowerSampleForApp` takes the tracker and
-      the guard), so the harness sits in a state real ingest cannot produce: a total present on a
+      rewritten. Production stamps both from the same sample (`recordPowerSample` writes
+      `lastPowerW` and `lastTimestamp` together), so the harness sits in a state real ingest
+      cannot produce: a total present on a
       home that has never sampled, which resolves to `stale_hold`. Since
       `setup/powerMeasurementGate.ts`, a genuinely never-sampled home builds no plan at all, so the
       real stale-hold is *total present, timestamp OLD* — and tests like `plan.test.ts` "marks off

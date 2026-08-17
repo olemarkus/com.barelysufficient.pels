@@ -117,7 +117,7 @@ function hasDeficitGrown(latchedKw: number | null, neededKw: number): boolean {
 
 export function emitOvershootEscalationBlocked(params: {
   structuredLog?: PinoLogger;
-  capacityGuard?: CapacityGuard;
+  capacityGuard: CapacityGuard;
   neededKw: number;
   remainingCandidates: number;
   measurementTs: number | null;
@@ -133,7 +133,7 @@ export function emitOvershootEscalationBlocked(params: {
   } = params;
   structuredLog?.info({
     event: 'capacity_overshoot_escalation_blocked',
-    incidentId: capacityGuard?.getCurrentIncidentId() ?? undefined,
+    incidentId: capacityGuard.getCurrentIncidentId() ?? undefined,
     reasonCode: 'no_candidates',
     neededKw,
     remainingCandidates,

@@ -290,7 +290,6 @@ function buildSubHomeScope(params: {
   /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
   isTornDown: () => boolean;
   getScalars: () => CapacityScalarSettings;
-  getGuard: () => CapacityGuard | undefined;
   getTracker: () => PowerTrackerState;
   /** Late-bound: the bundle's own service (created after the engine). */
   getServiceForSync: () => PlanService | undefined;
@@ -299,7 +298,7 @@ function buildSubHomeScope(params: {
   modeCatalog: HomeModeCatalog;
 }): HomeScope {
   const {
-    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
+    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars,
     getTracker, getServiceForSync, getPlanEngineForPending, modeCatalog,
   } = params;
   const binaryCommandReachability = createBinaryCommandReachability({
@@ -341,7 +340,6 @@ function buildSubHomeScope(params: {
     getCapacityDryRun: () => resolveEffectiveDryRun({
       isTornDown, isMembershipReady, isMeterSourceAuthorized, getScalars,
     }),
-    getCapacityGuard: getGuard,
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
@@ -485,7 +483,6 @@ function createBundlePlanningRuntime(params: {
     isMeterSourceAuthorized: params.isMeterSourceAuthorizedForExecution,
     isTornDown: params.isTornDown,
     getScalars: params.getCapacityScalars,
-    getGuard: () => guard,
     getTracker: params.tracker.getState,
     getServiceForSync: () => planService,
     getPlanEngineForPending: () => planEngine,
@@ -499,14 +496,6 @@ function createBundlePlanningRuntime(params: {
     ) return true;
     return !params.isMeterSourceAuthorizedForExecution();
   };
-  const planEngine = createPlanEngine(params.ctx, scope, { isActuationFenced });
-  const storedLastControlled = params.ctx.homey.settings.get(
-    homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, params.homeId),
-  ) as unknown;
-  // eslint-disable-next-line functional/immutable-data -- same engine-state hydration write as the main-home wiring
-  planEngine.state.lastDeviceControlledMs = isNumberMap(storedLastControlled) ? { ...storedLastControlled } : {};
-  planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
-  const planService = createPlanService(params.ctx, scope, planEngine);
   const {
     guard,
     flushDeferredShortfallSideEffect,
@@ -514,10 +503,10 @@ function createBundlePlanningRuntime(params: {
   } = createBundleCapacityGuard({
     ctx: params.ctx,
     homeId: params.homeId,
-    scalars: params.getCapacityScalars(),
-    planEngine,
-    planService,
+    getCapacityScalars: params.getCapacityScalars,
+    getPlanService: () => planService,
     getHomeDisplayName: scope.getHomeDisplayName,
+    getPowerTracker: params.tracker.getState,
     isTornDown: params.isTornDown,
     isMembershipReady: params.isMembershipReady,
     isMeterSourceAuthorized: params.isMeterSourceAuthorized,
@@ -527,6 +516,14 @@ function createBundlePlanningRuntime(params: {
     shortfallAlertImmediateTimerKey: params.timerKey('shortfallAlertImmediate'),
     shortfallAlertSustainedTimerKey: params.timerKey('shortfallAlertSustained'),
   });
+  const planEngine = createPlanEngine(params.ctx, scope, { capacityGuard: guard, isActuationFenced });
+  const storedLastControlled = params.ctx.homey.settings.get(
+    homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, params.homeId),
+  ) as unknown;
+  // eslint-disable-next-line functional/immutable-data -- same engine-state hydration write as the main-home wiring
+  planEngine.state.lastDeviceControlledMs = isNumberMap(storedLastControlled) ? { ...storedLastControlled } : {};
+  planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
+  const planService = createPlanService(params.ctx, scope, planEngine);
   const { pipeline, scheduler: planRebuildScheduler } = createBundleSamplePipeline({
     ctx: params.ctx,
     homeId: params.homeId,

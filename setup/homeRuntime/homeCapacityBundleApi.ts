@@ -19,6 +19,7 @@ import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
 import type CapacityGuard from '../../lib/power/capacityGuard';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { createPlanEngine } from '../appInit/createPlanEngine';
 import type { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
@@ -261,7 +262,6 @@ export const resolveEffectiveDryRun = (params: {
  */
 const buildHomeCapacityBundleReads = (params: {
   homeId: HomeId;
-  guard: CapacityGuard;
   planEngine: ReturnType<typeof createPlanEngine>;
   planService: PlanService;
   readEffectiveDryRun: () => boolean;
@@ -272,7 +272,7 @@ const buildHomeCapacityBundleReads = (params: {
   getScalars: () => CapacityScalarSettings;
 }): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
   const {
-    homeId, guard, planEngine, planService, readEffectiveDryRun, getOperatingMode, tracker, getHome, getScalars,
+    homeId, planEngine, planService, readEffectiveDryRun, getOperatingMode, tracker, getHome, getScalars,
   } = params;
   const readDiagnostics = (): HomeCapacityBundleDiagnostics => ({
     homeId,
@@ -280,7 +280,7 @@ const buildHomeCapacityBundleReads = (params: {
     operatingMode: getOperatingMode(),
     capacityScalars: { ...getScalars() },
     dryRunEffective: readEffectiveDryRun(),
-    lastMeterPowerKw: guard.getLastTotalPower(),
+    lastMeterPowerKw: resolveLastTotalPowerKw(tracker.getState()),
     lastDeviceControlledMs: { ...planEngine.state.lastDeviceControlledMs },
   });
   return {
@@ -318,7 +318,6 @@ const buildScopedBundleReads = (params: {
   const { isTornDown, readDryRunGates, getScalars } = params;
   return buildHomeCapacityBundleReads({
     homeId: params.homeId,
-    guard: params.guard,
     planEngine: params.planEngine,
     planService: params.planService,
     getOperatingMode: params.getOperatingMode,
@@ -461,9 +460,8 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     reloadCapacityScalars: () => {
       if (isTornDown()) return;
       const next = capacityStore.read();
+      // The capacity scalars live in their own store; nothing mirrors them now.
       setScalars(next);
-      guard.setLimit(next.limitKw);
-      guard.setSoftMargin(next.marginKw);
       // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
       // ACTIVATION path (P2#2). The rebuild after that transition can produce the
       // SAME action signature as the never-applied dry-run shed plan, which used

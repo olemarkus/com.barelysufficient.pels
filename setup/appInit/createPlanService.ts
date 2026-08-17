@@ -125,7 +125,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // meter has never reported must not ride the main home's first sample.
     planBuildGate: new PowerMeasurementGate({
       homeId: scope.homeId,
-      getCapacityGuard: scope.getCapacityGuard,
+      getPowerTracker: scope.getPowerTracker,
       logger: () => ctx.getStructuredLogger('power/measurement-gate'),
       warnAfterMs: NO_POWER_SAMPLE_WARN_MS,
       nowMs: () => Date.now(),

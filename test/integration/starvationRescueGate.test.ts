@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -18,6 +18,9 @@ import {
   type DeferredObjectiveRescuePermissions,
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+
+// The tracker is the single power latch; tests drive the whole-home total here.
+const LATCHED_TOTAL_W = 1.5 * 1000;
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -188,26 +191,25 @@ const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObj
 const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 24) => {
   // Large capacity limit, zero margin — capacity never binds, so the daily budget is the
   // only soft constraint and any shed is a daily-budget shed.
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-  capacityGuard.reportTotalPower(1.5);
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(rescue),
     getTimeZone: () => 'UTC',
-    getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
+    getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
     getHardCapKw: () => 100,
   });
   return new PlanBuilder({
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacityGuard: () => capacityGuard,
     getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => true,
     getPriceOptimizationSettings: () => ({}),
     getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-    getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
+    getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getPriorityForDevice: () => 1,

@@ -159,7 +159,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     expect(saveState).toHaveBeenCalledTimes(1);
@@ -183,7 +182,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -193,7 +191,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const bucket0 = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
@@ -217,7 +214,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -228,7 +224,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
@@ -251,7 +246,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -262,7 +256,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
@@ -284,7 +277,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -295,7 +287,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
@@ -319,7 +310,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -330,7 +320,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const bucket0 = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
@@ -354,7 +343,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -365,7 +353,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     const snapshot = state as any;
@@ -386,7 +373,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     await recordPowerSample({
@@ -396,7 +382,6 @@ describe('power tracker integration', () => {
 
       rebuildPlanFromCache,
       saveState,
-      capacityGuard: undefined,
     });
 
     expect((state as any).deviceBuckets).toBeUndefined();

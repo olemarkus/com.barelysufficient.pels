@@ -1,4 +1,5 @@
 import { planContextPower } from '../utils/planContextPowerFixture';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -79,8 +80,10 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
     }),
-    getCapacityGuard: () => undefined,
+    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+    getPowerTracker: () => ({}),
+    getCapacityPaceKw: () => 9.5,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -117,65 +120,46 @@ describe('P1 bug proofs', () => {
   });
 
   it('keeps shedding active after a single sample just above the restore margin', async () => {
-    let active = false;
-    const transitions: boolean[] = [];
     const capacityGuard = {
-      isSheddingActive: vi.fn(() => active),
-      setSheddingActive: vi.fn(async (next: boolean) => {
-        active = next;
-        transitions.push(next);
-      }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
-      getRestoreMargin: vi.fn().mockReturnValue(0.2),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
+    const base = {
+      shortfallThresholdKw: 5,
+      capacityGuard,
+      capacitySoftLimit: 5,
+      devices: [],
+      shedSet: new Set<string>(),
+      softLimitSource: 'capacity' as const,
+    };
 
-    await updateGuardState({
-      headroom: -0.05,
-      overshootActionable: true,
-      capacitySoftLimit: 5,
-      measuredTotalKw: 5.05,
-      devices: [],
-      shedSet: new Set(),
-      softLimitSource: 'capacity',
-      capacityGuard,
+    // The latch is threaded build to build now, so the proof is that a single
+    // sample 0.21 kW above the restore margin — short of the 0.4 kW clear
+    // threshold — does not release it.
+    const shed = await updateGuardState({
+      ...base, sheddingActive: false, headroom: -0.05, overshootActionable: true, measuredTotalKw: 5.05,
     });
-    await updateGuardState({
-      headroom: 0.21,
-      overshootActionable: false,
-      capacitySoftLimit: 5,
-      measuredTotalKw: 4.79,
-      devices: [],
-      shedSet: new Set(),
-      softLimitSource: 'capacity',
-      capacityGuard,
-    });
-    await updateGuardState({
-      headroom: -0.05,
-      overshootActionable: true,
-      capacitySoftLimit: 5,
-      measuredTotalKw: 5.05,
-      devices: [],
-      shedSet: new Set(),
-      softLimitSource: 'capacity',
-      capacityGuard,
-    });
+    expect(shed.sheddingActive).toBe(true);
 
-    expect(transitions[0]).toBe(true);
-    expect(transitions).not.toContain(false);
-    expect(active).toBe(true);
+    const eased = await updateGuardState({
+      ...base, sheddingActive: shed.sheddingActive, headroom: 0.21, overshootActionable: false, measuredTotalKw: 4.79,
+    });
+    expect(eased.sheddingActive).toBe(true);
+
+    const again = await updateGuardState({
+      ...base, sheddingActive: eased.sheddingActive, headroom: -0.05, overshootActionable: true, measuredTotalKw: 5.05,
+    });
+    expect(again.sheddingActive).toBe(true);
   });
 
   it('passes the in-flight shed summary to shortfall logging', async () => {
     const capacityGuard = {
-      isSheddingActive: vi.fn(() => false),
-      setSheddingActive: vi.fn().mockResolvedValue(undefined),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
-      getRestoreMargin: vi.fn().mockReturnValue(0.2),
-      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
+      sheddingActive: false,
+      shortfallThresholdKw: 5,
+      capacityGuard,
       headroom: -1,
       overshootActionable: true,
       capacitySoftLimit: 5,
@@ -219,10 +203,12 @@ describe('P1 bug proofs', () => {
       ],
       shedSet: new Set(['shed']),
       softLimitSource: 'capacity',
-      capacityGuard,
     });
 
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 1, expect.objectContaining({
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
+      hasCandidates: true,
+      deficitKw: 1,
+      capacityStateSummary: expect.objectContaining({
       controlledDevices: 2,
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
@@ -232,6 +218,7 @@ describe('P1 bug proofs', () => {
       zeroDrawControlledDevices: 1,
       pendingControlledDevices: 1,
       summarySource: 'plan_input',
+      }),
     }));
   });
 

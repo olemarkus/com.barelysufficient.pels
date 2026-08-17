@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
@@ -52,22 +52,24 @@ const makeBuilder = (params: {
   reportTotalPower: (kw: number) => void;
   setSoftLimitKw: (kw: number) => void;
 } => {
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0.2 });
-  capacityGuard.reportTotalPower(params.totalKw);
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+  // The tracker is the single power latch, so the builder's whole-home total is
+  // driven by writing the sample here rather than reporting it to the guard.
+  let lastPowerW = params.totalKw * 1000;
   // The dynamic soft limit is what the daily-budget lane already moves at runtime, so driving it
   // here is the honest way to put the home under pressure and then take it away again — the
   // capacity guard's own hour-average projection is not steerable from a single power report.
   let softLimitKw = params.softLimitKw ?? null;
   const builder = new PlanBuilder({
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacityGuard: () => capacityGuard,
     getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),
     getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-    getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() }),
+    getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).
     getPriorityForDevice: (deviceId: string) => params.priorities?.[deviceId] ?? (deviceId === 'heater' ? 1 : 10),
@@ -80,7 +82,7 @@ const makeBuilder = (params: {
   }, createPlanEngineState());
   return {
     builder,
-    reportTotalPower: (kw: number) => capacityGuard.reportTotalPower(kw),
+    reportTotalPower: (kw: number) => { lastPowerW = kw * 1000; },
     setSoftLimitKw: (kw: number) => { softLimitKw = kw; },
   };
 };

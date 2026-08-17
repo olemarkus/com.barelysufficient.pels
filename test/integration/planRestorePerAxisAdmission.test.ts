@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -126,10 +127,10 @@ const buildThermostat = (on: boolean): PlanInputDevice => withBinaryDiscriminant
 
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
-  tracker: { lastTimestamp: number };
+  tracker: { lastTimestamp: number; lastPowerW?: number };
 }): PlanBuilder => new PlanBuilder({
+  capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
-  getCapacityGuard: () => params.capacityGuard,
   getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
   getOperatingMode: () => 'Home',
   getModeDeviceTargets: () => ({}),
@@ -159,14 +160,14 @@ describe('per-axis restore admission through the full plan build', () => {
   });
 
   it('admits the exempt device on the capacity axis while the non-exempt device stays budget-held', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-    const tracker = { lastTimestamp: DAY_START_UTC };
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+    const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
     const builder = buildBuilder({ capacityGuard, tracker });
 
     // Cycle 1: both devices running (heater not yet exempt — the prod heater was
     // shed during a window where its smart task lost plannability), 3.35 kW
     // total against a ~1.1 kW pace: both get shed.
-    capacityGuard.reportTotalPower(3.35);
+    tracker.lastPowerW = 3.35 * 1000;
     const first = await builder.buildDevicePlanSnapshot([
       buildHeater({ on: true, exempt: false }),
       buildThermostat(true),
@@ -177,7 +178,7 @@ describe('per-axis restore admission through the full plan build', () => {
     // both off, 0.35 kW background, heater exempt again.
     vi.setSystemTime(new Date(SECOND_BUILD_AT_MS));
     tracker.lastTimestamp = SECOND_BUILD_AT_MS;
-    capacityGuard.reportTotalPower(0.35);
+    tracker.lastPowerW = 0.35 * 1000;
     await builder.buildDevicePlanSnapshot([
       buildHeater({ on: false, exempt: true }),
       buildThermostat(false),
@@ -185,7 +186,7 @@ describe('per-axis restore admission through the full plan build', () => {
 
     vi.setSystemTime(new Date(THIRD_BUILD_AT_MS));
     tracker.lastTimestamp = THIRD_BUILD_AT_MS;
-    capacityGuard.reportTotalPower(0.35);
+    tracker.lastPowerW = 0.35 * 1000;
     const third = await builder.buildDevicePlanSnapshot([
       buildHeater({ on: false, exempt: true }),
       buildThermostat(false),

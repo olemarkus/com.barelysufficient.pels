@@ -1,6 +1,9 @@
 import type CapacityGuard from '../../power/capacityGuard';
-import { getSheddingClearThresholdKw } from '../../power/capacityGuard';
-import type { PlanCapacityStateSummary } from '../../power/capacityStateSummary';
+import { SHEDDING_CLEAR_THRESHOLD_KW } from '../planConstants';
+import {
+  buildNullCapacityStateSummary,
+  type PlanCapacityStateSummary,
+} from '../../power/capacityStateSummary';
 import type { PlanInputDevice } from '../planTypes';
 import type { PlanContext } from '../planContext';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
@@ -15,20 +18,32 @@ import { sumControlledUsageKw } from '../planUsage';
 
 function handleShortfallCheck(
   params: {
-    capacityGuard: CapacityGuard | undefined;
+    capacityGuard: CapacityGuard;
     remaining: number;
     deficitKw: number;
-    capacityStateSummary?: PlanCapacityStateSummary;
+    totalKw: number | null;
+    shortfallThresholdKw: number;
+    capacityStateSummary: PlanCapacityStateSummary;
   },
 ): Promise<void> {
-  const { capacityGuard, remaining, deficitKw, capacityStateSummary } = params;
+  const {
+    capacityGuard, remaining, deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary,
+  } = params;
   return deficitKw > 0
-    ? (capacityGuard?.checkShortfall(
-      remaining > 0,
+    ? (capacityGuard.checkShortfall({
+      hasCandidates: remaining > 0,
       deficitKw,
+      totalKw,
+      shortfallThresholdKw,
       capacityStateSummary,
-    ) ?? Promise.resolve())
-    : (capacityGuard?.checkShortfall(true, 0) ?? Promise.resolve());
+    }) ?? Promise.resolve())
+    : (capacityGuard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw,
+      shortfallThresholdKw,
+      capacityStateSummary,
+    }) ?? Promise.resolve());
 }
 
 function computeShortfallDeficitKw(total: number | null, shortfallThreshold: number): number {
@@ -90,16 +105,18 @@ function buildShortfallCapacityStateSummary(params: {
   };
 }
 
-function maybeBuildShortfallCapacityStateSummary(params: {
+function resolveShortfallCapacityStateSummary(params: {
   deficitKw: number;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   total: number | null;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
-}): PlanCapacityStateSummary | undefined {
+}): PlanCapacityStateSummary {
   const { deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit } = params;
-  if (deficitKw <= 0) return undefined;
+  // Only an entering incident reads it, and that needs a positive deficit, so
+  // the null summary spares every ordinary rebuild the device walk.
+  if (deficitKw <= 0) return buildNullCapacityStateSummary();
   return buildShortfallCapacityStateSummary({
     devices,
     shedSet,
@@ -159,7 +176,11 @@ export async function updateGuardState(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
-  capacityGuard: CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
+  /** Producer-resolved `computeShortfallThreshold` for this build. */
+  shortfallThresholdKw: number;
+  /** The shedding latch this build inherits, from `PlanEngineState`. */
+  sheddingActive: boolean;
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
@@ -170,6 +191,8 @@ export async function updateGuardState(params: {
     shedSet,
     softLimitSource,
     capacityGuard,
+    shortfallThresholdKw,
+    sheddingActive,
   } = params;
   const remainingCandidates = countRemainingCandidates({
     devices,
@@ -179,16 +202,16 @@ export async function updateGuardState(params: {
     total: measuredTotalKw,
     capacitySoftLimit,
   });
-  const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
-  const deficitKw = computeShortfallDeficitKw(measuredTotalKw, shortfallThreshold);
+  const deficitKw = computeShortfallDeficitKw(measuredTotalKw, shortfallThresholdKw);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
-    await capacityGuard?.setSheddingActive(true);
     await handleShortfallCheck({
       capacityGuard,
       remaining: remainingCandidates,
       deficitKw,
-      capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
+      totalKw: measuredTotalKw,
+      shortfallThresholdKw,
+      capacityStateSummary: resolveShortfallCapacityStateSummary({
         deficitKw,
         devices,
         shedSet,
@@ -200,17 +223,18 @@ export async function updateGuardState(params: {
     return { sheddingActive: true };
   }
 
-  const restoreMargin = capacityGuard?.getRestoreMargin() ?? 0.2;
-  const canDisable = headroom >= getSheddingClearThresholdKw(restoreMargin);
-  const current = capacityGuard?.isSheddingActive() ?? false;
-  if (canDisable) {
-    await capacityGuard?.setSheddingActive(false, headroom);
-  }
+  // The release decision is made once, here. It used to be evaluated twice on
+  // the same input — this predicate, then the identical one inside the guard's
+  // `releaseShedding` — which is why the caller had to re-read the guard to
+  // learn whether its own request had been refused.
+  const canDisable = headroom >= SHEDDING_CLEAR_THRESHOLD_KW;
   await handleShortfallCheck({
     capacityGuard,
     remaining: remainingCandidates,
     deficitKw,
-    capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
+    totalKw: measuredTotalKw,
+    shortfallThresholdKw,
+    capacityStateSummary: resolveShortfallCapacityStateSummary({
       deficitKw,
       devices,
       shedSet,
@@ -219,6 +243,5 @@ export async function updateGuardState(params: {
       capacitySoftLimit,
     }),
   });
-  const next = capacityGuard?.isSheddingActive() ?? current;
-  return { sheddingActive: next };
+  return { sheddingActive: canDisable ? false : sheddingActive };
 }

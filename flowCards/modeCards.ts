@@ -44,15 +44,14 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 
   const setLimitCard = deps.homey.flow.getActionCard('set_capacity_limit');
   setLimitCard.registerRunListener(async (args: unknown) => {
-    const capacityGuard = deps.getCapacityGuard();
-    if (!capacityGuard) return false;
     const limit = readFlowNumberArg(args, 'limit_kw');
     if (limit === null || limit <= 0) {
       throw new Error('Limit must be a positive number (kW).');
     }
     const previous = deps.homey.settings.get(CAPACITY_LIMIT_KW);
+    // The settings write is the whole action: `handleCapacityLimitChange`
+    // reloads the capacity scalars and rebuilds off the change listener.
     deps.homey.settings.set(CAPACITY_LIMIT_KW, limit);
-    deps.setCapacityLimit(limit);
     deps.getStructuredLogger('capacity')?.info({
       event: 'capacity_limit_set',
       limitKw: limit,

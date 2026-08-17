@@ -15,6 +15,7 @@
 // inflates the inferred surplus into real grid import. So it stays dormant on
 // sources that cannot deliver the pair together, and arming it there needs the
 // generation's own clock carried into `recordSample` first.
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
 import { PowerSamplePipeline } from '../../setup/powerSamplePipeline';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -41,8 +42,8 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
   };
   const pipeline = new PowerSamplePipeline({
     getPowerTracker: () => powerTracker,
+    getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),
-    getCapacityGuard: () => undefined,
     getPlanEngine: () => ({
       state: {
         pendingSheds: new Set<string>(),
@@ -57,6 +58,7 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
       getLatestPlanSnapshot: () => null,
       getLatestPlanSnapshotUpdatedAtMs: () => null,
       rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
+      computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
     getDeviceManager: () => undefined,
     planRebuildScheduler: {

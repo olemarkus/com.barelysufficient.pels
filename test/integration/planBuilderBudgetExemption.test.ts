@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -90,6 +90,7 @@ describe('PlanBuilder budget exemption handling', () => {
   });
 
   it('does not shed other devices only because exempt load keeps the daily budget over plan', async () => {
+    let lastPowerW = (3) * 1000;
     const nowIso = new Date().toISOString();
     const currentHourIso = '2026-03-11T10:00:00.000Z';
     const nextHourIso = '2026-03-11T11:00:00.000Z';
@@ -102,8 +103,7 @@ describe('PlanBuilder budget exemption handling', () => {
       todayKey,
       plannedKWh: 1.5,
     });
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const devices: PlanInputDevice[] = [
       buildInputDevice({
@@ -126,8 +126,8 @@ describe('PlanBuilder budget exemption handling', () => {
     ];
 
     const builder = new PlanBuilder({
+      capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
@@ -142,6 +142,7 @@ describe('PlanBuilder budget exemption handling', () => {
           [currentHourIso]: 2,
         },
         lastTimestamp: Date.now(),
+        lastPowerW,
       }),
       getDailyBudgetSnapshot: () => dailyBudgetSnapshot,
       getPriorityForDevice: (deviceId: string) => (deviceId === 'budget-exempt' ? 100 : 10),
@@ -169,7 +170,7 @@ describe('PlanBuilder budget exemption handling', () => {
     ]));
 
     dynamicSoftLimitKw = 2.5;
-    capacityGuard.reportTotalPower(2.5);
+    lastPowerW = (2.5) * 1000;
     plan = await builder.buildDevicePlanSnapshot(devices);
 
     expect(plan.meta.softLimitSource).toBe('capacity');
@@ -189,13 +190,13 @@ describe('PlanBuilder budget exemption handling', () => {
   });
 
   it('uses the producer-resolved gross uncontrolled bucket for plan meta hourly other energy', async () => {
+    const lastPowerW = (2.5) * 1000;
     const currentHourIso = '2026-03-11T10:00:00.000Z';
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(2.5);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
+      capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
@@ -213,6 +214,7 @@ describe('PlanBuilder budget exemption handling', () => {
           [currentHourIso]: 0.15,
         },
         lastTimestamp: Date.now(),
+        lastPowerW,
       }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
@@ -235,14 +237,14 @@ describe('PlanBuilder budget exemption handling', () => {
   });
 
   it('uses the planning hour bucket for plan meta hourly energy split', async () => {
+    const lastPowerW = (2.5) * 1000;
     const currentHourIso = '2026-03-11T10:00:00.000Z';
     const lastSampleHourIso = '2026-03-11T09:00:00.000Z';
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
-    capacityGuard.reportTotalPower(2.5);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
+      capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
@@ -259,6 +261,7 @@ describe('PlanBuilder budget exemption handling', () => {
           [currentHourIso]: 0.6,
         },
         lastTimestamp: new Date(lastSampleHourIso).getTime(),
+        lastPowerW,
       }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,

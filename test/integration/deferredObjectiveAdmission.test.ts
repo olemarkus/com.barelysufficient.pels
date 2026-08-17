@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -103,8 +104,9 @@ const buildCombinedPrices = (): CombinedPricesV2 => {
   };
 };
 
-const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
+const buildPowerTracker = (nowMs: number, lastPowerW = 0): PowerTrackerState => ({
   lastTimestamp: nowMs,
+  lastPowerW,
   objectiveProfiles: {
     [DEVICE_ID]: {
       kind: 'temperature',
@@ -192,8 +194,7 @@ const buildBuilder = (
   powerTrackerRef: { current: PowerTrackerState },
   overrides: BuilderOverrides = {},
 ) => {
-  const capacityGuard = overrides.capacityGuard ?? new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-  if (!overrides.capacityGuard) capacityGuard.reportTotalPower(0);
+  const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
   const capacitySettings = overrides.capacitySettings ?? { limitKw: 100, marginKw: 0 };
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(),
@@ -204,8 +205,8 @@ const buildBuilder = (
     getHardCapKw: () => capacitySettings.limitKw,
   });
   return new PlanBuilder({
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacityGuard: () => capacityGuard,
     getCapacitySettings: () => capacitySettings,
     getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
     getModeDeviceTargets: () => ({}),
@@ -287,7 +288,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     for (let hour = 0; hour < 6; hour += 1) {
       const nowMs = DAY_START_UTC + hour * HOUR_MS;
       vi.setSystemTime(new Date(nowMs));
-      powerTrackerRef.current = buildPowerTracker(nowMs);
+      powerTrackerRef.current = buildPowerTracker(nowMs, powerTrackerRef.current.lastPowerW);
 
       const snapshot = await builder.buildDevicePlanSnapshot([
         buildDevice({ currentTemperatureC: temperatureC, nowMs, currentOn, selectedStepId }),
@@ -344,11 +345,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     });
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => {
-        const guard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-        guard.reportTotalPower(0);
-        return guard;
-      },
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
       getOperatingMode: () => modeRef.current,
       // Mode target sits 3 °C below the deadline target — exactly the bug this test pins.
@@ -407,7 +404,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     for (let hour = 0; hour < 6; hour += 1) {
       const nowMs = DAY_START_UTC + hour * HOUR_MS;
       vi.setSystemTime(new Date(nowMs));
-      powerTrackerRef.current = buildPowerTracker(nowMs);
+      powerTrackerRef.current = buildPowerTracker(nowMs, powerTrackerRef.current.lastPowerW);
       // Flip to Away starting at hour 3 (mid-horizon, between deferred-active windows).
       if (hour === 3) modeRef.current = 'Away';
 
@@ -453,7 +450,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
   // externally before bucket 5 runs, the deferred device is admitted again and meets its
   // target via the backup.
   it('falls back to a backup bucket when capacity contention costs the deferred device a planned hour', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 2.5, softMarginKw: 0 });
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
     const priorityByModeRef = {
@@ -465,7 +461,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const builder = buildBuilder(powerTrackerRef, {
       modeRef,
       priorityByModeRef,
-      capacityGuard,
       capacitySettings: { limitKw: 2.5, marginKw: 0 },
     });
 
@@ -485,7 +480,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     for (let hour = 0; hour < 6; hour += 1) {
       const nowMs = DAY_START_UTC + hour * HOUR_MS;
       vi.setSystemTime(new Date(nowMs));
-      powerTrackerRef.current = buildPowerTracker(nowMs);
+      powerTrackerRef.current = buildPowerTracker(nowMs, powerTrackerRef.current.lastPowerW);
       if (hour === 3) modeRef.current = 'Away';
       // Contender finishes externally before bucket 5 runs, freeing capacity for the backup.
       if (hour === 5) {
@@ -493,7 +488,10 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
         contendOn = false;
       }
 
-      capacityGuard.reportTotalPower((deferOn ? 1.5 : 0) + (contendOn ? 1.5 : 0));
+      powerTrackerRef.current = {
+        ...powerTrackerRef.current,
+        lastPowerW: ((deferOn ? 1.5 : 0) + (contendOn ? 1.5 : 0)) * 1000,
+      };
 
       const snapshot = await builder.buildDevicePlanSnapshot([
         buildDevice({
@@ -580,8 +578,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     vi.setSystemTime(new Date(nowMs));
     const powerTracker = buildPowerTracker(nowMs);
 
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(0);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const deferredController = new DeferredObjectiveDecorationController({
       getDeferredObjectiveSettings: () => ({
         version: 1,
@@ -602,8 +599,8 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
+      capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

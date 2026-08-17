@@ -357,8 +357,11 @@ const createSustainedLane = (env: AlertLaneEnv): CapacityShortfallAlertDispatch 
       stop('condition_cleared');
       return;
     }
-    // `isConditionActive` reads the last power sample the guard ever saw, with
-    // no freshness bound (nothing calls `resetLastTotalPower` in production).
+    // `isConditionActive` resolves the tracker's latched total with no freshness
+    // bound, so an old reading still answers as though it were current. (The
+    // latch is cleared on a meter-identity change, by
+    // `SuffixedTrackerPersistence.resetFreshness`, but nothing clears it merely
+    // because the meter went quiet.)
     // A meter that stops reporting would therefore leave the predicate frozen
     // at "breaching" and let wall time alone walk the whole ladder, well before
     // the 10-minute stale-sample escalation notices. A republished candidate is

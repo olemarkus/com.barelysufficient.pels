@@ -1,6 +1,7 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { isExternalOffHeldForDevice } from './toPlanDevice';
+import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import { PlanBuilder, type PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import { PlanExecutor } from '../../lib/executor/planExecutor';
@@ -17,6 +18,12 @@ import type { PlanEngineWiring } from './planEngineWiring';
 import { ComposedPlanEngine } from './composedPlanEngine';
 
 export type CreatePlanEngineOptions = {
+  /**
+   * The home's capacity guard, injected by value. Both wiring paths now
+   * construct it before the plan engine, so the planner cannot be handed an
+   * absent one — there is no accessor to return `undefined` from.
+   */
+  capacityGuard: CapacityGuard;
   /**
    * Additional point-of-use fence for a home runtime's actuation. When true,
    * every device write no-ops at the single actuator seam. Sub-home bundles
@@ -55,7 +62,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
   );
   const builderDeps: PlanBuilderDeps = {
     setCapacityInShortfall: deps.setCapacityInShortfall,
-    getCapacityGuard: deps.getCapacityGuard,
+    capacityGuard: deps.capacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
     getOperatingMode: deps.getOperatingMode,
     getModeDeviceTargets: deps.getModeDeviceTargets,
@@ -78,6 +85,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     log: deps.log,
     logDebug: deps.logDebug,
   };
+  const builder = new PlanBuilder(builderDeps, state);
   const executorDeps: PlanExecutorDeps = {
     getHomeDisplayName: deps.getHomeDisplayName,
     homeId: deps.homeId,
@@ -86,8 +94,10 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     deviceManager: deps.deviceManager,
     getObservedState: deps.getObservedState,
     actuator: deps.actuator,
-    getCapacityGuard: deps.getCapacityGuard,
+    capacityGuard: deps.capacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
+    getPowerTracker: deps.getPowerTracker,
+    getCapacityPaceKw: () => builder.computeDynamicSoftLimit(),
     getCapacityDryRun: deps.getCapacityDryRun,
     getOperatingMode: deps.getOperatingMode,
     getShedBehavior: deps.getShedBehavior,
@@ -98,7 +108,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     deviceDiagnostics: deps.deviceDiagnostics,
     pendingBinaryCommandStore,
   };
-  const builder = new PlanBuilder(builderDeps, state);
   const executor = new PlanExecutor(executorDeps, state);
   return {
     planEngine: new ComposedPlanEngine({
@@ -117,7 +126,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
 export function createPlanEngineComposition(
   ctx: AppContext,
   scope: HomeScope,
-  options?: CreatePlanEngineOptions,
+  options: CreatePlanEngineOptions,
 ): PlanEngineCompositionResult {
   // Resolve the device manager first so its absence surfaces the canonical
   // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
@@ -166,7 +175,7 @@ export function createPlanEngineComposition(
     },
     actuator,
     binaryCommandLifecycle: scope.binaryCommandLifecycle,
-    getCapacityGuard: scope.getCapacityGuard,
+    capacityGuard: options.capacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
     getCapacityDryRun: scope.getCapacityDryRun,
     // Policy closures from the scope: the main home binds the live ctx reads
@@ -219,7 +228,7 @@ export function createPlanEngineComposition(
 export function createPlanEngine(
   ctx: AppContext,
   scope: HomeScope,
-  options?: CreatePlanEngineOptions,
+  options: CreatePlanEngineOptions,
 ): PlanEngine {
   return createPlanEngineComposition(ctx, scope, options).planEngine;
 }

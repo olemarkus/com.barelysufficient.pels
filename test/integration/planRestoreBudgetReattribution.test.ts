@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
@@ -113,11 +114,11 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
   limitKw: number;
-  tracker: { lastTimestamp: number };
+  tracker: { lastTimestamp: number; lastPowerW?: number };
   dailyBudget: boolean;
 }): PlanBuilder => new PlanBuilder({
+  capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
-  getCapacityGuard: () => params.capacityGuard,
   getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0 }),
   getOperatingMode: () => 'Home',
   getModeDeviceTargets: () => ({}),
@@ -140,21 +141,23 @@ const runShedThenBlockedRestore = async (params: {
   limitKw: number;
   dailyBudget: boolean;
 }) => {
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: params.limitKw, softMarginKw: 0 });
-  const tracker = { lastTimestamp: DAY_START_UTC };
-  const builder = buildBuilder({ capacityGuard, limitKw: params.limitKw, tracker, dailyBudget: params.dailyBudget });
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+  const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
+  const builder = buildBuilder({
+    capacityGuard, limitKw: params.limitKw, tracker, dailyBudget: params.dailyBudget,
+  });
 
-  capacityGuard.reportTotalPower(1.5);
+  tracker.lastPowerW = 1.5 * 1000;
   const first = await builder.buildDevicePlanSnapshot([buildDevice(true)]);
 
   vi.setSystemTime(new Date(SECOND_BUILD_AT_MS));
   tracker.lastTimestamp = SECOND_BUILD_AT_MS;
-  capacityGuard.reportTotalPower(0.35);
+  tracker.lastPowerW = 0.35 * 1000;
   await builder.buildDevicePlanSnapshot([buildDevice(false)]);
 
   vi.setSystemTime(new Date(THIRD_BUILD_AT_MS));
   tracker.lastTimestamp = THIRD_BUILD_AT_MS;
-  capacityGuard.reportTotalPower(0.35);
+  tracker.lastPowerW = 0.35 * 1000;
   const third = await builder.buildDevicePlanSnapshot([buildDevice(false)]);
 
   const firstDevice = first.devices.find((d) => d.id === DEVICE_ID);

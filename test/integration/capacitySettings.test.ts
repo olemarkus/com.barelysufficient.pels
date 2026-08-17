@@ -18,18 +18,12 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     public setSoftLimitProvider = vi.fn();
     public setShortfallThresholdProvider = vi.fn();
     public reportTotalPower = vi.fn();
-    public getLastTotalPower = vi.fn().mockReturnValue(null);
-    // A home with a meter, which is what this suite is about (settings
-    // propagation): a shut build gate would stop the app booting far enough to
-    // observe any propagation at all.
-    public hasPowerMeasurement = vi.fn().mockReturnValue(true);
     public headroom = vi.fn().mockReturnValue(0);
-    public getHeadroom = vi.fn().mockReturnValue(0);
-    public getRestoreMargin = vi.fn().mockReturnValue(0.2);
     public isSheddingActive = vi.fn().mockReturnValue(false);
     public isInShortfall = vi.fn().mockReturnValue(false);
     public getSoftLimit = vi.fn().mockReturnValue(10);
-    public setSheddingActive = vi.fn();
+    public activateShedding = vi.fn();
+    public releaseShedding = vi.fn();
     public checkShortfall = vi.fn();
     constructor(opts: any = {}) {
       // Call setters once to mirror constructor usage.
@@ -56,20 +50,18 @@ describe('capacity settings propagation', () => {
     vi.clearAllTimers();
   });
 
-  it('updates CapacityGuard when settings change', async () => {
+  it('reloads the capacity scalars when settings change', async () => {
     const app = createApp();
     await app.onInit();
 
     expect(capacityGuardInstances.length).toBe(1);
-    const guard = capacityGuardInstances[0];
 
     // Change limit and margin via settings events.
     mockHomeyInstance.settings.set('capacity_limit_kw', 7);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.4);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(guard.setLimit).toHaveBeenLastCalledWith(7);
-    expect(guard.setSoftMargin).toHaveBeenLastCalledWith(0.4);
-    // Note: Guard no longer has setDryRun - dry run mode is handled by Plan
+    // Nothing mirrors the scalars any more — the reload IS the propagation.
+    expect((app as any).capacitySettings).toMatchObject({ limitKw: 7, marginKw: 0.4 });
   });
 });

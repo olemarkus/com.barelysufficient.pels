@@ -7,6 +7,8 @@ import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import { recordPowerSampleForApp } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
+import { resolveLastTotalPowerKw } from '../lib/power/lastTotalPower';
+import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
@@ -30,7 +32,12 @@ const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1
 export type PowerSamplePipelineDeps = {
   getPowerTracker: () => PowerTrackerState;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getCapacityGuard: () => CapacityGuard | undefined;
+  /**
+   * Late-bound by necessity: main's pipeline is a `PelsApp` field
+   * initializer, constructed before `initCapacityGuard` runs. The type is
+   * non-optional, so this defers the read without modelling an absent guard.
+   */
+  getCapacityGuard: () => CapacityGuard;
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
   getDeviceManager: () => DeviceTransport | undefined;
@@ -329,7 +336,6 @@ export class PowerSamplePipeline {
         capacitySettings,
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
-        capacityGuard,
         // Stamp the producer-resolved `currentOn` onto the raw snapshots before the
         // plan-layer usage math: these devices come straight from the transport and
         // carry `binaryControl` but no `currentOn`, so the usage on/off reads would
@@ -372,6 +378,12 @@ export class PowerSamplePipeline {
             currentPowerW,
             capacitySettings,
             capacityGuard,
+            latchedTotalKw: resolveLastTotalPowerKw(this.deps.getPowerTracker()),
+            capacityPaceKw: planService.computeDynamicSoftLimit(),
+            shortfallThresholdKw: computeShortfallThreshold({
+              capacitySettings,
+              powerTracker: this.deps.getPowerTracker(),
+            }),
             planConvergenceActive,
             skipWhileShortfallUnrecoverable,
             unactionable: planUnactionable,

@@ -14,7 +14,7 @@
 // the REAL PlanBuilder. The only lever between the two assertions is the clock hour
 // (cheap planned vs expensive released); capacity pressure is identical.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -251,8 +251,8 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   vi.setSystemTime(new Date(nowMs));
 
   const powerTracker = buildPowerTracker(nowMs);
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: LIMIT_KW, softMarginKw: 0 });
-  capacityGuard.reportTotalPower(STEP_LOW_KW);
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+  powerTracker.lastPowerW = STEP_LOW_KW * 1000;
 
   const deferredController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => buildSettings(),
@@ -264,8 +264,8 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   });
 
   const builder = new PlanBuilder({
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacityGuard: () => capacityGuard,
     getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),
