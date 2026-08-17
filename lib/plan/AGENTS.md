@@ -97,6 +97,11 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   converge a device — `rebuildPlanFromCache`. Do not add an apply-without-decide path back; if a
   rebuild is too slow for some caller, make the rebuild cheaper.
 
+  One asymmetry to know about: `rebuildPlanFromCache` consults `planBuildGate`, while the public
+  `buildDevicePlanSnapshot` on the same class does not. It has no production caller, so nothing is
+  wrong today — but the difference is invisible at the call site. If you reach for it, route it
+  through the gate or make it non-public rather than adding a second ungated build door.
+
   `planLiveStateMerge.ts` is the trap adjacent to this rule: it merges observations onto a plan
   while carrying the decision fields through untouched, so its output is by construction the OLD
   decision seen freshly. It is for publishing snapshots, never for deciding to actuate.

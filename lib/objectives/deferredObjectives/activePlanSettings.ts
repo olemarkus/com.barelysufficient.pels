@@ -16,6 +16,14 @@ import { isFiniteNumber } from '../../utils/appTypeGuards';
 
 // Re-exported from shared-domain (its long-term home) so existing runtime
 // importers (`activePlanRecorder.ts`) keep their `./activePlanSettings` path.
+//
+// Bumping this version: the settings UI has its own leaner coercer
+// (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) that hard-codes
+// `version: 1` and skips the version check entirely. It is benign only while the
+// version is 1 — on a bump, this normaliser rejects the old blob while the UI
+// guard stamps `version: 1` onto a v2-shaped payload and renders foreign fields.
+// Hoist the shape/version check into `packages/shared-domain/src/` and delegate
+// from both sides as part of the bump, not after it.
 export { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION };
 
 const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = new Set([
