@@ -1316,6 +1316,35 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **A measurement-gated home keeps serving the previous run's `pels_status`, and the UI reads
+      it as `fresh`.**
+      `PlanService.rebuildPlanFromCache` returns before `PlanStatusWriter` when the build gate is
+      shut, so nothing rewrites the persisted `pels_status` blob — while `getSettingsUiPower`
+      (`setup/settingsUiApi.ts:167`) reads that blob straight out of settings, including
+      `powerNowKw`, `headroomKw`, `hasLivePowerSample`, and `powerFreshnessState`. After a restart,
+      a `power_source = flow` home whose reporting Flow never fires therefore shows the *last run's*
+      watts and available power, labelled `'fresh'`, for as long as it stays unmeasured — the one
+      state the gate exists to declare. The gate's own refusal is correct; only the read is
+      dishonest. Fix direction: the read is the boundary, so classify it there — have the settings-UI
+      power composer resolve to an explicit measurement-unavailable result while the gate is shut,
+      rather than passing a stale blob through as a live one. Preserve the stored state (a
+      transient gate close must not destroy it, `notes/persisted-settings-state.md`); change only
+      what the reader claims about it. Found 2026-08-17 by the Codex reviewer on PR #2145. [P2]
+
+- [ ] **`home_bundle_gated_no_power_sample` is only evaluated when something else happens to ask
+      the gate, so the home it describes is the one least likely to emit it.**
+      `PowerMeasurementGate.noteShut` checks the elapsed grace inline, so the warning fires only on
+      a call to `isOpen()` — i.e. only when some other trigger (price update, settings write, device
+      change) drives a rebuild. The freshness heartbeat is not a fallback here: it returns early
+      when `lastTimestamp` is absent, which is exactly a never-sampled home, and returns early again
+      under `power_source = flow` via `isMeterSourceAuthorized`
+      (`setup/homeRuntime/homeCapacityBundleReadiness.ts:253-256`). So a flow-powered home whose
+      Flow never fires — the precise case the warning is for — emits it only if an unrelated trigger
+      happens to land after the five-minute grace, and never on a quiet install. Fix direction: arm
+      a cancellable timer when gating starts so the warning has its own guaranteed recheck, and
+      cancel it when the gate opens. Observability only: the gate itself already fails safe by
+      refusing to build. Found 2026-08-17 by the Codex reviewer on PR #2145. [P2]
+
 - [ ] **The restore-cooldown branch marks nothing during an overshoot, so a sub-deadband deficit
       still resumes an already-limited device with no admission check.**
       In `applyRestorePlan` the `inRestoreCooldown` branch derives its hold from
