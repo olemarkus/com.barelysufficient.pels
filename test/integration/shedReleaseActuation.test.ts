@@ -94,7 +94,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: { kind: 'binary_release', deviceId: 'dev-1', name: 'Device 1' },
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
@@ -107,7 +107,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
@@ -123,7 +123,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
@@ -144,7 +144,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved({ binaryControl: { on: false }, observedBinaryState: 'off' }),
       snapshot: { id: 'dev-1', binaryControl: { on: false }, binaryCapabilityId: 'onoff' } as never,
       deps,
@@ -159,7 +159,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       // 'unknown' is an off-union sentinel for "no trusted observation yet".
       observed: buildObserved({ observedBinaryState: 'unknown' as ExecutableObservedDeviceState['observedBinaryState'] }),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
@@ -181,7 +181,7 @@ describe('applyShedReleaseIntent', () => {
     );
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved({
         target: { target: 'temperature', observedValue: 22 },
       }),
@@ -210,7 +210,7 @@ describe('applyShedReleaseIntent', () => {
     );
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved({
         target: { target: 'temperature', observedValue: 18 },
       }),
@@ -226,7 +226,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_temperature', temperature: 18, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved({
         target: { target: 'temperature', observedValue: 18 },
       }),
@@ -382,7 +382,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
-      steppedLoadIntent: null,
+      steppedLoadIntent: undefined,
       observed: buildObserved(),
       snapshot: { id: 'dev-1' } as never,
       deps,

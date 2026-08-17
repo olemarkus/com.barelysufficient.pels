@@ -8,6 +8,7 @@ import {
   buildExecutableTargetIntent,
   buildExecutableTargetUpdate,
 } from '../../lib/executor/executableTargetProjection';
+import { hasReleaseCommand, hasSteppedCommand } from '../../lib/executor/executablePlan';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
@@ -72,7 +73,6 @@ describe('planExecutablePlan', () => {
       id: 'step-1',
       name: steppedDevice.name,
       controllable: true,
-      binary: null,
       steppedLoad: {
         id: 'step-1',
         desired: {
@@ -81,15 +81,26 @@ describe('planExecutablePlan', () => {
       },
     });
     expect(executablePlan.devices[0]).not.toHaveProperty('planDevice');
-    expect(executablePlan.devices[0]?.steppedLoad).not.toHaveProperty('current');
+    // Narrow FIRST and assert the narrowing succeeded, so the `current` check
+    // cannot pass vacuously. The path form (`not.toHaveProperty('steppedLoad.current')`)
+    // would: `toHaveProperty` throws on a null/undefined receiver and `.not` does
+    // not invert a matcher error, so an absent `steppedLoad` would satisfy it.
+    const steppedIntent = executablePlan.devices[0];
+    expect(steppedIntent !== undefined && hasSteppedCommand(steppedIntent)).toBe(true);
+    if (steppedIntent !== undefined && hasSteppedCommand(steppedIntent)) {
+      expect(steppedIntent.steppedLoad).not.toHaveProperty('current');
+    }
+    // A stepped device gets no binary COMMAND this cycle: absence of the key is
+    // the answer, replacing the old `binary: null` slot.
+    expect(executablePlan.devices[0]).not.toHaveProperty('binary');
     expect(executablePlan.devices[1]).toMatchObject({
       id: 'binary-1',
-      steppedLoad: null,
       binary: {
-        kind: 'restore',
+        desiredOn: true,
         source: 'controlled',
       },
     });
+    expect(executablePlan.devices[1]).not.toHaveProperty('steppedLoad');
   });
 
   it('projects target updates into the executor-facing command shape', () => {
@@ -138,14 +149,15 @@ describe('planExecutablePlan', () => {
 
     expect(executablePlan.devices[0]).toMatchObject({
       id: 'target-only-1',
-      binary: null,
-      steppedLoad: null,
       target: {
         deviceId: 'target-only-1',
         desired: 21,
         purpose: 'target_update',
       },
     });
+    // The point of this case: a target-only device drives neither other axis.
+    expect(executablePlan.devices[0]).not.toHaveProperty('binary');
+    expect(executablePlan.devices[0]).not.toHaveProperty('steppedLoad');
   });
 
   it.each([
@@ -173,7 +185,43 @@ describe('planExecutablePlan', () => {
       devices: [evCharger],
     });
 
-    expect(executablePlan.devices[0]?.release).toBeNull();
+    expect(executablePlan.devices[0]).not.toHaveProperty('release');
+  });
+
+  // The POSITIVE release case. Without this, `release` is the only command axis
+  // with no projection test asserting it is ever attached — and since every
+  // axis is now a conditional spread, dropping
+  // `...(release ? { release } : {})` from `buildExecutableDeviceIntent` would
+  // compile cleanly and silently stop the whole smart-task lifecycle release
+  // path from actuating. It used to be a required `| null` property, so the
+  // compiler caught that; now only this test does.
+  it('projects a deferred release intent when restore admission is not held', () => {
+    const evCharger = buildPlanDevice({
+      id: 'ev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      binaryCapabilityId: 'evcharger_charging',
+      plannedState: 'keep',
+      currentState: 'on',
+      evChargingState: 'plugged_in_paused',
+      deferredReleaseIntent: 'binary_restore',
+    });
+
+    const executablePlan = buildExecutablePlan({
+      meta: buildPlanMeta({
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+        powerFreshnessState: 'fresh'}),
+      devices: [evCharger],
+    });
+
+    const intent = executablePlan.devices[0];
+    expect(intent !== undefined && hasReleaseCommand(intent)).toBe(true);
+    if (intent !== undefined && hasReleaseCommand(intent)) {
+      expect(intent.release.kind).toBe('binary_restore');
+      expect(intent.release.deviceId).toBe('ev-1');
+    }
   });
 
   describe('hasExecutableShedDevices', () => {

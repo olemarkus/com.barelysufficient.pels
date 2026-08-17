@@ -314,7 +314,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       });
       const firstResult = await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed,
         snapshot: heater,
         deps,
@@ -338,7 +338,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
 
       const secondResult = await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryState: 'off' }),
         snapshot: refreshedSnapshot,
         deps,
@@ -389,7 +389,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // gate that actually fires is the pending binary command record.
       const secondResult = await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed,
         snapshot: racedSnap,
         deps,
@@ -421,7 +421,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // First cycle.
       const firstResult = await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed,
         snapshot: thermostat,
         deps,
@@ -448,7 +448,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       });
       const secondResult = await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed: refreshedObserved,
         snapshot: thermostat,
         deps,
@@ -486,7 +486,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       });
       const firstResult = await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed: initialObserved,
         snapshot: thermostat,
         deps,
@@ -510,7 +510,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       });
       await applyShedReleaseIntent({
         intent,
-        steppedLoadIntent: null,
+        steppedLoadIntent: undefined,
         observed: staleObserved,
         snapshot: thermostat,
         deps,

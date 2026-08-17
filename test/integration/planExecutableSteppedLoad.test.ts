@@ -191,7 +191,7 @@ describe('planExecutableSteppedLoad', () => {
       desiredStepId: undefined,
     }));
 
-    expect(intent).toBeNull();
+    expect(intent).toBeUndefined();
   });
 
   it('projects planner restore holds as no desired executor state change', () => {
@@ -203,13 +203,13 @@ describe('planExecutableSteppedLoad', () => {
       reason: { code: 'meter_settling', remainingSec: 30 },
     }));
 
-    expect(intent).toBeNull();
+    expect(intent).toBeUndefined();
   });
 
   it('returns null for non stepped-load devices', () => {
     expect(buildExecutableSteppedLoadIntent(steppedPlanDevice({
       steppedLoadProfile: undefined,
-    }))).toBeNull();
+    }))).toBeUndefined();
   });
 
   it('resolves the current step on the raw dispatch path (no selectedStepId decoration) from the producer fallback', () => {

@@ -1,4 +1,10 @@
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
+import {
+  hasBinaryCommand,
+  hasReleaseCommand,
+  hasSteppedCommand,
+  hasTargetCommand,
+} from './executablePlan';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 import type {
@@ -134,10 +140,11 @@ function hasExecutableTargetExecutionDrift(
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
 ): boolean {
-  if (!intent.target) return false;
-  if (intent.target.purpose !== 'shed_temperature' && hasNonTemperatureShedIntent(intent)) return false;
-  if (isPendingTargetCommandMatchingExpected(runtime.pendingTarget, intent.target.desired)) return false;
-  return !Object.is(observed.target?.observedValue, intent.target.desired);
+  if (!hasTargetCommand(intent)) return false;
+  const { target } = intent;
+  if (target.purpose !== 'shed_temperature' && hasNonTemperatureShedIntent(intent)) return false;
+  if (isPendingTargetCommandMatchingExpected(runtime.pendingTarget, target.desired)) return false;
+  return !Object.is(observed.target?.observedValue, target.desired);
 }
 
 function isPendingTargetCommandMatchingExpected(
@@ -149,7 +156,8 @@ function isPendingTargetCommandMatchingExpected(
 }
 
 function hasNonTemperatureShedIntent(intent: ExecutableDeviceIntent): boolean {
-  return intent.binary?.kind === 'shed' || intent.steppedLoad?.purpose === 'shed';
+  if (hasBinaryCommand(intent) && !intent.binary.desiredOn) return true;
+  return hasSteppedCommand(intent) && intent.steppedLoad.purpose === 'shed';
 }
 
 function hasExecutableBinaryExecutionDrift(
@@ -158,10 +166,10 @@ function hasExecutableBinaryExecutionDrift(
   runtime: DriftRuntimeState,
   plannedCurrentStepId: string | undefined,
 ): boolean {
-  if (intent.steppedLoad) {
+  if (hasSteppedCommand(intent)) {
     return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime, plannedCurrentStepId);
   }
-  const release = intent.release;
+  const release = hasReleaseCommand(intent) ? intent.release : undefined;
   if (release && (release.kind === 'binary_restore' || release.kind === 'binary_release')) {
     return hasExecutableBinaryReleaseExecutionDrift({ ...release, kind: release.kind }, observed, runtime);
   }
@@ -222,11 +230,11 @@ function hasBinaryStateDrift(params: {
 }
 
 function resolveExpectedBinaryStateForIntent(intent: ExecutableDeviceIntent): BinaryState | undefined {
-  if (intent.binary?.kind === 'restore') {
-    return intent.binary.source === 'controlled' ? 'on' : undefined;
-  }
-  if (intent.binary?.kind === 'shed') return 'off';
-  return undefined;
+  if (!hasBinaryCommand(intent)) return undefined;
+  // The managed -> unmanaged release is opportunistic: it undoes a prior shed
+  // rather than demanding a state, so it sets no drift expectation.
+  if (intent.binary.desiredOn) return intent.binary.source === 'controlled' ? 'on' : undefined;
+  return 'off';
 }
 
 function resolveExpectedBinaryStateForSteppedIntent(

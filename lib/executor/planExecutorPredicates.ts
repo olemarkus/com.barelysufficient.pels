@@ -79,7 +79,7 @@ export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][numbe
 }
 
 export function isSteppedLoadRestoreFromOff(
-  intent: ExecutableSteppedLoadIntent | null,
+  intent: ExecutableSteppedLoadIntent | undefined,
   action: ExecutableSteppedLoadDevice | null,
 ): boolean {
   return Boolean(intent?.purpose === 'keep' && action?.current.on === false);

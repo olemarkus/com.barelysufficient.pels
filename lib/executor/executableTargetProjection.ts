@@ -11,11 +11,11 @@ import type {
 
 type PlanDevice = DevicePlan['devices'][number];
 
-export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIntent | null {
-  if (!isTemperaturePlanDevice(dev)) return null;
-  if (dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null) return null;
-  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
-  return {
+export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIntent | undefined {
+  if (!isTemperaturePlanDevice(dev)) return undefined;
+  if (dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null) return undefined;
+  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
+  const intent: ExecutableTargetIntent = {
     deviceId: dev.id,
     name: dev.name,
     desired: dev.plannedTarget,
@@ -26,10 +26,11 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
       ? 'shed_temperature'
       : 'target_update',
   };
+  return intent;
 }
 
 export function buildExecutableTargetUpdate(
-  intent: ExecutableTargetIntent | null,
+  intent: ExecutableTargetIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null },
 ): ExecutableTargetUpdate | null {
@@ -49,7 +50,7 @@ export function buildExecutableTargetUpdate(
 }
 
 export function buildExecutableTargetCommand(
-  intent: ExecutableTargetIntent | null,
+  intent: ExecutableTargetIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): ExecutableTargetCommand | null {
   if (!intent || !observed?.target) return null;

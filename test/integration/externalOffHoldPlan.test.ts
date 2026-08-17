@@ -255,7 +255,7 @@ const buildExecutorCtx = (held: boolean) => {
 };
 
 const uncontrolledRestoreIntent = {
-  kind: 'restore' as const,
+  desiredOn: true as const,
   deviceId: HEATER,
   name: 'Water heater',
   source: 'uncontrolled' as const,
