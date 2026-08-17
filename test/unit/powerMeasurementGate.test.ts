@@ -14,7 +14,7 @@ const buildGate = (guard: CapacityGuard | undefined, nowMs: () => number) => {
     logger: () => ({ info, warn }) as never,
     warnAfterMs: WARN_AFTER_MS,
     nowMs,
-    getPowerSource: () => 'homey_energy',
+    getPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
   });
   return { gate, info, warn };
 };

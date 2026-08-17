@@ -95,7 +95,14 @@ export class OvershootTracker {
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
       const overshootDiagnostics = buildOvershootEntryDiagnostics({
-        measuredTotalKw: power.measuredTotalKw,
+        // From the CONTEXT, not the display bundle. This delta gates
+        // `attributeOvershootToRecentRestores`, which calls
+        // `recordActivationSetback` and so changes future restore admission —
+        // that makes it a control input, and control inputs come off
+        // `PlanContext`. `measuredDrawKw` is the successor to the `context.total`
+        // this read used before the display bundle existed; the display members
+        // stay for the outward meta writes below.
+        measuredTotalKw: context.measuredDrawKw,
         nowTs,
         lastPowerUpdateMs,
         previousTotalKw: this.state.lastPlanTotalKw,
@@ -155,6 +162,17 @@ export class OvershootTracker {
   }
 
   private rememberPlanSnapshot(
+    /**
+     * The RAW `totalKw`, deliberately — not the context's measured draw.
+     *
+     * This is the baseline half of a later cycle's overshoot delta, and it must
+     * survive a cycle the meter went stale on: `measuredDrawKw` is `null` while
+     * unmeasured, so storing it would make the next fresh cycle's delta `null`
+     * and silently close restore attribution. That is the exact regression
+     * `does not close restore attribution on a stale-hold rebuild with
+     * non-negative synthetic headroom` pins. The freshness judgement stays on
+     * the CURRENT half of the delta, which reads the context.
+     */
     power: PowerCycleDisplay,
     trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>,
     nowTs: number,

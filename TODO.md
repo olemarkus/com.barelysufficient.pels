@@ -1316,6 +1316,20 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **The overshoot delta mixes a measured current total with a baseline that may be stale.**
+      `buildOvershootEntryDiagnostics` now takes its current half from `context.measuredDrawKw`
+      (a control input, off the context) — but the baseline half, `state.lastPlanTotalKw`, is still
+      written from the display bundle's raw `totalKw` in `rememberPlanSnapshot`, because a baseline
+      that goes `null` on one stale cycle silently closes restore attribution on the next fresh one
+      (pinned by `does not close restore attribution on a stale-hold rebuild with non-negative
+      synthetic headroom`). So a delta can be measured-minus-stale, and that delta gates
+      `recordActivationSetback` — i.e. a stale baseline can still influence restore admission.
+      Fix direction: keep the baseline non-null across a stale cycle without borrowing the display
+      total — carry the last MEASURED total forward instead of overwriting it each build, so the
+      pair is always measured-minus-measured, and decide explicitly what attribution should do when
+      the two are separated by a gap rather than inferring it from whichever total survived. Found
+      2026-08-17 fixing the display-to-control edge on PR #2146. [P2]
+
 - [ ] **A measurement-gated home keeps serving the previous run's `pels_status`, and the UI reads
       it as `fresh`.**
       `PlanService.rebuildPlanFromCache` returns before `PlanStatusWriter` when the build gate is

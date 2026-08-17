@@ -14,6 +14,7 @@ import {
 } from '../../lib/observer/observedDeviceStateProjection';
 import { resolveTemperatureBoostConfigForDevice } from './toPlanDevice';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
+import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { PowerMeasurementGate } from '../powerMeasurementGate';
 
@@ -128,7 +129,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
       logger: () => ctx.getStructuredLogger('power/measurement-gate'),
       warnAfterMs: NO_POWER_SAMPLE_WARN_MS,
       nowMs: () => Date.now(),
-      getPowerSource: () => ctx.homey.settings.get('power_source') ?? null,
+      getPowerSource: () => readConfiguredPowerSource(ctx.homey.settings),
     }),
   });
 }
