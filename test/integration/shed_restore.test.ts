@@ -21,9 +21,6 @@ type InternalApp = {
     handleCapacityCheck(): Promise<void>;
     capacityGuard: {
         getHeadroom: () => number | null;
-        isSheddingActive: () => boolean;
-        activateShedding: () => void;
-        releaseShedding: (headroomKw: number) => void;
         checkShortfall: () => void;
         getSoftLimit: () => number;
         getShortfallThreshold: () => number;
@@ -76,9 +73,6 @@ describe('Shed vs Restore Logic', () => {
         // Mock CapacityGuard to return negative headroom
         const mockGuard = {
             getHeadroom: () => -2.0, // Need 2kW
-            isSheddingActive: () => false,
-            activateShedding: vi.fn(),
-            releaseShedding: vi.fn(),
             checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
@@ -121,9 +115,6 @@ describe('Shed vs Restore Logic', () => {
 
         const mockGuard = {
             getHeadroom: () => -0.4, // Need 0.4kW
-            isSheddingActive: () => false,
-            activateShedding: vi.fn(),
-            releaseShedding: vi.fn(),
             checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
@@ -161,9 +152,6 @@ describe('Shed vs Restore Logic', () => {
 
         const mockGuard = {
             getHeadroom: () => 2.0,
-            isSheddingActive: () => false,
-            activateShedding: vi.fn(),
-            releaseShedding: vi.fn(),
             checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,

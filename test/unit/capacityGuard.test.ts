@@ -22,45 +22,6 @@ describe('CapacityGuard', () => {
     mockTime += ms;
   };
 
-  describe('Shedding state', () => {
-    it('starts with shedding inactive', () => {
-      const guard = createTestCapacityGuard({ homeId: 'main' });
-      expect(guard.isSheddingActive()).toBe(false);
-    });
-
-    it('latches on and stays latched while re-activated', () => {
-      const guard = createTestCapacityGuard({ homeId: 'main' });
-
-      guard.activateShedding();
-      expect(guard.isSheddingActive()).toBe(true);
-
-      guard.activateShedding();
-      expect(guard.isSheddingActive()).toBe(true);
-
-      guard.releaseShedding(1.5);
-      expect(guard.isSheddingActive()).toBe(false);
-    });
-
-    it('releases once headroom clears the threshold', () => {
-      const guard = createTestCapacityGuard({ homeId: 'main' });
-
-      guard.activateShedding();
-      guard.releaseShedding(0.45);
-
-      expect(guard.isSheddingActive()).toBe(false);
-    });
-
-    it('refuses to release while headroom is below the clear threshold', () => {
-      const guard = createTestCapacityGuard({ homeId: 'main' });
-
-      guard.activateShedding();
-      // 0.35 kW is short of the 0.4 kW clear threshold.
-      guard.releaseShedding(0.35);
-
-      expect(guard.isSheddingActive()).toBe(true);
-    });
-  });
-
   describe('Shortfall detection', () => {
     it('starts without shortfall', () => {
       const guard = createTestCapacityGuard({ homeId: 'main' });

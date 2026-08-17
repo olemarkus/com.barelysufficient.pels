@@ -206,7 +206,7 @@ describe('Airtreatment device integration', () => {
     }
     (app as any).capacityGuard.isInShortfall = () => false;
     (app as any).planEngine.state.inShortfall = false;
-    await (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
+    (app as any).planEngine.state.sheddingActive = false;
 
     await (app as any).refreshTargetDevicesSnapshot();
     await runCycle();

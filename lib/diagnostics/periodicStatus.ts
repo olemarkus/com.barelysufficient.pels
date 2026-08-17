@@ -8,7 +8,7 @@ import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
   CapacityGuard,
-  'isSheddingActive' | 'isInShortfall'
+  'isInShortfall'
 >;
 
 type CapacityStatusMetrics = {
@@ -55,6 +55,8 @@ export function buildPeriodicStatusLogFields(params: {
    * Logged as `softLimitKw` (`notes/safe-pace-two-constraints.md`).
    */
   capacityPaceKw: number;
+  /** The shedding latch, read off `PlanEngineState` by the caller. */
+  sheddingActive: boolean;
 }): PeriodicStatusLogFields {
   const {
     capacityGuard,
@@ -64,10 +66,11 @@ export function buildPeriodicStatusLogFields(params: {
     capacityDryRun,
     starvedDeviceCount = 0,
     capacityPaceKw,
+    sheddingActive,
   } = params;
   const metrics = resolveCapacityStatusMetrics({ capacitySettings, powerTracker, capacityPaceKw });
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
-  const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
+
   const inShortfall = capacityGuard?.isInShortfall() ?? false;
   const usage = getCurrentHourUsage(powerTracker);
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);

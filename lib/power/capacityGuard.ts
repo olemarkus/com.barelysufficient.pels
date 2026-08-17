@@ -33,14 +33,6 @@ export type CapacityShortfallAlertCandidate = {
   detectedAtMs: number;
 };
 
-/**
- * Headroom a restore must clear before the shedding latch releases: the restore
- * margin plus hysteresis, so a plan hovering at the threshold cannot flap the
- * latch between rebuilds. Both terms are fixed — the restore margin was a
- * constructor option that neither factory ever supplied, so it was always 0.2.
- */
-export const SHEDDING_CLEAR_THRESHOLD_KW = 0.4;
-
 /** Panic is a hard-cap question, so it is asked against the hard-cap budget. */
 const isOverShortfallThreshold = (
   totalKw: number | null,
@@ -67,8 +59,6 @@ export default class CapacityGuard {
 
   private shortfallClearStartTime: number | null = null;
 
-  // State - updated by Plan
-  sheddingActive = false;
   private inShortfall = false;
 
   // Callbacks
@@ -94,33 +84,12 @@ export default class CapacityGuard {
 
   // --- State management (called by Plan) ---
 
-  isSheddingActive(): boolean {
-    return this.sheddingActive;
-  }
-
   isInShortfall(): boolean {
     return this.inShortfall;
   }
 
   getCurrentIncidentId(): string | null {
     return this.incidentId;
-  }
-
-  /** Latch shedding on. Called by Plan once it has decided to shed. */
-  activateShedding(): void {
-    this.sheddingActive = true;
-  }
-
-  /**
-   * Release the shedding latch, but only once `headroomKw` clears
-   * `SHEDDING_CLEAR_THRESHOLD_KW` — a plan hovering at the threshold must not
-   * flap the latch between rebuilds. A refusal is silent, so callers that need
-   * to know what happened re-read `isSheddingActive()`.
-   */
-  releaseShedding(headroomKw: number): void {
-    if (!this.sheddingActive) return;
-    if (headroomKw < SHEDDING_CLEAR_THRESHOLD_KW) return;
-    this.sheddingActive = false;
   }
 
   /**

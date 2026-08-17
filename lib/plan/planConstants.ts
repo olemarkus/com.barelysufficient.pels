@@ -1,5 +1,14 @@
 export const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
 export const RESTORE_COOLDOWN_MS = 60000; // Base cooldown after restore for power to stabilize
+
+/**
+ * Headroom a build must see before it releases the shedding latch
+ * (`PlanEngineState.sheddingActive`): the restore margin plus hysteresis, so a
+ * plan hovering at the threshold cannot flap the latch between rebuilds. Both
+ * terms are fixed — the restore margin was a `CapacityGuard` option neither
+ * factory ever supplied, so it was always 0.2.
+ */
+export const SHEDDING_CLEAR_THRESHOLD_KW = 0.4;
 export const RESTORE_COOLDOWN_MAX_MS = 5 * 60 * 1000; // Cap restore backoff at 5 minutes
 export const RESTORE_COOLDOWN_BACKOFF_MULTIPLIER = 2; // Exponential backoff multiplier
 export const RESTORE_STABLE_RESET_MS = 5 * 60 * 1000; // Reset backoff after 5 minutes of stability

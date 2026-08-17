@@ -28,6 +28,7 @@ describe('periodic status used kWh', () => {
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
     const fields = buildPeriodicStatusLogFields({
+      sheddingActive: false,
       capacityPaceKw: 6.5,
       powerTracker: state,
       capacitySettings: { limitKw: 7, marginKw: 0.5 },
@@ -52,9 +53,9 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 55, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      sheddingActive: false,
       capacityPaceKw: 4,
       capacityGuard: {
-        isSheddingActive: () => false,
         isInShortfall: () => false,
       },
       powerTracker: {
@@ -85,9 +86,9 @@ describe('periodic status used kWh', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     let getSoftLimitCallCount = 0;
     buildPeriodicStatusLogFields({
+      sheddingActive: false,
       capacityPaceKw: (() => { getSoftLimitCallCount += 1; return 5.0; })(),
       capacityGuard: {
-        isSheddingActive: () => false,
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 3000 },
@@ -103,9 +104,9 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      sheddingActive: false,
       capacityPaceKw: 4.8,
       capacityGuard: {
-        isSheddingActive: () => true,
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 7400 },
@@ -128,9 +129,9 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 57, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      sheddingActive: false,
       capacityPaceKw: 4.8,
       capacityGuard: {
-        isSheddingActive: () => false,
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 5200 },
@@ -151,9 +152,9 @@ describe('periodic status used kWh', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const fields = buildPeriodicStatusLogFields({
+      sheddingActive: false,
       capacityPaceKw: 5,
       capacityGuard: {
-        isSheddingActive: () => false,
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 3000 },

@@ -34,7 +34,7 @@ export async function buildSheddingPlan(
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
   const sheddingActionable = overshootActionable || hourlyBudgetExhausted;
   const sheddingLimitSource = hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
-  const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
+  const wasSheddingActive = state.sheddingActive;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     planningTotalKw: context.planningTotalKw,
@@ -45,7 +45,10 @@ export async function buildSheddingPlan(
     softLimitSource: sheddingLimitSource,
     capacityGuard: deps.capacityGuard,
     shortfallThresholdKw: deps.shortfallThresholdKw,
+    sheddingActive: wasSheddingActive,
   });
+  // eslint-disable-next-line no-param-reassign -- shared plan engine state update
+  state.sheddingActive = guardResult.sheddingActive;
   const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;
   const recoveredFromShedding = wasSheddingActive && !guardResult.sheddingActive;
   const mergedUpdates = recoveredFromShedding

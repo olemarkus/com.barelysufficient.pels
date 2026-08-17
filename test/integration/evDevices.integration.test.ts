@@ -256,7 +256,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     (app as any).computeDynamicSoftLimit = () => 10.0;
     (app as any).powerTracker.lastPowerW = 400;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-    (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
+    (app as any).planEngine.state.sheddingActive = false;
     (app as any).planEngine.state.lastRecoveryMs = currentTimeMs - 61_000;
     plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     evPlan = getPlanEntry(plan, charger.idValue);

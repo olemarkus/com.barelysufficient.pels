@@ -97,9 +97,6 @@ describe('buildSheddingPlan', () => {
   it('does not shed for a tiny negative headroom until it persists', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -149,16 +146,13 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.size).toBe(0);
     expect(result.sheddingActive).toBe(false);
-    expect(capacityGuard.activateShedding).not.toHaveBeenCalled();
+    expect(state.sheddingActive).toBe(false);
   });
 
   it('sheds after a tiny negative headroom persists past the soft overshoot dwell time', async () => {
     const state = createPlanEngineState();
     state.softOvershootPendingSinceMs = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -213,9 +207,6 @@ describe('buildSheddingPlan', () => {
   it('still enters hard-cap shortfall immediately when above the shortfall threshold', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(true),
     } as unknown as CapacityGuard;
@@ -266,9 +257,6 @@ describe('buildSheddingPlan', () => {
   it('does not enter hard-cap shortfall from a stale-hold cached total', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -352,9 +340,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -423,9 +408,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -479,9 +461,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -524,9 +503,6 @@ describe('buildSheddingPlan', () => {
   it('does not shed a device reporting off, even with a stale measured draw (an off device cannot be commanded off)', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -599,9 +575,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -673,9 +646,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -755,9 +725,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -817,9 +784,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -881,9 +845,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -950,9 +911,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1016,9 +974,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1084,9 +1039,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1154,9 +1106,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1219,9 +1168,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1288,9 +1234,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1358,9 +1301,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1428,9 +1368,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1496,9 +1433,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1557,9 +1491,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1618,9 +1549,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1686,9 +1614,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1759,9 +1684,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1833,9 +1755,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1907,9 +1826,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -1975,9 +1891,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2054,9 +1967,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2120,9 +2030,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2192,9 +2099,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2236,9 +2140,6 @@ describe('buildSheddingPlan', () => {
     };
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2285,9 +2186,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2330,9 +2228,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2382,9 +2277,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2438,9 +2330,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2514,9 +2403,6 @@ describe('buildSheddingPlan', () => {
     state.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2582,9 +2468,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2638,9 +2521,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2693,9 +2573,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2747,9 +2624,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2823,9 +2697,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2883,9 +2754,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2947,9 +2815,6 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -2990,14 +2855,11 @@ describe('buildSheddingPlan', () => {
     }));
   });
 
-  it('emits lastRecoveryMs when guard transitions from active to inactive', async () => {
+  it('emits lastRecoveryMs when the latch transitions from active to inactive', async () => {
     const state = createPlanEngineState();
-    let sheddingActive = true;
+    state.sheddingActive = true;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockImplementation(() => sheddingActive),
-      activateShedding: vi.fn().mockImplementation(() => { sheddingActive = true; }),
-      releaseShedding: vi.fn().mockImplementation((headroomKw: number) => { if (headroomKw >= 0.4) sheddingActive = false; }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3032,9 +2894,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3107,9 +2966,6 @@ describe('buildSheddingPlan', () => {
     };
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3215,9 +3071,6 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
@@ -3263,9 +3116,6 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 31_000;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3406,9 +3256,6 @@ describe('buildSheddingPlan', () => {
     const incidentDeps = (): Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> => ({
       shortfallThresholdKw: 6,
       capacityGuard: {
-        isSheddingActive: vi.fn().mockReturnValue(true),
-        activateShedding: vi.fn(),
-        releaseShedding: vi.fn(),
         checkShortfall: vi.fn().mockResolvedValue(undefined),
         isInShortfall: vi.fn().mockReturnValue(false),
         getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
@@ -3602,9 +3449,6 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3660,9 +3504,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3721,9 +3562,6 @@ describe('buildSheddingPlan', () => {
   it('sheds a stepped device whose adjacent rung prices at zero relief', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3787,9 +3625,6 @@ describe('buildSheddingPlan', () => {
   it('does not treat a descent to the off step as a preemptive step-down', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3848,9 +3683,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     const debugStructured = vi.fn();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3926,9 +3758,6 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -3987,7 +3816,7 @@ describe('buildSheddingPlan', () => {
     expect(reasonText(result.shedReasons.get('binary'))).toBe('shed due to hourly budget');
     expect(reasonText(result.shedReasons.get('second'))).toBe('shed due to hourly budget');
     expect(result.shedReasons.has('exempt')).toBe(false);
-    expect(capacityGuard.activateShedding).toHaveBeenCalled();
+    expect(state.sheddingActive).toBe(true);
   });
 
   it('selects stepped and temperature devices for hourly budget exhaustion', async () => {
@@ -3995,9 +3824,6 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -4065,9 +3891,6 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -4126,9 +3949,6 @@ describe('buildSheddingPlan', () => {
       info: vi.fn(),
     };
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-77'),
@@ -4191,9 +4011,6 @@ describe('buildSheddingPlan', () => {
       info: vi.fn(),
     };
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-88'),
@@ -4243,9 +4060,6 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -4293,9 +4107,6 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(true),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -4338,7 +4149,8 @@ describe('buildSheddingPlan', () => {
 
   it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
     const guard = createTestCapacityGuard({ homeId: 'main' });
-    guard.activateShedding();
+    const state = createPlanEngineState();
+    state.sheddingActive = true;
 
     const result = await buildSheddingPlan(
       buildContext({
@@ -4350,7 +4162,7 @@ describe('buildSheddingPlan', () => {
         headroom: 0.35,
         softLimitSource: 'capacity',
       }),
-      createPlanEngineState(),
+      state,
       {
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
@@ -4364,15 +4176,13 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.sheddingActive).toBe(true);
-    expect(guard.isSheddingActive()).toBe(true);
+    expect(state.sheddingActive).toBe(true);
   });
 
   it('does not try to clear shedding on a single sample just above the restore margin', async () => {
-    let sheddingActive = true;
+    const state = createPlanEngineState();
+    state.sheddingActive = true;
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockImplementation(() => sheddingActive),
-      activateShedding: vi.fn().mockImplementation(() => { sheddingActive = true; }),
-      releaseShedding: vi.fn().mockImplementation((headroomKw: number) => { if (headroomKw >= 0.4) sheddingActive = false; }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
@@ -4387,7 +4197,7 @@ describe('buildSheddingPlan', () => {
         headroom: 0.21,
         softLimitSource: 'capacity',
       }),
-      createPlanEngineState(),
+      state,
       {
         capacityGuard,
         shortfallThresholdKw: 5,
@@ -4400,16 +4210,16 @@ describe('buildSheddingPlan', () => {
       },
     );
 
+    // 0.21 kW is short of the 0.4 kW clear threshold, so the latch survives.
     expect(result.sheddingActive).toBe(true);
     expect(result.updates.lastRecoveryMs).toBeUndefined();
-    expect(
-      vi.mocked(capacityGuard.releaseShedding).mock.calls.length > 0,
-    ).toBe(false);
+    expect(state.sheddingActive).toBe(true);
   });
 
   it('clears shedding using the active plan headroom even if capacity guard headroom is lower', async () => {
     const guard = createTestCapacityGuard({ homeId: 'main' });
-    guard.activateShedding();
+    const state = createPlanEngineState();
+    state.sheddingActive = true;
 
     const result = await buildSheddingPlan(
       buildContext({
@@ -4421,7 +4231,7 @@ describe('buildSheddingPlan', () => {
         headroom: 0.45,
         softLimitSource: 'daily',
       }),
-      createPlanEngineState(),
+      state,
       {
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
@@ -4435,12 +4245,13 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.sheddingActive).toBe(false);
-    expect(guard.isSheddingActive()).toBe(false);
+    expect(state.sheddingActive).toBe(false);
   });
 
   it('clears shedding active once headroom clears the restore margin plus hysteresis', async () => {
     const guard = createTestCapacityGuard({ homeId: 'main' });
-    guard.activateShedding();
+    const state = createPlanEngineState();
+    state.sheddingActive = true;
 
     const result = await buildSheddingPlan(
       buildContext({
@@ -4452,7 +4263,7 @@ describe('buildSheddingPlan', () => {
         headroom: 0.41,
         softLimitSource: 'capacity',
       }),
-      createPlanEngineState(),
+      state,
       {
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
@@ -4466,7 +4277,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.sheddingActive).toBe(false);
-    expect(guard.isSheddingActive()).toBe(false);
+    expect(state.sheddingActive).toBe(false);
   });
   it('sheds an unmetered relay heater on its declared load', async () => {
     // The producer answers for a device with no metering hardware with its
@@ -4476,9 +4287,6 @@ describe('buildSheddingPlan', () => {
     // one frees real power, so it must be a candidate.
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: vi.fn().mockReturnValue(false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;

@@ -1,5 +1,5 @@
 import type CapacityGuard from '../../power/capacityGuard';
-import { SHEDDING_CLEAR_THRESHOLD_KW } from '../../power/capacityGuard';
+import { SHEDDING_CLEAR_THRESHOLD_KW } from '../planConstants';
 import {
   buildNullCapacityStateSummary,
   type PlanCapacityStateSummary,
@@ -175,6 +175,8 @@ export async function updateGuardState(params: {
   capacityGuard: CapacityGuard | undefined;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
   shortfallThresholdKw: number;
+  /** The shedding latch this build inherits, from `PlanEngineState`. */
+  sheddingActive: boolean;
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
@@ -186,6 +188,7 @@ export async function updateGuardState(params: {
     softLimitSource,
     capacityGuard,
     shortfallThresholdKw,
+    sheddingActive,
   } = params;
   const remainingCandidates = countRemainingCandidates({
     devices,
@@ -198,7 +201,6 @@ export async function updateGuardState(params: {
   const deficitKw = computeShortfallDeficitKw(planningTotalKw, shortfallThresholdKw);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
-    capacityGuard?.activateShedding();
     await handleShortfallCheck({
       capacityGuard,
       remaining: remainingCandidates,
@@ -217,11 +219,11 @@ export async function updateGuardState(params: {
     return { sheddingActive: true };
   }
 
+  // The release decision is made once, here. It used to be evaluated twice on
+  // the same input — this predicate, then the identical one inside the guard's
+  // `releaseShedding` — which is why the caller had to re-read the guard to
+  // learn whether its own request had been refused.
   const canDisable = headroom >= SHEDDING_CLEAR_THRESHOLD_KW;
-  const current = capacityGuard?.isSheddingActive() ?? false;
-  if (canDisable) {
-    capacityGuard?.releaseShedding(headroom);
-  }
   await handleShortfallCheck({
     capacityGuard,
     remaining: remainingCandidates,
@@ -237,6 +239,5 @@ export async function updateGuardState(params: {
       capacitySoftLimit,
     }),
   });
-  const next = capacityGuard?.isSheddingActive() ?? current;
-  return { sheddingActive: next };
+  return { sheddingActive: canDisable ? false : sheddingActive };
 }

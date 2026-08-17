@@ -122,63 +122,44 @@ describe('P1 bug proofs', () => {
   });
 
   it('keeps shedding active after a single sample just above the restore margin', async () => {
-    let active = false;
-    const transitions: boolean[] = [];
     const capacityGuard = {
-      isSheddingActive: vi.fn(() => active),
-      activateShedding: vi.fn(() => { active = true; transitions.push(true); }),
-      releaseShedding: vi.fn(() => { active = false; transitions.push(false); }),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
     } as unknown as CapacityGuard;
+    const base = {
+      shortfallThresholdKw: 5,
+      capacityGuard,
+      capacitySoftLimit: 5,
+      devices: [],
+      shedSet: new Set<string>(),
+      softLimitSource: 'capacity' as const,
+    };
 
-    await updateGuardState({
-      shortfallThresholdKw: 5,
-      capacityGuard,
-      headroom: -0.05,
-      overshootActionable: true,
-      capacitySoftLimit: 5,
-      planningTotalKw: 5.05,
-      devices: [],
-      shedSet: new Set(),
-      softLimitSource: 'capacity',
+    // The latch is threaded build to build now, so the proof is that a single
+    // sample 0.21 kW above the restore margin — short of the 0.4 kW clear
+    // threshold — does not release it.
+    const shed = await updateGuardState({
+      ...base, sheddingActive: false, headroom: -0.05, overshootActionable: true, planningTotalKw: 5.05,
     });
-    await updateGuardState({
-      shortfallThresholdKw: 5,
-      capacityGuard,
-      headroom: 0.21,
-      overshootActionable: false,
-      capacitySoftLimit: 5,
-      planningTotalKw: 4.79,
-      devices: [],
-      shedSet: new Set(),
-      softLimitSource: 'capacity',
-    });
-    await updateGuardState({
-      shortfallThresholdKw: 5,
-      capacityGuard,
-      headroom: -0.05,
-      overshootActionable: true,
-      capacitySoftLimit: 5,
-      planningTotalKw: 5.05,
-      devices: [],
-      shedSet: new Set(),
-      softLimitSource: 'capacity',
-    });
+    expect(shed.sheddingActive).toBe(true);
 
-    expect(transitions[0]).toBe(true);
-    expect(transitions).not.toContain(false);
-    expect(active).toBe(true);
+    const eased = await updateGuardState({
+      ...base, sheddingActive: shed.sheddingActive, headroom: 0.21, overshootActionable: false, planningTotalKw: 4.79,
+    });
+    expect(eased.sheddingActive).toBe(true);
+
+    const again = await updateGuardState({
+      ...base, sheddingActive: eased.sheddingActive, headroom: -0.05, overshootActionable: true, planningTotalKw: 5.05,
+    });
+    expect(again.sheddingActive).toBe(true);
   });
 
   it('passes the in-flight shed summary to shortfall logging', async () => {
     const capacityGuard = {
-      isSheddingActive: vi.fn(() => false),
-      activateShedding: vi.fn(),
-      releaseShedding: vi.fn(),
       checkShortfall: vi.fn().mockResolvedValue(undefined),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
+      sheddingActive: false,
       shortfallThresholdKw: 5,
       capacityGuard,
       headroom: -1,

@@ -57,9 +57,6 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
 });
 
 const buildCapacityGuard = (): CapacityGuard => ({
-  isSheddingActive: vi.fn().mockReturnValue(false),
-  activateShedding: vi.fn(),
-  releaseShedding: vi.fn(),
   checkShortfall: vi.fn().mockResolvedValue(undefined),
   isInShortfall: vi.fn().mockReturnValue(false),
   getRestoreMargin: vi.fn().mockReturnValue(0.2),

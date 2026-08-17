@@ -287,6 +287,20 @@ export class PlanEngineState {
 
   inShortfall: boolean = false;
 
+  /**
+   * The shedding latch: true from the build that decides to shed until a build
+   * sees headroom clear `SHEDDING_CLEAR_THRESHOLD_KW`. Latched rather than
+   * recomputed per build so a plan hovering at the threshold cannot flap it.
+   *
+   * Planner state because only the planner decides it: `updateGuardState`
+   * writes it, `buildSheddingPlan` reads the previous value to detect recovery,
+   * and every downstream consumer takes it off `SheddingPlan`. It used to live
+   * on `CapacityGuard`, which re-checked the release predicate the planner had
+   * already evaluated and could refuse silently — leaving the caller to re-read
+   * the guard to discover what its own request had done.
+   */
+  sheddingActive: boolean = false;
+
   restoreCooldownMs: number = RESTORE_COOLDOWN_MS;
 
   lastRestoreCooldownBumpMs: number | null = null;

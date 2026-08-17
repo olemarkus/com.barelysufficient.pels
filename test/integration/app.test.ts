@@ -1011,7 +1011,7 @@ describe('MyApp initialization', () => {
 
     (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     void setLimitListener({ limit_kw: 4 });

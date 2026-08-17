@@ -1175,7 +1175,7 @@ describe('Device plan snapshot', () => {
     (app as any).computeDynamicSoftLimit = () => 5;
     (app as any).computeDynamicSoftLimit = () => 5;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-    await (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
+    (app as any).planEngine.state.sheddingActive = false;
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — simulate that interval having elapsed.
@@ -1481,7 +1481,7 @@ describe('Device plan snapshot', () => {
     // Clear shedding-related cooldowns but NOT restore margin consideration
     (app as any).planEngine.state.lastInstabilityMs = 0;
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     // Now set headroom to small positive (0.1 kW) - below device power (1kW) + margin (0.2kW)
@@ -2415,7 +2415,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
       // Ensure shedding is not active
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     await (app as any).powerSamplePipeline.recordPowerSample(3000); // 3 kW total
@@ -2819,7 +2819,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     // Capture structured log events from the plan engine
@@ -2881,7 +2881,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     const errorSpy = vi.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => { });
@@ -2954,7 +2954,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     await (app as any).powerSamplePipeline.recordPowerSample(3000, 1000);
@@ -3008,7 +3008,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
 
     await (app as any).powerSamplePipeline.recordPowerSample(3000, 1000);
@@ -3621,7 +3621,7 @@ describe('Dry run mode', () => {
     // Ensure not in shortfall or shedding
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.inShortfall = false;
-      (app as any).capacityGuard.sheddingActive = false;
+      (app as any).planEngine.state.sheddingActive = false;
     }
     (app as any).planEngine.state.inShortfall = false;
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3911,7 +3911,12 @@ describe('Dry run mode', () => {
       (app as any).planEngine.state.lastRecoveryMs = 0;
       (app as any).planEngine.state.lastDeviceShedMs = {};
       // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
-      await (app as any).capacityGuard?.releaseShedding(Number.POSITIVE_INFINITY);
+      (app as any).planEngine.state.sheddingActive = false;
+      // Drain the microtask the previous step's rebuild is still sitting on.
+      // Clearing the latch used to be an `await`ed guard call, which yielded
+      // here by accident; the assignment does not, and the next sample would
+      // otherwise race that rebuild.
+      await Promise.resolve();
 
       await (app as any).powerSamplePipeline.recordPowerSample(2000);
 
